@@ -1,0 +1,1505 @@
+{
+  "resolved": {
+    "88": "lavender-msm-lotion",
+    "90": "msm-powder",
+    "118": "stone-solvent",
+    "158": "aces-eyedrops",
+    "178": "man-manna",
+    "185": "coconut-rose-msm-lotion",
+    "195": "perfect-skin",
+    "302": "flow-ease",
+    "308": "curcu-guard",
+    "309": "mitochondrial-biogenesis",
+    "311": "glutathione-syntropy",
+    "313": "adrenal-syntropy",
+    "314": "crystalline-clarity",
+    "318": "liver-support",
+    "321": "immune-modulation",
+    "322": "gastrozyme",
+    "323": "sublingual-b12",
+    "324": "scar-silk",
+    "325": "rise--shine",
+    "326": "vital-energy-be",
+    "327": "dental-powder",
+    "328": "sleep-syntropy",
+    "330": "macular-wellness-lutein",
+    "331": "macular-wellness-zeaxanthin",
+    "335": "nous-energy",
+    "336": "paracleanse",
+    "337": "zinc-syntropy",
+    "338": "endocrine-restore",
+    "339": "rhythm-restore",
+    "341": "fungifuge",
+    "342": "sustain",
+    "343": "glucose-tolerance",
+    "344": "neuroprotect",
+    "346": "binder-complex",
+    "348": "chelation",
+    "350": "alkalize-bicarbonate-blend",
+    "355": "magnesium-syntropy",
+    "356": "fibrolysis-factors",
+    "363": "heart-health",
+    "364": "moisturize",
+    "366": "bone-builder",
+    "367": "thyroid-support",
+    "370": "macular-wellness-astaxanthin",
+    "371": "macular-wellness-safranal",
+    "373": "candida-cleanse",
+    "377": "gerd-guard",
+    "378": "psc-protect",
+    "380": "medicinal-mushrooms",
+    "383": "thermogenesis",
+    "385": "sulfur-syntropy",
+    "389": "fiber-cleanse",
+    "393": "apoptogenesis",
+    "394": "rescue",
+    "395": "vitamin-d-syntropy",
+    "411": "angiogenx",
+    "425": "microbiome",
+    "427": "virex",
+    "429": "blood-cleanse",
+    "435": "macular-wellness-mesozeaxanthin",
+    "436": "iron-out",
+    "438": "brain-cleanse",
+    "442": "stress-release",
+    "444": "migrafree",
+    "449": "dental-regen-powder",
+    "450": "prostate-protect",
+    "451": "breast-support",
+    "457": "golden-book",
+    "461": "macular-wellness-crocin",
+    "465": "ocuflow-daytime",
+    "466": "ocuflow-bedtime",
+    "467": "lipid-zyme",
+    "470": "free-and-easy",
+    "471": "seaaminos",
+    "475": "lymph-flow",
+    "479": "acetaldehyde-detox",
+    "483": "muscle-mass",
+    "484": "dht-blocker",
+    "491": "nerve-repair",
+    "493": "ocuheal-eye-drops",
+    "504": "spleen-support",
+    "514": "spike-shield",
+    "532": "clarity",
+    "533": "sinus-terrain-nasal-spray",
+    "538": "iron-syntropy",
+    "539": "vitamin-a-syntropy",
+    "546": "appestat",
+    "566": "macular-wellness-lycopene",
+    "569": "vitality",
+    "570": "longevity",
+    "579": "lipid-cleanse",
+    "582": "crucifer-complex",
+    "587": "mercury-detox-syntropy-powder",
+    "594": "vitreous-vitality",
+    "606": "msm-syntropy",
+    "607": "snake--dragon",
+    "878": "iop-syntropy",
+    "923": "vein-support",
+    "1074": "scar-solve",
+    "1104": "nerve-pulse"
+  },
+  "review": {
+    "73": {
+      "suggestion": "stress-release",
+      "description": "ESR Emotional Stress Release Infoceutical",
+      "line_count": 1
+    },
+    "75": {
+      "suggestion": "digestzymes",
+      "description": "Digestzymes HomeoEnergetic Drops Box 4",
+      "line_count": 1
+    },
+    "86": {
+      "suggestion": null,
+      "description": "Microwater, Acid",
+      "line_count": 1
+    },
+    "87": {
+      "suggestion": null,
+      "description": "Microwater, Alkaline",
+      "line_count": 1
+    },
+    "89": {
+      "suggestion": null,
+      "description": "MSM Pure & Natural Lotion",
+      "line_count": 4
+    },
+    "92": {
+      "suggestion": "one-step",
+      "description": "One Step Vanilla 42.5 oz",
+      "line_count": 3
+    },
+    "95": {
+      "suggestion": null,
+      "description": "Phytolacca americana Oil Roll-On",
+      "line_count": 4
+    },
+    "97": {
+      "suggestion": "pms-relief",
+      "description": "PMS Relief HomeoEnergetic Complex in Terrain Restore",
+      "line_count": 1
+    },
+    "100": {
+      "suggestion": "shark-essence",
+      "description": "Shark Essence HomeoEnergetic Drops",
+      "line_count": 1
+    },
+    "104": {
+      "suggestion": null,
+      "description": "Natural Eye Care: An Encyclopedia (book)()",
+      "line_count": 1
+    },
+    "105": {
+      "suggestion": "aller-free-aid",
+      "description": "AllerFree HomeoEnergetic Drops",
+      "line_count": 1
+    },
+    "119": {
+      "suggestion": "ozonated-olive-oil",
+      "description": "Ozonated Olive Oil with Black Seed Oil",
+      "line_count": 7
+    },
+    "155": {
+      "suggestion": "zinc-taste-test",
+      "description": "Zinc Taste Test Drops",
+      "line_count": 1
+    },
+    "196": {
+      "suggestion": "day",
+      "description": "Day Infoceutical",
+      "line_count": 1
+    },
+    "197": {
+      "suggestion": "night",
+      "description": "Night Infoceutical",
+      "line_count": 4
+    },
+    "198": {
+      "suggestion": "bfa-big-field-aligner",
+      "description": "BFA Big Field Aligner Infoceutical",
+      "line_count": 3
+    },
+    "199": {
+      "suggestion": "pl-polarity",
+      "description": "PL Polarity Infoceutical",
+      "line_count": 1
+    },
+    "200": {
+      "suggestion": "stress-release",
+      "description": "MB5 ESR Emotional Stress Release Infoceutical",
+      "line_count": 12
+    },
+    "201": {
+      "suggestion": null,
+      "description": "ED1 Source Energetic Driver Infoceutical",
+      "line_count": 6
+    },
+    "202": {
+      "suggestion": null,
+      "description": "ED2 Heart Imprinter Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "203": {
+      "suggestion": null,
+      "description": "ED3 Cell Energetic Driver Infoceutical",
+      "line_count": 4
+    },
+    "204": {
+      "suggestion": null,
+      "description": "ED4 Nerve Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "205": {
+      "suggestion": null,
+      "description": "ED5 Circulation Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "206": {
+      "suggestion": null,
+      "description": "ED6 Heart Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "207": {
+      "suggestion": null,
+      "description": "ED7 Lung Energetic Driver Infoceutical",
+      "line_count": 4
+    },
+    "208": {
+      "suggestion": null,
+      "description": "ED8 Stomach Energetic Driver Infoceutical",
+      "line_count": 2
+    },
+    "209": {
+      "suggestion": null,
+      "description": "ED9 Muscle Energetic Driver Infoceutical",
+      "line_count": 2
+    },
+    "210": {
+      "suggestion": null,
+      "description": "ED10 Skin Energetic Driver Infoceutical",
+      "line_count": 2
+    },
+    "211": {
+      "suggestion": null,
+      "description": "ED11 Liver Energetic Driver Infoceutical",
+      "line_count": 5
+    },
+    "212": {
+      "suggestion": null,
+      "description": "ED12 Kidney Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "213": {
+      "suggestion": null,
+      "description": "ED13 Immunity Energetic Driver Infoceutical",
+      "line_count": 6
+    },
+    "214": {
+      "suggestion": null,
+      "description": "ED14 Spleen Energetic Driver Infoceutical",
+      "line_count": 3
+    },
+    "215": {
+      "suggestion": null,
+      "description": "ED15 Pancreas Energetic Driver Infoceutical",
+      "line_count": 1
+    },
+    "217": {
+      "suggestion": "ei1-neurosensorycolon-meridian",
+      "description": "EI1 Neurosensory/Colon Meridian Energetic Integrator Infoceutical",
+      "line_count": 1
+    },
+    "218": {
+      "suggestion": null,
+      "description": "EI 02 Heart/Lung Meridian - Energetic Integrator 2 Infoceutical",
+      "line_count": 2
+    },
+    "219": {
+      "suggestion": null,
+      "description": "EI3 Mucosae/Small Intestine Meridian Energetic Integrator Infoceutical",
+      "line_count": 2
+    },
+    "220": {
+      "suggestion": "ei4-neurotransmittersheart-meridian",
+      "description": "EI4 Neurotransmitters/Heart Meridian Energetic Integrator Infoceutical",
+      "line_count": 2
+    },
+    "221": {
+      "suggestion": "ei5-lymphaticsbladder-meridian",
+      "description": "EI5 Lymphatics/Bladder Meridian Energetic Integrator Infoceutical",
+      "line_count": 3
+    },
+    "222": {
+      "suggestion": "ei6-kidney-meridian",
+      "description": "EI6 Kidney Meridian Energetic Integrator Infoceutical",
+      "line_count": 3
+    },
+    "223": {
+      "suggestion": null,
+      "description": "EI7 Blood/Gallbladder Meridian Energetic Integrator Infoceutical",
+      "line_count": 1
+    },
+    "224": {
+      "suggestion": "microbes-liver-meridian",
+      "description": "EI8 Microbes/Liver Meridian Energetic Integrator Infoceutical",
+      "line_count": 4
+    },
+    "225": {
+      "suggestion": null,
+      "description": "EI9 Thyroid/Triple Burner Meridian Energetic Integrator Infoceutical",
+      "line_count": 5
+    },
+    "226": {
+      "suggestion": null,
+      "description": "EI10 Circulation/Pericardium Meridian Energetic Integrator Infoceutical",
+      "line_count": 4
+    },
+    "227": {
+      "suggestion": null,
+      "description": "EI11 Stomach/Heavy Metal/Bone Marrow Meridian Energetic Integrator Infoceutical",
+      "line_count": 2
+    },
+    "228": {
+      "suggestion": "ei12-shockspleen-meridian",
+      "description": "EI12 Shock/Spleen Meridian Energetic Integrator Infoceutical",
+      "line_count": 5
+    },
+    "229": {
+      "suggestion": "et0-cns",
+      "description": "ET0 CNS Central Nervous System Energetic Terrain Infoceutical",
+      "line_count": 3
+    },
+    "231": {
+      "suggestion": null,
+      "description": "ET2 Imu-2 Immune Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "232": {
+      "suggestion": null,
+      "description": "ET3 Imu-3 Immune Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "233": {
+      "suggestion": null,
+      "description": "ET4 Nrv Nerve Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "234": {
+      "suggestion": null,
+      "description": "ET5 BSV Viral Energetic Terrain Infoceutical",
+      "line_count": 2
+    },
+    "235": {
+      "suggestion": null,
+      "description": "ET6 CFI Immune Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "236": {
+      "suggestion": null,
+      "description": "ET7 CFS Fatigue Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "237": {
+      "suggestion": null,
+      "description": "ET8 Neuro Energetic Terrain Infoceutical",
+      "line_count": 3
+    },
+    "238": {
+      "suggestion": "et9-stomach",
+      "description": "ET9 Stm Stomach Energetic Terrain Infoceutical",
+      "line_count": 3
+    },
+    "239": {
+      "suggestion": "et10-liver-1",
+      "description": "ET10 Liv-1 Liver Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "241": {
+      "suggestion": "et12-liver-3",
+      "description": "ET12 Liv-3 Liver Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "242": {
+      "suggestion": "et13-fungus",
+      "description": "ET13 Fng Fungal Energetic Terrain Infoceutical",
+      "line_count": 4
+    },
+    "243": {
+      "suggestion": "et14-bacteria",
+      "description": "ET14 Bac Bacterial Energetic Terrain Infoceutical",
+      "line_count": 1
+    },
+    "245": {
+      "suggestion": "es1-lymph",
+      "description": "ES1 Immune Energetic Star Infoceutical",
+      "line_count": 9
+    },
+    "247": {
+      "suggestion": "es3-nerve",
+      "description": "ES3 Nerve Function Energetic Star Infoceutical",
+      "line_count": 2
+    },
+    "248": {
+      "suggestion": "es4-triple-cavity",
+      "description": "ES4 Triple Cavity Energetic Star Infoceutical",
+      "line_count": 6
+    },
+    "249": {
+      "suggestion": "es5-autoimmune",
+      "description": "ES5 Auto-Immune Energetic Star Infoceutical",
+      "line_count": 6
+    },
+    "250": {
+      "suggestion": "es6-circulation",
+      "description": "ES6 Circulation Lipids Energetic Star Infoceutical",
+      "line_count": 5
+    },
+    "252": {
+      "suggestion": "es8-chill",
+      "description": "ES8 Chill Energetic Star Infoceutical",
+      "line_count": 1
+    },
+    "253": {
+      "suggestion": "es9-audio",
+      "description": "ES9 Shock - Auditory Processing Energetic Star Infoceutical",
+      "line_count": 4
+    },
+    "254": {
+      "suggestion": "es1-lymph",
+      "description": "ES10 Stress - Video Processing Energetic Star Infoceutical",
+      "line_count": 9
+    },
+    "255": {
+      "suggestion": "es1-lymph",
+      "description": "ES11 Male Energy Energetic Star Infoceutical",
+      "line_count": 1
+    },
+    "256": {
+      "suggestion": "es1-lymph",
+      "description": "ES12 Female Energy Energetic Star Infoceutical",
+      "line_count": 7
+    },
+    "257": {
+      "suggestion": "es1-lymph",
+      "description": "ES13 COH Metabolism Energetic Star Infoceutical",
+      "line_count": 3
+    },
+    "258": {
+      "suggestion": "es1-lymph",
+      "description": "ES14 Cell Metabolism Energetic Star Infoceutical",
+      "line_count": 6
+    },
+    "259": {
+      "suggestion": "es1-lymph",
+      "description": "ES15 Heavy Metals Energetic Star Infoceutical",
+      "line_count": 9
+    },
+    "260": {
+      "suggestion": null,
+      "description": "MB1 BSH Brainstem Hologram Infoceutical",
+      "line_count": 1
+    },
+    "261": {
+      "suggestion": "mb6-liberator",
+      "description": "MB6 Liberator Infoceutical",
+      "line_count": 2
+    },
+    "262": {
+      "suggestion": null,
+      "description": "MB4 CCH Cerebral Cortex Hologram Infoceutical",
+      "line_count": 2
+    },
+    "263": {
+      "suggestion": null,
+      "description": "MB2 CMH Cerebral Medulla Hologram Infoceutical",
+      "line_count": 1
+    },
+    "264": {
+      "suggestion": null,
+      "description": "MB3 CBH Cerebellum Hologram Infoceutical",
+      "line_count": 2
+    },
+    "267": {
+      "suggestion": "mb7-peace",
+      "description": "MB7 Peace Infoceutical",
+      "line_count": 3
+    },
+    "269": {
+      "suggestion": null,
+      "description": "MB8 Love Infoceutical gift",
+      "line_count": 1
+    },
+    "270": {
+      "suggestion": "emf",
+      "description": "EMF Infoceutical",
+      "line_count": 1
+    },
+    "298": {
+      "suggestion": "energy",
+      "description": "Energy/Source Infoceutical Feelgood",
+      "line_count": 2
+    },
+    "305": {
+      "suggestion": null,
+      "description": "Serenity Blue Green Balance",
+      "line_count": 1
+    },
+    "306": {
+      "suggestion": "oxygen-cleanse",
+      "description": "Oxygen Cleanse Watermelon Powder",
+      "line_count": 1
+    },
+    "307": {
+      "suggestion": null,
+      "description": "Hydrogen Water Bottle Travel",
+      "line_count": 1
+    },
+    "315": {
+      "suggestion": "neuroceramides",
+      "description": "Myelin Repair Neuroceramides",
+      "line_count": 2
+    },
+    "316": {
+      "suggestion": null,
+      "description": "Immune Intelligence Powder",
+      "line_count": 4
+    },
+    "317": {
+      "suggestion": null,
+      "description": "B17 Syntropy",
+      "line_count": 17
+    },
+    "333": {
+      "suggestion": null,
+      "description": "Vitamin C Syntropy",
+      "line_count": 6
+    },
+    "347": {
+      "suggestion": "terrain-restore",
+      "description": "Terrain Restore Drops",
+      "line_count": 8
+    },
+    "354": {
+      "suggestion": "candida-cleanse",
+      "description": "Candida Cleanse 120v",
+      "line_count": 1
+    },
+    "357": {
+      "suggestion": "gi-repair",
+      "description": "GI Repair",
+      "line_count": 5
+    },
+    "359": {
+      "suggestion": "emf",
+      "description": "EMF Pouch black 7\u201d x 4\u201d",
+      "line_count": 1
+    },
+    "362": {
+      "suggestion": "emf",
+      "description": "EMF Free Headset",
+      "line_count": 4
+    },
+    "365": {
+      "suggestion": "brain-boost",
+      "description": "Brain Boost Nootropic",
+      "line_count": 3
+    },
+    "368": {
+      "suggestion": "tmg",
+      "description": "TMG Syntropy Powder",
+      "line_count": 10
+    },
+    "372": {
+      "suggestion": null,
+      "description": "Clear Lens Eye Drops ACES+CAT Eye Drops",
+      "line_count": 16
+    },
+    "374": {
+      "suggestion": "vitamin-p-polyphenols",
+      "description": "Vitamin P Polyphenols",
+      "line_count": 3
+    },
+    "375": {
+      "suggestion": "night",
+      "description": "Night Light Biocompatible - gift",
+      "line_count": 1
+    },
+    "381": {
+      "suggestion": null,
+      "description": "SeaAmino Syntropy",
+      "line_count": 1
+    },
+    "390": {
+      "suggestion": null,
+      "description": "Neuro Eye Drops",
+      "line_count": 1
+    },
+    "412": {
+      "suggestion": null,
+      "description": "Lens Zyme Box 2",
+      "line_count": 4
+    },
+    "413": {
+      "suggestion": "ei13--hearing--learning-",
+      "description": "EI13 Hearing & Learning Energetic Integrator Infoceutical",
+      "line_count": 1
+    },
+    "414": {
+      "suggestion": null,
+      "description": "EI 14 Vision & Decisions Energetic Integrator Infoceutical",
+      "line_count": 2
+    },
+    "431": {
+      "suggestion": "neuro-magnesium",
+      "description": "Focus Neuro-Magnesium Powder",
+      "line_count": 31
+    },
+    "440": {
+      "suggestion": null,
+      "description": "Clear Lens+ Eye Drops ACES+CAT Eye Drops",
+      "line_count": 1
+    },
+    "448": {
+      "suggestion": "wholomega",
+      "description": "WholOmega 120 gelcaps",
+      "line_count": 64
+    },
+    "454": {
+      "suggestion": "soothe",
+      "description": "Soothe Powder",
+      "line_count": 8
+    },
+    "462": {
+      "suggestion": "et16-glial-cell",
+      "description": "ET16 Glial Cell Terrain Infoceutical",
+      "line_count": 1
+    },
+    "468": {
+      "suggestion": "sanctuary-c60",
+      "description": "Sanctuary C60 in Black Seed Oil Drops",
+      "line_count": 5
+    },
+    "469": {
+      "suggestion": "shields-up",
+      "description": "Shields Up - Cold/Flu Formula",
+      "line_count": 13
+    },
+    "477": {
+      "suggestion": "terrain-restore",
+      "description": "Ocular Terrain Restore Box 3",
+      "line_count": 4
+    },
+    "480": {
+      "suggestion": null,
+      "description": "Silver Spray 1000 ppm",
+      "line_count": 1
+    },
+    "503": {
+      "suggestion": null,
+      "description": "OffSyrup Drops",
+      "line_count": 5
+    },
+    "507": {
+      "suggestion": "one-step",
+      "description": "One Step Chocolate 42.5 oz",
+      "line_count": 6
+    },
+    "540": {
+      "suggestion": "night",
+      "description": "Night Light Therapeutic Healing Frequencies",
+      "line_count": 2
+    },
+    "571": {
+      "suggestion": "reverse-age",
+      "description": "Reverse AGE",
+      "line_count": 44
+    },
+    "574": {
+      "suggestion": null,
+      "description": "CDS Activator Box 4",
+      "line_count": 1
+    },
+    "575": {
+      "suggestion": "cinnamon-blue",
+      "description": "Cinnamon Blue Drops Box 3",
+      "line_count": 2
+    },
+    "583": {
+      "suggestion": "hydrolyzed-whey",
+      "description": "Hydrolyzed Whey Protein Powder",
+      "line_count": 2
+    },
+    "586": {
+      "suggestion": "comfort",
+      "description": "Comfort Synovial Syntropy",
+      "line_count": 7
+    },
+    "608": {
+      "suggestion": "terrain-restore",
+      "description": "Relationship Shell Essence in Terrain Restore",
+      "line_count": 3
+    },
+    "609": {
+      "suggestion": "terrain-restore",
+      "description": "Pipi Shell Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "610": {
+      "suggestion": "terrain-restore",
+      "description": "Trauma Relief in Terrain Restore",
+      "line_count": 2
+    },
+    "615": {
+      "suggestion": "terrain-restore",
+      "description": "Brazilian Amethyst Gem Elixir in Terrain Restore",
+      "line_count": 2
+    },
+    "625": {
+      "suggestion": "terrain-restore",
+      "description": "Gold Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "628": {
+      "suggestion": "terrain-restore",
+      "description": "Hematite Gem Elixir in Terrain Restore",
+      "line_count": 2
+    },
+    "630": {
+      "suggestion": "terrain-restore",
+      "description": "Kunzite Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "634": {
+      "suggestion": "terrain-restore",
+      "description": "Moldavite Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "636": {
+      "suggestion": "terrain-restore",
+      "description": "Moonstone Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "638": {
+      "suggestion": "terrain-restore",
+      "description": "Orange Calcite Gem Elixir in Terrain Restore",
+      "line_count": 4
+    },
+    "639": {
+      "suggestion": "terrain-restore",
+      "description": "Pearl Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "640": {
+      "suggestion": "terrain-restore",
+      "description": "Pyrite Gem Elixir in Terrain Restore",
+      "line_count": 3
+    },
+    "641": {
+      "suggestion": "terrain-restore",
+      "description": "Rhodochrosite Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "648": {
+      "suggestion": "terrain-restore",
+      "description": "Spectrolite Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "649": {
+      "suggestion": "terrain-restore",
+      "description": "Star Sapphire Gem Elixir in Terrain Restore",
+      "line_count": 4
+    },
+    "650": {
+      "suggestion": "terrain-restore",
+      "description": "Turquoise Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "652": {
+      "suggestion": "terrain-restore",
+      "description": "Golden Ragwort Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "653": {
+      "suggestion": "terrain-restore",
+      "description": "Gooseberry Flower Essence in Terrain Restore*",
+      "line_count": 1
+    },
+    "654": {
+      "suggestion": "terrain-restore",
+      "description": "Heather Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "656": {
+      "suggestion": "terrain-restore",
+      "description": "Lady's Purse Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "658": {
+      "suggestion": "terrain-restore",
+      "description": "Oconee Bells Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "660": {
+      "suggestion": "terrain-restore",
+      "description": "Sunflower Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "661": {
+      "suggestion": "terrain-restore",
+      "description": "Bunchberry Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "662": {
+      "suggestion": "terrain-restore",
+      "description": "Terrain Restore",
+      "line_count": 2
+    },
+    "663": {
+      "suggestion": "terrain-restore",
+      "description": "Devil's Club Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "666": {
+      "suggestion": "terrain-restore",
+      "description": "Grove Sandwort Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "667": {
+      "suggestion": "terrain-restore",
+      "description": "Lace Flower Essence in Terrain Restore",
+      "line_count": 5
+    },
+    "669": {
+      "suggestion": "terrain-restore",
+      "description": "Pale Corydalis Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "672": {
+      "suggestion": "terrain-restore",
+      "description": "Self-Heal Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "673": {
+      "suggestion": "terrain-restore",
+      "description": "Single Delight Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "675": {
+      "suggestion": "terrain-restore",
+      "description": "Sphagnum Moss Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "681": {
+      "suggestion": "terrain-restore",
+      "description": "Winter in August Environmental Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "682": {
+      "suggestion": "terrain-restore",
+      "description": "Foxglove Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "684": {
+      "suggestion": "terrain-restore",
+      "description": "Tamarack Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "685": {
+      "suggestion": "terrain-restore",
+      "description": "Yellow Paintbrush Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "687": {
+      "suggestion": "terrain-restore",
+      "description": "Tiger's Eye Gem Elixir in Terrain Restore",
+      "line_count": 3
+    },
+    "688": {
+      "suggestion": "terrain-restore",
+      "description": "Smoky Quartz Gem Elixir in Terrain Restore",
+      "line_count": 6
+    },
+    "689": {
+      "suggestion": "terrain-restore",
+      "description": "Rhodolite Garnet Gem Elixir in Terrain Restore",
+      "line_count": 2
+    },
+    "690": {
+      "suggestion": "terrain-restore",
+      "description": "Topaz Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "691": {
+      "suggestion": "terrain-restore",
+      "description": "Sugalite Gem Elixir in Terrain Restore",
+      "line_count": 4
+    },
+    "692": {
+      "suggestion": "terrain-restore",
+      "description": "Bog Rosemary Flower Essence in Terrain Restore",
+      "line_count": 4
+    },
+    "695": {
+      "suggestion": "terrain-restore",
+      "description": "Eagle Owl Animal Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "697": {
+      "suggestion": "terrain-restore",
+      "description": "Seal Animal Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "699": {
+      "suggestion": "terrain-restore",
+      "description": "Spider Animal Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "703": {
+      "suggestion": "terrain-restore",
+      "description": "Cow Animal Essence in Terrain Restore",
+      "line_count": 3
+    },
+    "704": {
+      "suggestion": "terrain-restore",
+      "description": "Deer Animal Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "707": {
+      "suggestion": "terrain-restore",
+      "description": "Hare Animal Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "709": {
+      "suggestion": "terrain-restore",
+      "description": "Horse Animal Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "710": {
+      "suggestion": "terrain-restore",
+      "description": "Ibex Animal Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "716": {
+      "suggestion": "terrain-restore",
+      "description": "Emerald Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "717": {
+      "suggestion": "terrain-restore",
+      "description": "Herkimer Diamond Gem Elixir in Terrain Restore",
+      "line_count": 1
+    },
+    "718": {
+      "suggestion": "terrain-restore",
+      "description": "Peridot Gem Elixir in Terrain Restore",
+      "line_count": 3
+    },
+    "723": {
+      "suggestion": "terrain-restore",
+      "description": "Lilac Double Lavender in Terrain Restore",
+      "line_count": 1
+    },
+    "725": {
+      "suggestion": "terrain-restore",
+      "description": "Garlic Flower Essence in Terrain Restore",
+      "line_count": 3
+    },
+    "726": {
+      "suggestion": "terrain-restore",
+      "description": "Exaltation of Flowers Flower Essence in Terrain Restore",
+      "line_count": 3
+    },
+    "727": {
+      "suggestion": "terrain-restore",
+      "description": "Crested Iris Flower Essence in Terrain Restore",
+      "line_count": 4
+    },
+    "728": {
+      "suggestion": "terrain-restore",
+      "description": "Chive Flower Essence in Terrain Restore",
+      "line_count": 9
+    },
+    "730": {
+      "suggestion": "terrain-restore",
+      "description": "Tree Peony Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "732": {
+      "suggestion": "terrain-restore",
+      "description": "Lilac Pink Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "733": {
+      "suggestion": "terrain-restore",
+      "description": "Lilac Old Fashioned Flower Essence in Terrain Restore",
+      "line_count": 4
+    },
+    "734": {
+      "suggestion": "terrain-restore",
+      "description": "Lilac Littleleaf Flower Essence in Terrain Restore",
+      "line_count": 5
+    },
+    "736": {
+      "suggestion": "terrain-restore",
+      "description": "Initiative Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "737": {
+      "suggestion": "terrain-restore",
+      "description": "Child Glow Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "738": {
+      "suggestion": "terrain-restore",
+      "description": "Calm Time Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "739": {
+      "suggestion": "terrain-restore",
+      "description": "Boundaries Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "740": {
+      "suggestion": "terrain-restore",
+      "description": "Living With Soul Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "741": {
+      "suggestion": "terrain-restore",
+      "description": "Mauve Mullein Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "742": {
+      "suggestion": "terrain-restore",
+      "description": "Motivation Flower Essence in Terrain Restore",
+      "line_count": 3
+    },
+    "746": {
+      "suggestion": "terrain-restore",
+      "description": "Tomato Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "747": {
+      "suggestion": "terrain-restore",
+      "description": "White Foxglove Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "748": {
+      "suggestion": null,
+      "description": "Wild Ginger Flower Essence",
+      "line_count": 1
+    },
+    "755": {
+      "suggestion": "terrain-restore",
+      "description": "Fairy Duster Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "760": {
+      "suggestion": "terrain-restore",
+      "description": "Sweet Pea Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "761": {
+      "suggestion": "terrain-restore",
+      "description": "Nature Walk Environmental Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "762": {
+      "suggestion": "terrain-restore",
+      "description": "Camas Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "768": {
+      "suggestion": "terrain-restore",
+      "description": "Freedom from Fear Angelic Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "770": {
+      "suggestion": "terrain-restore",
+      "description": "Love Angelic Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "778": {
+      "suggestion": "terrain-restore",
+      "description": "Neptun Planet Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "779": {
+      "suggestion": "terrain-restore",
+      "description": "Pluto Planet Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "780": {
+      "suggestion": "terrain-restore",
+      "description": "Saturn Planet Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "783": {
+      "suggestion": "terrain-restore",
+      "description": "Venus Planet Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "787": {
+      "suggestion": "terrain-restore",
+      "description": "Perelandra Nature Program Essence F-2 in Terrain Restore",
+      "line_count": 2
+    },
+    "788": {
+      "suggestion": "terrain-restore",
+      "description": "Perelandra Nature Program Essence B-1 in Terrain Restore",
+      "line_count": 1
+    },
+    "789": {
+      "suggestion": "terrain-restore",
+      "description": "Perelandra Nature Program Essence B-2 in Terrain Restore",
+      "line_count": 2
+    },
+    "793": {
+      "suggestion": "terrain-restore",
+      "description": "Down to Earth Himalayan Flower Enhancer in Terrain Restore",
+      "line_count": 1
+    },
+    "797": {
+      "suggestion": "terrain-restore",
+      "description": "Gratefulness Himalayan Flower Enhancer in Terrain Restore",
+      "line_count": 1
+    },
+    "800": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "803": {
+      "suggestion": "terrain-restore",
+      "description": "Bronze Fennel Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "805": {
+      "suggestion": "terrain-restore",
+      "description": "Male Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "813": {
+      "suggestion": "terrain-restore",
+      "description": "Callala Bay Scallop Shell Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "817": {
+      "suggestion": "terrain-restore",
+      "description": "Lettered Cone Shell Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "825": {
+      "suggestion": "terrain-restore",
+      "description": "Stromb Fasciatus Shell Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "827": {
+      "suggestion": "terrain-restore",
+      "description": "Almond Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "829": {
+      "suggestion": "terrain-restore",
+      "description": "Avocado Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "832": {
+      "suggestion": "terrain-restore",
+      "description": "Corn Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "833": {
+      "suggestion": "terrain-restore",
+      "description": "Grape Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "835": {
+      "suggestion": "terrain-restore",
+      "description": "Orange Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "843": {
+      "suggestion": "terrain-restore",
+      "description": "5th Chakra Immune System in Terrain Restore",
+      "line_count": 1
+    },
+    "844": {
+      "suggestion": "terrain-restore",
+      "description": "Eilat Gem Elixir in Terrain Restore",
+      "line_count": 2
+    },
+    "845": {
+      "suggestion": "terrain-restore",
+      "description": "Accepting Love/Building Community Essence in Terrain Restore",
+      "line_count": 4
+    },
+    "846": {
+      "suggestion": "terrain-restore",
+      "description": "White Bleeding Heart Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "847": {
+      "suggestion": "terrain-restore",
+      "description": "Sticky Geranium Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "849": {
+      "suggestion": "vitality",
+      "description": "Vitality Boost Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "853": {
+      "suggestion": "terrain-restore",
+      "description": "Abundance Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "854": {
+      "suggestion": "terrain-restore",
+      "description": "Papaya Blossom Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "856": {
+      "suggestion": "terrain-restore",
+      "description": "Abundance Naupaka Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "859": {
+      "suggestion": "terrain-restore",
+      "description": "Gardenia Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "862": {
+      "suggestion": "terrain-restore",
+      "description": "Snowdrop Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "867": {
+      "suggestion": "terrain-restore",
+      "description": "Century Agave Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "872": {
+      "suggestion": "terrain-restore",
+      "description": "Pomegranate Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "873": {
+      "suggestion": null,
+      "description": "Bitter Melon Tea Powder",
+      "line_count": 4
+    },
+    "880": {
+      "suggestion": "c15-syntropy-pentadecanoic-acid",
+      "description": "C15 Syntropy",
+      "line_count": 4
+    },
+    "881": {
+      "suggestion": "clear-the-way",
+      "description": "Transform",
+      "line_count": 23
+    },
+    "887": {
+      "suggestion": null,
+      "description": "CDS Box 3",
+      "line_count": 2
+    },
+    "929": {
+      "suggestion": "terrain-restore",
+      "description": "Spirit Mineral Gold in Terrain Restore",
+      "line_count": 4
+    },
+    "930": {
+      "suggestion": "terrain-restore",
+      "description": "Spirit Mineral Rhodium in Terrain Restore",
+      "line_count": 1
+    },
+    "932": {
+      "suggestion": "terrain-restore",
+      "description": "Spirit Mineral Iridium in Terrain Restore",
+      "line_count": 3
+    },
+    "938": {
+      "suggestion": null,
+      "description": "Strong Ligaments & Joints Homeopathic Complex",
+      "line_count": 1
+    },
+    "942": {
+      "suggestion": "terrain-restore",
+      "description": "Phase 1: Energize Terrain Restore",
+      "line_count": 3
+    },
+    "946": {
+      "suggestion": "terrain-restore",
+      "description": "Phase 3: Regenerate Terrain Restore",
+      "line_count": 2
+    },
+    "947": {
+      "suggestion": null,
+      "description": "Phase 4: Cleanse Terrain Refresh",
+      "line_count": 1
+    },
+    "953": {
+      "suggestion": "terrain-restore",
+      "description": "Cell Salt Homeopathic Complex in Terrain Restore",
+      "line_count": 1
+    },
+    "954": {
+      "suggestion": null,
+      "description": "Mucosa Syntropy Powder",
+      "line_count": 8
+    },
+    "958": {
+      "suggestion": "terrain-restore",
+      "description": "Blackberry Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "963": {
+      "suggestion": "terrain-restore",
+      "description": "LTGO Flower Essence Complex in Terrain Restore",
+      "line_count": 1
+    },
+    "965": {
+      "suggestion": null,
+      "description": "Liver R-1 RegenRx Homeopathic Complex in Terrain Regen",
+      "line_count": 1
+    },
+    "969": {
+      "suggestion": "terrain-restore",
+      "description": "Celandine (Chelidonium majus) Tincture in Terrain Restore",
+      "line_count": 3
+    },
+    "976": {
+      "suggestion": "terrain-restore",
+      "description": "Protogen Homeopathic Complex in Terrain Restore",
+      "line_count": 3
+    },
+    "1020": {
+      "suggestion": "terrain-restore",
+      "description": "Motivation Flower Essence (Apex) in Terrain Restore",
+      "line_count": 1
+    },
+    "1022": {
+      "suggestion": "terrain-restore",
+      "description": "Creative Energy Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1085": {
+      "suggestion": "wholomega",
+      "description": "WholOmega 30 gelcaps",
+      "line_count": 6
+    },
+    "1087": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1088": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1089": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1090": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1091": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1092": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1093": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1096": {
+      "suggestion": "terrain-restore",
+      "description": "Lemon Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1097": {
+      "suggestion": "terrain-restore",
+      "description": "Aspen Flower Essence in Terrain Restore",
+      "line_count": 2
+    },
+    "1103": {
+      "suggestion": null,
+      "description": "",
+      "line_count": 2
+    },
+    "1105": {
+      "suggestion": "day",
+      "description": "Nicotine Patches (3) - 1/2 patch/day for 6 days",
+      "line_count": 2
+    },
+    "1113": {
+      "suggestion": null,
+      "description": "Magnesium Glycinate",
+      "line_count": 1
+    },
+    "1114": {
+      "suggestion": "terrain-restore",
+      "description": "Turska's Formula Botanical Complex in Terrain Restore",
+      "line_count": 1
+    },
+    "1116": {
+      "suggestion": null,
+      "description": "Acid Resistant Capsules Size 4",
+      "line_count": 1
+    },
+    "1117": {
+      "suggestion": null,
+      "description": "Pe Min Kan Wan",
+      "line_count": 1
+    },
+    "1120": {
+      "suggestion": "relax",
+      "description": "Relax & Restore with DMAE",
+      "line_count": 1
+    },
+    "1121": {
+      "suggestion": "terrain-restore",
+      "description": "Agrimony Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1125": {
+      "suggestion": "clear-the-way",
+      "description": "Clear the Way",
+      "line_count": 7
+    },
+    "1129": {
+      "suggestion": null,
+      "description": "Iodine Test Roll-on gift",
+      "line_count": 1
+    },
+    "1132": {
+      "suggestion": "terrain-restore",
+      "description": "Chestnut Bud Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1135": {
+      "suggestion": "terrain-restore",
+      "description": "Mustard Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1136": {
+      "suggestion": "terrain-restore",
+      "description": "Chicory Flower Essence in Terrain Restore",
+      "line_count": 1
+    },
+    "1137": {
+      "suggestion": "ocuheal-eye-drops",
+      "description": "Crystalline Lens Program w/OcuHeal Eye Drops",
+      "line_count": 1
+    },
+    "1193": {
+      "suggestion": null,
+      "description": "Cistus Shield 2 bottles & 4 cello",
+      "line_count": 1
+    },
+    "1194": {
+      "suggestion": null,
+      "description": "Melissa 20:1 Extract Powder",
+      "line_count": 1
+    }
+  },
+  "exclude": [
+    44,
+    107,
+    111,
+    177,
+    281,
+    293,
+    294,
+    295,
+    396,
+    398,
+    441,
+    578,
+    588,
+    591,
+    925,
+    952,
+    970,
+    971,
+    1109,
+    1110,
+    1111,
+    1185
+  ],
+  "_generated_note": "resolved = auto (products.json fmp_id, already hand-verified in the catalog -- see scripts/match_products_to_fmp.py); review = human must confirm/replace each 'suggestion' slug or move the id to exclude (suggestion may be null -- no auto match found, pick a slug or exclude); exclude = non-products (Courtesy, equipment, services) pre-seeded by keyword match on the FMP description -- spot-check before Task 3 consumes this map. Move confirmed review entries into resolved when done."
+}
