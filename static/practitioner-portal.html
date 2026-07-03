@@ -280,6 +280,7 @@
   </section>
 
   <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
+  <div class="panel" id="amb-links" style="display:none"></div>
   <div class="panel" id="ambassador-card" style="display:none"></div>
   </section>
 
@@ -383,6 +384,29 @@ function renderFeedback(fb){
     + '</div>';
 }
 
+function copyRow(label, url){
+  return '<div style="margin:8px 0"><div class="muted" style="font-size:13px;margin-bottom:3px">' + label + '</div>'
+    + '<div class="row"><input class="slug" readonly value="' + escapeHtml(url) + '">'
+    + '<button type="button" class="ghost copybtn" data-copy="' + escapeHtml(url) + '">Copy</button></div></div>';
+}
+// Ambassador tab: one place for every shareable link + what the practitioner has earned.
+function renderAmbLinks(d){
+  var host = $('amb-links'); if(!host) return;
+  var amb = d.ambassador || {}, rows = '';
+  if(d.dispensary_link) rows += copyRow('Patient drop-ship link (you earn $20/bottle in Wellness Credit)', d.dispensary_link);
+  if(amb.status === 'enrolled'){
+    if(amb.referral_url) rows += copyRow('Your referral link', amb.referral_url);
+    if(amb.recruit_url) rows += copyRow('Invite other ambassadors', amb.recruit_url);
+  }
+  if(!rows){ host.style.display = 'none'; return; }
+  var earned = 'Wellness Credit ' + money(d.wallet_balance_cents);
+  if(d.dispensary_credit_total_cents) earned += ' · Dispensary credit earned ' + money(d.dispensary_credit_total_cents);
+  host.style.display = '';
+  host.innerHTML = '<h2>Your links &amp; rewards</h2>'
+    + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Share these to grow your practice. ' + earned + '.</div>'
+    + rows;
+}
+
 function render(d){
   var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
   $('who').textContent = (d.name || '') + (practiceName ? ' · ' + practiceName : '');
@@ -480,10 +504,8 @@ function render(d){
     if (amb.status === 'enrolled') {
       var dash = amb.dashboard || {};
       function row(label, valHtml){ return '<div style="margin-bottom:6px"><span class="muted" style="font-size:13px">' + label + ': </span>' + valHtml + '</div>'; }
-      var html = '<h2>Your Ambassador links</h2>'
-        + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Share &amp; earn rewards.</div>'
-        + '<div style="margin-bottom:8px"><span class="muted" style="font-size:13px">Referral link: </span><a href="' + escapeHtml(amb.referral_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(amb.referral_url) + '</a></div>'
-        + '<div style="margin-bottom:10px"><span class="muted" style="font-size:13px">Invite ambassadors: </span><a href="' + escapeHtml(amb.recruit_url) + '" target="_blank" rel="noopener" style="color:var(--gold)">' + escapeHtml(amb.recruit_url) + '</a></div>';
+      var html = '<h2>Ambassador dashboard</h2>'
+        + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Your referral activity. Your shareable links are in the panel above.</div>';
       // Stats
       var stats = '';
       if (dash.total_leads != null) stats += row('Leads', escapeHtml(String(dash.total_leads)));
@@ -525,6 +547,7 @@ function render(d){
   } else if (ac) {
     ac.style.display = 'none';
   }
+  renderAmbLinks(d);
 }
 
 function load(){
@@ -641,6 +664,14 @@ function sendAssist(){ var q = $('assist-q').value.trim(); if(!q) return; $('ass
 $('assist-send').addEventListener('click', sendAssist);
 $('assist-q').addEventListener('keydown', function(e){ if(e.key==='Enter') sendAssist(); });
 $('disp-copy').addEventListener('click', function(){ var i=$('disp-link'); i.select(); try{ document.execCommand('copy'); }catch(e){} $('disp-copy').textContent='Copied'; setTimeout(function(){ $('disp-copy').textContent='Copy'; }, 1500); });
+// Copy buttons for the Ambassador links (delegated).
+document.addEventListener('click', function(e){
+  var b = (e.target && e.target.closest) ? e.target.closest('.copybtn') : null; if(!b) return;
+  var txt = b.getAttribute('data-copy') || '';
+  function done(){ var old=b.textContent; b.textContent='Copied'; setTimeout(function(){ b.textContent=old; }, 1500); }
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done, done); }
+  else { var ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(err){} document.body.removeChild(ta); done(); }
+});
 
 // ── Partner Program charts (self-contained SVG, no libs) ──
 (function(){
