@@ -110,7 +110,8 @@ def patient_portal_items(practitioner_id, *, db_path=None):
             eq = ",".join("?" for _ in emails)
             sq = ",".join("?" for _ in _PORTAL_SOURCES)
             rows = cx.execute(
-                "SELECT items_json FROM orders WHERE lower(email) IN (%s) AND source IN (%s)" % (eq, sq),
+                "SELECT items_json FROM orders WHERE lower(email) IN (%s) AND source IN (%s) "
+                "AND (status IS NULL OR status != 'cancelled')" % (eq, sq),
                 tuple(emails) + _PORTAL_SOURCES).fetchall()
             for (ij,) in rows:
                 _add_items(out, ij)
