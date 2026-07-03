@@ -737,6 +737,39 @@ def decide_application(practitioner_id, *, approve: bool, notes="", now=None) ->
 
 # ── portal data ───────────────────────────────────────────────────────────────
 
+# Partner Program "Your standing" retail anchors (the online retail range the
+# margin band is measured against). MAP = minimum advertised price.
+_PARTNER_MAP_CENTS = 6997      # $69.97 minimum advertised price
+_PARTNER_SRP_CENTS = 7997      # $79.97 suggested retail
+_PARTNER_SINGLE_CENTS = 5000   # $50 single-bottle wholesale
+
+
+def partner_block(modules_completed, *, wellness_credit_cents=0,
+                  dispensary_credit_cents=0) -> dict:
+    """The Partner Program 'Your standing' summary: certification progress, the
+    resulting volume wholesale floor (same curve as the wholesale chart), and the
+    per-bottle margin range across the $69.97 MAP -> $79.97 SRP online retail
+    range. Pure + defensive; callers pass the credit figures from portal_data."""
+    mc = max(0, min(int(modules_completed or 0), pricing.N_MODULES))
+    floor = pricing.certification_floor_cents(mc)
+    lo = _PARTNER_MAP_CENTS - floor    # margin per bottle at the $69.97 MAP
+    hi = _PARTNER_SRP_CENTS - floor    # margin per bottle at the $79.97 SRP
+    return {
+        "modules_completed": mc,
+        "modules_total": pricing.N_MODULES,
+        "floor_cents": floor,
+        "single_price_cents": _PARTNER_SINGLE_CENTS,
+        "map_cents": _PARTNER_MAP_CENTS,
+        "srp_cents": _PARTNER_SRP_CENTS,
+        "margin_low_cents": lo,
+        "margin_high_cents": hi,
+        "margin_low_pct": round(lo * 100 / _PARTNER_MAP_CENTS),
+        "margin_high_pct": round(hi * 100 / _PARTNER_SRP_CENTS),
+        "wellness_credit_cents": int(wellness_credit_cents or 0),
+        "dispensary_credit_cents": int(dispensary_credit_cents or 0),
+    }
+
+
 def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optional[dict]:
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:
@@ -785,4 +818,8 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
             data["dispensary_code"] = get_or_create_dispensary_code(practitioner_id)
         except Exception:
             data["dispensary_code"] = None
+    data["partner"] = partner_block(
+        row["modules_completed"],
+        wellness_credit_cents=row["wallet_balance_cents"],
+        dispensary_credit_cents=data.get("dispensary_credit_total_cents", 0))
     return data
