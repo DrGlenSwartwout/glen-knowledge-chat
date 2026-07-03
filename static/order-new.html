@@ -317,10 +317,11 @@ async function loadOrderForEdit(oid){
   $("a-addr1").value=a.street||a.address1||""; $("a-addr2").value=a.address2||""; $("a-city").value=a.city||"";
   $("a-state").value=a.state||""; $("a-zip").value=a.zip||""; $("a-country").value=a.country||"US";
   if (o.name||o.email) $("cust-search").value = o.name||o.email;
-  // Prefill lines from the stored invoice. edited:true so the exact stored price is
-  // preserved on save unless the owner changes it (server still re-caps overrides).
+  // Prefill lines from the stored invoice. Only lines the owner manually overrode
+  // (rec.override) are frozen (edited:true); the rest are re-priced on load/save so
+  // the client's current specials — including the all-FFs flat rate — re-apply.
   LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
-            qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:true}));
+            qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:l.override===true}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;

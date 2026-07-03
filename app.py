@@ -27963,7 +27963,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         # FF rate (FF products only) > LOWEST of {standard volume/list, held cohort
         # policies, earned reorder-loyalty}. Per-client rates are the floor.
         _explicit = ln.get("unit_cents")
-        if _explicit not in (None, ""):
+        _is_override = _explicit not in (None, "")
+        if _is_override:
             unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings)
         elif _cprices.get(slug) is not None:
             unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings)
@@ -27984,6 +27985,12 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         cart.append({"slug": slug, "qty": qty})
         rec = {"slug": slug, "name": p["name"], "qty": qty,
                "unit_cents": unit_cents, "line_cents": line_cents}
+        # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
+        # apart from an auto-applied client special (per-SKU or all-FF flat). On
+        # edit, un-flagged lines are re-priced — letting a client's FF-flat special
+        # re-apply — while genuine manual overrides stay frozen.
+        if _is_override:
+            rec["override"] = True
         if p.get("service"):
             rec["service"] = True
         items_rec.append(rec)

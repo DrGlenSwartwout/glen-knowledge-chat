@@ -225,3 +225,59 @@ def test_price_inhouse_invoice_fresh_db_no_repertoire_table_does_not_crash(appmo
     assert priced is not None
     regular_cents = appmod._get_product(SLUG)["price_cents"]
     assert priced["items_rec"][0]["unit_cents"] == regular_cents
+
+
+# ── client all-FF flat rate persists through Edit Invoice ─────────────────────
+# Bug (Glen 2026-07-03): the console editor marked EVERY loaded line as a manual
+# override, so a client's all-FFs flat rate never re-applied on Edit Invoice. The
+# fix stamps override=True ONLY on owner-typed lines; auto/flat lines re-price on
+# edit. These lock the server half of that contract.
+
+def _set_ff_flat(appmod, email, cents):
+    from dashboard import client_prices as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_table(cx)
+        cp.set_ff_flat(cx, email, cents)
+
+
+FF_FLAT_CENTS = 5000  # $50 flat for all this client's FFs
+
+
+def test_inhouse_ff_flat_applies_and_is_not_flagged_override(appmod):
+    email = "flatclient@example.com"
+    _set_ff_flat(appmod, email, FF_FLAT_CENTS)
+    priced = appmod._price_inhouse_invoice(
+        [{"slug": SLUG, "qty": 1}], email=email, pickup=True,
+        ship={"country": "US", "state": "TX"})
+    rec = priced["items_rec"][0]
+    assert rec["unit_cents"] == FF_FLAT_CENTS
+    # not an owner override -> Edit Invoice will re-price it (flat re-applies)
+    assert "override" not in rec
+
+
+def test_inhouse_explicit_override_is_flagged(appmod):
+    email = "flatclient@example.com"
+    _set_ff_flat(appmod, email, FF_FLAT_CENTS)
+    priced = appmod._price_inhouse_invoice(
+        [{"slug": SLUG, "qty": 1, "unit_cents": 1234}], email=email, pickup=True,
+        ship={"country": "US", "state": "TX"})
+    rec = priced["items_rec"][0]
+    assert rec["unit_cents"] == 1234
+    assert rec["override"] is True   # frozen on Edit Invoice
+
+
+def test_edit_reprices_unflagged_ff_line_to_current_flat(appmod):
+    """Re-pricing a stored FF line with NO override flag (how the fixed editor
+    submits auto-priced lines) picks up the client's CURRENT flat rate, even after
+    it changes — the persistence the Edit Invoice bug broke."""
+    email = "flatclient@example.com"
+    _set_ff_flat(appmod, email, FF_FLAT_CENTS)
+    p1 = appmod._price_inhouse_invoice(
+        [{"slug": SLUG, "qty": 1}], email=email, pickup=True,
+        ship={"country": "US", "state": "TX"})
+    assert p1["items_rec"][0]["unit_cents"] == FF_FLAT_CENTS
+    _set_ff_flat(appmod, email, 3000)   # owner lowers the flat, then edits
+    p2 = appmod._price_inhouse_invoice(
+        [{"slug": SLUG, "qty": 1}], email=email, pickup=True,
+        ship={"country": "US", "state": "TX"})
+    assert p2["items_rec"][0]["unit_cents"] == 3000
