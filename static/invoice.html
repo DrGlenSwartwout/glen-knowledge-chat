@@ -11,6 +11,9 @@
   body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:#1c1830; margin:0; }
   .wrap { max-width:640px; margin:0 auto; padding:24px 16px 64px; }
   h1 { font-size:20px; margin:0 0 2px; }
+  .billto { margin:6px 0 4px; }
+  .billto-k { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .billto-nm { font-size:22px; font-weight:700; color:#1c1830; }
   .ref { color:var(--muted); font-size:13px; margin-bottom:18px; }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; }
   .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
@@ -56,6 +59,9 @@
   #print-root .pd-org-name{ font-size:18px; font-weight:700; color:#3a5a40; }
   #print-root .pd-org-line{ font-size:11px; color:#444; }
   #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
+  #print-root .pd-billto{ margin:2px 0 10px; }
+  #print-root .pd-billto-k{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#8a8a8a; margin-bottom:1px; }
+  #print-root .pd-billto-nm{ font-size:19px; font-weight:700; color:#1b1b1b; }
   #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:14px; }
   #print-root .pd-k{ color:#8a8a8a; }
   #print-root table.pd-lines{ width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0 12px; }
@@ -79,6 +85,7 @@
 <body>
 <div class="wrap">
   <h1>Your Remedy Match invoice</h1>
+  <div class="billto" id="billto" style="display:none"><span class="billto-k">Billed to</span><span class="billto-nm" id="billto-nm"></span></div>
   <div class="ref" id="ref">Loading…</div>
   <button class="ghost" id="print-btn" onclick="printInvoice()" style="display:none;margin-bottom:16px">🖨 Save Invoice as PDF</button>
 
@@ -170,7 +177,8 @@ async function load() {
   const r = await fetch(API);
   if (!r.ok) { $('ref').textContent = 'This invoice link is invalid or expired.'; return; }
   const j = await r.json(); ORDER = j.order;
-  $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'') + ' · for ' + (ORDER.name||'you');
+  if (ORDER.name){ $('billto-nm').textContent = ORDER.name; $('billto').style.display = ''; }
+  $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'');
   LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
     service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
@@ -222,9 +230,9 @@ function buildInvoicePrintHtml(o){
   const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
   return `<div class="pd invoice">
     ${PRINT_HEADER("Invoice")}
+    ${o.name?`<div class="pd-billto"><span class="pd-billto-k">Billed to</span><span class="pd-billto-nm">${esc(o.name)}</span></div>`:""}
     <div class="pd-meta">
       ${o.external_ref?`<div><span class="pd-k">Invoice</span> ${esc(o.external_ref)}</div>`:""}
-      ${o.name?`<div><span class="pd-k">Billed to</span> ${esc(o.name)}</div>`:""}
       <div><span class="pd-k">Date</span> ${esc(today)}</div>
     </div>
     <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
