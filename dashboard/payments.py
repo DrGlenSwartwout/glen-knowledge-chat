@@ -159,6 +159,56 @@ def backfill_trial_orders(cx, fetch_session, *, dry_run=False, now=None):
     return out
 
 
+def reconcile_captured_charges(cx, get_payment_intent, *, dry_run=False):
+    """Mark orders paid when they carry a genuinely-captured Stripe charge but were
+    left pay_status='unpaid'. Some digital/checkout flows (biofield unlock, prepay
+    term membership) create the order with the PaymentIntent as its ref but never
+    record the payment, so it shows "Unpaid" on the Done board.
+
+    For each unpaid order that has a PaymentIntent (the stripe_payment_intent column,
+    or an external_ref that looks like one), verify status=='succeeded' via
+    get_payment_intent, then record payment WITHOUT moving the order off its current
+    status (keeps 'done'/etc). Only Stripe-verified 'succeeded' charges are touched.
+    Idempotent (already-paid rows are excluded); never raises per row. Returns
+    {reconciled, skipped, unverified, failed, orders:[{id,name,amount_cents}]}."""
+    from dashboard import orders as O
+    out = {"reconciled": 0, "skipped": 0, "unverified": 0, "failed": 0, "orders": []}
+    try:
+        rows = cx.execute(
+            "SELECT id, external_ref, stripe_payment_intent, total_cents, name FROM orders "
+            "WHERE COALESCE(pay_status,'unpaid')!='paid' AND ("
+            "  (stripe_payment_intent IS NOT NULL AND TRIM(stripe_payment_intent)!='') "
+            "  OR external_ref LIKE 'pi\\_%' ESCAPE '\\')").fetchall()
+    except Exception as e:
+        print(f"[reconcile-captured] query skipped: {e!r}", flush=True)
+        return out
+    for r in rows:
+        g = (lambda k, i: r[k] if hasattr(r, "keys") else r[i])
+        oid = g("id", 0)
+        ext = (g("external_ref", 1) or "").strip()
+        pi_col = (g("stripe_payment_intent", 2) or "").strip()
+        total = int(g("total_cents", 3) or 0)
+        name = g("name", 4) or ""
+        pi_id = pi_col or (ext if ext.startswith("pi_") else "")
+        if not pi_id:
+            out["skipped"] += 1
+            continue
+        try:
+            pi = get_payment_intent(pi_id) or {}
+        except Exception as e:
+            print(f"[reconcile-captured] #{oid} PI fetch failed: {e!r}", flush=True)
+            out["failed"] += 1
+            continue
+        if (pi.get("status") or "") != "succeeded":
+            out["unverified"] += 1
+            continue
+        if not dry_run:
+            O.mark_order_paid_keep_status(cx, oid, method="card", amount_cents=total)
+        out["reconciled"] += 1
+        out["orders"].append({"id": oid, "name": name, "amount_cents": total})
+    return out
+
+
 def recent_failures(cx, *, limit=20):
     """Recent Stripe failures (declined/failed charges), newest first. Empty list
     if the table is missing or empty."""

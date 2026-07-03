@@ -166,3 +166,74 @@ def test_backfill_reconciles_preexisting_unpaid_trial_order(client, monkeypatch)
     row = cx.execute("SELECT status, pay_status FROM orders WHERE external_ref='pi_old'").fetchone()
     cx.close()
     assert row["status"] == "done" and row["pay_status"] == "paid"
+
+
+# --- reconcile captured-but-unpaid charges (biofield/prepay Done+Unpaid) --------
+
+def _seed_captured(appmod):
+    """Two unpaid 'done' orders with captured PIs, one unpaid order with a FAILED
+    PI, and one already-paid order (must be left alone)."""
+    from dashboard import orders as O
+    cx = sqlite3.connect(appmod.LOG_DB)
+    O.init_orders_table(cx)
+    # PI in the stripe_payment_intent column, ref is an invoice number
+    O.upsert_order(cx, source="biofield", external_ref="24449", email="jc@x.com",
+                   name="JC", items=[], total_cents=9900, address={}, channel="retail",
+                   status="done")
+    oid = cx.execute("SELECT id FROM orders WHERE external_ref='24449'").fetchone()[0]
+    O.set_order_stripe_pi(cx, oid, "pi_ok_99")
+    # PI as the external_ref (prepay flow)
+    O.upsert_order(cx, source="prepay_term", external_ref="pi_ok_990", email="anne@x.com",
+                   name="Anne", items=[], total_cents=99000, address={}, channel="retail",
+                   status="done")
+    # unpaid with a FAILED intent -> must NOT be marked paid
+    O.upsert_order(cx, source="funnel", external_ref="pi_bad", email="n@x.com",
+                   name="No", items=[], total_cents=5000, address={}, channel="retail",
+                   status="done")
+    cx.commit(); cx.close()
+    return oid
+
+
+def _mock_pi(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    def fake(pi_id):
+        return {"id": pi_id, "status": "succeeded" if pi_id.startswith("pi_ok") else "requires_payment_method"}
+    monkeypatch.setattr(stripe_pay, "get_payment_intent", fake)
+
+
+def test_reconcile_marks_captured_paid_keeps_done(client, monkeypatch):
+    c, appmod = client
+    _seed_captured(appmod)
+    _mock_pi(appmod, monkeypatch)
+    r = c.post("/api/console/reconcile-captured-charges?key=" + _key(appmod))
+    res = r.get_json()["result"]
+    assert res["reconciled"] == 2 and res["unverified"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    rows = {x["external_ref"]: x for x in cx.execute(
+        "SELECT external_ref, status, pay_status, paid_cents FROM orders").fetchall()}
+    cx.close()
+    assert rows["24449"]["pay_status"] == "paid" and rows["24449"]["status"] == "done"
+    assert rows["24449"]["paid_cents"] == 9900
+    assert rows["pi_ok_990"]["pay_status"] == "paid" and rows["pi_ok_990"]["status"] == "done"
+    assert rows["pi_bad"]["pay_status"] != "paid"   # failed PI left unpaid
+
+
+def test_reconcile_dry_run_writes_nothing(client, monkeypatch):
+    c, appmod = client
+    _seed_captured(appmod)
+    _mock_pi(appmod, monkeypatch)
+    r = c.post("/api/console/reconcile-captured-charges?dry_run=1&key=" + _key(appmod))
+    assert r.get_json()["result"]["reconciled"] == 2
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    n = cx.execute("SELECT COUNT(*) FROM orders WHERE pay_status='paid'").fetchone()[0]
+    cx.close()
+    assert n == 0   # dry run marked nothing
+
+
+def test_reconcile_idempotent(client, monkeypatch):
+    c, appmod = client
+    _seed_captured(appmod)
+    _mock_pi(appmod, monkeypatch)
+    c.post("/api/console/reconcile-captured-charges?key=" + _key(appmod))
+    r2 = c.post("/api/console/reconcile-captured-charges?key=" + _key(appmod))
+    assert r2.get_json()["result"]["reconciled"] == 0   # nothing left unpaid to fix
