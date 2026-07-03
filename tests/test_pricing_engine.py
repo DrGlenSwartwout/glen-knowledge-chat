@@ -122,8 +122,9 @@ def test_open_total_pct_default_off_then_on_via_override():
 
 def test_program_total_pct_gated_on_membership():
     s = pricing.load_settings({})
-    assert pricing.program_total_pct(12, s, program_member=False) == 0
-    assert pricing.program_total_pct(12, s, program_member=True) == 29
+    # default program_total ramp now maxes at 18 FFs (29%).
+    assert pricing.program_total_pct(18, s, program_member=False) == 0
+    assert pricing.program_total_pct(18, s, program_member=True) == 29
 
 
 def test_discount_cfg_back_compat_from_legacy_volume_anchors():
@@ -185,12 +186,12 @@ def test_compute_open_mix_and_match_default_off_guest_gets_subscriber():
 def test_compute_program_member_beats_subscriber_via_order_total():
     s = pricing.load_settings({})
     # same cart, but the buyer is a paid-program member -> type2 order-total (29%) beats
-    # the 15% subscriber tier.
+    # the 15% subscriber tier. 9 months each = 18 total -> the default ramp's 29% max.
     items = [
         {"slug": "a", "name": "A", "qty": 1, "product": {"slug": "a", "price_cents": 7000},
-         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+         "unit_cents": 7000, "months": 9, "volume_eligible": True},
         {"slug": "b", "name": "B", "qty": 1, "product": {"slug": "b", "price_cents": 7000},
-         "unit_cents": 7000, "months": 6, "volume_eligible": True},
+         "unit_cents": 7000, "months": 9, "volume_eligible": True},
     ]
     r = pricing.compute(items, settings=s, subscriber_tier_pct=15, program_member=True,
                         channel="retail", ship_to_state="CA", tax_fn=_fake_tax)

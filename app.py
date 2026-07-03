@@ -3108,7 +3108,16 @@ def membership_pause(token):
             _subs.init_subscriptions_table(cx)
             _subs.migrate_add_membership_columns(cx)
             _subs.migrate_add_term_cap_column(cx)
-            if request.method == "POST":
+            rows = _subs.active_memberships_by_email(cx, email)
+            cancel_url = f"{PUBLIC_BASE_URL}/membership/cancel/{token}"
+            # Continuous Care is a fixed 6/12-month term (term_charges_total set): it has no
+            # cadence to switch and no month-by-month pause. Offer cancel only (stop future
+            # charges; access runs through the paid term). Never pause/re-cadence a CC term.
+            is_continuous_care = bool(rows and rows[0].get("term_charges_total"))
+            if is_continuous_care:
+                payload = {"valid": True, "confirmed": False, "continuous_care": True,
+                           "cancel_url": cancel_url}
+            elif request.method == "POST":
                 mode = (request.form.get("mode") or "once").strip()
                 if mode == "cadence":
                     months = 2 if (request.form.get("months") or "").strip() == "2" else 3
@@ -3120,7 +3129,6 @@ def membership_pause(token):
                     payload = {"valid": True, "confirmed": True, "mode": "once",
                                "ok": bool(res), **(res or {})}
             else:
-                rows = _subs.active_memberships_by_email(cx, email)
                 if rows:
                     sub = rows[0]
                     payload = {"valid": True, "confirmed": False,
@@ -3128,7 +3136,7 @@ def membership_pause(token):
                                "resume_date": _subs.add_months(
                                    sub["next_charge_date"], int(sub.get("cadence_months") or 1)),
                                "already_paused": bool(sub.get("skip_next")),
-                               "cancel_url": f"{PUBLIC_BASE_URL}/membership/cancel/{token}"}
+                               "cancel_url": cancel_url}
                 else:
                     payload = {"valid": True, "confirmed": False, "no_membership": True}
     html = (STATIC / "membership-pause.html").read_text()
@@ -7255,6 +7263,37 @@ def _order_slugs_since(cx, email, window_days):
     return out
 
 
+def _notify_first_cc_signup(email, plan_label, amount_cents):
+    """Email Glen ONCE when the first Continuous Care signup lands (monthly OR
+    up-front). Global once-guard via ops_notices(key PRIMARY KEY) — atomic under the
+    DB lock, so concurrent/replayed fulfillments send exactly one alert. Best-effort:
+    never raises into the fulfiller (an alert must never undo a committed signup)."""
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("CREATE TABLE IF NOT EXISTS ops_notices "
+                       "(key TEXT PRIMARY KEY, created_at TEXT)")
+            first = cx.execute(
+                "INSERT OR IGNORE INTO ops_notices (key, created_at) VALUES (?,?)",
+                ("first_cc_signup", datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            cx.commit()
+        if not first:
+            return
+        to = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
+        amt = f"${int(amount_cents) / 100:.2f}" if amount_cents else ""
+        subject = "First Continuous Care signup"
+        body = (
+            "Aloha Glen,\n\n"
+            "Your first Continuous Care signup just came in.\n\n"
+            f"Client: {email}\n"
+            f"Plan: {plan_label}\n"
+            + (f"Amount: {amt}\n" if amt else "")
+            + "\nThe offer redesign is converting. Onward.\n\nIn wellness,\nYour AI\n"
+        )
+        _send_full_report_email(to, "Dr. Glen", subject, body)
+    except Exception as e:
+        print(f"[cc-signup-alert] {e!r}", flush=True)
+
+
 def _fulfill_prepay_term(session_id):
     """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
@@ -7326,6 +7365,8 @@ def _fulfill_prepay_term(session_id):
                 _send_inquiry_email(email, subject, body)
         except Exception as _e:
             print(f"[prepay] confirmation email failed: {_e!r}", flush=True)
+        _notify_first_cc_signup(email, f"Continuous Care up front ({tier['label']})",
+                                tier["price_cents"])
         return {"ok": True, "created": True, "email": email}
     except Exception as e:
         print(f"[prepay] fulfill failed: {e!r}", flush=True)
@@ -7441,9 +7482,10 @@ def _fulfill_continuous_care_monthly(session_id):
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
         # auto-charge block did. Outside the write lock (own connection + commit).
+        cancel_url = ""
         try:
             with sqlite3.connect(LOG_DB) as _cx:
-                _mint_membership_cancel_url(_cx, email)
+                cancel_url = _mint_membership_cancel_url(_cx, email) or ""
         except Exception as _ce:
             print(f"[continuous-care] cancel-token mint failed: {_ce!r}", flush=True)
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7457,10 +7499,13 @@ def _fulfill_continuous_care_monthly(session_id):
             print(f"[continuous-care] order-ledger record failed: {_oe!r}", flush=True)
         try:
             _send_subscription_email(email, "receipt", {
-                "kind": "membership", "total_cents": _pp.MONTHLY_ANCHOR_CENTS,
+                "kind": "membership", "product": "continuous_care",
+                "total_cents": _pp.MONTHLY_ANCHOR_CENTS, "cancel_url": cancel_url,
                 "next_charge_date": next_charge, "invoice_id": pi.get("id")})
         except Exception as _e:
             print(f"[continuous-care] confirmation email failed: {_e!r}", flush=True)
+        _notify_first_cc_signup(email, f"Continuous Care monthly ({term_months}mo term)",
+                                _pp.MONTHLY_ANCHOR_CENTS)
         return {"ok": True, "created": True, "email": email}
     except Exception as e:
         print(f"[continuous-care] fulfill failed: {e!r}", flush=True)
@@ -12768,8 +12813,9 @@ def api_referral_my_code():
     from dashboard import referrals as _rf
     with sqlite3.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)
-    return jsonify({"ok": True, "code": code,
-                    "share_text": f"Use my code {code} for {_referral_pct()}% off at illtowell.com"})
+    pct = _referral_pct()
+    return jsonify({"ok": True, "code": code, "pct": pct,
+                    "share_text": f"Use my code {code} for {pct}% off at illtowell.com"})
 
 
 @app.route("/api/referral/enabled", methods=["GET"])
@@ -23328,7 +23374,23 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                 )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
-            if is_membership:
+            if is_membership and data.get("product") == "continuous_care":
+                # Continuous Care (6/12mo term, card on file) — distinct from the group
+                # coaching bundle even though both are kind="membership".
+                cancel_url = data.get("cancel_url")
+                subject = f"Your Continuous Care payment - {amount_str}"
+                body = (
+                    f"Aloha,\n\n"
+                    f"Your Continuous Care payment has been processed. Thank you for continuing "
+                    f"your healing journey with us.\n\n"
+                    f"Amount charged: {amount_str}\n"
+                    + (f"Invoice: {inv_id}\n" if inv_id else "")
+                    + f"\nYour next payment date: {charge_date}\n\n"
+                    + (f"You can cancel anytime, no reply needed:\n\n{cancel_url}\n\n"
+                       if cancel_url else "")
+                    + "In wellness,\nDr. Glen"
+                )
+            elif is_membership:
                 subject = f"Your live group coaching payment — {amount_str}"
                 body = (
                     f"Hi,\n\n"
@@ -23484,6 +23546,14 @@ def cron_charge_subscriptions():
                     amount_cents = int(sub.get("amount_cents") or 0)
                     if amount_cents <= 0:
                         continue
+                    # A capped term (term_charges_total set) = Continuous Care; an uncapped
+                    # membership = the legacy group-coaching bundle. Keep the card-statement
+                    # descriptor, QBO line, and receipt email all naming the same product.
+                    _is_cc = bool(sub.get("term_charges_total"))
+                    _product = "continuous_care" if _is_cc else "group_coaching"
+                    _charge_label = ("Remedy Match Continuous Care" if _is_cc
+                                     else "Remedy Match live group coaching")
+                    _line_label = "Continuous Care" if _is_cc else "Live Group Coaching"
                     if dry_run:
                         print(f"[sub-cron] DRY membership charge sub={sid} "
                               f"email={sub['email']} amount={amount_cents}", flush=True)
@@ -23491,15 +23561,15 @@ def cron_charge_subscriptions():
                         continue
                     res = stripe_pay.charge_off_session(
                         sub["stripe_customer_id"], sub["stripe_payment_method_id"],
-                        amount_cents, description="Remedy Match live group coaching",
+                        amount_cents, description=_charge_label,
                         metadata={"sub": str(sid), "kind": "membership"})
                     if res.get("status") == "succeeded":
                         try:
                             cust = qb.find_or_create_customer(sub["email"], "")
                             inv = qb.create_invoice(
                                 cust,
-                                [{"name": "Live Group Coaching", "amount": amount_cents / 100.0,
-                                  "qty": 1, "description": "Live Group Coaching (monthly)"}],
+                                [{"name": _line_label, "amount": amount_cents / 100.0,
+                                  "qty": 1, "description": f"{_line_label} (monthly)"}],
                                 allow_online_pay=False, email_to=sub["email"])
                             inv_id = inv.get("Id", "")
                         except Exception as qe:
@@ -23521,7 +23591,7 @@ def cron_charge_subscriptions():
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
                                 "total_cents": amount_cents, "invoice_id": inv_id,
-                                "kind": "membership",
+                                "kind": "membership", "product": _product,
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
                             print(f"[sub-cron] membership email sub={sid}: {ee!r}", flush=True)

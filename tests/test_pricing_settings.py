@@ -117,7 +117,7 @@ def test_defaults_view_includes_discounts_block():
     d = ps.defaults_view()
     assert d["discounts"] == {
         "same_sku":      {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
-        "program_total": {"enabled": True,  "anchors": [[1, 0], [12, 29]]},
+        "program_total": {"enabled": True,  "anchors": [[1, 0], [18, 29]]},
         "open_total":    {"enabled": False, "anchors": [[1, 0], [12, 0]]},
     }
 
@@ -142,7 +142,7 @@ def test_effective_legacy_volume_anchors_backfills_open_total():
     assert eff["discounts"]["open_total"]["enabled"] is False
     # other types still fall to code defaults
     assert eff["discounts"]["same_sku"] == {"enabled": True, "anchors": [[1, 0], [12, 29]]}
-    assert eff["discounts"]["program_total"] == {"enabled": True, "anchors": [[1, 0], [12, 29]]}
+    assert eff["discounts"]["program_total"] == {"enabled": True, "anchors": [[1, 0], [18, 29]]}
 
 
 def test_effective_explicit_discounts_block_passes_through():

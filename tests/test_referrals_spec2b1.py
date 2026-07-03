@@ -89,6 +89,10 @@ def test_my_code_endpoint(monkeypatch, tmp_path):
     r1 = c.get("/api/referral/my-code").get_json()
     r2 = c.get("/api/referral/my-code").get_json()
     assert r1["code"] and r1["code"] == r2["code"]       # stable
+    # pct is exposed so the UI reads the live rate (no hardcoded copy drift) and the
+    # share_text matches it.
+    assert isinstance(r1["pct"], int)
+    assert f"{r1['pct']}% off" in r1["share_text"]
 
 
 def test_my_code_404_when_flag_off(monkeypatch, tmp_path):
