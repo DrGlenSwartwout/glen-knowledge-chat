@@ -7153,6 +7153,37 @@ def _fulfill_biofield_trial(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _notify_first_cc_signup(email, plan_label, amount_cents):
+    """Email Glen ONCE when the first Continuous Care signup lands (monthly OR
+    up-front). Global once-guard via ops_notices(key PRIMARY KEY) — atomic under the
+    DB lock, so concurrent/replayed fulfillments send exactly one alert. Best-effort:
+    never raises into the fulfiller (an alert must never undo a committed signup)."""
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("CREATE TABLE IF NOT EXISTS ops_notices "
+                       "(key TEXT PRIMARY KEY, created_at TEXT)")
+            first = cx.execute(
+                "INSERT OR IGNORE INTO ops_notices (key, created_at) VALUES (?,?)",
+                ("first_cc_signup", datetime.utcnow().isoformat() + "Z")).rowcount == 1
+            cx.commit()
+        if not first:
+            return
+        to = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
+        amt = f"${int(amount_cents) / 100:.2f}" if amount_cents else ""
+        subject = "First Continuous Care signup"
+        body = (
+            "Aloha Glen,\n\n"
+            "Your first Continuous Care signup just came in.\n\n"
+            f"Client: {email}\n"
+            f"Plan: {plan_label}\n"
+            + (f"Amount: {amt}\n" if amt else "")
+            + "\nThe offer redesign is converting. Onward.\n\nIn wellness,\nYour AI\n"
+        )
+        _send_full_report_email(to, "Dr. Glen", subject, body)
+    except Exception as e:
+        print(f"[cc-signup-alert] {e!r}", flush=True)
+
+
 def _fulfill_prepay_term(session_id):
     """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
@@ -7216,6 +7247,8 @@ def _fulfill_prepay_term(session_id):
                 _send_inquiry_email(email, subject, body)
         except Exception as _e:
             print(f"[prepay] confirmation email failed: {_e!r}", flush=True)
+        _notify_first_cc_signup(email, f"Continuous Care up front ({tier['label']})",
+                                tier["price_cents"])
         return {"ok": True, "created": True, "email": email}
     except Exception as e:
         print(f"[prepay] fulfill failed: {e!r}", flush=True)
@@ -7330,6 +7363,8 @@ def _fulfill_continuous_care_monthly(session_id):
                 "next_charge_date": next_charge, "invoice_id": pi.get("id")})
         except Exception as _e:
             print(f"[continuous-care] confirmation email failed: {_e!r}", flush=True)
+        _notify_first_cc_signup(email, f"Continuous Care monthly ({term_months}mo term)",
+                                _pp.MONTHLY_ANCHOR_CENTS)
         return {"ok": True, "created": True, "email": email}
     except Exception as e:
         print(f"[continuous-care] fulfill failed: {e!r}", flush=True)
