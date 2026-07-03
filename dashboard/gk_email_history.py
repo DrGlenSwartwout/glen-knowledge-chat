@@ -54,28 +54,49 @@ def rebuild_from_gk_emails(cx, *, fetch_fn, catalog_slugs):
     order-confirmation emails. `fetch_fn()` returns a list of
     {"body":..., "subject":...} dicts (injected, so this stays unit-testable
     without touching Gmail). `catalog_slugs` is a set of known product slugs;
-    any parsed slug not in it is skipped and counted. Returns counts."""
+    any parsed slug not in it is skipped and counted (`skipped_unmapped`,
+    per-slug). Returns counts.
+
+    Every order is explicitly accounted for here rather than relying on
+    `purchase_history.replace_source`'s `purchased_at NOT NULL` +
+    `INSERT OR IGNORE` to silently swallow rows it can't insert: an order
+    with an email but a missing/unparseable date, a missing order ref, or
+    zero catalog-matched slugs contributes NO row and is counted in
+    `skipped_incomplete` instead of being queued and quietly dropped.
+    Invariant: orders == (orders contributing >=1 row) + skipped_noemail
+    + skipped_incomplete."""
     catalog_slugs = catalog_slugs or set()
     emails = fetch_fn() or []
 
     rows = []
     skipped_unmapped = 0
     skipped_noemail = 0
+    skipped_incomplete = 0
 
     for msg in emails:
         parsed = parse_order_email(msg.get("body") or "", msg.get("subject") or "")
         if not parsed["email"]:
             skipped_noemail += 1
             continue
+
+        valid_slugs = []
         for slug in parsed["slugs"]:
             if slug not in catalog_slugs:
                 skipped_unmapped += 1
                 continue
+            valid_slugs.append(slug)
+
+        if not parsed["purchased_at"] or not parsed["order_ref"] or not valid_slugs:
+            skipped_incomplete += 1
+            continue
+
+        for slug in valid_slugs:
             rows.append((parsed["email"], slug, parsed["purchased_at"], parsed["order_ref"]))
 
     n = _ph.replace_source(cx, "groovekart", rows)
     return {"orders": len(emails), "rows": n,
-             "skipped_unmapped": skipped_unmapped, "skipped_noemail": skipped_noemail}
+             "skipped_unmapped": skipped_unmapped, "skipped_noemail": skipped_noemail,
+             "skipped_incomplete": skipped_incomplete}
 
 
 def fetch_gk_order_emails():

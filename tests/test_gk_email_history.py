@@ -117,7 +117,10 @@ def test_rebuild_from_gk_emails_writes_known_skips_unmapped_and_noemail():
     cx = _cx()
     result = gh.rebuild_from_gk_emails(cx, fetch_fn=_fake_fetch, catalog_slugs=_CATALOG_SLUGS)
 
-    assert result == {"orders": 2, "rows": 1, "skipped_unmapped": 1, "skipped_noemail": 1}
+    assert result == {
+        "orders": 2, "rows": 1,
+        "skipped_unmapped": 1, "skipped_noemail": 1, "skipped_incomplete": 0,
+    }
 
     rows = cx.execute(
         "SELECT email, slug, purchased_at, source, source_ref FROM purchase_history"
@@ -134,3 +137,79 @@ def test_rebuild_from_gk_emails_is_idempotent():
         "SELECT COUNT(*) FROM purchase_history WHERE source='groovekart'"
     ).fetchone()[0]
     assert count == 1
+
+
+# --- Observability gap: incomplete orders must be explicitly accounted for,
+# not silently dropped by purchase_history's `purchased_at NOT NULL` +
+# `INSERT OR IGNORE` constraint. ---
+
+def _fetch_missing_date():
+    return [
+        {
+            "subject": "New order : #2020 - NODATEXX",
+            "body": (
+                "A new order was placed on Remedy Match by the following customer:\n"
+                "Jane NoDate (janenodate@example.com)\n\n"
+                # No "Placed on MM-DD-YYYY" — simulates an email-template
+                # variant the date regex doesn't match.
+                "ORDER: NODATEXX\n\n"
+                '<a href="https://remedymatch.com/remedies/syntropy/265-ocuheal-eye-drops">OcuHeal Eye Drops - </a>\n'
+            ),
+        },
+    ]
+
+
+def _fetch_zero_valid_slugs():
+    return [
+        {
+            "subject": "New order : #3030 - ONLYUNMAP",
+            "body": (
+                "A new order was placed on Remedy Match by the following customer:\n"
+                "Bob Unmapped (bobunmapped@example.com)\n\n"
+                "ORDER: ONLYUNMAP Placed on 06-30-2026\n\n"
+                '<a href="https://remedymatch.com/remedies/misc/999-unmapped-thing">Unmapped Thing - </a>\n'
+            ),
+        },
+    ]
+
+
+def test_rebuild_missing_date_counts_as_incomplete_not_silently_dropped():
+    cx = _cx()
+    result = gh.rebuild_from_gk_emails(cx, fetch_fn=_fetch_missing_date, catalog_slugs=_CATALOG_SLUGS)
+
+    assert result["rows"] == 0
+    assert result["skipped_incomplete"] == 1
+    assert result["skipped_noemail"] == 0
+    rows = cx.execute("SELECT * FROM purchase_history").fetchall()
+    assert rows == []
+
+
+def test_rebuild_zero_valid_slugs_counts_as_incomplete_not_silently_dropped():
+    cx = _cx()
+    result = gh.rebuild_from_gk_emails(cx, fetch_fn=_fetch_zero_valid_slugs, catalog_slugs=_CATALOG_SLUGS)
+
+    assert result["rows"] == 0
+    assert result["skipped_incomplete"] == 1
+    assert result["skipped_unmapped"] == 1
+    rows = cx.execute("SELECT * FROM purchase_history").fetchall()
+    assert rows == []
+
+
+def test_rebuild_counts_reconcile_on_mixed_batch():
+    """Every input order must be attributable: orders == (orders that
+    contributed >=1 row) + skipped_noemail + skipped_incomplete."""
+    def _fetch_mixed():
+        return _fake_fetch() + _fetch_missing_date() + _fetch_zero_valid_slugs()
+
+    cx = _cx()
+    result = gh.rebuild_from_gk_emails(cx, fetch_fn=_fetch_mixed, catalog_slugs=_CATALOG_SLUGS)
+
+    contributed_orders = cx.execute(
+        "SELECT COUNT(DISTINCT source_ref) FROM purchase_history WHERE source='groovekart'"
+    ).fetchone()[0]
+
+    assert result["orders"] == 4
+    assert contributed_orders == 1
+    assert result["skipped_noemail"] == 1
+    assert result["skipped_incomplete"] == 2
+    assert result["orders"] == contributed_orders + result["skipped_noemail"] + result["skipped_incomplete"]
