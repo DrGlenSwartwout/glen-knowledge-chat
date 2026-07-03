@@ -39,6 +39,12 @@
   .pay-methods input { margin-right:6px; }
   .notice { background:#fff7e6; border:1px solid #f0d9a0; color:#8a6d2f; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:12px; }
   .paid { background:#e9f8ee; border:1px solid #a8e0bd; color:#2f7d4f; padding:12px; border-radius:8px; text-align:center; font-weight:600; }
+  /* Pay card: accented so it reads as the primary action, and placed right under the total. */
+  .card.pay-card { border:2px solid var(--brand); box-shadow:0 3px 14px rgba(124,92,191,.14); }
+  .card.pay-card h2 { color:var(--brand); }
+  .pay-due { font-size:14px; color:#1c1830; margin-bottom:12px; }
+  .pay-due b { font-size:22px; font-weight:700; }
+  #pay-btn { font-size:15px; padding:13px 22px; }
   #chatlog { max-height:200px; overflow:auto; font-size:13px; margin-bottom:10px; }
   #chatlog .u { color:var(--brand); } #chatlog .a { color:#1c1830; margin-bottom:8px; }
   .sugg button { margin:4px 4px 0 0; }
@@ -105,25 +111,13 @@
     <div class="totals" id="totals"></div>
   </div>
 
-  <div class="card" id="note-card" style="display:none">
-    <h2>Notes</h2>
-    <div id="note-text" style="font-size:14px;color:#1c1830;white-space:pre-wrap"></div>
-  </div>
-
-  <div class="card" id="chat-card">
-    <h2>Questions? Chat about products</h2>
-    <div id="chatlog"></div>
-    <div class="sugg" id="sugg"></div>
-    <div class="row-add">
-      <input type="text" id="chat-in" placeholder="Ask a question…" style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
-      <button class="ghost" onclick="sendChat()">Send</button>
-    </div>
-  </div>
-
   <div id="savings" style="display:none"></div>
 
-  <div class="card" id="pay-card">
+  <!-- Pay sits directly under the total so it's the first thing after the amount,
+       not buried below the chat card. -->
+  <div class="card pay-card" id="pay-card">
     <h2>Pay</h2>
+    <div class="pay-due" id="pay-due" style="display:none"></div>
     <div id="pay-notice"></div>
     <div class="pay-methods" id="pay-methods">
       <label><input type="radio" name="m" value="card" checked>Credit card</label>
@@ -137,6 +131,21 @@
     <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       <button class="ghost" id="cancel-btn" onclick="cancelOrder()">Cancel this order</button>
       <div id="cancel-msg" class="muted" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div class="card" id="note-card" style="display:none">
+    <h2>Notes</h2>
+    <div id="note-text" style="font-size:14px;color:#1c1830;white-space:pre-wrap"></div>
+  </div>
+
+  <div class="card" id="chat-card">
+    <h2>Questions? Chat about products</h2>
+    <div id="chatlog"></div>
+    <div class="sugg" id="sugg"></div>
+    <div class="row-add">
+      <input type="text" id="chat-in" placeholder="Ask a question…" style="flex:1" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="ghost" onclick="sendChat()">Send</button>
     </div>
   </div>
 </div>
@@ -353,6 +362,10 @@ async function pushUpdate(){
 }
 function setupPay(){
   if (ORDER.pay_status==='paid' || !ORDER.editable){ $('pay-card').style.display='none'; return; }
+  // Amount due, up top, so the call to action is unmistakable.
+  $('pay-due').innerHTML = 'Amount due: <b>'+money(ORDER.total_cents)+'</b>';
+  $('pay-due').style.display = '';
+  $('pay-btn').textContent = 'Pay '+money(ORDER.total_cents);
   if (!ORDER.paylink_enabled){ $('pay-notice').innerHTML='<div class="notice">Online payment isn’t enabled yet — we’ll be in touch.</div>'; $('pay-btn').disabled=true; return; }
   document.querySelectorAll('input[name=m]').forEach(el=>el.onchange=()=>{curMethod=el.value; $('claim-btn').style.display='none'; $('pay-instr').style.display='none';});
 }

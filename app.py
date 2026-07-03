@@ -28659,8 +28659,10 @@ def _titlecase_name(s):
     'Steven Blank'. Only touch values that are entirely one case; leave already
     mixed-case names (McDonald, DeLuca, O'Brien) exactly as stored, since those are
     intentional and str.title() would mangle them. str.title() capitalizes across
-    spaces, hyphens and apostrophes, so 'mary-jane' and \"o'brien\" come out right."""
-    s = (s or "").strip()
+    spaces, hyphens and apostrophes, so 'mary-jane' and \"o'brien\" come out right.
+    Also HTML-unescapes first: some records stored the name entity-escaped (e.g.
+    \"desiree&#39; dallaguardia\"), which would otherwise print the raw entity."""
+    s = _ihtml.unescape((s or "").strip())
     if s and (s == s.lower() or s == s.upper()):
         return s.title()
     return s
