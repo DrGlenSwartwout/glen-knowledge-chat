@@ -4622,6 +4622,18 @@ PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lowe
 # already bought (dashboard/repertoire.py). Default OFF — when off, _price_cart never
 # resolves a repertoire set, so pricing is byte-identical to before this flag existed.
 REPERTOIRE_ENABLED = os.environ.get("REPERTOIRE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Analysis request cadence: free-tier accounts get 1 "request an analysis" per
+# calendar month (dashboard/analysis_quota.py); paid members are unlimited.
+# Default OFF — when off, both request routes behave exactly as before this flag.
+ANALYSIS_QUOTA_ENABLED = os.environ.get("ANALYSIS_QUOTA_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+from dashboard import analysis_quota as _analysis_quota  # noqa: E402
+
+def _init_analysis_quota_table():
+    with sqlite3.connect(LOG_DB) as cx:
+        _analysis_quota.init_analysis_quota_table(cx)
+
+_init_analysis_quota_table()
 # Continuous Care MONTHLY: a card-on-file recurring membership fixed to a 6- or
 # 12-month term (vs. the upfront prepay ladder above, which never vaults a card).
 # Month 1 is charged at checkout; the charge cron takes over from month 2, capped
@@ -14051,6 +14063,11 @@ def _biofield_transition(token, new_status, tag):
                                      client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
+        if (new_status == "requested" and ANALYSIS_QUOTA_ENABLED
+                and ident.email and not _active_membership_for_email(ident.email)):
+            _analysis_quota.init_analysis_quota_table(cx)
+            if not _analysis_quota.try_claim(cx, ident.email):
+                return jsonify({"ok": False, "reason": "monthly_quota"}), 200
         dates = _pbr.list_report_dates(cx, ident.email)
         if dates:
             picked = req_date if req_date in dates else dates[0]
@@ -15228,6 +15245,11 @@ def biofield_request():
     (no email enumeration leak). Mirrors /reorder/request."""
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if email and "@" in email:
+        if ANALYSIS_QUOTA_ENABLED and not _active_membership_for_email(email):
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _analysis_quota.init_analysis_quota_table(cx)
+                if not _analysis_quota.try_claim(cx, email):
+                    return jsonify({"ok": False, "reason": "monthly_quota"}), 200
         token = secrets.token_urlsafe(32)
         now = _now_utc()
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
