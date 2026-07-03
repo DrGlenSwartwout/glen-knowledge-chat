@@ -29236,6 +29236,28 @@ def api_console_fmp_orders():
     return jsonify({"ok": True, "results": results})
 
 
+@app.route("/api/console/fmp-history-rebuild", methods=["POST"])
+@require_console_key
+def api_console_fmp_history_rebuild():
+    """One-shot admin trigger: rebuild the 'fmp' slice of purchase_history from
+    the FMP projection tables already loaded on prod (fmp_clients / fmp_invoices
+    / fmp_invoice_items — see dashboard.fmp_orders), without re-pushing a CSV.
+    Mirrors the rebuild step baked into /api/console/fmp-orders-ingest, but as
+    an explicit admin action: errors are surfaced (fail()), not logged+skipped."""
+    from dashboard import purchase_history as _ph
+    from dashboard import fmp_history as _fh
+    slug_map_path = os.path.join(os.path.dirname(__file__), "data", "fmp_slug_map.json")
+    try:
+        with open(slug_map_path, encoding="utf-8") as _f:
+            slug_map = json.load(_f)
+    except Exception as e:
+        return fail(f"could not load data/fmp_slug_map.json: {e}", status=400)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ph.init_purchase_history_table(cx)
+        result = _fh.rebuild_from_fmp(cx, slug_map)
+    return ok(result)
+
+
 @app.route("/api/console/test-portal-welcome", methods=["POST"])
 def api_console_test_portal_welcome():
     """Live-verify the portal welcome email. dry_run=1 (default) reports what
