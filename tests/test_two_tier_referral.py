@@ -53,6 +53,9 @@ def test_tier2_credits_l2_half(monkeypatch):
     assert pts.balance(cx, "b@x.com") == 1000   # Tier-1 = 10% of 10000
     assert pts.balance(cx, "a@x.com") == 500     # Tier-2 = half = 5%
     assert pts.earned_by_reason(cx, "a@x.com", "referral_reward_l2") == 500
+    # Exact L2 ledger key (idempotency handle), distinct from the L1 key.
+    assert pts.has_entry(cx, order_ref="referral_l2:c@x.com", reason="referral_reward_l2") is True
+    assert pts.has_entry(cx, order_ref="referral:c@x.com", reason="referral_reward") is True
 
 
 def test_tier2_flag_off_no_l2(monkeypatch):
@@ -80,6 +83,25 @@ def test_no_self_dealing_cycle(monkeypatch):
     # L2 = owner_of(B) = C = the buyer -> guarded, no self-credit
     assert pts.balance(cx, "c@x.com") == 0
     assert pts.earned_by_reason(cx, "c@x.com", "referral_reward_l2") == 0
+
+
+def test_no_l2_when_l2_equals_l1(monkeypatch):
+    cx = _cx()
+    rf.record_redemption(cx, "C1", "b@x.com", "c@x.com", "ordC")  # C referred by B
+    rf.record_redemption(cx, "C2", "b@x.com", "b@x.com", "")       # B's referrer row = B itself
+    _on(monkeypatch, pct=10)
+    appmod._settle_referrer_reward(cx, {"total_cents": 10000}, "ordC")
+    # L2 = owner_of(B) = B = L1 -> guarded; B gets Tier-1 only, no extra L2 credit.
+    assert pts.balance(cx, "b@x.com") == 1000
+    assert pts.has_entry(cx, order_ref="referral_l2:c@x.com", reason="referral_reward_l2") is False
+
+
+def test_no_l2_when_product_cents_zero(monkeypatch):
+    cx = _cx(); _chain_CB_BA(cx); _on(monkeypatch, pct=10)
+    # shipping fully offsets total -> product_cents 0 -> neither tier credited.
+    appmod._settle_referrer_reward(cx, {"total_cents": 2000, "shipping_cents": 2000}, "ordC")
+    assert pts.balance(cx, "b@x.com") == 0
+    assert pts.balance(cx, "a@x.com") == 0
 
 
 def test_tier2_idempotent_on_replay(monkeypatch):
