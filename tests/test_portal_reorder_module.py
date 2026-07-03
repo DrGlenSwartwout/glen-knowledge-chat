@@ -243,8 +243,8 @@ def test_locked_rows_excludes_non_ff_products(client):
     """Glen 2026-07: only FF products (_qty_eligible) can ever carry member
     pricing, so locked_rows (the "unlock member pricing at 6/12mo" pitch)
     must never list a non-FF SKU as unlockable. vitamin-e-spectrum has no
-    qty_pricing flag -> non-FF, but IS _repertoire_eligible (not a pure
-    powder) -- the exact case the old broad gate got wrong."""
+    qty_pricing flag -> non-FF, but was broadly eligible under the old rule
+    (not a pure powder) -- the exact case the old broad gate got wrong."""
     c, appmod = client
     email = "lockedff@example.com"
     tok = _seed_portal(appmod, email)
