@@ -42,8 +42,10 @@ def _seed(appmod):
 
 def test_page_served(client):
     c, _ = client
+    # /console/payments now redirects to the consolidated Money console.
     r = c.get("/console/payments")
-    assert r.status_code == 200
+    assert r.status_code == 302
+    assert "/console/money" in r.headers.get("Location", "")
 
 
 def test_api_gated_without_key(client):
@@ -128,3 +130,39 @@ def test_backfill_endpoint_apply_creates_orders(client, monkeypatch):
     from dashboard import payments as P
     assert {p["external_ref"] for p in P.list_payments(cx)} == {"pi_a"}
     cx.close()
+
+
+def test_backfill_marks_trial_order_paid_and_keeps_done(client, monkeypatch):
+    """A backfilled $1-trial order is a captured charge -> pay_status 'paid', and it
+    stays 'done' (digital, nothing to ship) rather than being pulled into 'new'."""
+    c, appmod = client
+    _seed_grants(appmod, {"cs_a": {"payment_intent": "pi_a", "amount_total": 100}}, monkeypatch)
+    r = c.post("/api/console/backfill-trial-orders?key=" + _key(appmod))
+    assert r.get_json()["result"]["created"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    row = cx.execute("SELECT status, pay_status, paid_cents FROM orders "
+                     "WHERE external_ref='pi_a'").fetchone()
+    cx.close()
+    assert row["status"] == "done"
+    assert row["pay_status"] == "paid"
+    assert row["paid_cents"] == 100
+
+
+def test_backfill_reconciles_preexisting_unpaid_trial_order(client, monkeypatch):
+    """The Done-board 'Unpaid' bug: a trial order recorded before it was marked paid
+    is flipped to paid on a (re-)run, without leaving 'done'."""
+    c, appmod = client
+    from dashboard import orders as O
+    cx = sqlite3.connect(appmod.LOG_DB)
+    O.init_orders_table(cx)
+    # a stale unpaid trial order (how the 6 prod cards looked)
+    O.upsert_order(cx, source="biofield_trial", external_ref="pi_old", email="o@x.com",
+                   items=[], total_cents=100, address={}, channel="retail", status="done")
+    cx.commit(); cx.close()
+    _seed_grants(appmod, {}, monkeypatch)   # no new grants; reconcile pass only
+    r = c.post("/api/console/backfill-trial-orders?key=" + _key(appmod))
+    assert r.get_json()["result"]["reconciled"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    row = cx.execute("SELECT status, pay_status FROM orders WHERE external_ref='pi_old'").fetchone()
+    cx.close()
+    assert row["status"] == "done" and row["pay_status"] == "paid"
