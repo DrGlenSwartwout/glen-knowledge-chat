@@ -16097,7 +16097,8 @@ def _ship_founding_reservation(cx, sub):
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
     pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
-                     program_member=_is_paid_member(sub["email"]))
+                     program_member=_is_paid_member(sub["email"]),
+                     email=sub["email"])
     cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
     inv = qb.create_invoice(
         cust,
@@ -23548,7 +23549,8 @@ def cron_charge_subscriptions():
                 # Price the order
                 try:
                     pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct,
-                                     program_member=_is_paid_member(sub["email"]))
+                                     program_member=_is_paid_member(sub["email"]),
+                                     email=sub["email"])
                 except CheckoutError as ce:
                     print(f"[sub-cron] price_cart sub={sid}: {ce!r}", flush=True)
                     failed += 1
