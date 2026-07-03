@@ -86,6 +86,7 @@ from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
+import dashboard.repertoire as repertoire
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -2827,7 +2828,7 @@ def begin_biofield_order_preview(token):
         ship = _resolve_ship_address(email, {})
         # Gate Type-2 order-total pricing on membership so the preview matches what the
         # buyer is actually charged at checkout (begin_biofield_order_checkout does the same).
-        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email))
+        pc = _price_cart(items, ship=ship, program_member=_is_paid_member(email), email=email)
         priced = pc["priced"]
         lines = [{"slug": ln.get("slug"), "name": ln.get("name"), "qty": ln.get("qty"),
                   "list_cents": int(ln.get("list_cents") or 0),
@@ -4617,6 +4618,10 @@ PAY_IT_FORWARD_ENABLED = os.environ.get("PAY_IT_FORWARD_ENABLED", "").strip().lo
 # referrer's OWN referrer (L2) half the Tier-1 rate, non-cashable. Off = Tier-1 only.
 REFERRAL_TIER2_ENABLED = os.environ.get("REFERRAL_TIER2_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PREPAY_LADDER_ENABLED = os.environ.get("PREPAY_LADDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Repertoire reorder pricing: paid members get a flat reorder rate on SKUs they've
+# already bought (dashboard/repertoire.py). Default OFF — when off, _price_cart never
+# resolves a repertoire set, so pricing is byte-identical to before this flag existed.
+REPERTOIRE_ENABLED = os.environ.get("REPERTOIRE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Continuous Care MONTHLY: a card-on-file recurring membership fixed to a 6- or
 # 12-month term (vs. the upfront prepay ladder above, which never vaults a card).
 # Month 1 is charged at checkout; the charge cron takes over from month 2, capped
@@ -4909,11 +4914,27 @@ def _shipping_for_cart(box_counts, total_bottles):
 
 
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
-                points_to_redeem_cents=0, channel="retail", program_member=False):
+                points_to_redeem_cents=0, channel="retail", program_member=False,
+                email=None):
     """Price a reorder/checkout cart through the pricing engine + shipping.
     Returns {priced, qbo_lines, discount_cents, points_redeemed_cents, shipping_cents,
-    items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to."""
+    items_rec, subtotal_list_cents}. Raises CheckoutError for non-US ship-to.
+
+    email (optional): when REPERTOIRE_ENABLED and the email belongs to a currently
+    active paid member (_is_paid_member), resolves that member's repertoire SKU set
+    and forwards it to the pricing engine so repertoire reorders price at the flat
+    member rate. Gated on CURRENT membership at read time — no stored per-SKU expiry.
+    Flag off (or no/non-member email) -> repertoire_slugs stays None, pricing unchanged."""
     from dashboard import pricing as _pricing, tax as _tax
+    rep_slugs = None
+    if REPERTOIRE_ENABLED and email and _is_paid_member(email):
+        try:
+            with sqlite3.connect(LOG_DB) as _rep_cx:
+                repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
+                rep_slugs = repertoire.repertoire_slugs(_rep_cx, email)
+        except Exception as e:
+            print(f"[repertoire] lookup failed for {email!r}: {e!r}", flush=True)
+            rep_slugs = None
     country = (ship.get("country") or "US").strip().upper()
     if country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
@@ -4944,7 +4965,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents,
-                              program_member=bool(program_member))
+                              program_member=bool(program_member),
+                              repertoire_slugs=rep_slugs)
     shipping_cents = _shipping_for_cart(box_counts, total_bottles)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
@@ -5212,6 +5234,12 @@ with sqlite3.connect(LOG_DB) as _cx:
         session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
     _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
 _SECTIONS = ("ingredients", "how", "research", "description", "video", "comparison", "images")
+
+# Repertoire reorder pricing table (dashboard/repertoire.py) — created at startup so
+# the flag-gated read path in _price_cart never hits a missing-table error; _price_cart
+# also re-inits defensively at read time (belt-and-suspenders for fresh/test DBs).
+with sqlite3.connect(LOG_DB) as _cx:
+    repertoire.init_repertoire_table(_cx)
 
 
 def _read_open_sections(session_id, email=""):
@@ -6980,7 +7008,7 @@ def begin_checkout(slug):
         pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
                          coupon_pct=_eff_pct,
                          points_to_redeem_cents=redeem,
-                         program_member=_is_paid_member(email))
+                         program_member=_is_paid_member(email), email=email)
     except CheckoutError as ce:
         return jsonify({"ok": False, "error": str(ce)}), 400
     cust = qb.find_or_create_customer(email, name)
@@ -15513,7 +15541,7 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
         requested_redeem = min(requested_redeem, _bal)
     _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(referral_code, email)
     pc = _price_cart(cart, ship=ship, coupon_pct=_ref_pct, points_to_redeem_cents=requested_redeem,
-                     program_member=_is_paid_member(email))
+                     program_member=_is_paid_member(email), email=email)
     if not pc["qbo_lines"]:
         raise CheckoutError("Your cart is empty or those items are no longer available.")
     cust = qb.find_or_create_customer(email, ship.get("name", ""))
@@ -15760,7 +15788,7 @@ def reorder_subscribe():
         from dashboard import subscriptions as _subs
         try:
             pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0),
-                             program_member=_is_paid_member(email))
+                             program_member=_is_paid_member(email), email=email)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if not pc["qbo_lines"]:
@@ -28151,7 +28179,8 @@ def api_invoice_update(token):
         # Gate Type-2 order-total pricing on membership so a member editing their own
         # invoice is priced the same as at checkout (not overcharged).
         pc = _price_cart(cart, ship=ship, channel="retail",
-                         program_member=_is_paid_member(order.get("email") or ""))
+                         program_member=_is_paid_member(order.get("email") or ""),
+                         email=(order.get("email") or ""))
         discount_cents = int(pc.get("discount_cents") or 0)
         shipping_cents = _bos_orders.effective_shipping_cents(
             (order.get("channel") or "") == "pickup", pc.get("shipping_cents"))
