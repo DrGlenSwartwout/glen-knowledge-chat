@@ -29259,6 +29259,28 @@ def api_console_gk_email_history_rebuild():
             catalog_slugs = set((json.load(_f) or {}).get("products", {}).keys())
     except Exception as e:
         return fail(f"could not load data/products.json: {e}", status=400)
+    if request.args.get("debug"):
+        # Diagnostic: per-order skip reason + a few sample skipped bodies.
+        reasons = {"no_email": 0, "no_date": 0, "no_ref": 0, "no_slugs": 0, "ok": 0}
+        samples = []
+        for _e in _gh.fetch_gk_order_emails():
+            _p = _gh.parse_order_email(_e.get("body", ""), _e.get("subject", ""))
+            _valid = [s for s in _p["slugs"] if s in catalog_slugs]
+            if not _p["email"]:
+                reasons["no_email"] += 1
+            elif not _p["purchased_at"]:
+                reasons["no_date"] += 1
+            elif not _p["order_ref"]:
+                reasons["no_ref"] += 1
+            elif not _valid:
+                reasons["no_slugs"] += 1
+                if len(samples) < 3:
+                    samples.append({"subject": _e.get("subject"),
+                                    "raw_slugs": _p["slugs"][:8],
+                                    "body_snippet": (_e.get("body") or "")[:600]})
+            else:
+                reasons["ok"] += 1
+        return ok({"reasons": reasons, "samples": samples})
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _ph.init_purchase_history_table(cx)
         result = _gh.rebuild_from_gk_emails(
