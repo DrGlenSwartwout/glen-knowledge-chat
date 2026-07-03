@@ -67,4 +67,12 @@ A practitioner's client resolves pricing against **that practitioner's** effecti
 ## Out of scope / Future (separate brainstorm)
 
 - **Practitioner-run own programs** — a practitioner enrolls/tags their own patients into *their* program (rides the cohort system as a practitioner-scoped enrollment), independent of our membership. Deferred because v1's Program tier keys on our program membership and that is acceptable to Glen.
-- **Turnkey: run *our* programs inside a practitioner's patient portal**, with fee-share to the practitioner via the already-wired affiliate/commission engine (Ambassador tab, PR #545). A significant standalone feature — expands a practitioner's offerings and outcomes with no added time, staff, space, or overhead. Needs its own brainstorm before any build.
+- **Turnkey: run *our* programs inside a practitioner's patient portal**, with fee-share to the practitioner via the already-wired affiliate/commission engine (Ambassador tab, PR #545). A significant standalone feature — expands a practitioner's offerings and outcomes with no added time, staff, space, or overhead. **Gets its own brainstorm→spec next (Glen 2026-07-03); resolved economic model below.**
+
+  Resolved model (2026-07-03 brainstorm):
+  - A patient buys our continuity-support program (recurring service fee, e.g. $99/mo) **through their doctor's portal**.
+  - The patient receives **the product discounts the practitioner set** (this spec's feature is the pricing half).
+  - The practitioner earns a **recurring share of the service fee**, **service portion only** (never bundled product/fulfillment).
+  - **Retention is the job.** Because the share is on a *recurring* fee, retention is self-enforcing: **certification level sets the rate, retention sets the duration** — the share pays each month only while the patient stays enrolled; churn stops it automatically. No touchpoint logging.
+  - **Rate = f(ASH certification level)**, base ~30% → up to **50%** at full certification. Point this ladder at the **same** cert signal that already sets the wholesale floor (`certification_floor_cents` / `modules_completed`) so a practitioner has one "level," not two. Illustrative: early/uncertified ~30%, mid ~40%, full ASH cert 50%.
+  - This makes ASH certification the ladder for *service income* too (not just the wholesale-floor unlock), compounding the incentive to certify → earn more → deliver better continuity.
