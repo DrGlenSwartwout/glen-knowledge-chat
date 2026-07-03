@@ -13652,12 +13652,42 @@ def api_admin_sms_deliveries():
     return jsonify({"deliveries": rows})
 
 
+def _portal_entitled_slugs(email):
+    """The set of slugs this portal client is entitled to reorder — their own
+    portal-channel purchase history (the SAME source Task 5's `reorder` module
+    displays; see _portal_reorder_module). Used to guard Task 6b's per-item
+    checkout so a posted body can never charge an arbitrary catalog SKU the
+    client never actually bought through the portal. Never raises; empty set
+    on any lookup failure (fails closed — an empty set rejects every slug)."""
+    try:
+        mod = _portal_reorder_module(email)
+    except Exception as e:
+        print(f"[portal-reorder] entitlement lookup failed for {email!r}: {e!r}", flush=True)
+        return set()
+    return {(row.get("slug") or "").strip().lower()
+            for row in (mod.get("reorder") or []) if row.get("slug")}
+
+
 @app.route("/api/portal/<token>/checkout", methods=["POST"])
 def api_client_portal_checkout(token):
-    """Build a real live Stripe checkout for the client's pre-loaded remedies at
-    their portal price (per-item practitioner-special override honored). Mirrors
-    the legacy reorder path but with custom pricing, so the live /reorder/checkout
-    stays untouched."""
+    """Build a real live Stripe checkout for the client's remedies at their
+    portal price. Two sources for WHICH items get charged:
+
+    - Task 6b: an optional JSON body {items:[{slug, qty}]} (or the {slug, qty}
+      shorthand for a single row) charges EXACTLY those items — this is what
+      each per-row "Reorder" button now posts, so clicking a row reorders that
+      row's product, not the whole curated cart. Every posted slug is checked
+      against _portal_entitled_slugs (the client's own purchase history) and
+      rejected if it isn't there; qty is clamped; any posted price/price_cents
+      is dropped on the floor — price is ALWAYS computed server-side by
+      _portal_priced_lines, never trusted from the client.
+    - Absent body (unchanged, backward compatible): the practitioner-curated
+      `content.reorder_items` cart, per-item practitioner-special override
+      honored, exactly as before Task 6b.
+
+    Either way, pricing goes through the SAME repertoire-aware
+    _portal_priced_lines (Task 5b), so member pricing holds; the add-then-
+    confirm + QBO invoice + Stripe-URL flow is identical either way."""
     from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
@@ -13665,7 +13695,28 @@ def api_client_portal_checkout(token):
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
-    items = (portal.get("content") or {}).get("reorder_items") or []
+    body = request.get_json(silent=True) or {}
+    posted = body.get("items")
+    if posted is None and (body.get("slug") or "").strip():
+        posted = [{"slug": body.get("slug"), "qty": body.get("qty", 1)}]
+    if posted:
+        if not isinstance(posted, list) or not posted:
+            return jsonify({"error": "Invalid items."}), 400
+        entitled = _portal_entitled_slugs(email)
+        items = []
+        for it in posted:
+            if not isinstance(it, dict):
+                return jsonify({"error": "Invalid items."}), 400
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug or slug not in entitled:
+                return jsonify({"error": "That item isn't available to reorder."}), 400
+            try:
+                qty = max(1, min(int(it.get("qty", 1) or 1), 99))
+            except Exception:
+                qty = 1
+            items.append({"slug": slug, "qty": qty})  # price_cents NEVER accepted from the client
+    else:
+        items = (portal.get("content") or {}).get("reorder_items") or []
     lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400

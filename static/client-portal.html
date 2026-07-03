@@ -950,21 +950,30 @@ async function reorder(){
 }
 
 async function reorderItem(btn){
-  // Task 6: per-row "Reorder" button on the "Your Remedies" module. This is
-  // add-then-confirm, never a silent charge: it calls the SAME checkout
-  // endpoint the "Order my remedies" button above uses, which returns a live
-  // Stripe Checkout URL — the actual charge only happens if the client
-  // confirms on Stripe's hosted page. One-shot latch: disabled immediately on
-  // click (before any await), so a double-click or a slow network can't
-  // double-fire it. (This codebase has been bitten by double-fire before —
-  // see feedback_print_once_guard.)
+  // Task 6b: per-row "Reorder" button on the "Your Remedies" module now posts
+  // THIS row's slug+qty, so clicking it reorders that product — not the whole
+  // practitioner-curated cart. The stepper next to it now actually drives the
+  // sent qty (previously display-only). Still add-then-confirm, never a
+  // silent charge: the checkout endpoint returns a live Stripe Checkout URL —
+  // the actual charge only happens if the client confirms on Stripe's hosted
+  // page. One-shot latch: disabled immediately on click (before any await),
+  // so a double-click or a slow network can't double-fire it. (This codebase
+  // has been bitten by double-fire before — see feedback_print_once_guard.)
   if(btn.disabled) return;
   btn.disabled = true;
   const err = document.getElementById("remErr");
   if(err) err.hidden = true;
   const label = btn.textContent; btn.textContent = "Setting up your order…";
+  const row = btn.closest(".remitem");
+  const slug = btn.getAttribute("data-slug") || (row && row.getAttribute("data-slug")) || "";
+  const qtyVal = row && row.querySelector(".qtyval");
+  const qty = Math.max(1, parseInt(qtyVal && qtyVal.getAttribute("data-qty"), 10) || 1);
   try{
-    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {method:"POST"});
+    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items: [{slug, qty}]}),
+    });
     const cj = await c.json();
     if(cj.stripe_url){ location.href = cj.stripe_url; return; }
     throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
