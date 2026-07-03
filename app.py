@@ -4762,16 +4762,18 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slu
     repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
     checkout by the caller (see _resolve_repertoire_slugs) and forwarded here so a
     fresh DB lookup isn't repeated per line. When this line has no override, is
-    FF/volume-eligible (_qty_eligible — same gate the volume math above uses), and
-    its slug is already in the set, it gets AT LEAST settings['repertoire_reorder_pct']
-    off list — applied via the SAME pricing.apply_discount/unit_floor_cents helpers
-    dashboard.pricing.compute() uses for the identical case (Task 3/5's display path),
-    so the two paths agree to the cent. Never stacked with the FF volume rate — the
-    lower of the two (best-of) wins, matching compute()'s max(...) non-additive rule."""
+    repertoire-eligible (_repertoire_eligible — mirrors _engine_item's broader
+    eligibility resolution, NOT the FF-only _qty_eligible gate the volume math
+    above uses), and its slug is already in the set, it gets AT LEAST
+    settings['repertoire_reorder_pct'] off list — applied via the SAME
+    pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
+    uses for the identical case (Task 3/5's display path), so the two paths agree
+    to the cent. Never stacked with the FF volume rate — the lower of the two
+    (best-of) wins, matching compute()'s max(...) non-additive rule."""
     if override not in (None, ""):
         return int(override)
     base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
-    if repertoire_slugs and _qty_eligible(p):
+    if repertoire_slugs and _repertoire_eligible(p):
         slug = (p.get("slug") or "").strip().lower()
         if slug in repertoire_slugs:
             from dashboard import pricing as _pricing

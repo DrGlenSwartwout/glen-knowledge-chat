@@ -40,6 +40,16 @@ def _add_repertoire(appmod, email, slugs):
 
 SLUG = "neuro-magnesium"
 
+# A non-FF SKU: _repertoire_eligible()==True (not info_only, not a true pure
+# powder) but _qty_eligible()==False (no qty_pricing flag — not a Functional
+# Formulation). Task 5b review finding: the in-house charge path gated the
+# repertoire best-of branch on _qty_eligible (FF-only), so a member with this
+# SKU in their repertoire saw the discount on display (compute()/_price_cart,
+# via _engine_item's broader volume_eligible resolution) but was charged full
+# list at checkout (_inhouse_line_unit_cents). Fixed by gating on
+# _repertoire_eligible instead, which mirrors _engine_item exactly.
+NON_FF_SLUG = "ei8-microbes-liver-integrator"
+
 
 # ── display === charge: _portal_priced_lines agrees with _price_cart/compute ──
 
@@ -59,6 +69,36 @@ def test_portal_priced_lines_matches_price_cart_for_member_repertoire_sku(appmod
 
     assert charge_unit_cents == display_unit_cents
     regular_cents = appmod._get_product(SLUG)["price_cents"]
+    assert charge_unit_cents < regular_cents
+
+
+def test_portal_priced_lines_matches_price_cart_for_non_ff_repertoire_sku(appmod):
+    """Review finding (Task 5b): a non-FF SKU (_qty_eligible()==False) that IS
+    _repertoire_eligible()==True must still get the repertoire discount charged
+    at checkout, matching what the member already sees on display. Before the
+    fix, _inhouse_line_unit_cents gated the repertoire best-of branch on
+    _qty_eligible (FF-only) and this SKU fell through to full list price while
+    compute()/_price_cart (via _engine_item's broader eligibility) discounted
+    it — a display-vs-charge mismatch."""
+    p = appmod._get_product(NON_FF_SLUG)
+    assert appmod._repertoire_eligible(p) is True
+    assert appmod._qty_eligible(p) is False
+
+    email = "member@example.com"
+    _seed_active_membership(appmod, email)
+    _add_repertoire(appmod, email, [NON_FF_SLUG])
+
+    lines, items_rec, subtotal = appmod._portal_priced_lines(
+        [{"slug": NON_FF_SLUG, "qty": 1}], email=email)
+    charge_unit_cents = items_rec[0]["unit_cents"]
+
+    display_unit_cents = appmod._price_cart(
+        [{"slug": NON_FF_SLUG, "qty": 1}],
+        ship={"country": "US", "state": "TX"}, email=email,
+    )["priced"]["lines"][0]["line_total_cents"]
+
+    assert charge_unit_cents == display_unit_cents
+    regular_cents = p["price_cents"]
     assert charge_unit_cents < regular_cents
 
 
