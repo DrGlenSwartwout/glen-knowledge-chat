@@ -28640,36 +28640,51 @@ def _invoice_line_view(l):
     return out
 
 
+def _titlecase_name(s):
+    """Normalize a person name to Title Case for display. Client names are often
+    stored all-lowercase (or all-caps) by import/portal flows — 'steven blank' →
+    'Steven Blank'. Only touch values that are entirely one case; leave already
+    mixed-case names (McDonald, DeLuca, O'Brien) exactly as stored, since those are
+    intentional and str.title() would mangle them. str.title() capitalizes across
+    spaces, hyphens and apostrophes, so 'mary-jane' and \"o'brien\" come out right."""
+    s = (s or "").strip()
+    if s and (s == s.lower() or s == s.upper()):
+        return s.title()
+    return s
+
+
 def _invoice_display_name(order):
-    """Best-effort billed-to name for the invoice. An order's own `name` column is
-    blank for portal/reorder/import flows that don't re-collect it (the same gap the
-    /api/orders board backfills). Resolve in order: order name → linked person record
-    → people table by email → shipping-address name. Never raises."""
-    nm = (order.get("name") or "").strip()
-    if nm:
-        return nm
-    try:
-        from dashboard import customers as _cust
-        cx = _sqlite3.connect(LOG_DB)
-        cx.row_factory = _sqlite3.Row
+    """Best-effort, Title-Cased billed-to name for the invoice. An order's own `name`
+    column is blank for portal/reorder/import flows that don't re-collect it (the same
+    gap the /api/orders board backfills). Resolve in order: order name → linked person
+    record → people table by email → shipping-address name. Never raises."""
+    def _resolve():
+        nm = (order.get("name") or "").strip()
+        if nm:
+            return nm
         try:
-            pid = order.get("person_id")
-            if pid:
-                p = _cust.get_person(cx, pid)
-                if p and (p.get("name") or "").strip():
-                    return p["name"].strip()
-            em = (order.get("email") or "").strip().lower()
-            if em:
-                row = cx.execute(
-                    "SELECT name FROM people WHERE lower(email)=? "
-                    "AND TRIM(COALESCE(name,''))<>'' ORDER BY id LIMIT 1", (em,)).fetchone()
-                if row and (row["name"] or "").strip():
-                    return row["name"].strip()
-        finally:
-            cx.close()
-    except Exception as e:  # noqa: BLE001 — name is cosmetic; never break the invoice
-        print(f"[invoice] name fallback skipped: {e!r}", flush=True)
-    return ((order.get("address") or {}).get("name") or "").strip()
+            from dashboard import customers as _cust
+            cx = _sqlite3.connect(LOG_DB)
+            cx.row_factory = _sqlite3.Row
+            try:
+                pid = order.get("person_id")
+                if pid:
+                    p = _cust.get_person(cx, pid)
+                    if p and (p.get("name") or "").strip():
+                        return p["name"].strip()
+                em = (order.get("email") or "").strip().lower()
+                if em:
+                    row = cx.execute(
+                        "SELECT name FROM people WHERE lower(email)=? "
+                        "AND TRIM(COALESCE(name,''))<>'' ORDER BY id LIMIT 1", (em,)).fetchone()
+                    if row and (row["name"] or "").strip():
+                        return row["name"].strip()
+            finally:
+                cx.close()
+        except Exception as e:  # noqa: BLE001 — name is cosmetic; never break the invoice
+            print(f"[invoice] name fallback skipped: {e!r}", flush=True)
+        return ((order.get("address") or {}).get("name") or "").strip()
+    return _titlecase_name(_resolve())
 
 
 def _invoice_summary(order):

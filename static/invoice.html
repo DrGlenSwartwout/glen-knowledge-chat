@@ -12,7 +12,7 @@
   .wrap { max-width:640px; margin:0 auto; padding:24px 16px 64px; }
   h1 { font-size:20px; margin:0 0 2px; }
   .billto { margin:6px 0 4px; }
-  .billto-k { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .billto-k { display:block; font-size:11px; letter-spacing:.02em; color:var(--muted); }
   .billto-nm { font-size:22px; font-weight:700; color:#1c1830; }
   .ref { color:var(--muted); font-size:13px; margin-bottom:18px; }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:16px; }
@@ -60,7 +60,7 @@
   #print-root .pd-org-line{ font-size:11px; color:#444; }
   #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
   #print-root .pd-billto{ margin:2px 0 10px; }
-  #print-root .pd-billto-k{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#8a8a8a; margin-bottom:1px; }
+  #print-root .pd-billto-k{ display:block; font-size:10.5px; letter-spacing:.2px; color:#8a8a8a; margin-bottom:1px; }
   #print-root .pd-billto-nm{ font-size:19px; font-weight:700; color:#1b1b1b; }
   #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:14px; }
   #print-root .pd-k{ color:#8a8a8a; }
@@ -238,7 +238,7 @@ function buildInvoicePrintHtml(o){
     <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
     <div class="pd-tot">${tot}</div>
-    ${o.pay_status==='paid' ? `<div class="pd-paid">PAID. Mahalo 🌿</div>` : ''}
+    ${o.pay_status==='paid' ? `<div class="pd-paid">Paid. Mahalo 🌿</div>` : ''}
     ${o.invoice_note ? `<div class="pd-note"><span class="pd-note-k">Notes</span>${esc(o.invoice_note)}</div>` : ''}
     <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Remedy Match LLC, Hilo, Hawai‘i</div>
   </div>`;
