@@ -56,6 +56,27 @@ def rank_dispense_rows(dispensed, dropshipped, patient_portal, *, catalog=None):
     return rows
 
 
+_PORTAL_SOURCES = ("portal-reorder", "reorder")
+
+
+def _add_items(out, items_json):
+    """Sum an order's items_json ([{slug, qty}, ...]) into out {slug: units}.
+    Best-effort; one malformed line never drops the rest."""
+    if not items_json:
+        return
+    try:
+        parsed = json.loads(items_json)
+    except Exception:
+        return
+    for it in parsed:
+        try:
+            s = it.get("slug")
+            if s:
+                out[s] = out.get(s, 0) + int(it.get("qty") or 0)
+        except Exception:
+            continue
+
+
 def _items_for_invoices(cx, invoice_ids, source):
     """{slug: units} summed across the given orders' items_json, scoped to the
     given `source` (orders is UNIQUE(source, external_ref)); newest row wins."""
@@ -67,19 +88,34 @@ def _items_for_invoices(cx, invoice_ids, source):
                 (inv, source)).fetchone()
         except Exception:
             continue
-        if not row or not row[0]:
-            continue
-        try:
-            parsed = json.loads(row[0])
-        except Exception:
-            continue
-        for it in parsed:
-            try:
-                s = it.get("slug")
-                if s:
-                    out[s] = out.get(s, 0) + int(it.get("qty") or 0)
-            except Exception:
-                continue  # one malformed line never drops the rest of the invoice
+        _add_items(out, row[0] if row else None)
+    return out
+
+
+def patient_portal_items(practitioner_id, *, db_path=None):
+    """{slug: units} from the practitioner's clients' own client-portal reorders.
+    Attribution (Approach A): a portal-reorder/reorder order counts for a
+    practitioner when its email matches a client they own via dispensary_orders
+    (the system's existing 'your client' link). Never raises."""
+    out = {}
+    try:
+        with sqlite3.connect(_log_db(db_path)) as cx:
+            emails = [r[0] for r in cx.execute(
+                "SELECT DISTINCT lower(customer_email) FROM dispensary_orders "
+                "WHERE practitioner_id=? AND customer_email IS NOT NULL AND customer_email!=''",
+                (str(practitioner_id),))]
+            emails = [e for e in emails if e][:500]  # defensive cap on client-list size
+            if not emails:
+                return {}
+            eq = ",".join("?" for _ in emails)
+            sq = ",".join("?" for _ in _PORTAL_SOURCES)
+            rows = cx.execute(
+                "SELECT items_json FROM orders WHERE lower(email) IN (%s) AND source IN (%s)" % (eq, sq),
+                tuple(emails) + _PORTAL_SOURCES).fetchall()
+            for (ij,) in rows:
+                _add_items(out, ij)
+    except Exception:
+        return {}
     return out
 
 
@@ -90,7 +126,9 @@ def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
                    — patient sales through the practitioner's dispensary link. Sales
                    ingested without line items (e.g. the GrooveKart webhook stub) hold
                    only aggregate bottles and contribute nothing per-product.
-    Patient portal = {} (deferred; no practitioner<->client attribution yet).
+    Patient portal = their clients' own client-portal reorders (patient_portal_items;
+                     Approach A: attributed by email via dispensary_orders).
+    Sales ingested without line items (aggregate-only stubs) contribute nothing.
     Never raises."""
     dispensed, dropshipped = {}, {}
     try:
@@ -109,7 +147,8 @@ def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
                 dropshipped = {}
     except Exception:
         return []
-    return rank_dispense_rows(dispensed, dropshipped, {}, catalog=catalog)
+    patient_portal = patient_portal_items(practitioner_id, db_path=db_path)
+    return rank_dispense_rows(dispensed, dropshipped, patient_portal, catalog=catalog)
 
 
 # ── Section 2: curated practice-type recommendations ───────────────────────

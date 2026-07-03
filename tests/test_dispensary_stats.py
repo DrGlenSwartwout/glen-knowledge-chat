@@ -92,6 +92,54 @@ def test_dispense_stats_never_raises_on_bad_db():
     assert ds.dispense_stats("p1", db_path="/nonexistent/x.db") == []
 
 
+# ── patient_portal_items (Approach A: email-match via dispensary link) ──────
+def _seed_portal(tmp_path):
+    p = os.path.join(tmp_path, "chat_log.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE dispensary_orders(invoice_id TEXT, practitioner_id TEXT, customer_email TEXT);"
+        "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, email TEXT, items_json TEXT);")
+    cx.execute("INSERT INTO dispensary_orders VALUES('D1','p1','Patient@X.com')")   # p1 owns this client
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('portal-reorder','R1','patient@x.com',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 3}]),))
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('reorder','R2','patient@x.com',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 2}]),))
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('portal-reorder','R3','stranger@x.com',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 99}]),))   # not p1's client → excluded
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('retail','R4','patient@x.com',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 50}]),))   # not a portal source → excluded
+    cx.commit(); cx.close()
+    return p
+
+
+def test_patient_portal_items_attributes_client_portal_reorders(tmp_path):
+    pp = ds.patient_portal_items("p1", db_path=_seed_portal(str(tmp_path)))
+    assert pp == {"bone-builder": 5}   # R1(3)+R2(2); case-insensitive email; not R3/R4
+
+
+def test_patient_portal_items_empty_when_no_clients(tmp_path):
+    assert ds.patient_portal_items("p2", db_path=_seed_portal(str(tmp_path))) == {}
+
+
+def test_dispense_stats_includes_patient_portal(tmp_path):
+    p = os.path.join(str(tmp_path), "chat_log.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE wholesale_orders(invoice_id TEXT, practitioner_id TEXT);"
+        "CREATE TABLE dispensary_orders(invoice_id TEXT, practitioner_id TEXT, customer_email TEXT);"
+        "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, email TEXT, items_json TEXT);")
+    cx.execute("INSERT INTO wholesale_orders VALUES('W1','p1')")
+    cx.execute("INSERT INTO dispensary_orders VALUES('X1','p1','pat@x.com')")
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('wholesale','W1','',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 6}]),))
+    cx.execute("INSERT INTO orders(source,external_ref,email,items_json) VALUES('portal-reorder','R1','pat@x.com',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 2}]),))
+    cx.commit(); cx.close()
+    rows = ds.dispense_stats("p1", db_path=p, catalog=CAT)
+    bb = {r["slug"]: r for r in rows}["bone-builder"]
+    assert bb["dispensed"] == 6 and bb["patient_portal"] == 2 and bb["total"] == 8
+
+
 # ── recommended_ffs (resolver) ─────────────────────────────────────────────
 def _recs_file(recs):
     p = os.path.join(tempfile.mkdtemp(), "r.json")
