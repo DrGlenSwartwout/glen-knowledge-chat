@@ -16,7 +16,7 @@
     --border:#E2D9C9; --cream:#1E2A2A; --muted:#5F6B6B; --gold:#B08A3E; --green:#2D7A6A; }
   *{box-sizing:border-box}
   body{ margin:0; background:var(--bg); color:var(--cream); font-family:var(--font); line-height:1.6; }
-  .wrap{ max-width:760px; margin:0 auto; padding:34px 20px; }
+  .wrap{ max-width:960px; margin:0 auto; padding:34px 20px; }
   h1,h2{ font-family:var(--heading); font-weight:700; margin:0; }
   h1{ font-size:24px; } h2{ font-size:17px; }
   .muted{ color:var(--muted); }
@@ -42,6 +42,13 @@
   .warn{ color:var(--gold); font-size:13px; margin-top:8px; }
   .notice{ background:var(--surface-2); border:1px solid var(--border); color:var(--gold); border-radius:10px; padding:12px; font-size:14px; margin-top:10px; }
   #msg{ margin-top:12px; font-size:14px; color:#8fd6a3; }
+  /* tab shell */
+  .tabs{ display:flex; gap:2px; overflow-x:auto; border-bottom:1px solid var(--border); margin:18px 0 4px; -webkit-overflow-scrolling:touch; }
+  .tab{ background:transparent; color:var(--muted); border:0; border-bottom:2px solid transparent; border-radius:0; padding:11px 15px; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; white-space:nowrap; }
+  .tab:hover{ color:var(--cream); }
+  .tab.active{ color:var(--gold); border-bottom-color:var(--gold); }
+  .pane{ display:none; }
+  .pane.active{ display:block; }
 </style>
 <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
@@ -54,6 +61,15 @@
     </div>
     <button id="theme-toggle" class="ghost" onclick="toggleTheme()" style="white-space:nowrap">Light</button>
   </div>
+  <nav class="tabs" role="tablist" aria-label="Portal sections">
+    <button type="button" class="tab" role="tab" data-tab="partner">Partner Program</button>
+    <button type="button" class="tab" role="tab" data-tab="order">Order</button>
+    <button type="button" class="tab" role="tab" data-tab="clients">Clients</button>
+    <button type="button" class="tab" role="tab" data-tab="ambassador">Ambassador</button>
+    <button type="button" class="tab" role="tab" data-tab="training">Training</button>
+  </nav>
+
+  <section class="pane" data-pane="partner" role="tabpanel" aria-label="Partner Program">
   <div class="cards">
     <div class="stat"><b id="modules">–</b><span>Certification modules</span></div>
     <div class="stat"><b id="wallet">–</b><span>Wellness Credit</span></div>
@@ -80,6 +96,10 @@
     <div id="assignment-feedback"></div>
   </div>
 
+  <div id="partner-program"></div>
+  </section>
+
+  <section class="pane" data-pane="order" role="tabpanel" aria-label="Order">
   <div class="panel">
     <h2>Your personal order</h2>
     <div class="muted" style="font-size:13px;margin:4px 0 12px">Order for yourself at your certification-level price, shipped to you. Completing more certification modules lowers your per-bottle price. Wellness Credit covers up to half of a product order. Personal orders are taxed.</div>
@@ -135,7 +155,9 @@
     <h2>Order history</h2>
     <table id="history"><thead><tr><th>Invoice</th><th>Date</th><th>Credit used</th><th>Total</th></tr></thead><tbody></tbody></table>
   </div>
+  </section>
 
+  <section class="pane" data-pane="clients" role="tabpanel" aria-label="Clients">
   <div class="panel" id="dispensary-panel" style="display:none">
     <h2>Your dispensary</h2>
     <div class="muted" style="font-size:13px;margin:4px 0 10px">Share this link with patients. They order at retail (shipped direct from Remedy Match) and you earn $20/bottle in Wellness Credit.</div>
@@ -143,8 +165,15 @@
     <div id="disp-credit" style="margin-top:10px;font-weight:600;color:var(--gold)"></div>
     <table id="disp-table"><thead><tr><th>Date</th><th>Patient</th><th>Bottles</th><th>Credit</th></tr></thead><tbody></tbody></table>
   </div>
+  </section>
 
+  <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
   <div class="panel" id="ambassador-card" style="display:none"></div>
+  </section>
+
+  <section class="pane" data-pane="training" role="tabpanel" aria-label="Training">
+  <div class="panel"><h2>Training</h2><div class="muted" style="font-size:13px;margin-top:6px">Your 12-module Accelerated Self Healing&trade; Certification will live here. Coming soon.</div></div>
+  </section>
 </div>
 <script>
 var TOKEN = new URLSearchParams(location.search).get('token') || '';
@@ -489,6 +518,31 @@ function sendAssist(){ var q = $('assist-q').value.trim(); if(!q) return; $('ass
 $('assist-send').addEventListener('click', sendAssist);
 $('assist-q').addEventListener('keydown', function(e){ if(e.key==='Enter') sendAssist(); });
 $('disp-copy').addEventListener('click', function(){ var i=$('disp-link'); i.select(); try{ document.execCommand('copy'); }catch(e){} $('disp-copy').textContent='Copied'; setTimeout(function(){ $('disp-copy').textContent='Copy'; }, 1500); });
+
+// ── tab shell ──
+var TAB_IDS = {partner:1, order:1, clients:1, ambassador:1, training:1};
+function showTab(id){
+  if(!TAB_IDS[id]) id = 'partner';
+  document.querySelectorAll('.pane').forEach(function(p){ p.classList.toggle('active', p.getAttribute('data-pane')===id); });
+  document.querySelectorAll('.tab').forEach(function(t){ var on = t.getAttribute('data-tab')===id; t.classList.toggle('active', on); t.setAttribute('aria-selected', on?'true':'false'); });
+  try{ localStorage.setItem('rm-ptab', id); }catch(e){}
+  if(location.hash.slice(1)!==id){ try{ history.replaceState(null,'',location.pathname+location.search+'#'+id); }catch(e){} }
+  if(id==='partner' && typeof renderPartnerCharts==='function'){ renderPartnerCharts(); }
+}
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){ showTab(t.getAttribute('data-tab')); });
+    t.addEventListener('keydown', function(e){
+      var i = tabs.indexOf(t), j = i;
+      if(e.key==='ArrowRight'){ j = (i+1)%tabs.length; } else if(e.key==='ArrowLeft'){ j = (i-1+tabs.length)%tabs.length; } else { return; }
+      e.preventDefault(); tabs[j].focus(); tabs[j].click();
+    });
+  });
+  var initial = location.hash.slice(1);
+  if(!TAB_IDS[initial]){ try{ initial = localStorage.getItem('rm-ptab'); }catch(e){} }
+  showTab(TAB_IDS[initial] ? initial : 'partner');
+})();
 load();
 </script>
 
