@@ -7338,6 +7338,21 @@ def _fulfill_prepay_term(session_id):
                             order_slugs_fn=_order_slugs_since)
                     except Exception as _re:
                         print(f"[prepay] repertoire seed failed: {_re!r}", flush=True)
+                # Union in FMP/GK backfilled purchase history (Task 4) — the same
+                # windowed proven-remedies logic as the orders seed above, but for
+                # purchases recorded outside the live orders board. Best-effort,
+                # flag-gated, fresh-DB-safe (own connection, own init).
+                try:
+                    if REPERTOIRE_ENABLED:
+                        import dashboard.purchase_history as purchase_history
+                        with sqlite3.connect(LOG_DB) as _hcx:
+                            purchase_history.init_purchase_history_table(_hcx)
+                            _hist = purchase_history.slugs_since(
+                                _hcx, email, _window_days_for_term(tier["months"]))
+                        if _hist:
+                            repertoire.add_skus(cx, email, list(_hist))
+                except Exception as _e:
+                    print(f"[prepay] purchase_history seed failed: {_e!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # Ledger (idempotent on source+ref) + confirmation email, best-effort — must
@@ -7456,6 +7471,22 @@ def _fulfill_continuous_care_monthly(session_id):
                         except Exception as _re:
                             print(f"[continuous-care] duplicate-member repertoire seed "
                                   f"failed: {_re!r}", flush=True)
+                    # Union in FMP/GK backfilled purchase history (Task 4) — same
+                    # windowed logic as the orders seed just above, for the
+                    # duplicate-member retroactive-seed path. Best-effort,
+                    # flag-gated, fresh-DB-safe (own connection, own init).
+                    try:
+                        if REPERTOIRE_ENABLED:
+                            import dashboard.purchase_history as purchase_history
+                            with sqlite3.connect(LOG_DB) as _hcx:
+                                purchase_history.init_purchase_history_table(_hcx)
+                                _hist = purchase_history.slugs_since(
+                                    _hcx, email, _window_days_for_term(term_months))
+                            if _hist:
+                                repertoire.add_skus(cx, email, list(_hist))
+                    except Exception as _e:
+                        print(f"[continuous-care] duplicate-member purchase_history "
+                              f"seed failed: {_e!r}", flush=True)
                     return {"ok": True, "duplicate_member": True, "email": email}
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately —
@@ -7478,6 +7509,21 @@ def _fulfill_continuous_care_monthly(session_id):
                             order_slugs_fn=_order_slugs_since)
                     except Exception as _re:
                         print(f"[continuous-care] repertoire seed failed: {_re!r}", flush=True)
+                # Union in FMP/GK backfilled purchase history (Task 4) — same
+                # windowed proven-remedies logic as the orders seed above, for
+                # purchases recorded outside the live orders board. Best-effort,
+                # flag-gated, fresh-DB-safe (own connection, own init).
+                try:
+                    if REPERTOIRE_ENABLED:
+                        import dashboard.purchase_history as purchase_history
+                        with sqlite3.connect(LOG_DB) as _hcx:
+                            purchase_history.init_purchase_history_table(_hcx)
+                            _hist = purchase_history.slugs_since(
+                                _hcx, email, _window_days_for_term(term_months))
+                        if _hist:
+                            repertoire.add_skus(cx, email, list(_hist))
+                except Exception as _e:
+                    print(f"[continuous-care] purchase_history seed failed: {_e!r}", flush=True)
         if not claimed:
             return {"ok": True, "already": True, "email": email}
         # FTC/ROSCA easy-cancel token, minted exactly as the removed biofield-trial
