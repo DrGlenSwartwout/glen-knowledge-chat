@@ -105,3 +105,19 @@ def test_v2_unauthorized_member_falls_back(tmp_db, monkeypatch):
     # stranger (whose report we did NOT render) is "paid"
     assert j["blurred"] is True
     assert j["layers"][0].get("remedy", "") == ""
+
+
+def test_flag_off_uses_legacy_gate(tmp_db, monkeypatch):
+    """With PORTAL_ACCESS_V2 unset, api_client_portal must take the original
+    legacy branch (_portal_biofield_unlocked) rather than the family_access
+    one. Both are monkeypatched truthy here; if the flag-off gate honored
+    them (blurred is False) and `members` is absent/empty (the V2-only key),
+    that proves the legacy branch — not the V2 one — actually ran."""
+    monkeypatch.delenv("PORTAL_ACCESS_V2", raising=False)
+    monkeypatch.setattr(appmod, "LOG_DB", tmp_db)
+    monkeypatch.setattr(appmod, "_portal_record_for", lambda cx, tok: {"email": "m@x.com", "name": "M"})
+    monkeypatch.setattr(appmod, "_portal_biofield_unlocked", lambda e: True)
+    _seed(tmp_db)
+    j = appmod.app.test_client().get("/api/portal/TOK").get_json()
+    assert j["blurred"] is False   # legacy gate honored, members absent/empty
+    assert j.get("members", []) == []

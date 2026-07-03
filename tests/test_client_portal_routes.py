@@ -177,6 +177,46 @@ def test_view_endpoint_includes_eligible_offer(client, monkeypatch):
     assert j["upgrade"]["offer"]["key"] == "live_group"
 
 
+# ── /view endpoint biofield gate must follow PORTAL_ACCESS_V2, not the legacy
+#    $1/trial gate (client-portal.html prefers this endpoint's biofield block
+#    over the primary endpoint's whenever it's visible) ──────────────────────
+
+def test_view_endpoint_v2_gate_blocks_unpaid_nonfamily_client(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("PORTAL_ACCESS_V2", "1")
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: False)
+    # Legacy gate would unlock (proves the /view endpoint is NOT using it under V2).
+    monkeypatch.setattr(appmod, "_portal_biofield_unlocked", lambda e: True)
+    _seed_person(appmod, "gate@example.com", "Gate Client")
+    tok = _seed_portal(appmod, email="gate@example.com", name="Gate Client")
+    j = c.get(f"/api/portal/{tok}/view").get_json()
+    assert j["biofield"]["blurred"] is True
+    assert j["biofield"]["layers"][0].get("remedy", "") == ""
+
+
+def test_view_endpoint_v2_gate_allows_paid_member(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("PORTAL_ACCESS_V2", "1")
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: True)
+    _seed_person(appmod, "paid@example.com", "Paid Client")
+    tok = _seed_portal(appmod, email="paid@example.com", name="Paid Client")
+    j = c.get(f"/api/portal/{tok}/view").get_json()
+    assert j["biofield"]["blurred"] is False
+    assert j["biofield"]["layers"][0]["remedy"] == "r"
+
+
+def test_view_endpoint_flag_off_still_uses_legacy_gate(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.delenv("PORTAL_ACCESS_V2", raising=False)
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: False)
+    monkeypatch.setattr(appmod, "_portal_biofield_unlocked", lambda e: True)
+    _seed_person(appmod, "legacy@example.com", "Legacy Client")
+    tok = _seed_portal(appmod, email="legacy@example.com", name="Legacy Client")
+    j = c.get(f"/api/portal/{tok}/view").get_json()
+    assert j["biofield"]["blurred"] is False
+    assert j["biofield"]["layers"][0]["remedy"] == "r"
+
+
 # ── Tokenless /portal/me (logged-in home) resolves content via session ───────
 
 def _login_cookie(appmod, email, name="Me"):

@@ -13740,11 +13740,28 @@ def api_client_portal_view(token):
             client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
+        # This block feeds the frontend's preferred `v.biofield` (client-portal.html
+        # prefers it over the /api/portal/<token> content whenever visible), so its
+        # unlock signal is a real blur/paywall gate, not just a display flag. Under
+        # PORTAL_ACCESS_V2 it must NOT fall back to the legacy paid-biofield/trial
+        # gate (`_portal_biofield_unlocked`) — that would let the retired $1 paywall
+        # keep governing remedy visibility even after the flag flips. Mirror the
+        # coarse (non-per-scan) half of family_access.scan_accessible: paid member
+        # or a paid family plan. Per-scan single-unlock is handled by the primary
+        # `/api/portal/<token>` gate + unlock-scan flow (task 8); this view endpoint
+        # has no per-scan context to check that here — same limitation the legacy
+        # gate had.
+        if os.environ.get("PORTAL_ACCESS_V2") in ("1", "true", "True"):
+            from dashboard import family_access as _fa
+            _fa.init_tables(cx)
+            _bf_unlocked = _is_paid_member(ident.email) or _fa.family_is_paid(cx, ident.email)
+        else:
+            _bf_unlocked = _portal_biofield_unlocked(ident.email)
         view = _pv.get_portal_view(cx, ident.person_id,
                                    offers_enabled_keys=_enabled_offer_keys(),
                                    quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
                                    finder_enabled=_PORTAL_FINDER_ENABLED,
-                                   biofield_unlocked=_portal_biofield_unlocked(ident.email))
+                                   biofield_unlocked=_bf_unlocked)
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
