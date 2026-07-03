@@ -75,9 +75,25 @@ def _combinable_reason(order):
         return "pickup (no shipment)"
     if order.get("group_shipment_id") is not None:
         return f"already in shipment #{order.get('group_shipment_id')}"
-    if (order.get("pay_status") or "unpaid") not in _PAID_OK:
-        return "not paid yet"
+    # NOTE: payment is NOT required to GROUP orders — a household can be set up
+    # while orders are still proposed/cart. Shipping (label/tracking/pack/ship) is
+    # gated on all-members-paid instead (see _require_all_paid).
     return None
+
+
+def _unpaid_members(cx, sid):
+    """Member orders of a shipment that aren't paid/claimed yet."""
+    return [m for m in _orders.orders_in_group(cx, sid)
+            if (m.get("pay_status") or "unpaid") not in _PAID_OK]
+
+
+def _require_all_paid(cx, sid, verb="ship"):
+    """Block a shipping action while any member is still unpaid — you can group
+    early, but you can't put a label on / ship an unpaid order."""
+    unpaid = _unpaid_members(cx, sid)
+    if unpaid:
+        names = ", ".join((m.get("name") or m.get("email") or f"#{m['id']}") for m in unpaid)
+        raise ValueError(f"cannot {verb} shipment #{sid} — waiting on payment from: {names}")
 
 
 def create_shipment(cx, order_ids, *, ship_to=None, household_id=None,
@@ -192,6 +208,7 @@ def record_label(cx, sid, *, tracking_number, label_url="", carrier_shipment_id=
     Buying/recording a label locks membership: an 'open' shipment advances to
     'packed' so add/remove (which require 'open') can no longer change what's on
     the already-purchased parcel."""
+    _require_all_paid(cx, sid, "label")
     row = cx.execute("SELECT status FROM combined_shipments WHERE id=?",
                      (sid,)).fetchone()
     new_status = "packed" if (row and row["status"] == "open") else None
@@ -466,6 +483,8 @@ def _status_exec(new_status, verb):
             return off
         cx = _cx_of(params, ctx)
         sid = int(params["shipment_id"])
+        if new_status in ("packed", "shipped"):
+            _require_all_paid(cx, sid, "pack" if new_status == "packed" else "ship")
         set_status(cx, sid, new_status)
         return {"shipment_id": sid, "status": new_status,
                 "message": f"Shipment #{sid} {verb}."}
