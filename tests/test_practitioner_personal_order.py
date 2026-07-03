@@ -138,6 +138,25 @@ def test_ingest_channel_personal(client):
     assert ingest.last_kwargs().get("channel") == "personal"
 
 
+# ── 4b. the ingest carries the cart LINE ITEMS (so orders.items_json is real —
+#        the dispense-ranking feature depends on this; guards a silent regression) ──
+
+def test_ingest_personal_passes_cart_items(client):
+    c, appmod, build_order, ingest, earn = client
+    c.post("/api/practitioner/personal/checkout", json={"method": "zelle"})
+    assert ingest.last_kwargs().get("items") == PORTAL["cart"]
+
+
+def test_ingest_wholesale_passes_cart_items(client, monkeypatch):
+    c, appmod, build_order, ingest, earn = client
+    wholesale = dict(PORTAL); wholesale["wholesale_unlocked"] = True
+    monkeypatch.setattr(appmod._pp, "portal_data", lambda pid: dict(wholesale))
+    r = c.post("/api/practitioner/checkout", json={"method": "zelle"})
+    assert r.status_code == 200
+    assert ingest.last_kwargs().get("channel") == "wholesale"
+    assert ingest.last_kwargs().get("items") == PORTAL["cart"]
+
+
 # ── 5. empty cart → 400 ────────────────────────────────────────────────────────
 
 def test_empty_cart_400(client, monkeypatch):

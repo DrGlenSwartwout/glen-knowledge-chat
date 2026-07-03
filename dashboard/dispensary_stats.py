@@ -124,7 +124,7 @@ def recommended_ffs(practice_type, *, exclude_slugs=(), recs_path=None, catalog=
     except Exception:
         return []
     toks = _practice_tokens(practice_type)
-    key = next((k for k in recs if k != "default" and k.lower() in toks), "default")
+    key = next((k for k in recs if not k.startswith("_") and k != "default" and k.lower() in toks), "default")
     cat = _catalog(catalog)
     ex = {s for s in (exclude_slugs or ())}
     out = []
