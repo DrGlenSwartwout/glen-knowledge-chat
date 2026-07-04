@@ -1,5 +1,6 @@
 # tests/test_evox_api.py  (needs doppler — imports app)
 import os, sqlite3, pytest
+from datetime import timedelta
 if not os.environ.get("PINECONE_API_KEY"):
     pytest.skip("needs doppler env for import app", allow_module_level=True)
 import app as appmod
@@ -126,3 +127,60 @@ def test_book_route_sends_client_and_rae_confirmations(client, monkeypatch):
     tos = {c[0] for c in calls}
     assert "c@x.com" in tos and "rae@illtowell.com" in tos
     assert all(b"BEGIN:VCALENDAR" in c[1] for c in calls)
+
+
+# ── Task 10: 24-48h reminder pass (console-gated cron) ─────────────────────────
+def test_reminders_send_once_deterministic(client, monkeypatch):
+    """Deterministic replacement for the plan's vacuous sample test: proves the
+    24-48h window (in-window reminded, out-of-window skipped), idempotency via
+    reminded_at, and the console-key auth gate — instead of asserting sent >= 0
+    against a nondeterministic real-calendar slot."""
+    sent = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda *a, **k: sent.append(a[0]) or ("console-log", None))
+    assert appmod.CONSOLE_SECRET == "test-secret"  # confirm the client fixture sets this
+
+    now = appmod._hst_now()
+    in_window_ts = (now + timedelta(hours=30)).isoformat()   # inside 24-48h -> reminded
+    out_window_ts = (now + timedelta(hours=2)).isoformat()   # outside window -> skipped
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        _evmod.init_evox_tables(cx)  # creates evox_bookings before we insert directly
+        cx.execute(
+            "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+            "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',0,?,?)",
+            ("r@x.com", "rae", in_window_ts, in_window_ts,
+             "evox-inwindow@illtowell.com", now.isoformat()))
+        cx.execute(
+            "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+            "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',0,?,?)",
+            ("control@x.com", "rae", out_window_ts, out_window_ts,
+             "evox-outwindow@illtowell.com", now.isoformat()))
+        cx.commit()
+
+    hdr = {"X-Console-Key": "test-secret"}
+
+    # No / wrong console key -> 401, nothing sent.
+    r_noauth = client.post("/api/evox/run-reminders")
+    assert r_noauth.status_code == 401
+    r_wrongauth = client.post("/api/evox/run-reminders", headers={"X-Console-Key": "nope"})
+    assert r_wrongauth.status_code == 401
+    assert sent == []
+
+    # First run: only the in-window booking is reminded; the out-of-window
+    # control is left alone.
+    r1 = client.post("/api/evox/run-reminders", headers=hdr).get_json()
+    assert r1["sent"] == 1
+    assert sent == ["r@x.com"]
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = {row["email"]: row["reminded_at"]
+                for row in cx.execute("SELECT email, reminded_at FROM evox_bookings")}
+        assert rows["r@x.com"] is not None
+        assert rows["control@x.com"] is None
+
+    # Second run: idempotent — already-reminded booking is not re-sent.
+    r2 = client.post("/api/evox/run-reminders", headers=hdr).get_json()
+    assert r2["sent"] == 0
+    assert sent == ["r@x.com"]  # unchanged

@@ -13990,6 +13990,45 @@ def evox_book():
     return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
 
 
+@app.route("/api/evox/run-reminders", methods=["POST"])
+def evox_run_reminders():
+    """Console-gated daily cron: reminds clients with a 'booked' EVOX session
+    starting in the next 24-48h (HST) who haven't been reminded yet. Idempotent
+    via the lazily-added reminded_at stamp."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import evox as _ev
+    now = _hst_now()
+    lo = (now + timedelta(hours=24)).isoformat()
+    hi = (now + timedelta(hours=48)).isoformat()
+    sent = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        try:
+            cx.execute("ALTER TABLE evox_bookings ADD COLUMN reminded_at TEXT")
+        except Exception:
+            pass
+        rows = cx.execute(
+            "SELECT * FROM evox_bookings WHERE status='booked' AND reminded_at IS NULL "
+            "AND start_ts BETWEEN ? AND ?", (lo, hi)).fetchall()
+        for r in rows:
+            phone = EVOX_RAE_PHONE or "the number in your confirmation"
+            nice = r["start_ts"].replace("T", " ")
+            html = (f"<p>Reminder: your EVOX session is tomorrow at <b>{nice} HST</b>. "
+                    f"Call Rae at {phone} at your appointment time.</p>")
+            try:
+                send_evox_email(r["email"], "", "Reminder: your EVOX session tomorrow",
+                                 html, html, b"")
+                cx.execute("UPDATE evox_bookings SET reminded_at=? WHERE id=?",
+                           (now.isoformat(), r["id"]))
+                sent += 1
+            except Exception:
+                app.logger.exception("EVOX reminder send failed for booking %s", r["id"])
+        cx.commit()
+    return jsonify({"sent": sent})
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
