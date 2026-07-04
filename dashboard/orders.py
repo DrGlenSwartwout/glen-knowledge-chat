@@ -83,6 +83,7 @@ def init_orders_table(cx):
         # shown as its own line on the invoice + QBO. 0 = none.
         "ALTER TABLE orders ADD COLUMN adjustment_cents INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN practitioner_id TEXT",
+        "ALTER TABLE orders ADD COLUMN margin_cents INTEGER DEFAULT 0",
     ):
         try:
             cx.execute(ddl)
@@ -96,7 +97,7 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  status="new", get_cents=0, person_id=None,
                  discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
                  invoice_note=None, adjustment_cents=0,
-                 pay_method=None, practitioner_id=None):
+                 pay_method=None, practitioner_id=None, margin_cents=None):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
@@ -134,6 +135,9 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if practitioner_id is not None:
             sets.append("practitioner_id=?")
             vals.append(str(practitioner_id))
+        if margin_cents is not None:
+            sets.append("margin_cents=?")
+            vals.append(int(margin_cents))
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
@@ -142,8 +146,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
         "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents, "
-        "pay_method, practitioner_id) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "pay_method, practitioner_id, margin_cents) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
@@ -151,7 +155,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
          int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0),
          (str(invoice_note) if invoice_note is not None else None), int(adjustment_cents or 0),
          (str(pay_method) if pay_method is not None else None),
-         (str(practitioner_id) if practitioner_id is not None else None)))
+         (str(practitioner_id) if practitioner_id is not None else None),
+         (int(margin_cents) if margin_cents is not None else None)))
     cx.commit()
     return cur.lastrowid
 
@@ -697,10 +702,14 @@ def _record_payment_exec(params, ctx):
     _o = get_order(cx, oid)
     if _o and (_o.get("source") or "") == "dispensary":
         try:
-            from dashboard.dispensary_rewards import settle_dispensary_l2
+            from dashboard.dispensary_rewards import settle_dispensary_l2, settle_dispensary_margin
             settle_dispensary_l2(cx, _o, _o.get("external_ref"))
+            # Alt-pay parity: credit the practitioner's own Wellness Credit (wallet margin)
+            # + record the dispensary sale — the card path does this inline in the
+            # checkout-return client block; alt-pay had no equivalent hook until now.
+            settle_dispensary_margin(_o, _o.get("external_ref"))
         except Exception as _de:
-            print(f"[dispensary-l2] altpay settle skipped: {_de!r}", flush=True)
+            print(f"[dispensary] altpay settle (l2+margin) skipped: {_de!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
