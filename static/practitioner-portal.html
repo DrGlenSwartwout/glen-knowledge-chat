@@ -35,6 +35,16 @@
   input{ padding:9px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:var(--surface-2); color:var(--cream); }
   input::placeholder{ color:#6f7d6f; }
   input.slug{ flex:1; } input.qty{ width:80px; }
+  input[type=range]{ accent-color:var(--gold); height:6px; padding:0; background:transparent; border:0; }
+  /* Pricing panel (practitioner-set patient discount dials) */
+  #pricing-panel .kicker{ font-size:12px; font-weight:700; letter-spacing:.03em; color:var(--gold); }
+  #pricing-panel .sched-lead{ font-size:12.5px; color:var(--muted); margin:2px 0 8px; }
+  #pricing-panel .pr-row{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  #pricing-panel .pr-row label{ display:flex; align-items:center; gap:8px; flex:1.4; min-width:180px; font-size:13.5px; }
+  #pricing-panel .pr-row input[type=range]{ flex:1; min-width:100px; max-width:180px; }
+  #pricing-panel .pr-pct{ width:120px; text-align:right; font-size:12.5px; flex-shrink:0; }
+  #pricing-program.pr-disabled{ opacity:.45; }
+  #pricing-program-toggle{ display:flex; align-items:center; gap:8px; cursor:pointer; }
   button{ background:var(--green); color:#fff; border:0; border-radius:8px; padding:9px 14px; font-weight:600; cursor:pointer; font-family:inherit; }
   button.ghost{ background:transparent; color:var(--gold); border:1px solid var(--border); }
   button:disabled{ opacity:.5; cursor:default; }
@@ -300,6 +310,24 @@
   </div>
   <div class="panel" id="dispense-rank" style="display:none"></div>
   <div class="panel reco" id="reco-ffs" style="display:none"></div>
+
+  <div class="panel" id="pricing-panel">
+    <h2>Patient pricing</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 12px">Set how much of our available discount depth to pass through to your patients. Each dial is bounded by our current ceiling — you can never exceed it.</div>
+
+    <div class="kicker">Standard schedule</div>
+    <div class="sched-lead">Applies to all your patients by default.</div>
+    <div id="pricing-standard"></div>
+
+    <div class="kicker" style="margin-top:22px">
+      <label id="pricing-program-toggle"><input type="checkbox" id="pricing-program-enabled"> Program schedule</label>
+    </div>
+    <div class="sched-lead">Deeper rates for patients enrolled in a paid program. Off by default — everyone gets Standard.</div>
+    <div id="pricing-program"></div>
+
+    <button id="pricing-save" style="margin-top:14px">Save pricing</button>
+    <div id="pricing-msg" style="margin-top:10px;font-size:14px"></div>
+  </div>
   </section>
 
   <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
@@ -486,6 +514,88 @@ function renderRecommended(d){
     + '<div class="muted" style="font-size:11px;margin-top:10px">These statements describe structure/function support and have not been evaluated to diagnose, treat, cure, or prevent any disease.</div>';
 }
 
+// Clients tab: practitioner-set patient pricing (Standard + Program schedules, dial per type).
+var PRICING_CEILINGS = {same_sku:0, program_total:0, open_total:0};
+var PRICING_TYPES = [
+  {key:'same_sku', label:'Multiple bottles of the same product'},
+  {key:'program_total', label:'Order total across products'},
+  {key:'open_total', label:'Mix-and-match across remedies (your patients only)'}
+];
+function pricingRowHtml(sched, t){
+  var id = 'pr-' + sched + '-' + t.key;
+  return '<div class="pr-row">'
+    + '<label><input type="checkbox" id="' + id + '-en"><span>' + escapeHtml(t.label) + '</span></label>'
+    + '<input type="range" min="0" max="100" value="0" id="' + id + '-dial">'
+    + '<span class="muted pr-pct" id="' + id + '-pct">= up to 0% off</span>'
+    + '</div>';
+}
+function updatePricingPct(sched, key){
+  var ceil = PRICING_CEILINGS[key] || 0;
+  var dial = parseInt($('pr-' + sched + '-' + key + '-dial').value, 10) || 0;
+  var pct = ceil * dial / 100;
+  $('pr-' + sched + '-' + key + '-pct').textContent = '= up to ' + pct.toFixed(1) + '% off';
+}
+function buildPricingSchedule(sched){
+  var host = $('pricing-' + sched); if(!host || host.childNodes.length) return;
+  host.innerHTML = PRICING_TYPES.map(function(t){ return pricingRowHtml(sched, t); }).join('');
+  PRICING_TYPES.forEach(function(t){
+    $('pr-' + sched + '-' + t.key + '-dial').addEventListener('input', function(){ updatePricingPct(sched, t.key); });
+  });
+}
+function toggleProgramSchedule(){
+  var on = $('pricing-program-enabled').checked;
+  var host = $('pricing-program');
+  host.classList.toggle('pr-disabled', !on);
+  Array.prototype.forEach.call(host.querySelectorAll('input'), function(inp){ inp.disabled = !on; });
+}
+function fillPricingSchedule(sched, cfg){
+  cfg = cfg || {};
+  PRICING_TYPES.forEach(function(t){
+    var ent = cfg[t.key] || {};
+    $('pr-' + sched + '-' + t.key + '-en').checked = !!ent.enabled;
+    $('pr-' + sched + '-' + t.key + '-dial').value = Math.round((ent.dial != null ? ent.dial : 0) * 100);
+    updatePricingPct(sched, t.key);
+  });
+}
+function renderPricing(d){
+  buildPricingSchedule('standard'); buildPricingSchedule('program');
+  PRICING_CEILINGS = d.pricing_ceilings || PRICING_CEILINGS;
+  var cfg = d.pricing_config || {};
+  fillPricingSchedule('standard', cfg.standard);
+  fillPricingSchedule('program', cfg.program);
+  $('pricing-program-enabled').checked = !!(cfg.program && cfg.program.enabled);
+  toggleProgramSchedule();
+}
+function readPricingSchedule(sched){
+  var out = {};
+  PRICING_TYPES.forEach(function(t){
+    var en = $('pr-' + sched + '-' + t.key + '-en').checked;
+    var dialPct = parseInt($('pr-' + sched + '-' + t.key + '-dial').value, 10) || 0;
+    out[t.key] = {enabled: en, dial: dialPct / 100};
+  });
+  return out;
+}
+$('pricing-program-enabled').addEventListener('change', toggleProgramSchedule);
+$('pricing-save').addEventListener('click', function(){
+  var program = readPricingSchedule('program');
+  program.enabled = $('pricing-program-enabled').checked;
+  var config = {standard: readPricingSchedule('standard'), program: program};
+  var msg = $('pricing-msg');
+  $('pricing-save').disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Saving…';
+  fetch('/api/practitioner/pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, config:config})})
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      $('pricing-save').disabled = false;
+      if(res.body && res.body.ok){
+        msg.style.color = '#8fd6a3'; msg.textContent = 'Saved.';
+        render(res.body);
+      } else {
+        msg.style.color = 'var(--gold)'; msg.textContent = (res.body && res.body.error) || 'Save failed.';
+      }
+    })
+    .catch(function(){ $('pricing-save').disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
+});
+
 // Training tab: 12-module ASH curriculum with the practitioner's completion state.
 function renderTraining(d){
   var tr = d.training; if(!tr) return;
@@ -647,6 +757,7 @@ function render(d){
   renderTraining(d);
   renderDispenseStats(d);
   renderRecommended(d);
+  renderPricing(d);
 }
 
 function load(){
