@@ -140,6 +140,16 @@ def _rewards_settings():
     return (_pricing_settings().get("rewards") or {})
 
 
+def _practitioner_effective_settings(pid, program_member):
+    """Live global settings with the practitioner's clamped discount block swapped in.
+    Falls back to plain global settings when the practitioner has no saved config."""
+    from dashboard import practitioner_pricing as _ppx
+    with sqlite3.connect(LOG_DB) as cx:
+        cfg = _ppx.get_config(cx, pid)
+    return _ppx.effective_settings(cfg, program_member=bool(program_member),
+                                   settings=_pricing_settings())
+
+
 # ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
 # Products only consume Rebrandly cap when actually mentioned by the bot.
 # Cache hits in SQLite. Cap-exceeded errors fall back gracefully to canonical.
@@ -11254,6 +11264,22 @@ def api_practitioner_portal_data():
     except Exception:
         pass
     return jsonify({"ok": True, **data})
+
+
+@app.route("/api/practitioner/pricing", methods=["POST"])
+def api_practitioner_pricing():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_pricing as _ppx
+    body = request.get_json(silent=True) or {}
+    config = body.get("config") or {}
+    errs = _ppx.validate_config(config)
+    if errs:
+        return jsonify({"ok": False, "error": "; ".join(errs)}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        _ppx.set_config(cx, pid, config)
+    return jsonify({"ok": True, **(_pp.portal_data(pid) or {})})
 
 
 @app.route("/api/practitioner/cart", methods=["POST"])
