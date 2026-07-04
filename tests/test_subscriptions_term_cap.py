@@ -8,6 +8,7 @@ def _cx():
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     return cx
 
 def test_migration_idempotent():

@@ -24,6 +24,7 @@ def _fresh(app_module, monkeypatch, tmp_path):
         subscriptions.migrate_add_membership_columns(cx)
         subscriptions.migrate_add_term_cap_column(cx)
         subscriptions.migrate_add_attribution_column(cx)
+        subscriptions.migrate_add_consent_column(cx)
         cx.execute(
             "CREATE TABLE IF NOT EXISTS auth_tokens "
             "(token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, purpose TEXT NOT NULL, "
@@ -234,6 +235,7 @@ def _seed_cancel_token(app_module, db, email="t@x.com"):
         subscriptions.migrate_add_membership_columns(cx)
         subscriptions.migrate_add_term_cap_column(cx)
         subscriptions.migrate_add_attribution_column(cx)
+        subscriptions.migrate_add_consent_column(cx)
         subscriptions.create_membership(
             cx, email=email, stripe_customer_id="cus_test",
             stripe_payment_method_id="pm_test", amount_cents=9900,

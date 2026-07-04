@@ -30,6 +30,7 @@ def _seed_membership(cx, *, amount_cents=9900, next_charge_date="2000-01-01"):
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,))
     cx.commit()
     sid = subs.create_membership(
@@ -120,6 +121,7 @@ def _seed_membership_for(cx, email, *, amount_cents=9900, next_charge_date="2026
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (email,))
     cx.commit()
     sid = subs.create_membership(

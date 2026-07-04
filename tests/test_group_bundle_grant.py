@@ -64,6 +64,7 @@ def _active(db, email="p@x.com"):
         subs.migrate_add_membership_columns(cx)
         subs.migrate_add_term_cap_column(cx)
         subs.migrate_add_attribution_column(cx)
+        subs.migrate_add_consent_column(cx)
         return subs.active_memberships_by_email(cx, email)
 
 
@@ -132,6 +133,7 @@ def test_new_grant_extends_existing_window(monkeypatch, tmp_path):
         subs.migrate_add_membership_columns(cx)
         subs.migrate_add_term_cap_column(cx)
         subs.migrate_add_attribution_column(cx)
+        subs.migrate_add_consent_column(cx)
         subs.create_membership(
             cx, email="p@x.com", stripe_customer_id="cus_old",
             stripe_payment_method_id="pm_old", amount_cents=9900,

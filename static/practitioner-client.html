@@ -484,6 +484,10 @@
     <div class="card" id="care-card">
       <div class="card-title">Start Continuous Care &mdash; $99/mo</div>
       <p class="us-note" style="margin-top:0;">Ongoing card-on-file membership: your first month is charged securely today, then $99/month. Cancel anytime. Requires your email and the agreement above.</p>
+      <label class="consent-row">
+        <input type="checkbox" id="care-share-consent-check">
+        <span>I authorize sharing my wellness results with my enrolling practitioner.</span>
+      </label>
       <button type="button" class="add-btn" id="care-btn" style="width:100%;">Start Continuous Care &rarr;</button>
       <div class="inline-msg" id="care-msg"></div>
     </div>
@@ -983,11 +987,13 @@
     .then(function (r) { return r.ok ? r.json().catch(function () { return {}; }) : {}; })
     .catch(function () { return {}; })
     .then(function () {
+      var shareConsentEl = document.getElementById('care-share-consent-check');
+      var shareConsent = !!(shareConsentEl && shareConsentEl.checked);
       return fetch(BASE + '/dispensary/' + encodeURIComponent(code) + '/continuous-care', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, term_months: 12 })
+        body: JSON.stringify({ email: email, term_months: 12, share_consent: shareConsent })
       });
     })
     .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })

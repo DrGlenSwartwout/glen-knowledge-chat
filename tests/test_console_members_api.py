@@ -34,6 +34,7 @@ def _seed(cx):
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     orders_mod.init_orders_table(cx)
     _clean(cx)
     from datetime import date

@@ -40,6 +40,7 @@ def _fresh(app_module, monkeypatch, tmp_path):
         subscriptions.migrate_add_membership_columns(cx)
         subscriptions.migrate_add_term_cap_column(cx)
         subscriptions.migrate_add_attribution_column(cx)
+        subscriptions.migrate_add_consent_column(cx)
         app_module.init_membership_tables(cx)
         cx.commit()
     monkeypatch.setattr(app_module, "_ingest_order", lambda **kw: None, raising=False)
@@ -146,6 +147,77 @@ def test_enroll_attributes_membership_and_credits_doctor(monkeypatch, tmp_path):
     assert credited_cents == 9900
     assert credited_sub["id"] == row["id"]
     assert credited_sub["attributed_practitioner_id"] == "prac-42"
+
+
+def test_enrollment_captures_practitioner_consent(monkeypatch, tmp_path):
+    """Task 3: the "Start Continuous Care" card carries an authorization checkbox
+    ("I authorize sharing my wellness results with my enrolling practitioner").
+    Its value threads through the Stripe session metadata as `share_consent`
+    (mirroring `dispensary_pid`), and on fulfilment the membership row gets
+    practitioner_share_consent=1 when checked, 0 when unchecked/absent."""
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    _stub_dispensary(app_module, monkeypatch)
+    monkeypatch.setattr(app_module, "is_member", lambda sid, email: True, raising=False)
+
+    from dashboard import stripe_pay, care_share, subscriptions as subs
+    monkeypatch.setattr(care_share, "credit_for_charge", lambda sub, **kw: None)
+
+    # --- Consent CHECKED -----------------------------------------------------
+    cap = {}
+
+    def fake_checkout(amount, **kw):
+        cap["kw"] = kw
+        return {"id": "cs_consent_yes", "url": "https://stripe/consent-yes"}
+
+    monkeypatch.setattr(app_module.stripe_pay, "create_checkout_session", fake_checkout)
+    r = app_module.app.test_client().post(
+        "/dispensary/doc1/continuous-care",
+        json={"email": "yes@x.com", "term_months": 12, "share_consent": True})
+    assert r.status_code == 200
+    md_yes = cap["kw"]["metadata"]
+    assert md_yes.get("share_consent") == "1"
+
+    monkeypatch.setattr(stripe_pay, "get_session",
+                        lambda sid: {"metadata": md_yes, "payment_intent": "pi_yes"})
+    monkeypatch.setattr(stripe_pay, "get_payment_intent",
+                        lambda pi: {"status": "succeeded", "id": "pi_yes",
+                                    "customer": "cus_yes", "payment_method": "pm_yes"})
+    res = app_module._fulfill_continuous_care_monthly("cs_consent_yes")
+    assert res.get("ok") is True
+
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = subs.active_memberships_by_email(cx, "yes@x.com")
+    assert len(rows) == 1
+    assert rows[0]["practitioner_share_consent"] == 1
+
+    # --- Consent UNCHECKED/absent --------------------------------------------
+    cap2 = {}
+
+    def fake_checkout2(amount, **kw):
+        cap2["kw"] = kw
+        return {"id": "cs_consent_no", "url": "https://stripe/consent-no"}
+
+    monkeypatch.setattr(app_module.stripe_pay, "create_checkout_session", fake_checkout2)
+    r2 = app_module.app.test_client().post(
+        "/dispensary/doc1/continuous-care",
+        json={"email": "no@x.com", "term_months": 12})
+    assert r2.status_code == 200
+    md_no = cap2["kw"]["metadata"]
+
+    monkeypatch.setattr(stripe_pay, "get_session",
+                        lambda sid: {"metadata": md_no, "payment_intent": "pi_no"})
+    monkeypatch.setattr(stripe_pay, "get_payment_intent",
+                        lambda pi: {"status": "succeeded", "id": "pi_no",
+                                    "customer": "cus_no", "payment_method": "pm_no"})
+    res2 = app_module._fulfill_continuous_care_monthly("cs_consent_no")
+    assert res2.get("ok") is True
+
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        rows2 = subs.active_memberships_by_email(cx, "no@x.com")
+    assert len(rows2) == 1
+    assert rows2[0]["practitioner_share_consent"] == 0
 
 
 def test_direct_enrollment_still_unattributed(monkeypatch, tmp_path):
