@@ -228,3 +228,48 @@ def test_accepted_recommendation_no_longer_shows_as_actionable_card(client):
     body = c.get(f"/api/portal/{tok}").get_json()
     # only a 'sent' recommendation is an actionable card
     assert not body.get("recommendation")
+
+
+def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
+    """Regression: a direct POST replay against an already-accepted recommendation
+    must be rejected (no duplicate QBO invoice/Stripe session). Only a 'sent'
+    recommendation can be accepted."""
+    c, appmod = client
+    email = "replay-test@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["neuro-magnesium"])
+    _seed_recommendation(appmod, email,
+                         [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
+
+    # Mock invoice creation to track duplicate calls
+    invoice_count = {"calls": 0}
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+
+    def _count_invoice(cust, lines, **kw):
+        invoice_count["calls"] += 1
+        total = sum(l["amount"] * l["qty"] for l in lines)
+        return {"Id": f"INV{invoice_count['calls']}", "DocNumber": str(1000 + invoice_count['calls']), "TotalAmt": total}
+    monkeypatch.setattr(qbo_billing, "create_invoice", _count_invoice)
+    monkeypatch.setattr(appmod, "_ingest_order", lambda *a, **k: None)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
+                        lambda out, email: "https://checkout.stripe/reco")
+
+    # First accept should succeed
+    r1 = c.post(f"/api/portal/{tok}/recommendation/accept")
+    assert r1.status_code == 200
+    assert r1.get_json().get("accepted") is True
+    assert invoice_count["calls"] == 1
+    assert _rec_status(appmod, email) == "accepted"
+
+    # Second accept (replay) should be rejected
+    r2 = c.post(f"/api/portal/{tok}/recommendation/accept")
+    assert r2.status_code == 400
+    assert not r2.get_json().get("ok")
+    assert "No active recommendation to accept" in r2.get_json().get("error", "")
+    # NO second invoice should be created
+    assert invoice_count["calls"] == 1
