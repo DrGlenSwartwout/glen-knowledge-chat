@@ -1,5 +1,6 @@
 import sqlite3
-from dashboard import evox
+import json
+from dashboard import evox, consult
 
 def _cx():
     cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
@@ -30,3 +31,28 @@ def test_evox_booking_defaults_unchanged():
     assert b["session_type"] == "evox" and b["medium"] == "phone"
     row = cx.execute("SELECT location, summary FROM calendar_events").fetchone()
     assert row["location"] == "Phone" and row["summary"] == "EVOX — e@x.com"
+
+def _ccx():
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    consult.init_consult_tables(cx); return cx
+
+def test_consult_ready_roundtrip():
+    cx = _ccx()
+    assert consult.consult_is_ready(cx, "A@x.com") is False
+    assert consult.set_consult_ready(cx, "a@x.com", True) is True
+    assert consult.consult_is_ready(cx, "A@x.com") is True      # lowercased
+    assert consult.set_consult_ready(cx, "a@x.com", False) is False
+    assert consult.consult_is_ready(cx, "a@x.com") is False
+
+def test_has_paid_purchase():
+    cx = _ccx()
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, email TEXT, items_json TEXT, "
+               "pay_status TEXT, paid_cents INTEGER)")
+    cx.execute("INSERT INTO orders (email, items_json, pay_status, paid_cents) VALUES (?,?,?,?)",
+               ("buyer@x.com", json.dumps([{"slug": "biofield-analysis"}]), "paid", 30000))
+    cx.execute("INSERT INTO orders (email, items_json, pay_status, paid_cents) VALUES (?,?,?,?)",
+               ("unpaid@x.com", json.dumps([{"slug": "biofield-analysis"}]), "unpaid", 0))
+    cx.commit()
+    assert consult.has_paid_purchase(cx, "BUYER@x.com", "biofield-analysis") is True
+    assert consult.has_paid_purchase(cx, "unpaid@x.com", "biofield-analysis") is False
+    assert consult.has_paid_purchase(cx, "nobody@x.com", "biofield-analysis") is False
