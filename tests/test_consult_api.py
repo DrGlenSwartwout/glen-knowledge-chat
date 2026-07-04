@@ -115,3 +115,11 @@ def test_consult_confirmations_include_join_link(monkeypatch):
     assert len(calls) == 2
     assert any("zoom.us/j/9" in c[1] for c in calls)          # client email carries the link
     assert all(b"BEGIN:VCALENDAR" in c[2] for c in calls)
+
+
+def test_portal_view_carries_consult_block(client):
+    tok = _mk_portal("pv@x.com")
+    client.post("/api/console/consult-ready", json={"email": "pv@x.com", "ready": True}, headers=ADMIN)
+    d = client.get(f"/api/portal/{tok}/view").get_json()
+    assert "consult" in d and d["consult"]["ready"] is True
+    assert "stages" in d["consult"]

@@ -171,6 +171,30 @@ def _practitioner_finder_block(address, enabled):
     return {"enabled": bool(enabled), "location": location, "country": country}
 
 
+def _consult_block(cx, email):
+    """Ready/booked status + objective stage checklist for the portal's Biofield
+    Consult card. Defensive: any failure (missing tables, import error) falls
+    back to a safe not-ready/not-booked default so the consult block never
+    breaks the rest of the portal payload."""
+    from dashboard import consult as _consult
+    try:
+        _consult.init_consult_tables(cx)
+        ready = _consult.consult_is_ready(cx, email)
+        paid = _consult.has_paid_purchase(cx, email, _consult.CONSULT["test_slug"])
+        booked = False
+        try:
+            row = cx.execute("SELECT 1 FROM evox_bookings WHERE lower(email)=? "
+                             "AND session_type='biofield-consult' AND status='booked' LIMIT 1",
+                             (email,)).fetchone()
+            booked = row is not None
+        except Exception:
+            pass
+        return {"ready": ready, "booked": booked,
+                "stages": {"test_paid": paid, "ready": ready}}
+    except Exception:
+        return {"ready": False, "booked": False, "stages": {}}
+
+
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
                     biofield_unlocked=True):
@@ -205,4 +229,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "upgrade": _upgrade_block(cx, email, roles, offers_enabled_keys),
         "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
         "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
+        "consult": _consult_block(cx, email),
     }
