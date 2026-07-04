@@ -15952,6 +15952,34 @@ def api_console_practitioners_edit(pid):
     return jsonify({"error": "unknown action"}), 400
 
 
+@app.route("/api/console/care-share/reverse", methods=["POST"])
+def api_console_care_share_reverse():
+    """Owner console action: reverse a previously-posted care-share credit when a
+    Continuous Care membership charge is manually refunded. There is no Stripe
+    refund webhook for this — this is the manual path. Body {sub_id, order_count}
+    identifies the exact charge event (same event_ref the earn side used:
+    care_share:<sub_id>:<order_count>); wallet.reverse_care_share is idempotent
+    and no-ops if that credit was never posted."""
+    if not _console_key_ok():
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    sub_id = body.get("sub_id")
+    order_count = body.get("order_count")
+    from dashboard import subscriptions as _subs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sub = _subs.get(cx, sub_id)
+    if not sub or not sub.get("attributed_practitioner_id"):
+        return jsonify({"ok": False, "error": "no attributed care-share for that subscription"}), 404
+    from dashboard import care_share as _cshare, wallet as _wallet
+    pid = sub["attributed_practitioner_id"]
+    m = _cshare.modules_for_practitioner(pid)
+    cents = _cshare.share_cents(int(sub.get("amount_cents") or 0), m or 0)
+    _wallet.reverse_care_share(
+        str(pid), cents, event_ref=f"care_share:{sub['id']}:{int(order_count)}")
+    return jsonify({"ok": True, "reversed_cents": cents})
+
+
 def _run_biofield_bonuses(dry_run=False):
     """Sweep active certification commitments and grant due bonus Biofields concierge-style
     (one todos task + idempotent ledger row per grant). Flag-gated (CERT_BONUS_ENABLED) — a
