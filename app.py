@@ -257,6 +257,16 @@ def _now_utc():
     return datetime.now(timezone.utc)
 
 
+# Module-level SMTP config + smtplib handle so tests can monkeypatch
+# app.SMTP_HOST / app.SMTP_USER / app.SMTP_PASS / app.smtplib.SMTP directly.
+# (send_magic_link_email / send_portal_welcome_email read os.environ locally
+# and are untouched; send_evox_email below uses these module globals.)
+import smtplib
+SMTP_HOST = os.environ.get("SMTP_HOST")
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASS = os.environ.get("SMTP_PASS")
+
+
 def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     # NOTE: auth magic-link (user-requested sign-in) — EXEMPT from email suppression
     # (never lock someone out of account access from a stale/mistaken suppression).
@@ -388,6 +398,35 @@ def send_portal_welcome_email(to_email, name, login_url):
     # Path 3: console fallback
     print(f"\n[welcome] PORTAL WELCOME for {to_email}: {login_url}\n", flush=True)
     return "console-log", "no email send mechanism configured"
+
+
+def send_evox_email(to_email, name, subject, html_body, text_body, ics_bytes):
+    """Three-tier send with an .ics attachment. GHL tier skipped (no attachment path)."""
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
+        app.logger.info("EVOX email (console fallback) to %s: %s", to_email, subject)
+        return ("console-log", "no email send mechanism configured")
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USER
+    msg["To"] = to_email
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(text_body, "plain"))
+    alt.attach(MIMEText(html_body, "html"))
+    msg.attach(alt)
+    part = MIMEBase("text", "calendar", method="REQUEST", name="invite.ics")
+    part.set_payload(ics_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", "attachment", filename="invite.ics")
+    msg.attach(part)
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    with smtplib.SMTP(SMTP_HOST, port) as s:
+        s.starttls(); s.login(SMTP_USER, SMTP_PASS)
+        s.sendmail(SMTP_USER, [to_email], msg.as_string())
+    return ("smtp", None)
 
 
 def _member_join_welcome(cx, email, source=None):
