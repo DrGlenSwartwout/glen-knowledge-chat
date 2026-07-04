@@ -7630,6 +7630,11 @@ def _fulfill_continuous_care_monthly(session_id):
         # "Start Continuous Care" card's authorization checkbox, threaded through
         # session metadata the same way as dispensary_pid. Absent/unset => 0.
         share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+        if not disp_pid:
+            _inh = _last_attributed_practitioner(email)   # sticky renewal attribution
+            if _inh:
+                disp_pid = _inh["pid"]
+                share_consent = int(_inh["consent"])
         try:
             term_months = int(md.get("term_months") or 0)
         except (TypeError, ValueError):
