@@ -1028,7 +1028,7 @@ async function consultBook(start_ts){
       body: JSON.stringify({start_ts}),
     });
     d = await r.json();
-    if(d && d.join_url){
+    if(d && d.ok){
       if(box) box.innerHTML = `<p class="muted small">Booked. Check your email for the Zoom link and calendar invite.</p>`;
       return;
     }
