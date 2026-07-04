@@ -135,10 +135,10 @@
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
     var acts = '';
-    if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id) + ' ' + printInvBtn(o.id);
-    else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + sendInvBtn(o) + ' ' + printInvBtn(o.id);
+    if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
+    else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
+    else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
+    else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + sendInvBtn(o);
     else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
     else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
     if (o.pay_status === 'claimed') acts = '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' + acts;
@@ -153,6 +153,10 @@
         ? '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' : '';
       acts = keep + '<span class="meta">Shipping handled in shipment #'+Number(o.group_shipment_id)+' (Households column).</span>';
     }
+    // Print invoice is available on EVERY card (reprint a receipt at any lane —
+    // packed/shipped/done included). Appended last so it survives the grouped-
+    // shipment acts rebuild above and reads as the trailing action on the card.
+    acts += (acts ? ' ' : '') + printInvBtn(o.id);
     var bo = Number(o.backorder_units||0);
     // Backorder only applies once an order is paid + in fulfillment (new/packed/
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
