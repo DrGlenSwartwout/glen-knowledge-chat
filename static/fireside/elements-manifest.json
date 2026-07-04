@@ -6,13 +6,13 @@
       "video": "/static/fireside/video/elements/water.mp4",
       "poster": "/static/fireside/video/elements/water-poster.jpg",
       "ambience": {
-        "bed": "/static/fireside/audio/amb-rain.mp3",
-        "bed_volume": 0.11,
+        "bed": "/static/fireside/audio/amb-waterfall.mp3",
+        "bed_volume": 0.07,
         "oneshots": [
+          { "id": "surf", "file": "/static/fireside/audio/amb-surf.mp3", "loop": true, "volume": 0.09 },
           { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.1, "min_gap_s": 90, "max_gap_s": 220 },
-          { "id": "wind", "file": "/static/fireside/audio/amb-wind.mp3", "volume": 0.1, "min_gap_s": 80, "max_gap_s": 200 },
           { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.09, "min_gap_s": 140, "max_gap_s": 320 },
-          { "id": "bottlechime", "file": "/static/fireside/audio/amb-bottlechime.mp3", "volume": 0.07, "min_gap_s": 120, "max_gap_s": 300 }
+          { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.08, "min_gap_s": 160, "max_gap_s": 360 }
         ]
       }
     },
@@ -68,8 +68,8 @@
       "video": "/static/fireside/video/elements/fire.mp4",
       "poster": "/static/fireside/video/elements/fire-poster.jpg",
       "ambience": {
-        "bed": "/static/fireside/audio/amb-fire.mp3",
-        "bed_volume": 0.09,
+        "bed": "/static/fireside/audio/amb-fire-loop.mp3",
+        "bed_volume": 0.036,
         "oneshots": [
           { "id": "embers", "file": "/static/fireside/audio/amb-embers.mp3", "volume": 0.08, "spark": true, "min_gap_s": 50, "max_gap_s": 140 },
           { "id": "logsettle", "file": "/static/fireside/audio/amb-logsettle.mp3", "volume": 0.09, "spark": true, "min_gap_s": 60, "max_gap_s": 170 },
