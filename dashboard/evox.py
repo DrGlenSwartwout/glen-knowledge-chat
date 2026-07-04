@@ -64,3 +64,70 @@ def set_readiness_item(cx, email: str, item: str, value: bool,
                    "WHERE email=?", (now, email))
     cx.commit()
     return get_readiness(cx, email)
+
+
+# Pure availability computation helpers (no DB, no app import)
+
+def parse_office_hours(spec: str):
+    days_part, hours_part = spec.split(":", 1)
+    lo, hi = days_part.split("-")
+    start_hm, end_hm = hours_part.split("-")
+    return int(lo), int(hi), start_hm, end_hm
+
+
+def _hm(day, hm: str) -> datetime:
+    h, m = hm.split(":")
+    return datetime(day.year, day.month, day.day, int(h), int(m))
+
+
+def slot_grid(day, spec: str, duration_min: int = 60):
+    lo, hi, start_hm, end_hm = parse_office_hours(spec)
+    if not (lo <= day.isoweekday() <= hi):
+        return []
+    start, end = _hm(day, start_hm), _hm(day, end_hm)
+    out, t, step = [], start, timedelta(minutes=duration_min)
+    while t + step <= end:
+        out.append(t.isoformat()); t += step
+    return out
+
+
+def _parse(ts: str):
+    ts = (ts or "").strip()
+    if not ts:
+        return None
+    try:
+        if len(ts) == 10:            # date-only, e.g. all-day event
+            return datetime.fromisoformat(ts + "T00:00:00")
+        return datetime.fromisoformat(ts[:19])
+    except ValueError:
+        return None
+
+
+def intervals_overlap(a_start, a_end, b_start, b_end) -> bool:
+    return a_start < b_end and b_start < a_end
+
+
+def available_slots(days, office_spec, busy, booked, now, duration_min: int = 60):
+    step = timedelta(minutes=duration_min)
+    # Normalize busy into datetime intervals; date-only start w/ empty end = whole day.
+    intervals = []
+    for bs, be in busy:
+        s = _parse(bs)
+        if s is None:
+            continue
+        if len(str(bs).strip()) == 10 and not (be or "").strip():
+            e = s + timedelta(days=1)
+        else:
+            e = _parse(be) or (s + step)
+        intervals.append((s, e))
+    out = []
+    for day in days:
+        for iso in slot_grid(day, office_spec, duration_min):
+            s = datetime.fromisoformat(iso)
+            if s <= now or iso in booked:
+                continue
+            e = s + step
+            if any(intervals_overlap(s, e, bs, be) for bs, be in intervals):
+                continue
+            out.append(iso)
+    return sorted(out)
