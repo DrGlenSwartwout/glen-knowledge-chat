@@ -56,6 +56,11 @@ def rank_dispense_rows(dispensed, dropshipped, patient_portal, *, catalog=None):
     return rows
 
 
+# A patient's own orders through their portal ordering page — the portal/biofield
+# checkout uses these sources for the first portal order AND reorders. NOT wholesale
+# (dispensed) or dispensary (drop-ship). 'funnel' is deliberately excluded: it tags
+# every /begin retail purchase by anyone, unbounded in time and across practitioners,
+# so including it would retroactively/cross-attribute unrelated sales.
 _PORTAL_SOURCES = ("portal-reorder", "reorder")
 
 
@@ -92,19 +97,37 @@ def _items_for_invoices(cx, invoice_ids, source):
     return out
 
 
-def patient_portal_items(practitioner_id, *, db_path=None):
-    """{slug: units} from the practitioner's clients' own client-portal reorders.
-    Attribution (Approach A): a portal-reorder/reorder order counts for a
-    practitioner when its email matches a client they own via dispensary_orders
-    (the system's existing 'your client' link). Never raises."""
+def patient_portal_items(practitioner_email, *, practitioner_id=None, db_path=None):
+    """{slug: units} from the practitioner's patients' own portal-page orders — the
+    first portal order AND reorders (_PORTAL_SOURCES). The patient set is the UNION of
+    who they REFERRED (referral_redemptions.owner_email = practitioner_email) and their
+    DISPENSARY clients (dispensary_orders.customer_email), deduped by email — so neither
+    the new referral model nor an existing dispensary-based practitioner is stranded.
+    Excludes cancelled; never raises."""
     out = {}
+    em = (practitioner_email or "").strip().lower()
+    emails = set()
     try:
         with sqlite3.connect(_log_db(db_path)) as cx:
-            emails = [r[0] for r in cx.execute(
-                "SELECT DISTINCT lower(customer_email) FROM dispensary_orders "
-                "WHERE practitioner_id=? AND customer_email IS NOT NULL AND customer_email!=''",
-                (str(practitioner_id),))]
-            emails = [e for e in emails if e][:500]  # defensive cap on client-list size
+            if em:
+                try:
+                    for (e,) in cx.execute(
+                        "SELECT DISTINCT lower(referee_email) FROM referral_redemptions "
+                        "WHERE lower(owner_email)=? AND referee_email IS NOT NULL AND referee_email!=''", (em,)):
+                        if e:
+                            emails.add(e)
+                except Exception:
+                    pass
+            if practitioner_id is not None:
+                try:
+                    for (e,) in cx.execute(
+                        "SELECT DISTINCT lower(customer_email) FROM dispensary_orders "
+                        "WHERE practitioner_id=? AND customer_email IS NOT NULL AND customer_email!=''", (str(practitioner_id),)):
+                        if e:
+                            emails.add(e)
+                except Exception:
+                    pass
+            emails = list(emails)[:5000]  # defensive cap on the patient set
             if not emails:
                 return {}
             eq = ",".join("?" for _ in emails)
@@ -120,15 +143,16 @@ def patient_portal_items(practitioner_id, *, db_path=None):
     return out
 
 
-def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
+def dispense_stats(practitioner_id, *, practitioner_email=None, db_path=None, catalog=None):
     """Collect the practitioner's per-product units across channels and rank them.
     Dispensed  = their own wholesale_orders  (orders.items_json, source='wholesale').
     Drop-shipped = their dispensary_orders    (orders.items_json, source='dispensary')
                    — patient sales through the practitioner's dispensary link. Sales
                    ingested without line items (e.g. the GrooveKart webhook stub) hold
                    only aggregate bottles and contribute nothing per-product.
-    Patient portal = their clients' own client-portal reorders (patient_portal_items;
-                     Approach A: attributed by email via dispensary_orders).
+    Patient portal = their patients' own portal orders — first purchase + reorders
+                     (patient_portal_items). Patient set = UNION of referred patients
+                     (referral graph, via practitioner_email) and dispensary clients.
     Sales ingested without line items (aggregate-only stubs) contribute nothing.
     Never raises."""
     dispensed, dropshipped = {}, {}
@@ -148,7 +172,7 @@ def dispense_stats(practitioner_id, *, db_path=None, catalog=None):
                 dropshipped = {}
     except Exception:
         return []
-    patient_portal = patient_portal_items(practitioner_id, db_path=db_path)
+    patient_portal = patient_portal_items(practitioner_email, practitioner_id=practitioner_id, db_path=db_path)
     return rank_dispense_rows(dispensed, dropshipped, patient_portal, catalog=catalog)
 
 

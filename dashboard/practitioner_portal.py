@@ -856,7 +856,7 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
     data["training"] = training_block(row["modules_completed"])
     from dashboard import dispensary_stats as _dstats
     try:
-        stats = _dstats.dispense_stats(practitioner_id, db_path=db_path)
+        stats = _dstats.dispense_stats(practitioner_id, practitioner_email=row["email"], db_path=db_path)
         data["dispense_stats"] = stats
         data["recommended_ffs"] = _dstats.recommended_ffs(
             row["credentials"] or "", exclude_slugs=[r["slug"] for r in stats])

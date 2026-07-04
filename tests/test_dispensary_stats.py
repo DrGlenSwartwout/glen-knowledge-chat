@@ -92,36 +92,62 @@ def test_dispense_stats_never_raises_on_bad_db():
     assert ds.dispense_stats("p1", db_path="/nonexistent/x.db") == []
 
 
-# ── patient_portal_items (Approach A: email-match via dispensary link) ──────
+# ── patient_portal_items (union: referred patients + dispensary clients; portal orders) ──
 def _seed_portal(tmp_path):
     p = os.path.join(tmp_path, "chat_log.db")
     cx = sqlite3.connect(p)
     cx.executescript(
+        "CREATE TABLE referral_redemptions(referee_email TEXT PRIMARY KEY, owner_email TEXT);"
         "CREATE TABLE dispensary_orders(invoice_id TEXT, practitioner_id TEXT, customer_email TEXT);"
         "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, email TEXT, status TEXT, items_json TEXT);")
-    cx.execute("INSERT INTO dispensary_orders VALUES('D1','p1','Patient@X.com')")   # p1 owns this client
-    cx.execute("INSERT INTO dispensary_orders VALUES('D2','p1','patient@x.com')")   # same client again → DISTINCT
+    cx.execute("INSERT INTO referral_redemptions VALUES('referred@x.com','Doc@X.com')")   # doc referred this patient
+    cx.execute("INSERT INTO referral_redemptions VALUES('both@x.com','Doc@X.com')")        # referred AND a dispensary client (dedup)
+    cx.execute("INSERT INTO dispensary_orders VALUES('D1','p1','Client@X.com')")           # doc's dispensary client (no referral row)
+    cx.execute("INSERT INTO dispensary_orders VALUES('D2','p1','Both@X.com')")             # same patient as the referral row above
 
     def ins(src, ref, email, status, items):
         cx.execute("INSERT INTO orders(source,external_ref,email,status,items_json) VALUES(?,?,?,?,?)",
                    (src, ref, email, status, _json.dumps(items)))
-    ins("portal-reorder", "R1", "patient@x.com", "new", [{"slug": "bone-builder", "qty": 3}])
-    ins("reorder", "R2", "patient@x.com", "new", [{"slug": "bone-builder", "qty": 2}])
-    ins("portal-reorder", "R3", "stranger@x.com", "new", [{"slug": "bone-builder", "qty": 99}])   # not p1's client
-    ins("retail", "R4", "patient@x.com", "new", [{"slug": "bone-builder", "qty": 50}])            # not a portal source
-    ins("portal-reorder", "R5", "patient@x.com", "cancelled", [{"slug": "bone-builder", "qty": 7}])  # cancelled → excluded
+    ins("reorder", "R0", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 3}])      # first portal order (biofield path)
+    ins("portal-reorder", "R1", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 2}])  # reorder → 5 total
+    ins("reorder", "R2", "client@x.com", "new", [{"slug": "nous-energy", "qty": 4}])         # dispensary client (union)
+    ins("portal-reorder", "R3", "both@x.com", "new", [{"slug": "vitality", "qty": 6}])       # in BOTH sets → counted once (dedup)
+    ins("portal-reorder", "R4", "stranger@x.com", "new", [{"slug": "bone-builder", "qty": 99}])  # not linked → excluded
+    ins("retail", "R5", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 50}])      # non-portal source → excluded
+    ins("funnel", "R6", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 40}])      # funnel over-attributes → excluded
+    ins("wholesale", "R7", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 30}])   # dispensed channel → excluded
+    ins("dispensary", "R8", "referred@x.com", "new", [{"slug": "bone-builder", "qty": 20}])  # drop-ship channel → excluded
+    ins("portal-reorder", "R9", "referred@x.com", "cancelled", [{"slug": "bone-builder", "qty": 7}])  # cancelled → excluded
     cx.commit(); cx.close()
     return p
 
 
-def test_patient_portal_items_attributes_client_portal_reorders(tmp_path):
-    pp = ds.patient_portal_items("p1", db_path=_seed_portal(str(tmp_path)))
-    # R1(3)+R2(2)=5; excludes R3 (stranger), R4 (retail), R5 (cancelled); client listed twice not double-counted
-    assert pp == {"bone-builder": 5}
+def test_patient_portal_items_unions_dedups_and_excludes_other_channels(tmp_path):
+    pp = ds.patient_portal_items("doc@x.com", practitioner_id="p1", db_path=_seed_portal(str(tmp_path)))
+    # referred: R0 (3) + R1 (2) = 5; dispensary client: R2 (4); both-sets patient counted once: R3 (6);
+    # excludes stranger/retail/funnel/wholesale/dispensary/cancelled
+    assert pp == {"bone-builder": 5, "nous-energy": 4, "vitality": 6}
 
 
-def test_patient_portal_items_empty_when_no_clients(tmp_path):
-    assert ds.patient_portal_items("p2", db_path=_seed_portal(str(tmp_path))) == {}
+def test_patient_portal_items_degrades_when_one_source_table_missing(tmp_path):
+    # Only the referral graph exists (no dispensary_orders table). The referral side
+    # still resolves; the dispensary side degrades to nothing instead of raising.
+    p = os.path.join(str(tmp_path), "chat_log.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE referral_redemptions(referee_email TEXT PRIMARY KEY, owner_email TEXT);"
+        "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, email TEXT, status TEXT, items_json TEXT);")
+    cx.execute("INSERT INTO referral_redemptions VALUES('r@x.com','doc@x.com')")
+    cx.execute("INSERT INTO orders(source,external_ref,email,status,items_json) VALUES('reorder','R','r@x.com','new',?)",
+               (_json.dumps([{"slug": "bone-builder", "qty": 3}]),))
+    cx.commit(); cx.close()
+    assert ds.patient_portal_items("doc@x.com", practitioner_id="p1", db_path=p) == {"bone-builder": 3}
+
+
+def test_patient_portal_items_empty_without_email_or_id(tmp_path):
+    db = _seed_portal(str(tmp_path))
+    assert ds.patient_portal_items("nobody@x.com", practitioner_id="pX", db_path=db) == {}
+    assert ds.patient_portal_items("", db_path=db) == {}   # no email, no id
 
 
 def test_dispense_stats_includes_patient_portal(tmp_path):
@@ -130,15 +156,16 @@ def test_dispense_stats_includes_patient_portal(tmp_path):
     cx.executescript(
         "CREATE TABLE wholesale_orders(invoice_id TEXT, practitioner_id TEXT);"
         "CREATE TABLE dispensary_orders(invoice_id TEXT, practitioner_id TEXT, customer_email TEXT);"
+        "CREATE TABLE referral_redemptions(referee_email TEXT PRIMARY KEY, owner_email TEXT);"
         "CREATE TABLE orders(id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, email TEXT, status TEXT, items_json TEXT);")
     cx.execute("INSERT INTO wholesale_orders VALUES('W1','p1')")
-    cx.execute("INSERT INTO dispensary_orders VALUES('X1','p1','pat@x.com')")
+    cx.execute("INSERT INTO referral_redemptions VALUES('pat@x.com','doc@x.com')")
     cx.execute("INSERT INTO orders(source,external_ref,email,status,items_json) VALUES('wholesale','W1','','new',?)",
                (_json.dumps([{"slug": "bone-builder", "qty": 6}]),))
-    cx.execute("INSERT INTO orders(source,external_ref,email,status,items_json) VALUES('portal-reorder','R1','pat@x.com','new',?)",
+    cx.execute("INSERT INTO orders(source,external_ref,email,status,items_json) VALUES('reorder','F1','pat@x.com','new',?)",
                (_json.dumps([{"slug": "bone-builder", "qty": 2}]),))
     cx.commit(); cx.close()
-    rows = ds.dispense_stats("p1", db_path=p, catalog=CAT)
+    rows = ds.dispense_stats("p1", practitioner_email="doc@x.com", db_path=p, catalog=CAT)
     bb = {r["slug"]: r for r in rows}["bone-builder"]
     assert bb["dispensed"] == 6 and bb["patient_portal"] == 2 and bb["total"] == 8
 
