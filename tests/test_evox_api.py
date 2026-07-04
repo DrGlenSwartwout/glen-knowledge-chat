@@ -102,6 +102,14 @@ def test_confirmations_send_client_and_rae(monkeypatch):
     assert all(b"BEGIN:VCALENDAR" in c[1] for c in calls)
 
 
+
+# ── Task 9: static/evox.html page served at GET /evox ──────────────────────────
+def test_evox_page_served(client):
+    r = client.get("/evox")
+    assert r.status_code == 200
+    assert b"EVOX Setup" in r.data
+
+
 def test_book_route_sends_client_and_rae_confirmations(client, monkeypatch):
     calls = []
     monkeypatch.setattr(appmod, "send_evox_email",

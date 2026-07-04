@@ -1,0 +1,183 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EVOX Setup — Healing Oasis</title>
+<style>
+ body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;
+   padding:24px;color:#1b2a26;background:#f6f8f7}
+ h1{color:#2f6f5e} h2{color:#2f6f5e}
+ button,.btn{background:#2f6f5e;color:#fff;border:0;border-radius:8px;
+   padding:10px 16px;font-size:15px;cursor:pointer;margin:4px 0;display:inline-block;
+   text-decoration:none}
+ button:disabled{opacity:.5;cursor:default}
+ .buy{background:#d4a843;color:#1b2a26}
+ .ghost{background:#fff;color:#2f6f5e;border:1px solid #2f6f5e}
+ .slot{display:inline-block;margin:4px;background:#2f6f5e}
+ .item{padding:10px;border:1px solid #d7e0dc;border-radius:8px;margin:8px 0;background:#fff}
+ .hidden{display:none}
+ label{font-size:15px}
+ input[type=text],input[type=email],input#f-name,input#f-email{
+   display:block;width:100%;box-sizing:border-box;padding:10px;margin:6px 0;
+   border:1px solid #d7e0dc;border-radius:8px;font-size:15px}
+ .day{margin:14px 0}
+ .day h3{margin:0 0 4px;font-size:15px;color:#1b2a26}
+ .muted{color:#5b6b66;font-size:14px}
+ .err{color:#b3403a;font-size:14px}
+</style></head><body>
+<h1>EVOX Setup</h1>
+
+<div id="v-start">
+  <p>Set up your EVOX remote session in a few quick steps.</p>
+  <input id="f-name" placeholder="Your name">
+  <input id="f-email" placeholder="you@email.com" type="email">
+  <p id="start-err" class="err hidden"></p>
+  <button onclick="start()">Start</button>
+</div>
+
+<div id="v-check" class="hidden">
+  <p>Confirm each item below to unlock booking:</p>
+
+  <div class="item">
+    <label><input type="checkbox" id="c-pc_ok" onchange="setItem('pc_ok',this.checked)">
+      I have (or can access) a Windows 10/11 PC</label>
+  </div>
+
+  <div class="item">
+    <label><input type="checkbox" id="c-cradle_ok" onchange="setItem('cradle_ok',this.checked)">
+      Hand cradle</label>
+    <div>
+      <a class="btn buy" href="/begin/product/hand-cradle">Buy hand cradle ($297)</a>
+      <button class="ghost" onclick="setItem('cradle_ok', true)">I already have access</button>
+    </div>
+  </div>
+
+  <div class="item">
+    <label><input type="checkbox" id="c-headset_ok" onchange="setItem('headset_ok',this.checked)">
+      Headset + microphone</label>
+  </div>
+
+  <div class="item">
+    <label><input type="checkbox" id="c-zyto_ok" onchange="setItem('zyto_ok',this.checked)">
+      ZYTO software installed &amp; verified with ZYTO support (Mon&ndash;Thu)</label>
+  </div>
+
+  <button id="btn-book" class="hidden" onclick="showAvail()">Choose a time &rarr;</button>
+</div>
+
+<div id="v-avail" class="hidden">
+  <h2>Pick a time (HST)</h2>
+  <div id="slots"><p class="muted">Loading available times&hellip;</p></div>
+  <button class="ghost" onclick="show('check')">&larr; Back to checklist</button>
+</div>
+
+<div id="v-done" class="hidden">
+  <h2>Booked &#10003;</h2>
+  <p id="done-msg"></p>
+  <p class="muted">Questions before your session? Call Rae to confirm details or reschedule.</p>
+</div>
+
+<script>
+let TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("evox_token") || "";
+
+const $ = id => document.getElementById(id);
+const show = id => { for (const v of ["start","check","avail","done"]) $("v-"+v).classList.toggle("hidden", v !== id); };
+const ITEMS = ["pc_ok","cradle_ok","headset_ok","zyto_ok"];
+
+async function j(url, opt) {
+  const r = await fetch(url, opt);
+  let data = {};
+  try { data = await r.json(); } catch (e) { data = {}; }
+  data._status = r.status;
+  return data;
+}
+
+async function start() {
+  const email = $("f-email").value.trim();
+  const name = $("f-name").value.trim();
+  const errEl = $("start-err");
+  errEl.classList.add("hidden");
+  if (!email || email.indexOf("@") === -1) {
+    errEl.textContent = "Please enter a valid email address.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  const d = await j("/api/evox/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, name })
+  });
+  if (d.token) {
+    TOKEN = d.token;
+    localStorage.setItem("evox_token", TOKEN);
+    loadState();
+  } else {
+    errEl.textContent = "Something went wrong — please try again.";
+    errEl.classList.remove("hidden");
+  }
+}
+
+async function loadState() {
+  const s = await j("/api/evox/state?token=" + encodeURIComponent(TOKEN));
+  if (s.error) { show("start"); return; }
+  for (const k of ITEMS) $("c-"+k).checked = !!s[k];
+  $("btn-book").classList.toggle("hidden", !s.complete);
+  show("check");
+}
+
+async function setItem(item, value) {
+  const s = await j("/api/evox/readiness?token=" + encodeURIComponent(TOKEN), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ item, value })
+  });
+  if (s.error) return;
+  for (const k of ITEMS) $("c-"+k).checked = !!s[k];
+  $("btn-book").classList.toggle("hidden", !s.complete);
+}
+
+async function showAvail() {
+  show("avail");
+  const box = $("slots");
+  box.innerHTML = "<p class=\"muted\">Loading available times&hellip;</p>";
+  const d = await j("/api/evox/availability?token=" + encodeURIComponent(TOKEN) + "&range=week");
+  if (d.error) {
+    box.innerHTML = "<p class=\"err\">Couldn't load availability — please try again.</p>";
+    return;
+  }
+  const slots = d.slots || [];
+  if (!slots.length) {
+    box.innerHTML = "<p class=\"muted\">No open times this week — check back soon.</p>";
+    return;
+  }
+  const byDay = {};
+  for (const s of slots) {
+    const day = s.slice(0, 10);
+    (byDay[day] = byDay[day] || []).push(s);
+  }
+  box.innerHTML = Object.keys(byDay).sort().map(day => {
+    const buttons = byDay[day].map(s => {
+      const time = s.slice(11, 16);
+      return "<button class=\"slot\" onclick=\"book('" + s + "')\">" + time + "</button>";
+    }).join("");
+    return "<div class=\"day\"><h3>" + day + "</h3>" + buttons + "</div>";
+  }).join("");
+}
+
+async function book(start_ts) {
+  const d = await j("/api/evox/book?token=" + encodeURIComponent(TOKEN), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ start_ts })
+  });
+  if (d.ok) {
+    $("done-msg").textContent = "Your EVOX session is booked for " + start_ts.replace("T", " ") +
+      " HST. Check your email for the calendar invite and call instructions.";
+    show("done");
+  } else {
+    alert("That slot just became unavailable — pick another time.");
+    showAvail();
+  }
+}
+
+if (TOKEN) { loadState(); } else { show("start"); }
+</script>
+</body></html>
