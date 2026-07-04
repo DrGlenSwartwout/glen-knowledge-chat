@@ -7522,6 +7522,11 @@ def _fulfill_prepay_term(session_id):
                 # a credit failure must never undo the term.
                 disp_pid = (md.get("dispensary_pid") or "").strip() or None
                 share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+                if not disp_pid:
+                    _inh = _last_attributed_practitioner(email)   # sticky renewal attribution
+                    if _inh:
+                        disp_pid = _inh["pid"]
+                        share_consent = int(_inh["consent"])
                 _term_end = _pp.term_end_date(
                     datetime.utcnow().date().isoformat(), tier["months"])
                 if disp_pid:
