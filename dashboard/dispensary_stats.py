@@ -56,9 +56,12 @@ def rank_dispense_rows(dispensed, dropshipped, patient_portal, *, catalog=None):
     return rows
 
 
-# A patient's own orders through their portal / self-service surfaces — their first
-# purchase (funnel) plus reorders. NOT wholesale (dispensed) or dispensary (drop-ship).
-_PORTAL_SOURCES = ("portal-reorder", "reorder", "funnel")
+# A patient's own orders through their portal ordering page — the portal/biofield
+# checkout uses these sources for the first portal order AND reorders. NOT wholesale
+# (dispensed) or dispensary (drop-ship). 'funnel' is deliberately excluded: it tags
+# every /begin retail purchase by anyone, unbounded in time and across practitioners,
+# so including it would retroactively/cross-attribute unrelated sales.
+_PORTAL_SOURCES = ("portal-reorder", "reorder")
 
 
 def _add_items(out, items_json):
@@ -95,12 +98,12 @@ def _items_for_invoices(cx, invoice_ids, source):
 
 
 def patient_portal_items(practitioner_email, *, practitioner_id=None, db_path=None):
-    """{slug: units} from the practitioner's patients' own portal orders (first
-    purchase + reorders). The patient set is the UNION of who they REFERRED
-    (referral_redemptions.owner_email = practitioner_email) and their DISPENSARY
-    clients (dispensary_orders.customer_email), deduped by email — so neither the
-    new referral model nor an existing dispensary-based practitioner is stranded.
-    Counts _PORTAL_SOURCES orders (excludes cancelled); never raises."""
+    """{slug: units} from the practitioner's patients' own portal-page orders — the
+    first portal order AND reorders (_PORTAL_SOURCES). The patient set is the UNION of
+    who they REFERRED (referral_redemptions.owner_email = practitioner_email) and their
+    DISPENSARY clients (dispensary_orders.customer_email), deduped by email — so neither
+    the new referral model nor an existing dispensary-based practitioner is stranded.
+    Excludes cancelled; never raises."""
     out = {}
     em = (practitioner_email or "").strip().lower()
     emails = set()
