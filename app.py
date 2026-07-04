@@ -14221,8 +14221,9 @@ def _active_recommendation_card(cx, email):
     or None (Task 8). ONLY a 'sent' (not-yet-acted) recommendation surfaces — once
     accepted or dismissed the card is gone. Items are resolved to remedy NAMES; NO
     price is shown here: the suggested-step price is $0 on prod (its source table is
-    local-only), so it is never displayed as a real cost. The authoritative member
-    price appears only at the accept/checkout step (_portal_priced_lines)."""
+    local-only), so it is never displayed as a real cost. Accept itself mints no
+    price either — the authoritative member price appears later, at the patient's
+    reorder checkout (_portal_priced_lines)."""
     from dashboard import practitioner_recommendations as _pr
     try:
         rec = _pr.active_for_patient(cx, email)
@@ -14295,17 +14296,11 @@ def _portal_reorder_checkout(email, items_rec, lines):
 
 @app.route("/api/portal/<token>/recommendation/accept", methods=["POST"])
 def api_portal_recommendation_accept(token):
-    """Task 8 — patient accepts their ACTIVE practitioner recommendation: add the
-    recommended items to a MEMBER-PRICED cart and mark the recommendation 'accepted'.
-
-    SCOPE: acts only on the authenticated patient's OWN active recommendation
-    (resolved from the portal token/session — never a patient_email from the body).
-
-    PRICING: items are re-priced through the SAME member-priced path the portal
-    reorder button uses (_portal_priced_lines → pricing.compute). The recommendation's
-    own price_cents ($0 on prod) is stripped and NEVER trusted — see
-    _recommendation_cart_items. 'accepted' is set the moment the patient acts,
-    independent of whether a live card checkout is available in this environment."""
+    """Patient accepts their active practitioner recommendation: mark it 'accepted'
+    so its items surface in the patient's reorder list. NO invoice/Stripe session is
+    minted here — the purchase runs through the normal reorder checkout, which is
+    retryable and mints exactly one invoice. Scope: the authenticated patient's OWN
+    active recommendation (identity from the portal token, never a body field)."""
     from dashboard import client_portal as _cp
     from dashboard import practitioner_recommendations as _pr
     with sqlite3.connect(LOG_DB) as cx:
@@ -14320,20 +14315,9 @@ def api_portal_recommendation_accept(token):
         rec = _pr.active_for_patient(cx, email)
     if not rec or rec.get("status") != "sent":
         return jsonify({"error": "No active recommendation to accept."}), 400
-    items = _recommendation_cart_items(rec)
-    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
-    if not lines:
-        return jsonify({"error": "These remedies are no longer available — please reach out and we'll help."}), 400
     with sqlite3.connect(LOG_DB) as cx:
         _pr.set_status(cx, rec["id"], "accepted")
-    stripe_url = None
-    if _STRIPE_ACTIVE:
-        try:
-            stripe_url = _portal_reorder_checkout(email, items_rec, lines)
-        except Exception:
-            app.logger.exception("recommendation accept checkout failed")
-            stripe_url = None
-    return jsonify({"ok": True, "accepted": True, "lines": lines, "stripe_url": stripe_url})
+    return jsonify({"ok": True, "accepted": True})
 
 
 @app.route("/api/portal/<token>/recommendation/dismiss", methods=["POST"])

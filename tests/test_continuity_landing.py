@@ -106,7 +106,13 @@ def test_portal_payload_no_recommendation_when_none(client):
 
 # ── accept: member-priced cart + status flip ─────────────────────────────────
 
-def test_accept_prices_at_member_price_not_zero_and_marks_accepted(client, monkeypatch):
+def test_accept_marks_accepted_without_pricing_even_with_active_membership(client, monkeypatch):
+    """Retargeted (was test_accept_prices_at_member_price_not_zero_and_marks_accepted):
+    that test asserted accept minted a member-priced cart. Under the new contract
+    (fix/rec-accept-to-reorder), accept NEVER prices or mints anything — it only
+    flips status — regardless of the patient having an active membership + a
+    real member price available. The member-price-at-checkout behavior is
+    re-asserted against the reorder checkout itself, not this route."""
     c, appmod = client
     email = "accept-member@example.com"
     tok = _seed_portal(appmod, email)
@@ -114,36 +120,28 @@ def test_accept_prices_at_member_price_not_zero_and_marks_accepted(client, monke
     with sqlite3.connect(appmod.LOG_DB) as cx:
         appmod.repertoire.init_repertoire_table(cx)
         appmod.repertoire.add_skus(cx, email, ["neuro-magnesium"])
-    # The recommendation carries the $0-on-prod suggested-step price. It must NEVER
-    # be used — the item is re-priced through the member-priced portal path.
+    # The recommendation carries the $0-on-prod suggested-step price. It is
+    # irrelevant now — accept doesn't touch pricing at all.
     _seed_recommendation(appmod, email,
                          [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
-
-    # The authoritative member price via the real pricing engine.
-    expected_unit = appmod._price_cart(
-        [{"slug": "neuro-magnesium", "qty": 1}],
-        ship={"country": "US", "state": "TX"}, email=email,
-    )["priced"]["lines"][0]["line_total_cents"]
-    assert 0 < expected_unit < 6997  # a real, discounted member price
 
     r = c.post(f"/api/portal/{tok}/recommendation/accept")
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
     assert body.get("accepted") is True
-    assert body["lines"], "accept must return the member-priced cart lines"
-    line = body["lines"][0]
-    # the line price is the real member price — NOT the recommendation's $0
-    assert round(line["amount"] * 100) == expected_unit
-    assert line["amount"] > 0
+    assert "lines" not in body
+    assert "stripe_url" not in body or body.get("stripe_url") is None
 
     assert _rec_status(appmod, email) == "accepted"
 
 
-def test_accept_builds_live_member_priced_checkout_when_stripe_active(client, monkeypatch):
-    """Full loop: with card checkout active, accept routes the recommended items
-    through the SAME member-priced portal checkout (QBO invoice → Stripe URL), and
-    the invoiced line carries the member price — never the recommendation's $0."""
+def test_accept_does_not_call_qbo_or_stripe_even_when_stripe_active(client, monkeypatch):
+    """Retargeted (was test_accept_builds_live_member_priced_checkout_when_stripe_active):
+    that test asserted accept built a live QBO invoice → Stripe checkout. Under the
+    new contract, even with a live-card-checkout environment (_STRIPE_ACTIVE=True),
+    accept must not call QBO or Stripe at all — the invoice is minted later, by the
+    normal reorder checkout, not by accept."""
     c, appmod = client
     email = "accept-live@example.com"
     tok = _seed_portal(appmod, email)
@@ -168,17 +166,54 @@ def test_accept_builds_live_member_priced_checkout_when_stripe_active(client, mo
     monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
                         lambda out, email: "https://checkout.stripe/reco")
 
-    expected_unit = appmod._price_cart(
-        [{"slug": "neuro-magnesium", "qty": 1}],
-        ship={"country": "US", "state": "TX"}, email=email,
-    )["priced"]["lines"][0]["line_total_cents"]
+    r = c.post(f"/api/portal/{tok}/recommendation/accept")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert "stripe_url" not in body or body.get("stripe_url") is None
+    assert "lines" not in captured, "accept must never call create_invoice"
+    assert _rec_status(appmod, email) == "accepted"
+
+
+def test_accept_mints_no_invoice_and_marks_accepted(client, monkeypatch):
+    """New contract (fast-follow off #572): accept mints NOTHING — no QBO invoice,
+    no Stripe session, no order row. It only flips the recommendation to
+    'accepted'. Purchase happens later through the normal reorder checkout."""
+    c, appmod = client
+    email = "accept-noinvoice@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["neuro-magnesium"])
+    _seed_recommendation(appmod, email,
+                         [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
+
+    # If accept somehow still called through to QBO/Stripe, fail loudly.
+    from dashboard import qbo_billing
+    def _boom(*a, **k):
+        raise AssertionError("accept must not mint an invoice")
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", _boom)
+    monkeypatch.setattr(qbo_billing, "create_invoice", _boom)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        appmod._bos_orders.init_orders_table(cx)
+        before = len(appmod._bos_orders.list_orders_by_email(cx, email, limit=200))
 
     r = c.post(f"/api/portal/{tok}/recommendation/accept")
     assert r.status_code == 200
     body = r.get_json()
-    assert body["stripe_url"] == "https://checkout.stripe/reco"
-    assert round(captured["lines"][0]["amount"] * 100) == expected_unit
-    assert captured["lines"][0]["amount"] > 0
+    assert body["ok"] is True
+    assert body.get("accepted") is True
+    assert "stripe_url" not in body or body.get("stripe_url") is None
+    assert "lines" not in body
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        after = len(appmod._bos_orders.list_orders_by_email(cx, email, limit=200))
+    assert after == before  # NO order/invoice created
+
     assert _rec_status(appmod, email) == "accepted"
 
 
@@ -232,8 +267,10 @@ def test_accepted_recommendation_no_longer_shows_as_actionable_card(client):
 
 def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     """Regression: a direct POST replay against an already-accepted recommendation
-    must be rejected (no duplicate QBO invoice/Stripe session). Only a 'sent'
-    recommendation can be accepted."""
+    must be rejected. Only a 'sent' recommendation can be accepted — now trivially
+    true for invoices too, since accept never mints one in the first place (retargeted
+    from the pre-fix/rec-accept-to-reorder contract, which counted QBO invoice calls
+    across accept + replay)."""
     c, appmod = client
     email = "replay-test@example.com"
     tok = _seed_portal(appmod, email)
@@ -244,7 +281,7 @@ def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     _seed_recommendation(appmod, email,
                          [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
 
-    # Mock invoice creation to track duplicate calls
+    # Mock invoice creation to prove accept/replay never call it.
     invoice_count = {"calls": 0}
     from dashboard import qbo_billing
     monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
@@ -259,11 +296,11 @@ def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
                         lambda out, email: "https://checkout.stripe/reco")
 
-    # First accept should succeed
+    # First accept should succeed — and mint NO invoice.
     r1 = c.post(f"/api/portal/{tok}/recommendation/accept")
     assert r1.status_code == 200
     assert r1.get_json().get("accepted") is True
-    assert invoice_count["calls"] == 1
+    assert invoice_count["calls"] == 0
     assert _rec_status(appmod, email) == "accepted"
 
     # Second accept (replay) should be rejected
@@ -271,5 +308,5 @@ def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     assert r2.status_code == 400
     assert not r2.get_json().get("ok")
     assert "No active recommendation to accept" in r2.get_json().get("error", "")
-    # NO second invoice should be created
-    assert invoice_count["calls"] == 1
+    # Still no invoice from either call
+    assert invoice_count["calls"] == 0
