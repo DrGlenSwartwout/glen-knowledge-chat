@@ -1189,7 +1189,14 @@ load();
   const loadManifest = () => (manifestP ||= fetch('/static/fireside/elements-manifest.json').then(r => r.ok ? r.json() : null).catch(() => null));
 
   function syncBtn(){ const on = !!amb; sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
-  function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, {}); amb.start(); } catch (e) { amb = null; } syncBtn(); }
+  // true while Dr. Glen's voice is playing (report audio/video) so the ambient beds
+  // duck under him and swell back in the gaps. The backdrop video (#el-bg) is muted,
+  // so it's excluded.
+  function voicePlaying(){
+    return [...document.querySelectorAll('audio,video')].some(m =>
+      m !== vid && !m.paused && !m.ended && !m.muted && m.currentTime > 0 && m.volume > 0);
+  }
+  function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, { isVoicePlaying: voicePlaying, duck: 0.35 }); amb.start(); } catch (e) { amb = null; } syncBtn(); }
   function stopAudio(){ if (amb) { try { amb.stop(); } catch (e) {} amb = null; } syncBtn(); }
   // Remembered "on": autoplay of audio needs a user gesture, so try now (works if
   // audio is already unlocked) and also arm a one-shot gesture fallback.
