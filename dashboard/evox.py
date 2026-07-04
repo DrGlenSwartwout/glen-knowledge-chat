@@ -1,7 +1,7 @@
 """EVOX booking: self-attest readiness, availability, 1:1 phone booking, ICS.
 Pure helpers take primitives only (no cx) and must import without importing app."""
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 READINESS_ITEMS = ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok")
 
@@ -31,14 +31,16 @@ def init_evox_tables(cx) -> None:
 
 def get_readiness(cx, email: str) -> dict:
     email = (email or "").strip().lower()
-    row = cx.execute("SELECT * FROM evox_readiness WHERE email=?", (email,)).fetchone()
+    cur = cx.execute("SELECT * FROM evox_readiness WHERE email=?", (email,))
+    cols = [c[0] for c in cur.description]
+    r = cur.fetchone()
+    row = dict(zip(cols, r)) if r is not None else None
     if row is None:
         base = {k: False for k in READINESS_ITEMS}
         base.update({"email": email, "cradle_source": None, "complete": False})
         return base
-    d = dict(row)
-    out = {k: bool(d.get(k)) for k in READINESS_ITEMS}
-    out.update({"email": email, "cradle_source": d.get("cradle_source")})
+    out = {k: bool(row.get(k)) for k in READINESS_ITEMS}
+    out.update({"email": email, "cradle_source": row.get("cradle_source")})
     out["complete"] = readiness_complete(out)
     return out
 
@@ -48,7 +50,7 @@ def set_readiness_item(cx, email: str, item: str, value: bool,
     email = (email or "").strip().lower()
     if item not in READINESS_ITEMS:
         raise ValueError(f"unknown readiness item: {item}")
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     cx.execute("INSERT OR IGNORE INTO evox_readiness (email, updated_at) VALUES (?,?)",
                (email, now))
     cx.execute(f"UPDATE evox_readiness SET {item}=?, updated_at=? WHERE email=?",
