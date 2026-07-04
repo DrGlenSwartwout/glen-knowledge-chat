@@ -8,6 +8,7 @@ import sqlite3
 from dashboard import scan_analysis as _scan
 from dashboard import biofield_narrative as _narrative
 from dashboard import biofield_portal_publish as _portal
+from dashboard import practitioner_recommendations as _pr
 
 
 def authorized_patient(cx, practitioner_id, patient_email) -> bool:
@@ -126,3 +127,61 @@ def patient_view(cx, practitioner_id, patient_email):
         "narrative": narrative,
         "suggested_step": suggested_step,
     }
+
+
+def _item_label(item) -> str:
+    if isinstance(item, dict):
+        return str(item.get("name") or item.get("slug") or item)
+    return str(item)
+
+
+def _notify_patient(cx, practitioner_id, patient_email, items, note, *, send=None) -> None:
+    """Best-effort 'your practitioner has a recommendation for you' email.
+
+    Not wired to biofield_comms/recent_comms — those are read-only comms
+    AGGREGATORS (context builders for the intake/balancing loop), not senders.
+    The actual reusable send transport in this codebase is
+    dashboard.inbox.send_email, exactly as dashboard/cert_notify.py already
+    reuses it for other patient/member notifications (same `send=` injection
+    pattern for testability). Caller wraps this in try/except; we don't here so
+    tests can also call it directly and see failures surface if desired."""
+    from dashboard import inbox as _inbox
+    send = send or _inbox.send_email
+    email = (patient_email or "").strip()
+    if not email:
+        return
+    lines = "\n".join(f"- {_item_label(i)}" for i in (items or []))
+    body = (
+        "Hi,\n\nYour practitioner has a new recommendation for you"
+        + (":\n\n" + lines if lines else ".")
+        + ("\n\n" + note if note else "")
+        + "\n\nOpen your portal to see the full details.\n\nIn wellness,\nDr. Glen\n"
+    )
+    send(email, "A new recommendation from your practitioner", body,
+         from_name="Dr. Glen Swartwout")
+
+
+def send_recommendation(cx, practitioner_id, patient_email, items, note) -> int:
+    """Gate-first recommend action: writes a practitioner_recommendations row for
+    a consented-continuity patient, then best-effort notifies the patient.
+
+    SECURITY: calls authorized_patient() FIRST and returns None for a patient who
+    is NOT the doctor's — BEFORE any write (no recommendation row is created).
+    This is defense in depth: the route ALSO gate-checks before ever calling
+    this, so an unauthorized write can't happen even if a future caller forgets
+    the route-level check.
+
+    Notification is best-effort: any comms failure is caught and logged, never
+    raised — a broken email transport must never fail the recommend."""
+    if not authorized_patient(cx, practitioner_id, patient_email):
+        return None
+    rec_id = _pr.create(
+        cx, practitioner_id=practitioner_id, patient_email=patient_email,
+        items=items, note=note,
+    )
+    try:
+        _notify_patient(cx, practitioner_id, patient_email, items, note)
+    except Exception as e:  # noqa: BLE001 - notification never blocks the recommend
+        print(f"[continuity_view] recommend notify failed for {patient_email!r}: {e!r}",
+              flush=True)
+    return rec_id

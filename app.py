@@ -12891,6 +12891,73 @@ def api_practitioner_chat():
     return jsonify({"ok": True, "reply": result["reply"], "suggestions": suggestions})
 
 
+def _continuity_cx(cx):
+    """Ensure the subscriptions table + the attribution/consent migration chain
+    are present on this connection (mirrors the /api/console/members idiom), plus
+    the scan_analyses table patient_view() reads from (normally created by the
+    /api/e4l/scan-analysis ingestion route, but a patient with no scans pushed
+    yet must still 200 with an empty trajectory rather than 500)."""
+    from dashboard import subscriptions as _subs
+    from dashboard import scan_analysis as _sa
+    cx.row_factory = sqlite3.Row
+    _subs.init_subscriptions_table(cx)
+    _subs.migrate_add_membership_columns(cx)
+    _subs.migrate_add_term_cap_column(cx)
+    _subs.migrate_add_attribution_column(cx)
+    _subs.migrate_add_consent_column(cx)
+    _sa.init_table(cx)
+    return cx
+
+
+@app.route("/api/practitioner/continuity/roster", methods=["GET"])
+def api_practitioner_continuity_roster():
+    """This doctor's consented continuity patients (Feature C)."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import continuity_view as _cv
+    with sqlite3.connect(LOG_DB) as cx:
+        _continuity_cx(cx)
+        roster = _cv.roster(cx, pid)
+    return jsonify({"ok": True, "roster": roster})
+
+
+@app.route("/api/practitioner/continuity/patient/<path:patient_email>", methods=["GET"])
+def api_practitioner_continuity_patient(patient_email):
+    """Gate-first per-patient continuity view (Feature C). 403s BEFORE any
+    patient data is read when this patient is not the signed-in doctor's."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import continuity_view as _cv
+    with sqlite3.connect(LOG_DB) as cx:
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, patient_email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        view = _cv.patient_view(cx, pid, patient_email)
+    return jsonify({"ok": True, **(view or {})})
+
+
+@app.route("/api/practitioner/continuity/recommend", methods=["POST"])
+def api_practitioner_continuity_recommend():
+    """Gate-first recommend action (Feature C). 403s BEFORE any write when this
+    patient is not the signed-in doctor's."""
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    patient_email = (body.get("patient_email") or "").strip()
+    items = body.get("items") or []
+    note = body.get("note") or ""
+    from dashboard import continuity_view as _cv
+    with sqlite3.connect(LOG_DB) as cx:
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, patient_email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        rec_id = _cv.send_recommendation(cx, pid, patient_email, items, note)
+    return jsonify({"ok": True, "id": rec_id})
+
+
 @app.route("/api/client/<code>/chat", methods=["POST"])
 def api_client_chat(code):
     """Patient-facing product-selection chat scoped to the practitioner's FF catalog.
