@@ -38,7 +38,7 @@
      computed deficient element (element_state.setting). The video sits behind
      everything; a theme-colored scrim keeps portal text readable; cards keep their
      own solid background, so the scene reads as ambient presence in the gutters. */
-  #el-bg{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;
+  #el-bg,#el-bg2{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;
     z-index:-3;opacity:0;transition:opacity 1.4s ease;pointer-events:none;background:#000}
   #el-scrim{position:fixed;inset:0;z-index:-2;opacity:0;pointer-events:none;
     transition:opacity 1.4s ease;background:var(--bg)}
@@ -233,6 +233,7 @@
 </head>
 <body>
   <video id="el-bg" playsinline muted loop preload="none" aria-hidden="true" tabindex="-1"></video>
+  <video id="el-bg2" playsinline muted preload="none" aria-hidden="true" tabindex="-1"></video>
   <div id="el-scrim" aria-hidden="true"></div>
   <button class="theme-toggle" id="themeToggle" aria-label="Toggle light or dark mode" title="Toggle light/dark"></button>
   <button class="sound-toggle" id="soundToggle" aria-label="Turn ambient sound on or off" title="Ambient sound" aria-pressed="false"></button>
@@ -1310,15 +1311,18 @@ load();
   // + (opt-in) its ambient soundtrack. Reuses the fireside video-stage machinery.
   import { Ambience } from '/static/fireside/ambience.js';
   import { pickElement } from '/static/fireside/element-backdrop.js';
+  import { CatPlayer } from '/static/fireside/cat-player.js';
 
   const vid = document.getElementById('el-bg');
+  const vid2 = document.getElementById('el-bg2');
   const sndBtn = document.getElementById('soundToggle');
   const SPK_ON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg>';
   const SPK_OFF = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>';
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const soundOn = () => localStorage.getItem('rm_portal_sound') === 'on';
 
-  let manifestP = null, current = null, amb = null;
+  let manifestP = null, current = null, amb = null, catPlayer = null;
+  function stopCat(){ if (catPlayer) { try { catPlayer.stop(); } catch (e) {} catPlayer = null; } }
   const loadManifest = () => (manifestP ||= fetch('/static/fireside/elements-manifest.json').then(r => r.ok ? r.json() : null).catch(() => null));
 
   function syncBtn(){ const on = !!amb; sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
@@ -1327,7 +1331,7 @@ load();
   // so it's excluded.
   function voicePlaying(){
     return [...document.querySelectorAll('audio,video')].some(m =>
-      m !== vid && !m.paused && !m.ended && !m.muted && m.currentTime > 0 && m.volume > 0);
+      m !== vid && m !== vid2 && !m.paused && !m.ended && !m.muted && m.currentTime > 0 && m.volume > 0);
   }
   function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, { isVoicePlaying: voicePlaying, duck: 0.35 }); amb.start(); } catch (e) { amb = null; } syncBtn(); }
   function stopAudio(){ if (amb) { try { amb.stop(); } catch (e) {} amb = null; } syncBtn(); }
@@ -1348,17 +1352,31 @@ load();
   async function apply(setting){
     const entry = pickElement(setting, await loadManifest());
     if (!entry) {
-      document.body.classList.remove('has-bg'); stopAudio(); current = null;
+      document.body.classList.remove('has-bg'); stopAudio(); stopCat(); current = null;
       try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (e) {}
+      try { vid2.pause(); vid2.removeAttribute('src'); } catch (e) {}
+      vid.style.opacity = ''; vid2.style.opacity = '';
       return;
     }
     if (current && current.key === entry.key) return; // already showing this element
     current = entry;
-    stopAudio();
-    vid.poster = entry.poster || '';
-    vid.src = entry.video;
-    if (!reduceMotion) vid.play().catch(() => {}); // muted autoplay ok; else poster stays
+    stopAudio(); stopCat();
     document.body.classList.add('has-bg');
+    // Fire element ships a resident cat with idle actions + a wake reaction: the
+    // CatPlayer double-buffers #el-bg/#el-bg2 and swaps clips at loop boundaries.
+    // Everything else (and reduce-motion) uses the plain muted-loop backdrop.
+    if (entry.cat && !reduceMotion) {
+      vid.style.opacity = ''; vid2.style.opacity = '';
+      catPlayer = new CatPlayer(vid, vid2, Object.assign({ poster: entry.poster || '' }, entry.cat));
+      catPlayer.start();
+    } else {
+      try { vid2.pause(); } catch (e) {}
+      vid2.style.opacity = '';
+      vid.loop = true; vid.style.opacity = ''; vid.style.transition = '';
+      vid.poster = entry.poster || '';
+      vid.src = entry.video;
+      if (!reduceMotion) vid.play().catch(() => {}); // muted autoplay ok; else poster stays
+    }
     if (soundOn()) armAutoStart(); else syncBtn();
   }
 

@@ -69,6 +69,17 @@
       "label": "Fire",
       "video": "/static/fireside/video/elements/fire.mp4",
       "poster": "/static/fireside/video/elements/fire-poster.jpg",
+      "cat": {
+        "rest": "/static/fireside/video/elements/fire.mp4",
+        "idle": [
+          "/static/fireside/video/elements/fire-cat-earflick.mp4",
+          "/static/fireside/video/elements/fire-cat-paw.mp4",
+          "/static/fireside/video/elements/fire-cat-nose.mp4"
+        ],
+        "react": "/static/fireside/video/elements/fire-cat-wake.mp4",
+        "idle_min_s": 120,
+        "idle_max_s": 300
+      },
       "ambience": {
         "bed": "/static/fireside/audio/amb-fire-loop.mp3",
         "bed_volume": 0.036,
