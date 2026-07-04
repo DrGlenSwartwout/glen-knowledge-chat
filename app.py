@@ -12624,7 +12624,8 @@ def api_client_checkout(code):
                   channel="retail",
                   get_cents=out.get("get_cents", 0),
                   pay_method=method,
-                  practitioner_id=pid)
+                  practitioner_id=pid,
+                  margin_cents=int(out.get("margin_cents") or 0))
 
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
@@ -27554,7 +27555,8 @@ def _normalize_ship_address(addr, fallback_name=""):
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
                   get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
-                  status="new", paid_cents=None, pay_method=None, practitioner_id=None):
+                  status="new", paid_cents=None, pay_method=None, practitioner_id=None,
+                  margin_cents=None):
     """Best-effort: record an order into the BOS orders table. Never raises into
     a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
     status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
@@ -27571,7 +27573,8 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
                 shipping_cents=int(shipping_cents or 0), status=status,
-                pay_method=pay_method, practitioner_id=practitioner_id)
+                pay_method=pay_method, practitioner_id=practitioner_id,
+                margin_cents=margin_cents)
             if paid_cents is not None and _oid:
                 _bos_orders.mark_order_paid_keep_status(
                     cx, _oid, method="card", amount_cents=int(paid_cents))

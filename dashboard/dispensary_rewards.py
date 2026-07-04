@@ -65,3 +65,30 @@ def settle_dispensary_l2(cx, order, order_ref):
     except Exception as _e:
         print(f"[dispensary-l2] settle skipped ref={order_ref!r}: {_e!r}", flush=True)
         return 0
+
+
+def settle_dispensary_margin(order, order_ref):
+    """Credit the practitioner's drop-ship Wellness Credit (wallet margin) and record the
+    dispensary sale for a paid dispensary order. Reads practitioner_id + margin_cents off
+    the order (both stamped at checkout). Idempotent per invoice — both
+    wallet.earn_dropship_margin (keyed by qbo_invoice_id) and record_dispensary_order
+    (ON CONFLICT invoice_id DO NOTHING) no-op on repeat. Best-effort; never raises.
+
+    Used by the ALT-PAY settlement path (_record_payment_exec); the CARD path credits the
+    same margin inline in begin_checkout_return's kind=='client' block. An order is only
+    ever one pay method, and the earn is invoice-idempotent, so the two paths never
+    double-credit. Returns margin cents credited (0 if none)."""
+    try:
+        pid = (str(order.get("practitioner_id") or "")).strip()
+        inv = str(order_ref or "")
+        if not pid or not inv:
+            return 0
+        margin = max(0, int(order.get("margin_cents") or 0))
+        from dashboard import wallet as _wallet, practitioner_portal as _pp
+        _wallet.earn_dropship_margin(pid, margin, qbo_invoice_id=inv)
+        if hasattr(_pp, "record_dispensary_order"):
+            _pp.record_dispensary_order(pid, invoice_id=inv, credit_earned_cents=margin)
+        return margin
+    except Exception as _e:
+        print(f"[dispensary-margin] settle skipped ref={order_ref!r}: {_e!r}", flush=True)
+        return 0
