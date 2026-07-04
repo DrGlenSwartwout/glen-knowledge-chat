@@ -57,6 +57,10 @@ services:
         sync: false
       - key: HEYGEN_API_KEY
         sync: false
+      # EasyPost shipping. Absent = Orders falls back to manual USPS Click-N-Ship.
+      # Set = orders.create_label buys the lowest USPS rate and returns a label.
+      - key: EASYPOST_API_KEY
+        sync: false
       # Public funnel domain. Customer-facing links (full-report email footer,
       # affiliate recruit_url, etc.) derive from this. illtowell.com is live and
       # serving this service; keep this authoritative so links never read the
