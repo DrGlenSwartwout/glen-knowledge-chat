@@ -23915,7 +23915,7 @@ def _mint_membership_cancel_url(cx, email: str) -> str:
 def _send_subscription_email(to_email: str, kind: str, data: dict):
     """Send a subscription lifecycle email. Best-effort — NEVER raises.
 
-    kind: 'heads_up' | 'receipt' | 'payment_failed' | 'setup_confirm'
+    kind: 'heads_up' | 'free_month_thanks' | 'receipt' | 'payment_failed' | 'setup_confirm'
     data: dict with relevant context fields (next_charge_date, amount, etc.)
     Returns (sent_via, error_or_none) same shape as _send_full_report_email.
     """
@@ -23957,6 +23957,17 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                     f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
                     f"In wellness,\nDr. Glen"
                 )
+        elif kind == "free_month_thanks":
+            charge_date = data.get("next_charge_date", "")
+            subject = "A free month, with our thanks"
+            body = (
+                "Aloha,\n\n"
+                "Because of a kind referral you shared, we are extending your next month "
+                "of membership on us. There is nothing you need to do, and you will not be "
+                f"charged on {charge_date}. Everything stays unlocked.\n\n"
+                "Thank you for helping someone else begin their healing.\n\n"
+                "In wellness,\nDr. Glen"
+            )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
             if is_membership and data.get("product") == "continuous_care":
@@ -24030,6 +24041,14 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
         return ("error", str(e))
 
 
+def _fm_headsup_referral(cx, email):
+    from dashboard import free_month as _fm
+    try:
+        return _fm.has_active_paying_referral(cx, email)
+    except Exception:
+        return False
+
+
 # ── Daily subscription charge scheduler ──────────────────────────────────────
 
 @app.route("/api/cron/charge-subscriptions", methods=["POST"])
@@ -24083,19 +24102,28 @@ def cron_charge_subscriptions():
 
         for sub in upcoming:
             try:
+                _is_mbr = sub.get("kind") == "membership"
+                _will_comp = _is_mbr and (
+                    int(sub.get("free_months_remaining") or 0) > 0
+                    or (_free_month_enabled() and _fm_headsup_referral(cx, sub["email"])))
                 if not dry_run:
-                    _hu_data = {"next_charge_date": sub["next_charge_date"],
-                                "kind": sub.get("kind", "product"),
-                                "total_cents": sub.get("amount_cents")}
-                    # Membership reminders carry a one-click cancel link (FTC/ROSCA
-                    # easy-cancel) minted fresh per send.
-                    if sub.get("kind") == "membership":
-                        _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
-                    _send_subscription_email(sub["email"], "heads_up", _hu_data)
-                    _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    if _will_comp:
+                        _send_subscription_email(sub["email"], "free_month_thanks",
+                                                 {"next_charge_date": sub["next_charge_date"]})
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    else:
+                        _hu_data = {"next_charge_date": sub["next_charge_date"],
+                                    "kind": sub.get("kind", "product"),
+                                    "total_cents": sub.get("amount_cents")}
+                        # Membership reminders carry a one-click cancel link (FTC/ROSCA
+                        # easy-cancel) minted fresh per send.
+                        if _is_mbr:
+                            _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
+                        _send_subscription_email(sub["email"], "heads_up", _hu_data)
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
-                      f" sub={sub['id']} date={sub['next_charge_date']}", flush=True)
+                      f" sub={sub['id']} date={sub['next_charge_date']} comp={_will_comp}", flush=True)
             except Exception as e:
                 print(f"[sub-cron] heads-up sub={sub['id']} error: {e!r}", flush=True)
 
