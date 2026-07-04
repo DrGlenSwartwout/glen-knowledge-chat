@@ -480,6 +480,14 @@
       </label>
     </div>
 
+    <!-- Continuous Care ($99/mo) — attributed to this practitioner's dispensary -->
+    <div class="card" id="care-card">
+      <div class="card-title">Start Continuous Care &mdash; $99/mo</div>
+      <p class="us-note" style="margin-top:0;">Ongoing card-on-file membership: your first month is charged securely today, then $99/month. Cancel anytime. Requires your email and the agreement above.</p>
+      <button type="button" class="add-btn" id="care-btn" style="width:100%;">Start Continuous Care &rarr;</button>
+      <div class="inline-msg" id="care-msg"></div>
+    </div>
+
     <!-- Payment method -->
     <div class="card">
       <div class="card-title">Payment method</div>
@@ -747,6 +755,8 @@
     document.getElementById('email').addEventListener('input', function () { clearMsg(); refreshPayState(); maybeLoadPoints(); });
     document.getElementById('tos-check').addEventListener('change', function () { clearMsg(); refreshPayState(); maybeLoadPoints(); });
     document.getElementById('pay-btn').addEventListener('click', placeOrder);
+    var careBtn = document.getElementById('care-btn');
+    if (careBtn) careBtn.addEventListener('click', startContinuousCare);
 
     // Re-evaluate pay state when the rewards toggle changes.
     var pc = document.getElementById('points-check');
@@ -929,6 +939,86 @@
       btn.textContent = 'Place your order';
       setMsg('Connection error: ' + e.message + '. Please try again.');
       refreshPayState();
+    });
+  }
+
+  // ── Start Continuous Care ($99/mo, attributed to this dispensary) ────────────
+  // Same consent step as the product checkout: register the ToS agreement via
+  // /begin/unlock (so is_member() passes), then POST the dispensary-scoped
+  // enrollment endpoint and hand off to the Stripe card-on-file checkout.
+  var caring = false;
+  function setCareMsg(t) { var el = document.getElementById('care-msg'); if (el) el.textContent = t || ''; }
+  function startContinuousCare() {
+    if (caring) return;
+    if (!emailValid()) {
+      setCareMsg('Please enter a valid email address above.');
+      document.getElementById('email').focus();
+      return;
+    }
+    if (!tosChecked()) {
+      setCareMsg('Please check the Terms box above to continue.');
+      document.getElementById('tos-check').focus();
+      return;
+    }
+    var email = (document.getElementById('email').value || '').trim();
+    var name = (document.getElementById('name').value || '').trim();
+    caring = true;
+    var btn = document.getElementById('care-btn');
+    btn.disabled = true;
+    btn.textContent = 'One moment…';
+    setCareMsg('');
+
+    fetch(BASE + '/begin/unlock', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        trigger: 'tos',
+        first_name: name.split(' ')[0] || name,
+        last_name: name.split(' ').slice(1).join(' ') || '',
+        email: email,
+        tos: true
+      })
+    })
+    .then(function (r) { return r.ok ? r.json().catch(function () { return {}; }) : {}; })
+    .catch(function () { return {}; })
+    .then(function () {
+      return fetch(BASE + '/dispensary/' + encodeURIComponent(code) + '/continuous-care', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email, term_months: 12 })
+      });
+    })
+    .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
+    .then(function (data) {
+      caring = false;
+      btn.disabled = false;
+      btn.textContent = 'Start Continuous Care →';
+      if (data && data.need_optin && window.OptinGate) {
+        OptinGate.show({
+          base: BASE,
+          onAgree: function (info) {
+            document.getElementById('email').value = info.email || email;
+            document.getElementById('name').value = (info.first + ' ' + info.last).trim() || name;
+            document.getElementById('tos-check').checked = true;
+            refreshPayState();
+            startContinuousCare();
+          }
+        });
+        return;
+      }
+      if (data && data.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setCareMsg((data && data.error) || 'Continuous Care is unavailable right now. Please try again.');
+    })
+    .catch(function (e) {
+      caring = false;
+      btn.disabled = false;
+      btn.textContent = 'Start Continuous Care →';
+      setCareMsg('Connection error: ' + e.message + '. Please try again.');
     });
   }
 

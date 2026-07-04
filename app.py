@@ -7427,6 +7427,10 @@ def _fulfill_continuous_care_monthly(session_id):
         if md.get("kind") != "continuous_care_monthly":
             return {"ok": False, "reason": "not_continuous_care"}
         email = (md.get("email") or "").strip().lower()
+        # Dispensary-attributed enrollment (Task 6): a doctor's dispensary channel
+        # stamps this so the membership + its month-1 charge credit the doctor.
+        # Absent (direct front-door enrollment) => None => unattributed, unchanged.
+        disp_pid = (md.get("dispensary_pid") or "").strip() or None
         try:
             term_months = int(md.get("term_months") or 0)
         except (TypeError, ValueError):
@@ -7515,15 +7519,30 @@ def _fulfill_continuous_care_monthly(session_id):
                 # membership_category reads 'full' (member pricing) immediately —
                 # this is a paid card-on-file membership, not the $1-trial. Capped
                 # at term_months total charges (the Task-2 cron cap stops it there).
-                _subs.create_membership(
+                new_sid = _subs.create_membership(
                     cx, email=email, stripe_customer_id=customer,
                     stripe_payment_method_id=pm, amount_cents=_pp.MONTHLY_ANCHOR_CENTS,
                     next_charge_date=next_charge, cadence_months=1,
-                    term_charges_total=term_months, initial_order_count=1)
+                    term_charges_total=term_months, initial_order_count=1,
+                    attributed_practitioner_id=disp_pid)
                 # Immediate access grant until the first cron charge extends it
                 # (~35 days) — mirrors _grant_prepay_term's day-based access pattern.
                 _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
                 cx.commit()
+                # Turnkey continuity fee-share (Task 6): credit the enrolling doctor
+                # for the month-1 (enrollment) charge just taken at checkout. The row
+                # (order_count=1 from initial_order_count) gives a unique event_ref
+                # care_share:<id>:1, distinct from the first cron renewal (order_count=2).
+                # No-op when unattributed. Best-effort — never fails the enrollment.
+                try:
+                    sub_row = _subs.get(cx, new_sid)
+                    if sub_row and sub_row.get("attributed_practitioner_id"):
+                        from dashboard import care_share as _cshare
+                        _cshare.credit_for_charge(
+                            sub_row, charge_cents=int(sub_row.get("amount_cents") or 0))
+                except Exception as _cse:
+                    print(f"[care-share] enrollment credit failed sid={new_sid}: {_cse!r}",
+                          flush=True)
                 if REPERTOIRE_ENABLED:
                     try:
                         repertoire.init_repertoire_table(cx)
@@ -12423,6 +12442,59 @@ def dispensary_landing(code):
     resp.set_cookie("rm_dispensary", code, max_age=90 * 24 * 3600,
                     samesite="Lax", secure=request.is_secure)
     return resp
+
+
+@app.route("/dispensary/<code>/continuous-care", methods=["POST"])
+def dispensary_continuous_care(code):
+    """Start Continuous Care ($99/mo, card-on-file) through a doctor's dispensary
+    channel. Resolves the doctor by dispensary code (404 if unknown), runs the SAME
+    Tier-1 consent gate as the dispensary product checkout, then starts the SAME
+    Stripe card-on-file checkout as /continuous-care/checkout — reusing
+    stripe_pay.create_checkout_session (no hand-rolled Stripe). The doctor's
+    practitioner id rides the session metadata as `dispensary_pid`, so on
+    fulfilment the membership is stamped attributed_practitioner_id=<pid> and the
+    enrollment (month-1) charge credits the doctor (see _fulfill_continuous_care_monthly)."""
+    # 1. Resolve practitioner by dispensary code (mirrors /dispensary/<code>).
+    pid = _pp.practitioner_id_by_dispensary_code(code)
+    if not pid:
+        return jsonify({"ok": False, "error": "unknown dispensary code"}), 404
+    if not (CONTINUOUS_CARE_MONTHLY_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"ok": False, "error": "unavailable"}), 200
+
+    body = request.get_json(silent=True) or request.form or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+
+    # 2. Consent gate — identical to api_client_checkout: session cookie + email.
+    _sid = request.cookies.get("amg_session", "")
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to start Continuous Care."}), 403
+
+    try:
+        term_months = int(body.get("term_months") or 12)
+    except (TypeError, ValueError):
+        term_months = 12
+    if term_months not in (6, 12):
+        term_months = 12
+
+    from dashboard import stripe_pay as _sp
+    base = PUBLIC_BASE_URL.rstrip("/")
+    try:
+        sess = _sp.create_checkout_session(
+            _prepay.MONTHLY_ANCHOR_CENTS, customer_email=email,
+            description=f"Remedy Match Continuous Care - {term_months} month (monthly)",
+            metadata={"email": email, "kind": "continuous_care_monthly",
+                      "term_months": str(term_months), "dispensary_pid": str(pid)},
+            success_url=f"{base}/continuous-care/return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/dispensary/{code}",
+            save_card=True)
+        return jsonify({"ok": True, "url": sess.get("url")})
+    except Exception as e:
+        print(f"[dispensary-care] checkout failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "checkout_failed"}), 200
 
 
 @app.route("/api/client/<code>/catalog")
