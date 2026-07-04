@@ -12217,6 +12217,14 @@ def console_portal_links_page():
     return resp
 
 
+@app.route("/console/household")
+def console_household_page():
+    resp = send_from_directory(STATIC, "console-household.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/console/biofield-intake")
 def console_biofield_intake():
     """Launcher: bounce the browser to the LOCAL Biofield Intake portal (the voice
@@ -13734,6 +13742,14 @@ def _client_login_enabled() -> bool:
         "1", "true", "yes", "on")
 
 
+def _household_view_enabled():
+    """Household/family portal-view switcher (Task 3). Default OFF — when off, the
+    portal payload never gains a 'household' key and ?member= is ignored, so the
+    response is byte-identical to pre-household behavior."""
+    return (os.environ.get("HOUSEHOLD_VIEW_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
 def _portal_offers_enabled() -> bool:
     """Master flag for the portal 'What's next' offer surface. Dark by default."""
     return os.environ.get("PORTAL_OFFERS_ENABLED", "").strip().lower() in (
@@ -14301,6 +14317,24 @@ def api_client_portal(token):
     from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
     email_for_reports = (portal.get("email") or "").strip().lower()
+    # Task 3: household/family portal-view switcher. Flag-gated + best-effort — a
+    # household lookup failure must never break the portal load. An absent or
+    # unauthorized ?member= silently falls back to serving the primary's own view
+    # (fail-closed: never errors, never leaks whether an email exists).
+    primary_email = email_for_reports
+    household = []
+    if _household_view_enabled() and primary_email:
+        try:
+            from dashboard import household as _hh
+            with sqlite3.connect(LOG_DB) as _cxh:
+                _hh.init_household_tables(_cxh)
+                household = _hh.members_for(_cxh, primary_email)
+                _req_member = (request.args.get("member") or "").strip().lower()
+                if _req_member and _hh.can_view(_cxh, primary_email, _req_member):
+                    email_for_reports = _req_member  # re-point the whole portal at the member
+        except Exception as _e:
+            print(f"[household] {_e!r}", flush=True)
+            household = []
     cx_r = sqlite3.connect(LOG_DB)
     _pbr.init_table(cx_r)
     dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
@@ -14424,6 +14458,8 @@ def api_client_portal(token):
     # identity (attribution-only, NOT gated on practitioner_share_consent). Best-effort
     # — the helper never raises, so this can never break the portal load.
     payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
+    if _household_view_enabled():
+        payload["household"] = household
     return jsonify(payload)
 
 
@@ -15221,6 +15257,45 @@ def api_console_portal_link_resend():
         f"anytime at {login} with this email.\n\n— Dr. Glen Swartwout")
     return jsonify({"ok": bool(sent_via), "sent_via": sent_via, "error": err,
                     "link": link, "reissued": reissued})
+
+
+@app.route("/api/console/household", methods=["GET", "POST", "DELETE"])
+def api_console_household():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household as _hh
+    from dashboard import portal_biofield_reports as _pbr
+    if request.method == "GET":
+        primary = (request.args.get("primary_email") or "").strip().lower()
+        with sqlite3.connect(LOG_DB) as cx:
+            _hh.init_household_tables(cx); _pbr.init_table(cx)
+            members = _hh.members_for(cx, primary)
+            for m in members:
+                m["scan_dates"] = _pbr.list_report_dates(cx, m["email"])
+        return jsonify({"ok": True, "members": members})
+    data = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx)
+        if request.method == "POST":
+            _hh.add_member(cx, data.get("primary_email"), data.get("member_email"),
+                           data.get("label", ""), data.get("relationship", ""))
+        else:  # DELETE
+            _hh.remove_member(cx, data.get("primary_email"), data.get("member_email"))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/household/reassign", methods=["POST"])
+def api_console_household_reassign():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household as _hh
+    from dashboard import portal_biofield_reports as _pbr
+    data = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx); _pbr.init_table(cx)
+        res = _hh.reassign_report(cx, data.get("scan_date"), data.get("from_email"),
+                                  data.get("to_email"), by="console")
+    return jsonify(res), (200 if res.get("ok") else 400)
 
 
 @app.route("/api/console/biofield/review-queue", methods=["GET"])
