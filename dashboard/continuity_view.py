@@ -5,6 +5,10 @@ may only ever touch a patient who has a CONSENTED CONTINUITY link to them.
 """
 import sqlite3
 
+from dashboard import scan_analysis as _scan
+from dashboard import biofield_narrative as _narrative
+from dashboard import biofield_portal_publish as _portal
+
 
 def authorized_patient(cx, practitioner_id, patient_email) -> bool:
     """True iff patient_email has an active-consented Continuous Care membership
@@ -50,3 +54,75 @@ def _display_name(cx, email) -> str:
     except sqlite3.OperationalError:
         pass
     return (email or "").split("@")[0]
+
+
+def latest_biofield_test_id(cx, patient_email) -> str:
+    """The patient's most recent authored biofield test id (e.g. "a7"), or None.
+
+    A biofield test maps to a patient by the `email` column on `biofield_auth_tests`
+    (see dashboard/biofield_authoring.py; ids are the "a"-prefixed autoincrement
+    key). "Most recent" == highest id — the same creation-order ranking
+    `biofield_authoring.list_authored` uses (ORDER BY t.id DESC). Tolerant of a
+    connection with no biofield tables (returns None)."""
+    e = (patient_email or "").strip().lower()
+    if not e:
+        return None
+    try:
+        row = cx.execute(
+            "SELECT id FROM biofield_auth_tests WHERE lower(email)=? "
+            "ORDER BY id DESC LIMIT 1",
+            (e,),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return ("a" + str(row[0])) if row else None
+
+
+def _member_price_cents(cx, test_id) -> int:
+    """The special (member) price the doctor already published this patient's
+    report at, in cents; 0 when never published / the table is absent. Reused as
+    the reorder price rather than recomputed — it is exactly what this patient's
+    portal charges them."""
+    try:
+        row = cx.execute(
+            "SELECT special_price_cents FROM biofield_portal_published WHERE test_id=?",
+            (str(test_id),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return 0
+    return int(row[0]) if row and row[0] else 0
+
+
+def patient_view(cx, practitioner_id, patient_email):
+    """Gate-first per-patient continuity view for a doctor.
+
+    SECURITY KEYSTONE: calls authorized_patient() FIRST and returns None for a
+    patient who is not the doctor's — BEFORE reading any patient data (no scan
+    trajectory, no biofield narrative, no reorder build). On the authorized path
+    it assembles, by REUSING the existing engines:
+      - trajectory      : scan_analysis.get(cx, email)  (the longitudinal artifact)
+      - narrative       : biofield_narrative.get_narrative for the latest test
+                          (the latest-vs-prior "what changed" read)
+      - suggested_step  : biofield_portal_publish.build_portal_content(...)
+                          ["content"]["reorder_items"] for the latest test
+
+    Degrades gracefully: a patient with no scans / no biofield test yet yields an
+    empty trajectory / empty suggested_step rather than crashing."""
+    if not authorized_patient(cx, practitioner_id, patient_email):
+        return None
+    # --- authorized past this line; ONLY now may we read patient data ---
+    trajectory = _scan.get(cx, patient_email) or {}
+    test_id = latest_biofield_test_id(cx, patient_email)
+    if test_id:
+        narrative = _narrative.get_narrative(cx, test_id) or ""
+        portal = _portal.build_portal_content(
+            cx, test_id, special_price_cents=_member_price_cents(cx, test_id))
+        suggested_step = (portal.get("content") or {}).get("reorder_items") or []
+    else:
+        narrative = ""
+        suggested_step = []
+    return {
+        "trajectory": trajectory,
+        "narrative": narrative,
+        "suggested_step": suggested_step,
+    }
