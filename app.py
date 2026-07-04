@@ -12217,6 +12217,14 @@ def console_portal_links_page():
     return resp
 
 
+@app.route("/console/household")
+def console_household_page():
+    resp = send_from_directory(STATIC, "console-household.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/console/biofield-intake")
 def console_biofield_intake():
     """Launcher: bounce the browser to the LOCAL Biofield Intake portal (the voice
