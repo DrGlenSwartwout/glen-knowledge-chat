@@ -22,12 +22,13 @@ async function load(){
   for(const m of (j.members||[])){
     h += `<tr><td>${esc(m.email)}</td><td>${esc(m.label)}</td><td>${esc(m.relationship)}</td>
       <td>${(m.scan_dates||[]).map(esc).join(", ")}</td>
-      <td><button onclick="rm('${esc(m.email)}')">remove</button></td></tr>`;
+      <td><button class="hh-rm" data-email="${esc(m.email)}">remove</button></td></tr>`;
   }
   h += `</table><p>Add member: <input id="me" placeholder="member@email">
     <input id="ml" placeholder="label"> <input id="mrel" placeholder="pet/child/…">
     <button onclick="add()">Add</button></p>`;
   document.getElementById("out").innerHTML = h;
+  document.querySelectorAll(".hh-rm").forEach(b => b.addEventListener("click", () => rm(b.dataset.email)));
 }
 async function add(){
   const p=document.getElementById("primary").value.trim().toLowerCase();
