@@ -358,6 +358,30 @@
   }
   .email-note { font-size: .8rem; color: var(--muted); margin-top: .85rem; line-height: 1.55; }
 
+  /* Term selector (radio group for Continuous Care tiers) */
+  .term-opts { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+  .term-opt {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: .8rem 1rem;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .term-opt:hover { border-color: var(--glen); }
+  .term-opt.active { border-color: var(--glen); background: #f0f9f5; }
+  .term-opt input[type=radio] {
+    accent-color: var(--glen);
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+  .term-title { font-weight: 600; font-size: .95rem; }
+  .term-price { font-size: .8rem; color: var(--glen); margin-top: .15rem; }
+
   /* Loading / errors */
   .loading-state { text-align: center; color: var(--muted); padding: 3rem 1rem; }
   .error-state { color: #c0392b; padding: 1.5rem; text-align: center; }
@@ -480,10 +504,36 @@
       </label>
     </div>
 
-    <!-- Continuous Care ($99/mo) — attributed to this practitioner's dispensary -->
+    <!-- Continuous Care — attributed to this practitioner's dispensary -->
     <div class="card" id="care-card">
-      <div class="card-title">Start Continuous Care &mdash; $99/mo</div>
-      <p class="us-note" style="margin-top:0;">Ongoing card-on-file membership: your first month is charged securely today, then $99/month. Cancel anytime. Requires your email and the agreement above.</p>
+      <div class="card-title">Start Continuous Care</div>
+      <p class="us-note" style="margin-top:0;">Ongoing card-on-file membership: your card is charged securely today, then recurring each billing period. Cancel anytime. Requires your email and the agreement above.</p>
+
+      <div class="card-title" style="margin-top: 1rem; margin-bottom: .85rem;">Choose a term</div>
+      <div class="term-opts" id="term-opts">
+        <label class="term-opt active" data-term="1mo">
+          <input type="radio" name="term" value="1mo" checked>
+          <span>
+            <div class="term-title">Monthly</div>
+            <div class="term-price">$99/mo</div>
+          </span>
+        </label>
+        <label class="term-opt" data-term="6mo">
+          <input type="radio" name="term" value="6mo">
+          <span>
+            <div class="term-title">6 months</div>
+            <div class="term-price">$546</div>
+          </span>
+        </label>
+        <label class="term-opt" data-term="12mo">
+          <input type="radio" name="term" value="12mo">
+          <span>
+            <div class="term-title">12 months</div>
+            <div class="term-price">$990</div>
+          </span>
+        </label>
+      </div>
+
       <label class="consent-row">
         <input type="checkbox" id="care-share-consent-check">
         <span>I authorize sharing my wellness results with my enrolling practitioner.</span>
@@ -560,6 +610,7 @@
   var pointsBalance = 0;       // cents, practitioner-scoped
   var practiceName = '';       // for the rewards line
   var lastPointsEmail = '';    // dedupe balance fetches
+  var selectedTierKey = '1mo'; // Continuous Care term selector (default Monthly)
 
   function $(sel) { return document.querySelector(sel); }
   function show(id) { var el = document.getElementById(id); if (el) el.classList.remove('hidden'); }
@@ -752,6 +803,17 @@
         if (lab) lab.classList.add('active');
         clearMsg();
         refreshPayState();
+      });
+    });
+
+    // Term selector toggles (Continuous Care tier selection).
+    document.querySelectorAll('input[name="term"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        selectedTierKey = r.value;
+        document.querySelectorAll('.term-opt').forEach(function (o) { o.classList.remove('active'); });
+        var lab = r.closest('.term-opt');
+        if (lab) lab.classList.add('active');
+        setCareMsg('');
       });
     });
 
@@ -993,7 +1055,7 @@
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email, term_months: 12, share_consent: shareConsent })
+        body: JSON.stringify({ email: email, tier_key: selectedTierKey, share_consent: shareConsent })
       });
     })
     .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
