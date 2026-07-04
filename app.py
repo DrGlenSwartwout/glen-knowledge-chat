@@ -7480,6 +7480,35 @@ def _fulfill_prepay_term(session_id):
             if claimed:
                 _grant_prepay_term(cx, email, tier_key)
                 cx.commit()
+                # Attributed dispensary prepay (Task 2): stamp the grant with
+                # attribution + consent + term_end, then credit the enrolling
+                # doctor ONCE on the FULL prepaid lump. Public (no dispensary_pid)
+                # prepay is unchanged: no stamp, no credit. Inside the won-claim
+                # path so the redirect+webhook double-call credits exactly once;
+                # the care-share credit is best-effort AFTER the committed grant —
+                # a credit failure must never undo the term.
+                disp_pid = (md.get("dispensary_pid") or "").strip() or None
+                share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+                _term_end = _pp.term_end_date(
+                    datetime.utcnow().date().isoformat(), tier["months"])
+                if disp_pid:
+                    cx.execute(
+                        "UPDATE prepay_term_grants SET attributed_practitioner_id=?, "
+                        "practitioner_share_consent=?, term_end=? WHERE session_id=?",
+                        (str(disp_pid), share_consent, _term_end, session_id))
+                    cx.commit()
+                    try:
+                        from dashboard import care_share as _cshare, wallet as _wallet
+                        m = _cshare.modules_for_practitioner(disp_pid)
+                        if m is not None:
+                            cents = _cshare.share_cents(int(tier["price_cents"]), m)
+                            if cents > 0:
+                                _wallet.earn_care_share(
+                                    str(disp_pid), cents,
+                                    event_ref=f"care_share:prepay:{session_id}")
+                    except Exception as _ce:
+                        print(f"[prepay] care-share credit failed sid={session_id}: {_ce!r}",
+                              flush=True)
                 if REPERTOIRE_ENABLED:
                     try:
                         repertoire.init_repertoire_table(cx)
