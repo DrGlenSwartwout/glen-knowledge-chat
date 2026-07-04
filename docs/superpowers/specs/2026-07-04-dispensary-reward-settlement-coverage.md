@@ -1,7 +1,7 @@
 # Follow-up: Reward-Settlement Coverage for Dispensary Sales
 
 **Date:** 2026-07-04
-**Status:** decisions APPROVED by Dr. Glen 2026-07-04 — build now. Plan to follow.
+**Status:** SHIPPED 2026-07-04. Gap A (alt-pay L2) + Gap B (per-reorder L2) closed by PR #566 (`docs/superpowers/plans/2026-07-04-dispensary-l2-settlement.md`); the practitioner's own alt-pay Wellness Credit (margin) closed by PR #567. Both live in prod. `REFERRAL_TIER2_ENABLED='1'` verified on. This doc is retained as the design record.
 
 **Decisions (Dr. Glen 2026-07-04):** (1) L2 accrues on **every** dispensary order, across **all** pay methods (card, Zelle, Wise) — close Gap A. (2) L2 accrues on **reorders**, not once — close Gap B. (3) L1 stays off (markup is the practitioner's pay). (4) Record `pay_method` on dispensary ingest so the split is exact going forward. **Why build now:** prod has ZERO dispensary sales as of 2026-07-04 (verified via `/api/console/dispensary-pay-mix` and the backfill dry-run, both 0), so there is no history to migrate and no live sales at risk — the safest possible moment to change the shared settlement path. No backfill needed.
 **Parent:** `2026-07-03-referral-based-attribution-design.md` (Part 2, MERGED). Part 2 built durable attribution + L1 suppression + L2-on-first-card-sale + backfill. This follow-up covers two settlement-layer gaps the Part 2 whole-branch review surfaced. Both are pre-existing infrastructure limits, not regressions Part 2 introduced.
