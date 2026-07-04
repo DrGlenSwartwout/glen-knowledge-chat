@@ -1323,6 +1323,18 @@ def _init_chip_taps():
 _init_chip_taps()
 
 
+def _init_sourcing_tables():
+    """Email-sourcing collector — review queue, staged quotes, matched sources."""
+    from dashboard.sourcing import init_sourcing_schema
+    cx = sqlite3.connect(str(LOG_DB))
+    try:
+        init_sourcing_schema(cx)
+    finally:
+        cx.close()
+
+_init_sourcing_tables()
+
+
 def log_query(query: str, level: str, answer: str,
               session_id: str = "", email: str = "", name: str = "",
               ghl_contact_id: str = "", mode: str = "brief",
@@ -1355,95 +1367,139 @@ def log_query(query: str, level: str, answer: str,
         return cur.lastrowid
 
 
-def _normalize_image_payload(images):
-    """Accepts a list of image entries and returns Anthropic-API-shaped image
-    blocks. Each input entry can be either:
-      - {"data": "<base64>", "media_type": "image/png"}
-      - {"data_url": "data:image/png;base64,..."}
-      - "data:image/png;base64,..." (string form for convenience)
+def _normalize_attachments(images, documents):
+    """Build Anthropic content blocks from user-attached images and PDFs.
 
-    Caps at 3 images per call; rejects entries over MAX_IMAGE_BYTES_B64.
-    Returns (image_blocks, errors).
+    Each entry (in either list) may be:
+      - "data:<media>;base64,<b64>"            (string form)
+      - {"data_url": "data:<media>;base64,…"}  (dict form)
+      - {"data": "<b64>", "media_type": "…"}   (explicit form)
+
+    Images become image blocks (unchanged behavior). Documents become PDF
+    `document` blocks. Bytes are forwarded to Claude for one extraction pass
+    and never persisted. Returns (blocks, errors). Caps:
+      - images: 3 max, ~5 MB raw (~6.7 MB base64) each, png/jpeg/webp/gif
+      - documents: 2 max, ~10 MB raw (~13.3 MB base64) each, application/pdf
+      - combined: total base64 length across all attachments ≤ ~25 MB raw,
+        keeping the whole request under Claude's 32 MB limit
     """
     MAX_IMAGES = 3
-    MAX_IMAGE_BYTES_B64 = 5 * 1024 * 1024 * 4 // 3  # ~5 MB raw → ~6.7 MB base64
-    ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+    MAX_IMAGE_B64 = 5 * 1024 * 1024 * 4 // 3
+    MAX_DOCS = 2
+    MAX_DOC_B64 = 10 * 1024 * 1024 * 4 // 3
+    MAX_TOTAL_B64 = 25 * 1024 * 1024 * 4 // 3
+    IMG_ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+
     blocks, errors = [], []
+    state = {"total": 0}
 
-    for i, entry in enumerate(images[:MAX_IMAGES]):
+    def _decode(entry):
+        if isinstance(entry, str):
+            if entry.startswith("data:") and ";base64," in entry:
+                head, b64 = entry.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("unsupported string format")
+        if isinstance(entry, dict) and entry.get("data_url"):
+            d = entry["data_url"]
+            if d.startswith("data:") and ";base64," in d:
+                head, b64 = d.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("bad data_url")
+        if isinstance(entry, dict) and entry.get("data"):
+            return entry.get("media_type", "image/png"), entry["data"]
+        raise ValueError("unrecognized payload shape")
+
+    for i, entry in enumerate((images or [])[:MAX_IMAGES]):
         try:
-            if isinstance(entry, str):
-                if entry.startswith("data:") and ";base64," in entry:
-                    head, b64 = entry.split(";base64,", 1)
-                    media = head[5:]  # strip "data:"
-                else:
-                    errors.append(f"image[{i}]: unsupported string format")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data_url"):
-                d = entry["data_url"]
-                if d.startswith("data:") and ";base64," in d:
-                    head, b64 = d.split(";base64,", 1)
-                    media = head[5:]
-                else:
-                    errors.append(f"image[{i}]: bad data_url")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data"):
-                b64 = entry["data"]
-                media = entry.get("media_type", "image/png")
-            else:
-                errors.append(f"image[{i}]: unrecognized payload shape")
-                continue
-
-            if media not in ALLOWED:
-                errors.append(f"image[{i}]: media_type {media!r} not allowed")
-                continue
-            if len(b64) > MAX_IMAGE_BYTES_B64:
-                errors.append(f"image[{i}]: exceeds 5 MB size limit")
-                continue
-
-            blocks.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media, "data": b64},
-            })
-        except Exception as e:
+            media, b64 = _decode(entry)
+        except ValueError as e:
             errors.append(f"image[{i}]: {e}")
+            continue
+        if media not in IMG_ALLOWED:
+            errors.append(f"image[{i}]: media_type {media!r} not allowed")
+            continue
+        if len(b64) > MAX_IMAGE_B64:
+            errors.append(f"image[{i}]: exceeds 5 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"image[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": media, "data": b64},
+        })
+
+    for i, entry in enumerate((documents or [])[:MAX_DOCS]):
+        try:
+            media, b64 = _decode(entry)
+        except ValueError as e:
+            errors.append(f"document[{i}]: {e}")
+            continue
+        if media != "application/pdf":
+            errors.append(f"document[{i}]: only application/pdf is accepted")
+            continue
+        if len(b64) > MAX_DOC_B64:
+            errors.append(f"document[{i}]: exceeds 10 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"document[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "document",
+            "source": {"type": "base64",
+                       "media_type": "application/pdf", "data": b64},
+        })
+
     return blocks, errors
 
 
-def extract_image_content(image_blocks, query):
-    """Single non-streaming Claude call to extract structured text content
-    from images. Returns the extraction string. Image bytes are NOT persisted
-    anywhere — they exist only in this function's call to Anthropic.
+def _normalize_image_payload(images):
+    """Back-compat wrapper — images only. Prefer _normalize_attachments."""
+    return _normalize_attachments(images, [])
+
+
+def extract_attachment_content(blocks, query):
+    """Single non-streaming Claude pass to extract structured text from attached
+    images and/or PDF documents. Returns the extraction string. Attachment bytes
+    are NOT persisted — they exist only in this function's call to Anthropic.
     """
-    if not image_blocks:
+    if not blocks:
         return ""
     instr = (
-        "Extract everything visible in these images as plain text. Focus on:\n"
+        "Extract everything visible in these attachments as plain text. Each "
+        "attachment may be an image or a multi-page PDF document. Focus on:\n"
         "• Any text, labels, headings, captions\n"
         "• Numbers, measurements, dosages, lab values, ranges\n"
-        "• Supplement ingredients lists, milligram amounts, serving sizes\n"
+        "• Supplement ingredient lists, milligram amounts, serving sizes\n"
         "• Lab/test result values with units and reference ranges if present\n"
         "• E4L scan results: item codes (EI/ES/ED/ET/MB), category labels, scores\n"
         "• Any visible chart axes, legend entries, or graph markers\n"
         "• Visible symptoms in clinical photos (describe objectively)\n"
         "• Handwritten notes (transcribe carefully)\n\n"
         f"USER'S QUESTION: {query}\n\n"
-        "Return a clean, structured extraction. Label each image (Image 1, Image 2, "
-        "etc.) if multiple. Do not analyze, diagnose, or recommend — just extract. "
-        "Be exhaustive but concise."
+        "Return a clean, structured extraction. Label each attachment "
+        "(Attachment 1, Attachment 2, …) and each PDF page if multiple. Do not "
+        "analyze, diagnose, or recommend — just extract. Be exhaustive but concise."
     )
     try:
         resp = _cl.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1500,
             messages=[{"role": "user", "content": [
-                *image_blocks,
+                *blocks,
                 {"type": "text", "text": instr},
             ]}],
         )
         return (resp.content[0].text or "").strip() if resp.content else ""
     except Exception as e:
-        return f"[image-extraction-error: {e}]"
+        return f"[attachment-extraction-error: {e}]"
+
+
+def extract_image_content(image_blocks, query):
+    """Back-compat wrapper. Prefer extract_attachment_content."""
+    return extract_attachment_content(image_blocks, query)
 
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
@@ -3859,33 +3915,35 @@ def chat():
     # discarded; only the extracted text is persisted to query_log.
     images_consented = bool(data.get("images_consented"))
     raw_images = data.get("images") or []
-    image_blocks = []
-    image_errors = []
-    if raw_images:
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    attachment_errors = []
+    if raw_images or raw_documents:
         if not images_consented:
             return jsonify({
-                "error": "Image consent required. Check the image-opt-in box "
-                         "before attaching images."
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
             }), 400
-        image_blocks, image_errors = _normalize_image_payload(raw_images)
+        attachment_blocks, attachment_errors = _normalize_attachments(
+            raw_images, raw_documents)
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        # Step A — image extraction (if any images attached, run vision call
-        # FIRST so the extracted text can be embedded for retrieval and also
-        # joined to the user question as context).
+        # Step A — attachment extraction (if any images/PDFs attached, run the
+        # OCR pass FIRST so the extracted text can be embedded for retrieval and
+        # also joined to the user question as context).
         extracted_text = ""
-        if image_blocks:
-            yield sse({"status": f"Reading {len(image_blocks)} image(s)…"})
-            extracted_text = extract_image_content(image_blocks, query)
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
 
-        # Combine the user question with extracted image text for embedding
+        # Combine the user question with extracted attachment text for embedding
         # so retrieval can match on label/scan/lab content too.
         embedding_input = query
         if extracted_text:
-            embedding_input = f"{query}\n\nIMAGE CONTENT:\n{extracted_text}"
+            embedding_input = f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
 
         try:
             q_vec = embed(embedding_input)
@@ -3899,7 +3957,7 @@ def chat():
             yield sse({"done": True, "answer": "No relevant content found.",
                        "sources": [], "chunks_retrieved": 0, "log_id": None,
                        "session_id": session_id, "mode": mode,
-                       "image_count": len(image_blocks)})
+                       "image_count": len(attachment_blocks)})
             return
 
         context_str, sources_list = build_context(all_matches)
@@ -3959,16 +4017,16 @@ def chat():
             _brief_synth_instruction()
         )
 
-        image_context = ""
+        attachment_context = ""
         if extracted_text:
-            image_context = (
-                f"IMAGE CONTENT EXTRACTED FROM USER ATTACHMENT(S):\n"
+            attachment_context = (
+                f"ATTACHMENT CONTENT EXTRACTED FROM USER UPLOAD(S):\n"
                 f"{extracted_text}\n\n"
-                f"Reference the image content as part of the user's question "
+                f"Reference the attachment content as part of the user's question "
                 f"context. Quote specific values or labels from it when relevant.\n\n"
             )
 
-        # Pass the retrieved snippet text + extracted image content into the
+        # Pass the retrieved snippet text + extracted attachment content into the
         # directive builder so on-the-fly Rebrandly creation only fires for
         # products actually likely to be mentioned in this response.
         product_directive = build_product_directive(
@@ -3978,7 +4036,7 @@ def chat():
 
         messages.append({"role": "user", "content":
             f"USER QUESTION: {query}\n\n"
-            f"{image_context}"
+            f"{attachment_context}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             f"{product_block}"
             f"{synth_instr}"
@@ -4040,7 +4098,7 @@ def chat():
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
             extracted_image_data=extracted_text,
-            image_count=len(image_blocks),
+            image_count=len(attachment_blocks),
             cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
         try:
@@ -4310,9 +4368,27 @@ def begin_match_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
     def generate():
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+        emb_input = (f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
+                     if extracted_text else query)
         try:
-            q_vec = embed(query)
+            q_vec = embed(emb_input)
         except Exception as e:
             yield sse({"error": f"Embedding failed: {e}"}); return
         matches = _match_query_namespaces(q_vec)
@@ -4356,13 +4432,16 @@ def begin_match_chat():
                        "when it is genuinely the best fit; Functional Formulations still come first):\n"
                        + "\n".join(tools_lines) + "\n\n") if tools_lines else ""
 
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"USER MESSAGE: {query}\n\n{whom_line}\n{household_note}\n{personal_block}"
-            f"{tools_block}"
+            f"{tools_block}{attach_block}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
             "invite them to open its page; otherwise ask the single best next question."})
@@ -4856,6 +4935,12 @@ def _referrer_reward_pct():
         return max(0, int(os.environ.get("REFERRER_REWARD_PCT", "0")))
     except (TypeError, ValueError):
         return 0
+
+
+def _free_month_enabled():
+    """Mechanic A (referral-earned free month) master switch. Read live so tests
+    and a flag-flip redeploy pick it up. Default OFF."""
+    return (os.environ.get("REFERRAL_FREE_MONTH_ENABLED", "") or "").strip().lower() in ("1", "true", "yes")
 
 
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
@@ -7610,6 +7695,52 @@ def _last_attributed_practitioner(email, *, db_path=None):
     return {"pid": best[1], "consent": best[2]}
 
 
+def _practitioner_display_name(pid):
+    """Best-effort practitioner display name from the practitioners record. None on any failure."""
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT name FROM practitioners WHERE id=%s", (str(pid),))
+            row = cur.fetchone()
+        return (row["name"] or "").strip() or None if row else None
+    except Exception:
+        return None
+
+
+def _patient_practitioner_brand(email, *, db_path=None):
+    """The patient's attributed doctor's PUBLIC identity for co-branding the patient
+    portal: {name, practice_name, photo_url, logo_url, accent} or None. Attribution-only
+    (NOT gated on results-sharing consent — the band is the doctor's public identity, not
+    patient health data). Best-effort — returns None on any failure or when there's no
+    attributed doctor / no branding set.
+
+    Note: accent uses the real practitioner_settings branding_json key confirmed from
+    static/practitioner-settings.html — the color picker saves brand_color_1 (header/
+    primary) and brand_color_2, labeled "Brand color 2 (accent)" in the settings UI."""
+    try:
+        inh = _last_attributed_practitioner(email, db_path=db_path)
+        if not inh:
+            return None
+        pid = inh["pid"]
+        with sqlite3.connect(db_path or LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            from dashboard import practitioner_settings as _ps
+            _ps.init_settings_table(cx)
+            branding = (_ps.get_settings(cx, pid) or {}).get("branding") or {}
+        name = _practitioner_display_name(pid)
+        practice_name = (branding.get("practice_name") or "").strip()
+        photo_url = (branding.get("photo_url") or "").strip()
+        logo_url = (branding.get("logo_url") or "").strip()
+        accent = (branding.get("brand_color_2") or "").strip()
+        # Require SOME brand to show (name alone isn't "branding set").
+        if not (practice_name or photo_url or logo_url):
+            return None
+        return {"name": name or practice_name, "practice_name": practice_name,
+                "photo_url": photo_url, "logo_url": logo_url, "accent": accent}
+    except Exception:
+        return None
+
+
 def _ensure_prepay_grant_columns(cx):
     """Idempotently add the attribution columns to prepay_term_grants."""
     have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
@@ -8418,16 +8549,22 @@ def begin_concierge_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
-    # Pairing priors for what they bought + a little RAG for rationale/benefits.
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
+    # Pairing priors for what they bought.
     priors = (_PAIRINGS.get("pairings", {}) or {}).get(bought_slug, []) if bought_slug else []
     priors_block = (f"SUGGESTED COMPLEMENTS for {bought['name'] if bought else 'their purchase'} "
                     f"(offer these first, one at a time): {', '.join(priors)}\n\n") if priors else ""
-    context_str = ""
-    try:
-        matches = _match_query_namespaces(embed(query + " " + (bought["name"] if bought else "")))
-        context_str, _ = build_context(matches) if matches else ("", [])
-    except Exception as e:
-        print(f"[concierge] retrieval: {e}", flush=True)
 
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     _sys_concierge = (_ally_ov + "\n\n" + _CONCIERGE_SYSTEM) if _ally_ov else _CONCIERGE_SYSTEM
@@ -8436,13 +8573,34 @@ def begin_concierge_chat():
         if not is_member(session_id, email):
             yield sse({"gate": True})
             return
+
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+
+        # A little RAG for rationale/benefits (inside generate so the extracted
+        # attachment text can sharpen retrieval).
+        context_str = ""
+        try:
+            emb_q = query + " " + (bought["name"] if bought else "")
+            if extracted_text:
+                emb_q += "\n\nATTACHMENT CONTENT:\n" + extracted_text
+            matches = _match_query_namespaces(embed(emb_q))
+            context_str, _ = build_context(matches) if matches else ("", [])
+        except Exception as e:
+            print(f"[concierge] retrieval: {e}", flush=True)
+
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"THEY JUST BOUGHT: {bought['name'] if bought else 'a remedy'}.\n"
-            f"{priors_block}"
+            f"{priors_block}{attach_block}"
             f"RETRIEVED SNIPPETS (for rationale/benefits):\n{context_str}\n\n"
             f"MEMBER MESSAGE: {query}\n\n"
             "Continue as the concierge: affirm, ask the single best next question, or suggest ONE "
@@ -12247,6 +12405,13 @@ def console_reviews_page():
     return resp
 
 
+@app.route("/console/approvals")
+def bos_approvals_page():
+    resp = send_from_directory(STATIC, "console-approvals.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/console/reviews", methods=["GET"])
 def api_console_reviews_list():
     bad = _sales_console_ok()
@@ -14255,6 +14420,10 @@ def api_client_portal(token):
                 payload["recommendation"] = _card
         except Exception as e:
             print(f"[portal-recommendation] card failed for {email_for_reports!r}: {e!r}", flush=True)
+    # Feature D: co-brand the patient portal with the attributed doctor's PUBLIC
+    # identity (attribution-only, NOT gated on practitioner_share_consent). Best-effort
+    # — the helper never raises, so this can never break the portal load.
+    payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
     return jsonify(payload)
 
 
@@ -14611,6 +14780,50 @@ def api_cron_triage_digest():
     try:
         n = _send_triage_digest()
         return jsonify({"ok": True, "open_items": n, "emailed": n > 0})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+
+@app.route("/api/cron/sourcing-scan", methods=["POST"])
+def api_cron_sourcing_scan():
+    """Scan Dr. Glen's inbox for supplier price quotes and stage new ones into the
+    supplier_quotes review queue (the /admin/ingredients Sourcing inbox). Runs IN the
+    web container so it writes the live LOG_DB — a standalone cron container's own disk
+    would be invisible to the console. Only stages to a REVIEW queue (nothing is
+    auto-approved into ingredient_sources) and is idempotent by gmail_msg_id, so re-runs
+    are safe.
+
+    A full IMAP fetch per message is slow (minutes for a wide window), so the live
+    (write) scan runs in a BACKGROUND thread and the request returns immediately —
+    otherwise the HTTP call (and any gateway in front of it) times out. A ?dry=1 run
+    is bounded and synchronous so a manual check returns counts quickly. ?days=N sets
+    the window, ?max=N caps messages fetched. Auth: X-Cron-Secret == CRON_SECRET
+    (falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from scripts.scan_supplier_quotes import scan
+        dry = request.args.get("dry", "") in ("1", "true", "yes")
+        days = int(request.args.get("days", 14))
+        _max = request.args.get("max")
+        # dry = quick bounded verify (sync); live = larger cap, backgrounded.
+        max_messages = int(_max) if _max else (30 if dry else 400)
+        if dry:
+            result = scan(write=False, days=days, db_path=str(LOG_DB), max_messages=max_messages)
+            return jsonify({"ok": True, **result})
+
+        def _bg():
+            try:
+                r = scan(write=True, days=days, db_path=str(LOG_DB), max_messages=max_messages)
+                print(f"[sourcing-scan] done: {r}", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[sourcing-scan] bg error: {e!r}", flush=True)
+        import threading as _t
+        _t.Thread(target=_bg, daemon=True).start()
+        return jsonify({"ok": True, "started": True, "mode": "write_async",
+                        "days": days, "max": max_messages})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
@@ -15295,6 +15508,8 @@ def portal_group_join_checkout():
     if not _portal_offers_enabled():
         return jsonify({"error": "not found"}), 404
     token = request.args.get("token", "") or (request.get_json(silent=True) or {}).get("token", "")
+    body = request.get_json(silent=True) or {}
+    referral_code = (body.get("referral_code") or "").strip()[:32]
     sess_cookie = request.cookies.get("rm_portal_session", "")
     from dashboard import portal_identity as _pi
     with sqlite3.connect(LOG_DB) as cx:
@@ -15306,7 +15521,8 @@ def portal_group_join_checkout():
         from dashboard import stripe_pay
         sess = stripe_pay.create_setup_session(
             customer_email=ident.email,
-            metadata={"kind": "group_join", "email": ident.email},
+            metadata={"kind": "group_join", "email": ident.email,
+                      **({"referral_code": referral_code} if referral_code else {})},
             success_url=(f"{PUBLIC_BASE_URL}/portal/offer/live-group/return"
                          f"?session_id={{CHECKOUT_SESSION_ID}}"),
             cancel_url=f"{PUBLIC_BASE_URL}/portal/me")
@@ -15344,6 +15560,11 @@ def portal_group_join_return():
                         stripe_payment_method_id=pm,
                         amount_cents=_po.MEMBERSHIP_PRICE_CENTS, next_charge_date=next_date)
                     _member_join_welcome(cx, email, "subscription")
+                    _ref_code = ((sess.get("metadata") or {}).get("referral_code") or "").strip()
+                    if _ref_code:
+                        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(_ref_code, email)
+                        if _ref_ctx:
+                            _record_referral_if_any(_ref_ctx, email, f"membership:{email}")
         except Exception as e:
             print(f"[group-join] return failed: {e!r}", flush=True)
     return _redir("/portal/me?joined=1")
@@ -24088,6 +24309,7 @@ from dashboard import scoreapp as _scoreapp
 from dashboard import heygen as _heygen
 from dashboard import facebook as _fb
 from dashboard import health as _health
+from dashboard import sourcing as _sourcing
 
 
 @app.route("/dashboard")
@@ -24210,6 +24432,48 @@ def api_facebook_boulder():
 def api_dashboard_health():
     try: return ok(_health.status_grid())
     except Exception as e: return fail(e)
+
+
+@app.route("/api/sourcing/quotes", methods=["GET"])
+@require_console_key
+def api_sourcing_quotes():
+    try:
+        return ok(_sourcing.list_quotes(request.args.get("status"), int(request.args.get("limit", 200))))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>", methods=["PATCH"])
+@require_console_key
+def api_sourcing_match(qid):
+    try:
+        _sourcing.update_quote_match(qid, request.get_json(silent=True) or {})
+        return ok(_sourcing.get_quote(qid))
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>/approve", methods=["POST"])
+@require_console_key
+def api_sourcing_approve(qid):
+    try:
+        return ok({"source_id": _sourcing.approve_quote(qid)})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
+
+
+@app.route("/api/sourcing/quotes/<int:qid>/dismiss", methods=["POST"])
+@require_console_key
+def api_sourcing_dismiss(qid):
+    try:
+        _sourcing.dismiss_quote(qid)
+        return ok({"id": qid})
+    except ValueError as e:
+        return fail(str(e), status=400)
+    except Exception as e:
+        return fail(e)
 
 
 # ── Intelligence briefings ────────────────────────────────────────────────────
@@ -24400,7 +24664,7 @@ def _mint_membership_cancel_url(cx, email: str) -> str:
 def _send_subscription_email(to_email: str, kind: str, data: dict):
     """Send a subscription lifecycle email. Best-effort — NEVER raises.
 
-    kind: 'heads_up' | 'receipt' | 'payment_failed' | 'setup_confirm'
+    kind: 'heads_up' | 'free_month_thanks' | 'receipt' | 'payment_failed' | 'setup_confirm'
     data: dict with relevant context fields (next_charge_date, amount, etc.)
     Returns (sent_via, error_or_none) same shape as _send_full_report_email.
     """
@@ -24442,6 +24706,17 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                     f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
                     f"In wellness,\nDr. Glen"
                 )
+        elif kind == "free_month_thanks":
+            charge_date = data.get("next_charge_date", "")
+            subject = "A free month, with our thanks"
+            body = (
+                "Aloha,\n\n"
+                "Because of a kind referral you shared, we are extending your next month "
+                "of membership on us. There is nothing you need to do, and you will not be "
+                f"charged on {charge_date}. Everything stays unlocked.\n\n"
+                "Thank you for helping someone else begin their healing.\n\n"
+                "In wellness,\nDr. Glen"
+            )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
             if is_membership and data.get("product") == "continuous_care":
@@ -24515,6 +24790,14 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
         return ("error", str(e))
 
 
+def _fm_headsup_referral(cx, email):
+    from dashboard import free_month as _fm
+    try:
+        return _fm.has_active_paying_referral(cx, email)
+    except Exception:
+        return False
+
+
 # ── Daily subscription charge scheduler ──────────────────────────────────────
 
 @app.route("/api/cron/charge-subscriptions", methods=["POST"])
@@ -24537,7 +24820,7 @@ def cron_charge_subscriptions():
 
     if not _subscriptions_enabled():
         return jsonify({"ok": True, "skipped": 0, "charged": 0, "failed": 0,
-                        "notified": 0, "dry_run": False,
+                        "notified": 0, "comped": 0, "dry_run": False,
                         "message": "subscriptions disabled"}), 200
 
     dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
@@ -24547,7 +24830,7 @@ def cron_charge_subscriptions():
 
     today = _date.today().isoformat()  # YYYY-MM-DD
 
-    charged = skipped = failed = notified = 0
+    charged = skipped = failed = notified = comped = 0
 
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -24557,6 +24840,7 @@ def cron_charge_subscriptions():
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
         _subs.migrate_add_consent_column(cx)
+        _subs.migrate_add_free_months(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -24567,19 +24851,43 @@ def cron_charge_subscriptions():
 
         for sub in upcoming:
             try:
+                _is_mbr = sub.get("kind") == "membership"
+                _banked = int(sub.get("free_months_remaining") or 0) > 0
+                _ref_ok = (_is_mbr and not _banked and _free_month_enabled()
+                           and _fm_headsup_referral(cx, sub["email"]))
+                _will_comp = _is_mbr and (_banked or _ref_ok)
                 if not dry_run:
-                    _hu_data = {"next_charge_date": sub["next_charge_date"],
-                                "kind": sub.get("kind", "product"),
-                                "total_cents": sub.get("amount_cents")}
-                    # Membership reminders carry a one-click cancel link (FTC/ROSCA
-                    # easy-cancel) minted fresh per send.
-                    if sub.get("kind") == "membership":
-                        _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
-                    _send_subscription_email(sub["email"], "heads_up", _hu_data)
-                    _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    # Lock a referral-earned free month NOW (bank it) so a referral
+                    # that churns before the charge date cannot turn this thank-you
+                    # into a charge. Idempotent per cycle via next_charge_date. Only
+                    # send the thank-you if the bank actually succeeded — a member
+                    # who is thanked must actually be banked.
+                    _locked = _banked
+                    if _ref_ok:
+                        from dashboard import free_month as _fm
+                        _locked = _fm.grant_free_month(
+                            cx, sub["email"], months=1, reason="referral_headsup",
+                            idem_key=f"headsup:{sub['id']}:{sub['next_charge_date']}") is not None
+                        if not _locked:
+                            print(f"[free-month] heads-up bank returned None, not promising "
+                                  f"sub={sub['id']} email={sub['email']}", flush=True)
+                    if _will_comp and _locked:
+                        _send_subscription_email(sub["email"], "free_month_thanks",
+                                                 {"next_charge_date": sub["next_charge_date"]})
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    else:
+                        _hu_data = {"next_charge_date": sub["next_charge_date"],
+                                    "kind": sub.get("kind", "product"),
+                                    "total_cents": sub.get("amount_cents")}
+                        # Membership reminders carry a one-click cancel link (FTC/ROSCA
+                        # easy-cancel) minted fresh per send.
+                        if _is_mbr:
+                            _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
+                        _send_subscription_email(sub["email"], "heads_up", _hu_data)
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
-                      f" sub={sub['id']} date={sub['next_charge_date']}", flush=True)
+                      f" sub={sub['id']} date={sub['next_charge_date']} comp={_will_comp}", flush=True)
             except Exception as e:
                 print(f"[sub-cron] heads-up sub={sub['id']} error: {e!r}", flush=True)
 
@@ -24617,6 +24925,35 @@ def cron_charge_subscriptions():
                 if sub.get("kind") == "membership":
                     amount_cents = int(sub.get("amount_cents") or 0)
                     if amount_cents <= 0:
+                        continue
+                    # Free-month comp: banked counter first, then the Mechanic A
+                    # referral threshold. A comp advances the cycle WITHOUT charging
+                    # and WITHOUT bumping order_count, extends access, and skips
+                    # care_share (funded by the $99 we are not collecting).
+                    from dashboard import free_month as _fm
+                    _from_bank = int(sub.get("free_months_remaining") or 0) > 0
+                    _do_comp = _from_bank or (
+                        _free_month_enabled() and _fm.has_active_paying_referral(cx, sub["email"]))
+                    if _do_comp:
+                        if dry_run:
+                            print(f"[sub-cron] DRY free-month comp sub={sid} bank={_from_bank}", flush=True)
+                            comped += 1
+                            continue
+                        did = _fm.comp_membership_cycle(
+                            cx, sid,
+                            reason=("banked" if _from_bank else "referral_active"),
+                            idem_key=f"{'bank' if _from_bank else 'ref'}:{sid}:{sub['next_charge_date']}",
+                            from_bank=_from_bank)
+                        if did:
+                            try:
+                                _u = _subs.get(cx, sid)
+                                if _u and _u.get("next_charge_date"):
+                                    _until = (datetime.fromisoformat(_u["next_charge_date"])
+                                              + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                    _extend_membership_grant(cx, sub["email"], _until, "membership_free_month")
+                            except Exception as _e:
+                                print(f"[free-month] grant extend failed sid={sid}: {_e!r}", flush=True)
+                            comped += 1
                         continue
                     # A capped term (term_charges_total set) = Continuous Care; an uncapped
                     # membership = the legacy group-coaching bundle. Keep the card-statement
@@ -24811,6 +25148,7 @@ def cron_charge_subscriptions():
         "skipped": skipped,
         "failed": failed,
         "notified": notified,
+        "comped": comped,
         "dry_run": dry_run,
     })
 

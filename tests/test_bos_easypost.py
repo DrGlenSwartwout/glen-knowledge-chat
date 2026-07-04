@@ -31,6 +31,27 @@ def test_clicknship_url_constant():
     assert EP.CLICKNSHIP_URL.startswith("https://")
 
 
+def test_ship_from_defaults_to_hilo():
+    from dashboard import easypost as EP
+    fa = EP.ship_from()
+    assert fa["zip"] == "96720" and fa["state"] == "HI"
+    assert fa["name"] == "Remedy Match LLC"
+    # build_shipment must accept it without raising and carry the zip through
+    s = EP.build_shipment({"items": [{"qty": 1}]}, fa)
+    assert s["from_address"]["zip"] == "96720"
+
+
+def test_ship_from_env_override(monkeypatch):
+    from dashboard import easypost as EP
+    monkeypatch.setenv("SHIP_FROM_STREET", "99 New Warehouse Rd")
+    monkeypatch.setenv("SHIP_FROM_PHONE", "8085551234")
+    fa = EP.ship_from()
+    assert fa["street"] == "99 New Warehouse Rd"
+    assert fa["phone"] == "8085551234"
+    # untouched fields keep their defaults
+    assert fa["city"] == "Hilo"
+
+
 def test_create_label_handoff_when_unconfigured(monkeypatch):
     import sqlite3
     monkeypatch.delenv("EASYPOST_API_KEY", raising=False)

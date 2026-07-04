@@ -13,9 +13,34 @@ _API = "https://api.easypost.com/v2"
 _DEFAULT_OZ = 4  # base weight per parcel
 _PER_ITEM_OZ = 4  # rough per-bottle weight
 
+# Ship-from defaults to Remedy Match LLC's Hilo address (the same address used in
+# the email footers). EasyPost rejects a shipment with no from_address, so this is
+# the fallback when the dispatch ctx supplies none. Override per-field via env.
+_SHIP_FROM = {
+    "name": "Remedy Match LLC",
+    "street": "351 Wailuku Drive",
+    "city": "Hilo",
+    "state": "HI",
+    "zip": "96720",
+    "country": "US",
+    "phone": "",
+}
+
 
 def is_configured():
     return bool(os.environ.get("EASYPOST_API_KEY"))
+
+
+def ship_from():
+    """The ship-from address. Defaults to the Remedy Match Hilo address; each field
+    is overridable via SHIP_FROM_NAME / _STREET / _CITY / _STATE / _ZIP / _COUNTRY /
+    _PHONE env vars (so the address can move without a code change)."""
+    out = dict(_SHIP_FROM)
+    for field in out:
+        env = os.environ.get("SHIP_FROM_" + field.upper())
+        if env:
+            out[field] = env
+    return out
 
 
 def build_shipment(order, from_address):
@@ -35,6 +60,7 @@ def build_shipment(order, from_address):
             "name": fa.get("name", ""), "street1": fa.get("street", ""),
             "city": fa.get("city", ""), "state": fa.get("state", ""),
             "zip": fa.get("zip", ""), "country": fa.get("country", "US"),
+            "phone": fa.get("phone", ""),
         },
         "parcel": {"weight": _DEFAULT_OZ + _PER_ITEM_OZ * n_items},
     }

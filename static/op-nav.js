@@ -8,7 +8,7 @@
  * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
  * boards renders under the main bar. Mark the active board with data-sub, e.g.
  *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "orders" | "client-orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "reviews" | "shipping" | "neworder"
+ * Valid data-sub values: "orders" | "client-orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "approvals" | "shipping" | "neworder"
  * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
  *  standalone top tabs. The old "home" board is retired; its signals now live on
  *  the /console front door.)
@@ -88,7 +88,7 @@
     { id: "pages",    label: "Pages",      href: "/console/pages" + qs },
     { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
     { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
-    { id: "reviews",  label: "Reviews",    href: "/console/reviews" + qs },
+    { id: "approvals", label: "Approvals", href: "/console/approvals" + qs },
     { id: "testimonial-invites", label: "Invite Queue", href: "/console/testimonial-invites" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
     { id: "neworder", label: "New Order", href: "/orders/new" + qs },
@@ -96,14 +96,9 @@
     { id: "top-products",  label: "Top Products",  href: "/console/top-products" + qs },
     { id: "remedy-meanings", label: "Remedy Meanings", href: "/console/remedy-meanings" + qs },
     { id: "ingredients-ops", label: "Ingredients (Ops)", href: "/admin/ingredients" + qs },
-    { id: "cert",          label: "Cert",          href: "/console/cert" + qs },
     { id: "coaching",      label: "Coaching",      href: "/console/coaching-cohort" + qs },
-    { id: "studio-credits", label: "Studio Credits", href: "/console/studio-credits" + qs },
     { id: "membership",    label: "Membership",    href: "/admin/membership" + qs },
     { id: "members",       label: "Members",       href: "/console/members" + qs },
-    { id: "atlas",         label: "Atlas",         href: "/admin/atlas" + qs },
-    { id: "wholesale",     label: "Wholesale",     href: "/admin/wholesale" + qs },
-    { id: "clips",         label: "Clips",         href: "/admin/clips" + qs },
   ];
 
   var styles = ''
@@ -282,11 +277,11 @@
       tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
       bos:  ["orders","client-orders","money","crm","products","biofield","pages",
              "biofield-reveals","biofield-intake",
-             "reviews","shipping","neworder"]
+             "approvals","shipping","neworder"]
     },
     rae: {
       tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","client-orders","money","crm","reviews","shipping","neworder"]
+      bos:  ["orders","client-orders","money","crm","approvals","shipping","neworder"]
     }
   };
 
