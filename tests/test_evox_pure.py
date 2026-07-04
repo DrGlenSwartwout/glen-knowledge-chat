@@ -85,3 +85,40 @@ def test_available_multiple_intervals_and_days_sorted():
     assert "2026-07-06T09:00:00" not in slots
     assert "2026-07-07T15:00:00" not in slots
     assert "2026-07-06T10:00:00" in slots and "2026-07-07T09:00:00" in slots
+
+
+def _cal_cx():
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    evox.init_evox_tables(cx)
+    cx.execute("""CREATE TABLE calendar_events (id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pushed_at TEXT, google_cal_id TEXT, google_event_id TEXT, calendar_name TEXT,
+        summary TEXT, start TEXT, end TEXT, location TEXT, owner TEXT, status TEXT,
+        cal_alert INTEGER, UNIQUE(google_cal_id, google_event_id))""")
+    cx.commit(); return cx
+
+def test_create_booking_writes_calendar_and_tags():
+    cx = _cal_cx(); seen = {}
+    def tag_fn(email, tags): seen[email] = tags
+    b = evox.create_booking(cx, "c@x.com", "2026-07-06T11:00:00", tag_fn=tag_fn)
+    assert b["end_ts"] == "2026-07-06T12:00:00"
+    row = cx.execute("SELECT owner,status,google_cal_id,google_event_id FROM calendar_events").fetchone()
+    assert (row["owner"], row["status"], row["google_cal_id"]) == ("rae", "visible", "delegated")
+    assert row["google_event_id"] == f"evox-{b['id']}"
+    assert seen["c@x.com"] == ["evox-client", "evox-ready"]
+    assert "2026-07-06T11:00:00" in evox.booked_starts(cx)
+
+def test_double_book_raises():
+    cx = _cal_cx()
+    evox.create_booking(cx, "c@x.com", "2026-07-06T11:00:00")
+    import pytest
+    with pytest.raises(evox.SlotTaken):
+        evox.create_booking(cx, "d@x.com", "2026-07-06T11:00:00")
+
+def test_rae_busy_intervals_reads_calendar():
+    cx = _cal_cx()
+    cx.execute("INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
+               "summary,start,end,owner,status) VALUES (?,?,?,?,?,?,?,?)",
+               ("x", "rae@g", "e1", "Busy", "2026-07-06T13:00:00",
+                "2026-07-06T14:00:00", "rae", "visible")); cx.commit()
+    assert evox.rae_busy_intervals(cx, "2026-07-06", "2026-07-06") == \
+        [("2026-07-06T13:00:00", "2026-07-06T14:00:00")]

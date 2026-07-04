@@ -1,9 +1,14 @@
 """EVOX booking: self-attest readiness, availability, 1:1 phone booking, ICS.
 Pure helpers take primitives only (no cx) and must import without importing app."""
 import sqlite3
+import secrets
 from datetime import datetime, timedelta, timezone
 
 READINESS_ITEMS = ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok")
+
+
+class SlotTaken(Exception):
+    pass
 
 
 def readiness_complete(state: dict) -> bool:
@@ -131,3 +136,45 @@ def available_slots(days, office_spec, busy, booked, now, duration_min: int = 60
                 continue
             out.append(iso)
     return sorted(out)
+
+
+def booked_starts(cx, practitioner: str = "rae") -> set:
+    rows = cx.execute("SELECT start_ts FROM evox_bookings "
+                      "WHERE practitioner=? AND status='booked'", (practitioner,)).fetchall()
+    return {r[0] for r in rows}
+
+
+def rae_busy_intervals(cx, lo_date: str, hi_date: str, practitioner: str = "rae"):
+    rows = cx.execute(
+        "SELECT start, end FROM calendar_events WHERE owner=? AND status='visible' "
+        "AND substr(start,1,10) BETWEEN ? AND ?", (practitioner, lo_date, hi_date)).fetchall()
+    return [(r[0], r[1] or "") for r in rows]
+
+
+def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
+                   prepaid: bool = False, practitioner: str = "rae", tag_fn=None) -> dict:
+    email = (email or "").strip().lower()
+    start_dt = datetime.fromisoformat(start_ts[:19])
+    end_ts = (start_dt + timedelta(minutes=duration_min)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    ics_uid = f"evox-{secrets.token_hex(8)}@illtowell.com"
+    try:
+        cur = cx.execute(
+            "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+            "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',?,?,?)",
+            (email, practitioner, start_ts, end_ts, 1 if prepaid else 0, ics_uid, now))
+    except sqlite3.IntegrityError:
+        raise SlotTaken(start_ts)
+    booking_id = cur.lastrowid
+    ev_id = f"evox-{booking_id}"
+    cx.execute(
+        "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
+        "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+        "VALUES (?, 'delegated', ?, 'EVOX booking', ?, ?, ?, 'Phone', ?, 'visible', 0)",
+        (now, ev_id, f"EVOX — {email}", start_ts, end_ts, practitioner))
+    cx.execute("UPDATE evox_bookings SET calendar_event_id=? WHERE id=?", (ev_id, booking_id))
+    cx.commit()
+    if tag_fn:
+        tag_fn(email, ["evox-client", "evox-ready"])
+    return {"id": booking_id, "email": email, "start_ts": start_ts,
+            "end_ts": end_ts, "ics_uid": ics_uid, "prepaid": prepaid}
