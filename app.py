@@ -5200,7 +5200,10 @@ def _settle_referrer_reward(cx, order, order_ref):
     # Tier-2 (non-cashable points, half the Tier-1 rate): the referrer's OWN referrer
     # earns on this sale too. Forward-only — this runs before mark_rewarded, so a replay
     # hits the rewarded_at early-return above and never double-credits either tier. Flag-dark.
-    if REFERRAL_TIER2_ENABLED:
+    # dispensary_portal L2 is settled per-order by dashboard.dispensary_rewards
+    # (every reorder, every pay method), so it is excluded here to avoid double-paying
+    # the first order. Ambassador (kind='referral') L2 is unchanged.
+    if REFERRAL_TIER2_ENABLED and not l1_suppressed:
         l2_owner = _rf.owner_of_referee(cx, red["owner_email"])
         # No self-dealing / cycles: L2 must exist and differ from the buyer AND from L1.
         if l2_owner and l2_owner != red["referee_email"] and l2_owner != red["owner_email"]:
@@ -5289,6 +5292,15 @@ def _settle_order_points(order, *, order_ref):
             _settle_referrer_reward(cx, order, order_ref)
         except Exception as _rre:
             print(f"[referrals] referrer reward skipped: {_rre!r}", flush=True)
+        # Dispensary sales pay L2-only (upline), on every paid order incl. reorders,
+        # via the dedicated per-order settler. Gated on source so it never touches
+        # non-dispensary orders.
+        if (order.get("source") or "") == "dispensary":
+            try:
+                from dashboard import dispensary_rewards as _dr
+                _dr.settle_dispensary_l2(cx, order, order_ref)
+            except Exception as _de:
+                print(f"[dispensary-l2] card settle skipped: {_de!r}", flush=True)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).
@@ -12610,7 +12622,9 @@ def api_client_checkout(code):
                   items=items,
                   address=ship,
                   channel="retail",
-                  get_cents=out.get("get_cents", 0))
+                  get_cents=out.get("get_cents", 0),
+                  pay_method=method,
+                  practitioner_id=pid)
 
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
@@ -27540,7 +27554,7 @@ def _normalize_ship_address(addr, fallback_name=""):
 def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
                   get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
-                  status="new", paid_cents=None):
+                  status="new", paid_cents=None, pay_method=None, practitioner_id=None):
     """Best-effort: record an order into the BOS orders table. Never raises into
     a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
     status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
@@ -27556,7 +27570,8 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 address=address or {}, channel=channel, get_cents=int(get_cents or 0),
                 discount_cents=int(discount_cents or 0),
                 points_redeemed_cents=int(points_redeemed_cents or 0),
-                shipping_cents=int(shipping_cents or 0), status=status)
+                shipping_cents=int(shipping_cents or 0), status=status,
+                pay_method=pay_method, practitioner_id=practitioner_id)
             if paid_cents is not None and _oid:
                 _bos_orders.mark_order_paid_keep_status(
                     cx, _oid, method="card", amount_cents=int(paid_cents))

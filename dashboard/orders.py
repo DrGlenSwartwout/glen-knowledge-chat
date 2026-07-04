@@ -82,6 +82,7 @@ def init_orders_table(cx):
         # debit/surcharge. Applied to the total on top of the rule-based discount;
         # shown as its own line on the invoice + QBO. 0 = none.
         "ALTER TABLE orders ADD COLUMN adjustment_cents INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE orders ADD COLUMN practitioner_id TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -94,7 +95,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
                  status="new", get_cents=0, person_id=None,
                  discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
-                 invoice_note=None, adjustment_cents=0):
+                 invoice_note=None, adjustment_cents=0,
+                 pay_method=None, practitioner_id=None):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
@@ -126,6 +128,12 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if invoice_note is not None:
             sets.append("invoice_note=?")
             vals.append(str(invoice_note))
+        if pay_method is not None:
+            sets.append("pay_method=?")
+            vals.append(str(pay_method))
+        if practitioner_id is not None:
+            sets.append("practitioner_id=?")
+            vals.append(str(practitioner_id))
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
@@ -133,14 +141,17 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
-        "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents, "
+        "pay_method, practitioner_id) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
          (int(person_id) if person_id is not None else None),
          int(discount_cents or 0), int(points_redeemed_cents or 0), int(shipping_cents or 0),
-         (str(invoice_note) if invoice_note is not None else None), int(adjustment_cents or 0)))
+         (str(invoice_note) if invoice_note is not None else None), int(adjustment_cents or 0),
+         (str(pay_method) if pay_method is not None else None),
+         (str(practitioner_id) if practitioner_id is not None else None)))
     cx.commit()
     return cur.lastrowid
 
@@ -683,6 +694,13 @@ def _record_payment_exec(params, ctx):
     set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
     # Settle points now that it's paid: redeem applied points + earn (idempotent).
     settle_order_points(cx, get_order(cx, oid))
+    _o = get_order(cx, oid)
+    if _o and (_o.get("source") or "") == "dispensary":
+        try:
+            from dashboard.dispensary_rewards import settle_dispensary_l2
+            settle_dispensary_l2(cx, _o, _o.get("external_ref"))
+        except Exception as _de:
+            print(f"[dispensary-l2] altpay settle skipped: {_de!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
