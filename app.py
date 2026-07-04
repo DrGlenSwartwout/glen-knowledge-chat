@@ -12154,6 +12154,13 @@ def console_reviews_page():
     return resp
 
 
+@app.route("/console/approvals")
+def bos_approvals_page():
+    resp = send_from_directory(STATIC, "console-approvals.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/console/reviews", methods=["GET"])
 def api_console_reviews_list():
     bad = _sales_console_ok()
