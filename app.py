@@ -200,6 +200,7 @@ GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 # where days is a 1-based ISO weekday range (1=Mon). Default = Mon-Thu 9a-4p.
 EVOX_HOURS               = os.environ.get("EVOX_HOURS", "1-4:09:00-16:00")
 EVOX_RAE_PHONE           = os.environ.get("EVOX_RAE_PHONE", "")
+EVOX_RAE_EMAIL           = os.environ.get("EVOX_RAE_EMAIL", "suerae1111@gmail.com")
 EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000"))
 
 
@@ -433,6 +434,37 @@ def send_evox_email(to_email, name, subject, html_body, text_body, ics_bytes):
         s.starttls(); s.login(SMTP_USER, SMTP_PASS)
         s.sendmail(SMTP_USER, [to_email], msg.as_string())
     return ("smtp", None)
+
+
+def _evox_send_confirmations(email, booking):
+    """Best-effort: send the client + Rae EVOX confirmation emails, each with the
+    same .ics invite. Swallows send errors (logs) — never raises into the booking
+    response. Called from evox_book AFTER the DB lock/connection is released so
+    SMTP never runs while holding _db_lock."""
+    from dashboard import evox as _ev
+    start = booking["start_ts"]; nice = start.replace("T", " ")
+    phone = EVOX_RAE_PHONE or "the number in this confirmation"
+    ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                        summary="EVOX Session with Rae",
+                        description=(f"At your appointment time, call Rae at {phone}. "
+                                     "Have your Windows PC on with the ZYTO software open, "
+                                     "hand cradle connected, headset ready."),
+                        location="Phone")
+    client_html = (f"<p>Your EVOX session is booked for <b>{nice} HST</b>.</p>"
+                   f"<p>At your appointment time, <b>call Rae at {phone}</b>. Have your "
+                   "Windows PC on with the ZYTO software open, hand cradle connected, and "
+                   "headset ready. The calendar invite is attached.</p>")
+    client_text = (f"EVOX session booked for {nice} HST. At your appointment time, call Rae "
+                   f"at {phone}. Have your PC on with ZYTO open, hand cradle + headset ready.")
+    rae_html = (f"<p>New EVOX booking: <b>{email}</b> on <b>{nice} HST</b> "
+                f"({'PREPAID' if booking.get('prepaid') else 'invoice after'}).</p>")
+    for to, nm, subj, html, text in [
+        (email, "", "Your EVOX session is booked", client_html, client_text),
+        (EVOX_RAE_EMAIL, "Rae", f"EVOX booking — {email}", rae_html, rae_html)]:
+        try:
+            send_evox_email(to, nm, subj, html, text, ics)
+        except Exception:
+            app.logger.exception("EVOX confirmation send failed to %s", to)
 
 
 def _member_join_welcome(cx, email, source=None):
@@ -13949,12 +13981,12 @@ def evox_book():
                 cx.execute("UPDATE people SET tags=? WHERE id=?",
                            (json.dumps(new), row["id"]))
         try:
-            _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
+            b = _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
         except _ev.SlotTaken:
             return jsonify({"error": "slot_taken"}), 409
         if prepaid:
             _ev.consume_session_credit(cx, ident.email)
-    # Task 8 wires the confirmation emails (client + Rae) here via send_evox_email.
+    _evox_send_confirmations(ident.email, b)
     return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
 
 

@@ -84,3 +84,37 @@ def test_book_slot_taken_preserves_credit(client, monkeypatch):
 
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert _evmod.session_credit_balance(cx, email) == 1
+
+
+# ── Task 8: confirmation emails (client + Rae) with ICS ────────────────────────
+def test_confirmations_send_client_and_rae(monkeypatch):
+    calls = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: calls.append((to, ics)))
+    monkeypatch.setattr(appmod, "EVOX_RAE_PHONE", "808-555-1212")
+    monkeypatch.setattr(appmod, "EVOX_RAE_EMAIL", "rae@illtowell.com", raising=False)
+    appmod._evox_send_confirmations("c@x.com", {
+        "id": 1, "email": "c@x.com", "start_ts": "2026-07-06T11:00:00",
+        "end_ts": "2026-07-06T12:00:00", "ics_uid": "u1@illtowell.com", "prepaid": False})
+    assert len(calls) == 2
+    tos = {c[0] for c in calls}
+    assert "c@x.com" in tos and "rae@illtowell.com" in tos
+    assert all(b"BEGIN:VCALENDAR" in c[1] for c in calls)
+
+
+def test_book_route_sends_client_and_rae_confirmations(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: calls.append((to, ics)))
+    monkeypatch.setattr(appmod, "EVOX_RAE_EMAIL", "rae@illtowell.com", raising=False)
+    tok = _start(client)
+    for item in ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok"):
+        client.post(f"/api/evox/readiness?token={tok}", json={"item": item, "value": True})
+    slots = client.get(f"/api/evox/availability?token={tok}&range=week").get_json()["slots"]
+    assert slots, "expected at least one open slot in Mon-Thu window"
+    r = client.post(f"/api/evox/book?token={tok}", json={"start_ts": slots[0]})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    assert len(calls) == 2
+    tos = {c[0] for c in calls}
+    assert "c@x.com" in tos and "rae@illtowell.com" in tos
+    assert all(b"BEGIN:VCALENDAR" in c[1] for c in calls)
