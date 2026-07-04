@@ -35,6 +35,7 @@ def _fresh(app_module, monkeypatch, tmp_path):
         subscriptions.init_subscriptions_table(cx)
         subscriptions.migrate_add_membership_columns(cx)
         subscriptions.migrate_add_term_cap_column(cx)
+        subscriptions.migrate_add_attribution_column(cx)
         app_module.init_membership_tables(cx)
         cx.commit()
     # Keep the fulfiller's best-effort side-effects out of the test by default;

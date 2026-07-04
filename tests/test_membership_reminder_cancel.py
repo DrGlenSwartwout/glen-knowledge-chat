@@ -35,6 +35,7 @@ def _seed_membership(cx, *, amount_cents=9900, next_charge_date):
     subs.migrate_add_failed_count(cx)
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
+    subs.migrate_add_attribution_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (TEST_EMAIL,))
     cx.commit()
     sid = subs.create_membership(

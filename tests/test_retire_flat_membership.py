@@ -54,6 +54,7 @@ def _seed_token_and_sub(db, email, *, term_cap):
         subs.init_subscriptions_table(cx)
         subs.migrate_add_membership_columns(cx)
         subs.migrate_add_term_cap_column(cx)
+        subs.migrate_add_attribution_column(cx)
         subs.create_membership(cx, email=email, stripe_customer_id="cus",
                                stripe_payment_method_id="pm", amount_cents=9900,
                                next_charge_date="2026-08-01", cadence_months=1,
@@ -137,7 +138,7 @@ def _run_cron_capture(monkeypatch, email, *, term_cap):
     cx.row_factory = sqlite3.Row
     try:
         subs.init_subscriptions_table(cx); subs.migrate_add_failed_count(cx)
-        subs.migrate_add_membership_columns(cx); subs.migrate_add_term_cap_column(cx)
+        subs.migrate_add_membership_columns(cx); subs.migrate_add_term_cap_column(cx); subs.migrate_add_attribution_column(cx)
         cx.execute("DELETE FROM subscriptions WHERE email=?", (email,)); cx.commit()
         subs.create_membership(cx, email=email, stripe_customer_id="cus",
                                stripe_payment_method_id="pm", amount_cents=9900,

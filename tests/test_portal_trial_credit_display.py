@@ -33,7 +33,7 @@ def _seed_trial_with_orders(appmod, email):
     from dashboard import orders as orders_mod
     from datetime import date
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
-    subs.init_subscriptions_table(cx); subs.migrate_add_membership_columns(cx); subs.migrate_add_term_cap_column(cx)
+    subs.init_subscriptions_table(cx); subs.migrate_add_membership_columns(cx); subs.migrate_add_term_cap_column(cx); subs.migrate_add_attribution_column(cx)
     orders_mod.init_orders_table(cx)
     subs.create_membership(cx, email=email, stripe_customer_id="c",
                            stripe_payment_method_id="p", amount_cents=9900,

@@ -219,6 +219,7 @@ def test_continuous_care_duplicate_member_still_seeds_repertoire(monkeypatch, tm
         _subs.init_subscriptions_table(cx)
         _subs.migrate_add_membership_columns(cx)
         _subs.migrate_add_term_cap_column(cx)
+        _subs.migrate_add_attribution_column(cx)
         _subs.create_membership(
             cx, email=email, stripe_customer_id="cus_other",
             stripe_payment_method_id="pm_other", amount_cents=9900,
