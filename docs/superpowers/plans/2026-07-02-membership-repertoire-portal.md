@@ -361,6 +361,24 @@ Add `_window_days_for_term(m) -> 90 if m<=1 else 180 if m<=6 else 365`. In the o
 
 ---
 
+## Task 5b: Wire repertoire into the in-house pricing path (REQUIRED before go-live)
+
+**Why:** Task 3 wired repertoire into `_price_cart`/`compute`, but the portal Reorder endpoint (`/api/portal/<token>/checkout`) and the owner in-house invoice price via a DIFFERENT path — `_portal_priced_lines`/`_price_inhouse_invoice` → `_inhouse_line_unit_cents` (app.py:4753) / `_inhouse_ff_unit_cents` (app.py:4726) — which is repertoire-unaware. So Task 5's payload shows the member price but the checkout would charge regular. Display MUST equal charge.
+
+**Files:** Modify `app.py` (`_inhouse_line_unit_cents` + its callers `_portal_priced_lines`, `_price_inhouse_invoice`); Test `tests/test_inhouse_repertoire.py`.
+
+**Interfaces:** `_inhouse_line_unit_cents(p, ..., email=None)` — when `REPERTOIRE_ENABLED and email and _is_paid_member(email)` and the product's slug ∈ `repertoire.repertoire_slugs(cx,email)` and the line is FF/volume-eligible, apply at least `settings['repertoire_reorder_pct']` off (reuse `pricing.apply_discount` with the wholesale floor — SAME rate/floor as `compute`, so both paths agree). Thread `email` from `_portal_priced_lines` (portal token email) and `_price_inhouse_invoice` (order email).
+
+- [ ] **Step 1: Write failing test** — a member with a repertoire SKU priced via `_portal_priced_lines` (the portal-checkout path) gets the SAME unit_cents as `_price_cart`/the Task-5 payload's `your_cents`; a non-member gets regular; flag off → regular.
+- [ ] **Step 2: Run to verify fail.**
+- [ ] **Step 3: Implement** — add `email` param + repertoire lookup (fresh-DB-safe, best-effort) to `_inhouse_line_unit_cents`; apply the repertoire pct via `pricing.apply_discount(list_cents, pct*100, floor)` matching `compute`'s scale; thread `email` from both callers. Gate on `REPERTOIRE_ENABLED`.
+- [ ] **Step 4: Run to verify pass** — assert display(`_price_cart`) === charge(`_portal_priced_lines`) for a member repertoire line.
+- [ ] **Step 5: Commit** — `feat(repertoire): honor repertoire pricing in in-house path (portal checkout + invoice)`
+
+**NOTE:** this makes the owner in-house INVOICE also honor repertoire for members — which resolves the "in-house invoice" site of the open 3-site pricing question toward "apply". The two crons (subscription-renewal, founding charge-on-ship) use `_price_cart` and remain a separate optional decision (pass `email=` to their `_price_cart` calls if Glen says yes).
+
+---
+
 ## Task 6: Portal reorder module — UI
 
 **Files:**
@@ -372,6 +390,24 @@ Add `_window_days_for_term(m) -> 90 if m<=1 else 180 if m<=6 else 365`. In the o
 - [ ] **Step 3:** Render `membership_upsell` positively: their real 30-day savings + what the fee nets, benefits list (live Zoom Q&A + group coaching, expanded education, $50 repertoire). CTA → the existing membership/prepay checkout.
 - [ ] **Step 4:** Render-verify locally (documented steps): load a `/portal/<token>` for a seeded member + non-member; confirm prices match `/api/portal/<token>` payload exactly and no console errors.
 - [ ] **Step 5: Commit** — `feat(portal): render reorder module, member savings, forward-framed locked rows + upsell`
+
+---
+
+## Task 6b: Per-item portal reorder endpoint (REQUIRED before go-live)
+
+**Why:** The Task-6 per-row Reorder buttons all POST `/api/portal/<token>/checkout`, which today charges the practitioner-curated `content.reorder_items` cart — NOT the clicked row's item. Glen's ask is "a list of the products they've ordered — click for re-ordering," so a row's button must reorder THAT product. Prices are already correct (Task 5b); this fixes WHICH items get charged.
+
+**Files:** Modify `app.py` (`api_client_portal_checkout` / `_portal_priced_lines` path); Modify `static/client-portal.html` (button sends the row's slug+qty); Test `tests/test_portal_item_reorder.py`.
+
+**Interfaces:** `POST /api/portal/<token>/checkout` accepts an OPTIONAL JSON body `{items:[{slug, qty}]}` (or `{slug, qty}`). When present + valid, it prices+charges exactly those items (through the repertoire-aware `_portal_priced_lines` from Task 5b, so member pricing holds) instead of the stored `reorder_items` cart. When absent, behavior is unchanged (curated cart) — backward compatible.
+
+- [ ] **Step 1: Write failing test** — POST with `{items:[{slug:"neuro-magnesium", qty:2}]}` for a member creates an order/invoice for exactly that item at the member repertoire price (=== the payload's `your_cents` × qty); POST with no body still charges the curated cart (unchanged).
+- [ ] **Step 2: Run to verify fail.**
+- [ ] **Step 3: Implement** — in `api_client_portal_checkout`, if the request body carries `items`, validate each slug against the client's reorder payload/catalog (reject unknown slugs — no arbitrary-item injection), clamp qty to a sane range, and build the priced lines from those instead of `content.reorder_items`. Reuse `_portal_priced_lines(items, email=email)` (repertoire-aware). Keep the add-then-confirm + Stripe-URL flow identical. Then update the UI Reorder button to POST `{items:[{slug, qty}]}` for its row (with the one-shot latch already in place).
+- [ ] **Step 4: Run to verify pass.**
+- [ ] **Step 5: Commit** — `feat(portal): per-item reorder checkout (button charges the clicked row)`
+
+**Guardrail:** validate the posted slug is one the client is actually entitled to reorder (present in their reorder payload) — never let the body inject an arbitrary catalog SKU/qty/price.
 
 ---
 
