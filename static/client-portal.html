@@ -463,10 +463,13 @@ function render(d, v){
     let practContent = `<h2 style="margin:0 0 .4rem;font-size:1rem">Your practitioner</h2>
       <p style="margin:0;color:var(--muted);font-size:.95rem">Your continuity care is guided by <strong>${esc(pb.name||"")}</strong>${pb.practice_name?` — ${esc(pb.practice_name)}`:""}.</p>`;
     let practImg = pb.photo_url ? `<img src="${esc(pb.photo_url)}" alt="${esc(pb.name||"")}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;flex:0 0 auto;">` : "";
+    // Practice logo mark at the right end — logos aren't square, so contain (no crop, no radius).
+    let practLogo = pb.logo_url ? `<img src="${esc(pb.logo_url)}" alt="${esc(pb.practice_name||pb.name||"")}" style="max-height:32px;max-width:120px;object-fit:contain;flex:0 0 auto;">` : "";
     html += `<div class="card your-practitioner-band"${accentStyle}>
       <div style="display:flex;align-items:center;gap:12px">
         ${practImg}
         <div style="flex:1">${practContent}</div>
+        ${practLogo}
       </div>
     </div>`;
   }
