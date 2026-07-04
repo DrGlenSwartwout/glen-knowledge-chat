@@ -13,6 +13,10 @@
  .ghost{background:#fff;color:#2f6f5e;border:1px solid #2f6f5e}
  .slot{display:inline-block;margin:4px;background:#2f6f5e}
  .item{padding:10px;border:1px solid #d7e0dc;border-radius:8px;margin:8px 0;background:#fff}
+ .help{font-size:13px;color:#5a6b64;margin:6px 0 0 26px;line-height:1.5}
+ .help a{color:#2f6f5e}
+ .intro{background:#f0f5f3;border:1px solid #d7e0dc;border-radius:8px;padding:12px 14px;margin:0 0 14px;font-size:14px;line-height:1.5}
+ .intro a{color:#2f6f5e}
  .hidden{display:none}
  label{font-size:15px}
  input[type=text],input[type=email],input#f-name,input#f-email{
@@ -26,7 +30,11 @@
 <h1>EVOX Setup</h1>
 
 <div id="v-start">
-  <p>Set up your EVOX remote session in a few quick steps.</p>
+  <div class="intro">
+    <strong>EVOX</strong> is a voice-guided perception reframing session with Rae, done remotely by phone using your own computer and a ZYTO hand cradle. It gently works with the stress patterns held around a situation, memory, or theme &mdash; including ones carried down through generations.
+    <br>Want to understand it first? <a href="https://wellnesswhispering.com/evox" target="_blank" rel="noopener">What is an EVOX session?</a> &middot; <a href="https://remedymatch.com/resources/422-transgenerational-perception-reframing" target="_blank" rel="noopener">Transgenerational perception reframing</a>
+  </div>
+  <p>Setup takes a few quick steps. Enter your name and email and we'll send your setup link.</p>
   <input id="f-name" placeholder="Your name">
   <input id="f-email" placeholder="you@email.com" type="email">
   <p id="start-err" class="err hidden"></p>
@@ -44,6 +52,7 @@
   <div class="item">
     <label><input type="checkbox" id="c-pc_ok" onchange="setItem('pc_ok',this.checked)">
       I have (or can access) a Windows 10/11 PC</label>
+    <div class="help">The ZYTO Remote software runs on a <strong>Windows 10 or 11</strong> PC. If your computer is on an older version, update it to Windows 10 or 11 first.</div>
   </div>
 
   <div class="item">
@@ -53,16 +62,24 @@
       <a class="btn buy" href="/begin/product/hand-cradle">Buy hand cradle ($297)</a>
       <button class="ghost" onclick="setItem('cradle_ok', true)">I already have access</button>
     </div>
+    <div class="help">The hand cradle connects you to Rae's ZYTO system during your session. New to it? <a href="https://wellnesswhispering.com/zyto-biofield" target="_blank" rel="noopener">About ZYTO &amp; the hand cradle</a>. Already have one? Tap &ldquo;I already have access.&rdquo;</div>
   </div>
 
   <div class="item">
     <label><input type="checkbox" id="c-headset_ok" onchange="setItem('headset_ok',this.checked)">
       Headset + microphone</label>
+    <div class="help">Any headset with a microphone works &mdash; so you and Rae can talk comfortably during the session.</div>
   </div>
 
   <div class="item">
     <label><input type="checkbox" id="c-zyto_ok" onchange="setItem('zyto_ok',this.checked)">
       ZYTO software installed &amp; verified with ZYTO support (Mon&ndash;Thu)</label>
+    <div class="help">
+      1. Download the free ZYTO Remote app: <a href="https://zyto.com/remote-app" target="_blank" rel="noopener">zyto.com/remote-app</a><br>
+      2. Install it on your Windows PC and connect your hand cradle.<br>
+      3. Call ZYTO Tech Support to confirm you're all set: <strong>(801)&nbsp;224-7199</strong> or <strong>(866)&nbsp;369-2265</strong>, 7&nbsp;AM&ndash;6&nbsp;PM Mountain Time, Mon&ndash;Thu.<br>
+      Check this box once support confirms your setup is working.
+    </div>
   </div>
 
   <button id="btn-book" class="hidden" onclick="showAvail()">Choose a time &rarr;</button>
