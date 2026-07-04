@@ -8,6 +8,13 @@ JOINER = "join-referee@example.com"
 
 def _clean(cx):
     rf.init_tables(cx)
+    subs.init_subscriptions_table(cx)
+    subs.migrate_add_failed_count(cx)
+    subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_free_months(cx)
+    subs.migrate_add_term_cap_column(cx)
+    subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     for e in (OWNER, JOINER):
         cx.execute("DELETE FROM subscriptions WHERE email=?", (e,))
     cx.execute("DELETE FROM referral_redemptions WHERE referee_email=?", (JOINER,))

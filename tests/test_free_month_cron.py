@@ -28,8 +28,8 @@ def _stub(monkeypatch, charges):
 
 
 def _member(cx, email, *, next_date, order_count=1):
-    subs.init_subscriptions_table(cx); subs.migrate_add_membership_columns(cx); subs.migrate_add_free_months(cx)
-    subs.migrate_add_failed_count(cx); subs.migrate_add_term_cap_column(cx)
+    subs.init_subscriptions_table(cx); subs.migrate_add_failed_count(cx); subs.migrate_add_membership_columns(cx)
+    subs.migrate_add_free_months(cx); subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx); subs.migrate_add_consent_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (email,)); cx.commit()
     sid = subs.create_membership(cx, email=email, stripe_customer_id="cus", stripe_payment_method_id="pm",
