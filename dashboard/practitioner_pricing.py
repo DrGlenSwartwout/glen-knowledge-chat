@@ -152,3 +152,36 @@ def effective_settings(config, *, program_member, settings):
     out = dict(base)
     out["discounts"] = disc
     return out
+
+
+def validate_config(payload):
+    errors = []
+    if not isinstance(payload, dict):
+        return ["config must be an object"]
+    for sched_name in ("standard", "program"):
+        sched = payload.get(sched_name)
+        if sched is None:
+            continue
+        if not isinstance(sched, dict):
+            errors.append(f"{sched_name} must be an object")
+            continue
+        for k, v in sched.items():
+            if sched_name == "program" and k == "enabled":
+                if not isinstance(v, bool):
+                    errors.append("program.enabled must be boolean")
+                continue
+            if k not in _TYPES:
+                errors.append(f"unknown discount type: {sched_name}.{k}")
+                continue
+            if not isinstance(v, dict):
+                errors.append(f"{sched_name}.{k} must be an object")
+                continue
+            if "enabled" in v and not isinstance(v["enabled"], bool):
+                errors.append(f"{sched_name}.{k}.enabled must be boolean")
+            if "dial" in v:
+                dv = v["dial"]
+                if isinstance(dv, bool) or not isinstance(dv, (int, float)):
+                    errors.append(f"{sched_name}.{k}.dial must be a number")
+                elif dv < 0 or dv > 1:
+                    errors.append(f"{sched_name}.{k}.dial must be between 0 and 1")
+    return errors

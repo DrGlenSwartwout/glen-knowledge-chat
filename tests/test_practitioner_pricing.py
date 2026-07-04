@@ -172,3 +172,26 @@ def test_program_schedule_only_for_members_and_when_enabled():
     mem = pp.effective_settings(cfg, program_member=True, settings=_global())
     assert abs(_pricing.same_sku_pct(12, non) - 7.25) < 1e-6   # standard: 0.25*29
     assert _pricing.same_sku_pct(12, mem) == 29.0               # program: 1.0*29
+
+
+def test_validate_accepts_good_config():
+    ok = {"standard": {"open_total": {"enabled": True, "dial": 0.5}},
+          "program": {"enabled": True, "program_total": {"enabled": True, "dial": 1.0}}}
+    assert pp.validate_config(ok) == []
+
+
+def test_validate_rejects_unknown_type():
+    errs = pp.validate_config({"standard": {"mystery": {"enabled": True, "dial": 0.5}}})
+    assert any("unknown discount type" in e for e in errs)
+
+
+def test_validate_rejects_dial_out_of_range():
+    assert any("between 0 and 1" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": True, "dial": 1.5}}}))
+    assert any("between 0 and 1" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": True, "dial": -0.1}}}))
+
+
+def test_validate_rejects_non_bool_enabled():
+    assert any("boolean" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": "yes", "dial": 0.5}}}))
