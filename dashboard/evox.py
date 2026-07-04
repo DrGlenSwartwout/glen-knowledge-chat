@@ -163,8 +163,11 @@ def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
             "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
             "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',?,?,?)",
             (email, practitioner, start_ts, end_ts, 1 if prepaid else 0, ics_uid, now))
-    except sqlite3.IntegrityError:
-        raise SlotTaken(start_ts)
+    except sqlite3.IntegrityError as e:
+        cx.rollback()
+        if "UNIQUE" in str(e).upper():
+            raise SlotTaken(start_ts)
+        raise
     booking_id = cur.lastrowid
     ev_id = f"evox-{booking_id}"
     cx.execute(

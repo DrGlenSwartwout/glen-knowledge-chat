@@ -114,6 +114,13 @@ def test_double_book_raises():
     with pytest.raises(evox.SlotTaken):
         evox.create_booking(cx, "d@x.com", "2026-07-06T11:00:00")
 
+def test_booked_starts_excludes_cancelled():
+    cx = _cal_cx()
+    b = evox.create_booking(cx, "c@x.com", "2026-07-06T11:00:00")
+    assert "2026-07-06T11:00:00" in evox.booked_starts(cx)
+    cx.execute("UPDATE evox_bookings SET status='cancelled' WHERE id=?", (b["id"],)); cx.commit()
+    assert "2026-07-06T11:00:00" not in evox.booked_starts(cx)
+
 def test_rae_busy_intervals_reads_calendar():
     cx = _cal_cx()
     cx.execute("INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
