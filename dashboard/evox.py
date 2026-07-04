@@ -2,6 +2,7 @@
 Pure helpers take primitives only (no cx) and must import without importing app."""
 import sqlite3
 import secrets
+import json as _json
 from datetime import datetime, timedelta, timezone
 
 READINESS_ITEMS = ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok")
@@ -181,3 +182,56 @@ def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
         tag_fn(email, ["evox-client", "evox-ready"])
     return {"id": booking_id, "email": email, "start_ts": start_ts,
             "end_ts": end_ts, "ics_uid": ics_uid, "prepaid": prepaid}
+
+
+def build_ics(*, uid, start_ts, end_ts, summary, description, location,
+              organizer_email="rae@illtowell.com") -> bytes:
+    def _fmt(ts):  # naive local -> floating VEVENT time
+        return datetime.fromisoformat(ts[:19]).strftime("%Y%m%dT%H%M%S")
+    dtstamp = datetime.fromisoformat(start_ts[:19]).strftime("%Y%m%dT000000")
+    desc = (description or "").replace("\n", "\\n")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//illtowell//EVOX//EN",
+             "METHOD:REQUEST", "BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{dtstamp}",
+             f"DTSTART:{_fmt(start_ts)}", f"DTEND:{_fmt(end_ts)}",
+             f"SUMMARY:{summary}", f"DESCRIPTION:{desc}", f"LOCATION:{location}",
+             f"ORGANIZER:mailto:{organizer_email}", "STATUS:CONFIRMED",
+             "END:VEVENT", "END:VCALENDAR"]
+    return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
+def session_credit_balance(cx, email: str) -> int:
+    email = (email or "").strip().lower()
+    r = cx.execute("SELECT credits FROM evox_session_credits WHERE email=?", (email,)).fetchone()
+    return int(r[0]) if r else 0
+
+
+def add_session_credits(cx, email: str, n: int) -> int:
+    email = (email or "").strip().lower()
+    cx.execute("INSERT INTO evox_session_credits (email, credits) VALUES (?, ?) "
+               "ON CONFLICT(email) DO UPDATE SET credits=credits+excluded.credits", (email, n))
+    cx.commit()
+    return session_credit_balance(cx, email)
+
+
+def consume_session_credit(cx, email: str) -> bool:
+    email = (email or "").strip().lower()
+    cur = cx.execute("UPDATE evox_session_credits SET credits=credits-1 "
+                     "WHERE email=? AND credits>0", (email,))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def has_cradle_purchase(cx, email: str) -> bool:
+    email = (email or "").strip().lower()
+    try:
+        rows = cx.execute("SELECT items_json FROM orders WHERE lower(email)=?", (email,)).fetchall()
+    except sqlite3.OperationalError:
+        return False
+    for (items,) in rows:
+        try:
+            for line in _json.loads(items or "[]"):
+                if (line.get("slug") or "") == "hand-cradle":
+                    return True
+        except Exception:
+            continue
+    return False

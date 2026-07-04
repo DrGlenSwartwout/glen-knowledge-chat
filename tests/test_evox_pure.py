@@ -129,3 +129,34 @@ def test_rae_busy_intervals_reads_calendar():
                 "2026-07-06T14:00:00", "rae", "visible")); cx.commit()
     assert evox.rae_busy_intervals(cx, "2026-07-06", "2026-07-06") == \
         [("2026-07-06T13:00:00", "2026-07-06T14:00:00")]
+
+
+import json
+def test_build_ics_valid():
+    ics = evox.build_ics(uid="u1@illtowell.com", start_ts="2026-07-06T11:00:00",
+                         end_ts="2026-07-06T12:00:00", summary="EVOX Session",
+                         description="Call Rae at 808-555-1212", location="Phone")
+    t = ics.decode()
+    assert t.startswith("BEGIN:VCALENDAR") and "METHOD:REQUEST" in t
+    assert "BEGIN:VEVENT" in t and "UID:u1@illtowell.com" in t
+    assert "DTSTART:20260706T110000" in t and "DTEND:20260706T120000" in t
+    assert t.endswith("END:VCALENDAR\r\n") and "\r\n" in t
+
+def test_session_credits():
+    cx = _cx()
+    assert evox.session_credit_balance(cx, "e@x.com") == 0
+    assert evox.add_session_credits(cx, "e@x.com", 3) == 3
+    assert evox.consume_session_credit(cx, "e@x.com") is True
+    assert evox.session_credit_balance(cx, "e@x.com") == 2
+
+def test_consume_credit_when_zero():
+    cx = _cx()
+    assert evox.consume_session_credit(cx, "z@x.com") is False
+
+def test_has_cradle_purchase():
+    cx = _cal_cx()
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, email TEXT, items_json TEXT)")
+    cx.execute("INSERT INTO orders (email, items_json) VALUES (?,?)",
+               ("buyer@x.com", json.dumps([{"slug": "hand-cradle", "qty": 1}]))); cx.commit()
+    assert evox.has_cradle_purchase(cx, "BUYER@x.com") is True
+    assert evox.has_cradle_purchase(cx, "nobody@x.com") is False
