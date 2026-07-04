@@ -17,7 +17,7 @@
 - **Config values (env vars, read once at module load in `app.py`, passed into `evox.py`):**
   - `EVOX_HOURS` — Rae's weekly bookable window. Default `"1-4:09:00-16:00"` = Mon–Thu (ISO weekday 1–4), 09:00–16:00 HST, 60-min grid. Format: `"<wdayLo>-<wdayHi>:<HH:MM>-<HH:MM>"`.
   - `EVOX_RAE_PHONE` — the number the client calls at appointment time. **Rae/Glen must set this**; default `""` → the confirmation says "the number in your confirmation" and logs a warning if empty.
-  - `EVOX_SESSION_PRICE_CENTS` — price of one prepaid EVOX session. **Glen to confirm the number.** Recommended default `15000` ($150). Used for the `evox-session` SKU.
+  - `EVOX_SESSION_PRICE_CENTS` — public list price of one prepaid EVOX session = `19700` ($197). Used for the `evox-session` SKU storefront price. **The $100 member rate is NOT a storefront price in v1** — it is applied by Rae at invoice/prepay time via the in-house per-line `unit_cents` override (she knows member vs public), exactly like the invoice-after default. Storefront member auto-pricing is a deferred enhancement (would touch the pricing core in both `pricing.compute` and `_inhouse_line_unit_cents`).
 - **Medium is phone + internet, no Zoom.** No video link is ever generated.
 - **Call direction: client calls Rae** (Rae's number in confirmation + ICS).
 - **Tags** reuse the existing `people.tags` JSON-array column via `dashboard.people.set_person_tags(current, add=, remove=)` — do NOT invent a tag table.
@@ -61,7 +61,7 @@ def test_hand_cradle_sku_present():
 
 def test_evox_session_sku_present():
     p = _products()["evox-session"]
-    assert p["price_cents"] == 15000
+    assert p["price_cents"] == 19700          # public list; member $100 applied by Rae at invoice
     assert p["info_only"] is True and p["service"] is True   # prepay service, no shipping
 ```
 
@@ -83,10 +83,10 @@ Add these two keys inside the `"products": { ... }` object in `data/products.jso
 },
 "evox-session": {
   "name": "EVOX Session (prepaid)",
-  "price_cents": 15000,
+  "price_cents": 19700,
   "info_only": true,
   "service": true,
-  "service_value_cents": 15000,
+  "service_value_cents": 19700,
   "source": "evox-service-2026-07-04"
 }
 ```
@@ -1219,7 +1219,7 @@ Then add a daily schedule hitting `POST /api/evox/run-reminders` with the consol
 ## Post-implementation (not code tasks)
 
 - **Set env in Render dashboard** (not just render.yaml — `feedback_render_env_not_doppler`): `EVOX_RAE_PHONE`, `EVOX_RAE_EMAIL` (default `suerae1111@gmail.com`), optionally `EVOX_HOURS`, `EVOX_SESSION_PRICE_CENTS`.
-- **Confirm `EVOX_SESSION_PRICE_CENTS`** with Glen (plan default $150).
+- **Pricing settled (Glen 2026-07-04):** EVOX single session $197 public / $100 paid-member. v1 = self-serve prepay lists at $197; the $100 member rate is applied by Rae at invoice/prepay time (override). Storefront member auto-pricing deferred.
 - **Optional cadence tighten:** reduce the Google→`calendar_events` sync interval below hourly if availability freshness matters.
 - **Go-live smoke:** one real end-to-end EVOX booking with Rae — checklist → book → both `.ics` arrive → the `rae`-lane event shows on the console calendar → invoice-after via the in-house Orders board.
 

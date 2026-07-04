@@ -105,7 +105,8 @@ Per-person state in a new table `evox_readiness`. Four items, all self-attested:
 ### 5. Money
 
 - **Default = invoice at session time.** Booking never blocks on payment. After the session Rae records payment on the existing in-house rails: create/settle an in-house order line for the EVOX session and `set_order_payment(method, amount_cents)` (check/cash/etc.), same flow as the Karin/biofield-consult pattern.
-- **Optional prepay** — a **`evox-session` SKU** (single) plus a multi-session package, sold on-site. A prepay purchase credits a **session balance** (`evox_session_credits`, integer, per person). At booking, if the person has credit > 0, the booking marks `prepaid=true` and decrements one; otherwise `prepaid=false` → Rae invoices after.
+- **Optional prepay** — a **`evox-session` SKU** (single; multi = quantity), sold on-site. A prepay purchase credits a **session balance** (`evox_session_credits`, integer, per person). At booking, if the person has credit > 0, the booking marks `prepaid=true` and decrements one; otherwise `prepaid=false` → Rae invoices after.
+- **EVOX session price = $197 public / $100 paid member.** v1: self-serve prepay lists at **$197**; the **$100 member rate is applied by Rae at invoice/prepay time** via the existing per-line `unit_cents` override (she knows member vs public). Storefront member auto-pricing is deferred (it would touch the pricing core in both price paths).
 - **Hand cradle** — **new SKU** `hand-cradle`, $297 + shipping (shipped via the normal packer / flat-rate; not `info_only`). Purchasable from the checklist and standalone.
 
 ### 6. Tags (woven in, minimal)
