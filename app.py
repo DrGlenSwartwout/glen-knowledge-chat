@@ -15168,6 +15168,23 @@ def api_console_biofield_publish():
                     "updated": token is None, "emailed": emailed, "email_status": email_status})
 
 
+@app.route("/api/console/consult-ready", methods=["POST"])
+def api_console_consult_ready():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import consult as _consult
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    ready = bool(body.get("ready"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _consult.init_consult_tables(cx)
+        new_state = _consult.set_consult_ready(cx, email, ready)
+    return jsonify({"ok": True, "email": email, "ready": new_state})
+
+
 @app.route("/api/console/biofield-portal", methods=["GET"])
 def api_console_biofield_load():
     if not _portal_console_ok():
