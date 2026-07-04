@@ -24111,11 +24111,20 @@ def cron_charge_subscriptions():
         for sub in upcoming:
             try:
                 _is_mbr = sub.get("kind") == "membership"
-                _will_comp = _is_mbr and (
-                    int(sub.get("free_months_remaining") or 0) > 0
-                    or (_free_month_enabled() and _fm_headsup_referral(cx, sub["email"])))
+                _banked = int(sub.get("free_months_remaining") or 0) > 0
+                _ref_ok = (_is_mbr and not _banked and _free_month_enabled()
+                           and _fm_headsup_referral(cx, sub["email"]))
+                _will_comp = _is_mbr and (_banked or _ref_ok)
                 if not dry_run:
                     if _will_comp:
+                        # Lock a referral-earned free month NOW (bank it) so a referral
+                        # that churns before the charge date cannot turn this thank-you
+                        # into a charge. Idempotent per cycle via next_charge_date.
+                        if _ref_ok:
+                            from dashboard import free_month as _fm
+                            _fm.grant_free_month(cx, sub["email"], months=1,
+                                                 reason="referral_headsup",
+                                                 idem_key=f"headsup:{sub['id']}:{sub['next_charge_date']}")
                         _send_subscription_email(sub["email"], "free_month_thanks",
                                                  {"next_charge_date": sub["next_charge_date"]})
                         _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
