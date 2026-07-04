@@ -13592,6 +13592,69 @@ def _portal_record_for(cx, token):
     return None
 
 
+def _reorder_item_from_slug(slug, qty):
+    """Build a reorder_items-shaped entry ({slug, qty}) for a slug merged in from
+    an ACCEPTED practitioner recommendation (Task 2, fast-follow off #572).
+    Deliberately carries NO price_cents override: the recommendation's
+    suggested-step price is $0 on prod and must never be shown as a real cost.
+    Omitting it makes this entry fall through to the SAME regular-catalog-price
+    display path any other un-overridden reorder_items row already uses (see the
+    `display` loop right below) — the authoritative price is computed later, at
+    checkout, by _portal_priced_lines, exactly like every other reorder line."""
+    return {"slug": slug, "qty": qty}
+
+
+def _merge_accepted_recommendation_items(cx, email, reorder_items):
+    """Merge an ACCEPTED practitioner recommendation's items into ``reorder_items``,
+    deduped by lowercased slug, returning a NEW list in the same {slug, qty}
+    reorder-item shape. Merges ONLY when the patient's active recommendation is
+    status=='accepted' — a 'sent'/'dismissed'/absent rec leaves the list unchanged.
+
+    This is the single source of truth for "an accepted recommendation lives in the
+    patient's reorder list", so it must reach BOTH the portal DISPLAY payload
+    (api_client_portal) AND the money path (the no-body reorder checkout) — otherwise
+    the button charges a different set than the patient sees. Never raises — a merge
+    failure must never break a portal render or a checkout."""
+    base = list(reorder_items or [])
+    try:
+        if not email:
+            return base
+        from dashboard import practitioner_recommendations as _pr
+        cx.row_factory = sqlite3.Row
+        _pr.init_table(cx)
+        rec = _pr.active_for_patient(cx, email)
+        if not rec or rec.get("status") != "accepted":
+            return base
+        have = {(it.get("slug") or "").strip().lower() for it in base}
+        for it in (rec.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug or slug in have:
+                continue
+            try:
+                qty = max(1, min(int(it.get("qty", 1) or 1), 99))
+            except Exception:
+                qty = 1
+            base.append(_reorder_item_from_slug(slug, qty))
+            have.add(slug)
+        return base
+    except Exception:
+        return base
+
+
+def _accepted_recommendation_slugs(cx, email):
+    """Lowercased slugs from the patient's ACCEPTED practitioner recommendation
+    (empty set otherwise). The doctor's recommendation IS the authorization to buy,
+    so these slugs are entitled at reorder checkout even for a remedy the patient has
+    never purchased before — used to union into _portal_entitled_slugs so the
+    entitlement gate can't drop a freshly-recommended item. Never raises."""
+    try:
+        merged = _merge_accepted_recommendation_items(cx, email, [])
+        return {(it.get("slug") or "").strip().lower()
+                for it in merged if (it.get("slug") or "").strip()}
+    except Exception:
+        return set()
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
@@ -13645,6 +13708,20 @@ def api_client_portal(token):
             item["dosing"] = L.get("dosing", "")
         bf_layers.append(item)
     reorder_src = bf_content.get("reorder_items") if dates else content.get("reorder_items")
+    # Task 2 (fast-follow off #572): merge an ACCEPTED practitioner recommendation's
+    # items into the reorder set, deduped by slug, so accepting a recommendation
+    # leaves its items living in the patient's persistent, retryable reorder list
+    # instead of the dead end #572 removed. 'sent' recs stay on the card only
+    # (_active_recommendation_card below); 'dismissed' recs show nowhere; an
+    # 'accepted' rec's items land HERE — via the shared merge helper that the
+    # no-body reorder checkout ALSO calls, so display and charge stay identical.
+    # A merge failure must never break the portal render.
+    try:
+        with sqlite3.connect(LOG_DB) as _rcx:
+            reorder_src = _merge_accepted_recommendation_items(
+                _rcx, email_for_reports, reorder_src)
+    except Exception:
+        pass  # a recommendation-merge failure must never break the portal render
     display = []
     for it in (reorder_src or []):
         slug = (it.get("slug") or "").strip()
@@ -14169,6 +14246,15 @@ def api_client_portal_checkout(token):
         if not isinstance(posted, list) or not posted:
             return jsonify({"error": "Invalid items."}), 400
         entitled = _portal_entitled_slugs(email)
+        # An ACCEPTED doctor recommendation IS the authorization to buy — union its
+        # slugs into the entitled set so a never-before-purchased recommended remedy
+        # (e.g. its own per-row "Reorder" button) is purchasable. Only accepted-rec
+        # slugs are added; general entitlement is NOT broadened.
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                entitled = entitled | _accepted_recommendation_slugs(_rcx, email)
+        except Exception:
+            pass  # entitlement-union failure must never break checkout
         items = []
         for it in posted:
             if not isinstance(it, dict):
@@ -14182,7 +14268,16 @@ def api_client_portal_checkout(token):
                 qty = 1
             items.append({"slug": slug, "qty": qty})  # price_cents NEVER accepted from the client
     else:
-        items = (portal.get("content") or {}).get("reorder_items") or []
+        # No body = the "Order my remedies" button. Charge the SAME merged set the
+        # portal display shows (curated reorder_items + accepted-rec items), so an
+        # accepted recommendation actually reaches the invoice instead of 400'ing
+        # ("no longer available") or being silently dropped.
+        base_items = (portal.get("content") or {}).get("reorder_items") or []
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                items = _merge_accepted_recommendation_items(_rcx, email, base_items)
+        except Exception:
+            items = base_items  # merge failure must never break checkout
     lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
@@ -14221,8 +14316,9 @@ def _active_recommendation_card(cx, email):
     or None (Task 8). ONLY a 'sent' (not-yet-acted) recommendation surfaces — once
     accepted or dismissed the card is gone. Items are resolved to remedy NAMES; NO
     price is shown here: the suggested-step price is $0 on prod (its source table is
-    local-only), so it is never displayed as a real cost. The authoritative member
-    price appears only at the accept/checkout step (_portal_priced_lines)."""
+    local-only), so it is never displayed as a real cost. Accept itself mints no
+    price either — the authoritative member price appears later, at the patient's
+    reorder checkout (_portal_priced_lines)."""
     from dashboard import practitioner_recommendations as _pr
     try:
         rec = _pr.active_for_patient(cx, email)
@@ -14247,65 +14343,13 @@ def _active_recommendation_card(cx, email):
     return {"id": rec["id"], "note": rec.get("note") or "", "items": items}
 
 
-def _recommendation_cart_items(rec):
-    """Normalize a recommendation's items to {slug, qty} for pricing, DROPPING any
-    carried price_cents. The suggested-step price is $0 on prod, and
-    _portal_priced_lines/_inhouse_line_unit_cents honor a per-item price_cents as an
-    override — so passing it through would price the accepted cart at $0. Stripping
-    it forces the real member-priced path (pricing.compute) to set every unit price."""
-    out = []
-    for it in (rec.get("items") or []):
-        d = it if isinstance(it, dict) else {}
-        slug = (d.get("slug") or "").strip().lower()
-        if not slug:
-            continue
-        try:
-            qty = max(1, min(int(d.get("qty", 1) or 1), 99))
-        except Exception:
-            qty = 1
-        out.append({"slug": slug, "qty": qty})  # NO price_cents — never trusted
-    return out
-
-
-def _portal_reorder_checkout(email, items_rec, lines):
-    """Build a live Stripe checkout (QBO invoice → Stripe URL) for a set of
-    already-member-priced portal lines, mirroring the /api/portal/<token>/checkout
-    body EXACTLY (same source='portal-reorder' ingest + _stripe_checkout_url_for_reorder).
-    Returns the Stripe URL or None. Caller guards on _STRIPE_ACTIVE."""
-    from dashboard import qbo_billing as _qb_local
-    ship = {}
-    try:
-        with sqlite3.connect(LOG_DB) as cx:
-            cx.row_factory = sqlite3.Row
-            prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
-        if prior:
-            ship = prior[0].get("address") or {}
-    except Exception:
-        ship = {}  # no prior order / address on file — collected at checkout
-    cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-    inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-    out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-    _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
-                  name=ship.get("name", ""), items=items_rec,
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                  address=ship, channel="retail")
-    return _stripe_checkout_url_for_reorder(out, email)
-
-
 @app.route("/api/portal/<token>/recommendation/accept", methods=["POST"])
 def api_portal_recommendation_accept(token):
-    """Task 8 — patient accepts their ACTIVE practitioner recommendation: add the
-    recommended items to a MEMBER-PRICED cart and mark the recommendation 'accepted'.
-
-    SCOPE: acts only on the authenticated patient's OWN active recommendation
-    (resolved from the portal token/session — never a patient_email from the body).
-
-    PRICING: items are re-priced through the SAME member-priced path the portal
-    reorder button uses (_portal_priced_lines → pricing.compute). The recommendation's
-    own price_cents ($0 on prod) is stripped and NEVER trusted — see
-    _recommendation_cart_items. 'accepted' is set the moment the patient acts,
-    independent of whether a live card checkout is available in this environment."""
+    """Patient accepts their active practitioner recommendation: mark it 'accepted'
+    so its items surface in the patient's reorder list. NO invoice/Stripe session is
+    minted here — the purchase runs through the normal reorder checkout, which is
+    retryable and mints exactly one invoice. Scope: the authenticated patient's OWN
+    active recommendation (identity from the portal token, never a body field)."""
     from dashboard import client_portal as _cp
     from dashboard import practitioner_recommendations as _pr
     with sqlite3.connect(LOG_DB) as cx:
@@ -14320,20 +14364,9 @@ def api_portal_recommendation_accept(token):
         rec = _pr.active_for_patient(cx, email)
     if not rec or rec.get("status") != "sent":
         return jsonify({"error": "No active recommendation to accept."}), 400
-    items = _recommendation_cart_items(rec)
-    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
-    if not lines:
-        return jsonify({"error": "These remedies are no longer available — please reach out and we'll help."}), 400
     with sqlite3.connect(LOG_DB) as cx:
         _pr.set_status(cx, rec["id"], "accepted")
-    stripe_url = None
-    if _STRIPE_ACTIVE:
-        try:
-            stripe_url = _portal_reorder_checkout(email, items_rec, lines)
-        except Exception:
-            app.logger.exception("recommendation accept checkout failed")
-            stripe_url = None
-    return jsonify({"ok": True, "accepted": True, "lines": lines, "stripe_url": stripe_url})
+    return jsonify({"ok": True, "accepted": True})
 
 
 @app.route("/api/portal/<token>/recommendation/dismiss", methods=["POST"])
