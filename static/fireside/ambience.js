@@ -29,7 +29,7 @@ export class Ambience {
     }
     for (const o of this.amb.oneshots) {
       if (o.loop) this._startLoop(o);       // continuous soft layer (fills dead time)
-      else this._schedule(o);               // random one-shot
+      else this._schedule(o, true);         // random one-shot (first gap may be overridden)
     }
   }
 
@@ -68,11 +68,17 @@ export class Ambience {
     this.loopEls.push({ el: a, volume: o.volume });
   }
 
-  _schedule(o) {
+  _schedule(o, isFirst = false) {
+    // first_gap_s lets a signature one-shot (e.g. the Metal singing bowl) sound
+    // shortly after start instead of waiting a full random gap; later fires cycle
+    // on the normal min/max gap.
+    const gap = (isFirst && typeof o.first_gap_s === 'number')
+      ? Math.max(0, o.first_gap_s) * 1000
+      : nextGapMs(o);
     const t = setTimeout(() => {
       if (!this.muted && !shouldDuck(this.isVoicePlaying())) this._play(o);
       this._schedule(o); // always reschedule, ducked or not
-    }, nextGapMs(o));
+    }, gap);
     this.timers.push(t);
   }
 
