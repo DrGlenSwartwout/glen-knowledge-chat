@@ -203,6 +203,34 @@ def earn_dropship_margin(practitioner_id, margin_cents, *, qbo_invoice_id, ref=N
                   qbo_invoice_id=qbo_invoice_id, note=ref)
 
 
+def earn_care_share(practitioner_id, share_cents, *, event_ref) -> int:
+    """Credit a doctor's cert-scaled share of a Continuous Care charge.
+
+    Credit-only (no path to cash). Idempotent per ``event_ref`` — a second call
+    with the same event_ref is a silent no-op, so cron retries are safe.
+    """
+    amt = max(0, int(share_cents))
+    return _apply(practitioner_id, "earn_care_share", lambda _bal: amt,
+                  qbo_invoice_id=event_ref, note="care_share")
+
+
+def reverse_care_share(practitioner_id, share_cents, *, event_ref) -> int:
+    """Debit a previously-credited care-share (e.g. on a manual refund).
+
+    Keyed to a distinct ``reverse:`` idempotency ref so it applies at most
+    once. No-op (returns 0) if the original ``earn_care_share`` credit for
+    ``event_ref`` was never posted — there is nothing to reverse. Returns the
+    positive magnitude reversed (mirrors ``redeem_for_order``'s convention).
+    """
+    amt = max(0, int(share_cents))
+    delta = _apply(
+        practitioner_id, "reverse_care_share", lambda _bal: -amt,
+        qbo_invoice_id=f"reverse:{event_ref}", note="care_share_reversal",
+        precheck=lambda cur: _already_posted(cur, event_ref, "earn_care_share"),
+    )
+    return -delta
+
+
 def earn_amount_fee_free_cents(order_total_cents: int) -> int:
     return math.floor(EARN_FEE_FREE_PCT * max(0, int(order_total_cents)))
 
