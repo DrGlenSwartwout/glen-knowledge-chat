@@ -7432,6 +7432,17 @@ def _notify_first_cc_signup(email, plan_label, amount_cents):
         print(f"[cc-signup-alert] {e!r}", flush=True)
 
 
+def _ensure_prepay_grant_columns(cx):
+    """Idempotently add the attribution columns to prepay_term_grants."""
+    have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
+    if "attributed_practitioner_id" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN attributed_practitioner_id TEXT")
+    if "practitioner_share_consent" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN practitioner_share_consent INTEGER NOT NULL DEFAULT 0")
+    if "term_end" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN term_end TEXT")
+
+
 def _fulfill_prepay_term(session_id):
     """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
@@ -7459,6 +7470,7 @@ def _fulfill_prepay_term(session_id):
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS prepay_term_grants "
                 "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
+            _ensure_prepay_grant_columns(cx)
             init_membership_tables(cx)
             claimed = cx.execute(
                 "INSERT OR IGNORE INTO prepay_term_grants "
