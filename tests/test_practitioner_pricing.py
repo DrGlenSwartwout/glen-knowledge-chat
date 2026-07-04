@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import os
 from dashboard import practitioner_pricing as pp
+from dashboard import pricing as _pricing
 
 def _cx():
     return sqlite3.connect(":memory:")
@@ -123,3 +124,51 @@ def test_set_config_persists_without_with_block(tmp_path):
 
     # Must be equal to what we set (not an empty dict)
     assert retrieved == cfg
+
+
+def _global():
+    # live global settings from code defaults: same_sku ON, program_total ON, open_total OFF
+    return _pricing.load_settings({})
+
+
+def test_ceilings_open_total_uses_program_total_curve():
+    c = pp.ceilings(_global())
+    # program_total default maxes at 29 (qty 18); open_total ceiling mirrors it
+    assert c["program_total"] == 29.0
+    assert c["open_total"] == 29.0
+    assert c["same_sku"] == 29.0
+
+
+def test_effective_disabled_type_yields_zero():
+    eff = pp.effective_settings({}, program_member=False, settings=_global())
+    assert _pricing.same_sku_pct(12, eff) == 0.0
+    assert _pricing.open_total_pct(18, eff) == 0.0
+
+
+def test_effective_dial_scales_and_clamps_to_ceiling():
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.5}}}
+    eff = pp.effective_settings(cfg, program_member=False, settings=_global())
+    # half of the 29% ceiling at max qty
+    assert abs(_pricing.same_sku_pct(12, eff) - 14.5) < 1e-6
+    # never exceeds ceiling even if dial were >1 (clamped)
+    cfg["standard"]["same_sku"]["dial"] = 5.0
+    eff2 = pp.effective_settings(cfg, program_member=False, settings=_global())
+    assert _pricing.same_sku_pct(12, eff2) == 29.0
+
+
+def test_effective_open_total_dialed_off_program_curve():
+    cfg = {"standard": {"open_total": {"enabled": True, "dial": 1.0}}}
+    eff = pp.effective_settings(cfg, program_member=False, settings=_global())
+    # open_total fires for everyone (not member-gated), using the program_total ceiling
+    assert _pricing.open_total_pct(18, eff) == 29.0
+
+
+def test_program_schedule_only_for_members_and_when_enabled():
+    cfg = {
+        "standard": {"same_sku": {"enabled": True, "dial": 0.25}},
+        "program": {"enabled": True, "same_sku": {"enabled": True, "dial": 1.0}},
+    }
+    non = pp.effective_settings(cfg, program_member=False, settings=_global())
+    mem = pp.effective_settings(cfg, program_member=True, settings=_global())
+    assert abs(_pricing.same_sku_pct(12, non) - 7.25) < 1e-6   # standard: 0.25*29
+    assert _pricing.same_sku_pct(12, mem) == 29.0               # program: 1.0*29

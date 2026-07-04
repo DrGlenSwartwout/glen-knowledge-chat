@@ -13,6 +13,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from dashboard import wholesale_pricing as _wp
+from dashboard import pricing as _pricing
 
 DEFAULTS = {
     "fee_pct": 0.33,            # service fee on the practitioner's markup (drop-ship only)
@@ -114,3 +115,40 @@ def set_config(cx, pid, config):
         (str(pid), json.dumps(config), _now()),
     )
     cx.commit()
+
+
+# Pure ceilings + effective_settings builder
+
+def _ceiling_anchors(gcfg, ptype):
+    # open_total's ceiling is the program_total curve (private-channel decision).
+    key = "program_total" if ptype == "open_total" else ptype
+    return [list(a) for a in gcfg[key]["anchors"]]
+
+
+def ceilings(settings):
+    gcfg = _pricing._discount_cfg(_pricing.load_settings(settings))
+    return {t: float(_ceiling_anchors(gcfg, t)[-1][1]) for t in _TYPES}
+
+
+def _scaled(anchors, dial):
+    d = max(0.0, min(1.0, float(dial)))
+    return [[a[0], round(a[1] * d, 4)] for a in anchors]
+
+
+def effective_settings(config, *, program_member, settings):
+    base = _pricing.load_settings(settings)
+    gcfg = _pricing._discount_cfg(base)
+    cfg = config or {}
+    use_program = bool(program_member) and bool((cfg.get("program") or {}).get("enabled"))
+    sched = cfg.get("program" if use_program else "standard") or {}
+    disc = {}
+    for t in _TYPES:
+        ent = sched.get(t) or {}
+        ceil = _ceiling_anchors(gcfg, t)
+        if bool(ent.get("enabled")):
+            disc[t] = {"enabled": True, "anchors": _scaled(ceil, ent.get("dial", 0.0))}
+        else:
+            disc[t] = {"enabled": False, "anchors": ceil}
+    out = dict(base)
+    out["discounts"] = disc
+    return out
