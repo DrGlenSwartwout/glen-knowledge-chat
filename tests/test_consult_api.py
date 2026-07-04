@@ -25,3 +25,37 @@ def test_consult_ready_flip_sets_flag(client):
     from dashboard import consult
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert consult.consult_is_ready(cx, "c@x.com") is True
+
+
+def _mk_portal(email="p@x.com"):
+    import sqlite3
+    from dashboard import client_portal as cp
+    # _init_people_table() normally runs once at app-module import time (against
+    # whatever LOG_DB was live then); tests swap LOG_DB to a fresh tmp file per
+    # test, so re-run it here against the swapped path — same fix the EVOX test
+    # suite gets for free by going through /api/evox/start first.
+    appmod._init_people_table()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        token, _ = cp.upsert_portal(cx, email, "P", {"source": "test"})
+    return token
+
+def test_availability_blocked_until_ready(client, monkeypatch):
+    monkeypatch.setattr(appmod, "send_evox_email", lambda *a, **k: ("console-log", None), raising=False)
+    tok = _mk_portal("p1@x.com")
+    r = client.get(f"/api/consult/availability?token={tok}&range=week")
+    assert r.status_code == 403 and r.get_json()["error"] == "not_ready"
+
+def test_full_consult_flow(client, monkeypatch):
+    monkeypatch.setattr(appmod, "send_evox_email", lambda *a, **k: ("console-log", None), raising=False)
+    monkeypatch.setattr("dashboard.zoom.get_token", lambda *a, **k: "tok")
+    monkeypatch.setattr("dashboard.zoom.create_meeting",
+                        lambda *a, **k: {"join_url": "https://zoom.us/j/1", "meeting_id": "1", "start_url": "x"})
+    tok = _mk_portal("p2@x.com")
+    client.post("/api/console/consult-ready", json={"email": "p2@x.com", "ready": True}, headers=ADMIN)
+    slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
+    assert slots
+    r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
+    assert r.status_code == 200 and r.get_json()["join_url"] == "https://zoom.us/j/1"
+    r2 = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
+    assert r2.status_code == 409
