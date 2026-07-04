@@ -23647,6 +23647,17 @@ def cron_charge_subscriptions():
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
+                        # Turnkey continuity fee-share: credit the enrolling doctor.
+                        # Re-read (updated) is AFTER advance_after_charge, so
+                        # order_count reflects this just-completed charge — the
+                        # event_ref care_share:<id>:<order_count> must be unique per charge.
+                        try:
+                            if updated and updated.get("kind") == "membership":
+                                from dashboard import care_share as _cshare
+                                _cshare.credit_for_charge(
+                                    updated, charge_cents=int(updated.get("amount_cents") or 0))
+                        except Exception as e:
+                            print(f"[care-share] credit failed sid={sid}: {e!r}", flush=True)
                         try:
                             if updated and updated.get("next_charge_date"):
                                 _until = (datetime.fromisoformat(updated["next_charge_date"])
