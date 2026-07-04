@@ -14810,6 +14810,8 @@ def portal_group_join_checkout():
     if not _portal_offers_enabled():
         return jsonify({"error": "not found"}), 404
     token = request.args.get("token", "") or (request.get_json(silent=True) or {}).get("token", "")
+    body = request.get_json(silent=True) or {}
+    referral_code = (body.get("referral_code") or "").strip()[:32]
     sess_cookie = request.cookies.get("rm_portal_session", "")
     from dashboard import portal_identity as _pi
     with sqlite3.connect(LOG_DB) as cx:
@@ -14821,7 +14823,8 @@ def portal_group_join_checkout():
         from dashboard import stripe_pay
         sess = stripe_pay.create_setup_session(
             customer_email=ident.email,
-            metadata={"kind": "group_join", "email": ident.email},
+            metadata={"kind": "group_join", "email": ident.email,
+                      **({"referral_code": referral_code} if referral_code else {})},
             success_url=(f"{PUBLIC_BASE_URL}/portal/offer/live-group/return"
                          f"?session_id={{CHECKOUT_SESSION_ID}}"),
             cancel_url=f"{PUBLIC_BASE_URL}/portal/me")
@@ -14859,6 +14862,11 @@ def portal_group_join_return():
                         stripe_payment_method_id=pm,
                         amount_cents=_po.MEMBERSHIP_PRICE_CENTS, next_charge_date=next_date)
                     _member_join_welcome(cx, email, "subscription")
+                    _ref_code = ((sess.get("metadata") or {}).get("referral_code") or "").strip()
+                    if _ref_code:
+                        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(_ref_code, email)
+                        if _ref_ctx:
+                            _record_referral_if_any(_ref_ctx, email, f"membership:{email}")
         except Exception as e:
             print(f"[group-join] return failed: {e!r}", flush=True)
     return _redir("/portal/me?joined=1")
