@@ -4608,6 +4608,10 @@ TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().low
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Kill-switch for the premium per-element Glendalf backdrop on the member portal.
+# Off -> the portal API returns element_state=null, so the page shows plain (no
+# backdrop, no sound toggle). Element state is still computed in the background.
+ELEMENT_BACKDROP_ENABLED = os.environ.get("ELEMENT_BACKDROP_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _cohort_pricing_enabled():
@@ -13362,12 +13366,14 @@ def api_client_portal(token):
             membership_cat = membership_category(email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
-    try:
-        from dashboard import portal_element_view as _pev
-        with sqlite3.connect(LOG_DB) as _cxe:
-            element_state = _pev.element_view(_cxe, (portal.get("email") or "").strip().lower())
-    except Exception:
-        element_state = None
+    element_state = None
+    if ELEMENT_BACKDROP_ENABLED:
+        try:
+            from dashboard import portal_element_view as _pev
+            with sqlite3.connect(LOG_DB) as _cxe:
+                element_state = _pev.element_view(_cxe, (portal.get("email") or "").strip().lower())
+        except Exception:
+            element_state = None
     payload = {
         "name": portal.get("name"),
         "membership_category": membership_cat,
