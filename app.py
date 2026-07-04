@@ -6679,6 +6679,44 @@ def api_testimonial_invites_list():
     return jsonify({"ok": True, "pending": pending})
 
 
+@app.route("/api/console/dispensary-pay-mix", methods=["GET"])
+def api_console_dispensary_pay_mix():
+    """Read-only: card vs alt-pay (zelle/wise) split of dispensary sales, PROXIED by
+    stripe_payment_intent presence (card = has one; alt-pay = NULL). pay_method is not
+    recorded on dispensary ingest, so this is an inference, not a stored field."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT CASE WHEN stripe_payment_intent IS NOT NULL AND stripe_payment_intent!='' "
+            "            THEN 'card' ELSE 'alt_pay' END AS bucket, "
+            "       COUNT(*) AS n, COALESCE(SUM(total_cents),0) AS cents "
+            "FROM orders WHERE source='dispensary' GROUP BY bucket").fetchall()
+    by = {r["bucket"]: {"orders": r["n"], "total_cents": r["cents"]} for r in rows}
+    card = by.get("card", {"orders": 0, "total_cents": 0})
+    alt = by.get("alt_pay", {"orders": 0, "total_cents": 0})
+    total = card["orders"] + alt["orders"]
+    return jsonify({"ok": True, "source": "dispensary",
+                    "proxy": "stripe_payment_intent present=card, NULL=alt_pay(zelle/wise)",
+                    "card": card, "alt_pay": alt, "total_orders": total,
+                    "alt_pay_order_share": round(alt["orders"] / total, 3) if total else 0.0})
+
+
+@app.route("/api/console/backfill-dispensary-referrals", methods=["POST"])
+def api_console_backfill_dispensary_referrals():
+    """Run the dispensary->referral-graph backfill in-process (the prod chat_log.db is
+    mounted only on the web container). dry_run defaults ON — writes nothing until
+    ?dry_run=0. Attribution only: no reward, no rewarded_at stamp."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "1").strip().lower() in ("1", "true", "yes")
+    from dashboard.referral_backfill import backfill
+    from dashboard.practitioner_portal import practitioner_email_by_id
+    res = backfill(LOG_DB, practitioner_email_by_id, dry_run=dry)
+    return jsonify({"ok": True, "dry_run": dry, **res})
+
+
 @app.route("/begin/product-image-gen/<slug>", methods=["POST"])
 def begin_product_image_gen(slug):
     if not _SALES_AI_IMAGES_ENABLED or not _get_product(slug):
