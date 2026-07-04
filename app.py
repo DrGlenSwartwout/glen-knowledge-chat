@@ -4713,6 +4713,12 @@ def _referrer_reward_pct():
         return 0
 
 
+def _free_month_enabled():
+    """Mechanic A (referral-earned free month) master switch. Read live so tests
+    and a flag-flip redeploy pick it up. Default OFF."""
+    return (os.environ.get("REFERRAL_FREE_MONTH_ENABLED", "") or "").strip().lower() in ("1", "true", "yes")
+
+
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -14996,6 +15002,8 @@ def portal_group_join_checkout():
     if not _portal_offers_enabled():
         return jsonify({"error": "not found"}), 404
     token = request.args.get("token", "") or (request.get_json(silent=True) or {}).get("token", "")
+    body = request.get_json(silent=True) or {}
+    referral_code = (body.get("referral_code") or "").strip()[:32]
     sess_cookie = request.cookies.get("rm_portal_session", "")
     from dashboard import portal_identity as _pi
     with sqlite3.connect(LOG_DB) as cx:
@@ -15007,7 +15015,8 @@ def portal_group_join_checkout():
         from dashboard import stripe_pay
         sess = stripe_pay.create_setup_session(
             customer_email=ident.email,
-            metadata={"kind": "group_join", "email": ident.email},
+            metadata={"kind": "group_join", "email": ident.email,
+                      **({"referral_code": referral_code} if referral_code else {})},
             success_url=(f"{PUBLIC_BASE_URL}/portal/offer/live-group/return"
                          f"?session_id={{CHECKOUT_SESSION_ID}}"),
             cancel_url=f"{PUBLIC_BASE_URL}/portal/me")
@@ -15045,6 +15054,11 @@ def portal_group_join_return():
                         stripe_payment_method_id=pm,
                         amount_cents=_po.MEMBERSHIP_PRICE_CENTS, next_charge_date=next_date)
                     _member_join_welcome(cx, email, "subscription")
+                    _ref_code = ((sess.get("metadata") or {}).get("referral_code") or "").strip()
+                    if _ref_code:
+                        _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(_ref_code, email)
+                        if _ref_ctx:
+                            _record_referral_if_any(_ref_ctx, email, f"membership:{email}")
         except Exception as e:
             print(f"[group-join] return failed: {e!r}", flush=True)
     return _redir("/portal/me?joined=1")
@@ -24101,7 +24115,7 @@ def _mint_membership_cancel_url(cx, email: str) -> str:
 def _send_subscription_email(to_email: str, kind: str, data: dict):
     """Send a subscription lifecycle email. Best-effort — NEVER raises.
 
-    kind: 'heads_up' | 'receipt' | 'payment_failed' | 'setup_confirm'
+    kind: 'heads_up' | 'free_month_thanks' | 'receipt' | 'payment_failed' | 'setup_confirm'
     data: dict with relevant context fields (next_charge_date, amount, etc.)
     Returns (sent_via, error_or_none) same shape as _send_full_report_email.
     """
@@ -24143,6 +24157,17 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
                     f"If you need to skip or pause, visit your subscription portal before that date.\n\n"
                     f"In wellness,\nDr. Glen"
                 )
+        elif kind == "free_month_thanks":
+            charge_date = data.get("next_charge_date", "")
+            subject = "A free month, with our thanks"
+            body = (
+                "Aloha,\n\n"
+                "Because of a kind referral you shared, we are extending your next month "
+                "of membership on us. There is nothing you need to do, and you will not be "
+                f"charged on {charge_date}. Everything stays unlocked.\n\n"
+                "Thank you for helping someone else begin their healing.\n\n"
+                "In wellness,\nDr. Glen"
+            )
         elif kind == "receipt":
             inv_id = data.get("invoice_id", "")
             if is_membership and data.get("product") == "continuous_care":
@@ -24216,6 +24241,14 @@ def _send_subscription_email(to_email: str, kind: str, data: dict):
         return ("error", str(e))
 
 
+def _fm_headsup_referral(cx, email):
+    from dashboard import free_month as _fm
+    try:
+        return _fm.has_active_paying_referral(cx, email)
+    except Exception:
+        return False
+
+
 # ── Daily subscription charge scheduler ──────────────────────────────────────
 
 @app.route("/api/cron/charge-subscriptions", methods=["POST"])
@@ -24238,7 +24271,7 @@ def cron_charge_subscriptions():
 
     if not _subscriptions_enabled():
         return jsonify({"ok": True, "skipped": 0, "charged": 0, "failed": 0,
-                        "notified": 0, "dry_run": False,
+                        "notified": 0, "comped": 0, "dry_run": False,
                         "message": "subscriptions disabled"}), 200
 
     dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
@@ -24248,7 +24281,7 @@ def cron_charge_subscriptions():
 
     today = _date.today().isoformat()  # YYYY-MM-DD
 
-    charged = skipped = failed = notified = 0
+    charged = skipped = failed = notified = comped = 0
 
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -24258,6 +24291,7 @@ def cron_charge_subscriptions():
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
         _subs.migrate_add_consent_column(cx)
+        _subs.migrate_add_free_months(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -24268,19 +24302,43 @@ def cron_charge_subscriptions():
 
         for sub in upcoming:
             try:
+                _is_mbr = sub.get("kind") == "membership"
+                _banked = int(sub.get("free_months_remaining") or 0) > 0
+                _ref_ok = (_is_mbr and not _banked and _free_month_enabled()
+                           and _fm_headsup_referral(cx, sub["email"]))
+                _will_comp = _is_mbr and (_banked or _ref_ok)
                 if not dry_run:
-                    _hu_data = {"next_charge_date": sub["next_charge_date"],
-                                "kind": sub.get("kind", "product"),
-                                "total_cents": sub.get("amount_cents")}
-                    # Membership reminders carry a one-click cancel link (FTC/ROSCA
-                    # easy-cancel) minted fresh per send.
-                    if sub.get("kind") == "membership":
-                        _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
-                    _send_subscription_email(sub["email"], "heads_up", _hu_data)
-                    _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    # Lock a referral-earned free month NOW (bank it) so a referral
+                    # that churns before the charge date cannot turn this thank-you
+                    # into a charge. Idempotent per cycle via next_charge_date. Only
+                    # send the thank-you if the bank actually succeeded — a member
+                    # who is thanked must actually be banked.
+                    _locked = _banked
+                    if _ref_ok:
+                        from dashboard import free_month as _fm
+                        _locked = _fm.grant_free_month(
+                            cx, sub["email"], months=1, reason="referral_headsup",
+                            idem_key=f"headsup:{sub['id']}:{sub['next_charge_date']}") is not None
+                        if not _locked:
+                            print(f"[free-month] heads-up bank returned None, not promising "
+                                  f"sub={sub['id']} email={sub['email']}", flush=True)
+                    if _will_comp and _locked:
+                        _send_subscription_email(sub["email"], "free_month_thanks",
+                                                 {"next_charge_date": sub["next_charge_date"]})
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
+                    else:
+                        _hu_data = {"next_charge_date": sub["next_charge_date"],
+                                    "kind": sub.get("kind", "product"),
+                                    "total_cents": sub.get("amount_cents")}
+                        # Membership reminders carry a one-click cancel link (FTC/ROSCA
+                        # easy-cancel) minted fresh per send.
+                        if _is_mbr:
+                            _hu_data["cancel_url"] = _mint_membership_cancel_url(cx, sub["email"])
+                        _send_subscription_email(sub["email"], "heads_up", _hu_data)
+                        _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
                 notified += 1
                 print(f"[sub-cron] heads-up {'(dry)' if dry_run else ''}"
-                      f" sub={sub['id']} date={sub['next_charge_date']}", flush=True)
+                      f" sub={sub['id']} date={sub['next_charge_date']} comp={_will_comp}", flush=True)
             except Exception as e:
                 print(f"[sub-cron] heads-up sub={sub['id']} error: {e!r}", flush=True)
 
@@ -24318,6 +24376,35 @@ def cron_charge_subscriptions():
                 if sub.get("kind") == "membership":
                     amount_cents = int(sub.get("amount_cents") or 0)
                     if amount_cents <= 0:
+                        continue
+                    # Free-month comp: banked counter first, then the Mechanic A
+                    # referral threshold. A comp advances the cycle WITHOUT charging
+                    # and WITHOUT bumping order_count, extends access, and skips
+                    # care_share (funded by the $99 we are not collecting).
+                    from dashboard import free_month as _fm
+                    _from_bank = int(sub.get("free_months_remaining") or 0) > 0
+                    _do_comp = _from_bank or (
+                        _free_month_enabled() and _fm.has_active_paying_referral(cx, sub["email"]))
+                    if _do_comp:
+                        if dry_run:
+                            print(f"[sub-cron] DRY free-month comp sub={sid} bank={_from_bank}", flush=True)
+                            comped += 1
+                            continue
+                        did = _fm.comp_membership_cycle(
+                            cx, sid,
+                            reason=("banked" if _from_bank else "referral_active"),
+                            idem_key=f"{'bank' if _from_bank else 'ref'}:{sid}:{sub['next_charge_date']}",
+                            from_bank=_from_bank)
+                        if did:
+                            try:
+                                _u = _subs.get(cx, sid)
+                                if _u and _u.get("next_charge_date"):
+                                    _until = (datetime.fromisoformat(_u["next_charge_date"])
+                                              + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                    _extend_membership_grant(cx, sub["email"], _until, "membership_free_month")
+                            except Exception as _e:
+                                print(f"[free-month] grant extend failed sid={sid}: {_e!r}", flush=True)
+                            comped += 1
                         continue
                     # A capped term (term_charges_total set) = Continuous Care; an uncapped
                     # membership = the legacy group-coaching bundle. Keep the card-statement
@@ -24512,6 +24599,7 @@ def cron_charge_subscriptions():
         "skipped": skipped,
         "failed": failed,
         "notified": notified,
+        "comped": comped,
         "dry_run": dry_run,
     })
 

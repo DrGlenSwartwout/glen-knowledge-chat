@@ -220,6 +220,32 @@ def consume_skip(cx, sub_id: int) -> None:
     cx.commit()
 
 
+def migrate_add_free_months(cx) -> None:
+    """Idempotent: add free_months_remaining (INTEGER, default 0) — banked comped
+    membership cycles for Pay It Forward free-month rewards."""
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
+    if "free_months_remaining" not in cols:
+        cx.execute("ALTER TABLE subscriptions ADD COLUMN free_months_remaining INTEGER DEFAULT 0")
+        cx.commit()
+
+
+def comp_cycle(cx, sub_id: int) -> None:
+    """Advance next_charge_date by cadence WITHOUT charging and WITHOUT bumping
+    order_count (a comped free month is neither a paid cycle nor a member-initiated
+    skip). Mirrors consume_skip but leaves skip_next untouched. Positional column
+    access so it is safe regardless of the connection's row_factory."""
+    row = cx.execute(
+        "SELECT cadence_months, next_charge_date FROM subscriptions WHERE id=?",
+        (sub_id,)).fetchone()
+    if row is None:
+        return
+    cadence, ncd = row[0], row[1]
+    cx.execute(
+        "UPDATE subscriptions SET next_charge_date=?, updated_at=? WHERE id=?",
+        (add_months(ncd, cadence), _now_iso(), sub_id))
+    cx.commit()
+
+
 def set_skip_next(cx, sub_id: int, value: bool) -> None:
     cx.execute(
         "UPDATE subscriptions SET skip_next=?, updated_at=? WHERE id=?",

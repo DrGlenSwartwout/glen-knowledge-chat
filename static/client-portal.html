@@ -816,8 +816,13 @@ function render(d, v){
     html += `<div class="card"><h2>What's next for you</h2>
       <div class="reitem"><span class="nm">${esc(o.title)}</span><span class="pr sp">${price}</span></div>
       <p class="muted small" style="margin:.5rem 0 1rem">${esc(o.blurb)}</p>
-      <button class="btn full" id="offerBtn" data-path="${esc(o.checkout_path)}">${esc(o.cta_label)}</button>
-      <p class="small err" id="offerErr" hidden></p></div>`;
+      <button class="btn full" id="offerBtn" data-path="${esc(o.checkout_path)}">${esc(o.cta_label)}</button>`;
+    if(String(o.checkout_path||"").includes("live-group")){
+      html += `<input id="offerRef" type="text" autocomplete="off"
+        placeholder="Referral code (optional)"
+        style="width:100%;margin-top:.5rem;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit" />`;
+    }
+    html += `<p class="small err" id="offerErr" hidden></p></div>`;
   }
 
   // Ambassador — enrolled (referral + recruit links) / pending (under review) / none (become CTA).
@@ -999,7 +1004,11 @@ async function startOffer(btn){
   try{
     // Carry the same path segment ("me" or a token) so the server resolves identity.
     const url = `${path}${path.includes("?")?"&":"?"}token=${encodeURIComponent(seg)}`;
-    const r = await fetch(url, {method:"POST"});
+    const refEl = document.getElementById("offerRef");
+    const payload = {};
+    if(refEl && refEl.value.trim()) payload.referral_code = refEl.value.trim();
+    const r = await fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify(payload)});
     const j = await r.json();
     if(j.stripe_url){ location.href = j.stripe_url; return; }
     throw new Error(j.error || "This isn't available right now. Please reach out and we'll help.");
