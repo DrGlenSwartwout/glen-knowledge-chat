@@ -7432,6 +7432,39 @@ def _notify_first_cc_signup(email, plan_label, amount_cents):
         print(f"[cc-signup-alert] {e!r}", flush=True)
 
 
+def _last_attributed_practitioner(email, *, db_path=None):
+    """The patient's most-recent attributed doctor across prepay grants + memberships.
+    Returns {'pid': str, 'consent': int} or None. Sticky: most-recent-wins (no window).
+    Only considers rows with a non-null attributed_practitioner_id; table-guarded."""
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    cands = []  # (timestamp, pid, consent)
+    with sqlite3.connect(db_path or LOG_DB) as cx:
+        try:
+            r = cx.execute(
+                "SELECT granted_at, attributed_practitioner_id, practitioner_share_consent "
+                "FROM prepay_term_grants WHERE lower(email)=? AND attributed_practitioner_id IS NOT NULL "
+                "ORDER BY granted_at DESC LIMIT 1", (e,)).fetchone()
+            if r:
+                cands.append((r[0] or "", str(r[1]), int(r[2] or 0)))
+        except sqlite3.OperationalError:
+            pass
+        try:
+            r = cx.execute(
+                "SELECT created_at, attributed_practitioner_id, practitioner_share_consent "
+                "FROM subscriptions WHERE lower(email)=? AND attributed_practitioner_id IS NOT NULL "
+                "AND kind='membership' ORDER BY created_at DESC LIMIT 1", (e,)).fetchone()
+            if r:
+                cands.append((r[0] or "", str(r[1]), int(r[2] or 0)))
+        except sqlite3.OperationalError:
+            pass
+    if not cands:
+        return None
+    best = max(cands, key=lambda c: c[0])   # ISO timestamps compare lexically by recency
+    return {"pid": best[1], "consent": best[2]}
+
+
 def _ensure_prepay_grant_columns(cx):
     """Idempotently add the attribution columns to prepay_term_grants."""
     have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
@@ -7489,6 +7522,11 @@ def _fulfill_prepay_term(session_id):
                 # a credit failure must never undo the term.
                 disp_pid = (md.get("dispensary_pid") or "").strip() or None
                 share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+                if not disp_pid:
+                    _inh = _last_attributed_practitioner(email)   # sticky renewal attribution
+                    if _inh:
+                        disp_pid = _inh["pid"]
+                        share_consent = int(_inh["consent"])
                 _term_end = _pp.term_end_date(
                     datetime.utcnow().date().isoformat(), tier["months"])
                 if disp_pid:
@@ -7592,6 +7630,11 @@ def _fulfill_continuous_care_monthly(session_id):
         # "Start Continuous Care" card's authorization checkbox, threaded through
         # session metadata the same way as dispensary_pid. Absent/unset => 0.
         share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+        if not disp_pid:
+            _inh = _last_attributed_practitioner(email)   # sticky renewal attribution
+            if _inh:
+                disp_pid = _inh["pid"]
+                share_consent = int(_inh["consent"])
         try:
             term_months = int(md.get("term_months") or 0)
         except (TypeError, ValueError):
