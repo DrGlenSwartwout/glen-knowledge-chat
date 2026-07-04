@@ -13,7 +13,7 @@ def authorized_patient(cx, practitioner_id, patient_email) -> bool:
     row = cx.execute(
         "SELECT 1 FROM subscriptions WHERE lower(email)=lower(?) "
         "AND attributed_practitioner_id=? AND practitioner_share_consent=1 "
-        "AND kind='membership' LIMIT 1",
+        "AND kind='membership' AND status != 'cancelled' LIMIT 1",
         ((patient_email or "").strip(), str(practitioner_id)),
     ).fetchone()
     return row is not None

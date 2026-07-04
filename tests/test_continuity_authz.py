@@ -71,3 +71,23 @@ def test_denied_falsy_patient_email():
     _mk(cx, "pat@x.com", "prac-42", consent=True)
     assert cv.authorized_patient(cx, "prac-42", "") is False
     assert cv.authorized_patient(cx, "prac-42", None) is False
+
+
+def test_denied_cancelled_membership():
+    """Cancelled membership denies access — the continuity relationship has ended."""
+    cx = _cx()
+    sid = _mk(cx, "pat@x.com", "prac-42", consent=True)
+    # Set status to cancelled
+    cx.execute("UPDATE subscriptions SET status='cancelled' WHERE id=?", (sid,))
+    cx.commit()
+    assert cv.authorized_patient(cx, "prac-42", "pat@x.com") is False
+
+
+def test_allowed_paused_membership():
+    """Paused membership allows access — the patient is a retention target."""
+    cx = _cx()
+    sid = _mk(cx, "pat@x.com", "prac-42", consent=True)
+    # Set status to paused
+    cx.execute("UPDATE subscriptions SET status='paused' WHERE id=?", (sid,))
+    cx.commit()
+    assert cv.authorized_patient(cx, "prac-42", "pat@x.com") is True
