@@ -5292,6 +5292,15 @@ def _settle_order_points(order, *, order_ref):
             _settle_referrer_reward(cx, order, order_ref)
         except Exception as _rre:
             print(f"[referrals] referrer reward skipped: {_rre!r}", flush=True)
+        # Dispensary sales pay L2-only (upline), on every paid order incl. reorders,
+        # via the dedicated per-order settler. Gated on source so it never touches
+        # non-dispensary orders.
+        if (order.get("source") or "") == "dispensary":
+            try:
+                from dashboard import dispensary_rewards as _dr
+                _dr.settle_dispensary_l2(cx, order, order_ref)
+            except Exception as _de:
+                print(f"[dispensary-l2] card settle skipped: {_de!r}", flush=True)
 
 
 # Generated/cached product content (ingredients + benefits + learn-more research).

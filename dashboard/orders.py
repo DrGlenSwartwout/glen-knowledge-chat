@@ -694,6 +694,13 @@ def _record_payment_exec(params, ctx):
     set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
     # Settle points now that it's paid: redeem applied points + earn (idempotent).
     settle_order_points(cx, get_order(cx, oid))
+    _o = get_order(cx, oid)
+    if _o and (_o.get("source") or "") == "dispensary":
+        try:
+            from dashboard.dispensary_rewards import settle_dispensary_l2
+            settle_dispensary_l2(cx, _o, _o.get("external_ref"))
+        except Exception as _de:
+            print(f"[dispensary-l2] altpay settle skipped: {_de!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
