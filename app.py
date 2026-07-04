@@ -1222,95 +1222,139 @@ def log_query(query: str, level: str, answer: str,
         return cur.lastrowid
 
 
-def _normalize_image_payload(images):
-    """Accepts a list of image entries and returns Anthropic-API-shaped image
-    blocks. Each input entry can be either:
-      - {"data": "<base64>", "media_type": "image/png"}
-      - {"data_url": "data:image/png;base64,..."}
-      - "data:image/png;base64,..." (string form for convenience)
+def _normalize_attachments(images, documents):
+    """Build Anthropic content blocks from user-attached images and PDFs.
 
-    Caps at 3 images per call; rejects entries over MAX_IMAGE_BYTES_B64.
-    Returns (image_blocks, errors).
+    Each entry (in either list) may be:
+      - "data:<media>;base64,<b64>"            (string form)
+      - {"data_url": "data:<media>;base64,…"}  (dict form)
+      - {"data": "<b64>", "media_type": "…"}   (explicit form)
+
+    Images become image blocks (unchanged behavior). Documents become PDF
+    `document` blocks. Bytes are forwarded to Claude for one extraction pass
+    and never persisted. Returns (blocks, errors). Caps:
+      - images: 3 max, ~5 MB raw (~6.7 MB base64) each, png/jpeg/webp/gif
+      - documents: 2 max, ~10 MB raw (~13.3 MB base64) each, application/pdf
+      - combined: total base64 length across all attachments ≤ ~25 MB raw,
+        keeping the whole request under Claude's 32 MB limit
     """
     MAX_IMAGES = 3
-    MAX_IMAGE_BYTES_B64 = 5 * 1024 * 1024 * 4 // 3  # ~5 MB raw → ~6.7 MB base64
-    ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+    MAX_IMAGE_B64 = 5 * 1024 * 1024 * 4 // 3
+    MAX_DOCS = 2
+    MAX_DOC_B64 = 10 * 1024 * 1024 * 4 // 3
+    MAX_TOTAL_B64 = 25 * 1024 * 1024 * 4 // 3
+    IMG_ALLOWED = ("image/png", "image/jpeg", "image/webp", "image/gif")
+
     blocks, errors = [], []
+    state = {"total": 0}
 
-    for i, entry in enumerate(images[:MAX_IMAGES]):
+    def _decode(entry):
+        if isinstance(entry, str):
+            if entry.startswith("data:") and ";base64," in entry:
+                head, b64 = entry.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("unsupported string format")
+        if isinstance(entry, dict) and entry.get("data_url"):
+            d = entry["data_url"]
+            if d.startswith("data:") and ";base64," in d:
+                head, b64 = d.split(";base64,", 1)
+                return head[5:], b64
+            raise ValueError("bad data_url")
+        if isinstance(entry, dict) and entry.get("data"):
+            return entry.get("media_type", "image/png"), entry["data"]
+        raise ValueError("unrecognized payload shape")
+
+    for i, entry in enumerate((images or [])[:MAX_IMAGES]):
         try:
-            if isinstance(entry, str):
-                if entry.startswith("data:") and ";base64," in entry:
-                    head, b64 = entry.split(";base64,", 1)
-                    media = head[5:]  # strip "data:"
-                else:
-                    errors.append(f"image[{i}]: unsupported string format")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data_url"):
-                d = entry["data_url"]
-                if d.startswith("data:") and ";base64," in d:
-                    head, b64 = d.split(";base64,", 1)
-                    media = head[5:]
-                else:
-                    errors.append(f"image[{i}]: bad data_url")
-                    continue
-            elif isinstance(entry, dict) and entry.get("data"):
-                b64 = entry["data"]
-                media = entry.get("media_type", "image/png")
-            else:
-                errors.append(f"image[{i}]: unrecognized payload shape")
-                continue
-
-            if media not in ALLOWED:
-                errors.append(f"image[{i}]: media_type {media!r} not allowed")
-                continue
-            if len(b64) > MAX_IMAGE_BYTES_B64:
-                errors.append(f"image[{i}]: exceeds 5 MB size limit")
-                continue
-
-            blocks.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": media, "data": b64},
-            })
-        except Exception as e:
+            media, b64 = _decode(entry)
+        except ValueError as e:
             errors.append(f"image[{i}]: {e}")
+            continue
+        if media not in IMG_ALLOWED:
+            errors.append(f"image[{i}]: media_type {media!r} not allowed")
+            continue
+        if len(b64) > MAX_IMAGE_B64:
+            errors.append(f"image[{i}]: exceeds 5 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"image[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "image",
+            "source": {"type": "base64", "media_type": media, "data": b64},
+        })
+
+    for i, entry in enumerate((documents or [])[:MAX_DOCS]):
+        try:
+            media, b64 = _decode(entry)
+        except ValueError as e:
+            errors.append(f"document[{i}]: {e}")
+            continue
+        if media != "application/pdf":
+            errors.append(f"document[{i}]: only application/pdf is accepted")
+            continue
+        if len(b64) > MAX_DOC_B64:
+            errors.append(f"document[{i}]: exceeds 10 MB size limit")
+            continue
+        if state["total"] + len(b64) > MAX_TOTAL_B64:
+            errors.append(f"document[{i}]: combined attachment size limit exceeded")
+            continue
+        state["total"] += len(b64)
+        blocks.append({
+            "type": "document",
+            "source": {"type": "base64",
+                       "media_type": "application/pdf", "data": b64},
+        })
+
     return blocks, errors
 
 
-def extract_image_content(image_blocks, query):
-    """Single non-streaming Claude call to extract structured text content
-    from images. Returns the extraction string. Image bytes are NOT persisted
-    anywhere — they exist only in this function's call to Anthropic.
+def _normalize_image_payload(images):
+    """Back-compat wrapper — images only. Prefer _normalize_attachments."""
+    return _normalize_attachments(images, [])
+
+
+def extract_attachment_content(blocks, query):
+    """Single non-streaming Claude pass to extract structured text from attached
+    images and/or PDF documents. Returns the extraction string. Attachment bytes
+    are NOT persisted — they exist only in this function's call to Anthropic.
     """
-    if not image_blocks:
+    if not blocks:
         return ""
     instr = (
-        "Extract everything visible in these images as plain text. Focus on:\n"
+        "Extract everything visible in these attachments as plain text. Each "
+        "attachment may be an image or a multi-page PDF document. Focus on:\n"
         "• Any text, labels, headings, captions\n"
         "• Numbers, measurements, dosages, lab values, ranges\n"
-        "• Supplement ingredients lists, milligram amounts, serving sizes\n"
+        "• Supplement ingredient lists, milligram amounts, serving sizes\n"
         "• Lab/test result values with units and reference ranges if present\n"
         "• E4L scan results: item codes (EI/ES/ED/ET/MB), category labels, scores\n"
         "• Any visible chart axes, legend entries, or graph markers\n"
         "• Visible symptoms in clinical photos (describe objectively)\n"
         "• Handwritten notes (transcribe carefully)\n\n"
         f"USER'S QUESTION: {query}\n\n"
-        "Return a clean, structured extraction. Label each image (Image 1, Image 2, "
-        "etc.) if multiple. Do not analyze, diagnose, or recommend — just extract. "
-        "Be exhaustive but concise."
+        "Return a clean, structured extraction. Label each attachment "
+        "(Attachment 1, Attachment 2, …) and each PDF page if multiple. Do not "
+        "analyze, diagnose, or recommend — just extract. Be exhaustive but concise."
     )
     try:
         resp = _cl.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1500,
             messages=[{"role": "user", "content": [
-                *image_blocks,
+                *blocks,
                 {"type": "text", "text": instr},
             ]}],
         )
         return (resp.content[0].text or "").strip() if resp.content else ""
     except Exception as e:
-        return f"[image-extraction-error: {e}]"
+        return f"[attachment-extraction-error: {e}]"
+
+
+def extract_image_content(image_blocks, query):
+    """Back-compat wrapper. Prefer extract_attachment_content."""
+    return extract_attachment_content(image_blocks, query)
 
 
 _SYSTEM_BASE = """You are Glen Swartwout's knowledge assistant — a synthesis engine for his Clinical Theory of Everything (BEV terrain medicine, Bioenergetic diagnostics, Syntonic/Behavioral Optometry, Orthomolecular medicine, Spirit Minerals/ORMUS, Electromagnetic medicine, Living Universe cosmology, Consciousness science).
@@ -3726,33 +3770,35 @@ def chat():
     # discarded; only the extracted text is persisted to query_log.
     images_consented = bool(data.get("images_consented"))
     raw_images = data.get("images") or []
-    image_blocks = []
-    image_errors = []
-    if raw_images:
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    attachment_errors = []
+    if raw_images or raw_documents:
         if not images_consented:
             return jsonify({
-                "error": "Image consent required. Check the image-opt-in box "
-                         "before attaching images."
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
             }), 400
-        image_blocks, image_errors = _normalize_image_payload(raw_images)
+        attachment_blocks, attachment_errors = _normalize_attachments(
+            raw_images, raw_documents)
 
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
     def generate():
-        # Step A — image extraction (if any images attached, run vision call
-        # FIRST so the extracted text can be embedded for retrieval and also
-        # joined to the user question as context).
+        # Step A — attachment extraction (if any images/PDFs attached, run the
+        # OCR pass FIRST so the extracted text can be embedded for retrieval and
+        # also joined to the user question as context).
         extracted_text = ""
-        if image_blocks:
-            yield sse({"status": f"Reading {len(image_blocks)} image(s)…"})
-            extracted_text = extract_image_content(image_blocks, query)
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
 
-        # Combine the user question with extracted image text for embedding
+        # Combine the user question with extracted attachment text for embedding
         # so retrieval can match on label/scan/lab content too.
         embedding_input = query
         if extracted_text:
-            embedding_input = f"{query}\n\nIMAGE CONTENT:\n{extracted_text}"
+            embedding_input = f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
 
         try:
             q_vec = embed(embedding_input)
@@ -3766,7 +3812,7 @@ def chat():
             yield sse({"done": True, "answer": "No relevant content found.",
                        "sources": [], "chunks_retrieved": 0, "log_id": None,
                        "session_id": session_id, "mode": mode,
-                       "image_count": len(image_blocks)})
+                       "image_count": len(attachment_blocks)})
             return
 
         context_str, sources_list = build_context(all_matches)
@@ -3826,16 +3872,16 @@ def chat():
             _brief_synth_instruction()
         )
 
-        image_context = ""
+        attachment_context = ""
         if extracted_text:
-            image_context = (
-                f"IMAGE CONTENT EXTRACTED FROM USER ATTACHMENT(S):\n"
+            attachment_context = (
+                f"ATTACHMENT CONTENT EXTRACTED FROM USER UPLOAD(S):\n"
                 f"{extracted_text}\n\n"
-                f"Reference the image content as part of the user's question "
+                f"Reference the attachment content as part of the user's question "
                 f"context. Quote specific values or labels from it when relevant.\n\n"
             )
 
-        # Pass the retrieved snippet text + extracted image content into the
+        # Pass the retrieved snippet text + extracted attachment content into the
         # directive builder so on-the-fly Rebrandly creation only fires for
         # products actually likely to be mentioned in this response.
         product_directive = build_product_directive(
@@ -3845,7 +3891,7 @@ def chat():
 
         messages.append({"role": "user", "content":
             f"USER QUESTION: {query}\n\n"
-            f"{image_context}"
+            f"{attachment_context}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             f"{product_block}"
             f"{synth_instr}"
@@ -3907,7 +3953,7 @@ def chat():
             session_id=session_id, email=email, name=name,
             mode=mode, user_agent=user_agent, referer=referer,
             extracted_image_data=extracted_text,
-            image_count=len(image_blocks),
+            image_count=len(attachment_blocks),
             cta_type=(_cta or {}).get("type"), cta_rung=_rung,
         )
         try:
@@ -4177,9 +4223,27 @@ def begin_match_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
     def generate():
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+        emb_input = (f"{query}\n\nATTACHMENT CONTENT:\n{extracted_text}"
+                     if extracted_text else query)
         try:
-            q_vec = embed(query)
+            q_vec = embed(emb_input)
         except Exception as e:
             yield sse({"error": f"Embedding failed: {e}"}); return
         matches = _match_query_namespaces(q_vec)
@@ -4223,13 +4287,16 @@ def begin_match_chat():
                        "when it is genuinely the best fit; Functional Formulations still come first):\n"
                        + "\n".join(tools_lines) + "\n\n") if tools_lines else ""
 
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"USER MESSAGE: {query}\n\n{whom_line}\n{household_note}\n{personal_block}"
-            f"{tools_block}"
+            f"{tools_block}{attach_block}"
             f"RETRIEVED SNIPPETS:\n{context_str}\n\n"
             "Continue the Socratic match. If you can now name the ONE best remedy, name it and "
             "invite them to open its page; otherwise ask the single best next question."})
@@ -8337,16 +8404,22 @@ def begin_concierge_chat():
     if not query:
         return jsonify({"error": "Empty query"}), 400
 
-    # Pairing priors for what they bought + a little RAG for rationale/benefits.
+    images_consented = bool(data.get("images_consented"))
+    raw_images = data.get("images") or []
+    raw_documents = data.get("documents") or []
+    attachment_blocks = []
+    if raw_images or raw_documents:
+        if not images_consented:
+            return jsonify({
+                "error": "Attachment consent required. Check the consent box "
+                         "before attaching documents or images."
+            }), 400
+        attachment_blocks, _ = _normalize_attachments(raw_images, raw_documents)
+
+    # Pairing priors for what they bought.
     priors = (_PAIRINGS.get("pairings", {}) or {}).get(bought_slug, []) if bought_slug else []
     priors_block = (f"SUGGESTED COMPLEMENTS for {bought['name'] if bought else 'their purchase'} "
                     f"(offer these first, one at a time): {', '.join(priors)}\n\n") if priors else ""
-    context_str = ""
-    try:
-        matches = _match_query_namespaces(embed(query + " " + (bought["name"] if bought else "")))
-        context_str, _ = build_context(matches) if matches else ("", [])
-    except Exception as e:
-        print(f"[concierge] retrieval: {e}", flush=True)
 
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     _sys_concierge = (_ally_ov + "\n\n" + _CONCIERGE_SYSTEM) if _ally_ov else _CONCIERGE_SYSTEM
@@ -8355,13 +8428,34 @@ def begin_concierge_chat():
         if not is_member(session_id, email):
             yield sse({"gate": True})
             return
+
+        extracted_text = ""
+        if attachment_blocks:
+            yield sse({"status": f"Reading {len(attachment_blocks)} attachment(s)…"})
+            extracted_text = extract_attachment_content(attachment_blocks, query)
+
+        # A little RAG for rationale/benefits (inside generate so the extracted
+        # attachment text can sharpen retrieval).
+        context_str = ""
+        try:
+            emb_q = query + " " + (bought["name"] if bought else "")
+            if extracted_text:
+                emb_q += "\n\nATTACHMENT CONTENT:\n" + extracted_text
+            matches = _match_query_namespaces(embed(emb_q))
+            context_str, _ = build_context(matches) if matches else ("", [])
+        except Exception as e:
+            print(f"[concierge] retrieval: {e}", flush=True)
+
+        attach_block = (f"ATTACHMENT CONTENT (from the person's uploaded files; "
+                        f"quote specific values when relevant):\n{extracted_text}\n\n"
+                        if extracted_text else "")
         messages = []
         for turn in history[-8:]:
             if turn.get("role") in ("user", "assistant") and turn.get("content"):
                 messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content":
             f"THEY JUST BOUGHT: {bought['name'] if bought else 'a remedy'}.\n"
-            f"{priors_block}"
+            f"{priors_block}{attach_block}"
             f"RETRIEVED SNIPPETS (for rationale/benefits):\n{context_str}\n\n"
             f"MEMBER MESSAGE: {query}\n\n"
             "Continue as the concierge: affirm, ask the single best next question, or suggest ONE "
