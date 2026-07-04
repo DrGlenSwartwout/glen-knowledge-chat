@@ -588,7 +588,7 @@ $('pricing-save').addEventListener('click', function(){
       $('pricing-save').disabled = false;
       if(res.body && res.body.ok){
         msg.style.color = '#8fd6a3'; msg.textContent = 'Saved.';
-        render(res.body);
+        load();
       } else {
         msg.style.color = 'var(--gold)'; msg.textContent = (res.body && res.body.error) || 'Save failed.';
       }
