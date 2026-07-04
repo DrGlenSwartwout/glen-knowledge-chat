@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { pickElement, ELEMENT_KEYS } from '../../static/fireside/element-backdrop.js';
+import { pickElement, resolveBackdrop, ELEMENT_KEYS } from '../../static/fireside/element-backdrop.js';
 
 const MANIFEST = JSON.parse(
   readFileSync(fileURLToPath(new URL('../../static/fireside/elements-manifest.json', import.meta.url)), 'utf8')
@@ -41,4 +41,22 @@ test('missing/garbage manifest never throws, returns null', () => {
 
 test('manifest covers exactly the five canonical elements', () => {
   assert.deepEqual(Object.keys(MANIFEST.elements).sort(), [...ELEMENT_KEYS].sort());
+});
+
+test('resolveBackdrop: a valid preference overrides the computed element', () => {
+  assert.equal(resolveBackdrop('fire', 'water'), 'fire');
+  assert.equal(resolveBackdrop('  Fire ', 'water'), 'fire'); // case/space-insensitive
+  assert.equal(resolveBackdrop('metal', null), 'metal');     // pref works even with no auto
+});
+
+test('resolveBackdrop: auto/empty/garbage preference falls back to the computed element', () => {
+  for (const p of [null, undefined, '', ' ', 'auto', 'AUTO', 'sky', 42, {}]) {
+    assert.equal(resolveBackdrop(p, 'water'), 'water');
+  }
+});
+
+test('resolveBackdrop: no preference and no computed element yields null (plain portal)', () => {
+  assert.equal(resolveBackdrop(null, null), null);
+  assert.equal(resolveBackdrop('auto', null), null);
+  assert.equal(resolveBackdrop('nonsense', undefined), null);
 });
