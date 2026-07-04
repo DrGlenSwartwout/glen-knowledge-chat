@@ -32,6 +32,13 @@ def init_evox_tables(cx) -> None:
         ON evox_bookings(practitioner, start_ts) WHERE status='booked'""")
     cx.execute("""CREATE TABLE IF NOT EXISTS evox_session_credits (
         email TEXT PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 0)""")
+    for _col, _decl in (("session_type", "TEXT DEFAULT 'evox'"),
+                        ("medium", "TEXT DEFAULT 'phone'"),
+                        ("zoom_join_url", "TEXT"), ("zoom_meeting_id", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE evox_bookings ADD COLUMN {_col} {_decl}")
+        except Exception:
+            pass
     cx.commit()
 
 
@@ -153,35 +160,42 @@ def rae_busy_intervals(cx, lo_date: str, hi_date: str, practitioner: str = "rae"
 
 
 def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
-                   prepaid: bool = False, practitioner: str = "rae", tag_fn=None) -> dict:
+                   prepaid: bool = False, practitioner: str = "rae",
+                   session_type: str = "evox", medium: str = "phone", tag_fn=None) -> dict:
     email = (email or "").strip().lower()
     start_dt = datetime.fromisoformat(start_ts[:19])
     end_ts = (start_dt + timedelta(minutes=duration_min)).isoformat()
     now = datetime.now(timezone.utc).isoformat()
-    ics_uid = f"evox-{secrets.token_hex(8)}@illtowell.com"
+    ics_uid = f"{session_type}-{secrets.token_hex(8)}@illtowell.com"
     try:
         cur = cx.execute(
             "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
-            "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',?,?,?)",
-            (email, practitioner, start_ts, end_ts, 1 if prepaid else 0, ics_uid, now))
+            "prepaid,ics_uid,created_at,session_type,medium) "
+            "VALUES (?,?,?,?,'booked',?,?,?,?,?)",
+            (email, practitioner, start_ts, end_ts, 1 if prepaid else 0, ics_uid, now,
+             session_type, medium))
     except sqlite3.IntegrityError as e:
         cx.rollback()
         if "UNIQUE" in str(e).upper():
             raise SlotTaken(start_ts)
         raise
     booking_id = cur.lastrowid
-    ev_id = f"evox-{booking_id}"
+    ev_id = f"{session_type}-{booking_id}"
+    location = "Video" if medium == "video" else "Phone"
+    label = "Biofield Consult" if session_type == "biofield-consult" else "EVOX"
     cx.execute(
         "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
         "calendar_name,summary,start,end,location,owner,status,cal_alert) "
-        "VALUES (?, 'delegated', ?, 'EVOX booking', ?, ?, ?, 'Phone', ?, 'visible', 0)",
-        (now, ev_id, f"EVOX — {email}", start_ts, end_ts, practitioner))
+        "VALUES (?, 'delegated', ?, ?, ?, ?, ?, ?, ?, 'visible', 0)",
+        (now, ev_id, f"{label} booking", f"{label} — {email}", start_ts, end_ts,
+         location, practitioner))
     cx.execute("UPDATE evox_bookings SET calendar_event_id=? WHERE id=?", (ev_id, booking_id))
     cx.commit()
     if tag_fn:
         tag_fn(email, ["evox-client", "evox-ready"])
-    return {"id": booking_id, "email": email, "start_ts": start_ts,
-            "end_ts": end_ts, "ics_uid": ics_uid, "prepaid": prepaid}
+    return {"id": booking_id, "email": email, "start_ts": start_ts, "end_ts": end_ts,
+            "ics_uid": ics_uid, "prepaid": prepaid, "session_type": session_type,
+            "medium": medium}
 
 
 def build_ics(*, uid, start_ts, end_ts, summary, description, location,
