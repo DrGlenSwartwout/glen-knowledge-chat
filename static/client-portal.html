@@ -673,10 +673,10 @@ function render(d, v){
     }
   }
 
-  // Task 8: the patient's active practitioner recommendation ("Your practitioner
+  // Task 3: the patient's active practitioner recommendation ("Your practitioner
   // recommends…") — remedy NAMES only (no $0 suggested price shown), one-tap
-  // accept (→ member-priced checkout) and a dismiss. Absent when there's no
-  // active recommendation. The authoritative price appears at checkout.
+  // accept (→ adds to reorder list) and a dismiss. Absent when there's no
+  // active recommendation. Member price and shipping are calculated at checkout.
   if(d.recommendation && Array.isArray(d.recommendation.items) && d.recommendation.items.length){
     const rec = d.recommendation;
     let ritems = "";
@@ -687,7 +687,7 @@ function render(d, v){
     html += `<div class="card reco-card"><h2>Your practitioner recommends</h2>
       ${rnote}
       <div>${ritems}</div>
-      <p class="muted small" style="margin:.7rem 0 1rem">Your member price and shipping are calculated at checkout.</p>
+      <p class="muted small" style="margin:.7rem 0 1rem">Add these to your reorder list — your member price and shipping are calculated at checkout.</p>
       <button class="btn full" id="recoAcceptBtn">Add to my order</button>
       <button class="btn ghost full" id="recoDismissBtn" style="margin-top:.5rem">No thanks</button>
       <p class="small err" id="recoErr" hidden></p></div>`;
@@ -989,20 +989,36 @@ async function startOffer(btn){
 }
 
 async function acceptRecommendation(){
-  // Task 8: accept the practitioner's recommendation → the server adds the items
-  // to a MEMBER-PRICED cart and returns a live Stripe checkout. One-shot latch
-  // (disabled before any await) so a double-click can't double-fire.
+  // Task 3: accept the practitioner’s recommendation → marks it accepted and
+  // merges the items into the reorder list. One-shot latch (disabled before any
+  // await) so a double-click can’t double-fire. After load(), show a brief
+  // confirmation near the reorder module.
   const btn = document.getElementById("recoAcceptBtn");
   if(!btn || btn.disabled) return;
   btn.disabled = true;
   const err = document.getElementById("recoErr");
   if(err) err.hidden = true;
-  const label = btn.textContent; btn.textContent = "Setting up your order…";
+  const label = btn.textContent; btn.textContent = "Adding to your order…";
   try{
     const c = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/accept`, {method:"POST"});
     const cj = await c.json();
-    if(cj.stripe_url){ location.href = cj.stripe_url; return; }
-    if(cj.ok){ await load(); return; }  // accepted; card clears on re-render
+    if(cj.ok){
+      await load();
+      // Show a brief confirmation near the reorder module.
+      const reorderBtn = document.getElementById("reorderBtn");
+      if(reorderBtn){
+        const reorderCard = reorderBtn.closest(".card");
+        if(reorderCard){
+          const msg = document.createElement("div");
+          msg.className = "note small";
+          msg.style.marginBottom = "1rem";
+          msg.textContent = "Added to your reorder list below.";
+          reorderCard.parentNode.insertBefore(msg, reorderCard);
+          setTimeout(()=>msg.remove(), 3000);
+        }
+      }
+      return;
+    }
     throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out and we’ll help.");
   }catch(e){
     if(err){ err.textContent = e.message || "Something went wrong. Please reach out and we’ll help."; err.hidden = false; }
