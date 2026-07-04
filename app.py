@@ -12555,10 +12555,15 @@ def api_client_checkout(code):
                 bal_cents = _points.balance(_bcx, email, scope=_scope)
         except Exception:
             bal_cents = 0
+    _program_member = _is_paid_member(email)
     try:
-        out = _dropship.build_client_order(items, prac, patient=patient, method=method,
-                                           points_to_redeem_cents=redeem_req,
-                                           points_balance_cents=bal_cents)
+        out = _dropship.build_client_order(
+            items, prac, patient=patient, method=method,
+            points_to_redeem_cents=redeem_req,
+            points_balance_cents=bal_cents,
+            effective_settings=_practitioner_effective_settings(pid, _program_member),
+            program_member=_program_member,
+        )
     except Exception as e:
         print(f"[client-checkout] build failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
