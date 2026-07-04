@@ -35,7 +35,8 @@ Built as **one booking engine reading a small session-type catalog**, so the fou
 During grounding, two things I described in the brainstorm turned out **not** to exist in the codebase. The design adapts; flagging so Glen can confirm the substitutions:
 
 1. **No live Google free/busy read, no Google Calendar write API.** Only Gmail uses `googleapiclient`; there is no calendar-write or free/busy path. **Adaptation:** availability is computed from Rae's **defined EVOX office-hours window** minus (a) EVOX slots already booked in *our* system and (b) busy rows already present in the local **`calendar_events`** table — which mirrors Rae's Google calendar via the existing hourly sync that feeds the console team calendar (`rae` lane). Write-back to Rae's + the client's real calendars is done with an **ICS invite email** (a standard `.ics` attachment; accepting it lands the event on any calendar app — no Google API needed).
-   - **Known limitation:** availability is only as fresh as the last `calendar_events` sync (hourly). A conflict Rae adds to Google in the last hour could theoretically collide. Mitigation: office-hours windows are narrow and Rae-controlled; every booking emails Rae immediately so she sees it; a later slice can add live free/busy if this proves painful.
+   - **Sync directionality (confirmed with Glen):** Google→internal is a one-way hourly read (Rae's Google events → `calendar_events`), **cadence tunable** (can tighten to ~15 min to shrink the collision window). Internal→Google is **not** a reverse hourly sync — each booking's **ICS invite lands on Rae's + the client's real calendars instantly on accept**, no Google write API.
+   - **Known limitation:** availability is only as fresh as the last read sync. A conflict Rae adds to Google within that window could theoretically collide. Mitigation: office-hours windows are narrow and Rae-controlled; every booking emails Rae immediately; tighten the read cadence and/or add live free/busy in a later slice if it proves painful.
 
 2. **The hand cradle is not in `data/products.json`.** Searched cradle/ZYTO/EVOX/$297 — every hit is an infoceutical. **Adaptation:** adding the hand-cradle SKU ($297 + shipping) is a task in the plan, not an assumed existing product.
 
@@ -98,7 +99,7 @@ Per-person state in a new table `evox_readiness`. Four items, all self-attested:
 ### 4. Connection handoff + confirmation (phone + internet, no Zoom)
 
 - Medium = phone. **No video link is generated.**
-- Confirmation content (client): appointment time (their tz), and prep — “Have your Windows PC on with the ZYTO software open, hand cradle connected, headset ready. Rae will call you at the number on file / you'll call Rae at <number>.” (Call direction = a config choice; default: Rae calls the client.)
+- Confirmation content (client): appointment time (their tz), and prep — “Have your Windows PC on with the ZYTO software open, hand cradle connected, headset ready. **At your appointment time, call Rae at <number>.**” (Call direction settled: **client calls Rae** — Rae's number is in the confirmation + ICS.)
 - Reminder email 24h before (reuse existing scheduled-email rails if present; else a daily cron pass over `evox_bookings`).
 
 ### 5. Money
@@ -138,7 +139,8 @@ Per-person state in a new table `evox_readiness`. Four items, all self-attested:
 
 - Self-attest readiness, **no human gate** (Glen).
 - Eligibility = **anyone** (public entry), identity minted on start.
-- Medium = **phone + internet, no Zoom** in v1 (Glen).
+- Medium = **phone + internet, no Zoom** in v1 (Glen). **Call direction: client calls Rae** (Glen).
+- Sync: Google→internal hourly read (**cadence tunable**); write-back via **instant ICS-on-accept**, not a reverse sync (Glen confirmed).
 - Payment: **invoice-after by default**, prepay single/multi **optional**; booking never blocks on money (Glen).
 - Hand cradle **sold on-site**, $297 + shipping (Glen); **must be added** (not in catalog).
 - Availability from **local `calendar_events` + office-hours**, write-back via **ICS invite** (adaptation — no Google write API).
