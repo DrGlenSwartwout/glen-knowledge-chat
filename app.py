@@ -15269,21 +15269,24 @@ def consult_book():
                                    medium="video")
         except _ev.SlotTaken:
             return jsonify({"error": "slot_taken"}), 409
-        # Zoom (best-effort; never blocks the booking)
-        join_url = None
-        try:
-            tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
-                                  os.environ["ZOOM_CLIENT_SECRET"])
-            m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic="Biofield Consult with Dr. Glen",
-                                     start_iso=start_ts, duration_min=30)
-            join_url = m.get("join_url")
-            cx.execute("UPDATE evox_bookings SET zoom_join_url=?, zoom_meeting_id=? WHERE id=?",
-                       (join_url, m.get("meeting_id"), b["id"]))
-            cx.commit()
-        except Exception:
-            app.logger.exception("consult Zoom meeting create failed")
-        b["join_url"] = join_url
-    _consult_send_confirmations(ident.email, b)   # Task 6
+        email = ident.email
+    # --- lock released; Zoom network below MUST NOT hold _db_lock ---
+    # Zoom (best-effort; never blocks the booking)
+    join_url = None
+    try:
+        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
+                              os.environ["ZOOM_CLIENT_SECRET"])
+        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic="Biofield Consult with Dr. Glen",
+                                 start_iso=start_ts, duration_min=30)
+        join_url = m.get("join_url")
+        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+            cx2.execute("UPDATE evox_bookings SET zoom_join_url=?, zoom_meeting_id=? WHERE id=?",
+                        (join_url, m.get("meeting_id"), b["id"]))
+            cx2.commit()
+    except Exception:
+        app.logger.exception("consult Zoom meeting create failed")
+    b["join_url"] = join_url
+    _consult_send_confirmations(email, b)   # Task 6
     return jsonify({"ok": True, "start_ts": start_ts, "join_url": join_url})
 
 
