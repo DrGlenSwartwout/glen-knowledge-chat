@@ -1,4 +1,31 @@
+import sqlite3
+import tempfile
+import os
 from dashboard import practitioner_pricing as pp
+from dashboard import pricing as _pricing
+
+def _cx():
+    return sqlite3.connect(":memory:")
+
+
+def test_get_config_defaults_empty():
+    with _cx() as cx:
+        assert pp.get_config(cx, "7") == {}
+
+
+def test_set_then_get_roundtrips():
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.5}}}
+    with _cx() as cx:
+        pp.set_config(cx, "7", cfg)
+        assert pp.get_config(cx, "7") == cfg
+
+
+def test_set_config_upserts():
+    with _cx() as cx:
+        pp.set_config(cx, "7", {"standard": {"same_sku": {"enabled": True, "dial": 0.2}}})
+        pp.set_config(cx, "7", {"standard": {"same_sku": {"enabled": False, "dial": 0.9}}})
+        assert pp.get_config(cx, "7")["standard"]["same_sku"]["dial"] == 0.9
+
 
 def test_defaults():
     s = pp.load_settings({})
@@ -71,3 +98,100 @@ def test_margin_never_negative():
     s = pp.load_settings({})
     q = pp.quote_line(selling_cents=5000, qty=1, modules=0, settings=s)   # S == base, fee 0
     assert q["margin_cents"] == 0
+
+
+def test_set_config_persists_without_with_block(tmp_path):
+    """Regression test: set_config must commit internally.
+
+    The real app.py callers open a connection with cx = sqlite3.connect(path)
+    (without a `with` block) and close it manually. If set_config does not
+    cx.commit() internally, the write is silently rolled back on close.
+
+    This test reproduces that call pattern and asserts the config persists.
+    """
+    db_path = str(tmp_path / "test.db")
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.75}}}
+
+    # Simulate real app.py usage: open without `with`, call set_config, close manually
+    cx1 = sqlite3.connect(db_path)
+    pp.set_config(cx1, "test-pid", cfg)
+    cx1.close()
+
+    # Reopen to verify persistence
+    cx2 = sqlite3.connect(db_path)
+    retrieved = pp.get_config(cx2, "test-pid")
+    cx2.close()
+
+    # Must be equal to what we set (not an empty dict)
+    assert retrieved == cfg
+
+
+def _global():
+    # live global settings from code defaults: same_sku ON, program_total ON, open_total OFF
+    return _pricing.load_settings({})
+
+
+def test_ceilings_open_total_uses_program_total_curve():
+    c = pp.ceilings(_global())
+    # program_total default maxes at 29 (qty 18); open_total ceiling mirrors it
+    assert c["program_total"] == 29.0
+    assert c["open_total"] == 29.0
+    assert c["same_sku"] == 29.0
+
+
+def test_effective_disabled_type_yields_zero():
+    eff = pp.effective_settings({}, program_member=False, settings=_global())
+    assert _pricing.same_sku_pct(12, eff) == 0.0
+    assert _pricing.open_total_pct(18, eff) == 0.0
+
+
+def test_effective_dial_scales_and_clamps_to_ceiling():
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.5}}}
+    eff = pp.effective_settings(cfg, program_member=False, settings=_global())
+    # half of the 29% ceiling at max qty
+    assert abs(_pricing.same_sku_pct(12, eff) - 14.5) < 1e-6
+    # never exceeds ceiling even if dial were >1 (clamped)
+    cfg["standard"]["same_sku"]["dial"] = 5.0
+    eff2 = pp.effective_settings(cfg, program_member=False, settings=_global())
+    assert _pricing.same_sku_pct(12, eff2) == 29.0
+
+
+def test_effective_open_total_dialed_off_program_curve():
+    cfg = {"standard": {"open_total": {"enabled": True, "dial": 1.0}}}
+    eff = pp.effective_settings(cfg, program_member=False, settings=_global())
+    # open_total fires for everyone (not member-gated), using the program_total ceiling
+    assert _pricing.open_total_pct(18, eff) == 29.0
+
+
+def test_program_schedule_only_for_members_and_when_enabled():
+    cfg = {
+        "standard": {"same_sku": {"enabled": True, "dial": 0.25}},
+        "program": {"enabled": True, "same_sku": {"enabled": True, "dial": 1.0}},
+    }
+    non = pp.effective_settings(cfg, program_member=False, settings=_global())
+    mem = pp.effective_settings(cfg, program_member=True, settings=_global())
+    assert abs(_pricing.same_sku_pct(12, non) - 7.25) < 1e-6   # standard: 0.25*29
+    assert _pricing.same_sku_pct(12, mem) == 29.0               # program: 1.0*29
+
+
+def test_validate_accepts_good_config():
+    ok = {"standard": {"open_total": {"enabled": True, "dial": 0.5}},
+          "program": {"enabled": True, "program_total": {"enabled": True, "dial": 1.0}}}
+    assert pp.validate_config(ok) == []
+
+
+def test_validate_rejects_unknown_type():
+    errs = pp.validate_config({"standard": {"mystery": {"enabled": True, "dial": 0.5}}})
+    assert any("unknown discount type" in e for e in errs)
+
+
+def test_validate_rejects_dial_out_of_range():
+    assert any("between 0 and 1" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": True, "dial": 1.5}}}))
+    assert any("between 0 and 1" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": True, "dial": -0.1}}}))
+
+
+def test_validate_rejects_non_bool_enabled():
+    assert any("boolean" in e for e in
+               pp.validate_config({"standard": {"same_sku": {"enabled": "yes", "dial": 0.5}}}))

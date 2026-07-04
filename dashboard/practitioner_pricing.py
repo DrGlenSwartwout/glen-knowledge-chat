@@ -1,6 +1,19 @@
-"""Pure pricing for practitioner drop-ship: blended base, flat 33% fee, $/% selling-price
+"""Per-practitioner product-discount controls. Pure builder + SQLite config.
+
+Config shape (both schedules optional; program has an extra 'enabled' master flag):
+{
+  "standard": {"same_sku": {"enabled": bool, "dial": 0..1}, "program_total": {...}, "open_total": {...}},
+  "program":  {"enabled": bool, "same_sku": {...}, "program_total": {...}, "open_total": {...}}
+}
+
+Also includes pure pricing for practitioner drop-ship: blended base, flat 33% fee, $/% selling-price
 with MAP, practitioner margin. Wraps dashboard.wholesale_pricing for the blended base."""
+import json
+import sqlite3
+from datetime import datetime, timezone
+
 from dashboard import wholesale_pricing as _wp
+from dashboard import pricing as _pricing
 
 DEFAULTS = {
     "fee_pct": 0.33,            # service fee on the practitioner's markup (drop-ship only)
@@ -66,3 +79,109 @@ def quote_line(*, selling_cents, qty, modules, settings):
         "margin_cents": margin,
         "dropship_wholesale_cents": base + fee,
     }
+
+
+# Config persistence layer
+
+_TYPES = ("same_sku", "program_total", "open_total")
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_table(cx):
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS practitioner_pricing ("
+        "practitioner_id TEXT PRIMARY KEY, config_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    cx.commit()
+
+
+def get_config(cx, pid):
+    init_table(cx)
+    row = cx.execute(
+        "SELECT config_json FROM practitioner_pricing WHERE practitioner_id=?", (str(pid),)
+    ).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def set_config(cx, pid, config):
+    init_table(cx)
+    cx.execute(
+        "INSERT INTO practitioner_pricing (practitioner_id, config_json, updated_at) "
+        "VALUES (?,?,?) ON CONFLICT(practitioner_id) DO UPDATE SET "
+        "config_json=excluded.config_json, updated_at=excluded.updated_at",
+        (str(pid), json.dumps(config), _now()),
+    )
+    cx.commit()
+
+
+# Pure ceilings + effective_settings builder
+
+def _ceiling_anchors(gcfg, ptype):
+    # open_total's ceiling is the program_total curve (private-channel decision).
+    key = "program_total" if ptype == "open_total" else ptype
+    return [list(a) for a in gcfg[key]["anchors"]]
+
+
+def ceilings(settings):
+    gcfg = _pricing._discount_cfg(_pricing.load_settings(settings))
+    return {t: float(_ceiling_anchors(gcfg, t)[-1][1]) for t in _TYPES}
+
+
+def _scaled(anchors, dial):
+    d = max(0.0, min(1.0, float(dial)))
+    return [[a[0], round(a[1] * d, 4)] for a in anchors]
+
+
+def effective_settings(config, *, program_member, settings):
+    base = _pricing.load_settings(settings)
+    gcfg = _pricing._discount_cfg(base)
+    cfg = config or {}
+    use_program = bool(program_member) and bool((cfg.get("program") or {}).get("enabled"))
+    sched = cfg.get("program" if use_program else "standard") or {}
+    disc = {}
+    for t in _TYPES:
+        ent = sched.get(t) or {}
+        ceil = _ceiling_anchors(gcfg, t)
+        if bool(ent.get("enabled")):
+            disc[t] = {"enabled": True, "anchors": _scaled(ceil, ent.get("dial", 0.0))}
+        else:
+            disc[t] = {"enabled": False, "anchors": ceil}
+    out = dict(base)
+    out["discounts"] = disc
+    return out
+
+
+def validate_config(payload):
+    errors = []
+    if not isinstance(payload, dict):
+        return ["config must be an object"]
+    for sched_name in ("standard", "program"):
+        sched = payload.get(sched_name)
+        if sched is None:
+            continue
+        if not isinstance(sched, dict):
+            errors.append(f"{sched_name} must be an object")
+            continue
+        for k, v in sched.items():
+            if sched_name == "program" and k == "enabled":
+                if not isinstance(v, bool):
+                    errors.append("program.enabled must be boolean")
+                continue
+            if k not in _TYPES:
+                errors.append(f"unknown discount type: {sched_name}.{k}")
+                continue
+            if not isinstance(v, dict):
+                errors.append(f"{sched_name}.{k} must be an object")
+                continue
+            if "enabled" in v and not isinstance(v["enabled"], bool):
+                errors.append(f"{sched_name}.{k}.enabled must be boolean")
+            if "dial" in v:
+                dv = v["dial"]
+                if isinstance(dv, bool) or not isinstance(dv, (int, float)):
+                    errors.append(f"{sched_name}.{k}.dial must be a number")
+                elif dv < 0 or dv > 1:
+                    errors.append(f"{sched_name}.{k}.dial must be between 0 and 1")
+    return errors

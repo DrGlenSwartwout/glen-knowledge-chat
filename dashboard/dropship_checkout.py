@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List
 
 from dashboard import practitioner_pricing as _pp
+from dashboard import pricing as _pricing
 from dashboard import qbo_billing as qb
 from dashboard import wallet
 
@@ -169,16 +170,26 @@ def practitioner_price_for(pid: str, slug: str) -> int:
 
 def build_client_order(cart: List[dict], practitioner: dict, *,
                        patient: dict, method=None,
-                       points_to_redeem_cents=0, points_balance_cents=0) -> dict:
+                       points_to_redeem_cents=0, points_balance_cents=0,
+                       effective_settings=None, program_member=False) -> dict:
     """Price + invoice a patient-paid (dispensary) cart at the practitioner's price S.
 
     The patient is the QBO customer and pays S per bottle.  The practitioner's
     margin (S − base − fee) is summed and returned so the caller can credit it
     to the practitioner's wallet once payment clears.
 
+    When ``effective_settings`` is provided the patient RECEIVES the
+    practitioner's best-of volume discount off S (same engine helpers the direct
+    channel uses): the discount comes OUT of the practitioner's margin, clamped
+    to the house ceilings baked into ``effective_settings`` and floored via
+    ``pricing.unit_floor_cents``.  When ``effective_settings`` is None the
+    behavior is byte-identical to the flat-S baseline (no discount, unchanged
+    margin) — the discount machinery is skipped entirely.
+
     Key differences from build_dropship_order:
     - QBO customer = the PATIENT (patient["email"]).
-    - Each line is priced at S = practitioner_price_for(pid, slug) (>= MAP).
+    - Each line is priced at S = practitioner_price_for(pid, slug) (>= MAP),
+      optionally reduced by the practitioner-effective volume discount.
     - base/fee/margin computed via quote_line(selling_cents=S, qty=total_bottles).
     - Ship to patient["ship"]; source = "dispensary".
     - GET recorded-not-charged on the patient's ship-to state.
@@ -199,6 +210,19 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     settings = _settings()
     ship = patient["ship"]
 
+    eff = effective_settings
+    # Order-wide, best-of discount context (mirrors the direct engine). Only
+    # computed when a practitioner discount config is in play; when eff is None
+    # the loop charges flat S and this stays 0, preserving today's behavior.
+    _app = None
+    open_pct = prog_pct = 0.0
+    if eff:
+        import app as _app  # lazy (same pattern as _retail_for) — avoids a cycle
+        total_ff = sum(int(i.get("qty", 0)) for i in cart
+                       if _app._qty_eligible(_app._get_product(i["slug"]) or {}))
+        open_pct = _pricing.open_total_pct(total_ff, eff)
+        prog_pct = _pricing.program_total_pct(total_ff, eff, program_member)
+
     lines = []
     subtotal_cents = 0
     total_margin_cents = 0
@@ -212,12 +236,26 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
         # base/fee/margin use total_bottles for the blended curve
         q = _pp.quote_line(selling_cents=s_cents, qty=total_bottles,
                            modules=modules, settings=settings)
-        subtotal_cents += s_cents * line_qty
-        total_margin_cents += q["margin_cents"] * line_qty
+        if eff:
+            prod = _app._get_product(slug) or {}
+            elig = bool(_app._qty_eligible(prod))
+            if elig:
+                t1 = _pricing.same_sku_pct(line_qty, eff)
+                line_pct = max(t1, prog_pct, open_pct)   # non-additive: best single offer
+            else:
+                line_pct = 0.0
+            floor = _pricing.unit_floor_cents(prod, s_cents, eff, "discount")
+            paid_unit = _pricing.apply_discount(s_cents, line_pct, floor)
+        else:
+            paid_unit = s_cents   # baseline: patient pays flat S
+        # The discount is taken out of the practitioner's margin.
+        line_margin = q["margin_cents"] - (s_cents - paid_unit)
+        subtotal_cents += paid_unit * line_qty
+        total_margin_cents += line_margin * line_qty
         total_fee_cents += q["fee_cents"] * line_qty
         lines.append({
             "name": slug,
-            "amount": s_cents / 100.0,   # patient is charged S
+            "amount": paid_unit / 100.0,   # patient is charged the discounted S
             "qty": line_qty,
             "description": f"{slug} (dispensary)",
         })

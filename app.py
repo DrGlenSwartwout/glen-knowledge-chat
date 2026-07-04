@@ -140,6 +140,16 @@ def _rewards_settings():
     return (_pricing_settings().get("rewards") or {})
 
 
+def _practitioner_effective_settings(pid, program_member):
+    """Live global settings with the practitioner's clamped discount block swapped in.
+    Falls back to plain global settings when the practitioner has no saved config."""
+    from dashboard import practitioner_pricing as _ppx
+    with sqlite3.connect(LOG_DB) as cx:
+        cfg = _ppx.get_config(cx, pid)
+    return _ppx.effective_settings(cfg, program_member=bool(program_member),
+                                   settings=_pricing_settings())
+
+
 # ── On-the-fly Rebrandly shortlink creation ──────────────────────────────────
 # Products only consume Rebrandly cap when actually mentioned by the bot.
 # Cache hits in SQLite. Cap-exceeded errors fall back gracefully to canonical.
@@ -11329,6 +11339,22 @@ def api_practitioner_portal_data():
     return jsonify({"ok": True, **data})
 
 
+@app.route("/api/practitioner/pricing", methods=["POST"])
+def api_practitioner_pricing():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    from dashboard import practitioner_pricing as _ppx
+    body = request.get_json(silent=True) or {}
+    config = body.get("config") or {}
+    errs = _ppx.validate_config(config)
+    if errs:
+        return jsonify({"ok": False, "error": "; ".join(errs)}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        _ppx.set_config(cx, pid, config)
+    return jsonify({"ok": True, **(_pp.portal_data(pid) or {})})
+
+
 @app.route("/api/practitioner/cart", methods=["POST"])
 def api_practitioner_cart():
     pid = _practitioner_session_pid()
@@ -12602,10 +12628,15 @@ def api_client_checkout(code):
                 bal_cents = _points.balance(_bcx, email, scope=_scope)
         except Exception:
             bal_cents = 0
+    _program_member = _is_paid_member(email)
     try:
-        out = _dropship.build_client_order(items, prac, patient=patient, method=method,
-                                           points_to_redeem_cents=redeem_req,
-                                           points_balance_cents=bal_cents)
+        out = _dropship.build_client_order(
+            items, prac, patient=patient, method=method,
+            points_to_redeem_cents=redeem_req,
+            points_balance_cents=bal_cents,
+            effective_settings=_practitioner_effective_settings(pid, _program_member),
+            program_member=_program_member,
+        )
     except Exception as e:
         print(f"[client-checkout] build failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500

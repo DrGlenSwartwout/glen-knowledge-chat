@@ -882,4 +882,11 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
     except Exception:
         data["dispense_stats"] = []
         data["recommended_ffs"] = []
+    from dashboard import practitioner_pricing as _ppx
+    try:
+        with sqlite3.connect(db_path or _db_path()) as _pcx:
+            data["pricing_config"] = _ppx.get_config(_pcx, practitioner_id)
+    except Exception:
+        data["pricing_config"] = {}
+    data["pricing_ceilings"] = _ppx.ceilings({})
     return data
