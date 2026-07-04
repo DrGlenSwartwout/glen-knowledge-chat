@@ -19,6 +19,10 @@ def _client(tmp_path, monkeypatch):
     if str(repo) not in sys.path: sys.path.insert(0, str(repo))
     try:
         import app as appmod; importlib.reload(appmod)
+        # require_console_key reads CONSOLE_SECRET bound in dashboard/__init__.py at
+        # import; delenv + reloading only `app` doesn't clear it. Null the module
+        # global the decorator actually checks so auth is disabled for this test.
+        import dashboard as _dash; monkeypatch.setattr(_dash, "CONSOLE_SECRET", "", raising=False)
     except Exception as e:
         pytest.skip(f"app not importable: {e}")
     return appmod.app.test_client()
