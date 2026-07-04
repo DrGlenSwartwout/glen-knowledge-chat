@@ -13677,6 +13677,19 @@ def api_client_portal(token):
             payload.update(_portal_reorder_module(email_for_reports))
         except Exception as e:
             print(f"[portal-reorder] module failed for {email_for_reports!r}: {e!r}", flush=True)
+    # Task 8: surface the patient's ACTIVE practitioner recommendation as a portal
+    # card (name only — the $0-on-prod suggested price is never shown as a cost;
+    # the authoritative member price appears at the accept/checkout step). Additive,
+    # best-effort — a recommendation lookup hiccup must never fail the portal load.
+    if email_for_reports:
+        try:
+            with sqlite3.connect(LOG_DB) as _cxr:
+                _cxr.row_factory = sqlite3.Row
+                _card = _active_recommendation_card(_cxr, email_for_reports)
+            if _card:
+                payload["recommendation"] = _card
+        except Exception as e:
+            print(f"[portal-recommendation] card failed for {email_for_reports!r}: {e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -14171,6 +14184,147 @@ def api_client_portal_checkout(token):
     except Exception as e:
         app.logger.exception("portal checkout failed")
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+
+def _active_recommendation_card(cx, email):
+    """The patient's actionable practitioner recommendation for the portal card,
+    or None (Task 8). ONLY a 'sent' (not-yet-acted) recommendation surfaces — once
+    accepted or dismissed the card is gone. Items are resolved to remedy NAMES; NO
+    price is shown here: the suggested-step price is $0 on prod (its source table is
+    local-only), so it is never displayed as a real cost. The authoritative member
+    price appears only at the accept/checkout step (_portal_priced_lines)."""
+    from dashboard import practitioner_recommendations as _pr
+    try:
+        rec = _pr.active_for_patient(cx, email)
+    except Exception:
+        return None
+    if not rec or rec.get("status") != "sent":
+        return None
+    items = []
+    for it in (rec.get("items") or []):
+        d = it if isinstance(it, dict) else {}
+        slug = (d.get("slug") or "").strip()
+        name = (d.get("name") or "").strip()
+        if not name and slug:
+            p = _get_product(slug)
+            name = (p or {}).get("name") if p else ""
+        name = name or slug or "Recommended remedy"
+        try:
+            qty = max(1, min(int(d.get("qty", 1) or 1), 99))
+        except Exception:
+            qty = 1
+        items.append({"slug": slug, "name": name, "qty": qty})  # price deliberately omitted
+    return {"id": rec["id"], "note": rec.get("note") or "", "items": items}
+
+
+def _recommendation_cart_items(rec):
+    """Normalize a recommendation's items to {slug, qty} for pricing, DROPPING any
+    carried price_cents. The suggested-step price is $0 on prod, and
+    _portal_priced_lines/_inhouse_line_unit_cents honor a per-item price_cents as an
+    override — so passing it through would price the accepted cart at $0. Stripping
+    it forces the real member-priced path (pricing.compute) to set every unit price."""
+    out = []
+    for it in (rec.get("items") or []):
+        d = it if isinstance(it, dict) else {}
+        slug = (d.get("slug") or "").strip().lower()
+        if not slug:
+            continue
+        try:
+            qty = max(1, min(int(d.get("qty", 1) or 1), 99))
+        except Exception:
+            qty = 1
+        out.append({"slug": slug, "qty": qty})  # NO price_cents — never trusted
+    return out
+
+
+def _portal_reorder_checkout(email, items_rec, lines):
+    """Build a live Stripe checkout (QBO invoice → Stripe URL) for a set of
+    already-member-priced portal lines, mirroring the /api/portal/<token>/checkout
+    body EXACTLY (same source='portal-reorder' ingest + _stripe_checkout_url_for_reorder).
+    Returns the Stripe URL or None. Caller guards on _STRIPE_ACTIVE."""
+    from dashboard import qbo_billing as _qb_local
+    ship = {}
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
+        if prior:
+            ship = prior[0].get("address") or {}
+    except Exception:
+        ship = {}  # no prior order / address on file — collected at checkout
+    cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
+    inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
+    out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
+           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
+    _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
+                  name=ship.get("name", ""), items=items_rec,
+                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  address=ship, channel="retail")
+    return _stripe_checkout_url_for_reorder(out, email)
+
+
+@app.route("/api/portal/<token>/recommendation/accept", methods=["POST"])
+def api_portal_recommendation_accept(token):
+    """Task 8 — patient accepts their ACTIVE practitioner recommendation: add the
+    recommended items to a MEMBER-PRICED cart and mark the recommendation 'accepted'.
+
+    SCOPE: acts only on the authenticated patient's OWN active recommendation
+    (resolved from the portal token/session — never a patient_email from the body).
+
+    PRICING: items are re-priced through the SAME member-priced path the portal
+    reorder button uses (_portal_priced_lines → pricing.compute). The recommendation's
+    own price_cents ($0 on prod) is stripped and NEVER trusted — see
+    _recommendation_cart_items. 'accepted' is set the moment the patient acts,
+    independent of whether a live card checkout is available in this environment."""
+    from dashboard import client_portal as _cp
+    from dashboard import practitioner_recommendations as _pr
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return jsonify({"error": "not found"}), 404
+    email = (portal.get("email") or "").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_table(cx)
+        rec = _pr.active_for_patient(cx, email)
+    if not rec or rec.get("status") == "dismissed":
+        return jsonify({"error": "No active recommendation to accept."}), 400
+    items = _recommendation_cart_items(rec)
+    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
+    if not lines:
+        return jsonify({"error": "These remedies are no longer available — please reach out and we'll help."}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        _pr.set_status(cx, rec["id"], "accepted")
+    stripe_url = None
+    if _STRIPE_ACTIVE:
+        try:
+            stripe_url = _portal_reorder_checkout(email, items_rec, lines)
+        except Exception:
+            app.logger.exception("recommendation accept checkout failed")
+            stripe_url = None
+    return jsonify({"ok": True, "accepted": True, "lines": lines, "stripe_url": stripe_url})
+
+
+@app.route("/api/portal/<token>/recommendation/dismiss", methods=["POST"])
+def api_portal_recommendation_dismiss(token):
+    """Task 8 — patient dismisses their active practitioner recommendation. Scoped
+    to the authenticated patient's OWN recommendation (from the token/session)."""
+    from dashboard import client_portal as _cp
+    from dashboard import practitioner_recommendations as _pr
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return jsonify({"error": "not found"}), 404
+    email = (portal.get("email") or "").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_table(cx)
+        rec = _pr.active_for_patient(cx, email)
+        if rec:
+            _pr.set_status(cx, rec["id"], "dismissed")
+    return jsonify({"ok": True, "dismissed": True})
 
 
 def _biofield_content_clean(content):

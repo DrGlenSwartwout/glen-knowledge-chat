@@ -309,6 +309,16 @@
     <table id="disp-table"><thead><tr><th>Date</th><th>Patient</th><th>Bottles</th><th>Credit</th></tr></thead><tbody></tbody></table>
   </div>
   <div class="panel" id="dispense-rank" style="display:none"></div>
+
+  <!-- Continuity: consented Continuous Care patients → per-patient trajectory,
+       narrative, suggested next step, and a one-click "Recommend to patient". -->
+  <div class="panel" id="continuity-panel" style="display:none">
+    <h2>Your continuity patients</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">Patients on Continuous Care who consented to share their progress with you. Pick one to see their trajectory and send a recommendation to their portal.</div>
+    <div id="cont-roster" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <div id="cont-detail" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px"></div>
+  </div>
+
   <div class="panel reco" id="reco-ffs" style="display:none"></div>
 
   <div class="panel" id="pricing-panel">
@@ -512,6 +522,142 @@ function renderRecommended(d){
     + '<div class="muted" style="font-size:12.5px;margin:2px 0 4px">Suggested for your type of practice.</div>'
     + items
     + '<div class="muted" style="font-size:11px;margin-top:10px">These statements describe structure/function support and have not been evaluated to diagnose, treat, cure, or prevent any disease.</div>';
+}
+
+// Clients tab: continuity — consented patients, per-patient view, recommend loop.
+// The roster + per-patient view are gate-checked server-side (only this doctor's
+// consented Continuous Care patients). Every call carries token=TOKEN, which the
+// route resolves to the signed-in practitioner id.
+var CONT_STEP = [];      // the editable "suggested step" items for the open patient
+var CONT_EMAIL = null;   // the patient email currently open
+function contMoney(c){ return (c==null || c===0) ? '' : money(c); }  // suppress $0 — never a real price
+function loadContinuity(){
+  var panel = $('continuity-panel'); if(!panel) return;
+  fetch('/api/practitioner/continuity/roster?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d || !d.ok){ panel.style.display = 'none'; return; }
+      var roster = d.roster || [];
+      panel.style.display = '';
+      var host = $('cont-roster');
+      if(!roster.length){
+        host.innerHTML = '<div class="muted" style="font-size:13px">No consented continuity patients yet. When a patient enrolls in Continuous Care and shares their progress with you, they\'ll appear here.</div>';
+        return;
+      }
+      host.innerHTML = roster.map(function(p){
+        return '<button type="button" class="ghost cont-pt" data-email="' + escapeHtml(p.email) + '">'
+          + escapeHtml(p.name || p.email) + '</button>';
+      }).join('');
+      Array.prototype.forEach.call(host.querySelectorAll('.cont-pt'), function(b){
+        b.addEventListener('click', function(){ openContinuityPatient(b.getAttribute('data-email')); });
+      });
+    })
+    .catch(function(){ panel.style.display = 'none'; });
+}
+function openContinuityPatient(email){
+  CONT_EMAIL = email;
+  var box = $('cont-detail');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="muted" style="font-size:13px">Loading ' + escapeHtml(email) + '…</div>';
+  fetch('/api/practitioner/continuity/patient/' + encodeURIComponent(email) + '?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      if(res.status !== 200 || !res.body.ok){
+        box.innerHTML = '<div class="warn">' + escapeHtml((res.body && res.body.error) || 'Could not load this patient.') + '</div>';
+        return;
+      }
+      renderContinuityDetail(res.body);
+    })
+    .catch(function(){ box.innerHTML = '<div class="warn">Network error loading this patient.</div>'; });
+}
+function contStepItemHtml(it, i){
+  var name = it.name || it.slug || 'Remedy';
+  var qty = Math.max(1, parseInt(it.qty, 10) || 1);
+  return '<div class="cont-step-item" data-i="' + i + '" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+    + '<span style="flex:1">' + escapeHtml(name) + '</span>'
+    + '<span class="muted" style="font-size:12px">×' + qty + '</span>'
+    + '<button type="button" class="ghost cont-rm" data-i="' + i + '" aria-label="Remove">remove</button>'
+    + '</div>';
+}
+function renderContinuityStep(){
+  var host = $('cont-step-list'); if(!host) return;
+  host.innerHTML = CONT_STEP.length
+    ? CONT_STEP.map(contStepItemHtml).join('')
+    : '<div class="muted" style="font-size:13px">No items — add one below or write a note.</div>';
+  Array.prototype.forEach.call(host.querySelectorAll('.cont-rm'), function(b){
+    b.addEventListener('click', function(){
+      CONT_STEP.splice(parseInt(b.getAttribute('data-i'), 10), 1);
+      renderContinuityStep();
+    });
+  });
+}
+function renderContinuityDetail(d){
+  var box = $('cont-detail');
+  // Normalize the suggested step into {slug, name, qty} — DROP any carried price
+  // (it is $0 on prod and is never shown or trusted; the patient's member price is
+  // applied when they accept in their portal).
+  CONT_STEP = (d.suggested_step || []).map(function(it){
+    return {slug: it.slug || '', name: it.name || it.slug || '', qty: Math.max(1, parseInt(it.qty, 10) || 1)};
+  });
+  var traj = d.trajectory || {};
+  var trajLine = '';
+  if(traj.direction || traj.summary){
+    trajLine = '<div style="margin:6px 0"><span class="muted" style="font-size:13px">Trajectory: </span>'
+      + escapeHtml(traj.direction || traj.summary || '') + '</div>';
+  }
+  var narrative = d.narrative
+    ? '<div style="margin:8px 0">' + md(String(d.narrative)) + '</div>'
+    : '<div class="muted" style="font-size:13px;margin:8px 0">No narrative yet for this patient.</div>';
+  box.innerHTML =
+      '<h3 style="margin:0 0 6px">' + escapeHtml(CONT_EMAIL) + '</h3>'
+    + trajLine
+    + '<h4 style="margin:12px 0 4px;font-size:14px">What changed</h4>'
+    + narrative
+    + '<h4 style="margin:14px 0 4px;font-size:14px">Suggested next step</h4>'
+    + '<div class="muted" style="font-size:12px;margin-bottom:4px">Edit the remedies, then recommend them to the patient. They\'ll see it in their portal at their member price.</div>'
+    + '<div id="cont-step-list"></div>'
+    + '<div class="row" style="margin-top:8px">'
+    +   '<input class="slug" id="cont-add-slug" placeholder="product slug (e.g. neuro-magnesium)">'
+    +   '<input class="qty" id="cont-add-qty" type="number" min="1" value="1" style="max-width:70px">'
+    +   '<button type="button" class="ghost" id="cont-add-btn">Add</button>'
+    + '</div>'
+    + '<textarea id="cont-note" placeholder="Add a personal note for your patient (optional)…" style="width:100%;margin-top:10px;min-height:60px;background:var(--surface-2);color:inherit;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:13px"></textarea>'
+    + '<button type="button" id="cont-recommend" style="margin-top:10px">Recommend to patient</button>'
+    + '<span id="cont-msg" style="margin-left:10px;font-size:13px"></span>';
+  renderContinuityStep();
+  $('cont-add-btn').addEventListener('click', function(){
+    var slug = ($('cont-add-slug').value || '').trim().toLowerCase();
+    var qty = Math.max(1, parseInt($('cont-add-qty').value, 10) || 1);
+    if(!slug) return;
+    CONT_STEP.push({slug: slug, name: slug, qty: qty});
+    $('cont-add-slug').value = ''; $('cont-add-qty').value = '1';
+    renderContinuityStep();
+  });
+  $('cont-recommend').addEventListener('click', sendContinuityRecommendation);
+}
+function sendContinuityRecommendation(){
+  var btn = $('cont-recommend'), msg = $('cont-msg');
+  var note = ($('cont-note').value || '').trim();
+  if(!CONT_STEP.length && !note){
+    msg.style.color = 'var(--gold)'; msg.textContent = 'Add at least one remedy or a note.';
+    return;
+  }
+  var items = CONT_STEP.map(function(it){ return {slug: it.slug, qty: it.qty}; });  // no price — patient is priced at their member rate
+  btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Sending…';
+  fetch('/api/practitioner/continuity/recommend', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, patient_email: CONT_EMAIL, items: items, note: note})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      if(res.status === 200 && res.body.ok){
+        msg.style.color = '#8fd6a3'; msg.textContent = 'Sent to your patient\'s portal.';
+      } else {
+        msg.style.color = 'var(--gold)'; msg.textContent = (res.body && res.body.error) || 'Could not send.';
+      }
+    })
+    .catch(function(){ btn.disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
 }
 
 // Clients tab: practitioner-set patient pricing (Standard + Program schedules, dial per type).
@@ -757,6 +903,7 @@ function render(d){
   renderTraining(d);
   renderDispenseStats(d);
   renderRecommended(d);
+  loadContinuity();
   renderPricing(d);
 }
 

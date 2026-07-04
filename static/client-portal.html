@@ -673,6 +673,26 @@ function render(d, v){
     }
   }
 
+  // Task 8: the patient's active practitioner recommendation ("Your practitioner
+  // recommends…") — remedy NAMES only (no $0 suggested price shown), one-tap
+  // accept (→ member-priced checkout) and a dismiss. Absent when there's no
+  // active recommendation. The authoritative price appears at checkout.
+  if(d.recommendation && Array.isArray(d.recommendation.items) && d.recommendation.items.length){
+    const rec = d.recommendation;
+    let ritems = "";
+    rec.items.forEach(it=>{
+      ritems += `<div class="reitem"><span class="nm">${esc(it.name||it.slug)}${it.qty>1?` ×${esc(it.qty)}`:""}</span></div>`;
+    });
+    const rnote = rec.note ? `<p class="note small">${esc(rec.note)}</p>` : "";
+    html += `<div class="card reco-card"><h2>Your practitioner recommends</h2>
+      ${rnote}
+      <div>${ritems}</div>
+      <p class="muted small" style="margin:.7rem 0 1rem">Your member price and shipping are calculated at checkout.</p>
+      <button class="btn full" id="recoAcceptBtn">Add to my order</button>
+      <button class="btn ghost full" id="recoDismissBtn" style="margin-top:.5rem">No thanks</button>
+      <p class="small err" id="recoErr" hidden></p></div>`;
+  }
+
   if(Array.isArray(d.reorder_items) && d.reorder_items.length){
     let rows = "";
     d.reorder_items.forEach(it=>{
@@ -867,6 +887,11 @@ function render(d, v){
   const btn = document.getElementById("reorderBtn");
   if(btn) btn.addEventListener("click", reorder);
 
+  const raBtn = document.getElementById("recoAcceptBtn");
+  if(raBtn) raBtn.addEventListener("click", acceptRecommendation);
+  const rdBtn = document.getElementById("recoDismissBtn");
+  if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
+
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));
 
@@ -960,6 +985,44 @@ async function startOffer(btn){
     throw new Error(j.error || "This isn't available right now. Please reach out and we'll help.");
   }catch(e){
     err.textContent = e.message; err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function acceptRecommendation(){
+  // Task 8: accept the practitioner's recommendation → the server adds the items
+  // to a MEMBER-PRICED cart and returns a live Stripe checkout. One-shot latch
+  // (disabled before any await) so a double-click can't double-fire.
+  const btn = document.getElementById("recoAcceptBtn");
+  if(!btn || btn.disabled) return;
+  btn.disabled = true;
+  const err = document.getElementById("recoErr");
+  if(err) err.hidden = true;
+  const label = btn.textContent; btn.textContent = "Setting up your order…";
+  try{
+    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/accept`, {method:"POST"});
+    const cj = await c.json();
+    if(cj.stripe_url){ location.href = cj.stripe_url; return; }
+    if(cj.ok){ await load(); return; }  // accepted; card clears on re-render
+    throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out and we’ll help.");
+  }catch(e){
+    if(err){ err.textContent = e.message || "Something went wrong. Please reach out and we’ll help."; err.hidden = false; }
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function dismissRecommendation(){
+  const btn = document.getElementById("recoDismissBtn");
+  if(!btn || btn.disabled) return;
+  btn.disabled = true;
+  const err = document.getElementById("recoErr");
+  if(err) err.hidden = true;
+  try{
+    const r = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/dismiss`, {method:"POST"});
+    if(!r.ok) throw new Error();
+    await load();  // card disappears on re-render
+  }catch(e){
+    btn.disabled = false;
+    if(err){ err.textContent = "Couldn't dismiss just now — please try again."; err.hidden = false; }
   }
 }
 
