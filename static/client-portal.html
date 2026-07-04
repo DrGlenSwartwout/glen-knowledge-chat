@@ -662,12 +662,16 @@ function render(d, v){
     const dates = Array.isArray(bf.scan_dates) ? bf.scan_dates : [];
     const curDate = bf.scan_date || (dates.length ? dates[0] : null);
     if(dates.length > 1){
-      const pills = dates.slice(0,3).map(dt =>
-        `<button type="button" class="scantab${dt===curDate?" active":""}" data-scan="${esc(dt)}">${esc(fmtDate(dt))}</button>`
-      ).join("");
-      const opts = dates.map(dt =>
-        `<option value="${esc(dt)}"${dt===curDate?" selected":""}>${esc(fmtDate(dt))}</option>`
-      ).join("");
+      const pills = dates.slice(0,3).map(dt => {
+        const hasOpen = d.opens && d.opens[dt];
+        const newMarker = d.opens !== undefined && !hasOpen ? " 🆕" : "";
+        return `<button type="button" class="scantab${dt===curDate?" active":""}" data-scan="${esc(dt)}">${esc(fmtDate(dt))}${newMarker}</button>`;
+      }).join("");
+      const opts = dates.map(dt => {
+        const hasOpen = d.opens && d.opens[dt];
+        const newMarker = d.opens !== undefined && !hasOpen ? " 🆕" : "";
+        return `<option value="${esc(dt)}"${dt===curDate?" selected":""}>${esc(fmtDate(dt))}${newMarker}</option>`;
+      }).join("");
       tabs = `<div class="scantabs">${pills}<select class="scansel" id="bfScanSel" aria-label="Choose a scan date"><option value="" disabled${dates.indexOf(curDate)>2?"":" selected"}>More dates ▾</option>${opts}</select></div>`;
     }
 
@@ -717,14 +721,42 @@ function render(d, v){
       } else if(bf.pricing_note){
         extra = `<p class="note small" style="margin-top:.7rem">${esc(bf.pricing_note)}</p>`;
       }
-      html += `<div class="card"><h2>Your healing path</h2>
-        ${tabs}
+      // DRY the report body: factor into a single string for both branches.
+      const reportBody = `${tabs}
         ${patternsBlock}
         <p class="muted small">From the surface layer down to the deepest root, we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>
         ${extra}
         ${status === "confirmed" ? `<div style="margin-top:1.1rem"><button class="btn" onclick="printReport()">🖨 Save Report as PDF</button></div>` : ""}
-        ${status !== "confirmed" ? disclose : ""}</div>`;
+        ${status !== "confirmed" ? disclose : ""}`;
+      // Read-receipt: collapse the report behind a New/date header; expand = tracked open.
+      if (d.opens !== undefined) {
+        const sd = d.scan_date || "";
+        const isNew = sd && !(d.opens && d.opens[sd]);
+        const memberQS = new URLSearchParams(location.search).get("member");
+        window.__openReport = async (scanDate) => {
+          try {
+            const u = `/api/portal/${encodeURIComponent(token)}/open` + (memberQS ? `?member=${encodeURIComponent(memberQS)}` : "");
+            await fetch(u, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({scan_date: scanDate})});
+          } catch(e) {}
+          const body = document.getElementById("rr-body");
+          if (body) body.style.display = "";
+          const badge = document.getElementById("rr-new");
+          if (badge) badge.remove();
+        };
+        html += `<div class="card">
+          <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window.__openReport('${esc(sd)}')">
+            <strong>Biofield report — ${esc(sd || "")}</strong>
+            ${isNew ? `<span id="rr-new" style="background:#d4a843;color:#000;font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:10px">New</span>` : ""}
+            <span style="flex:1"></span><span style="color:var(--muted)">▾</span>
+          </div>
+          <div id="rr-body" style="display:${isNew ? "none" : ""};margin-top:12px">${reportBody}</div>
+        </div>`;
+      } else {
+        // flag off: existing report body markup, unchanged
+        html += `<div class="card"><h2>Your healing path</h2>
+          ${reportBody}</div>`;
+      }
     }
   }
 
