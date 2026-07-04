@@ -1,5 +1,17 @@
-"""Pure pricing for practitioner drop-ship: blended base, flat 33% fee, $/% selling-price
+"""Per-practitioner product-discount controls. Pure builder + SQLite config.
+
+Config shape (both schedules optional; program has an extra 'enabled' master flag):
+{
+  "standard": {"same_sku": {"enabled": bool, "dial": 0..1}, "program_total": {...}, "open_total": {...}},
+  "program":  {"enabled": bool, "same_sku": {...}, "program_total": {...}, "open_total": {...}}
+}
+
+Also includes pure pricing for practitioner drop-ship: blended base, flat 33% fee, $/% selling-price
 with MAP, practitioner margin. Wraps dashboard.wholesale_pricing for the blended base."""
+import json
+import sqlite3
+from datetime import datetime, timezone
+
 from dashboard import wholesale_pricing as _wp
 
 DEFAULTS = {
@@ -66,3 +78,37 @@ def quote_line(*, selling_cents, qty, modules, settings):
         "margin_cents": margin,
         "dropship_wholesale_cents": base + fee,
     }
+
+
+# Config persistence layer
+
+_TYPES = ("same_sku", "program_total", "open_total")
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def init_table(cx):
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS practitioner_pricing ("
+        "practitioner_id TEXT PRIMARY KEY, config_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+
+
+def get_config(cx, pid):
+    init_table(cx)
+    row = cx.execute(
+        "SELECT config_json FROM practitioner_pricing WHERE practitioner_id=?", (str(pid),)
+    ).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def set_config(cx, pid, config):
+    init_table(cx)
+    cx.execute(
+        "INSERT INTO practitioner_pricing (practitioner_id, config_json, updated_at) "
+        "VALUES (?,?,?) ON CONFLICT(practitioner_id) DO UPDATE SET "
+        "config_json=excluded.config_json, updated_at=excluded.updated_at",
+        (str(pid), json.dumps(config), _now()),
+    )

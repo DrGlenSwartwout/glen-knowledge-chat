@@ -1,4 +1,28 @@
+import sqlite3
 from dashboard import practitioner_pricing as pp
+
+def _cx():
+    return sqlite3.connect(":memory:")
+
+
+def test_get_config_defaults_empty():
+    with _cx() as cx:
+        assert pp.get_config(cx, "7") == {}
+
+
+def test_set_then_get_roundtrips():
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.5}}}
+    with _cx() as cx:
+        pp.set_config(cx, "7", cfg)
+        assert pp.get_config(cx, "7") == cfg
+
+
+def test_set_config_upserts():
+    with _cx() as cx:
+        pp.set_config(cx, "7", {"standard": {"same_sku": {"enabled": True, "dial": 0.2}}})
+        pp.set_config(cx, "7", {"standard": {"same_sku": {"enabled": False, "dial": 0.9}}})
+        assert pp.get_config(cx, "7")["standard"]["same_sku"]["dial"] == 0.9
+
 
 def test_defaults():
     s = pp.load_settings({})
