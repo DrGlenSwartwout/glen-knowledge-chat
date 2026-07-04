@@ -137,8 +137,10 @@ def run_daily_piggybacks():
     _piggyback_post("triage-digest", "/api/cron/triage-digest", "X-Cron-Secret", CRON_SECRET)
     # Sourcing inbox: scan Glen's email for supplier price quotes → stage to the review
     # queue (idempotent by gmail_msg_id; nothing auto-approved). Runs in the web container
-    # for LOG_DB access. IMAP + Haiku can be slow → generous timeout.
-    _piggyback_post("sourcing-scan", "/api/cron/sourcing-scan", "X-Cron-Secret", CRON_SECRET, timeout=600)
+    # for LOG_DB access, and the endpoint backgrounds the scan + returns immediately, so
+    # this POST is just a trigger. Short window since it runs daily; a wider one-time
+    # backfill can be done manually with ?days=N&max=N.
+    _piggyback_post("sourcing-scan", "/api/cron/sourcing-scan?days=3", "X-Cron-Secret", CRON_SECRET)
     for path in ("/admin/sync-pb-tags", "/admin/sync-practitioner-tags",
                  "/admin/sync-people-to-ghl", "/api/cron/charge-subscriptions"):
         _piggyback_post(f"pb-sync-chain {path}", path, "X-Cron-Secret", CRON_SECRET, timeout=600)

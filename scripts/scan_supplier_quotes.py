@@ -98,7 +98,7 @@ def _body_text(m):
         return ""
 
 
-def scan(write=False, days=14, db_path=None, imap=None, client=None) -> dict:
+def scan(write=False, days=14, db_path=None, imap=None, client=None, max_messages=None) -> dict:
     user = os.environ.get("GMAIL_DRGLEN_USER", "drglenswartwout@gmail.com")
     pw = os.environ.get("GMAIL_DRGLEN_APP_PASSWORD", "")
     own = imap is None
@@ -112,6 +112,11 @@ def scan(write=False, days=14, db_path=None, imap=None, client=None) -> dict:
         since = (datetime.date.today() - datetime.timedelta(days=days)).strftime("%d-%b-%Y")
         typ, data = imap.search(None, "SINCE", since)
         ids = data[0].split() if data and data[0] else []
+        # Bound the work: a full RFC822 fetch per message is the slow part, so cap to
+        # the most-recent N. The daily cron uses a short window; a wider manual backfill
+        # can raise the cap. None = unbounded.
+        if max_messages and len(ids) > max_messages:
+            ids = ids[-max_messages:]
         cx = sqlite3.connect(db_path or sc._default_db_path()); cx.row_factory = sqlite3.Row
         try:
             sc.init_sourcing_schema(cx)

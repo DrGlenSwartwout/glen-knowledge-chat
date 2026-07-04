@@ -14348,7 +14348,13 @@ def api_cron_sourcing_scan():
     web container so it writes the live LOG_DB — a standalone cron container's own disk
     would be invisible to the console. Only stages to a REVIEW queue (nothing is
     auto-approved into ingredient_sources) and is idempotent by gmail_msg_id, so re-runs
-    are safe. Pass ?dry=1 for a no-write dry run. Auth: X-Cron-Secret == CRON_SECRET
+    are safe.
+
+    A full IMAP fetch per message is slow (minutes for a wide window), so the live
+    (write) scan runs in a BACKGROUND thread and the request returns immediately —
+    otherwise the HTTP call (and any gateway in front of it) times out. A ?dry=1 run
+    is bounded and synchronous so a manual check returns counts quickly. ?days=N sets
+    the window, ?max=N caps messages fetched. Auth: X-Cron-Secret == CRON_SECRET
     (falls back to CONSOLE_SECRET)."""
     key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
     expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
@@ -14358,8 +14364,23 @@ def api_cron_sourcing_scan():
         from scripts.scan_supplier_quotes import scan
         dry = request.args.get("dry", "") in ("1", "true", "yes")
         days = int(request.args.get("days", 14))
-        result = scan(write=not dry, days=days, db_path=str(LOG_DB))
-        return jsonify({"ok": True, **result})
+        _max = request.args.get("max")
+        # dry = quick bounded verify (sync); live = larger cap, backgrounded.
+        max_messages = int(_max) if _max else (30 if dry else 400)
+        if dry:
+            result = scan(write=False, days=days, db_path=str(LOG_DB), max_messages=max_messages)
+            return jsonify({"ok": True, **result})
+
+        def _bg():
+            try:
+                r = scan(write=True, days=days, db_path=str(LOG_DB), max_messages=max_messages)
+                print(f"[sourcing-scan] done: {r}", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[sourcing-scan] bg error: {e!r}", flush=True)
+        import threading as _t
+        _t.Thread(target=_bg, daemon=True).start()
+        return jsonify({"ok": True, "started": True, "mode": "write_async",
+                        "days": days, "max": max_messages})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
