@@ -1,6 +1,15 @@
 import { nextGapMs, shouldDuck } from './governance.js';
 import { emberBurst } from './spark.js';
 
+// A one-shot may carry a single `file` OR a `files` array of interchangeable
+// variants (e.g. the cat's three routines) — one is picked at random each fire.
+export function pickSrc(o, rng = Math.random) {
+  if (o && Array.isArray(o.files) && o.files.length) {
+    return o.files[Math.floor(rng() * o.files.length)];
+  }
+  return (o && o.file) || null;
+}
+
 export class Ambience {
   constructor(ambience, opts = {}) {
     this.amb = ambience || { bed: null, bed_volume: 0.18, oneshots: [] };
@@ -8,6 +17,12 @@ export class Ambience {
     this.sparkCtx = opts.sparkCtx || null;
     this.sparkXY = opts.sparkXY || [0, 0];
     this.muted = !!opts.muted;
+    // opt-in voice ducking of the BED + continuous loops (one-shots already duck).
+    // duck = the fraction of normal volume to drop to while a voice is playing
+    // (e.g. 0.4 = beds fall to 40% under Glendalf's report audio, swell back after).
+    this.duck = (typeof opts.duck === 'number' && opts.duck > 0 && opts.duck < 1) ? opts.duck : null;
+    this._ducked = false;
+    this._monTimer = null;
     this.bedEl = null;
     this.timers = [];
     this.loopEls = [];
@@ -30,6 +45,40 @@ export class Ambience {
     for (const o of this.amb.oneshots) {
       if (o.loop) this._startLoop(o);       // continuous soft layer (fills dead time)
       else this._schedule(o, true);         // random one-shot (first gap may be overridden)
+    }
+    // poll the voice source; duck/unduck the bed + loops when it starts/stops
+    if (this.duck != null) this._monTimer = setInterval(() => this._checkDuck(), 250);
+  }
+
+  _levelFactor() {
+    return this.muted ? 0 : (this._ducked && this.duck != null ? this.duck : 1);
+  }
+
+  // ramp bed + continuous loops to their current target (mute * duck) over ms
+  _applyLevels(ms = 500) {
+    const f = this._levelFactor();
+    this._rampBed(this.amb.bed_volume * f, ms);
+    for (const L of this.loopEls) this._rampEl(L.el, L.volume * f, ms);
+  }
+
+  _rampEl(el, target, ms) {
+    if (!el) return;
+    if (el._raf) cancelAnimationFrame(el._raf);
+    const from = el.volume, t0 = performance.now();
+    const tick = (now) => {
+      const k = ms <= 0 ? 1 : Math.min(1, (now - t0) / ms);
+      el.volume = from + (target - from) * k;
+      if (k < 1) el._raf = requestAnimationFrame(tick); else el._raf = null;
+    };
+    el._raf = requestAnimationFrame(tick);
+  }
+
+  _checkDuck() {
+    const voice = !!this.isVoicePlaying();
+    if (voice !== this._ducked) {
+      this._ducked = voice;
+      // taper: duck in fairly quickly as he starts, swell back gently as he stops
+      this._applyLevels(voice ? 700 : 1400);
     }
   }
 
@@ -83,7 +132,9 @@ export class Ambience {
   }
 
   _play(o) {
-    const a = new Audio(o.file);
+    const src = pickSrc(o);
+    if (!src) return;
+    const a = new Audio(src);
     a.volume = o.volume;
     a.play().catch(() => {});
     if (o.spark && this.sparkCtx) {
@@ -94,12 +145,11 @@ export class Ambience {
 
   setMuted(m) {
     this.muted = !!m;
-    if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
-    if (this.bedEl) this.bedEl.volume = this.muted ? 0 : this.amb.bed_volume;
-    for (const L of this.loopEls) L.el.volume = this.muted ? 0 : L.volume;
+    this._applyLevels(150);           // fast ramp; composes mute with the duck state
   }
 
   stop() {
+    if (this._monTimer) { clearInterval(this._monTimer); this._monTimer = null; }
     this.timers.forEach(clearTimeout); this.timers = [];
     if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
     if (this.bedEl) { this._fadeOutAndPause(this.bedEl, 1200); this.bedEl = null; }
