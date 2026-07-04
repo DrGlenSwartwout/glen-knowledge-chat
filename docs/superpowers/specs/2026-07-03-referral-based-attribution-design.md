@@ -13,28 +13,25 @@ The system already has a durable, first-touch practitioner↔client link: the **
 
 So attribution = "who referred this patient" (`referral_redemptions.owner_email = practitioner`), independent of purchase history, covering the first order and every reorder, resolved to a single owner. Strictly better than Approach A (dispensary-history-only) and cheaper than Approach B (no new table/UX — the referral system IS the durable link).
 
-## Part 1 — Attribution / reporting (read-only, safe, BUILD NOW)
+## Part 1 — Attribution / reporting (read-only, safe, BUILT)
 
-Rewrite the Patient-portal column to read the referral graph instead of dispensary history.
+The **Patient portal** column (name kept for continuity with the client-portal pages) counts a practitioner's patients' **own** portal orders — **first purchase and reorders**.
 
-`patient_portal_items(practitioner_email, *, db_path=None) -> {slug: units}`:
-1. `referees = SELECT DISTINCT lower(referee_email) FROM referral_redemptions WHERE lower(owner_email)=?`
-2. sum `items_json` across `orders WHERE lower(email) IN (referees) AND source IN ('portal-reorder','reorder') AND status != 'cancelled'` (reuse `_add_items`).
+`patient_portal_items(practitioner_email, *, practitioner_id=None, db_path=None) -> {slug: units}`:
+1. patient set = **UNION**, deduped by email, of:
+   - referred patients — `SELECT DISTINCT lower(referee_email) FROM referral_redemptions WHERE lower(owner_email)=practitioner_email` (the new referral model, first-touch, single-owner), and
+   - dispensary clients — `SELECT DISTINCT lower(customer_email) FROM dispensary_orders WHERE practitioner_id=?` (so an existing dispensary-based practitioner is not stranded before Part 2 unifies the links).
+2. sum `items_json` across `orders WHERE lower(email) IN (set) AND source IN _PORTAL_SOURCES AND status != 'cancelled'`, where `_PORTAL_SOURCES = ('portal-reorder','reorder','funnel')` — reorders plus the **funnel first purchase** (so first orders count, per Glen). Not wholesale (dispensed) or dispensary (drop-ship). Reuses `_add_items`.
 
-`dispense_stats` gains a `practitioner_email` param (threaded from `portal_data`'s `row["email"]`) and passes it through. No money is touched — this is display/reporting only.
-
-**Limit (until Part 2):** Part 1 attributes only patients already in the referral graph (those who came through the doctor's affiliate referral link). Correct and forward-working — the column grows as more patients are captured as referrals. It no longer requires a prior dispensary purchase.
+`dispense_stats` gains `practitioner_email` (threaded from `portal_data`'s `row["email"]`) and `practitioner_id`, passed through. No money is touched — display/reporting only. Adversarial review caught (and this fixes) two earlier semantic bugs: first orders were excluded and dispensary-based practitioners read empty.
 
 ## Part 2 — Capture unification (NEEDS DR. GLEN'S DECISION — not built yet)
 
 To capture *every* patient a doctor sends to their portal (not only those who used an affiliate `?ref=` link), make the doctor's **online-ordering-portal / dispensary link double as their affiliate referral link**, so a referred patient's first order writes a durable `referral_redemptions(referee, owner=doctor)` via the existing `record_redemption`. Recommended: one "your patient link" that drives both the drop-ship credit and the durable referral attribution.
 
-**Decision required — reward interaction:** today a dispensary drop-ship earns the doctor **$20/bottle Wellness Credit** (`dispensary_orders`), and an affiliate referral earns **affiliate commission** (`referral_redemptions` → reward). Unifying the links means one sale could write both. Dr. Glen must confirm the policy:
-- (a) **Attribution only** — write the referral row for *attribution/reporting* but suppress the affiliate *reward* on dispensary-originated sales (no double-pay); or
-- (b) **Both rewards** — the doctor earns dispensary credit AND affiliate commission (intended stacking); or
-- (c) **Replace** — dispensary credit gives way to the affiliate commission model.
+**Reward policy — DECIDED by Dr. Glen 2026-07-03:** a drop-ship / portal sale is paid at **wholesale by the practitioner**, so their compensation is the **markup** — like any wholesale/retail sale. Therefore **no L1 affiliate commission** is paid on it (that would double-pay on top of the markup). **Only the L2 override is tracked, and only as points** (the practitioner's upline referrer accrues L2 points). The sale **is tracked for the practitioner's sales reporting** (the dispense table, Part 1) but generates **no L1 points**.
 
-Until this is decided, Part 2 is not wired — writing referral rows could trigger commission payouts. Part 1 stands alone and is safe.
+So sales-tracking and the points ledger are separate systems: writing the referral row on the portal link is for **attribution + L2 points only** and can never trigger an L1 commission — there is no double-pay. This is the "(a) attribution-only" posture for L1, plus L2 points. Part 2 wiring: make the doctor's portal/dispensary link write the durable `referral_redemptions` row on first order (via `record_redemption`), ensure the reward path pays **L2 points only, never L1**, on drop-ship/portal sales.
 
 ## Testing (Part 1)
 
