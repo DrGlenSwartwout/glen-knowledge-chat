@@ -1,4 +1,6 @@
 import sqlite3
+import tempfile
+import os
 from dashboard import practitioner_pricing as pp
 
 def _cx():
@@ -95,3 +97,29 @@ def test_margin_never_negative():
     s = pp.load_settings({})
     q = pp.quote_line(selling_cents=5000, qty=1, modules=0, settings=s)   # S == base, fee 0
     assert q["margin_cents"] == 0
+
+
+def test_set_config_persists_without_with_block(tmp_path):
+    """Regression test: set_config must commit internally.
+
+    The real app.py callers open a connection with cx = sqlite3.connect(path)
+    (without a `with` block) and close it manually. If set_config does not
+    cx.commit() internally, the write is silently rolled back on close.
+
+    This test reproduces that call pattern and asserts the config persists.
+    """
+    db_path = str(tmp_path / "test.db")
+    cfg = {"standard": {"same_sku": {"enabled": True, "dial": 0.75}}}
+
+    # Simulate real app.py usage: open without `with`, call set_config, close manually
+    cx1 = sqlite3.connect(db_path)
+    pp.set_config(cx1, "test-pid", cfg)
+    cx1.close()
+
+    # Reopen to verify persistence
+    cx2 = sqlite3.connect(db_path)
+    retrieved = pp.get_config(cx2, "test-pid")
+    cx2.close()
+
+    # Must be equal to what we set (not an empty dict)
+    assert retrieved == cfg

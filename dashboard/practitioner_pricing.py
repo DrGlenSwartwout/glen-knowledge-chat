@@ -94,6 +94,7 @@ def init_table(cx):
         "CREATE TABLE IF NOT EXISTS practitioner_pricing ("
         "practitioner_id TEXT PRIMARY KEY, config_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
+    cx.commit()
 
 
 def get_config(cx, pid):
@@ -112,3 +113,4 @@ def set_config(cx, pid, config):
         "config_json=excluded.config_json, updated_at=excluded.updated_at",
         (str(pid), json.dumps(config), _now()),
     )
+    cx.commit()
