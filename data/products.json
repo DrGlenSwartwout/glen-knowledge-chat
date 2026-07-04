@@ -591,6 +591,14 @@
       "price_cents": 3997,
       "pinecone_title": "MB 5"
     },
+    "evox-session": {
+      "name": "EVOX Session (prepaid)",
+      "price_cents": 19700,
+      "info_only": true,
+      "service": true,
+      "service_value_cents": 19700,
+      "source": "evox-service-2026-07-04"
+    },
     "free-and-easy": {
       "name": "Free & Easy",
       "qbo_item_id": "40",
@@ -5833,6 +5841,12 @@
       "pinecone_title": "EI16",
       "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/278-ei16--feeling-forebrain--limbic-system-",
       "bottle_type": "30ml"
+    },
+    "hand-cradle": {
+      "name": "ZYTO Hand Cradle",
+      "price_cents": 29700,
+      "bottle_type": "handcradle",
+      "source": "evox-hardware-2026-07-04"
     },
     "heart-health": {
       "name": "Heart Health",

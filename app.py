@@ -196,6 +196,13 @@ PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com")
 MEMBERSHIP_JOIN_URL = os.environ.get("MEMBERSHIP_JOIN_URL", f"{PUBLIC_BASE_URL}/begin")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
+# EVOX remote-session booking (Rae's lane). Office-hours spec: "days:HH:MM-HH:MM"
+# where days is a 1-based ISO weekday range (1=Mon). Default = Mon-Thu 9a-4p.
+EVOX_HOURS               = os.environ.get("EVOX_HOURS", "1-4:09:00-16:00")
+EVOX_RAE_PHONE           = os.environ.get("EVOX_RAE_PHONE", "")
+EVOX_RAE_EMAIL           = os.environ.get("EVOX_RAE_EMAIL", "suerae1111@gmail.com")
+EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000"))
+
 
 def _init_auth_tables():
     with sqlite3.connect(LOG_DB) as cx:
@@ -255,6 +262,16 @@ def _hash_token(t: str) -> str:
 
 def _now_utc():
     return datetime.now(timezone.utc)
+
+
+# Module-level SMTP config + smtplib handle so tests can monkeypatch
+# app.SMTP_HOST / app.SMTP_USER / app.SMTP_PASS / app.smtplib.SMTP directly.
+# (send_magic_link_email / send_portal_welcome_email read os.environ locally
+# and are untouched; send_evox_email below uses these module globals.)
+import smtplib
+SMTP_HOST = os.environ.get("SMTP_HOST")
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASS = os.environ.get("SMTP_PASS")
 
 
 def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
@@ -337,6 +354,74 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def send_evox_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
+    """Send the EVOX setup link. Mirrors send_magic_link_email's 3-tier cascade
+    (GHL workflow -> SMTP -> console-log). The setup_url carries the client's
+    portal token, so this link is emailed to the account owner ONLY — it is never
+    returned to the (unauthenticated) /api/evox/start caller.
+    Returns (sent_via, error_or_none).
+    """
+    subject = "Your EVOX setup link"
+    body = (
+        f"Hi {name or 'there'},\n\n"
+        f"Click the link below on this device to set up your EVOX remote session.\n\n"
+        f"{setup_url}\n\n"
+        f"If you didn't request this, you can ignore this email.\n\n"
+        f"— Dr. Glen Swartwout\n"
+    )
+    html_body = (
+        f"<p>Hi {name or 'there'},</p>"
+        f"<p>Click the link below on this device to set up your EVOX remote session.</p>"
+        f"<p><a href=\"{setup_url}\">Set up your EVOX session</a></p>"
+        f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {setup_url}</p>"
+        f"<p>If you didn't request this, you can ignore this email.</p>"
+        f"<p>— Dr. Glen Swartwout</p>"
+    )
+
+    # Path 1: GHL workflow trigger (reuse the magic-link workflow channel)
+    if GHL_MAGIC_WORKFLOW:
+        try:
+            contact_id, _, err = ghl_upsert_contact(to_email, name or "", "",
+                                                     source_tag="evox-setup-link")
+            if contact_id:
+                _ghl_post(f"/workflows/{GHL_MAGIC_WORKFLOW}/run",
+                          {"contactId": contact_id, "customValues": {
+                              "magic_link_url": setup_url,
+                          }})
+                return "ghl-workflow", None
+        except Exception as e:
+            print(f"[evox] GHL setup-link send failed: {e}", flush=True)
+
+    # Path 2: SMTP
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[evox] SMTP setup-link send failed: {e}", flush=True)
+
+    # Path 3: console fallback (development / pre-config)
+    print(f"\n[evox] SETUP LINK for {to_email}: {setup_url}\n", flush=True)
+    return "console-log", "no email send mechanism configured"
+
+
 def send_portal_welcome_email(to_email, name, login_url):
     """Send the one-time 'your portal is ready' welcome. Mirrors
     send_magic_link_email's cascade (GHL workflow -> SMTP -> console-log).
@@ -388,6 +473,66 @@ def send_portal_welcome_email(to_email, name, login_url):
     # Path 3: console fallback
     print(f"\n[welcome] PORTAL WELCOME for {to_email}: {login_url}\n", flush=True)
     return "console-log", "no email send mechanism configured"
+
+
+def send_evox_email(to_email, name, subject, html_body, text_body, ics_bytes):
+    """Three-tier send with an .ics attachment. GHL tier skipped (no attachment path)."""
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
+        app.logger.info("EVOX email (console fallback) to %s: %s", to_email, subject)
+        return ("console-log", "no email send mechanism configured")
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"] = SMTP_USER
+    msg["To"] = to_email
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(text_body, "plain"))
+    alt.attach(MIMEText(html_body, "html"))
+    msg.attach(alt)
+    part = MIMEBase("text", "calendar", method="REQUEST", name="invite.ics")
+    part.set_payload(ics_bytes)
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", "attachment", filename="invite.ics")
+    msg.attach(part)
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    with smtplib.SMTP(SMTP_HOST, port) as s:
+        s.starttls(); s.login(SMTP_USER, SMTP_PASS)
+        s.sendmail(SMTP_USER, [to_email], msg.as_string())
+    return ("smtp", None)
+
+
+def _evox_send_confirmations(email, booking):
+    """Best-effort: send the client + Rae EVOX confirmation emails, each with the
+    same .ics invite. Swallows send errors (logs) — never raises into the booking
+    response. Called from evox_book AFTER the DB lock/connection is released so
+    SMTP never runs while holding _db_lock."""
+    from dashboard import evox as _ev
+    start = booking["start_ts"]; nice = start.replace("T", " ")
+    phone = EVOX_RAE_PHONE or "the number in this confirmation"
+    ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                        summary="EVOX Session with Rae",
+                        description=(f"At your appointment time, call Rae at {phone}. "
+                                     "Have your Windows PC on with the ZYTO software open, "
+                                     "hand cradle connected, headset ready."),
+                        location="Phone")
+    client_html = (f"<p>Your EVOX session is booked for <b>{nice} HST</b>.</p>"
+                   f"<p>At your appointment time, <b>call Rae at {phone}</b>. Have your "
+                   "Windows PC on with the ZYTO software open, hand cradle connected, and "
+                   "headset ready. The calendar invite is attached.</p>")
+    client_text = (f"EVOX session booked for {nice} HST. At your appointment time, call Rae "
+                   f"at {phone}. Have your PC on with ZYTO open, hand cradle + headset ready.")
+    rae_html = (f"<p>New EVOX booking: <b>{email}</b> on <b>{nice} HST</b> "
+                f"({'PREPAID' if booking.get('prepaid') else 'invoice after'}).</p>")
+    for to, nm, subj, html, text in [
+        (email, "", "Your EVOX session is booked", client_html, client_text),
+        (EVOX_RAE_EMAIL, "Rae", f"EVOX booking — {email}", rae_html, rae_html)]:
+        try:
+            send_evox_email(to, nm, subj, html, text, ics)
+        except Exception:
+            app.logger.exception("EVOX confirmation send failed to %s", to)
 
 
 def _member_join_welcome(cx, email, source=None):
@@ -13927,6 +14072,210 @@ def _accepted_recommendation_slugs(cx, email):
                 for it in merged if (it.get("slug") or "").strip()}
     except Exception:
         return set()
+
+
+# ── EVOX remote-session booking routes ───────────────────────────────────────
+from datetime import date as _evox_date, timedelta as _evox_td
+
+def _hst_now():
+    """Naive wall-clock 'now' in Hawaii (UTC-10, no DST) — matches the naive slot
+    grid used by dashboard.evox.available_slots so `s <= now` filters real past."""
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _tdd
+    return _dt.now(_tz.utc).astimezone(_tz(_tdd(hours=-10))).replace(tzinfo=None)
+
+def appmod_calendar_window(range_name):
+    """Forward-looking inclusive (lo, hi) day window for EVOX availability. Unlike
+    the console's `_calendar_range_window` (which returns the CURRENT calendar week
+    Mon-Sun and would show only PAST days late in the week), this always starts at
+    today so a client never sees an un-bookable past slot. '2day' = today+tomorrow;
+    anything else = a rolling 7-day window (today .. today+6)."""
+    today = _hst_now().date()
+    span = 1 if (range_name or "").lower() == "2day" else 6
+    return today.isoformat(), (today + _evox_td(days=span)).isoformat()
+
+def _evox_days(range_name):
+    lo, hi = appmod_calendar_window(range_name)
+    d0 = _evox_date.fromisoformat(lo); d1 = _evox_date.fromisoformat(hi)
+    return [d0 + _evox_td(days=i) for i in range((d1 - d0).days + 1)]
+
+def _evox_ident(cx, token):
+    from dashboard import portal_identity as _pi
+    return _pi.resolve_identity(cx, token=token,
+                                session_token=request.cookies.get("rm_portal_session", ""),
+                                client_login_enabled=_client_login_enabled())
+
+@app.route("/evox")
+def evox_page():
+    return send_from_directory(STATIC, "evox.html")
+
+@app.route("/api/evox/start", methods=["POST"])
+def evox_start():
+    from dashboard import evox as _ev, customers as _cu, client_portal as _cp
+    body = request.get_json(force=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email_required"}), 400
+    _init_people_table()  # base table must exist before find_or_create_by_email
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        _cp.init_client_portal_table(cx)
+        _cu.find_or_create_by_email(cx, email=email, name=name)
+        token = _ev.ensure_portal_token(cx, email, name)
+        setup_url = f"{PUBLIC_BASE_URL}/evox?token={token}"
+    # SECURITY: `token` is the client's MASTER portal bearer credential. Never
+    # return it (or its URL) to this unauthenticated caller — email the setup
+    # link to the account owner instead. Network send runs OUTSIDE the lock.
+    try:
+        send_evox_setup_link(email, name, setup_url)
+    except Exception:
+        app.logger.exception("EVOX setup-link send failed for %s", email)
+    return jsonify({"ok": True, "emailed": True})
+
+@app.route("/api/evox/state")
+def evox_state():
+    from dashboard import evox as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        st = _ev.get_readiness(cx, ident.email)
+        st["credits"] = _ev.session_credit_balance(cx, ident.email)
+        st["cradle_purchased"] = _ev.has_cradle_purchase(cx, ident.email)
+        return jsonify(st)
+
+@app.route("/api/evox/readiness", methods=["POST"])
+def evox_readiness():
+    from dashboard import evox as _ev
+    body = request.get_json(force=True) or {}
+    item, value = body.get("item"), bool(body.get("value"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        src = None
+        if item == "cradle_ok":
+            if _ev.has_cradle_purchase(cx, ident.email):
+                value, src = True, "buy"
+            else:
+                src = "access"
+        try:
+            st = _ev.set_readiness_item(cx, ident.email, item, value, cradle_source=src)
+        except ValueError:
+            return jsonify({"error": "bad_item"}), 400
+        return jsonify(st)
+
+@app.route("/api/evox/availability")
+def evox_availability():
+    from dashboard import evox as _ev
+    _init_calendar_table()  # rae_busy_intervals reads calendar_events
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _ev.get_readiness(cx, ident.email)["complete"]:
+            return jsonify({"error": "not_ready"}), 403
+        days = _evox_days(request.args.get("range", "week"))
+        lo, hi = days[0].isoformat(), days[-1].isoformat()
+        busy = _ev.rae_busy_intervals(cx, lo, hi)
+        booked = _ev.booked_starts(cx)
+        slots = _ev.available_slots(days, EVOX_HOURS, busy, booked, _hst_now())
+        return jsonify({"slots": slots})
+
+@app.route("/api/evox/book", methods=["POST"])
+def evox_book():
+    from dashboard import evox as _ev, people as _pe
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    _init_calendar_table()  # create_booking inserts a calendar_events row
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _ev.get_readiness(cx, ident.email)["complete"]:
+            return jsonify({"error": "not_ready"}), 403
+        # Never trust the client: re-validate the slot against live availability.
+        try:
+            d = _evox_date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat())
+        if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
+                                               _ev.booked_starts(cx), _hst_now()):
+            return jsonify({"error": "slot_unavailable"}), 409
+        # Consume-first (atomic): decrement gates `prepaid` so two concurrent
+        # bookings on different slots can't both spend the same single credit on
+        # multi-worker Render. Runs AFTER slot re-validation so slot_unavailable
+        # never burns a credit. On SlotTaken below we refund.
+        prepaid = _ev.consume_session_credit(cx, ident.email)
+
+        def _tag(email, tags):
+            row = cx.execute("SELECT id, tags FROM people WHERE lower(email)=?",
+                             (email,)).fetchone()
+            if row:
+                new = _pe.set_person_tags(json.loads(row["tags"] or "[]"), add=tags)
+                cx.execute("UPDATE people SET tags=? WHERE id=?",
+                           (json.dumps(new), row["id"]))
+        try:
+            b = _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
+        except _ev.SlotTaken:
+            if prepaid:  # booking failed after consuming — refund the credit
+                _ev.add_session_credits(cx, ident.email, 1)
+            return jsonify({"error": "slot_taken"}), 409
+    try:
+        _evox_send_confirmations(ident.email, b)
+    except Exception:
+        app.logger.exception("EVOX confirmation send failed (booking committed) for %s",
+                             ident.email)
+    return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
+
+
+@app.route("/api/evox/run-reminders", methods=["POST"])
+def evox_run_reminders():
+    """Console-gated daily cron: reminds clients with a 'booked' EVOX session
+    starting in the next 24-48h (HST) who haven't been reminded yet. Idempotent
+    via the lazily-added reminded_at stamp."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import evox as _ev
+    now = _hst_now()
+    lo = (now + timedelta(hours=24)).isoformat()
+    hi = (now + timedelta(hours=48)).isoformat()
+    sent = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        try:
+            cx.execute("ALTER TABLE evox_bookings ADD COLUMN reminded_at TEXT")
+        except Exception:
+            pass
+        rows = cx.execute(
+            "SELECT * FROM evox_bookings WHERE status='booked' AND reminded_at IS NULL "
+            "AND start_ts BETWEEN ? AND ?", (lo, hi)).fetchall()
+        for r in rows:
+            phone = EVOX_RAE_PHONE or "the number in your confirmation"
+            nice = r["start_ts"].replace("T", " ")
+            html = (f"<p>Reminder: your EVOX session is tomorrow at <b>{nice} HST</b>. "
+                    f"Call Rae at {phone} at your appointment time.</p>")
+            try:
+                send_evox_email(r["email"], "", "Reminder: your EVOX session tomorrow",
+                                 html, html, b"")
+                cx.execute("UPDATE evox_bookings SET reminded_at=? WHERE id=?",
+                           (now.isoformat(), r["id"]))
+                sent += 1
+            except Exception:
+                app.logger.exception("EVOX reminder send failed for booking %s", r["id"])
+        cx.commit()
+    return jsonify({"sent": sent})
 
 
 @app.route("/portal/<token>")
