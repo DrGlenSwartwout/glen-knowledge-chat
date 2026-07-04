@@ -6703,6 +6703,36 @@ def api_testimonial_invites_list():
     return jsonify({"ok": True, "pending": pending})
 
 
+@app.route("/api/console/points-ledger", methods=["GET"])
+def api_console_points_ledger():
+    """Read-only points_ledger audit. Returns totals grouped by reason (so L1
+    'referral_reward' vs L2 'referral_reward_l2' are visible at a glance) plus the most
+    recent rows. Optional ?reason=<r> filters the row list; ?limit=N (default 50, max 200)."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    reason = (request.args.get("reason") or "").strip()
+    try:
+        limit = min(200, max(1, int(request.args.get("limit") or 50)))
+    except (TypeError, ValueError):
+        limit = 50
+    from dashboard import points as _points
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _points.init_points_table(cx)
+        summ = cx.execute(
+            "SELECT reason, scope, COUNT(*) AS n, COALESCE(SUM(delta_cents),0) AS cents "
+            "FROM points_ledger GROUP BY reason, scope ORDER BY cents DESC").fetchall()
+        where, args = ("WHERE reason=?", [reason]) if reason else ("", [])
+        rows = cx.execute(
+            "SELECT email, delta_cents, reason, order_ref, scope, created_at "
+            "FROM points_ledger %s ORDER BY id DESC LIMIT ?" % where,
+            (*args, limit)).fetchall()
+    return jsonify({"ok": True,
+                    "summary": [{"reason": r["reason"], "scope": r["scope"],
+                                 "entries": r["n"], "total_cents": r["cents"]} for r in summ],
+                    "rows": [dict(r) for r in rows]})
+
+
 @app.route("/api/console/dispensary-pay-mix", methods=["GET"])
 def api_console_dispensary_pay_mix():
     """Read-only: card vs alt-pay (zelle/wise) split of dispensary sales, PROXIED by
