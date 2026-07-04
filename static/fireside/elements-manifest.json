@@ -39,7 +39,7 @@
       "poster": "/static/fireside/video/elements/earth-poster.jpg",
       "ambience": {
         "bed": "/static/fireside/audio/amb-breeze.mp3",
-        "bed_volume": 0.1,
+        "bed_volume": 0.07,
         "oneshots": [
           { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.12, "min_gap_s": 70, "max_gap_s": 180 },
           { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.09, "min_gap_s": 150, "max_gap_s": 340 },
