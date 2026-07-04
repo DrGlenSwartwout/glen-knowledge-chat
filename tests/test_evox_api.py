@@ -1,8 +1,9 @@
 # tests/test_evox_api.py  (needs doppler — imports app)
-import os, pytest
+import os, sqlite3, pytest
 if not os.environ.get("PINECONE_API_KEY"):
     pytest.skip("needs doppler env for import app", allow_module_level=True)
 import app as appmod
+from dashboard import evox as _evmod
 
 def test_send_evox_email_builds_mixed_with_ics(monkeypatch):
     captured = {}
@@ -53,3 +54,33 @@ def test_full_flow_book(client, monkeypatch):
     # second identical booking -> slot taken
     r2 = client.post(f"/api/evox/book?token={tok}", json={"start_ts": slots[0]})
     assert r2.status_code == 409
+
+
+def test_book_slot_taken_preserves_credit(client, monkeypatch):
+    email = "credit@x.com"
+    tok = _start(client, email=email)
+    for item in ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok"):
+        client.post(f"/api/evox/readiness?token={tok}", json={"item": item, "value": True})
+    slots = client.get(f"/api/evox/availability?token={tok}&range=week").get_json()["slots"]
+    assert slots, "expected at least one open slot in Mon-Thu window"
+    slot = slots[0]
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        _evmod.add_session_credits(cx, email, 1)
+        cx.execute(
+            "INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+            "prepaid,ics_uid,created_at) VALUES (?,?,?,?,'booked',0,?,?)",
+            ("other@x.com", "rae", slot,
+             slot, "evox-conflict@illtowell.com", "2026-01-01T00:00:00+00:00"))
+        cx.commit()
+
+    # Blind the route's server-side re-validation to the conflict so execution
+    # reaches create_booking, which relies on the UNIQUE index (not booked_starts).
+    monkeypatch.setattr(_evmod, "booked_starts", lambda cx, practitioner="rae": set())
+
+    r = client.post(f"/api/evox/book?token={tok}", json={"start_ts": slot})
+    assert r.status_code == 409
+    assert r.get_json()["error"] == "slot_taken"
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert _evmod.session_credit_balance(cx, email) == 1

@@ -13939,7 +13939,7 @@ def evox_book():
         if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
                                                _ev.booked_starts(cx), _hst_now()):
             return jsonify({"error": "slot_unavailable"}), 409
-        prepaid = _ev.consume_session_credit(cx, ident.email)
+        prepaid = _ev.session_credit_balance(cx, ident.email) > 0
 
         def _tag(email, tags):
             row = cx.execute("SELECT id, tags FROM people WHERE lower(email)=?",
@@ -13952,6 +13952,8 @@ def evox_book():
             _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
         except _ev.SlotTaken:
             return jsonify({"error": "slot_taken"}), 409
+        if prepaid:
+            _ev.consume_session_credit(cx, ident.email)
     # Task 8 wires the confirmation emails (client + Rae) here via send_evox_email.
     return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
 
