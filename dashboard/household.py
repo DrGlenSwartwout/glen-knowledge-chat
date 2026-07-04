@@ -92,3 +92,37 @@ def same_household(cx, a, b):
         "SELECT 1 FROM household_members h1 JOIN household_members h2 "
         "ON h1.primary_email=h2.primary_email "
         "WHERE h1.member_email=? AND h2.member_email=? LIMIT 1", (a, b)).fetchone() is not None
+
+
+def reassign_report(cx, scan_date, from_email, to_email, *, by="console"):
+    """Move a portal_biofield_reports row from one household member to another.
+    Refuses cross-household moves and refuses to overwrite an existing report on the
+    target for that date. Logs to scan_reassignments. Returns {"ok", "error"}."""
+    f, t = _norm(from_email), _norm(to_email)
+    sd = (scan_date or "").strip()
+    if not f or not t or not sd:
+        return {"ok": False, "error": "missing scan_date/from/to"}
+    if f == t:
+        return {"ok": False, "error": "from and to are the same account"}
+    if not same_household(cx, f, t):
+        return {"ok": False, "error": "from and to are not in the same household"}
+    if not cx.execute("SELECT 1 FROM portal_biofield_reports WHERE email=? AND scan_date=? LIMIT 1",
+                      (f, sd)).fetchone():
+        return {"ok": False, "error": "no report for that account/date"}
+    if cx.execute("SELECT 1 FROM portal_biofield_reports WHERE email=? AND scan_date=? LIMIT 1",
+                  (t, sd)).fetchone():
+        return {"ok": False, "error": "target already has a report for that date"}
+    cx.execute("UPDATE portal_biofield_reports SET email=?, updated_at=? WHERE email=? AND scan_date=?",
+               (t, _now(), f, sd))
+    cx.execute("INSERT INTO scan_reassignments (scan_date, from_email, to_email, by, at) "
+               "VALUES (?,?,?,?,?)", (sd, f, t, by, _now()))
+    cx.commit()
+    return {"ok": True, "error": None}
+
+
+def list_reassignments(cx, limit=100):
+    rows = cx.execute(
+        "SELECT scan_date, from_email, to_email, by, at FROM scan_reassignments "
+        "ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+    return [{"scan_date": r[0], "from_email": r[1], "to_email": r[2], "by": r[3], "at": r[4]}
+            for r in rows]
