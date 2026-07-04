@@ -7517,6 +7517,10 @@ def _fulfill_continuous_care_monthly(session_id):
         # stamps this so the membership + its month-1 charge credit the doctor.
         # Absent (direct front-door enrollment) => None => unattributed, unchanged.
         disp_pid = (md.get("dispensary_pid") or "").strip() or None
+        # Practitioner-share consent (Task 3): captured at enrollment via the
+        # "Start Continuous Care" card's authorization checkbox, threaded through
+        # session metadata the same way as dispensary_pid. Absent/unset => 0.
+        share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
         try:
             term_months = int(md.get("term_months") or 0)
         except (TypeError, ValueError):
@@ -7611,7 +7615,8 @@ def _fulfill_continuous_care_monthly(session_id):
                     stripe_payment_method_id=pm, amount_cents=_pp.MONTHLY_ANCHOR_CENTS,
                     next_charge_date=next_charge, cadence_months=1,
                     term_charges_total=term_months, initial_order_count=1,
-                    attributed_practitioner_id=disp_pid)
+                    attributed_practitioner_id=disp_pid,
+                    practitioner_share_consent=share_consent)
                 # Immediate access grant until the first cron charge extends it
                 # (~35 days) — mirrors _grant_prepay_term's day-based access pattern.
                 _grant_membership(cx, email, _pp.term_days(today, 1) + 4, "continuous_care")
@@ -12585,6 +12590,12 @@ def dispensary_continuous_care(code):
     if term_months not in (6, 12):
         term_months = 12
 
+    # Practitioner-share consent (Task 3): the "Start Continuous Care" card's
+    # authorization checkbox. Threaded through session metadata exactly like
+    # dispensary_pid, so fulfilment can read it back and stamp the membership.
+    # Unchecked/absent => "0" (default, no sharing consent).
+    share_consent = "1" if body.get("share_consent") in (True, "true", "1", 1) else "0"
+
     from dashboard import stripe_pay as _sp
     base = PUBLIC_BASE_URL.rstrip("/")
     try:
@@ -12592,7 +12603,8 @@ def dispensary_continuous_care(code):
             _prepay.MONTHLY_ANCHOR_CENTS, customer_email=email,
             description=f"Remedy Match Continuous Care - {term_months} month (monthly)",
             metadata={"email": email, "kind": "continuous_care_monthly",
-                      "term_months": str(term_months), "dispensary_pid": str(pid)},
+                      "term_months": str(term_months), "dispensary_pid": str(pid),
+                      "share_consent": share_consent},
             success_url=f"{base}/continuous-care/return?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/dispensary/{code}",
             save_card=True)
