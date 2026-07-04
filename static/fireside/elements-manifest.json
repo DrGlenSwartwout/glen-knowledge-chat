@@ -21,10 +21,10 @@
       "video": "/static/fireside/video/elements/wood.mp4",
       "poster": "/static/fireside/video/elements/wood-poster.jpg",
       "ambience": {
-        "bed": "/static/fireside/audio/amb-breeze.mp3",
-        "bed_volume": 0.1,
+        "bed": "/static/fireside/audio/amb-windtrees.mp3",
+        "bed_volume": 0.011,
         "oneshots": [
-          { "id": "stream", "file": "/static/fireside/audio/amb-rain.mp3", "loop": true, "volume": 0.05 },
+          { "id": "brook", "file": "/static/fireside/audio/amb-brook.mp3", "loop": true, "volume": 0.06 },
           { "id": "woodthrush", "file": "/static/fireside/audio/amb-woodthrush.mp3", "volume": 0.15, "first_gap_s": 8, "min_gap_s": 60, "max_gap_s": 150 },
           { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.08, "min_gap_s": 90, "max_gap_s": 220 },
           { "id": "woodpecker", "file": "/static/fireside/audio/amb-woodpecker.mp3", "volume": 0.1, "min_gap_s": 260, "max_gap_s": 560 },
