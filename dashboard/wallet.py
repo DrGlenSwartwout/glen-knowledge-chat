@@ -81,6 +81,21 @@ def _already_posted(cur, qbo_invoice_id: str, entry_type: str) -> bool:
     return cur.fetchone() is not None
 
 
+def _posted_amount(cur, qbo_invoice_id: str, entry_type: str) -> Optional[int]:
+    """Read the exact ``amount_cents`` credited/debited for a posted ledger row,
+    keyed the same way ``_already_posted`` looks up idempotency. Returns None
+    if no such row exists. Used to reverse a credit by its ACTUAL posted
+    magnitude rather than recomputing it from a rate that may have since
+    changed."""
+    cur.execute(
+        "SELECT amount_cents FROM wallet_ledger "
+        "WHERE qbo_invoice_id = %s AND entry_type = %s LIMIT 1",
+        (qbo_invoice_id, entry_type),
+    )
+    row = cur.fetchone()
+    return int(row["amount_cents"]) if row else None
+
+
 def _module_used_this_period(cur, pid: str, period: str) -> bool:
     cur.execute(
         "SELECT 1 AS exists FROM wallet_ledger "
@@ -214,19 +229,32 @@ def earn_care_share(practitioner_id, share_cents, *, event_ref) -> int:
                   qbo_invoice_id=event_ref, note="care_share")
 
 
-def reverse_care_share(practitioner_id, share_cents, *, event_ref) -> int:
-    """Debit a previously-credited care-share (e.g. on a manual refund).
+def reverse_care_share(practitioner_id, *, event_ref) -> int:
+    """Debit the ACTUAL previously-credited care-share amount for ``event_ref``
+    (e.g. on a manual refund).
 
-    Keyed to a distinct ``reverse:`` idempotency ref so it applies at most
-    once. No-op (returns 0) if the original ``earn_care_share`` credit for
-    ``event_ref`` was never posted — there is nothing to reverse. Returns the
-    positive magnitude reversed (mirrors ``redeem_for_order``'s convention).
+    The reversed amount is read from the posted ``earn_care_share`` ledger row
+    — it is never recomputed from the doctor's current cert rate/modules,
+    which may have changed between the original charge and the manual
+    refund. Keyed to a distinct ``reverse:`` idempotency ref so it applies at
+    most once. No-op (returns 0) if the original ``earn_care_share`` credit
+    for ``event_ref`` was never posted — there is nothing to reverse. Returns
+    the positive magnitude reversed (mirrors ``redeem_for_order``'s
+    convention).
     """
-    amt = max(0, int(share_cents))
+    posted = {}
+
+    def _precheck(cur) -> bool:
+        amt = _posted_amount(cur, event_ref, "earn_care_share")
+        if amt is None:
+            return False
+        posted["amt"] = amt
+        return True
+
     delta = _apply(
-        practitioner_id, "reverse_care_share", lambda _bal: -amt,
+        practitioner_id, "reverse_care_share", lambda _bal: -posted["amt"],
         qbo_invoice_id=f"reverse:{event_ref}", note="care_share_reversal",
-        precheck=lambda cur: _already_posted(cur, event_ref, "earn_care_share"),
+        precheck=_precheck,
     )
     return -delta
 

@@ -15958,8 +15958,10 @@ def api_console_care_share_reverse():
     Continuous Care membership charge is manually refunded. There is no Stripe
     refund webhook for this — this is the manual path. Body {sub_id, order_count}
     identifies the exact charge event (same event_ref the earn side used:
-    care_share:<sub_id>:<order_count>); wallet.reverse_care_share is idempotent
-    and no-ops if that credit was never posted."""
+    care_share:<sub_id>:<order_count>); wallet.reverse_care_share reverses the
+    EXACT amount that was posted for that event_ref (read from the ledger, not
+    recomputed at the doctor's current cert rate) and is idempotent — it
+    no-ops if that credit was never posted."""
     if not _console_key_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
@@ -15971,13 +15973,11 @@ def api_console_care_share_reverse():
         sub = _subs.get(cx, sub_id)
     if not sub or not sub.get("attributed_practitioner_id"):
         return jsonify({"ok": False, "error": "no attributed care-share for that subscription"}), 404
-    from dashboard import care_share as _cshare, wallet as _wallet
+    from dashboard import wallet as _wallet
     pid = sub["attributed_practitioner_id"]
-    m = _cshare.modules_for_practitioner(pid)
-    cents = _cshare.share_cents(int(sub.get("amount_cents") or 0), m or 0)
-    _wallet.reverse_care_share(
-        str(pid), cents, event_ref=f"care_share:{sub['id']}:{int(order_count)}")
-    return jsonify({"ok": True, "reversed_cents": cents})
+    reversed_cents = _wallet.reverse_care_share(
+        str(pid), event_ref=f"care_share:{sub['id']}:{int(order_count)}")
+    return jsonify({"ok": True, "reversed_cents": reversed_cents})
 
 
 def _run_biofield_bonuses(dry_run=False):

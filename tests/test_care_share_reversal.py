@@ -5,11 +5,13 @@ There is no Stripe refund webhook for Continuous Care memberships, so when a
 membership charge is manually refunded the owner console must explicitly
 reverse the previously-posted care-share credit. POST
 /api/console/care-share/reverse {sub_id, order_count} reads the subscription
-(for its attributed_practitioner_id), recomputes the share in cents the same
-way the original charge did (share_cents(amount_cents, modules_for_practitioner(pid))),
-and calls wallet.reverse_care_share(pid, cents, event_ref="care_share:<sub_id>:<order_count>") —
-the exact event_ref format the earn side used, so the idempotent debit targets
-the right credit.
+(for its attributed_practitioner_id) and calls
+wallet.reverse_care_share(pid, event_ref="care_share:<sub_id>:<order_count>") —
+the exact event_ref format the earn side used. The reversal amount is NOT
+recomputed at the doctor's current cert rate (modules_for_practitioner /
+share_cents) — reverse_care_share reads the ACTUAL posted credit for that
+event_ref from the wallet ledger, so a manual refund reverses exactly what was
+credited even if the doctor's modules_completed changed since the charge.
 
 Console-gated the same way every other /api/console/* route is: _console_key_ok()
 (X-Console-Key header / ?key= / CONSOLE_SECRET), mirroring tests/test_reorder_velocity_api.py.
@@ -74,19 +76,21 @@ def test_valid_reversal_calls_wallet_with_expected_args(monkeypatch, client):
     sub_id = _seed_sub(db, attributed_pid="prac-42", amount_cents=9900)
 
     from dashboard import care_share, wallet
-    monkeypatch.setattr(care_share, "modules_for_practitioner", lambda pid: 3)
+    # The endpoint must NOT consult modules_for_practitioner/share_cents at
+    # all any more — poison it so the test fails loudly if the recompute
+    # ever creeps back in.
+    def _poison(pid):
+        raise AssertionError("endpoint must not recompute the current cert rate")
+    monkeypatch.setattr(care_share, "modules_for_practitioner", _poison)
 
     rec = {}
 
-    def fake_reverse(pid, cents, *, event_ref):
+    def fake_reverse(pid, *, event_ref):
         rec["pid"] = pid
-        rec["cents"] = cents
         rec["event_ref"] = event_ref
-        return cents
+        return 4123  # the amount actually reversed, per the ledger — arbitrary here
 
     monkeypatch.setattr(wallet, "reverse_care_share", fake_reverse)
-
-    expected_cents = care_share.share_cents(9900, 3)
 
     r = client.post(
         "/api/console/care-share/reverse",
@@ -96,10 +100,9 @@ def test_valid_reversal_calls_wallet_with_expected_args(monkeypatch, client):
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True
-    assert body["reversed_cents"] == expected_cents
+    assert body["reversed_cents"] == 4123  # exactly what reverse_care_share reported
 
     assert rec["pid"] == "prac-42"
-    assert rec["cents"] == expected_cents
     assert rec["event_ref"] == f"care_share:{sub_id}:2"
 
 
