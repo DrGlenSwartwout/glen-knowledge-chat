@@ -1,29 +1,34 @@
-# Sourcing-scan Render cron — ops note
+# Sourcing-scan cron — ops note
 
-## Cron job: `glen-sourcing-scan`
+## How it's wired (as shipped)
 
-**Schedule:** daily (e.g. `0 8 * * *` — 8 AM UTC)
+The scan runs **inside the web container** via a cron-gated endpoint, NOT as a standalone
+Render cron. A separate cron container has its own ephemeral disk and could not see the
+web service's `LOG_DB` where `supplier_quotes` lives — it would stage quotes into a
+throwaway database the Sourcing inbox never reads (the same disk-isolation trap the
+reply-watcher hit). So:
 
-**Command:** `python scripts/scan_supplier_quotes.py --write`
+- **Endpoint:** `POST /api/cron/sourcing-scan` (in `app.py`) — auth `X-Cron-Secret == CRON_SECRET`
+  (falls back to `CONSOLE_SECRET`). Calls `scripts/scan_supplier_quotes.py::scan(write=True,
+  db_path=str(LOG_DB))`. Pass `?dry=1` for a no-write dry run, `?days=N` to widen the window.
+- **Trigger:** folded into the always-on daily cron `scripts/run_personal_email_cron.py`
+  (`run_daily_piggybacks()`), alongside the testimonial / pb-sync / triage-digest jobs —
+  best-effort, fires ~7am HST daily. No new Render service to provision.
+- **Env (already set on the web service):** `GMAIL_DRGLEN_APP_PASSWORD` (IMAP),
+  `ANTHROPIC_API_KEY` (Haiku extraction), `CRON_SECRET` (auth). `GMAIL_DRGLEN_USER`
+  defaults to drglenswartwout@gmail.com.
 
-**Required env vars** (set in the Render service environment or via Doppler):
-- `GMAIL_DRGLEN_APP_PASSWORD` — Gmail app password for drglenswartwout@gmail.com (IMAP access)
-- `ANTHROPIC_API_KEY` — Claude/Haiku extraction
+## Safety
 
-Mirrors the pattern used by `glen-qbo-reconcile`.
+- Only stages to a **review queue** — nothing is auto-approved into `ingredient_sources`;
+  Glen matches/approves or dismisses each quote in the Sourcing inbox at `/admin/ingredients`.
+- **Idempotent** by `gmail_msg_id`, so re-runs never double-stage.
 
----
+## Manual dry run / verify
 
-## Go-live checklist
-
-1. **Dry run first** — omit `--write` to review counts without staging any quotes:
-   ```
-   python scripts/scan_supplier_quotes.py
-   ```
-   Check the output: how many emails scanned, how many look-like-quotes, how many extracted.
-
-2. **Review staged quotes** — open the Sourcing inbox tab at `/admin/ingredients` (Sourcing inbox tab) and inspect a few rows. Confirm supplier names and prices look reasonable.
-
-3. **Enable the cron** — add `glen-sourcing-scan` in the Render dashboard (Cron Jobs section) with `--write`. Set the schedule and the two env vars above.
-
-4. **First live run** — watch the Render cron logs. Idempotent by `gmail_msg_id` so re-runs are safe.
+```
+curl -sS -X POST "https://illtowell.com/api/cron/sourcing-scan?dry=1&days=30" \
+  -H "X-Cron-Secret: $CRON_SECRET"
+```
+Returns `{"ok":true,"scanned":N,"staged":M,"mode":"dry_run"}`. Then open the Sourcing
+inbox tab at `/admin/ingredients` to review anything a live (non-dry) run staged.

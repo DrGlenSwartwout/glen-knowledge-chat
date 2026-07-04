@@ -14341,6 +14341,29 @@ def api_cron_triage_digest():
         return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
 
+@app.route("/api/cron/sourcing-scan", methods=["POST"])
+def api_cron_sourcing_scan():
+    """Scan Dr. Glen's inbox for supplier price quotes and stage new ones into the
+    supplier_quotes review queue (the /admin/ingredients Sourcing inbox). Runs IN the
+    web container so it writes the live LOG_DB — a standalone cron container's own disk
+    would be invisible to the console. Only stages to a REVIEW queue (nothing is
+    auto-approved into ingredient_sources) and is idempotent by gmail_msg_id, so re-runs
+    are safe. Pass ?dry=1 for a no-write dry run. Auth: X-Cron-Secret == CRON_SECRET
+    (falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        from scripts.scan_supplier_quotes import scan
+        dry = request.args.get("dry", "") in ("1", "true", "yes")
+        days = int(request.args.get("days", 14))
+        result = scan(write=not dry, days=days, db_path=str(LOG_DB))
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+
 @app.route("/sms/inbound", methods=["POST"])
 def sms_inbound():
     from dashboard import notify_state as _ns
