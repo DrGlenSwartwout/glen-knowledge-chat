@@ -7,6 +7,7 @@ def _cx():
     subs.init_subscriptions_table(cx)
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
+    subs.migrate_add_attribution_column(cx)
     return cx
 
 def test_migration_idempotent():

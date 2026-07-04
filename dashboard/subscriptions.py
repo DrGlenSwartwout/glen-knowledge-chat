@@ -301,23 +301,38 @@ def migrate_add_term_cap_column(cx):
         cx.commit()
 
 
+def migrate_add_attribution_column(cx):
+    """Idempotent: add attributed_practitioner_id (TEXT, NULL default) — the
+    Supabase practitioner id string that owns this Continuous Care membership,
+    for fee-share credit in later tasks."""
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
+    if "attributed_practitioner_id" not in cols:
+        cx.execute("ALTER TABLE subscriptions ADD COLUMN attributed_practitioner_id TEXT")
+        cx.commit()
+
+
 def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id,
                       amount_cents, next_charge_date, cadence_months=1,
-                      term_charges_total=None, initial_order_count=0) -> int:
+                      term_charges_total=None, initial_order_count=0,
+                      attributed_practitioner_id=None) -> int:
     """Insert an active flat-amount membership subscription (no product items).
     The first charge lands on next_charge_date. term_charges_total caps total charges
     (NULL = uncapped, legacy behavior); initial_order_count records charges already taken
-    at checkout (e.g. 1 when month 1 was charged in the checkout session)."""
+    at checkout (e.g. 1 when month 1 was charged in the checkout session).
+    attributed_practitioner_id is the Supabase practitioner id (string) that owns this
+    membership for fee-share credit purposes (NULL = unattributed)."""
     now = _now_iso()
     cur = cx.execute(
         """INSERT INTO subscriptions
                (email, stripe_customer_id, stripe_payment_method_id, items_json,
                 cadence_months, status, order_count, next_charge_date, ship_address_json,
-                skip_next, created_at, updated_at, kind, amount_cents, term_charges_total)
-           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?, 'membership', ?, ?)""",
+                skip_next, created_at, updated_at, kind, amount_cents, term_charges_total,
+                attributed_practitioner_id)
+           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?, 'membership', ?, ?, ?)""",
         (email, stripe_customer_id, stripe_payment_method_id, "[]",
          int(cadence_months), int(initial_order_count), next_charge_date, "{}", now, now,
-         int(amount_cents), (int(term_charges_total) if term_charges_total is not None else None)),
+         int(amount_cents), (int(term_charges_total) if term_charges_total is not None else None),
+         (str(attributed_practitioner_id) if attributed_practitioner_id else None)),
     )
     cx.commit()
     try:
