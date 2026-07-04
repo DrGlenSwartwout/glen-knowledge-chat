@@ -5200,7 +5200,10 @@ def _settle_referrer_reward(cx, order, order_ref):
     # Tier-2 (non-cashable points, half the Tier-1 rate): the referrer's OWN referrer
     # earns on this sale too. Forward-only — this runs before mark_rewarded, so a replay
     # hits the rewarded_at early-return above and never double-credits either tier. Flag-dark.
-    if REFERRAL_TIER2_ENABLED:
+    # dispensary_portal L2 is settled per-order by dashboard.dispensary_rewards
+    # (every reorder, every pay method), so it is excluded here to avoid double-paying
+    # the first order. Ambassador (kind='referral') L2 is unchanged.
+    if REFERRAL_TIER2_ENABLED and not l1_suppressed:
         l2_owner = _rf.owner_of_referee(cx, red["owner_email"])
         # No self-dealing / cycles: L2 must exist and differ from the buyer AND from L1.
         if l2_owner and l2_owner != red["referee_email"] and l2_owner != red["owner_email"]:
