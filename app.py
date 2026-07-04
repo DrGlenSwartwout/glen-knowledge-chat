@@ -15198,8 +15198,36 @@ def _get_consult_booked(cx):
         return set()
 
 
+GLEN_CONSULT_EMAIL = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail.com")
+
+
 def _consult_send_confirmations(email, booking):
-    pass  # replaced in Task 6
+    """Best-effort: client + Glen Biofield Consult confirmations with the Zoom link + ICS.
+    Never raises into the booking response."""
+    try:
+        from dashboard import evox as _ev
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        join = booking.get("join_url")
+        join_line = (f"Join your Zoom consult here: {join}" if join
+                     else "Your Zoom link will follow by email shortly.")
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary="Biofield Consult with Dr. Glen",
+                            description=join_line, location=(join or "Video"))
+        client_html = (f"<p>Your Biofield Consult with Dr. Glen is booked for "
+                       f"<b>{nice} HST</b>.</p><p>{join_line}</p>"
+                       "<p>The calendar invite is attached.</p>")
+        client_text = f"Biofield Consult booked for {nice} HST. {join_line}"
+        glen_html = (f"<p>New Biofield Consult: <b>{email}</b> on <b>{nice} HST</b>.</p>"
+                     f"<p>{join_line}</p>")
+        for to, nm, subj, html, text in [
+            (email, "", "Your Biofield Consult is booked", client_html, client_text),
+            (GLEN_CONSULT_EMAIL, "Glen", f"Biofield Consult booked: {email}", glen_html, glen_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("consult confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("consult confirmation build failed")
 
 
 @app.route("/api/consult/state")

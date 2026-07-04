@@ -101,3 +101,17 @@ def test_consult_slot_taken_via_race(client, monkeypatch):
     r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slot})
     assert r.status_code == 409
     assert r.get_json()["error"] == "slot_taken"
+
+
+def test_consult_confirmations_include_join_link(monkeypatch):
+    calls = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: calls.append((to, html, ics)), raising=False)
+    monkeypatch.setattr(appmod, "GLEN_CONSULT_EMAIL", "glen@illtowell.com", raising=False)
+    appmod._consult_send_confirmations("c@x.com", {
+        "id": 1, "email": "c@x.com", "start_ts": "2026-07-06T13:00:00",
+        "end_ts": "2026-07-06T13:30:00", "ics_uid": "u1@illtowell.com",
+        "join_url": "https://zoom.us/j/9", "session_type": "biofield-consult", "medium": "video"})
+    assert len(calls) == 2
+    assert any("zoom.us/j/9" in c[1] for c in calls)          # client email carries the link
+    assert all(b"BEGIN:VCALENDAR" in c[2] for c in calls)
