@@ -15251,6 +15251,45 @@ def api_console_portal_link_resend():
                     "link": link, "reissued": reissued})
 
 
+@app.route("/api/console/household", methods=["GET", "POST", "DELETE"])
+def api_console_household():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household as _hh
+    from dashboard import portal_biofield_reports as _pbr
+    if request.method == "GET":
+        primary = (request.args.get("primary_email") or "").strip().lower()
+        with sqlite3.connect(LOG_DB) as cx:
+            _hh.init_household_tables(cx); _pbr.init_table(cx)
+            members = _hh.members_for(cx, primary)
+            for m in members:
+                m["scan_dates"] = _pbr.list_report_dates(cx, m["email"])
+        return jsonify({"ok": True, "members": members})
+    data = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx)
+        if request.method == "POST":
+            _hh.add_member(cx, data.get("primary_email"), data.get("member_email"),
+                           data.get("label", ""), data.get("relationship", ""))
+        else:  # DELETE
+            _hh.remove_member(cx, data.get("primary_email"), data.get("member_email"))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/household/reassign", methods=["POST"])
+def api_console_household_reassign():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household as _hh
+    from dashboard import portal_biofield_reports as _pbr
+    data = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx); _pbr.init_table(cx)
+        res = _hh.reassign_report(cx, data.get("scan_date"), data.get("from_email"),
+                                  data.get("to_email"), by="console")
+    return jsonify(res), (200 if res.get("ok") else 400)
+
+
 @app.route("/api/console/biofield/review-queue", methods=["GET"])
 def api_console_biofield_review_queue():
     if not _portal_console_ok():
