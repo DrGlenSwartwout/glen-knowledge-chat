@@ -4,6 +4,7 @@ Every per-patient read/write goes through authorized_patient() first — a docto
 may only ever touch a patient who has a CONSENTED CONTINUITY link to them.
 """
 import sqlite3
+from typing import Optional
 
 from dashboard import scan_analysis as _scan
 from dashboard import biofield_narrative as _narrative
@@ -161,7 +162,7 @@ def _notify_patient(cx, practitioner_id, patient_email, items, note, *, send=Non
          from_name="Dr. Glen Swartwout")
 
 
-def send_recommendation(cx, practitioner_id, patient_email, items, note) -> int:
+def send_recommendation(cx, practitioner_id, patient_email, items, note) -> Optional[int]:
     """Gate-first recommend action: writes a practitioner_recommendations row for
     a consented-continuity patient, then best-effort notifies the patient.
 

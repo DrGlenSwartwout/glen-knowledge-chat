@@ -12955,6 +12955,8 @@ def api_practitioner_continuity_recommend():
         if not _cv.authorized_patient(cx, pid, patient_email):
             return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
         rec_id = _cv.send_recommendation(cx, pid, patient_email, items, note)
+        if rec_id is None:
+            return jsonify({"ok": False, "error": "not authorized"}), 403
     return jsonify({"ok": True, "id": rec_id})
 
 

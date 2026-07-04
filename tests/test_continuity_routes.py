@@ -228,3 +228,40 @@ def test_recommend_notification_failure_does_not_fail_the_recommend(monkeypatch,
         cx.row_factory = sqlite3.Row
         pr.init_table(cx)
         assert pr.active_for_patient(cx, "pat@x.com") is not None
+
+
+# ---------------------------------------------------------------------------
+# send_recommendation direct test (defense-in-depth)
+# ---------------------------------------------------------------------------
+def test_send_recommendation_returns_none_and_writes_no_row_when_unauthorized():
+    """DIRECT test: send_recommendation's internal gate (not the route gate) must
+    return None for an unauthorized patient and NEVER write a row. This locks in
+    the defense-in-depth property: if a future caller forgets the route-level check,
+    the function still fails closed."""
+    from dashboard import continuity_view as cv
+    from dashboard import practitioner_recommendations as pr_module
+
+    # Create an in-memory DB with the full migration chain
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    _init_migrate(cx)
+
+    # Create a patient attributed to OTHER_PID (prac-99), NOT to PID (prac-42)
+    _mk(cx, "pat@x.com", OTHER_PID, consent=True)
+
+    # Initialize the recommendations table
+    pr_module.init_table(cx)
+
+    # Call send_recommendation directly with PID (not OTHER_PID), simulating
+    # a caller that forgot the route-level gate check.
+    result = cv.send_recommendation(
+        cx, PID, "pat@x.com",
+        items=[{"slug": "neuro-magnesium", "qty": 1}],
+        note="test"
+    )
+
+    # Must return None, not an int
+    assert result is None
+
+    # No row was written for this patient
+    assert pr_module.active_for_patient(cx, "pat@x.com") is None
