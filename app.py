@@ -24147,20 +24147,21 @@ def cron_charge_subscriptions():
                             print(f"[sub-cron] DRY free-month comp sub={sid} bank={_from_bank}", flush=True)
                             comped += 1
                             continue
-                        _fm.comp_membership_cycle(
+                        did = _fm.comp_membership_cycle(
                             cx, sid,
                             reason=("banked" if _from_bank else "referral_active"),
                             idem_key=f"{'bank' if _from_bank else 'ref'}:{sid}:{sub['next_charge_date']}",
                             from_bank=_from_bank)
-                        try:
-                            _u = _subs.get(cx, sid)
-                            if _u and _u.get("next_charge_date"):
-                                _until = (datetime.fromisoformat(_u["next_charge_date"])
-                                          + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
-                                _extend_membership_grant(cx, sub["email"], _until, "membership_free_month")
-                        except Exception as _e:
-                            print(f"[free-month] grant extend failed sid={sid}: {_e!r}", flush=True)
-                        comped += 1
+                        if did:
+                            try:
+                                _u = _subs.get(cx, sid)
+                                if _u and _u.get("next_charge_date"):
+                                    _until = (datetime.fromisoformat(_u["next_charge_date"])
+                                              + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                    _extend_membership_grant(cx, sub["email"], _until, "membership_free_month")
+                            except Exception as _e:
+                                print(f"[free-month] grant extend failed sid={sid}: {_e!r}", flush=True)
+                            comped += 1
                         continue
                     # A capped term (term_charges_total set) = Continuous Care; an uncapped
                     # membership = the legacy group-coaching bundle. Keep the card-statement
