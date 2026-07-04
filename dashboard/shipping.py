@@ -71,6 +71,11 @@ _DEFAULT_RATES_2026_04_26 = [
 
 # Standard bottle types with measured dims (Ø_mm, H_mm) = cm x 10.
 _STANDARD_BOTTLES = [
+    # Shipping proxy: the hand cradle is a flat device, not a bottle, but the packer
+    # models cylinders. These dims resolve one cradle to the USPS Medium Flat Rate box
+    # (M, $22.95) — the default for a $297 device shipped with its protective packaging.
+    # Rae can manually drop to Small at pack time when shipping the cradle bare.
+    ("handcradle", "ZYTO Hand Cradle — ships USPS Medium Flat Rate", 80, 100),
     ("120cap", "250 ml wide-mouth (120 caps / pure powder)", 80, 100),
     ("100ml", "100 ml dropper", 50, 160),
     ("30roll", "30 ml roll-on", 40, 100),

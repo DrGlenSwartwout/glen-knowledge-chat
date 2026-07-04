@@ -5845,7 +5845,7 @@
     "hand-cradle": {
       "name": "ZYTO Hand Cradle",
       "price_cents": 29700,
-      "bottle_type": "default",
+      "bottle_type": "handcradle",
       "source": "evox-hardware-2026-07-04"
     },
     "heart-health": {
