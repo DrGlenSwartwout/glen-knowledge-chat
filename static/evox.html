@@ -33,6 +33,11 @@
   <button onclick="start()">Start</button>
 </div>
 
+<div id="v-emailed" class="hidden">
+  <h2>Check your email &#10003;</h2>
+  <p>We've sent your EVOX setup link. Open it on this device to continue.</p>
+</div>
+
 <div id="v-check" class="hidden">
   <p>Confirm each item below to unlock booking:</p>
 
@@ -79,7 +84,7 @@
 let TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("evox_token") || "";
 
 const $ = id => document.getElementById(id);
-const show = id => { for (const v of ["start","check","avail","done"]) $("v-"+v).classList.toggle("hidden", v !== id); };
+const show = id => { for (const v of ["start","emailed","check","avail","done"]) $("v-"+v).classList.toggle("hidden", v !== id); };
 const ITEMS = ["pc_ok","cradle_ok","headset_ok","zyto_ok"];
 
 async function j(url, opt) {
@@ -105,10 +110,11 @@ async function start() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, name })
   });
-  if (d.token) {
-    TOKEN = d.token;
-    localStorage.setItem("evox_token", TOKEN);
-    loadState();
+  // SECURITY: /api/evox/start no longer returns a token — it emails the setup
+  // link (which carries the token) to the account owner. Continuation happens
+  // via the page-load path when the user opens /evox?token=… from that email.
+  if (d.ok) {
+    show("emailed");
   } else {
     errEl.textContent = "Something went wrong — please try again.";
     errEl.classList.remove("hidden");

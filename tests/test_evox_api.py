@@ -1,6 +1,7 @@
 # tests/test_evox_api.py  (needs doppler — imports app)
 import os, sqlite3, pytest
 from datetime import timedelta
+from urllib.parse import urlparse, parse_qs
 if not os.environ.get("PINECONE_API_KEY"):
     pytest.skip("needs doppler env for import app", allow_module_level=True)
 import app as appmod
@@ -32,12 +33,58 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "EVOX_HOURS", "1-4:09:00-16:00")
     # neutralize outbound email
     monkeypatch.setattr(appmod, "send_evox_email", lambda *a, **k: ("console-log", None))
+    # /api/evox/start no longer returns the portal token — it emails the setup
+    # link. Capture that link so _start (and tests) can recover the token.
+    setup_links = []
+    def _capture_setup_link(to_email, name, setup_url):
+        setup_links.append({"to": to_email, "name": name, "url": setup_url})
+        return ("console-log", None)
+    monkeypatch.setattr(appmod, "send_evox_setup_link", _capture_setup_link)
     appmod.app.config["TESTING"] = True
-    return appmod.app.test_client()
+    c = appmod.app.test_client()
+    c.evox_setup_links = setup_links  # tests read the last emailed setup URL here
+    return c
+
+def _token_from_setup_url(url):
+    return parse_qs(urlparse(url).query).get("token", [""])[0]
 
 def _start(client, email="c@x.com"):
     r = client.post("/api/evox/start", json={"email": email, "name": "C"})
-    return r.get_json()["token"]
+    assert r.get_json().get("ok") is True
+    # The token is delivered only via the emailed setup link, never in the body.
+    return _token_from_setup_url(client.evox_setup_links[-1]["url"])
+
+def test_start_does_not_leak_portal_token(client):
+    """SECURITY regression: /api/evox/start must never return the portal token
+    (the client's MASTER portal bearer credential) to the unauthenticated
+    caller. It emails the setup link instead."""
+    from dashboard import evox as _ev, customers as _cu, client_portal as _cp
+    email = "leaktest@x.com"
+    # Pre-create the portal so a stable token already exists for this email.
+    appmod._init_people_table()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        _cp.init_client_portal_table(cx)
+        _cu.find_or_create_by_email(cx, email=email, name="Leak")
+        stored_token = _ev.ensure_portal_token(cx, email, "Leak")
+    assert stored_token  # sanity: a real bearer token exists
+
+    r = client.post("/api/evox/start", json={"email": email, "name": "Leak"})
+    assert r.status_code == 200
+    data = r.get_json()
+    # No token, no url — and no value anywhere in the body equal to the token.
+    assert "token" not in data
+    assert "url" not in data
+    assert stored_token not in data.values()
+    assert data == {"ok": True, "emailed": True}
+
+    # The setup link WAS emailed and carries the token via /evox?token=…
+    link = client.evox_setup_links[-1]
+    assert link["to"] == email
+    assert "/evox?token=" in link["url"]
+    assert _token_from_setup_url(link["url"]) == stored_token
+
 
 def test_availability_blocked_until_ready(client):
     tok = _start(client)

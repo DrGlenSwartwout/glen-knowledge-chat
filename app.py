@@ -354,6 +354,74 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def send_evox_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
+    """Send the EVOX setup link. Mirrors send_magic_link_email's 3-tier cascade
+    (GHL workflow -> SMTP -> console-log). The setup_url carries the client's
+    portal token, so this link is emailed to the account owner ONLY — it is never
+    returned to the (unauthenticated) /api/evox/start caller.
+    Returns (sent_via, error_or_none).
+    """
+    subject = "Your EVOX setup link"
+    body = (
+        f"Hi {name or 'there'},\n\n"
+        f"Click the link below on this device to set up your EVOX remote session.\n\n"
+        f"{setup_url}\n\n"
+        f"If you didn't request this, you can ignore this email.\n\n"
+        f"— Dr. Glen Swartwout\n"
+    )
+    html_body = (
+        f"<p>Hi {name or 'there'},</p>"
+        f"<p>Click the link below on this device to set up your EVOX remote session.</p>"
+        f"<p><a href=\"{setup_url}\">Set up your EVOX session</a></p>"
+        f"<p style=\"color:#666;font-size:12px;\">Or paste this URL into your browser: {setup_url}</p>"
+        f"<p>If you didn't request this, you can ignore this email.</p>"
+        f"<p>— Dr. Glen Swartwout</p>"
+    )
+
+    # Path 1: GHL workflow trigger (reuse the magic-link workflow channel)
+    if GHL_MAGIC_WORKFLOW:
+        try:
+            contact_id, _, err = ghl_upsert_contact(to_email, name or "", "",
+                                                     source_tag="evox-setup-link")
+            if contact_id:
+                _ghl_post(f"/workflows/{GHL_MAGIC_WORKFLOW}/run",
+                          {"contactId": contact_id, "customValues": {
+                              "magic_link_url": setup_url,
+                          }})
+                return "ghl-workflow", None
+        except Exception as e:
+            print(f"[evox] GHL setup-link send failed: {e}", flush=True)
+
+    # Path 2: SMTP
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(html_body, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[evox] SMTP setup-link send failed: {e}", flush=True)
+
+    # Path 3: console fallback (development / pre-config)
+    print(f"\n[evox] SETUP LINK for {to_email}: {setup_url}\n", flush=True)
+    return "console-log", "no email send mechanism configured"
+
+
 def send_portal_welcome_email(to_email, name, login_url):
     """Send the one-time 'your portal is ready' welcome. Mirrors
     send_magic_link_email's cascade (GHL workflow -> SMTP -> console-log).
@@ -13890,7 +13958,15 @@ def evox_start():
         _cp.init_client_portal_table(cx)
         _cu.find_or_create_by_email(cx, email=email, name=name)
         token = _ev.ensure_portal_token(cx, email, name)
-    return jsonify({"token": token, "url": f"{PUBLIC_BASE_URL}/evox?token={token}"})
+        setup_url = f"{PUBLIC_BASE_URL}/evox?token={token}"
+    # SECURITY: `token` is the client's MASTER portal bearer credential. Never
+    # return it (or its URL) to this unauthenticated caller — email the setup
+    # link to the account owner instead. Network send runs OUTSIDE the lock.
+    try:
+        send_evox_setup_link(email, name, setup_url)
+    except Exception:
+        app.logger.exception("EVOX setup-link send failed for %s", email)
+    return jsonify({"ok": True, "emailed": True})
 
 @app.route("/api/evox/state")
 def evox_state():
@@ -13971,7 +14047,11 @@ def evox_book():
         if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
                                                _ev.booked_starts(cx), _hst_now()):
             return jsonify({"error": "slot_unavailable"}), 409
-        prepaid = _ev.session_credit_balance(cx, ident.email) > 0
+        # Consume-first (atomic): decrement gates `prepaid` so two concurrent
+        # bookings on different slots can't both spend the same single credit on
+        # multi-worker Render. Runs AFTER slot re-validation so slot_unavailable
+        # never burns a credit. On SlotTaken below we refund.
+        prepaid = _ev.consume_session_credit(cx, ident.email)
 
         def _tag(email, tags):
             row = cx.execute("SELECT id, tags FROM people WHERE lower(email)=?",
@@ -13983,10 +14063,14 @@ def evox_book():
         try:
             b = _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
         except _ev.SlotTaken:
+            if prepaid:  # booking failed after consuming — refund the credit
+                _ev.add_session_credits(cx, ident.email, 1)
             return jsonify({"error": "slot_taken"}), 409
-        if prepaid:
-            _ev.consume_session_credit(cx, ident.email)
-    _evox_send_confirmations(ident.email, b)
+    try:
+        _evox_send_confirmations(ident.email, b)
+    except Exception:
+        app.logger.exception("EVOX confirmation send failed (booking committed) for %s",
+                             ident.email)
     return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
 
 
