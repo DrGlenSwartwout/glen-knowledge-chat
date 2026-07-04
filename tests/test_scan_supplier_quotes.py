@@ -48,3 +48,30 @@ def test_received_iso_and_row():
     assert _received_iso(None) is None and _received_iso("garbage") is None
     row = _to_stage_row("m9", "x@y.com", "Quote", {"price": 5}, received_at="2026-06-25 09:36:00")
     assert row["received_at"] == "2026-06-25 09:36:00" and row["gmail_msg_id"] == "m9"
+
+
+class _FakeIMAP:
+    """Minimal IMAP stand-in: returns N message ids, records each full fetch."""
+    def __init__(self, n):
+        self._ids = [str(i).encode() for i in range(1, n + 1)]
+        self.fetched = []
+    def select(self, _): return ("OK", [b"1"])
+    def search(self, *a): return ("OK", [b" ".join(self._ids)])
+    def fetch(self, num, _spec):
+        self.fetched.append(num)
+        raw = (b"Subject: hello\r\nMessage-ID: <" + num + b"@x>\r\n"
+               b"From: a@b.com\r\nDate: Wed, 25 Jun 2026 09:36:00 -1000\r\n\r\njust chatting")
+        return ("OK", [(b"x", raw)])
+    def logout(self): pass
+
+
+def test_scan_caps_messages(tmp_path):
+    from scripts.scan_supplier_quotes import scan
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        from dashboard.ingredient_catalog import init_ingredients_schema
+        init_ingredients_schema(cx); sc.init_sourcing_schema(cx); cx.commit()
+    imap = _FakeIMAP(50)
+    r = scan(write=False, db_path=db, imap=imap, max_messages=10)
+    # only the most-recent 10 of 50 get the expensive full fetch
+    assert len(imap.fetched) == 10 and r["scanned"] == 10 and r["staged"] == 0

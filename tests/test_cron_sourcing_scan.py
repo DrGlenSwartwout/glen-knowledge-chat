@@ -1,4 +1,4 @@
-import importlib, sys
+import importlib, sys, threading
 from pathlib import Path
 import pytest
 
@@ -23,25 +23,43 @@ def test_sourcing_scan_requires_secret(monkeypatch, tmp_path):
     assert c.post("/api/cron/sourcing-scan", headers={"X-Cron-Secret": "wrong"}).status_code == 401
 
 
-def test_sourcing_scan_runs_write_and_dry(monkeypatch, tmp_path):
+def test_dry_run_is_sync_bounded(monkeypatch, tmp_path):
     appmod = _app(monkeypatch, tmp_path)
     import scripts.scan_supplier_quotes as sq
     calls = {}
 
-    def fake_scan(write=False, days=14, db_path=None, **k):
-        calls.update(write=write, days=days, db_path=db_path)
+    def fake_scan(write=False, days=14, db_path=None, max_messages=None, **k):
+        calls.update(write=write, days=days, db_path=db_path, max_messages=max_messages)
         return {"scanned": 5, "staged": 2, "mode": "write" if write else "dry_run"}
 
     monkeypatch.setattr(sq, "scan", fake_scan)
     c = appmod.app.test_client()
-
-    # default = write against the live LOG_DB
-    r = c.post("/api/cron/sourcing-scan", headers={"X-Cron-Secret": "s3cret"})
+    r = c.post("/api/cron/sourcing-scan?dry=1", headers={"X-Cron-Secret": "s3cret"})
     assert r.status_code == 200
     j = r.get_json()
-    assert j["ok"] is True and j["staged"] == 2 and j["mode"] == "write"
-    assert calls["write"] is True and str(calls["db_path"]).endswith("chat_log.db")
+    assert j["ok"] is True and j["mode"] == "dry_run" and j["staged"] == 2
+    assert calls["write"] is False and calls["max_messages"] == 30
+    assert str(calls["db_path"]).endswith("chat_log.db")
 
-    # ?dry=1 = no-write dry run
-    r2 = c.post("/api/cron/sourcing-scan?dry=1", headers={"X-Cron-Secret": "s3cret"})
-    assert r2.get_json()["mode"] == "dry_run" and calls["write"] is False
+
+def test_live_run_is_async(monkeypatch, tmp_path):
+    appmod = _app(monkeypatch, tmp_path)
+    import scripts.scan_supplier_quotes as sq
+    called = threading.Event()
+    seen = {}
+
+    def fake_scan(write=False, days=14, db_path=None, max_messages=None, **k):
+        seen.update(write=write, days=days, max_messages=max_messages)
+        called.set()
+        return {"scanned": 1, "staged": 1, "mode": "write"}
+
+    monkeypatch.setattr(sq, "scan", fake_scan)
+    c = appmod.app.test_client()
+    r = c.post("/api/cron/sourcing-scan?days=3", headers={"X-Cron-Secret": "s3cret"})
+    # returns immediately without waiting for the scan
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["started"] is True and j["mode"] == "write_async" and j["days"] == 3
+    # the background thread runs the real (mocked) scan shortly after
+    assert called.wait(timeout=3.0), "background scan was not invoked"
+    assert seen["write"] is True and seen["days"] == 3 and seen["max_messages"] == 400
