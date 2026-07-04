@@ -56,3 +56,24 @@ def test_has_paid_purchase():
     assert consult.has_paid_purchase(cx, "BUYER@x.com", "biofield-analysis") is True
     assert consult.has_paid_purchase(cx, "unpaid@x.com", "biofield-analysis") is False
     assert consult.has_paid_purchase(cx, "nobody@x.com", "biofield-analysis") is False
+
+def test_create_meeting_builds_request_and_parses_response():
+    from dashboard import zoom
+    import io, json as _json2
+    captured = {}
+    def fake_opener(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["body"] = _json2.loads(req.data.decode())
+        captured["auth"] = req.get_header("Authorization")
+        return io.BytesIO(_json2.dumps({
+            "id": 87654321, "join_url": "https://zoom.us/j/87654321",
+            "start_url": "https://zoom.us/s/87654321"}).encode())
+    out = zoom.create_meeting("tok123", host="me", topic="Biofield Consult",
+                              start_iso="2026-07-06T13:00:00", duration_min=30,
+                              opener=fake_opener)
+    assert out == {"join_url": "https://zoom.us/j/87654321",
+                   "meeting_id": "87654321", "start_url": "https://zoom.us/s/87654321"}
+    assert captured["url"] == "https://api.zoom.us/v2/users/me/meetings"
+    assert captured["auth"] == "Bearer tok123"
+    assert captured["body"]["type"] == 2 and captured["body"]["duration"] == 30
+    assert captured["body"]["settings"]["waiting_room"] is True
