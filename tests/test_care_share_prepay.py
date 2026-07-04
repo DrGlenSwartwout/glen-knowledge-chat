@@ -136,3 +136,106 @@ def test_attributed_prepay_idempotent(monkeypatch, tmp_path):
     assert len(rec) == 1
     assert rec[0][0] == "prac-7"
     assert rec[0][2] == "care_share:prepay:cs_dup"
+
+
+# ---------------------------------------------------------------------------
+# Task 3: the dispensary "Start Continuous Care" endpoint itself offers
+# attributed 6mo/12mo prepay terms (not just monthly). tier_key='6mo'/'12mo'
+# builds a prepay_term Stripe session carrying dispensary_pid + share_consent;
+# tier_key='1mo' (or absent) is the existing monthly card-on-file path,
+# unchanged.
+# ---------------------------------------------------------------------------
+
+def _fresh_dispensary(app_module, monkeypatch, tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    monkeypatch.setattr(app_module, "PUBLIC_BASE_URL", "https://test.local", raising=False)
+    from dashboard import subscriptions
+    with sqlite3.connect(db) as cx:
+        subscriptions.init_subscriptions_table(cx)
+        subscriptions.migrate_add_membership_columns(cx)
+        subscriptions.migrate_add_term_cap_column(cx)
+        subscriptions.migrate_add_attribution_column(cx)
+        subscriptions.migrate_add_consent_column(cx)
+        app_module.init_membership_tables(cx)
+        cx.commit()
+    monkeypatch.setattr(app_module, "_ingest_order", lambda **kw: None, raising=False)
+    monkeypatch.setattr(app_module, "_send_subscription_email", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: None, raising=False)
+    monkeypatch.setattr(app_module, "CONTINUOUS_CARE_MONTHLY_ENABLED", True, raising=False)
+    monkeypatch.setattr(app_module, "_STRIPE_ACTIVE", True, raising=False)
+    return db
+
+
+def _stub_dispensary_code(app_module, monkeypatch, code="doc1", pid="prac-42"):
+    monkeypatch.setattr(app_module._pp, "practitioner_id_by_dispensary_code",
+                        lambda c: pid if c == code else None)
+
+
+def test_dispensary_12mo_tier_builds_attributed_prepay_session(monkeypatch, tmp_path):
+    """tier_key='12mo' on the dispensary endpoint builds a prepay_term Stripe
+    session for the full $990 lump, carrying dispensary_pid + share_consent —
+    NOT the monthly card-on-file session."""
+    A = _load_app()
+    _fresh_dispensary(A, monkeypatch, tmp_path)
+    _stub_dispensary_code(A, monkeypatch)
+    monkeypatch.setattr(A, "is_member", lambda sid, email: True, raising=False)
+
+    cap = {}
+
+    def fake_checkout(amount, **kw):
+        cap["amount"] = amount
+        cap["kw"] = kw
+        return {"id": "cs_disp_prepay", "url": "https://stripe/prepay"}
+
+    monkeypatch.setattr(A.stripe_pay, "create_checkout_session", fake_checkout)
+
+    r = A.app.test_client().post(
+        "/dispensary/doc1/continuous-care",
+        json={"email": "pat@x.com", "tier_key": "12mo", "share_consent": True})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["url"] == "https://stripe/prepay"
+
+    assert cap["amount"] == 99000  # tier's full price_cents, no save_card lump
+    assert cap["kw"].get("save_card") is not True
+
+    md = cap["kw"]["metadata"]
+    assert md["kind"] == "prepay_term"
+    assert md["tier_key"] == "12mo"
+    assert md["dispensary_pid"] == "prac-42"
+    assert md["email"] == "pat@x.com"
+    assert md.get("share_consent") == "1"
+
+
+def test_dispensary_1mo_tier_stays_monthly_unchanged(monkeypatch, tmp_path):
+    """tier_key='1mo' (or absent) still routes to the existing monthly
+    card-on-file continuous_care_monthly session (#565 untouched)."""
+    A = _load_app()
+    _fresh_dispensary(A, monkeypatch, tmp_path)
+    _stub_dispensary_code(A, monkeypatch)
+    monkeypatch.setattr(A, "is_member", lambda sid, email: True, raising=False)
+
+    cap = {}
+
+    def fake_checkout(amount, **kw):
+        cap["amount"] = amount
+        cap["kw"] = kw
+        return {"id": "cs_disp_monthly", "url": "https://stripe/monthly"}
+
+    monkeypatch.setattr(A.stripe_pay, "create_checkout_session", fake_checkout)
+
+    r = A.app.test_client().post(
+        "/dispensary/doc1/continuous-care",
+        json={"email": "pat2@x.com", "tier_key": "1mo", "term_months": 12})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+
+    assert cap["amount"] == 9900  # MONTHLY_ANCHOR_CENTS
+    assert cap["kw"].get("save_card") is True
+
+    md = cap["kw"]["metadata"]
+    assert md["kind"] == "continuous_care_monthly"
+    assert md["dispensary_pid"] == "prac-42"

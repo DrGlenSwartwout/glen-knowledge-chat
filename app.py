@@ -12669,6 +12669,31 @@ def dispensary_continuous_care(code):
 
     from dashboard import stripe_pay as _sp
     base = PUBLIC_BASE_URL.rstrip("/")
+
+    # Attributed prepay-term enrollment (Task 3): 6mo/12mo commitment tiers
+    # build the SAME prepay_term session as the public /prepay/checkout
+    # ladder (full lump, no save_card — a prepaid term never auto-renews),
+    # with dispensary_pid + share_consent riding the metadata so
+    # _fulfill_prepay_term can stamp attribution and credit the doctor.
+    tier_key = (body.get("tier_key") or "1mo").strip()
+    if tier_key in ("6mo", "12mo"):
+        tier = _prepay.get_tier(tier_key)
+        if not tier:
+            return jsonify({"ok": False, "error": "invalid tier"}), 200
+        try:
+            sess = _sp.create_checkout_session(
+                tier["price_cents"], customer_email=email,
+                description=f"Remedy Match Continuous Care - {tier['label']} prepaid",
+                metadata={"email": email, "kind": "prepay_term",
+                          "tier_key": tier_key, "dispensary_pid": str(pid),
+                          "share_consent": share_consent},
+                success_url=f"{base}/prepay/return?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{base}/dispensary/{code}")
+            return jsonify({"ok": True, "url": sess.get("url")})
+        except Exception as e:
+            print(f"[dispensary-care] prepay checkout failed: {e!r}", flush=True)
+            return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
     try:
         sess = _sp.create_checkout_session(
             _prepay.MONTHLY_ANCHOR_CENTS, customer_email=email,
