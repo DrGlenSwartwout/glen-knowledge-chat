@@ -7465,6 +7465,52 @@ def _last_attributed_practitioner(email, *, db_path=None):
     return {"pid": best[1], "consent": best[2]}
 
 
+def _practitioner_display_name(pid):
+    """Best-effort practitioner display name from the practitioners record. None on any failure."""
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT name FROM practitioners WHERE id=%s", (str(pid),))
+            row = cur.fetchone()
+        return (row["name"] or "").strip() or None if row else None
+    except Exception:
+        return None
+
+
+def _patient_practitioner_brand(email, *, db_path=None):
+    """The patient's attributed doctor's PUBLIC identity for co-branding the patient
+    portal: {name, practice_name, photo_url, logo_url, accent} or None. Attribution-only
+    (NOT gated on results-sharing consent — the band is the doctor's public identity, not
+    patient health data). Best-effort — returns None on any failure or when there's no
+    attributed doctor / no branding set.
+
+    Note: accent uses the real practitioner_settings branding_json key confirmed from
+    static/practitioner-settings.html — the color picker saves brand_color_1 (header/
+    primary) and brand_color_2, labeled "Brand color 2 (accent)" in the settings UI."""
+    try:
+        inh = _last_attributed_practitioner(email, db_path=db_path)
+        if not inh:
+            return None
+        pid = inh["pid"]
+        with sqlite3.connect(db_path or LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            from dashboard import practitioner_settings as _ps
+            _ps.init_settings_table(cx)
+            branding = (_ps.get_settings(cx, pid) or {}).get("branding") or {}
+        name = _practitioner_display_name(pid)
+        practice_name = (branding.get("practice_name") or "").strip()
+        photo_url = (branding.get("photo_url") or "").strip()
+        logo_url = (branding.get("logo_url") or "").strip()
+        accent = (branding.get("brand_color_2") or "").strip()
+        # Require SOME brand to show (name alone isn't "branding set").
+        if not (practice_name or photo_url or logo_url):
+            return None
+        return {"name": name or practice_name, "practice_name": practice_name,
+                "photo_url": photo_url, "logo_url": logo_url, "accent": accent}
+    except Exception:
+        return None
+
+
 def _ensure_prepay_grant_columns(cx):
     """Idempotently add the attribution columns to prepay_term_grants."""
     have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
@@ -13906,6 +13952,10 @@ def api_client_portal(token):
                 payload["recommendation"] = _card
         except Exception as e:
             print(f"[portal-recommendation] card failed for {email_for_reports!r}: {e!r}", flush=True)
+    # Feature D: co-brand the patient portal with the attributed doctor's PUBLIC
+    # identity (attribution-only, NOT gated on practitioner_share_consent). Best-effort
+    # — the helper never raises, so this can never break the portal load.
+    payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
     return jsonify(payload)
 
 
