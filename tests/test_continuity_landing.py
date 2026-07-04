@@ -421,3 +421,99 @@ def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     assert "No active recommendation to accept" in r2.get_json().get("error", "")
     # Still no invoice from either call
     assert invoice_count["calls"] == 0
+
+
+# ── Critical: the REAL no-body "Order my remedies" button checkout ────────────
+# reorder() in static/client-portal.html POSTs to /checkout with NO body, so the
+# endpoint's no-body branch must charge the SAME merged set the portal display
+# shows — including an ACCEPTED practitioner recommendation's items. Before this
+# fix the no-body branch read the raw, unmerged content: an accepted rec that was
+# the only reorder item 400'd ("no longer available"); with other items it was
+# silently dropped from the invoice. These drive the button's exact request shape.
+
+def _stub_checkout_billing(appmod, monkeypatch, captured):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+
+    def _fake_invoice(cust, lines, **kw):
+        captured["lines"] = lines
+        total = sum(l["amount"] * l["qty"] for l in lines)
+        return {"Id": "INV1", "DocNumber": "1001", "TotalAmt": total}
+    monkeypatch.setattr(qbo_billing, "create_invoice", _fake_invoice)
+    monkeypatch.setattr(appmod, "_ingest_order", lambda *a, **k: None)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
+                        lambda out, email: "https://checkout.stripe/reco")
+
+
+def test_nobody_checkout_charges_accepted_rec_when_curated_empty(client, monkeypatch):
+    """(a) Curated reorder_items EMPTY + one ACCEPTED rec item. The no-body
+    checkout (the real 'Order my remedies' button posts no JSON) must SUCCEED
+    (200) and mint one invoice containing the recommended item. Before the fix
+    the no-body branch read empty content → 0 lines → 400 'no longer available'
+    (the exact dead-end this branch exists to fix)."""
+    c, appmod = client
+    email = "nobody-empty@example.com"
+    tok = _seed_portal(appmod, email, content={
+        "greeting": "hi", "video": {}, "layers": [], "reorder_items": [],
+    })
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["neuro-magnesium"])
+    # NOTE: no prior order seeded — the recommended remedy has NEVER been bought.
+    rec_id = _seed_recommendation(
+        appmod, email, [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
+    from dashboard import practitioner_recommendations as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.set_status(cx, rec_id, "accepted")
+
+    captured = {}
+    _stub_checkout_billing(appmod, monkeypatch, captured)
+
+    # Exactly the button's request: POST with NO json body.
+    r = c.post(f"/api/portal/{tok}/checkout")
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["stripe_url"] == "https://checkout.stripe/reco"
+    names = {l["name"] for l in captured["lines"]}
+    rec_name = appmod._get_product("neuro-magnesium")["name"]
+    assert rec_name in names  # recommended item actually reached the invoice
+    assert len(captured["lines"]) == 1
+    unit_cents = round(captured["lines"][0]["amount"] * 100)
+    assert 0 < unit_cents < 6997  # member price, never $0 nor full price
+
+
+def test_nobody_checkout_keeps_curated_and_accepted_rec(client, monkeypatch):
+    """(b) One curated item + one accepted rec item the patient has NEVER bought.
+    The no-body checkout must contain BOTH slugs — the recommended item is not
+    silently dropped — with member pricing on the recommended line."""
+    c, appmod = client
+    email = "nobody-both@example.com"
+    tok = _seed_portal(appmod, email, content={
+        "greeting": "hi", "video": {}, "layers": [],
+        "reorder_items": [{"slug": "nous-energy", "qty": 1}],
+    })
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["nous-energy", "neuro-magnesium"])
+    rec_id = _seed_recommendation(
+        appmod, email, [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
+    from dashboard import practitioner_recommendations as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.set_status(cx, rec_id, "accepted")
+
+    captured = {}
+    _stub_checkout_billing(appmod, monkeypatch, captured)
+
+    r = c.post(f"/api/portal/{tok}/checkout")
+    assert r.status_code == 200, r.get_json()
+    names = {l["name"] for l in captured["lines"]}
+    curated_name = appmod._get_product("nous-energy")["name"]
+    rec_name = appmod._get_product("neuro-magnesium")["name"]
+    assert curated_name in names  # curated item still there
+    assert rec_name in names      # recommended item NOT dropped
+    assert len(captured["lines"]) == 2
+    rec_line = next(l for l in captured["lines"] if l["name"] == rec_name)
+    rec_unit = round(rec_line["amount"] * 100)
+    assert 0 < rec_unit < 6997  # member price on the recommended line

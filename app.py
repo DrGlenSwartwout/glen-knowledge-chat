@@ -13604,6 +13604,57 @@ def _reorder_item_from_slug(slug, qty):
     return {"slug": slug, "qty": qty}
 
 
+def _merge_accepted_recommendation_items(cx, email, reorder_items):
+    """Merge an ACCEPTED practitioner recommendation's items into ``reorder_items``,
+    deduped by lowercased slug, returning a NEW list in the same {slug, qty}
+    reorder-item shape. Merges ONLY when the patient's active recommendation is
+    status=='accepted' — a 'sent'/'dismissed'/absent rec leaves the list unchanged.
+
+    This is the single source of truth for "an accepted recommendation lives in the
+    patient's reorder list", so it must reach BOTH the portal DISPLAY payload
+    (api_client_portal) AND the money path (the no-body reorder checkout) — otherwise
+    the button charges a different set than the patient sees. Never raises — a merge
+    failure must never break a portal render or a checkout."""
+    base = list(reorder_items or [])
+    try:
+        if not email:
+            return base
+        from dashboard import practitioner_recommendations as _pr
+        cx.row_factory = sqlite3.Row
+        _pr.init_table(cx)
+        rec = _pr.active_for_patient(cx, email)
+        if not rec or rec.get("status") != "accepted":
+            return base
+        have = {(it.get("slug") or "").strip().lower() for it in base}
+        for it in (rec.get("items") or []):
+            slug = (it.get("slug") or "").strip().lower()
+            if not slug or slug in have:
+                continue
+            try:
+                qty = max(1, min(int(it.get("qty", 1) or 1), 99))
+            except Exception:
+                qty = 1
+            base.append(_reorder_item_from_slug(slug, qty))
+            have.add(slug)
+        return base
+    except Exception:
+        return base
+
+
+def _accepted_recommendation_slugs(cx, email):
+    """Lowercased slugs from the patient's ACCEPTED practitioner recommendation
+    (empty set otherwise). The doctor's recommendation IS the authorization to buy,
+    so these slugs are entitled at reorder checkout even for a remedy the patient has
+    never purchased before — used to union into _portal_entitled_slugs so the
+    entitlement gate can't drop a freshly-recommended item. Never raises."""
+    try:
+        merged = _merge_accepted_recommendation_items(cx, email, [])
+        return {(it.get("slug") or "").strip().lower()
+                for it in merged if (it.get("slug") or "").strip()}
+    except Exception:
+        return set()
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
@@ -13662,30 +13713,13 @@ def api_client_portal(token):
     # leaves its items living in the patient's persistent, retryable reorder list
     # instead of the dead end #572 removed. 'sent' recs stay on the card only
     # (_active_recommendation_card below); 'dismissed' recs show nowhere; an
-    # 'accepted' rec's items land HERE. A merge failure must never break the
-    # portal render.
+    # 'accepted' rec's items land HERE — via the shared merge helper that the
+    # no-body reorder checkout ALSO calls, so display and charge stay identical.
+    # A merge failure must never break the portal render.
     try:
-        from dashboard import practitioner_recommendations as _pr
-        _rec = None
-        if email_for_reports:
-            with sqlite3.connect(LOG_DB) as _rcx:
-                _rcx.row_factory = sqlite3.Row
-                _pr.init_table(_rcx)
-                _rec = _pr.active_for_patient(_rcx, email_for_reports)
-        if _rec and _rec.get("status") == "accepted":
-            _have = {(it.get("slug") or "").strip().lower() for it in (reorder_src or [])}
-            _merged = list(reorder_src or [])
-            for _it in (_rec.get("items") or []):
-                _slug = (_it.get("slug") or "").strip().lower()
-                if not _slug or _slug in _have:
-                    continue
-                try:
-                    _qty = max(1, min(int(_it.get("qty", 1) or 1), 99))
-                except Exception:
-                    _qty = 1
-                _merged.append(_reorder_item_from_slug(_slug, _qty))
-                _have.add(_slug)
-            reorder_src = _merged
+        with sqlite3.connect(LOG_DB) as _rcx:
+            reorder_src = _merge_accepted_recommendation_items(
+                _rcx, email_for_reports, reorder_src)
     except Exception:
         pass  # a recommendation-merge failure must never break the portal render
     display = []
@@ -14212,6 +14246,15 @@ def api_client_portal_checkout(token):
         if not isinstance(posted, list) or not posted:
             return jsonify({"error": "Invalid items."}), 400
         entitled = _portal_entitled_slugs(email)
+        # An ACCEPTED doctor recommendation IS the authorization to buy — union its
+        # slugs into the entitled set so a never-before-purchased recommended remedy
+        # (e.g. its own per-row "Reorder" button) is purchasable. Only accepted-rec
+        # slugs are added; general entitlement is NOT broadened.
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                entitled = entitled | _accepted_recommendation_slugs(_rcx, email)
+        except Exception:
+            pass  # entitlement-union failure must never break checkout
         items = []
         for it in posted:
             if not isinstance(it, dict):
@@ -14225,7 +14268,16 @@ def api_client_portal_checkout(token):
                 qty = 1
             items.append({"slug": slug, "qty": qty})  # price_cents NEVER accepted from the client
     else:
-        items = (portal.get("content") or {}).get("reorder_items") or []
+        # No body = the "Order my remedies" button. Charge the SAME merged set the
+        # portal display shows (curated reorder_items + accepted-rec items), so an
+        # accepted recommendation actually reaches the invoice instead of 400'ing
+        # ("no longer available") or being silently dropped.
+        base_items = (portal.get("content") or {}).get("reorder_items") or []
+        try:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                items = _merge_accepted_recommendation_items(_rcx, email, base_items)
+        except Exception:
+            items = base_items  # merge failure must never break checkout
     lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
