@@ -40,6 +40,7 @@ def _seed(cx, email, *, cap, order_count, next_date="2000-01-01", amount_cents=9
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     cx.execute("DELETE FROM subscriptions WHERE email=?", (email,))
     cx.commit()
     sid = subs.create_membership(

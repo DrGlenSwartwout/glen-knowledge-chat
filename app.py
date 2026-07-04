@@ -3078,6 +3078,7 @@ def membership_cancel(token):
             _subs.migrate_add_membership_columns(cx)
             _subs.migrate_add_term_cap_column(cx)
             _subs.migrate_add_attribution_column(cx)
+            _subs.migrate_add_consent_column(cx)
             sub = cx.execute(
                 "SELECT id FROM subscriptions "
                 "WHERE email=? AND kind='membership' AND status='active' "
@@ -3120,6 +3121,7 @@ def membership_pause(token):
             _subs.migrate_add_membership_columns(cx)
             _subs.migrate_add_term_cap_column(cx)
             _subs.migrate_add_attribution_column(cx)
+            _subs.migrate_add_consent_column(cx)
             rows = _subs.active_memberships_by_email(cx, email)
             cancel_url = f"{PUBLIC_BASE_URL}/membership/cancel/{token}"
             # Continuous Care is a fixed 6/12-month term (term_charges_total set): it has no
@@ -6957,6 +6959,7 @@ def studio_claim_return():
                 _subs.migrate_add_membership_columns(_cx)
                 _subs.migrate_add_term_cap_column(_cx)
                 _subs.migrate_add_attribution_column(_cx)
+                _subs.migrate_add_consent_column(_cx)
                 if email and cus and pm and not _sbr.already_granted(_cx, email):
                     next_date = _subs.add_months(
                         _dt.date.today().isoformat(), 1)
@@ -7541,6 +7544,7 @@ def _fulfill_continuous_care_monthly(session_id):
             _subs.migrate_add_membership_columns(cx)
             _subs.migrate_add_term_cap_column(cx)
             _subs.migrate_add_attribution_column(cx)
+            _subs.migrate_add_consent_column(cx)
             init_membership_tables(cx)
             claimed = cx.execute(
                 "INSERT OR IGNORE INTO continuous_care_grants "
@@ -7870,6 +7874,7 @@ def begin_checkout_return():
                                 _subs_gb.migrate_add_membership_columns(_gcx)
                                 _subs_gb.migrate_add_term_cap_column(_gcx)
                                 _subs_gb.migrate_add_attribution_column(_gcx)
+                                _subs_gb.migrate_add_consent_column(_gcx)
                                 _gcx.execute(
                                     "CREATE TABLE IF NOT EXISTS group_bundle_grants "
                                     "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
@@ -12178,6 +12183,7 @@ def api_console_members():
         _subs.migrate_add_membership_columns(cx)
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
+        _subs.migrate_add_consent_column(cx)
         # One row per member (list_active_memberships dedupes by email).
         for s in _subs.list_active_memberships(cx):
             cat = _subs.classify_sub(s)
@@ -14574,6 +14580,7 @@ def portal_group_join_return():
                 _subs.migrate_add_membership_columns(cx)
                 _subs.migrate_add_term_cap_column(cx)
                 _subs.migrate_add_attribution_column(cx)
+                _subs.migrate_add_consent_column(cx)
                 if email and cus and pm and not _subs.active_memberships_by_email(cx, email):
                     next_date = _subs.add_months(_dt.date.today().isoformat(), 1)
                     _subs.create_membership(
@@ -23793,6 +23800,7 @@ def cron_charge_subscriptions():
         _subs.migrate_add_membership_columns(cx)
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
+        _subs.migrate_add_consent_column(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -24062,7 +24070,7 @@ def cron_backfill_membership_grants():
     fixed = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx); _subs.migrate_add_term_cap_column(cx); _subs.migrate_add_attribution_column(cx)
+        _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx); _subs.migrate_add_term_cap_column(cx); _subs.migrate_add_attribution_column(cx); _subs.migrate_add_consent_column(cx)
         rows = cx.execute("SELECT DISTINCT email, next_charge_date FROM subscriptions "
                           "WHERE kind='membership' AND status='active'").fetchall()
         for r in rows:

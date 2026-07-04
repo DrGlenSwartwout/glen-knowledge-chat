@@ -138,6 +138,7 @@ def test_continuous_care_duplicate_member_seeds_repertoire_from_purchase_history
         _subs.migrate_add_membership_columns(cx)
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
+        _subs.migrate_add_consent_column(cx)
         _subs.create_membership(
             cx, email=email, stripe_customer_id="cus_other",
             stripe_payment_method_id="pm_other", amount_cents=9900,

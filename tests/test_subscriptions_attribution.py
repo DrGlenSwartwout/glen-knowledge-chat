@@ -9,12 +9,14 @@ def _cx():
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     return cx
 
 
 def test_migration_idempotent():
     cx = _cx()
     subs.migrate_add_attribution_column(cx)  # second call must not raise
+    subs.migrate_add_consent_column(cx)
     cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
     assert "attributed_practitioner_id" in cols
 

@@ -355,6 +355,7 @@ def _fresh(app_module, monkeypatch, tmp_path):
         subscriptions.migrate_add_membership_columns(cx)
         subscriptions.migrate_add_term_cap_column(cx)
         subscriptions.migrate_add_attribution_column(cx)
+        subscriptions.migrate_add_consent_column(cx)
         _ev.init_event_tables(cx)
         cx.execute(
             "CREATE TABLE IF NOT EXISTS auth_tokens "

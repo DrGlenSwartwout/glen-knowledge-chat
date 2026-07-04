@@ -102,6 +102,7 @@ def test_claim_return_creates_membership_and_is_idempotent(monkeypatch, tmp_path
     subs.migrate_add_membership_columns(cx)
     subs.migrate_add_term_cap_column(cx)
     subs.migrate_add_attribution_column(cx)
+    subs.migrate_add_consent_column(cx)
     rows = subs.active_memberships_by_email(cx, "p@x.com")
     assert len(rows) == 1, rows
     m = rows[0]
