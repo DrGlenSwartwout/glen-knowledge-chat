@@ -24116,15 +24116,21 @@ def cron_charge_subscriptions():
                            and _fm_headsup_referral(cx, sub["email"]))
                 _will_comp = _is_mbr and (_banked or _ref_ok)
                 if not dry_run:
-                    if _will_comp:
-                        # Lock a referral-earned free month NOW (bank it) so a referral
-                        # that churns before the charge date cannot turn this thank-you
-                        # into a charge. Idempotent per cycle via next_charge_date.
-                        if _ref_ok:
-                            from dashboard import free_month as _fm
-                            _fm.grant_free_month(cx, sub["email"], months=1,
-                                                 reason="referral_headsup",
-                                                 idem_key=f"headsup:{sub['id']}:{sub['next_charge_date']}")
+                    # Lock a referral-earned free month NOW (bank it) so a referral
+                    # that churns before the charge date cannot turn this thank-you
+                    # into a charge. Idempotent per cycle via next_charge_date. Only
+                    # send the thank-you if the bank actually succeeded — a member
+                    # who is thanked must actually be banked.
+                    _locked = _banked
+                    if _ref_ok:
+                        from dashboard import free_month as _fm
+                        _locked = _fm.grant_free_month(
+                            cx, sub["email"], months=1, reason="referral_headsup",
+                            idem_key=f"headsup:{sub['id']}:{sub['next_charge_date']}") is not None
+                        if not _locked:
+                            print(f"[free-month] heads-up bank returned None, not promising "
+                                  f"sub={sub['id']} email={sub['email']}", flush=True)
+                    if _will_comp and _locked:
                         _send_subscription_email(sub["email"], "free_month_thanks",
                                                  {"next_charge_date": sub["next_charge_date"]})
                         _subs.set_last_notified_date(cx, sub["id"], sub["next_charge_date"])
