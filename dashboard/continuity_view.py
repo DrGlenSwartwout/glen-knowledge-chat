@@ -3,6 +3,7 @@
 Every per-patient read/write goes through authorized_patient() first — a doctor
 may only ever touch a patient who has a CONSENTED CONTINUITY link to them.
 """
+import datetime as _dt
 import sqlite3
 from typing import Optional
 
@@ -12,9 +13,29 @@ from dashboard import biofield_portal_publish as _portal
 from dashboard import practitioner_recommendations as _pr
 
 
+def _prepay_authorized(cx, practitioner_id, patient_email) -> bool:
+    """True iff patient_email has an attributed, consented, still-in-term prepay
+    grant for practitioner_id. The prepay analogue of the subscriptions check:
+    'in term' (term_end >= today) stands in for 'not cancelled'. Tolerates a
+    database with no prepay_term_grants table yet (fresh DB, no prepay grants
+    written) — never crashes the gate."""
+    try:
+        today = _dt.date.today().isoformat()
+        row = cx.execute(
+            "SELECT 1 FROM prepay_term_grants WHERE lower(email)=lower(?) "
+            "AND attributed_practitioner_id=? AND practitioner_share_consent=1 "
+            "AND term_end >= ? LIMIT 1",
+            ((patient_email or "").strip(), str(practitioner_id), today),
+        ).fetchone()
+        return row is not None
+    except sqlite3.OperationalError:
+        return False  # prepay_term_grants not present yet
+
+
 def authorized_patient(cx, practitioner_id, patient_email) -> bool:
     """True iff patient_email has an active-consented Continuous Care membership
-    attributed to practitioner_id. The single access boundary for all of C."""
+    attributed to practitioner_id, OR an attributed, consented, still-in-term
+    prepay grant. The single access boundary for all of C."""
     if not practitioner_id or not patient_email:
         return False
     row = cx.execute(
@@ -23,14 +44,15 @@ def authorized_patient(cx, practitioner_id, patient_email) -> bool:
         "AND kind='membership' AND status != 'cancelled' LIMIT 1",
         ((patient_email or "").strip(), str(practitioner_id)),
     ).fetchone()
-    return row is not None
+    return (row is not None) or _prepay_authorized(cx, practitioner_id, patient_email)
 
 
 def roster(cx, practitioner_id) -> list:
     """This doctor's consented continuity patients — one row per DISTINCT patient
     email. Uses the EXACT SAME predicate as authorized_patient() (attribution +
-    consent + membership kind + not-cancelled) so the roster and the gate can
-    never disagree: every patient listed here passes the gate, and vice-versa."""
+    consent + membership kind + not-cancelled, UNIONed with attribution +
+    consent + still-in-term prepay grants) so the roster and the gate can never
+    disagree: every patient listed here passes the gate, and vice-versa."""
     if not practitioner_id:
         return []
     rows = cx.execute(
@@ -39,7 +61,19 @@ def roster(cx, practitioner_id) -> list:
         "AND kind='membership' AND status != 'cancelled'",
         (str(practitioner_id),),
     ).fetchall()
-    return [{"email": r[0], "name": _display_name(cx, r[0])} for r in rows]
+    emails = {r[0] for r in rows}
+    try:
+        today = _dt.date.today().isoformat()
+        prepay_rows = cx.execute(
+            "SELECT DISTINCT lower(email) FROM prepay_term_grants "
+            "WHERE attributed_practitioner_id=? AND practitioner_share_consent=1 "
+            "AND term_end >= ?",
+            (str(practitioner_id), today),
+        ).fetchall()
+        emails |= {r[0] for r in prepay_rows}
+    except sqlite3.OperationalError:
+        pass  # prepay_term_grants not present yet
+    return [{"email": e, "name": _display_name(cx, e)} for e in emails]
 
 
 def _display_name(cx, email) -> str:

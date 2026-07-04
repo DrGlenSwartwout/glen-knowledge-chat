@@ -7432,6 +7432,17 @@ def _notify_first_cc_signup(email, plan_label, amount_cents):
         print(f"[cc-signup-alert] {e!r}", flush=True)
 
 
+def _ensure_prepay_grant_columns(cx):
+    """Idempotently add the attribution columns to prepay_term_grants."""
+    have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
+    if "attributed_practitioner_id" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN attributed_practitioner_id TEXT")
+    if "practitioner_share_consent" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN practitioner_share_consent INTEGER NOT NULL DEFAULT 0")
+    if "term_end" not in have:
+        cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN term_end TEXT")
+
+
 def _fulfill_prepay_term(session_id):
     """Grant a prepaid Continuous Care term from a paid prepay_term Stripe session,
     idempotently. Callable from the /prepay/return redirect AND the webhook, so a
@@ -7459,6 +7470,7 @@ def _fulfill_prepay_term(session_id):
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS prepay_term_grants "
                 "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
+            _ensure_prepay_grant_columns(cx)
             init_membership_tables(cx)
             claimed = cx.execute(
                 "INSERT OR IGNORE INTO prepay_term_grants "
@@ -7468,6 +7480,35 @@ def _fulfill_prepay_term(session_id):
             if claimed:
                 _grant_prepay_term(cx, email, tier_key)
                 cx.commit()
+                # Attributed dispensary prepay (Task 2): stamp the grant with
+                # attribution + consent + term_end, then credit the enrolling
+                # doctor ONCE on the FULL prepaid lump. Public (no dispensary_pid)
+                # prepay is unchanged: no stamp, no credit. Inside the won-claim
+                # path so the redirect+webhook double-call credits exactly once;
+                # the care-share credit is best-effort AFTER the committed grant —
+                # a credit failure must never undo the term.
+                disp_pid = (md.get("dispensary_pid") or "").strip() or None
+                share_consent = 1 if (md.get("share_consent") or "").strip() == "1" else 0
+                _term_end = _pp.term_end_date(
+                    datetime.utcnow().date().isoformat(), tier["months"])
+                if disp_pid:
+                    cx.execute(
+                        "UPDATE prepay_term_grants SET attributed_practitioner_id=?, "
+                        "practitioner_share_consent=?, term_end=? WHERE session_id=?",
+                        (str(disp_pid), share_consent, _term_end, session_id))
+                    cx.commit()
+                    try:
+                        from dashboard import care_share as _cshare, wallet as _wallet
+                        m = _cshare.modules_for_practitioner(disp_pid)
+                        if m is not None:
+                            cents = _cshare.share_cents(int(tier["price_cents"]), m)
+                            if cents > 0:
+                                _wallet.earn_care_share(
+                                    str(disp_pid), cents,
+                                    event_ref=f"care_share:prepay:{session_id}")
+                    except Exception as _ce:
+                        print(f"[prepay] care-share credit failed sid={session_id}: {_ce!r}",
+                              flush=True)
                 if REPERTOIRE_ENABLED:
                     try:
                         repertoire.init_repertoire_table(cx)
@@ -12628,6 +12669,31 @@ def dispensary_continuous_care(code):
 
     from dashboard import stripe_pay as _sp
     base = PUBLIC_BASE_URL.rstrip("/")
+
+    # Attributed prepay-term enrollment (Task 3): 6mo/12mo commitment tiers
+    # build the SAME prepay_term session as the public /prepay/checkout
+    # ladder (full lump, no save_card — a prepaid term never auto-renews),
+    # with dispensary_pid + share_consent riding the metadata so
+    # _fulfill_prepay_term can stamp attribution and credit the doctor.
+    tier_key = (body.get("tier_key") or "1mo").strip()
+    if tier_key in ("6mo", "12mo"):
+        tier = _prepay.get_tier(tier_key)
+        if not tier:
+            return jsonify({"ok": False, "error": "invalid tier"}), 200
+        try:
+            sess = _sp.create_checkout_session(
+                tier["price_cents"], customer_email=email,
+                description=f"Remedy Match Continuous Care - {tier['label']} prepaid",
+                metadata={"email": email, "kind": "prepay_term",
+                          "tier_key": tier_key, "dispensary_pid": str(pid),
+                          "share_consent": share_consent},
+                success_url=f"{base}/prepay/return?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{base}/dispensary/{code}")
+            return jsonify({"ok": True, "url": sess.get("url")})
+        except Exception as e:
+            print(f"[dispensary-care] prepay checkout failed: {e!r}", flush=True)
+            return jsonify({"ok": False, "error": "checkout_failed"}), 200
+
     try:
         sess = _sp.create_checkout_session(
             _prepay.MONTHLY_ANCHOR_CENTS, customer_email=email,
