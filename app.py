@@ -4713,6 +4713,12 @@ def _referrer_reward_pct():
         return 0
 
 
+def _free_month_enabled():
+    """Mechanic A (referral-earned free month) master switch. Read live so tests
+    and a flag-flip redeploy pick it up. Default OFF."""
+    return (os.environ.get("REFERRAL_FREE_MONTH_ENABLED", "") or "").strip().lower() in ("1", "true", "yes")
+
+
 _REVIEW_MEDIA_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "review-media"
 _REVIEW_VIDEO_EXTS = (".mp4", ".mov", ".webm", ".m4v")
 _REVIEW_VIDEO_MAX_BYTES = 100 * 1024 * 1024
@@ -24046,7 +24052,7 @@ def cron_charge_subscriptions():
 
     if not _subscriptions_enabled():
         return jsonify({"ok": True, "skipped": 0, "charged": 0, "failed": 0,
-                        "notified": 0, "dry_run": False,
+                        "notified": 0, "comped": 0, "dry_run": False,
                         "message": "subscriptions disabled"}), 200
 
     dry_run = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
@@ -24056,7 +24062,7 @@ def cron_charge_subscriptions():
 
     today = _date.today().isoformat()  # YYYY-MM-DD
 
-    charged = skipped = failed = notified = 0
+    charged = skipped = failed = notified = comped = 0
 
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -24066,6 +24072,7 @@ def cron_charge_subscriptions():
         _subs.migrate_add_term_cap_column(cx)
         _subs.migrate_add_attribution_column(cx)
         _subs.migrate_add_consent_column(cx)
+        _subs.migrate_add_free_months(cx)
 
         # ── Pass 1: Heads-up emails (3-day advance notice) ────────────────────
         try:
@@ -24126,6 +24133,34 @@ def cron_charge_subscriptions():
                 if sub.get("kind") == "membership":
                     amount_cents = int(sub.get("amount_cents") or 0)
                     if amount_cents <= 0:
+                        continue
+                    # Free-month comp: banked counter first, then the Mechanic A
+                    # referral threshold. A comp advances the cycle WITHOUT charging
+                    # and WITHOUT bumping order_count, extends access, and skips
+                    # care_share (funded by the $99 we are not collecting).
+                    from dashboard import free_month as _fm
+                    _from_bank = int(sub.get("free_months_remaining") or 0) > 0
+                    _do_comp = _from_bank or (
+                        _free_month_enabled() and _fm.has_active_paying_referral(cx, sub["email"]))
+                    if _do_comp:
+                        if dry_run:
+                            print(f"[sub-cron] DRY free-month comp sub={sid} bank={_from_bank}", flush=True)
+                            comped += 1
+                            continue
+                        _fm.comp_membership_cycle(
+                            cx, sid,
+                            reason=("banked" if _from_bank else "referral_active"),
+                            idem_key=f"{'bank' if _from_bank else 'ref'}:{sid}:{sub['next_charge_date']}",
+                            from_bank=_from_bank)
+                        try:
+                            _u = _subs.get(cx, sid)
+                            if _u and _u.get("next_charge_date"):
+                                _until = (datetime.fromisoformat(_u["next_charge_date"])
+                                          + timedelta(days=MEMBERSHIP_GRANT_GRACE_DAYS)).isoformat() + "Z"
+                                _extend_membership_grant(cx, sub["email"], _until, "membership_free_month")
+                        except Exception as _e:
+                            print(f"[free-month] grant extend failed sid={sid}: {_e!r}", flush=True)
+                        comped += 1
                         continue
                     # A capped term (term_charges_total set) = Continuous Care; an uncapped
                     # membership = the legacy group-coaching bundle. Keep the card-statement
@@ -24320,6 +24355,7 @@ def cron_charge_subscriptions():
         "skipped": skipped,
         "failed": failed,
         "notified": notified,
+        "comped": comped,
         "dry_run": dry_run,
     })
 
