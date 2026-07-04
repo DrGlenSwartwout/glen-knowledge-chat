@@ -4608,6 +4608,10 @@ TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().low
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Kill-switch for the premium per-element Glendalf backdrop on the member portal.
+# Off -> the portal API returns element_state=null, so the page shows plain (no
+# backdrop, no sound toggle). Element state is still computed in the background.
+ELEMENT_BACKDROP_ENABLED = os.environ.get("ELEMENT_BACKDROP_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _cohort_pricing_enabled():
@@ -13387,6 +13391,14 @@ def api_client_portal(token):
             membership_cat = membership_category(email_for_reports)
         except Exception as e:
             print(f"[portal-credit] {email_for_reports}: {e!r}", flush=True)
+    element_state = None
+    if ELEMENT_BACKDROP_ENABLED:
+        try:
+            from dashboard import portal_element_view as _pev
+            with sqlite3.connect(LOG_DB) as _cxe:
+                element_state = _pev.element_view(_cxe, (portal.get("email") or "").strip().lower())
+        except Exception:
+            element_state = None
     payload = {
         "name": portal.get("name"),
         "membership_category": membership_cat,
@@ -13404,6 +13416,7 @@ def api_client_portal(token):
         "notify_on": notify_on,
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
+        "element_state": element_state,
     }
     # Task 5: portal reorder module (real order history + repertoire pricing +
     # member savings + forward-framed locked rows). Additive keys only — never
@@ -13532,6 +13545,28 @@ def api_portal_chat(token):
             _t2.Thread(target=_triage_portal_message,
                        args=(email, portal.get("name") or "", query, answer),
                        daemon=True).start()
+        except Exception:
+            pass
+        # Refresh the member's TCM element state from their recent chat (paid
+        # members only; drives the Glendalf backdrop). Fire-and-forget, text mode.
+        try:
+            import threading as _t3
+
+            def _refresh_element(em):
+                try:
+                    if not _active_membership_for_email(em):
+                        return
+                    from dashboard import portal_element, member_element_state
+                    with sqlite3.connect(LOG_DB) as _rcx:
+                        scores = portal_element.analyze(_rcx, em)
+                    if not scores:
+                        return
+                    with _db_lock, sqlite3.connect(LOG_DB) as _wcx:
+                        member_element_state.upsert(_wcx, em, scores, source="portal_chat")
+                except Exception as e:
+                    print(f"[portal-element] refresh failed: {e!r}", flush=True)
+
+            _t3.Thread(target=_refresh_element, args=(email,), daemon=True).start()
         except Exception:
             pass
         try:

@@ -1,0 +1,83 @@
+{
+  "_note": "Per-TCM-element Glendalf backdrop: video loop + poster + ambience bed/oneshots. Selected by the member's deficient element (element_state.setting) on the portal. Ambience shape matches ambience.js (bed/bed_volume/oneshots{file,volume,loop?,spark?,min_gap_s,max_gap_s}).",
+  "elements": {
+    "water": {
+      "label": "Water",
+      "video": "/static/fireside/video/elements/water.mp4",
+      "poster": "/static/fireside/video/elements/water-poster.jpg",
+      "ambience": {
+        "bed": "/static/fireside/audio/amb-waterfall.mp3",
+        "bed_volume": 0.07,
+        "oneshots": [
+          { "id": "surf", "file": "/static/fireside/audio/amb-surf.mp3", "loop": true, "volume": 0.09 },
+          { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.1, "min_gap_s": 90, "max_gap_s": 220 },
+          { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.09, "min_gap_s": 140, "max_gap_s": 320 },
+          { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.08, "min_gap_s": 160, "max_gap_s": 360 }
+        ]
+      }
+    },
+    "wood": {
+      "label": "Wood",
+      "video": "/static/fireside/video/elements/wood.mp4",
+      "poster": "/static/fireside/video/elements/wood-poster.jpg",
+      "ambience": {
+        "bed": "/static/fireside/audio/amb-windtrees.mp3",
+        "bed_volume": 0.011,
+        "oneshots": [
+          { "id": "brook", "file": "/static/fireside/audio/amb-brook.mp3", "loop": true, "volume": 0.06 },
+          { "id": "woodthrush", "file": "/static/fireside/audio/amb-woodthrush.mp3", "volume": 0.15, "first_gap_s": 8, "min_gap_s": 60, "max_gap_s": 150 },
+          { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.08, "min_gap_s": 90, "max_gap_s": 220 },
+          { "id": "woodpecker", "file": "/static/fireside/audio/amb-woodpecker.mp3", "volume": 0.1, "min_gap_s": 260, "max_gap_s": 560 },
+          { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.09, "min_gap_s": 160, "max_gap_s": 360 },
+          { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.1, "min_gap_s": 130, "max_gap_s": 300 }
+        ]
+      }
+    },
+    "earth": {
+      "label": "Earth",
+      "video": "/static/fireside/video/elements/earth.mp4",
+      "poster": "/static/fireside/video/elements/earth-poster.jpg",
+      "ambience": {
+        "bed": "/static/fireside/audio/amb-breeze.mp3",
+        "bed_volume": 0.07,
+        "oneshots": [
+          { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.12, "min_gap_s": 70, "max_gap_s": 180 },
+          { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.09, "min_gap_s": 150, "max_gap_s": 340 },
+          { "id": "bell", "file": "/static/fireside/audio/amb-bell.mp3", "volume": 0.09, "min_gap_s": 220, "max_gap_s": 520 },
+          { "id": "dogbark", "file": "/static/fireside/audio/amb-dogbark.mp3", "volume": 0.08, "min_gap_s": 200, "max_gap_s": 460 }
+        ]
+      }
+    },
+    "metal": {
+      "label": "Metal",
+      "video": "/static/fireside/video/elements/metal.mp4",
+      "poster": "/static/fireside/video/elements/metal-poster.jpg",
+      "ambience": {
+        "_bed_note": "No continuous bed by design — a constant tone reads as EMF hum. The 172 Hz singing bowl is struck on a ~2-min cycle instead.",
+        "bed": null,
+        "bed_volume": 0,
+        "oneshots": [
+          { "id": "bowl", "file": "/static/fireside/audio/amb-bowl.mp3", "volume": 0.25, "first_gap_s": 6, "min_gap_s": 100, "max_gap_s": 150 },
+          { "id": "chant", "file": "/static/fireside/audio/amb-chant.mp3", "volume": 0.16, "min_gap_s": 200, "max_gap_s": 460 },
+          { "id": "bottlechime", "file": "/static/fireside/audio/amb-bottlechime.mp3", "volume": 0.08, "min_gap_s": 220, "max_gap_s": 500 }
+        ]
+      }
+    },
+    "fire": {
+      "label": "Fire",
+      "video": "/static/fireside/video/elements/fire.mp4",
+      "poster": "/static/fireside/video/elements/fire-poster.jpg",
+      "ambience": {
+        "bed": "/static/fireside/audio/amb-fire-loop.mp3",
+        "bed_volume": 0.036,
+        "oneshots": [
+          { "id": "embers", "file": "/static/fireside/audio/amb-embers.mp3", "volume": 0.08, "spark": true, "min_gap_s": 50, "max_gap_s": 140 },
+          { "id": "logsettle", "file": "/static/fireside/audio/amb-logsettle.mp3", "volume": 0.09, "spark": true, "min_gap_s": 60, "max_gap_s": 170 },
+          { "id": "kettle", "file": "/static/fireside/audio/amb-kettle.mp3", "volume": 0.13, "min_gap_s": 90, "max_gap_s": 230 },
+          { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.11, "min_gap_s": 120, "max_gap_s": 280 },
+          { "id": "catpurr", "file": "/static/fireside/audio/amb-catpurr.mp3", "volume": 0.1, "min_gap_s": 190, "max_gap_s": 420 }
+        ]
+      }
+    }
+  }
+}
