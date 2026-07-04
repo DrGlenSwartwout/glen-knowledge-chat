@@ -5186,7 +5186,11 @@ def _settle_referrer_reward(cx, order, order_ref):
                         - int(order.get("shipping_cents") or 0)
                         - int(order.get("get_cents") or 0))
     reward = product_cents * pct // 100
-    if reward > 0:
+    # Drop-ship / portal sales are paid at wholesale (the practitioner's markup IS their pay),
+    # so NO L1 is credited on them — only the L2 override below. Ambassador referrals
+    # (kind='referral') keep L1. The row is still stamped (mark_rewarded) so it never pays later.
+    l1_suppressed = (red.get("kind") == "dispensary_portal")
+    if reward > 0 and not l1_suppressed:
         _points.credit(cx, red["owner_email"], value_cents=reward, reason="referral_reward",
                        order_ref=f"referral:{red['referee_email']}")
     # Tier-2 (non-cashable points, half the Tier-1 rate): the referrer's OWN referrer
@@ -5201,7 +5205,22 @@ def _settle_referrer_reward(cx, order, order_ref):
                 _points.credit(cx, l2_owner, value_cents=reward_l2, reason="referral_reward_l2",
                                order_ref=f"referral_l2:{red['referee_email']}")
     _rf.mark_rewarded(cx, red["referee_email"], reward_cents=reward)
-    return reward
+    return 0 if l1_suppressed else reward
+
+
+def _capture_portal_referral(dispensary_code, patient_email, practitioner_email, order_ref):
+    """Bridge a dispensary-link sale into the referral graph: first-touch write of a
+    kind='dispensary_portal' redemption so all this patient's future orders attribute to
+    the practitioner (L2 points only, never L1). Best-effort — never raises into checkout."""
+    if not _REFERRALS or not (patient_email or "").strip() or not (practitioner_email or "").strip():
+        return
+    try:
+        from dashboard import referrals as _rf
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _rf.record_redemption(cx, dispensary_code or "", practitioner_email, patient_email,
+                                  order_ref or "", kind="dispensary_portal")
+    except Exception as _e:
+        print(f"[referrals] portal capture skipped: {_e!r}", flush=True)
 
 
 def _settle_order_points(order, *, order_ref):
@@ -12550,6 +12569,10 @@ def api_client_checkout(code):
                   address=ship,
                   channel="retail",
                   get_cents=out.get("get_cents", 0))
+
+    # Bridge this dispensary sale into the referral graph for durable attribution + L2.
+    _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
+                             str(out.get("invoice_id") or ""))
 
     # 7. Payment method: alt-pay or Stripe.
     # Stripe metadata carries kind/practitioner_id/margin_cents/invoice_id so the

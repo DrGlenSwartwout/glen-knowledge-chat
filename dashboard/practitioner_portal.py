@@ -240,6 +240,25 @@ def practitioner_id_by_dispensary_code(code) -> Optional[str]:
     return str(row["id"]) if row else None
 
 
+def practitioner_email_by_id(practitioner_id) -> str:
+    """Resolve a practitioner's login email from their id (Supabase). '' if none/error.
+    Used to fill referral_redemptions.owner_email for portal attribution."""
+    if not practitioner_id:
+        return ""
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT email FROM practitioners WHERE id=%s LIMIT 1",
+                        (str(practitioner_id),))
+            row = cur.fetchone()
+        if not row:
+            return ""
+        email = row["email"] if isinstance(row, dict) else row[0]
+        return (email or "").strip().lower()
+    except Exception:
+        return ""
+
+
 def get_or_create_dispensary_code(practitioner_id, *, _gen=None) -> str:
     """Return the practitioner's dispensary code, generating + persisting one on first use."""
     from db_supabase import supabase_cursor

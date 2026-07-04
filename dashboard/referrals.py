@@ -18,7 +18,8 @@ def init_tables(cx):
                "referee_email TEXT PRIMARY KEY, code TEXT, owner_email TEXT, "
                "order_ref TEXT, created_at TEXT)")
     # Additive columns: lazy ALTER, idempotent (OperationalError = column already exists)
-    for col, typedef in [("rewarded_at", "TEXT"), ("reward_cents", "INTEGER")]:
+    for col, typedef in [("rewarded_at", "TEXT"), ("reward_cents", "INTEGER"),
+                         ("kind", "TEXT DEFAULT 'referral'")]:
         try:
             cx.execute(f"ALTER TABLE referral_redemptions ADD COLUMN {col} {typedef}")
         except Exception:
@@ -65,12 +66,13 @@ def resolve(cx, code, referee_email, *, pct):
     return {"owner_email": owner, "coupon_pct": int(pct)}
 
 
-def record_redemption(cx, code, owner_email, referee_email, order_ref):
+def record_redemption(cx, code, owner_email, referee_email, order_ref, *, kind="referral"):
     init_tables(cx)
     cur = cx.execute(
-        "INSERT OR IGNORE INTO referral_redemptions (referee_email, code, owner_email, order_ref, created_at) "
-        "VALUES (?,?,?,?,?)",
-        (_norm(referee_email), code, _norm(owner_email), order_ref or "", _now()))
+        "INSERT OR IGNORE INTO referral_redemptions "
+        "(referee_email, code, owner_email, order_ref, created_at, kind) "
+        "VALUES (?,?,?,?,?,?)",
+        (_norm(referee_email), code, _norm(owner_email), order_ref or "", _now(), kind))
     cx.commit()
     return cur.rowcount > 0
 
