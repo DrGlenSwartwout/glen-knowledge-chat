@@ -26,3 +26,31 @@ def test_share_cents_prepay_lump():
 def test_share_cents_rounds_half():
     # 40% of 9901 = 3960.4 -> 3960
     assert cs.share_cents(9901, 6) == 3960
+
+
+def test_credit_for_charge_credits_attributed():
+    seen = {}
+    def earn(pid, cents, *, event_ref):
+        seen.update(pid=pid, cents=cents, event_ref=event_ref); return cents
+    sub = {"id": 7, "order_count": 3, "attributed_practitioner_id": "prac-42"}
+    out = cs.credit_for_charge(sub, charge_cents=9900,
+                               earn=earn, resolve_modules=lambda pid: 12)
+    assert out == 4950
+    assert seen == {"pid": "prac-42", "cents": 4950, "event_ref": "care_share:7:3"}
+
+
+def test_credit_for_charge_no_attribution():
+    called = []
+    sub = {"id": 7, "order_count": 3, "attributed_practitioner_id": None}
+    out = cs.credit_for_charge(sub, charge_cents=9900,
+                               earn=lambda *a, **k: called.append(1),
+                               resolve_modules=lambda pid: 12)
+    assert out == 0 and called == []
+
+
+def test_credit_for_charge_owner_not_a_practitioner():
+    sub = {"id": 7, "order_count": 3, "attributed_practitioner_id": "someone"}
+    out = cs.credit_for_charge(sub, charge_cents=9900,
+                               earn=lambda *a, **k: 1/0,   # must not be called
+                               resolve_modules=lambda pid: None)
+    assert out == 0
