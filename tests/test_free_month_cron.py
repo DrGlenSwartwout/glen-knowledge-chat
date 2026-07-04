@@ -38,6 +38,20 @@ def _member(cx, email, *, next_date, order_count=1):
     cx.commit(); return sid
 
 
+def _wipe_all(cx):
+    # The cron endpoint sweeps the ENTIRE global subscriptions table, not just
+    # this test's fixtures. Other test files (and other tests in this file)
+    # seed memberships with past next_charge_date values that would otherwise
+    # be swept up as "due" and charged/comped alongside this test's own rows.
+    # Wipe the shared tables before seeding so each test's cron run only ever
+    # sees the rows it created itself.
+    subs.init_subscriptions_table(cx)
+    fm.init_comps_table(cx)
+    cx.execute("DELETE FROM subscriptions")
+    cx.execute("DELETE FROM membership_comps")
+    cx.commit()
+
+
 def _post():
     return appmod.app.test_client().post("/api/cron/charge-subscriptions", headers={"X-Cron-Secret": _secret()})
 
@@ -50,7 +64,8 @@ def _post_dry():
 def test_banked_free_month_comps_instead_of_charging(monkeypatch):
     _enable(monkeypatch); charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
-    fm.init_comps_table(cx); cx.execute("DELETE FROM membership_comps WHERE email=?", (M,)); cx.commit()
+    _wipe_all(cx)
+    cx.execute("DELETE FROM membership_comps WHERE email=?", (M,)); cx.commit()
     sid = _member(cx, M, next_date="2000-01-01", order_count=1)
     fm.grant_free_month(cx, M, reason="bounty", idem_key=f"seed:{sid}")
     r = _post(); body = r.get_json()
@@ -67,6 +82,7 @@ def test_referral_threshold_comps_when_flag_on(monkeypatch):
     _enable(monkeypatch); monkeypatch.setenv("REFERRAL_FREE_MONTH_ENABLED", "1")
     charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    _wipe_all(cx)
     rf.init_tables(cx)
     sid = _member(cx, M, next_date="2000-01-01", order_count=1)
     _member(cx, REFEREE, next_date="2030-01-01", order_count=1)   # a full active referee
@@ -83,6 +99,7 @@ def test_no_referral_charges_normally_flag_on(monkeypatch):
     _enable(monkeypatch); monkeypatch.setenv("REFERRAL_FREE_MONTH_ENABLED", "1")
     charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    _wipe_all(cx)
     sid = _member(cx, M, next_date="2000-01-01", order_count=1)
     cx.execute("DELETE FROM referral_redemptions WHERE owner_email=?", (M,)); cx.commit()
     _post()
@@ -94,6 +111,7 @@ def test_no_referral_charges_normally_flag_on(monkeypatch):
 def test_dry_run_comp_eligible_does_not_mutate(monkeypatch):
     _enable(monkeypatch); charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    _wipe_all(cx)
     fm.init_comps_table(cx); cx.execute("DELETE FROM membership_comps WHERE email=?", (M,)); cx.commit()
     sid = _member(cx, M, next_date="2000-01-01", order_count=1)
     fm.grant_free_month(cx, M, reason="bounty", idem_key=f"seed-dry:{sid}")
@@ -112,6 +130,7 @@ def test_cron_replay_same_day_comps_at_most_once(monkeypatch):
     # same-day replay of the cron must not touch this cycle a second time.
     _enable(monkeypatch); charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    _wipe_all(cx)
     fm.init_comps_table(cx); cx.execute("DELETE FROM membership_comps WHERE email=?", (M,)); cx.commit()
     today_str = date.today().isoformat()
     sid = _member(cx, M, next_date=today_str, order_count=1)
@@ -131,6 +150,7 @@ def test_flag_off_no_bank_charges_normally(monkeypatch):
     _enable(monkeypatch); monkeypatch.delenv("REFERRAL_FREE_MONTH_ENABLED", raising=False)
     charges = []; _stub(monkeypatch, charges)
     cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    _wipe_all(cx)
     sid = _member(cx, M, next_date="2000-01-01", order_count=1)
     _member(cx, REFEREE, next_date="2030-01-01", order_count=1)
     cx.execute("DELETE FROM referral_redemptions WHERE referee_email=?", (REFEREE,)); cx.commit()
