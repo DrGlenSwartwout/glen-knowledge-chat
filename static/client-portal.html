@@ -454,6 +454,23 @@ function render(d, v){
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
+  // "Your practitioner" co-brand band — when the patient has an attributed doctor with branding.
+  if(d.practitioner_brand){
+    const pb = d.practitioner_brand;
+    const accentStyle = (pb.accent && typeof pb.accent === "string")
+      ? ` style="border-left:4px solid ${esc(pb.accent)}"`
+      : "";
+    let practContent = `<h2 style="margin:0 0 .4rem;font-size:1rem">Your practitioner</h2>
+      <p style="margin:0;color:var(--muted);font-size:.95rem">Your continuity care is guided by <strong>${esc(pb.name||"")}</strong>${pb.practice_name?` — ${esc(pb.practice_name)}`:""}.</p>`;
+    let practImg = pb.photo_url ? `<img src="${esc(pb.photo_url)}" alt="${esc(pb.name||"")}" style="width:50px;height:50px;border-radius:50%;object-fit:cover;flex:0 0 auto;">` : "";
+    html += `<div class="card your-practitioner-band"${accentStyle}>
+      <div style="display:flex;align-items:center;gap:12px">
+        ${practImg}
+        <div style="flex:1">${practContent}</div>
+      </div>
+    </div>`;
+  }
+
   // "Ask Dr. Glen" concierge chat — promoted to the TOP of the portal (first card
   // below the hero) so it's the first thing the client sees. Always shown.
   html += `<div class="card" id="chatCard">
