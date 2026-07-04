@@ -13592,6 +13592,18 @@ def _portal_record_for(cx, token):
     return None
 
 
+def _reorder_item_from_slug(slug, qty):
+    """Build a reorder_items-shaped entry ({slug, qty}) for a slug merged in from
+    an ACCEPTED practitioner recommendation (Task 2, fast-follow off #572).
+    Deliberately carries NO price_cents override: the recommendation's
+    suggested-step price is $0 on prod and must never be shown as a real cost.
+    Omitting it makes this entry fall through to the SAME regular-catalog-price
+    display path any other un-overridden reorder_items row already uses (see the
+    `display` loop right below) — the authoritative price is computed later, at
+    checkout, by _portal_priced_lines, exactly like every other reorder line."""
+    return {"slug": slug, "qty": qty}
+
+
 @app.route("/portal/<token>")
 def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
@@ -13645,6 +13657,37 @@ def api_client_portal(token):
             item["dosing"] = L.get("dosing", "")
         bf_layers.append(item)
     reorder_src = bf_content.get("reorder_items") if dates else content.get("reorder_items")
+    # Task 2 (fast-follow off #572): merge an ACCEPTED practitioner recommendation's
+    # items into the reorder set, deduped by slug, so accepting a recommendation
+    # leaves its items living in the patient's persistent, retryable reorder list
+    # instead of the dead end #572 removed. 'sent' recs stay on the card only
+    # (_active_recommendation_card below); 'dismissed' recs show nowhere; an
+    # 'accepted' rec's items land HERE. A merge failure must never break the
+    # portal render.
+    try:
+        from dashboard import practitioner_recommendations as _pr
+        _rec = None
+        if email_for_reports:
+            with sqlite3.connect(LOG_DB) as _rcx:
+                _rcx.row_factory = sqlite3.Row
+                _pr.init_table(_rcx)
+                _rec = _pr.active_for_patient(_rcx, email_for_reports)
+        if _rec and _rec.get("status") == "accepted":
+            _have = {(it.get("slug") or "").strip().lower() for it in (reorder_src or [])}
+            _merged = list(reorder_src or [])
+            for _it in (_rec.get("items") or []):
+                _slug = (_it.get("slug") or "").strip().lower()
+                if not _slug or _slug in _have:
+                    continue
+                try:
+                    _qty = max(1, min(int(_it.get("qty", 1) or 1), 99))
+                except Exception:
+                    _qty = 1
+                _merged.append(_reorder_item_from_slug(_slug, _qty))
+                _have.add(_slug)
+            reorder_src = _merged
+    except Exception:
+        pass  # a recommendation-merge failure must never break the portal render
     display = []
     for it in (reorder_src or []):
         slug = (it.get("slug") or "").strip()
@@ -14246,52 +14289,6 @@ def _active_recommendation_card(cx, email):
             qty = 1
         items.append({"slug": slug, "name": name, "qty": qty})  # price deliberately omitted
     return {"id": rec["id"], "note": rec.get("note") or "", "items": items}
-
-
-def _recommendation_cart_items(rec):
-    """Normalize a recommendation's items to {slug, qty} for pricing, DROPPING any
-    carried price_cents. The suggested-step price is $0 on prod, and
-    _portal_priced_lines/_inhouse_line_unit_cents honor a per-item price_cents as an
-    override — so passing it through would price the accepted cart at $0. Stripping
-    it forces the real member-priced path (pricing.compute) to set every unit price."""
-    out = []
-    for it in (rec.get("items") or []):
-        d = it if isinstance(it, dict) else {}
-        slug = (d.get("slug") or "").strip().lower()
-        if not slug:
-            continue
-        try:
-            qty = max(1, min(int(d.get("qty", 1) or 1), 99))
-        except Exception:
-            qty = 1
-        out.append({"slug": slug, "qty": qty})  # NO price_cents — never trusted
-    return out
-
-
-def _portal_reorder_checkout(email, items_rec, lines):
-    """Build a live Stripe checkout (QBO invoice → Stripe URL) for a set of
-    already-member-priced portal lines, mirroring the /api/portal/<token>/checkout
-    body EXACTLY (same source='portal-reorder' ingest + _stripe_checkout_url_for_reorder).
-    Returns the Stripe URL or None. Caller guards on _STRIPE_ACTIVE."""
-    from dashboard import qbo_billing as _qb_local
-    ship = {}
-    try:
-        with sqlite3.connect(LOG_DB) as cx:
-            cx.row_factory = sqlite3.Row
-            prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
-        if prior:
-            ship = prior[0].get("address") or {}
-    except Exception:
-        ship = {}  # no prior order / address on file — collected at checkout
-    cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-    inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-    out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-    _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
-                  name=ship.get("name", ""), items=items_rec,
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
-                  address=ship, channel="retail")
-    return _stripe_checkout_url_for_reorder(out, email)
 
 
 @app.route("/api/portal/<token>/recommendation/accept", methods=["POST"])

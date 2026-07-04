@@ -265,6 +265,117 @@ def test_accepted_recommendation_no_longer_shows_as_actionable_card(client):
     assert not body.get("recommendation")
 
 
+# ── Task 2 (fast-follow off #572): accepted-rec items surface in reorder ────
+
+def test_accepted_recommendation_items_appear_in_reorder_deduped(client):
+    """An ACCEPTED recommendation's items merge into the portal payload's
+    reorder_items, deduped by slug — a recommended slug already present in the
+    curated reorder set is not doubled."""
+    c, appmod = client
+    email = "reorder-merge@example.com"
+    tok = _seed_portal(appmod, email, content={
+        "greeting": "hi", "video": {}, "layers": [],
+        "reorder_items": [{"slug": "neuro-magnesium", "qty": 1}],
+    })
+    rec_id = _seed_recommendation(
+        appmod, email,
+        [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0},
+         {"slug": "nous-energy", "qty": 1, "price_cents": 0}])
+    from dashboard import practitioner_recommendations as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.set_status(cx, rec_id, "accepted")
+
+    body = c.get(f"/api/portal/{tok}").get_json()
+    slugs = [it["slug"] for it in body["reorder_items"]]
+    assert "nous-energy" in slugs             # the new recommended item is present
+    assert slugs.count("neuro-magnesium") == 1  # not doubled (dedup by slug)
+
+
+def test_accepted_recommendation_not_merged_while_still_sent(client):
+    """A 'sent' (not-yet-accepted) recommendation's items must NOT leak into the
+    reorder list — only 'accepted' recs merge in."""
+    c, appmod = client
+    email = "reorder-notyet@example.com"
+    tok = _seed_portal(appmod, email, content={
+        "greeting": "hi", "video": {}, "layers": [], "reorder_items": [],
+    })
+    _seed_recommendation(appmod, email, [{"slug": "nous-energy", "qty": 1, "price_cents": 0}])
+
+    body = c.get(f"/api/portal/{tok}").get_json()
+    slugs = [it["slug"] for it in body["reorder_items"]]
+    assert "nous-energy" not in slugs
+
+
+def test_reorder_checkout_of_accepted_items_prices_member_and_one_invoice(client, monkeypatch):
+    """Once an accepted recommendation's item is in reorder_items, checking it
+    out through the NORMAL per-item reorder checkout (unchanged from Task 6b)
+    mints exactly ONE invoice at the real member price — never the $0
+    suggested-step price. Reuses the member-price assertion pattern from the
+    old accept test (test_portal_item_reorder.py), retargeted to /checkout."""
+    c, appmod = client
+    email = "reorder-checkout@example.com"
+    tok = _seed_portal(appmod, email, content={
+        "greeting": "hi", "video": {}, "layers": [], "reorder_items": [],
+    })
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["neuro-magnesium"])
+    # Checkout entitlement is the client's own portal-channel purchase history
+    # (unchanged Task 6b gate) — seed a prior portal-reorder purchase so the
+    # accepted-rec slug is entitled to be reordered.
+    import json as _json
+    from datetime import datetime, timezone, timedelta
+    from dashboard.orders import init_orders_table
+    created = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        init_orders_table(cx)
+        cx.execute(
+            "INSERT INTO orders (created_at, source, external_ref, channel, email, "
+            "items_json, total_cents, status) VALUES (?,?,?,?,?,?,?,?)",
+            (created, "portal-reorder", f"o-seed-{email}", "retail", email,
+             _json.dumps([{"slug": "neuro-magnesium", "qty": 1,
+                           "name": "neuro-magnesium", "unit_cents": 6997}]),
+             6997, "done"))
+        cx.commit()
+
+    rec_id = _seed_recommendation(
+        appmod, email, [{"slug": "neuro-magnesium", "qty": 1, "price_cents": 0}])
+    from dashboard import practitioner_recommendations as pr
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        pr.set_status(cx, rec_id, "accepted")
+
+    body = c.get(f"/api/portal/{tok}").get_json()
+    assert any(it["slug"] == "neuro-magnesium" for it in body["reorder_items"])
+
+    captured = {}
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+
+    def _fake_invoice(cust, lines, **kw):
+        captured["lines"] = lines
+        total = sum(l["amount"] * l["qty"] for l in lines)
+        return {"Id": "INV1", "DocNumber": "1001", "TotalAmt": total}
+    monkeypatch.setattr(qbo_billing, "create_invoice", _fake_invoice)
+    monkeypatch.setattr(appmod, "_ingest_order", lambda *a, **k: None)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
+    monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
+                        lambda out, email: "https://checkout.stripe/reco")
+
+    expected_unit = appmod._price_cart(
+        [{"slug": "neuro-magnesium", "qty": 1}],
+        ship={"country": "US", "state": "TX"}, email=email,
+    )["priced"]["lines"][0]["line_total_cents"]
+    assert 0 < expected_unit < 6997  # real member price, never $0 nor full price
+
+    r = c.post(f"/api/portal/{tok}/checkout",
+               json={"items": [{"slug": "neuro-magnesium", "qty": 1}]})
+    assert r.status_code == 200
+    assert r.get_json()["stripe_url"] == "https://checkout.stripe/reco"
+    assert len(captured["lines"]) == 1  # exactly ONE invoice line, no duplication
+    assert round(captured["lines"][0]["amount"] * 100) == expected_unit
+
+
 def test_accept_replay_is_rejected_no_duplicate_invoice(client, monkeypatch):
     """Regression: a direct POST replay against an already-accepted recommendation
     must be rejected. Only a 'sent' recommendation can be accepted — now trivially
