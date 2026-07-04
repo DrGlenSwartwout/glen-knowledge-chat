@@ -196,6 +196,12 @@ PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com")
 MEMBERSHIP_JOIN_URL = os.environ.get("MEMBERSHIP_JOIN_URL", f"{PUBLIC_BASE_URL}/begin")
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
+# EVOX remote-session booking (Rae's lane). Office-hours spec: "days:HH:MM-HH:MM"
+# where days is a 1-based ISO weekday range (1=Mon). Default = Mon-Thu 9a-4p.
+EVOX_HOURS               = os.environ.get("EVOX_HOURS", "1-4:09:00-16:00")
+EVOX_RAE_PHONE           = os.environ.get("EVOX_RAE_PHONE", "")
+EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000"))
+
 
 def _init_auth_tables():
     with sqlite3.connect(LOG_DB) as cx:
@@ -13801,6 +13807,153 @@ def _accepted_recommendation_slugs(cx, email):
                 for it in merged if (it.get("slug") or "").strip()}
     except Exception:
         return set()
+
+
+# ── EVOX remote-session booking routes ───────────────────────────────────────
+from datetime import date as _evox_date, timedelta as _evox_td
+
+def _hst_now():
+    """Naive wall-clock 'now' in Hawaii (UTC-10, no DST) — matches the naive slot
+    grid used by dashboard.evox.available_slots so `s <= now` filters real past."""
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _tdd
+    return _dt.now(_tz.utc).astimezone(_tz(_tdd(hours=-10))).replace(tzinfo=None)
+
+def appmod_calendar_window(range_name):
+    """Forward-looking inclusive (lo, hi) day window for EVOX availability. Unlike
+    the console's `_calendar_range_window` (which returns the CURRENT calendar week
+    Mon-Sun and would show only PAST days late in the week), this always starts at
+    today so a client never sees an un-bookable past slot. '2day' = today+tomorrow;
+    anything else = a rolling 7-day window (today .. today+6)."""
+    today = _hst_now().date()
+    span = 1 if (range_name or "").lower() == "2day" else 6
+    return today.isoformat(), (today + _evox_td(days=span)).isoformat()
+
+def _evox_days(range_name):
+    lo, hi = appmod_calendar_window(range_name)
+    d0 = _evox_date.fromisoformat(lo); d1 = _evox_date.fromisoformat(hi)
+    return [d0 + _evox_td(days=i) for i in range((d1 - d0).days + 1)]
+
+def _evox_ident(cx, token):
+    from dashboard import portal_identity as _pi
+    return _pi.resolve_identity(cx, token=token,
+                                session_token=request.cookies.get("rm_portal_session", ""),
+                                client_login_enabled=_client_login_enabled())
+
+@app.route("/evox")
+def evox_page():
+    return send_from_directory(STATIC, "evox.html")
+
+@app.route("/api/evox/start", methods=["POST"])
+def evox_start():
+    from dashboard import evox as _ev, customers as _cu, client_portal as _cp
+    body = request.get_json(force=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email_required"}), 400
+    _init_people_table()  # base table must exist before find_or_create_by_email
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        _cp.init_client_portal_table(cx)
+        _cu.find_or_create_by_email(cx, email=email, name=name)
+        token = _ev.ensure_portal_token(cx, email, name)
+    return jsonify({"token": token, "url": f"{PUBLIC_BASE_URL}/evox?token={token}"})
+
+@app.route("/api/evox/state")
+def evox_state():
+    from dashboard import evox as _ev
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        st = _ev.get_readiness(cx, ident.email)
+        st["credits"] = _ev.session_credit_balance(cx, ident.email)
+        st["cradle_purchased"] = _ev.has_cradle_purchase(cx, ident.email)
+        return jsonify(st)
+
+@app.route("/api/evox/readiness", methods=["POST"])
+def evox_readiness():
+    from dashboard import evox as _ev
+    body = request.get_json(force=True) or {}
+    item, value = body.get("item"), bool(body.get("value"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        src = None
+        if item == "cradle_ok":
+            if _ev.has_cradle_purchase(cx, ident.email):
+                value, src = True, "buy"
+            else:
+                src = "access"
+        try:
+            st = _ev.set_readiness_item(cx, ident.email, item, value, cradle_source=src)
+        except ValueError:
+            return jsonify({"error": "bad_item"}), 400
+        return jsonify(st)
+
+@app.route("/api/evox/availability")
+def evox_availability():
+    from dashboard import evox as _ev
+    _init_calendar_table()  # rae_busy_intervals reads calendar_events
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _ev.get_readiness(cx, ident.email)["complete"]:
+            return jsonify({"error": "not_ready"}), 403
+        days = _evox_days(request.args.get("range", "week"))
+        lo, hi = days[0].isoformat(), days[-1].isoformat()
+        busy = _ev.rae_busy_intervals(cx, lo, hi)
+        booked = _ev.booked_starts(cx)
+        slots = _ev.available_slots(days, EVOX_HOURS, busy, booked, _hst_now())
+        return jsonify({"slots": slots})
+
+@app.route("/api/evox/book", methods=["POST"])
+def evox_book():
+    from dashboard import evox as _ev, people as _pe
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    _init_calendar_table()  # create_booking inserts a calendar_events row
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _ev.get_readiness(cx, ident.email)["complete"]:
+            return jsonify({"error": "not_ready"}), 403
+        # Never trust the client: re-validate the slot against live availability.
+        try:
+            d = _evox_date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat())
+        if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
+                                               _ev.booked_starts(cx), _hst_now()):
+            return jsonify({"error": "slot_unavailable"}), 409
+        prepaid = _ev.consume_session_credit(cx, ident.email)
+
+        def _tag(email, tags):
+            row = cx.execute("SELECT id, tags FROM people WHERE lower(email)=?",
+                             (email,)).fetchone()
+            if row:
+                new = _pe.set_person_tags(json.loads(row["tags"] or "[]"), add=tags)
+                cx.execute("UPDATE people SET tags=? WHERE id=?",
+                           (json.dumps(new), row["id"]))
+        try:
+            _ev.create_booking(cx, ident.email, start_ts, prepaid=prepaid, tag_fn=_tag)
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+    # Task 8 wires the confirmation emails (client + Rae) here via send_evox_email.
+    return jsonify({"ok": True, "start_ts": start_ts, "prepaid": prepaid})
 
 
 @app.route("/portal/<token>")

@@ -235,3 +235,13 @@ def has_cradle_purchase(cx, email: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def ensure_portal_token(cx, email, name):
+    """Return a usable raw portal token for `email` — creating the portal on first
+    touch — that round-trips through portal_identity.resolve_identity. Delegates to
+    client_portal.ensure_token, which holds a STABLE raw token in portal_notify_state
+    (only its one-way hash lives on the portal row), so calling this repeatedly for
+    the same email yields the SAME non-empty token rather than rotating the link."""
+    from dashboard import client_portal as _cp
+    return _cp.ensure_token(cx, email, name)
