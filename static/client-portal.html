@@ -454,6 +454,31 @@ function render(d, v){
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
+  // Household member switcher — the caregiver picks whose scans to view.
+  if (d.household && d.household.length) {
+    const params = new URLSearchParams(location.search);
+    const cur = (params.get("member") || "").toLowerCase();
+    const go = (email) => {
+      const p = new URLSearchParams(location.search);
+      if (email) p.set("member", email); else p.delete("member");
+      p.delete("scan_date");                 // reset date when switching people
+      location.search = p.toString();
+    };
+    window.__hhGo = go;                        // referenced by the inline handlers below
+    let opts = `<option value="">You</option>`;
+    for (const m of d.household) {
+      const label = esc(m.label || m.email);
+      const sel = (cur && cur === (m.email || "").toLowerCase()) ? " selected" : "";
+      opts += `<option value="${esc(m.email)}"${sel}>${label}</option>`;
+    }
+    html += `<div class="card" style="display:flex;align-items:center;gap:10px">
+      <span style="color:var(--muted);font-size:.9rem">Viewing scans for</span>
+      <select onchange="window.__hhGo(this.value)"
+        style="padding:6px 10px;border-radius:8px;background:var(--card);color:inherit;border:1px solid var(--border)">
+        ${opts}
+      </select></div>`;
+  }
+
   // "Your practitioner" co-brand band — when the patient has an attributed doctor with branding.
   if(d.practitioner_brand){
     const pb = d.practitioner_brand;
