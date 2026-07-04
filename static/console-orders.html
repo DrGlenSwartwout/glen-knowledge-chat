@@ -153,10 +153,11 @@
         ? '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' : '';
       acts = keep + '<span class="meta">Shipping handled in shipment #'+Number(o.group_shipment_id)+' (Households column).</span>';
     }
-    // Print invoice is available on EVERY card (reprint a receipt at any lane —
-    // packed/shipped/done included). Appended last so it survives the grouped-
-    // shipment acts rebuild above and reads as the trailing action on the card.
-    acts += (acts ? ' ' : '') + printInvBtn(o.id);
+    // Print invoice on every card lane (reprint a receipt at any point —
+    // packed/shipped/done included) EXCEPT cancelled, where there's nothing to
+    // reprint. Appended last so it survives the grouped-shipment acts rebuild
+    // above and reads as the trailing action on the card.
+    if (o.status!=='cancelled') acts += (acts ? ' ' : '') + printInvBtn(o.id);
     var bo = Number(o.backorder_units||0);
     // Backorder only applies once an order is paid + in fulfillment (new/packed/
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
