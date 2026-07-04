@@ -92,14 +92,14 @@ def slot_grid(day, spec: str, duration_min: int = 60):
 
 
 def _parse(ts: str):
-    ts = (ts or "").strip()
-    if not ts:
-        return None
     try:
+        ts = (ts or "").strip()
+        if not ts:
+            return None
         if len(ts) == 10:            # date-only, e.g. all-day event
             return datetime.fromisoformat(ts + "T00:00:00")
         return datetime.fromisoformat(ts[:19])
-    except ValueError:
+    except (ValueError, AttributeError, TypeError):
         return None
 
 

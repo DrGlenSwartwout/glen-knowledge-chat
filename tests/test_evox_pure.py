@@ -58,3 +58,30 @@ def test_available_allday_busy_blocks_whole_day():
     now = datetime(2026, 7, 6, 0, 0)
     slots = evox.available_slots(days, "1-4:09:00-16:00", [("2026-07-06", "")], set(), now)
     assert slots == []
+
+def test_available_skips_unparseable_busy():
+    days = [date(2026, 7, 6)]                       # Mon
+    now = datetime(2026, 7, 6, 0, 0)
+    busy = [("garbage", "also-bad"),                # unparseable -> ignored
+            ("2026-07-06T13:00:00", "2026-07-06T14:00:00")]  # blocks 13:00
+    slots = evox.available_slots(days, "1-4:09:00-16:00", busy, set(), now)
+    assert slots == ["2026-07-06T09:00:00", "2026-07-06T10:00:00",
+                     "2026-07-06T11:00:00", "2026-07-06T12:00:00",
+                     "2026-07-06T14:00:00", "2026-07-06T15:00:00"]
+
+def test_available_nonstring_busy_does_not_crash():
+    days = [date(2026, 7, 6)]
+    now = datetime(2026, 7, 6, 0, 0)
+    slots = evox.available_slots(days, "1-4:09:00-16:00", [(12345, "")], set(), now)
+    assert len(slots) == 7                          # garbage row ignored, full grid
+
+def test_available_multiple_intervals_and_days_sorted():
+    days = [date(2026, 7, 6), date(2026, 7, 7)]     # Mon, Tue
+    now = datetime(2026, 7, 6, 0, 0)
+    busy = [("2026-07-06T09:00:00", "2026-07-06T10:00:00"),
+            ("2026-07-07T15:00:00", "2026-07-07T16:00:00")]
+    slots = evox.available_slots(days, "1-4:09:00-16:00", busy, set(), now)
+    assert slots == sorted(slots)                   # globally sorted across days
+    assert "2026-07-06T09:00:00" not in slots
+    assert "2026-07-07T15:00:00" not in slots
+    assert "2026-07-06T10:00:00" in slots and "2026-07-07T09:00:00" in slots
