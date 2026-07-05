@@ -778,7 +778,7 @@ function render(d, v){
     for (const s of d.available_scans) {
       const tag = s.processed
         ? `<span style="color:#2f6f5e;font-size:.8rem">Analyzed</span>`
-        : `<span style="color:var(--muted);font-size:.8rem">Available — not yet analyzed</span>`;
+        : `<span style="color:var(--muted);font-size:.8rem">Available to analyze</span>`;
       rows += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
         <strong style="font-size:.95rem">${esc(s.scan_date)}</strong><span style="flex:1"></span>${tag}</div>`;
     }
