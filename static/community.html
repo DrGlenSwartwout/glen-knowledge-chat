@@ -80,6 +80,10 @@
     <p id="interests-empty" class="desc" hidden>Like a topic to see more of it here.</p>
     <div id="interests-list" class="tags"></div>
   </div>
+  <div id="foryou" hidden>
+    <h2 id="foryou-header"></h2>
+    <div id="foryou-list"></div>
+  </div>
   <div id="loading" class="state">Gathering your library…</div>
   <div id="notfound" class="state" hidden>
     <p class="err">We couldn't find that link.</p>
@@ -359,6 +363,8 @@
     return card;
   }
 
+  window.CommunityCards = { paidCard: paidCard, freeCard: freeCard };
+
   function render(data){
     list.innerHTML = "";
     const items = data.full || [];
@@ -392,5 +398,56 @@
 })();
 </script>
 <!-- END community script -->
+
+<!-- BEGIN foryou script -->
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  let token = params.get("token") || "";
+  if(!token){
+    const seg = location.pathname.split("/").filter(Boolean).pop();
+    if(seg && seg !== "community") token = seg;
+  }
+  const section = document.getElementById("foryou");
+  const header = document.getElementById("foryou-header");
+  const listEl = document.getElementById("foryou-list");
+  if(!section || !header || !listEl || !token) return;
+
+  function reasonLine(reason){
+    const p = document.createElement("p");
+    p.className = "desc";
+    p.textContent = reason == null ? "" : String(reason);
+    return p;
+  }
+
+  function renderFeed(data){
+    const items = (data && data.items) || [];
+    if(!items.length){
+      section.hidden = true;
+      return;
+    }
+    const cards = window.CommunityCards;
+    if(!cards){
+      section.hidden = true;
+      return;
+    }
+    listEl.innerHTML = "";
+    items.forEach(function(item){
+      const isPaid = Object.prototype.hasOwnProperty.call(item, "video_ref");
+      const card = isPaid ? cards.paidCard(item) : cards.freeCard(item);
+      card.appendChild(reasonLine(item.reason));
+      listEl.appendChild(card);
+    });
+    header.textContent = data.cold_start ? "New in the community" : "For you";
+    section.hidden = false;
+  }
+
+  fetch("/api/community/feed?token=" + encodeURIComponent(token))
+    .then(function(r){ if(!r.ok) throw new Error("not_found"); return r.json(); })
+    .then(renderFeed)
+    .catch(function(){ section.hidden = true; });
+})();
+</script>
+<!-- END foryou script -->
 </body>
 </html>
