@@ -15184,13 +15184,28 @@ def api_portal_chat(token):
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     if _ally_ov:
         _sys = _ally_ov + "\n\n" + _sys
-    # RAG (best-effort, fail-open)
+    # RAG (best-effort, fail-open) — embed the query ONCE and reuse for both the
+    # knowledge base and Community content retrieval.
     context_str = ""
+    qvec = None
     try:
-        matches = _match_query_namespaces(embed(query))
+        qvec = embed(query)
+        matches = _match_query_namespaces(qvec)
         context_str, _ = build_context(matches) if matches else ("", [])
     except Exception as e:
         print(f"[portal-concierge] retrieval: {e}", flush=True)
+    community_related = []
+    if qvec is not None:
+        try:
+            with sqlite3.connect(LOG_DB) as ccx:
+                ccx.row_factory = sqlite3.Row
+                community_related = _community_related(ccx, qvec, _is_paid_member(email), k=2)
+        except Exception as e:
+            print(f"[community-chat] related: {e}", flush=True)
+    if community_related:
+        titles = "; ".join(r["title"] for r in community_related)
+        context_str = (context_str + "\n" if context_str else "") + \
+            f"Relevant community sessions the member can open: {titles}."
     messages = []
     for m in history[-8:]:
         c = (m.get("content") or "").strip()
@@ -15202,6 +15217,8 @@ def api_portal_chat(token):
     messages.append({"role": "user", "content": user_block})
 
     def generate():
+        if community_related:
+            yield sse({"related": community_related})
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
@@ -15960,6 +15977,31 @@ def _community_candidates(cx, is_paid):
                         "description": it["description"], "interest_tags": it["interest_tags"],
                         "published_at": it["published_at"], "teaser_outtakes": it["outtakes"]})
     return teasers, {f["id"]: f for f in full}  # full lookup for embed text only
+
+
+def _community_related(cx, query_vec, is_paid, *, k=2, min_sim=0.72):
+    """Top-k tier-visible Community items most similar to the query vector, above
+    min_sim. Card-shaped {id, title, kind}; never carries video_ref; never raises.
+    Items without a current-model embedding are skipped (no lazy embed here)."""
+    try:
+        from dashboard import community as _cm, community_feed as _cf
+        cands, _ = _community_candidates(cx, is_paid)
+        vecs = _cm.get_embeddings(cx, [c["id"] for c in cands], COMMUNITY_FEED_MODEL)
+        scored = []
+        for c in cands:
+            v = vecs.get(c["id"])
+            if not v:
+                continue
+            s = _cf.cosine(query_vec, v)
+            if s >= min_sim:
+                scored.append((s, c))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        kind = "full" if is_paid else "teaser"
+        return [{"id": c["id"], "title": c.get("title", ""), "kind": kind}
+                for _, c in scored[:k]]
+    except Exception:
+        app.logger.exception("community_related failed")
+        return []
 
 
 def _member_interest_vec(cx, email, liked_topics):
