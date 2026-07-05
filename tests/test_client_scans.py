@@ -10,7 +10,7 @@ def test_upsert_and_list():
     cx = _cx()
     n = cs.upsert_scans(cx, "Karin@X.com", [{"scan_date": "2026-06-28", "scan_id": 1037676},
                                             {"scan_date": "2026-06-25", "scan_id": 1037001}])
-    assert n == 2
+    assert len(n) == 2                                                     # returns the newly-inserted rows
     got = cs.scans_for(cx, "karin@x.com")
     assert [g["scan_date"] for g in got] == ["2026-06-28", "2026-06-25"]   # most-recent first
     assert got[0]["scan_id"] == "1037676"                                  # stored as str
@@ -24,10 +24,22 @@ def test_upsert_idempotent():
     assert len(got) == 1 and got[0]["scan_id"] == "2"                     # no dup; scan_id updated
 
 
+def test_upsert_returns_only_new_rows():
+    # The new-scan email keys off this: a re-pushed manifest (rows already present)
+    # returns [] so a flag-flip can't mass-email the historical backlog.
+    cx = _cx()
+    first = cs.upsert_scans(cx, "k@x.com", [{"scan_date": "2026-06-28"}, {"scan_date": "2026-06-25"}])
+    assert {r["scan_date"] for r in first} == {"2026-06-28", "2026-06-25"}
+    again = cs.upsert_scans(cx, "k@x.com", [{"scan_date": "2026-06-28"}, {"scan_date": "2026-06-25"}])
+    assert again == []                                                    # nothing re-emails
+    mixed = cs.upsert_scans(cx, "k@x.com", [{"scan_date": "2026-06-28"}, {"scan_date": "2026-07-02"}])
+    assert [r["scan_date"] for r in mixed] == ["2026-07-02"]              # only the genuinely new one
+
+
 def test_blank_email_and_date_skipped():
     cx = _cx()
-    assert cs.upsert_scans(cx, "", [{"scan_date": "2026-06-28"}]) == 0
-    assert cs.upsert_scans(cx, "k@x.com", [{"scan_date": ""}]) == 0
+    assert cs.upsert_scans(cx, "", [{"scan_date": "2026-06-28"}]) == []
+    assert cs.upsert_scans(cx, "k@x.com", [{"scan_date": ""}]) == []
     assert cs.scans_for(cx, "k@x.com") == []
 
 

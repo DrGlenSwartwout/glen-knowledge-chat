@@ -10434,23 +10434,28 @@ def api_console_client_scans_sync():
     data = request.get_json(silent=True) or {}
     items = data.get("batch") or [{"email": data.get("email"), "scans": data.get("scans")}]
     total = 0
+    new_rows = []            # ONLY genuinely newly-inserted scans this sync (not re-pushes)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cs.init_client_scans_table(cx)
         for it in items:
             try:
                 if not isinstance(it, dict):
                     continue
-                total += _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+                _new = _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+                new_rows.extend(_new); total += len(_new)
             except Exception as _e:
                 print(f"[client-scans-sync] skipped bad item: {_e!r}", flush=True)
-    if _scan_request_enabled():
+    # New-scan invite: keyed on the rows actually inserted THIS sync — never the global
+    # notified_at backlog. A re-pushed manifest yields no new rows, so flipping the flag on
+    # (with a fully-backfilled client_scans, per A) cannot mass-email the history.
+    if _scan_request_enabled() and new_rows:
         try:
             from dashboard import analysis_quota as _aq
             from dashboard import notify_state as _ns2
             from dashboard import email_suppression as _es
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
                 _cs.init_client_scans_table(cx); _aq.init_analysis_quota_table(cx)
-                for row in _cs.unnotified(cx):
+                for row in new_rows:
                     em, sd, sid = row["email"], row["scan_date"], row["scan_id"]
                     try:
                         # anti-nag: only when the owner can actually act on it
@@ -10459,8 +10464,9 @@ def api_console_client_scans_sync():
                             # lookup-only: the stable raw token stashed by client_portal
                             # (upsert_portal/ensure_token) in portal_notify_state. Never
                             # mints a portal for an email that doesn't have one.
-                            tok = _ns2.get_state(cx, em).get("portal_token")
-                            if tok:
+                            _stt = _ns2.get_state(cx, em)
+                            tok = _stt.get("portal_token")
+                            if tok and _stt.get("opt_status") != "out":   # respect notify_state opt-out
                                 _send_new_scan_email(em, sd, sid, tok)
                     except Exception as _e:
                         print(f"[new-scan-email] {em}: {_e!r}", flush=True)
@@ -14909,6 +14915,10 @@ def api_client_portal(token):
                 {"scan_date": s["scan_date"], "scan_id": s["scan_id"],
                  "processed": s["scan_date"] in _processed,
                  "requested": _reqst.get(s["scan_date"]) in ("pending", "done")} for s in _synced]
+            # Gate the Request-analysis affordance separately: A (scan-list) can be live
+            # while B (request) is still dark, so the frontend must fall back to a read-only
+            # "Available" label rather than render a button whose endpoint returns disabled.
+            payload["scan_request_enabled"] = _scan_request_enabled()
         except Exception as _e:
             print(f"[scan-list] {_e!r}", flush=True)
     return jsonify(payload)

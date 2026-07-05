@@ -780,8 +780,10 @@ function render(d, v){
         ? `<span style="color:#2f6f5e;font-size:.8rem">Analyzed</span>`
         : s.requested
           ? `<span style="color:var(--muted);font-size:.8rem">Requested</span>`
-          : `<button class="ra-btn" data-scan="${esc(s.scan_date)}" data-sid="${esc(s.scan_id||"")}"
-               style="font-size:.8rem;padding:2px 10px;border-radius:8px;background:#2f6f5e;color:#fff;border:0;cursor:pointer">Request analysis</button>`;
+          : d.scan_request_enabled
+            ? `<button class="ra-btn" data-scan="${esc(s.scan_date)}" data-sid="${esc(s.scan_id||"")}"
+               style="font-size:.8rem;padding:2px 10px;border-radius:8px;background:#2f6f5e;color:#fff;border:0;cursor:pointer">Request analysis</button>`
+            : `<span style="color:var(--muted);font-size:.8rem">Available</span>`;
       rows += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
         <strong style="font-size:.95rem">${esc(s.scan_date)}</strong><span style="flex:1"></span>${tag}</div>`;
     }

@@ -32,10 +32,15 @@ def init_client_scans_table(cx):
 
 
 def upsert_scans(cx, email, scans):
+    """Upsert a client's scan dates. Returns the list of GENUINELY newly-inserted rows
+    ({email, scan_date, scan_id}) — an existing date hitting the UPDATE path is NOT
+    returned. Callers that want a touched-count use len() of the return. The new-scan
+    email keys off this list so a re-pushed manifest (all rows already present) never
+    re-emails, and a flag-flip can't mass-email the historical backlog."""
     e = _norm(email)
     if not e:
-        return 0
-    n = 0
+        return []
+    inserted = []
     for s in scans or []:
         if not isinstance(s, dict):
             continue
@@ -46,11 +51,12 @@ def upsert_scans(cx, email, scans):
         cur = cx.execute("UPDATE client_scans SET scan_id=?, synced_at=? WHERE email=? AND scan_date=?",
                          (sid, _now(), e, d))
         if cur.rowcount == 0:
-            cx.execute("INSERT OR IGNORE INTO client_scans (email, scan_date, scan_id, synced_at) "
-                       "VALUES (?,?,?,?)", (e, d, sid, _now()))
-        n += 1
+            ins = cx.execute("INSERT OR IGNORE INTO client_scans (email, scan_date, scan_id, synced_at) "
+                             "VALUES (?,?,?,?)", (e, d, sid, _now()))
+            if ins.rowcount:
+                inserted.append({"email": e, "scan_date": d, "scan_id": sid})
     cx.commit()
-    return n
+    return inserted
 
 
 def scans_for(cx, email):
