@@ -16329,6 +16329,62 @@ def community_coaching_interest():
     return jsonify({"ok": True})
 
 
+def _coach_session_email():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return None
+    from dashboard.practitioner_portal import practitioner_email_by_id
+    return (practitioner_email_by_id(pid) or "").strip().lower() or None
+
+
+@app.route("/api/practitioner/coach-requests")
+def practitioner_coach_requests():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_connect as _cc, coach_directory as _cd
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
+        vol = _cd.get_volunteer(cx, email)
+        capacity = (vol or {}).get("capacity", 0) or 0
+        accepted = _cc.accepted_count(cx, email)
+        coachees = [{"member_name": r["member_name"]}
+                    for r in _cc.requests_for_coach(cx, email, status="accepted")]
+        return jsonify({"pending": _cc.requests_for_coach(cx, email, status="pending"),
+                        "coachees": coachees, "capacity": capacity,
+                        "slots_left": max(0, capacity - accepted)})
+
+
+@app.route("/api/practitioner/coach-request/respond", methods=["POST"])
+def practitioner_coach_request_respond():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_connect as _cc, coach_directory as _cd
+    body = request.get_json(force=True) or {}
+    rid = body.get("request_id")
+    accept = bool(body.get("accept"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
+        if _cc.request_owner(cx, rid) != email:
+            return jsonify({"error": "not_found"}), 404
+        if accept:
+            vol = _cd.get_volunteer(cx, email)
+            capacity = (vol or {}).get("capacity", 0) or 0
+            if _cc.accepted_count(cx, email) >= capacity:
+                return jsonify({"error": "at_capacity"}), 409
+            member_email = _cc.request_member(cx, rid)
+            if _cc.member_has_accepted(cx, member_email):
+                return jsonify({"error": "member_taken"}), 409   # another coach won the race
+            _cc.set_request_status(cx, rid, "accepted")
+            _cc.withdraw_other_pendings(cx, member_email, rid)   # first-accept-wins
+            return jsonify({"ok": True, "status": "accepted"})
+        _cc.set_request_status(cx, rid, "declined")
+        return jsonify({"ok": True, "status": "declined"})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
