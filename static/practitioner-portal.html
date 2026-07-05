@@ -361,6 +361,17 @@
     </div>
     <button id="coach-save" type="button">Save coaching profile</button>
     <div id="coach-msg" style="margin-top:10px;font-size:14px"></div>
+    <!-- BEGIN coach-requests script -->
+    <div id="coach-requests-panel" style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;display:none">
+      <div id="coach-requests-slots" class="muted" style="font-size:13px;margin-bottom:10px"></div>
+      <div id="coach-requests-msg" style="font-size:13px;margin-bottom:10px"></div>
+      <div id="coach-requests-list"></div>
+      <div style="margin-top:14px">
+        <div class="muted" style="font-size:13px;margin-bottom:6px">Members you are coaching</div>
+        <div id="coach-requests-coachees" class="muted" style="font-size:13px"></div>
+      </div>
+    </div>
+    <!-- END coach-requests script -->
   </div>
   <!-- END coach-volunteer script -->
   </section>
@@ -807,6 +818,120 @@ $('coach-save').addEventListener('click', function(){
 });
 <!-- END coach-volunteer script -->
 
+<!-- BEGIN coach-requests script -->
+function coachFirstName(name){
+  var s = (name || '').trim();
+  return s ? s.split(/\s+/)[0] : 'This member';
+}
+function loadCoachRequests(){
+  var panel = $('coach-requests-panel'); if(!panel) return;
+  fetch('/api/practitioner/coach-requests?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d){ panel.style.display = 'none'; return; }
+      panel.style.display = '';
+      renderCoachRequests(d);
+    })
+    .catch(function(){ panel.style.display = 'none'; });
+}
+function renderCoachRequests(d){
+  var capacity = d.capacity || 0;
+  var slotsLeft = d.slots_left || 0;
+  $('coach-requests-slots').textContent = 'Slots left: ' + slotsLeft + ' of ' + capacity;
+
+  var list = $('coach-requests-list');
+  list.innerHTML = '';
+  var pending = d.pending || [];
+  if(!pending.length){
+    var empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.fontSize = '13px';
+    empty.textContent = 'No pending applications right now.';
+    list.appendChild(empty);
+  } else {
+    pending.forEach(function(p){ list.appendChild(coachRequestRow(p)); });
+  }
+
+  var coacheesHost = $('coach-requests-coachees');
+  var coachees = d.coachees || [];
+  coacheesHost.textContent = coachees.length
+    ? coachees.map(function(c){ return coachFirstName(c.member_name); }).join(', ')
+    : 'No members yet.';
+}
+function coachRequestRow(p){
+  var row = document.createElement('div');
+  row.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--border)';
+
+  var nameEl = document.createElement('div');
+  nameEl.style.fontWeight = '600';
+  nameEl.textContent = coachFirstName(p.member_name);
+  row.appendChild(nameEl);
+
+  if(p.note){
+    var noteEl = document.createElement('div');
+    noteEl.className = 'muted';
+    noteEl.style.cssText = 'font-size:13px;margin-top:2px';
+    noteEl.textContent = p.note;
+    row.appendChild(noteEl);
+  }
+
+  if(p.member_video_url){
+    var vid = document.createElement('video');
+    vid.controls = true;
+    vid.src = p.member_video_url;
+    vid.style.cssText = 'max-width:240px;display:block;margin-top:8px';
+    row.appendChild(vid);
+  }
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'margin-top:8px;display:flex;gap:8px';
+
+  var acceptBtn = document.createElement('button');
+  acceptBtn.type = 'button';
+  acceptBtn.textContent = 'Accept';
+  acceptBtn.addEventListener('click', function(){ respondToCoachRequest(p.id, true, btnRow); });
+  btnRow.appendChild(acceptBtn);
+
+  var skipBtn = document.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.className = 'ghost';
+  skipBtn.textContent = 'Not now';
+  skipBtn.addEventListener('click', function(){ respondToCoachRequest(p.id, false, btnRow); });
+  btnRow.appendChild(skipBtn);
+
+  row.appendChild(btnRow);
+  return row;
+}
+function respondToCoachRequest(requestId, accept, btnRow){
+  var buttons = btnRow.querySelectorAll('button');
+  Array.prototype.forEach.call(buttons, function(b){ b.disabled = true; });
+  var msg = $('coach-requests-msg');
+  fetch('/api/practitioner/coach-request/respond?token=' + encodeURIComponent(TOKEN), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({request_id: requestId, accept: accept})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status: r.status, body: d}; }); })
+    .then(function(res){
+      var d = res.body || {};
+      if(res.status === 200 && d.ok){
+        if(msg){ msg.style.color = ''; msg.textContent = ''; }
+      } else if(d.error === 'at_capacity'){
+        if(msg){ msg.style.color = 'var(--gold)'; msg.textContent = 'You are at capacity.'; }
+      } else if(d.error === 'member_taken'){
+        if(msg){ msg.style.color = 'var(--gold)'; msg.textContent = 'That member has already matched with another coach.'; }
+      } else {
+        if(msg){ msg.style.color = 'var(--gold)'; msg.textContent = 'Could not update this application.'; }
+      }
+      loadCoachRequests();
+    })
+    .catch(function(){
+      Array.prototype.forEach.call(buttons, function(b){ b.disabled = false; });
+      if(msg){ msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; }
+    });
+}
+<!-- END coach-requests script -->
+
 // Training tab: 12-module ASH curriculum with the practitioner's completion state.
 function renderTraining(d){
   var tr = d.training; if(!tr) return;
@@ -969,6 +1094,7 @@ function render(d){
   renderDispenseStats(d);
   renderRecommended(d);
   loadContinuity();
+  loadCoachRequests();
   renderPricing(d);
 }
 
