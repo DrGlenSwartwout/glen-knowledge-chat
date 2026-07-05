@@ -1782,7 +1782,8 @@
       "ingredients_source": "store-recovery-2026-06-08",
       "bottle_type": "30g",
       "fmp_id": "875",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "inactive": true
     },
     "moisturize": {
       "name": "Moisturize",
