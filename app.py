@@ -14056,6 +14056,15 @@ def _scan_list_enabled():
         "1", "true", "yes")
 
 
+def _scan_request_enabled():
+    """Request-further-analysis feature (Task 3). Default OFF — when off, the
+    request endpoint is inert ({ok:true,status:"disabled"}, no DB writes) and the
+    portal payload's 'available_scans' items still get a 'requested' key (always
+    False with no request rows ever created)."""
+    return (os.environ.get("SCAN_REQUEST_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
 def _portal_offers_enabled() -> bool:
     """Master flag for the portal 'What's next' offer surface. Dark by default."""
     return os.environ.get("PORTAL_OFFERS_ENABLED", "").strip().lower() in (
@@ -14807,13 +14816,17 @@ def api_client_portal(token):
     if _scan_list_enabled():
         try:
             from dashboard import client_scans as _cs
+            from dashboard import analysis_requests as _ar
             with sqlite3.connect(LOG_DB) as _cxs:
                 _cs.init_client_scans_table(_cxs)
                 _synced = _cs.scans_for(_cxs, email_for_reports)
+                _ar.init_analysis_requests_table(_cxs)
+                _reqst = _ar.statuses_for(_cxs, email_for_reports)
             _processed = set(bf_scan_dates or [])   # published report dates for this email
             payload["available_scans"] = [
                 {"scan_date": s["scan_date"], "scan_id": s["scan_id"],
-                 "processed": s["scan_date"] in _processed} for s in _synced]
+                 "processed": s["scan_date"] in _processed,
+                 "requested": _reqst.get(s["scan_date"]) == "pending"} for s in _synced]
         except Exception as _e:
             print(f"[scan-list] {_e!r}", flush=True)
     return jsonify(payload)
@@ -14954,6 +14967,69 @@ def api_portal_open(token):
         _op.init_opens_table(cx)
         st = _op.record_open(cx, "report", _op.report_key(email_for_reports, scan_date))
     return jsonify({"ok": True, "recorded": True, "open": st})
+
+
+def _request_analysis_core(token, scan_id, scan_date):
+    """Shared by the POST endpoint and the one-click page (Task 4). Token-scoped
+    (resolves the owning email from the portal token, same ?member= household
+    resolution as api_client_portal/api_portal_open — fail-closed). Quota is keyed
+    on the SCAN OWNER (email_for_reports) and reuses the existing analysis_quota
+    module; paid members bypass it. Already-processed (published report exists) or
+    already-pending/done requests short-circuit without spending quota.
+    Returns a (result_dict, http_status) tuple."""
+    from dashboard import client_portal as _cp
+    from dashboard import analysis_requests as _ar
+    from dashboard import analysis_quota as _aq
+    from dashboard import portal_biofield_reports as _pbr
+    scan_date = (scan_date or "").strip()
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return {"ok": False, "error": "not found"}, 404
+    email_for_reports = (portal.get("email") or "").strip().lower()
+    # same ?member= household resolution as api_portal_open (fail-closed)
+    if _household_view_enabled() and email_for_reports:
+        try:
+            from dashboard import household as _hh
+            with sqlite3.connect(LOG_DB) as _cxh:
+                _hh.init_household_tables(_cxh)
+                _m = (request.args.get("member") or (request.get_json(silent=True) or {}).get("member") or "").strip().lower()
+                if _m and _hh.can_view(_cxh, email_for_reports, _m):
+                    email_for_reports = _m
+        except Exception as _e:
+            print(f"[request-analysis] household {_e!r}", flush=True)
+    if not scan_date or not email_for_reports:
+        return {"ok": False, "error": "missing scan_date"}, 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # already processed (published report) or already requested → no quota spent
+        _pbr.init_table(cx)
+        if scan_date in set(_pbr.list_report_dates(cx, email_for_reports)):
+            return {"ok": True, "status": "already"}, 200
+        _ar.init_analysis_requests_table(cx)
+        _st = _ar.statuses_for(cx, email_for_reports).get(scan_date)
+        if _st in ("pending", "done"):
+            return {"ok": True, "status": _st}, 200
+        if not _is_paid_member(email_for_reports):
+            _aq.init_analysis_quota_table(cx)
+            if not _aq.try_claim(cx, email_for_reports):
+                return {"ok": False, "reason": "monthly_quota",
+                        "upgrade_url": "https://illtowell.com/prepay"}, 200
+        res = _ar.create_request(cx, email_for_reports, scan_id, scan_date)
+    return {"ok": True, "status": res["status"]}, 200
+
+
+@app.route("/api/portal/<token>/request-analysis", methods=["POST"])
+def api_portal_request_analysis(token):
+    """The client requests further analysis of an as-yet-unprocessed E4L scan.
+    Behind SCAN_REQUEST_ENABLED — off means the endpoint is inert (no DB change).
+    Free members get 1 claim per calendar month (analysis_quota); paid members
+    (_is_paid_member) bypass the quota entirely."""
+    if not _scan_request_enabled():
+        return jsonify({"ok": True, "status": "disabled"})
+    body = request.get_json(silent=True) or {}
+    res, code = _request_analysis_core(token, body.get("scan_id"), body.get("scan_date"))
+    return jsonify(res), code
 
 
 @app.route("/api/invoice/<token>/open", methods=["POST"])
