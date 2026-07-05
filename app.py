@@ -206,6 +206,7 @@ EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000
 # Biofield Consult (Glen's lane): office-hours spec same format as EVOX_HOURS.
 GLEN_CONSULT_HOURS = os.environ.get("GLEN_CONSULT_HOURS", "1-7:09:00-17:00")
 GLEN_ZOOM_USER      = os.environ.get("GLEN_ZOOM_USER", "me")
+GLEN_PMI_URL        = os.environ.get("GLEN_PMI_URL", "https://zoom.us/j/9071793431")
 
 
 def _init_auth_tables():
@@ -14342,9 +14343,7 @@ def evox_run_reminders():
             keys = r.keys()
             stype = r["session_type"] if "session_type" in keys else "evox"
             if stype == "biofield-consult":
-                join = r["zoom_join_url"] if "zoom_join_url" in keys else None
-                join_line = (f"Join here: {join}" if join
-                             else "Your Zoom link will follow by email.")
+                join_line = "Join from your Healing Oasis portal at your appointment time."
                 subject = "Reminder: your Biofield Consult tomorrow"
                 html = (f"<p>Reminder: your Biofield Consult with Dr. Glen is tomorrow at "
                         f"<b>{nice} HST</b>. {join_line}</p>")
@@ -15354,23 +15353,23 @@ GLEN_CONSULT_EMAIL = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail
 
 
 def _consult_send_confirmations(email, booking):
-    """Best-effort: client + Glen Biofield Consult confirmations with the Zoom link + ICS.
-    Never raises into the booking response."""
+    """Best-effort: client + Glen Biofield Consult confirmations, ICS, and portal
+    join instructions. No raw Zoom link (the client joins via the portal-gated
+    button). Never raises into the booking response."""
     try:
         from dashboard import evox as _ev
         start = booking["start_ts"]; nice = start.replace("T", " ")
-        join = booking.get("join_url")
-        join_line = (f"Join your Zoom consult here: {join}" if join
-                     else "Your Zoom link will follow by email shortly.")
+        portal = booking.get("portal_url") or ""
+        join_line = ("At your appointment time, open your Healing Oasis portal and click "
+                     "Join your consult" + (f": {portal}" if portal else "."))
         ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
                             summary="Biofield Consult with Dr. Glen",
-                            description=join_line, location=(join or "Video"))
+                            description=join_line, location="Zoom (join from your portal)")
         client_html = (f"<p>Your Biofield Consult with Dr. Glen is booked for "
                        f"<b>{nice} HST</b>.</p><p>{join_line}</p>"
                        "<p>The calendar invite is attached.</p>")
         client_text = f"Biofield Consult booked for {nice} HST. {join_line}"
-        glen_html = (f"<p>New Biofield Consult: <b>{email}</b> on <b>{nice} HST</b>.</p>"
-                     f"<p>{join_line}</p>")
+        glen_html = f"<p>New Biofield Consult: <b>{email}</b> on <b>{nice} HST</b>.</p>"
         for to, nm, subj, html, text in [
             (email, "", "Your Biofield Consult is booked", client_html, client_text),
             (GLEN_CONSULT_EMAIL, "Glen", f"Biofield Consult booked: {email}", glen_html, glen_html)]:
@@ -15422,7 +15421,7 @@ def consult_availability():
 
 @app.route("/api/consult/book", methods=["POST"])
 def consult_book():
-    from dashboard import evox as _ev, consult as _consult, zoom as _zoom
+    from dashboard import evox as _ev, consult as _consult
     body = request.get_json(force=True) or {}
     start_ts = (body.get("start_ts") or "").strip()
     _init_calendar_table()  # create_booking inserts a calendar_events row
@@ -15450,24 +15449,41 @@ def consult_book():
         except _ev.SlotTaken:
             return jsonify({"error": "slot_taken"}), 409
         email = ident.email
-    # --- lock released; Zoom network below MUST NOT hold _db_lock ---
-    # Zoom (best-effort; never blocks the booking)
-    join_url = None
+    # --- lock released ---
     try:
-        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
-                              os.environ["ZOOM_CLIENT_SECRET"])
-        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic="Biofield Consult with Dr. Glen",
-                                 start_iso=start_ts, duration_min=30)
-        join_url = m.get("join_url")
-        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
-            cx2.execute("UPDATE evox_bookings SET zoom_join_url=?, zoom_meeting_id=? WHERE id=?",
-                        (join_url, m.get("meeting_id"), b["id"]))
-            cx2.commit()
+        from dashboard import client_portal as _cp
+        with sqlite3.connect(LOG_DB) as cx2:
+            token = _cp.ensure_token(cx2, email, "") if hasattr(_cp, "ensure_token") else None
+        b["portal_url"] = f"{PUBLIC_BASE_URL}/portal/{token}" if token else f"{PUBLIC_BASE_URL}/portal/login"
     except Exception:
-        app.logger.exception("consult Zoom meeting create failed")
-    b["join_url"] = join_url
-    _consult_send_confirmations(email, b)   # Task 6
-    return jsonify({"ok": True, "start_ts": start_ts, "join_url": join_url})
+        b["portal_url"] = f"{PUBLIC_BASE_URL}/portal/login"
+    _consult_send_confirmations(email, b)
+    return jsonify({"ok": True, "start_ts": start_ts})
+
+
+@app.route("/api/consult/join")
+def consult_join():
+    from dashboard import consult as _consult
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        rows = cx.execute("SELECT start_ts FROM evox_bookings WHERE lower(email)=? "
+                          "AND session_type='biofield-consult' AND status='booked' "
+                          "ORDER BY start_ts", (ident.email,)).fetchall()
+        if not rows:
+            return jsonify({"error": "no_booking"}), 404
+        now = _hst_now()
+        for r in rows:
+            if _consult.within_join_window(r["start_ts"], now):
+                return jsonify({"ok": True, "join_url": GLEN_PMI_URL})
+        # not in any window: report the next upcoming consult start (if any)
+        upcoming = [r["start_ts"] for r in rows if r["start_ts"] >= now.isoformat()]
+        return jsonify({"error": "not_in_window",
+                        "start_ts": (upcoming[0] if upcoming else rows[-1]["start_ts"])}), 403
 
 
 @app.route("/api/console/biofield-portal", methods=["GET"])

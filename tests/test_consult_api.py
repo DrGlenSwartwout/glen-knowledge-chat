@@ -56,7 +56,7 @@ def test_full_consult_flow(client, monkeypatch):
     slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
     assert slots
     r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
-    assert r.status_code == 200 and r.get_json()["join_url"] == "https://zoom.us/j/1"
+    assert r.status_code == 200 and r.get_json()["ok"] is True
     r2 = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
     assert r2.status_code == 409
 
@@ -103,7 +103,7 @@ def test_consult_slot_taken_via_race(client, monkeypatch):
     assert r.get_json()["error"] == "slot_taken"
 
 
-def test_consult_confirmations_include_join_link(monkeypatch):
+def test_consult_confirmations_point_to_portal_no_raw_link(monkeypatch):
     calls = []
     monkeypatch.setattr(appmod, "send_evox_email",
                         lambda to, name, subj, html, text, ics: calls.append((to, html, ics)), raising=False)
@@ -111,9 +111,11 @@ def test_consult_confirmations_include_join_link(monkeypatch):
     appmod._consult_send_confirmations("c@x.com", {
         "id": 1, "email": "c@x.com", "start_ts": "2026-07-06T13:00:00",
         "end_ts": "2026-07-06T13:30:00", "ics_uid": "u1@illtowell.com",
-        "join_url": "https://zoom.us/j/9", "session_type": "biofield-consult", "medium": "video"})
+        "portal_url": "https://illtowell.com/portal/tok9",
+        "session_type": "biofield-consult", "medium": "video"})
     assert len(calls) == 2
-    assert any("zoom.us/j/9" in c[1] for c in calls)          # client email carries the link
+    assert all("zoom.us/j/" not in c[1] for c in calls)                  # no raw Zoom link anywhere
+    assert any("illtowell.com/portal/tok9" in c[1] for c in calls)       # client email points to portal
     assert all(b"BEGIN:VCALENDAR" in c[2] for c in calls)
 
 
@@ -138,13 +140,74 @@ def test_run_reminders_uses_consult_copy_for_consult_bookings(client, monkeypatc
     with sqlite3.connect(appmod.LOG_DB) as cx:
         evox.init_evox_tables(cx)
         cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
-                   "session_type,medium,zoom_join_url) VALUES (?,?,?,?, 'booked', ?,?,?)",
-                   ("consult@x.com", "glen", start, end, "biofield-consult", "video",
-                    "https://zoom.us/j/consulttest"))
+                   "session_type,medium) VALUES (?,?,?,?, 'booked', ?,?)",
+                   ("consult@x.com", "glen", start, end, "biofield-consult", "video"))
         cx.commit()
     r = client.post("/api/evox/run-reminders", headers=ADMIN)
     assert r.status_code == 200 and r.get_json()["sent"] == 1
     to, subj, html = captured[-1]
     assert to == "consult@x.com"
     assert subj == "Reminder: your Biofield Consult tomorrow"
-    assert "zoom.us/j/consulttest" in html and "call Rae" not in html
+    assert "portal" in html.lower() and "Biofield Consult" in html
+    assert "zoom.us/j/" not in html and "call Rae" not in html
+
+
+def test_consult_join_gated_by_window(client, monkeypatch):
+    import sqlite3
+    from datetime import timedelta
+    from dashboard import evox
+    tok = _mk_portal("join@x.com")
+    # a consult starting 5 min from now (inside the -10/+30 window)
+    start = (appmod._hst_now() + timedelta(minutes=5)).replace(microsecond=0).isoformat()
+    end = (appmod._hst_now() + timedelta(minutes=35)).replace(microsecond=0).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        evox.init_evox_tables(cx)
+        cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+                   "session_type,medium) VALUES (?,?,?,?, 'booked', 'biofield-consult','video')",
+                   ("join@x.com", "glen", start, end)); cx.commit()
+    r = client.get(f"/api/consult/join?token={tok}")
+    assert r.status_code == 200 and r.get_json()["join_url"] == appmod.GLEN_PMI_URL
+    # move the booking 2 hours out -> outside the window -> 403
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        far = (appmod._hst_now() + timedelta(hours=2)).replace(microsecond=0).isoformat()
+        cx.execute("UPDATE evox_bookings SET start_ts=? WHERE email='join@x.com'", (far,)); cx.commit()
+    r2 = client.get(f"/api/consult/join?token={tok}")
+    assert r2.status_code == 403 and r2.get_json()["error"] == "not_in_window"
+
+def test_consult_join_no_booking(client):
+    tok = _mk_portal("nobook@x.com")
+    r = client.get(f"/api/consult/join?token={tok}")
+    assert r.status_code == 404 and r.get_json()["error"] == "no_booking"
+
+
+def test_booking_no_zoom_call_and_email_has_no_raw_link(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: calls.append((to, html)), raising=False)
+    # if the code still calls Zoom, this makes it explode -> test would fail
+    def _boom(*a, **k): raise AssertionError("Zoom must not be called at booking")
+    monkeypatch.setattr("dashboard.zoom.get_token", _boom)
+    monkeypatch.setattr("dashboard.zoom.create_meeting", _boom)
+    tok = _mk_portal("nolink@x.com")
+    client.post("/api/console/consult-ready", json={"email": "nolink@x.com", "ready": True}, headers=ADMIN)
+    slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
+    r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    client_email = [h for (to, h) in calls if to == "nolink@x.com"][0]
+    assert "zoom.us/j/" not in client_email          # no raw Zoom link in the email
+    assert "portal" in client_email.lower()          # points them to the portal
+
+
+def test_view_consult_block_has_booked_start(client):
+    import sqlite3
+    from datetime import timedelta
+    from dashboard import evox
+    tok = _mk_portal("bs@x.com")
+    start = (appmod._hst_now() + timedelta(days=1)).replace(microsecond=0).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        evox.init_evox_tables(cx)
+        cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+                   "session_type,medium) VALUES (?,?,?,?, 'booked','biofield-consult','video')",
+                   ("bs@x.com", "glen", start, start)); cx.commit()
+    d = client.get(f"/api/portal/{tok}/view").get_json()
+    assert d["consult"]["booked"] is True and d["consult"]["booked_start"] == start

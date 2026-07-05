@@ -77,3 +77,12 @@ def test_create_meeting_builds_request_and_parses_response():
     assert captured["auth"] == "Bearer tok123"
     assert captured["body"]["type"] == 2 and captured["body"]["duration"] == 30
     assert captured["body"]["settings"]["waiting_room"] is True
+
+from datetime import datetime
+def test_within_join_window():
+    from dashboard import consult
+    s = "2026-07-06T13:00:00"
+    assert consult.within_join_window(s, datetime(2026,7,6,12,55)) is True   # 5 min before
+    assert consult.within_join_window(s, datetime(2026,7,6,12,49)) is False  # 11 min before
+    assert consult.within_join_window(s, datetime(2026,7,6,13,29)) is True   # 29 after
+    assert consult.within_join_window(s, datetime(2026,7,6,13,31)) is False  # 31 after
