@@ -10391,6 +10391,23 @@ def api_console_biofield_mark_paid():
                     "unlocked": _portal_biofield_unlocked(email)})
 
 
+@app.route("/api/console/client-scans/sync", methods=["POST"])
+def api_console_client_scans_sync():
+    """Owner sync: upsert a client's (or a batch of clients') E4L scan-date manifest into
+    client_scans (populated by the local e4l-scan-manifest-push, since prod can't read e4l.db)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_scans as _cs
+    data = request.get_json(silent=True) or {}
+    items = data.get("batch") or [{"email": data.get("email"), "scans": data.get("scans")}]
+    total = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cs.init_client_scans_table(cx)
+        for it in items:
+            total += _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+    return jsonify({"ok": True, "upserted": total})
+
+
 def membership_category(email):
     """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
     dashboard.subscriptions.category_for). 'full' is the gate for paid-member
@@ -13846,6 +13863,14 @@ def _read_receipts_enabled():
         "1", "true", "yes")
 
 
+def _scan_list_enabled():
+    """Available-scan list feature (Task 2). Default OFF — when off, the portal
+    payload never gains the 'available_scans' key, so responses stay byte-identical
+    to pre-scan-list behavior."""
+    return (os.environ.get("SCAN_LIST_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
 def _portal_offers_enabled() -> bool:
     """Master flag for the portal 'What's next' offer surface. Dark by default."""
     return os.environ.get("PORTAL_OFFERS_ENABLED", "").strip().lower() in (
@@ -14588,6 +14613,18 @@ def api_client_portal(token):
         except Exception as _e:
             print(f"[opens] payload {_e!r}", flush=True)
             payload["opens"] = {}
+    if _scan_list_enabled():
+        try:
+            from dashboard import client_scans as _cs
+            with sqlite3.connect(LOG_DB) as _cxs:
+                _cs.init_client_scans_table(_cxs)
+                _synced = _cs.scans_for(_cxs, email_for_reports)
+            _processed = set(bf_scan_dates or [])   # published report dates for this email
+            payload["available_scans"] = [
+                {"scan_date": s["scan_date"], "scan_id": s["scan_id"],
+                 "processed": s["scan_date"] in _processed} for s in _synced]
+        except Exception as _e:
+            print(f"[scan-list] {_e!r}", flush=True)
     return jsonify(payload)
 
 
