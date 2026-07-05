@@ -95,3 +95,23 @@ def test_no_cc_copy_when_switch_off(monkeypatch, tmp_path):
                         lambda to, subj, body, **k: sent.append(to) or (True, ""))
     appmod._household_cc_report("mem@x.com", "New scan for M")
     assert sent == []                     # cc off → no copy
+
+
+def test_console_toggles_flags(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "", raising=False)
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
+    from dashboard import household as h
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        h.init_household_tables(cx); h.add_member(cx, "p@x.com", "m@x.com", "M", "spouse"); cx.commit()
+    c = appmod.app.test_client()
+    # GET shows the flags
+    g = c.get("/api/console/household?primary_email=p@x.com").get_json()
+    row = next(m for m in g["members"] if m["email"] == "m@x.com")
+    assert "share_consent" in row and "cc_enabled" in row
+    # POST toggles cc_enabled on
+    assert c.post("/api/console/household",
+                  json={"primary_email": "p@x.com", "member_email": "m@x.com", "cc_enabled": 1}).status_code == 200
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert h.cc_recipients_for(cx, "m@x.com") == ["p@x.com"]

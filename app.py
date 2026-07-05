@@ -15669,6 +15669,12 @@ def api_console_household():
         if request.method == "POST":
             _hh.add_member(cx, data.get("primary_email"), data.get("member_email"),
                            data.get("label", ""), data.get("relationship", ""))
+            if "share_consent" in data:
+                _hh.set_share_consent(cx, data.get("primary_email"), data.get("member_email"),
+                                      1 if data.get("share_consent") else 0)
+            if "cc_enabled" in data:
+                _hh.set_cc_enabled(cx, data.get("primary_email"), data.get("member_email"),
+                                   1 if data.get("cc_enabled") else 0)
         else:  # DELETE
             _hh.remove_member(cx, data.get("primary_email"), data.get("member_email"))
     return jsonify({"ok": True})
