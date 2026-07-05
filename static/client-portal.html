@@ -772,6 +772,21 @@ function render(d, v){
     }
   }
 
+  // Scan history — every E4L scan date (A: read-only; request action is sub-project B).
+  if (d.available_scans && d.available_scans.length) {
+    let rows = "";
+    for (const s of d.available_scans) {
+      const tag = s.processed
+        ? `<span style="color:#2f6f5e;font-size:.8rem">Analyzed</span>`
+        : `<span style="color:var(--muted);font-size:.8rem">Available to analyze</span>`;
+      rows += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <strong style="font-size:.95rem">${esc(s.scan_date)}</strong><span style="flex:1"></span>${tag}</div>`;
+    }
+    html += `<div class="card"><h2 style="font-size:1rem">Scan history</h2>
+      <p style="color:var(--muted);font-size:.85rem;margin:.2rem 0 .6rem">Every scan on file. Analyzed scans have a full report; others are available to analyze.</p>
+      ${rows}</div>`;
+  }
+
   // Task 3: the patient's active practitioner recommendation ("Your practitioner
   // recommends…") — remedy NAMES only (no $0 suggested price shown), one-tap
   // accept (→ adds to reorder list) and a dismiss. Absent when there's no
