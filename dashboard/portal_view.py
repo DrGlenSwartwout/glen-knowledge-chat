@@ -181,18 +181,19 @@ def _consult_block(cx, email):
         _consult.init_consult_tables(cx)
         ready = _consult.consult_is_ready(cx, email)
         paid = _consult.has_paid_purchase(cx, email, _consult.CONSULT["test_slug"])
-        booked = False
+        booked_start = None
         try:
-            row = cx.execute("SELECT 1 FROM evox_bookings WHERE lower(email)=? "
-                             "AND session_type='biofield-consult' AND status='booked' LIMIT 1",
-                             (email,)).fetchone()
-            booked = row is not None
+            row = cx.execute("SELECT start_ts FROM evox_bookings WHERE lower(email)=? "
+                             "AND session_type='biofield-consult' AND status='booked' "
+                             "ORDER BY start_ts DESC LIMIT 1", (email,)).fetchone()
+            booked_start = row[0] if row else None
         except Exception:
             pass
-        return {"ready": ready, "booked": booked,
+        return {"ready": ready, "booked": booked_start is not None,
+                "booked_start": booked_start,
                 "stages": {"test_paid": paid, "ready": ready}}
     except Exception:
-        return {"ready": False, "booked": False, "stages": {}}
+        return {"ready": False, "booked": False, "booked_start": None, "stages": {}}
 
 
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,

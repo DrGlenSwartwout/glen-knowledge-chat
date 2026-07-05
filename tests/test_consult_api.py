@@ -196,3 +196,18 @@ def test_booking_no_zoom_call_and_email_has_no_raw_link(client, monkeypatch):
     client_email = [h for (to, h) in calls if to == "nolink@x.com"][0]
     assert "zoom.us/j/" not in client_email          # no raw Zoom link in the email
     assert "portal" in client_email.lower()          # points them to the portal
+
+
+def test_view_consult_block_has_booked_start(client):
+    import sqlite3
+    from datetime import timedelta
+    from dashboard import evox
+    tok = _mk_portal("bs@x.com")
+    start = (appmod._hst_now() + timedelta(days=1)).replace(microsecond=0).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        evox.init_evox_tables(cx)
+        cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+                   "session_type,medium) VALUES (?,?,?,?, 'booked','biofield-consult','video')",
+                   ("bs@x.com", "glen", start, start)); cx.commit()
+    d = client.get(f"/api/portal/{tok}/view").get_json()
+    assert d["consult"]["booked"] is True and d["consult"]["booked_start"] == start

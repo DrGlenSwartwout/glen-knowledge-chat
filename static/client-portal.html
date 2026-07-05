@@ -963,8 +963,11 @@ function render(d, v){
   if(v && v.consult){
     const c = v.consult;
     if(c.booked){
+      const when = (c.booked_start||"").replace("T"," ");
       html += `<div class="card"><h2>Biofield Consult</h2>
-        <p class="muted">Your consult with Dr. Glen is booked. Check your email for the Zoom link and calendar invite.</p></div>`;
+        <p class="muted">Your consult with Dr. Glen is booked for <b>${esc(when)} HST</b>.</p>
+        <button class="btn full" onclick="consultJoin()">Join your consult</button>
+        <div id="consult-join-msg" class="muted" style="margin-top:.5rem"></div></div>`;
     } else if(c.ready){
       html += `<div class="card"><h2>Biofield Consult</h2>
         <p class="muted">Your report is ready. Schedule your 30 minute consult with Dr. Glen to review your program.</p>
@@ -1088,6 +1091,15 @@ async function consultBook(start_ts){
   }catch(e){ d = {}; }
   alert("That time is no longer available. Please pick another.");
   consultSchedule();
+}
+
+async function consultJoin(){
+  const r = await fetch(`/api/consult/join?token=${encodeURIComponent(seg)}`);
+  const d = await r.json();
+  if(d && d.ok && d.join_url){ window.open(d.join_url, "_blank", "noopener"); return; }
+  const when = (d && d.start_ts ? d.start_ts.replace("T"," ")+" HST" : "your appointment time");
+  document.getElementById("consult-join-msg").textContent =
+    "Your consult is at " + when + ". The Join button opens 10 minutes before.";
 }
 
 async function setNotifyPref(btn){
