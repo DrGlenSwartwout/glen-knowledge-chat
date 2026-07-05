@@ -16209,6 +16209,20 @@ def community_publish():
     return jsonify({"ok": True, "content_id": cid, "outtakes": n})
 
 
+@app.route("/api/community/coaches")
+def community_coaches():
+    from dashboard import coach_directory as _cd, coaching as _co
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cd.init_coach_tables(cx); _co.init_coaching_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _co.active_window(cx, ident.email):
+            return jsonify({"eligible": False, "coaches": []})
+        return jsonify({"eligible": True, "coaches": _cd.list_active(cx)})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
