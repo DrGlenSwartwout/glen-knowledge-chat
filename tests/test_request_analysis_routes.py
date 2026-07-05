@@ -145,6 +145,28 @@ def test_new_scan_email_gated_and_once(tmp_path, monkeypatch):
     assert sent == []
 
 
+def test_worker_endpoints_require_console_key(tmp_path, monkeypatch):
+    """Regression: with CONSOLE_SECRET actually SET, the local fulfillment worker
+    endpoints must reject keyless requests (401), not fall through to the
+    'no secret configured' open-door default."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SCAN_REQUEST_ENABLED", "1")
+    monkeypatch.setenv("SCAN_LIST_ENABLED", "1")
+    monkeypatch.setenv("CONSOLE_SECRET", "sek")
+    repo = Path(__file__).resolve().parent.parent
+    if str(repo) not in sys.path: sys.path.insert(0, str(repo))
+    try:
+        import app as appmod; importlib.reload(appmod)
+        import dashboard as _d
+        monkeypatch.setattr(_d, "CONSOLE_SECRET", "sek", raising=False)
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "sek", raising=False)
+    c = appmod.app.test_client()
+    assert c.get("/api/console/analysis-requests").status_code == 401
+    assert c.post("/api/console/analysis-requests/1/complete", json={"status": "done"}).status_code == 401
+
+
 def test_worker_endpoints(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     from dashboard import analysis_requests as ar

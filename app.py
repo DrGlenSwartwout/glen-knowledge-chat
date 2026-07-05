@@ -10516,6 +10516,13 @@ def _send_new_scan_email(email, scan_date, scan_id, token):
         pass
     for to in dict.fromkeys(recips):   # de-dup, private separate copies
         try:
+            try:
+                from dashboard import email_suppression as _es
+                with sqlite3.connect(LOG_DB) as _cxsup:
+                    if _es.is_suppressed(_cxsup, to):
+                        continue
+            except Exception as _se:
+                print(f"[new-scan-email] suppression check failed for {to}: {_se!r}", flush=True)
             _send_inquiry_email(to, subj, body)
         except Exception as _e:
             print(f"[new-scan-email] to {to}: {_e!r}", flush=True)
@@ -14901,7 +14908,7 @@ def api_client_portal(token):
             payload["available_scans"] = [
                 {"scan_date": s["scan_date"], "scan_id": s["scan_id"],
                  "processed": s["scan_date"] in _processed,
-                 "requested": _reqst.get(s["scan_date"]) == "pending"} for s in _synced]
+                 "requested": _reqst.get(s["scan_date"]) in ("pending", "done")} for s in _synced]
         except Exception as _e:
             print(f"[scan-list] {_e!r}", flush=True)
     return jsonify(payload)
