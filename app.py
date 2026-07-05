@@ -16688,6 +16688,97 @@ def coach_thread_member_report():
     return jsonify({"ok": True})
 
 
+def _coach_first_name(cx, member_email):
+    from dashboard import client_portal as _cp
+    row = _cp.get_portal_content_by_email(cx, member_email) or {}
+    return ((row.get("name") or "").strip().split() or ["Your client"])[0]
+
+
+@app.route("/api/coach-thread/coach/list")
+def coach_thread_coach_list():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct, coach_connect as _cc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
+        out = []
+        for m in _cc.accepted_members(cx, email):
+            t = _ct.get_or_create_thread(cx, coach_email=email, member_email=m["member_email"])
+            out.append({"member_first_name": _coach_first_name(cx, m["member_email"]),
+                        "thread_id": t["id"], "status": t["status"],
+                        "unread": _ct.unread_count(cx, t["id"], "coach")})
+        return jsonify(out)
+
+
+def _coach_owns(cx, thread_id, coach_email):
+    from dashboard import coach_threads as _ct
+    t = _ct.get_thread(cx, thread_id)
+    return t if (t and t["coach_email"] == (coach_email or "").strip().lower()) else None
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>")
+def coach_thread_coach_get(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.mark_read(cx, thread_id, "coach")
+        blocked = t["status"] == "blocked"
+        return jsonify({"member_first_name": _coach_first_name(cx, t["member_email"]),
+                        "status": t["status"], "can_post": not blocked,
+                        "messages": [] if blocked else _ct.messages(cx, thread_id)})
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>/message", methods=["POST"])
+def coach_thread_coach_message(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        if not body or len(body) > COACH_MESSAGE_MAX_CHARS:
+            return jsonify({"error": "bad_body"}), 400
+        if t["status"] == "blocked":
+            return jsonify({"error": "blocked"}), 409
+        _ct.post_message(cx, thread_id=thread_id, sender_role="coach", body=body)
+        member_email = t["member_email"]
+    _coach_thread_nudge(member_email, "your coach")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>/report", methods=["POST"])
+def coach_thread_coach_report(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.report_thread(cx, thread_id=thread_id, reporter_role="coach", reason=reason)
+    _coach_thread_owner_alert("A coaching thread was reported",
+                              "A coach reported their coaching thread. Review it in the console.")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
