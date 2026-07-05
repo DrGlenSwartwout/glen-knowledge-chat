@@ -30458,6 +30458,7 @@ def _invoice_summary(order):
         "member_credit_cents": member_credit_cents,
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
+        "created_at": order.get("created_at"),
         "name": _invoice_display_name(order),
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
