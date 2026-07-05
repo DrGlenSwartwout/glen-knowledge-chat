@@ -10470,6 +10470,33 @@ def api_console_client_scans_sync():
     return jsonify({"ok": True, "upserted": total})
 
 
+@app.route("/api/console/analysis-requests", methods=["GET"])
+def api_console_analysis_requests():
+    """Owner tool: list pending analysis requests for the local fulfillment worker."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import analysis_requests as _ar
+    with sqlite3.connect(LOG_DB) as cx:
+        _ar.init_analysis_requests_table(cx)
+        reqs = _ar.pending(cx, int(request.args.get("limit", 50)))
+    return jsonify({"ok": True, "requests": reqs})
+
+
+@app.route("/api/console/analysis-requests/<int:req_id>/complete", methods=["POST"])
+def api_console_analysis_request_complete(req_id):
+    """Owner tool: the local fulfillment worker marks a request done (or failed)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import analysis_requests as _ar
+    status = ((request.get_json(silent=True) or {}).get("status") or "done").strip()
+    if status not in ("done", "failed"):
+        status = "done"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ar.init_analysis_requests_table(cx)
+        _ar.mark(cx, req_id, status)
+    return jsonify({"ok": True, "status": status})
+
+
 def _send_new_scan_email(email, scan_date, scan_id, token):
     """New-scan invite: a one-click analyze link + the client's limit + upgrade path. Best-effort.
     Cc'd (private separate copy) to consented+subscribed caregivers via household.cc_recipients_for."""

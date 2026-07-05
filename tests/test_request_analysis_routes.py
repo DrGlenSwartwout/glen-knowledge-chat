@@ -143,3 +143,17 @@ def test_new_scan_email_gated_and_once(tmp_path, monkeypatch):
     # re-sync same scan → no re-email (notified_at set)
     c.post("/api/console/client-scans/sync", json={"email": "k@x.com", "scans": [{"scan_date": "2026-06-28", "scan_id": 9}]})
     assert sent == []
+
+
+def test_worker_endpoints(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import analysis_requests as ar
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        ar.init_analysis_requests_table(cx); ar.create_request(cx, "k@x.com", 9, "2026-06-28"); cx.commit()
+    c = appmod.app.test_client()
+    g = c.get("/api/console/analysis-requests?status=pending").get_json()
+    assert g["requests"] and g["requests"][0]["email"] == "k@x.com"
+    rid = g["requests"][0]["id"]
+    assert c.post(f"/api/console/analysis-requests/{rid}/complete", json={"status": "done"}).status_code == 200
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert ar.has_pending(cx, "k@x.com", "2026-06-28") is False
