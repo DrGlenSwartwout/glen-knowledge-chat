@@ -66,3 +66,26 @@ def test_register_nonmember_paid_returns_checkout(client, monkeypatch):
     d = r.get_json()
     assert r.status_code == 200 and d["checkout_url"] == "https://stripe/mc"
     assert cap["amount"] == 5000 and cap["metadata"]["kind"] == "masterclass" and cap["metadata"]["event_id"] == str(eid)
+
+def test_fulfill_masterclass_marks_paid_and_sends(client, monkeypatch):
+    sent = []
+    monkeypatch.setattr(appmod, "send_evox_email", lambda to, *a, **k: sent.append(to) or ("console-log", None), raising=False)
+    eid = _mk_event(client, price=5000, mprice=0)
+    import sqlite3
+    from dashboard import masterclass as mc
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        mc.register(cx, eid, "buyer@x.com", "B", is_member=False, amount_cents=5000, paid=False)
+        cx.commit()
+    import dashboard.stripe_pay as _sp
+    monkeypatch.setattr(_sp, "get_session",
+                        lambda sid: {"metadata": {"kind": "masterclass", "event_id": str(eid), "email": "buyer@x.com", "name": "B"},
+                                     "payment_intent": "pi_1"})
+    monkeypatch.setattr(_sp, "get_payment_intent", lambda pi: {"status": "succeeded"})
+    out = appmod._fulfill_masterclass("cs_test")
+    assert out["ok"] is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert mc.is_registered(cx, eid, "buyer@x.com") is True
+    assert "buyer@x.com" in sent
+    # non-masterclass session is a no-op
+    monkeypatch.setattr(_sp, "get_session", lambda sid: {"metadata": {"kind": "retail"}})
+    assert appmod._fulfill_masterclass("cs_other")["ok"] is False

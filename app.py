@@ -8158,6 +8158,39 @@ def _fulfill_biofield_program(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _fulfill_masterclass(session_id):
+    """Mark a MasterClass registration paid + send the Zoom join link confirmation
+    from a completed Stripe checkout, idempotently. Re-fetches the session +
+    PaymentIntent (the security guarantee); only proceeds on a succeeded masterclass
+    payment. Best-effort; never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, masterclass as _mc
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "masterclass":
+            return {"ok": False, "reason": "not_masterclass"}
+        email = (md.get("email") or "").strip().lower()
+        try:
+            event_id = int(md.get("event_id"))
+        except Exception:
+            return {"ok": False, "reason": "no_event"}
+        pi_id = sess.get("payment_intent")
+        if not (email and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        if _sp.get_payment_intent(pi_id).get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _mc.init_masterclass_tables(cx)
+            _mc.mark_paid(cx, event_id, email)
+            ev = _mc.get_event(cx, event_id)
+        _masterclass_send_confirmation(ev, email, md.get("name") or "")
+        return {"ok": True, "email": email, "event_id": event_id}
+    except Exception as e:
+        print(f"[masterclass] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -19823,6 +19856,7 @@ def webhook_stripe():
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
+                _fulfill_masterclass(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
