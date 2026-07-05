@@ -2,6 +2,7 @@
 fulfills pending rows (synthesize + publish) and marks them done. One row per
 (email, scan_date). LOG_DB (SQLite). Separate from the published-report 'requested' flow."""
 import datetime
+import sqlite3
 
 
 def _now():
@@ -37,9 +38,16 @@ def create_request(cx, email, scan_id, scan_date):
                      (e, d)).fetchone()
     if row:
         return {"created": False, "status": row[0]}
-    cx.execute("INSERT INTO analysis_requests (email, scan_id, scan_date, requested_at, status) "
-               "VALUES (?,?,?,?, 'pending')", (e, str(scan_id or ""), d, _now()))
-    cx.commit()
+    try:
+        cx.execute("INSERT INTO analysis_requests (email, scan_id, scan_date, requested_at, status) "
+                   "VALUES (?,?,?,?, 'pending')", (e, str(scan_id or ""), d, _now()))
+        cx.commit()
+    except sqlite3.IntegrityError:
+        # lost a UNIQUE race to a concurrent insert → report the existing row's
+        # state rather than 500ing.
+        row = cx.execute("SELECT status FROM analysis_requests WHERE email=? AND scan_date=?",
+                         (e, d)).fetchone()
+        return {"created": False, "status": row[0] if row else None}
     return {"created": True, "status": "pending"}
 
 
@@ -65,3 +73,11 @@ def mark(cx, req_id, status):
     cx.execute("UPDATE analysis_requests SET status=?, fulfilled_at=? WHERE id=?",
                (status, _now() if status in ("done", "failed") else None, req_id))
     cx.commit()
+
+
+def requeue(cx, email, scan_date):
+    """Reset a failed request back to pending (retry) without a new quota charge. Returns True if a failed row was reset."""
+    cur = cx.execute("UPDATE analysis_requests SET status='pending', fulfilled_at=NULL "
+                     "WHERE email=? AND scan_date=? AND status='failed'", (_norm(email), (scan_date or "").strip()))
+    cx.commit()
+    return cur.rowcount > 0

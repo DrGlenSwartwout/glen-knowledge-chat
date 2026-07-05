@@ -15010,12 +15010,19 @@ def _request_analysis_core(token, scan_id, scan_date):
         _st = _ar.statuses_for(cx, email_for_reports).get(scan_date)
         if _st in ("pending", "done"):
             return {"ok": True, "status": _st}, 200
+        if _st == "failed":
+            _ar.requeue(cx, email_for_reports, scan_date)   # retry, no new charge
+            return {"ok": True, "status": "pending"}, 200
+        claimed = False
         if not _is_paid_member(email_for_reports):
             _aq.init_analysis_quota_table(cx)
             if not _aq.try_claim(cx, email_for_reports):
                 return {"ok": False, "reason": "monthly_quota",
                         "upgrade_url": "https://illtowell.com/prepay"}, 200
+            claimed = True
         res = _ar.create_request(cx, email_for_reports, scan_id, scan_date)
+        if not res["created"] and claimed:
+            _aq.release(cx, email_for_reports)   # defensive: didn't queue a new one → refund the slot
     return {"ok": True, "status": res["status"]}, 200
 
 
