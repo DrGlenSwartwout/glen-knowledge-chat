@@ -977,6 +977,28 @@ function render(d, v){
     }
   }
 
+  // Household sharing controls (member consent + caregiver cc).
+  if (d.household_caregivers && d.household_caregivers.length) {
+    let rows = "";
+    for (const c of d.household_caregivers) {
+      const ck = c.share_consent ? "checked" : "";
+      rows += `<label style="display:flex;align-items:center;gap:8px;margin:.3rem 0">
+        <input type="checkbox" class="hh-share" data-care="${esc(c.primary_email)}" ${ck}>
+        Share my scans &amp; messages with ${esc(c.primary_email)}</label>`;
+    }
+    html += `<div class="card"><h2 style="font-size:1rem">Sharing</h2>${rows}</div>`;
+  }
+  if (d.household && d.household.length && d.household_cc) {
+    let rows = "";
+    for (const m of d.household) {
+      const ck = d.household_cc[m.email] ? "checked" : "";
+      rows += `<label style="display:flex;align-items:center;gap:8px;margin:.3rem 0">
+        <input type="checkbox" class="hh-cc" data-member="${esc(m.email)}" ${ck}>
+        Email me about ${esc(m.label || m.email)}</label>`;
+    }
+    html += `<div class="card"><h2 style="font-size:1rem">Family notifications</h2>${rows}</div>`;
+  }
+
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
 
   app.innerHTML = html;
@@ -1035,6 +1057,16 @@ function render(d, v){
 
   const sabtn = document.getElementById("socialAddBtn");
   if(sabtn) sabtn.addEventListener("click", addSocial);
+
+  // Household sharing: member share consent + caregiver cc preferences
+  app.querySelectorAll(".hh-share").forEach(el => el.addEventListener("change", () =>
+    fetch(`/api/portal/${encodeURIComponent(token)}/share-consent`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({caregiver_email: el.dataset.care, consent: el.checked ? 1 : 0})})));
+  app.querySelectorAll(".hh-cc").forEach(el => el.addEventListener("change", () =>
+    fetch(`/api/portal/${encodeURIComponent(token)}/cc-pref`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({member_email: el.dataset.member, cc_enabled: el.checked ? 1 : 0})})));
 
   // Task 6: qty steppers (local display only — the row's shown price already
   // reflects Task 5's server-computed per-unit price; stepping just updates
