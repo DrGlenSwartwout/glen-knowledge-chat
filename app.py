@@ -12568,6 +12568,69 @@ def api_console_opens():
     return jsonify({"ok": True, "opens": data})
 
 
+@app.route("/api/console/masterclass", methods=["POST"])
+def api_console_masterclass_create():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc, zoom as _zoom
+    body = request.get_json(silent=True) or {}
+    topic = (body.get("topic") or "").strip()
+    start_ts = (body.get("start_ts") or "").strip()
+    if not topic or not start_ts:
+        return jsonify({"error": "topic and start_ts required"}), 400
+    duration = int(body.get("duration_min") or 60)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx); _init_calendar_table()
+        eid = _mc.create_event(cx, topic=topic, description=body.get("description") or "",
+                               start_ts=start_ts, duration_min=duration,
+                               price_cents=int(body.get("price_cents") or 0),
+                               member_price_cents=int(body.get("member_price_cents") or 0))
+        # synthetic glen-lane calendar row
+        try:
+            end_ts = (datetime.fromisoformat(start_ts[:19]) + timedelta(minutes=duration)).isoformat()
+        except Exception:
+            end_ts = start_ts
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            cx.execute(
+                "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
+                "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+                "VALUES (?, 'delegated', ?, 'MasterClass', ?, ?, ?, 'Zoom', 'glen', 'visible', 0)",
+                (now, f"masterclass-{eid}", f"MasterClass: {topic}", start_ts, end_ts))
+        except Exception:
+            app.logger.exception("masterclass calendar insert failed")
+        cx.commit()
+    # best-effort Zoom (outside the lock)
+    zoom_ok = False
+    try:
+        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
+                              os.environ["ZOOM_CLIENT_SECRET"])
+        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic=f"MasterClass: {topic}",
+                                 start_iso=start_ts, duration_min=duration, waiting_room=False)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+            _mc.init_masterclass_tables(cx2)
+            _mc.set_zoom(cx2, eid, m.get("join_url"), m.get("meeting_id"))
+        zoom_ok = bool(m.get("join_url"))
+    except Exception:
+        app.logger.exception("masterclass zoom create failed")
+    return jsonify({"ok": True, "event_id": eid,
+                    "event_url": f"{PUBLIC_BASE_URL}/masterclass/{eid}", "zoom_ok": zoom_ok})
+
+
+@app.route("/api/console/masterclass/<int:event_id>/zoom-url", methods=["POST"])
+def api_console_masterclass_zoom_url(event_id):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc
+    url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.set_zoom(cx, event_id, url, "")
+    return jsonify({"ok": True})
+
+
 @app.route("/console/biofield-reveals", methods=["GET"])
 def console_biofield_reveals_page():
     """Serve the biofield reveals review console page."""
