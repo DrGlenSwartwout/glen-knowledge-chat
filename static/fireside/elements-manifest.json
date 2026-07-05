@@ -61,8 +61,8 @@
         "oneshots": [
           { "id": "metal-voice", "first_gap_s": 6, "min_gap_s": 80, "max_gap_s": 140,
             "alternate": [
-              { "file": "/static/fireside/audio/amb-bowl.mp3", "volume": 0.057 },
-              { "file": "/static/fireside/audio/amb-chant.mp3", "volume": 0.13 }
+              { "file": "/static/fireside/audio/amb-chant.mp3", "volume": 0.6 },
+              { "file": "/static/fireside/audio/amb-bowl.mp3", "volume": 0.057 }
             ] },
           { "id": "bottlechime", "file": "/static/fireside/audio/amb-bottlechime.mp3", "volume": 0.08, "min_gap_s": 220, "max_gap_s": 500 }
         ]
