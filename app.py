@@ -15575,6 +15575,111 @@ def consult_join():
                         "start_ts": (upcoming[0] if upcoming else rows[-1]["start_ts"])}), 403
 
 
+def _triage_ident(cx, token):
+    from dashboard import triage as _triage
+    return _triage.resolve_invite(cx, token)
+
+
+def _triage_hours(practitioner):
+    return GLEN_CONSULT_HOURS if practitioner == "glen" else EVOX_HOURS
+
+
+def _triage_send_confirmations(token, invite, booking):
+    pass  # Task 4 replaces this with actual email/portal confirmation sends
+
+
+@app.route("/triage/<token>")
+def triage_page(token):
+    return send_from_directory(STATIC, "triage.html")
+
+
+@app.route("/api/triage/state")
+def triage_state():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import triage as _triage; _triage.init_triage_tables(cx)
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        medium = "video" if inv["practitioner"] == "glen" else "phone"
+        return jsonify({"name": inv["name"], "practitioner": inv["practitioner"],
+                        "medium": medium, "booked": inv["status"] == "booked",
+                        "booked_start": inv["booked_start"]})
+
+
+@app.route("/api/triage/availability")
+def triage_availability():
+    from dashboard import evox as _ev, triage as _triage
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["status"] == "booked":
+            return jsonify({"error": "already_booked"}), 409
+        p = inv["practitioner"]
+        days = _evox_days(request.args.get("range", "week"))
+        busy = _ev.rae_busy_intervals(cx, days[0].isoformat(), days[-1].isoformat(), practitioner=p)
+        booked = _ev.booked_starts(cx, practitioner=p)
+        slots = _ev.available_slots(days, _triage_hours(p), busy, booked, _hst_now(), duration_min=15)
+        return jsonify({"slots": slots})
+
+
+@app.route("/api/triage/book", methods=["POST"])
+def triage_book():
+    from dashboard import evox as _ev, triage as _triage
+    from datetime import date
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    token = request.args.get("token", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
+        inv = _triage_ident(cx, token)
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["status"] == "booked":
+            return jsonify({"error": "already_booked"}), 409
+        p = inv["practitioner"]
+        try:
+            d = date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat(), practitioner=p)
+        if start_ts not in _ev.available_slots([d], _triage_hours(p), busy,
+                                               _ev.booked_starts(cx, practitioner=p),
+                                               _hst_now(), duration_min=15):
+            return jsonify({"error": "slot_unavailable"}), 409
+        medium = "video" if p == "glen" else "phone"
+        try:
+            b = _ev.create_booking(cx, inv["email"], start_ts, duration_min=15,
+                                   practitioner=p, session_type="triage", medium=medium)
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+        _triage.mark_booked(cx, token, start_ts)
+    _triage_send_confirmations(token, inv, b)   # Task 4
+    return jsonify({"ok": True, "start_ts": start_ts})
+
+
+@app.route("/api/triage/join")
+def triage_join():
+    from dashboard import triage as _triage, consult as _consult
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _triage.init_triage_tables(cx)
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["practitioner"] != "glen":
+            return jsonify({"error": "phone_call"}), 400
+        if inv["status"] != "booked" or not inv["booked_start"]:
+            return jsonify({"error": "no_booking"}), 404
+        if _consult.within_join_window(inv["booked_start"], _hst_now()):
+            return jsonify({"ok": True, "join_url": GLEN_PMI_URL})
+        return jsonify({"error": "not_in_window", "start_ts": inv["booked_start"]}), 403
+
+
 @app.route("/api/console/biofield-portal", methods=["GET"])
 def api_console_biofield_load():
     if not _portal_console_ok():
