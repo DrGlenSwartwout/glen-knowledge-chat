@@ -13298,6 +13298,54 @@ def api_practitioner_settings_post():
     return jsonify(resp)
 
 
+def _coach_cert_ok(cx, email):
+    """True only if the practitioner's APPROVED cert submissions satisfy the
+    completion rules. Fail-closed: any error → False (an unverified student is
+    never listed)."""
+    try:
+        from dashboard import cert_submissions as _cs, cert_rules as _cr
+        subs = [s for s in _cs.list_for_email(cx, email) if s.get("status") == "approved"]
+        return bool(_cr.evaluate(subs).get("complete"))
+    except Exception:
+        app.logger.exception("coach cert check failed for %s", email)
+        return False
+
+
+@app.route("/api/practitioner/coach-profile", methods=["POST"])
+def practitioner_coach_profile():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard.practitioner_portal import practitioner_email_by_id
+    email = (practitioner_email_by_id(pid) or "").strip().lower()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_directory as _cd
+    name = (request.form.get("name") or "").strip()
+    focus = (request.form.get("focus") or "").strip()
+    try:
+        capacity = max(0, min(12, int(request.form.get("capacity") or 0)))
+    except (TypeError, ValueError):
+        capacity = 0
+    intro_video_url = (request.form.get("intro_video_url") or "").strip()
+    vf = request.files.get("video")
+    if vf is not None and vf.filename:
+        fname = f"coach-{secrets.token_hex(8)}.mp4"
+        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
+        intro_video_url = f"/portal-asset/{fname}"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cd.init_coach_tables(cx)
+        cert_ok = _coach_cert_ok(cx, email)
+        _cd.upsert_volunteer(cx, email=email, name=name, focus=focus,
+                             intro_video_url=intro_video_url, capacity=capacity,
+                             cert_ok=cert_ok)
+        _cd.set_active(cx, email, 1 if capacity > 0 else 0)
+    return jsonify({"ok": True, "cert_ok": bool(cert_ok), "capacity": capacity,
+                    "listed": bool(cert_ok and capacity > 0),
+                    "intro_video_url": intro_video_url})
+
+
 def _record_dispensary_sale(code, customer_email, bottles, invoice_id):
     """Attribute a drop-ship sale to a practitioner by dispensary code and credit
     $20/bottle Wellness Credit. Idempotent on the client invoice id."""
