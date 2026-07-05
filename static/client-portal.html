@@ -745,7 +745,7 @@ function render(d, v){
           if (badge) badge.remove();
         };
         html += `<div class="card">
-          <div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window.__openReport('${esc(sd)}')">
+          <div class="rr-header" data-scan="${esc(sd)}" style="display:flex;align-items:center;gap:10px;cursor:pointer">
             <strong>Biofield report — ${esc(sd || "")}</strong>
             ${isNew ? `<span id="rr-new" style="background:#d4a843;color:#000;font-size:.72rem;font-weight:700;padding:1px 7px;border-radius:10px">New</span>` : ""}
             <span style="flex:1"></span><span style="color:var(--muted)">▾</span>
@@ -1018,6 +1018,17 @@ function render(d, v){
     t.addEventListener("click", ()=>selectScan(t.getAttribute("data-scan"))));
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
+
+  // Read-receipt: wire the collapsed report header's expand click without an
+  // inline onclick (avoids interpolating the scan date into a JS string —
+  // see rr-header's data-scan attribute above). Guarded so re-clicking an
+  // already-expanded card doesn't re-POST the open event.
+  const rrHeader = app.querySelector(".rr-header");
+  if(rrHeader) rrHeader.addEventListener("click", ()=>{
+    if(rrHeader.dataset.opened === "1") return;
+    rrHeader.dataset.opened = "1";
+    if(window.__openReport) window.__openReport(rrHeader.getAttribute("data-scan"));
+  });
 
   const nbtn = document.getElementById("notifBtn");
   if(nbtn) nbtn.addEventListener("click", ()=>setNotifyPref(nbtn));
