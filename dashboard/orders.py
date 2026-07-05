@@ -665,6 +665,21 @@ def _send_invoice_exec(params, ctx):
     except Exception as e:
         raise ValueError(f"could not send invoice email: {e}")
     mark_invoice_sent(cx, oid)
+    # household cc: private copy to consented+subscribed caregivers (best-effort;
+    # uses this function's own db connection — never opens a nested locked one)
+    try:
+        if (os.environ.get("HOUSEHOLD_SHARING_ENABLED", "") or "").strip().lower() in ("1", "true", "yes"):
+            from dashboard import household as _hh
+            _hh.init_household_tables(cx)
+            for _care in _hh.cc_recipients_for(cx, email):
+                try:
+                    _inbox.send_email(_care, "An invoice is available for someone in your care",
+                                       "A new invoice was sent to a member of your household. "
+                                       "Open your portal to view it: https://illtowell.com/portal/login")
+                except Exception as _e:
+                    print(f"[household-cc] invoice copy to {_care}: {_e!r}", flush=True)
+    except Exception as _e:
+        print(f"[household-cc] invoice fanout: {_e!r}", flush=True)
     try:
         # Read-receipts (Task 5): remember the token that actually went to the
         # customer, so the Orders board can look up its open status later.

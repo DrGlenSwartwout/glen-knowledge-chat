@@ -69,3 +69,29 @@ def test_flag_off_endpoints_inert(tmp_path, monkeypatch):
     assert r.get_json().get("recorded") is False or r.get_json().get("reason") == "disabled"
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert h.can_view(cx, "care@x.com", "mem@x.com") is True   # unchanged (flag off)
+
+
+def test_cc_copy_sent_for_report(monkeypatch, tmp_path):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import household as h
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        h.init_household_tables(cx); h.add_member(cx, "care@x.com", "mem@x.com", "M", "pet"); cx.commit()
+    sent = []
+    monkeypatch.setattr(appmod, "_send_inquiry_email",
+                        lambda to, subj, body, **k: sent.append(to) or (True, ""))
+    # call the cc-fanout helper directly (the site calls it after the member send)
+    appmod._household_cc_report("mem@x.com", "New scan for M")
+    assert "care@x.com" in sent          # caregiver got a private copy
+
+
+def test_no_cc_copy_when_switch_off(monkeypatch, tmp_path):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import household as h
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        h.init_household_tables(cx); h.add_member(cx, "care@x.com", "mem@x.com", "M", "pet")
+        h.set_cc_enabled(cx, "care@x.com", "mem@x.com", 0); cx.commit()
+    sent = []
+    monkeypatch.setattr(appmod, "_send_inquiry_email",
+                        lambda to, subj, body, **k: sent.append(to) or (True, ""))
+    appmod._household_cc_report("mem@x.com", "New scan for M")
+    assert sent == []                     # cc off → no copy

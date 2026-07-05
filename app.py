@@ -630,6 +630,29 @@ def _link_resend_generic(purpose, url_template, ttl):
     return handler
 
 
+def _household_cc_report(member_email, member_label_or_subject):
+    """Best-effort: send a private 'a new report is available for <member>' copy to each
+    caregiver who is consented + cc-subscribed for this member. Points them to their own
+    portal (no member token forwarded, no shared Cc header — addresses aren't cross-exposed)."""
+    if not _household_sharing_enabled():
+        return
+    try:
+        from dashboard import household as _hh
+        with sqlite3.connect(LOG_DB) as cx:
+            _hh.init_household_tables(cx)
+            recips = _hh.cc_recipients_for(cx, (member_email or "").strip().lower())
+        for care in recips:
+            subj = "A new biofield report is available for someone in your care"
+            body = ("A new biofield report was just published for a member of your household. "
+                    "Open your portal to view it.\n\nhttps://illtowell.com/portal/login")
+            try:
+                _send_inquiry_email(care, subj, body)
+            except Exception as _e:
+                print(f"[household-cc] report copy to {care}: {_e!r}", flush=True)
+    except Exception as _e:
+        print(f"[household-cc] report fanout: {_e!r}", flush=True)
+
+
 def _send_reveal_link(rid):
     """Mint a fresh reveal token (biofield_reveals.token_hash + auth_tokens), email the
     'ready' link, and mark notified only on a successful send. Returns True if sent.
@@ -664,6 +687,10 @@ def _send_reveal_link(rid):
     if sent:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.set_notified(cx, rid)
+        try:
+            _household_cc_report(email, None)
+        except Exception as _e:
+            print(f"[household-cc] report fanout call: {_e!r}", flush=True)
     return bool(sent)
 
 
