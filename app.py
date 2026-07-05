@@ -10404,7 +10404,12 @@ def api_console_client_scans_sync():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cs.init_client_scans_table(cx)
         for it in items:
-            total += _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+            try:
+                if not isinstance(it, dict):
+                    continue
+                total += _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+            except Exception as _e:
+                print(f"[client-scans-sync] skipped bad item: {_e!r}", flush=True)
     return jsonify({"ok": True, "upserted": total})
 
 

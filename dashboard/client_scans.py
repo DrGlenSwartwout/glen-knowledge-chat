@@ -33,6 +33,8 @@ def upsert_scans(cx, email, scans):
         return 0
     n = 0
     for s in scans or []:
+        if not isinstance(s, dict):
+            continue
         d = (s.get("scan_date") or "").strip()
         if not d:
             continue

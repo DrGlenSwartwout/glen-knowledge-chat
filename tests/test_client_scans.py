@@ -66,6 +66,23 @@ def test_sync_endpoint_upserts(tmp_path, monkeypatch):
     assert r2.status_code == 200
 
 
+def test_sync_endpoint_malformed_batch_item_no_500(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    c = appmod.app.test_client()
+    r = c.post("/api/console/client-scans/sync",
+               json={"batch": [
+                   {"email": "a@x.com", "scans": [{"scan_date": "2026-07-01"}]},
+                   "not-a-dict",
+                   {"email": "b@x.com", "scans": ["bad"]},
+               ]})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    import sqlite3
+    from dashboard import client_scans as cs
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cs.scans_for(cx, "a@x.com") != []
+        assert cs.scans_for(cx, "b@x.com") == []
+
+
 def test_available_scans_payload(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     from dashboard import client_portal as cp, client_scans as cs, portal_biofield_reports as pbr
