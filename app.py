@@ -15943,6 +15943,92 @@ def community_library():
         return jsonify({"tier": "free", "full": teasers})
 
 
+COMMUNITY_FEED_MODEL = "text-embedding-ada-002"
+COMMUNITY_FEED_FREE_K = int(os.environ.get("COMMUNITY_FEED_FREE_K", "3"))
+COMMUNITY_FEED_PAID_K = int(os.environ.get("COMMUNITY_FEED_PAID_K", "10"))
+
+
+def _community_candidates(cx, is_paid):
+    """Tier-visible full items as ranking candidates. Free strips video_ref."""
+    from dashboard import community as _cm
+    full = _cm.list_full(cx)
+    if is_paid:
+        return full, {f["id"]: f for f in full}
+    teasers = []
+    for it in full:
+        teasers.append({"id": it["id"], "type": it["type"], "title": it["title"],
+                        "description": it["description"], "interest_tags": it["interest_tags"],
+                        "published_at": it["published_at"], "teaser_outtakes": it["outtakes"]})
+    return teasers, {f["id"]: f for f in full}  # full lookup for embed text only
+
+
+def _member_interest_vec(cx, email, liked_topics):
+    """Return the member's interest vector ([] on cold start / failure). Cached in
+    member_interest; built from recent journal text + liked topics. Never raises."""
+    from dashboard import community as _cm, journal_store as _js, community_feed as _cf
+    cached = _cm.get_member_interest(cx, email, COMMUNITY_FEED_MODEL)
+    if cached is not None:
+        return cached["vec"]
+    try:
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        entries = _js.select(cx, since_iso=since, order="desc", limit=20)
+        jtexts = []
+        for e in entries:
+            jtexts.append(" ".join(str(v) for v in e.values()
+                                   if isinstance(v, str) and v.strip())[:2000])
+        text = _cf.build_interest_text(jtexts, liked_topics, [])
+        if not text:
+            return []
+        vec = embed(text)
+        _cm.set_member_interest(cx, email, vec, COMMUNITY_FEED_MODEL)
+        return vec
+    except Exception:
+        app.logger.exception("member interest build failed")
+        return []
+
+
+@app.route("/api/community/feed")
+def community_feed():
+    from dashboard import (community as _cm, community_signals as _cs, community_feed as _cf,
+                           evox as _ev, client_portal as _cp)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _cp.init_client_portal_table(cx)
+        _cm.init_community_tables(cx); _cm.init_feed_tables(cx); _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        email = ident.email
+        is_paid = _is_paid_member(email)
+        cands, full_by_id = _community_candidates(cx, is_paid)
+        sig = _cs.my_signals(cx, email)
+        liked = [s["target_key"] for s in sig["likes"] if s["target_type"] == "topic"]
+        blocked = [s["target_key"] for s in sig["blocks"] if s["target_type"] == "topic"]
+        for c in cands:
+            c["reaction_count"] = sum(_cs.reaction_counts(cx, c["id"]).values())
+        # lazy-embed any candidate missing a current-model vector
+        have = _cm.get_embeddings(cx, [c["id"] for c in cands], COMMUNITY_FEED_MODEL)
+        for c in cands:
+            if c["id"] in have:
+                continue
+            f = full_by_id.get(c["id"], c)
+            # list_full omits transcript, so pull it via get_content for the embed text
+            row = _cm.get_content(cx, c["id"]) or {}
+            text = (f.get("title", "") + " " + " ".join(f.get("interest_tags") or []) +
+                    " " + (row.get("transcript") or "")[:2000])
+            try:
+                v = embed(text); _cm.set_embedding(cx, c["id"], v, COMMUNITY_FEED_MODEL)
+                have[c["id"]] = v
+            except Exception:
+                app.logger.exception("content embed failed for %s", c["id"])
+        member_vec = _member_interest_vec(cx, email, liked)
+        ranked = _cf.rank(cands, member_vec, have, liked, blocked)
+        k = COMMUNITY_FEED_PAID_K if is_paid else COMMUNITY_FEED_FREE_K
+        top = ranked[:k]
+        return jsonify({"items": top, "cold_start": not member_vec})
+
+
 @app.route("/api/community/react", methods=["POST"])
 def community_react():
     from dashboard import community as _cm, community_signals as _cs
