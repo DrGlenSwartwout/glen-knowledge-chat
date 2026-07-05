@@ -15184,13 +15184,28 @@ def api_portal_chat(token):
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     if _ally_ov:
         _sys = _ally_ov + "\n\n" + _sys
-    # RAG (best-effort, fail-open)
+    # RAG (best-effort, fail-open) — embed the query ONCE and reuse for both the
+    # knowledge base and Community content retrieval.
     context_str = ""
+    qvec = None
     try:
-        matches = _match_query_namespaces(embed(query))
+        qvec = embed(query)
+        matches = _match_query_namespaces(qvec)
         context_str, _ = build_context(matches) if matches else ("", [])
     except Exception as e:
         print(f"[portal-concierge] retrieval: {e}", flush=True)
+    community_related = []
+    if qvec is not None:
+        try:
+            with sqlite3.connect(LOG_DB) as ccx:
+                ccx.row_factory = sqlite3.Row
+                community_related = _community_related(ccx, qvec, _is_paid_member(email), k=2)
+        except Exception as e:
+            print(f"[community-chat] related: {e}", flush=True)
+    if community_related:
+        titles = "; ".join(r["title"] for r in community_related)
+        context_str = (context_str + "\n" if context_str else "") + \
+            f"Relevant community sessions the member can open: {titles}."
     messages = []
     for m in history[-8:]:
         c = (m.get("content") or "").strip()
@@ -15202,6 +15217,8 @@ def api_portal_chat(token):
     messages.append({"role": "user", "content": user_block})
 
     def generate():
+        if community_related:
+            yield sse({"related": community_related})
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
