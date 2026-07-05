@@ -92,4 +92,33 @@ const cfg = {
   assert.equal(a.plays.length + b.plays.length, playsBefore, 'no new playback after stop');
 }
 
+// 6. wake() plays the react clip once, is ignored while reacting, then rests.
+{
+  const a = fakeVideo(), b = fakeVideo();
+  const cp = new CatPlayer(a, b, Object.assign({}, cfg, { wake_cooldown_s: 0 }));  // no cooldown
+  cp.start();                    // arrival react on a
+  a.onended();                   // react -> rest (active now b)
+  cp.wake();                     // on-demand wake
+  const reactEl = cp.a;
+  assert.equal(reactEl.src, '/react.mp4', 'wake plays the react clip');
+  assert.equal(cp._reacting, true, 'reacting flag set during wake');
+  const playsBefore = a.plays.length + b.plays.length;
+  cp.wake();                     // ignored while already reacting
+  assert.equal(a.plays.length + b.plays.length, playsBefore, 'no extra playback while reacting');
+  reactEl.onended();             // wake clip finishes
+  assert.equal(cp._reacting, false, 'reacting cleared after the wake clip');
+  assert.equal(cp.a.src, '/rest.mp4', 'settles back to rest after wake');
+  cp.stop();
+}
+
+// 7. wake() respects the cooldown: a second wake within the window is ignored.
+{
+  const a = fakeVideo(), b = fakeVideo();
+  const cp = new CatPlayer(a, b, Object.assign({}, cfg, { wake_cooldown_s: 999 }));
+  cp.start(); a.onended();       // enter rest; arrival set _lastWake
+  cp.wake();                     // within 999s of arrival -> cooldown blocks it
+  assert.equal(cp._reacting, false, 'wake blocked by cooldown after arrival');
+  cp.stop();
+}
+
 console.log('cat-player.test.mjs: all assertions passed');

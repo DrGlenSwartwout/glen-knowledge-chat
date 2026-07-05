@@ -1616,6 +1616,14 @@ load();
 
   let manifestP = null, current = null, amb = null, catPlayer = null;
   function stopCat(){ if (catPlayer) { try { catPlayer.stop(); } catch (e) {} catPlayer = null; } }
+
+  // Resident cat perks up when you start engaging Glendalf's chat (focus the input
+  // or send a message). No-op unless the Fire cat is active; the cooldown lives in
+  // CatPlayer.wake(), so it fires once per re-engagement, not on every keystroke.
+  const _wakeCat = () => { try { if (catPlayer) catPlayer.wake(); } catch (e) {} };
+  const _ci = document.getElementById('chatInput'), _cs = document.getElementById('chatSend');
+  if (_ci) _ci.addEventListener('focus', _wakeCat);
+  if (_cs) _cs.addEventListener('click', _wakeCat);
   const loadManifest = () => (manifestP ||= fetch('/static/fireside/elements-manifest.json').then(r => r.ok ? r.json() : null).catch(() => null));
 
   // Reflect the saved sound PREFERENCE, not the runtime amb — on a reload the pref

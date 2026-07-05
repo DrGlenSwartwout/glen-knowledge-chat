@@ -26,6 +26,9 @@ export class CatPlayer {
     const min = Math.max(5, Number(cfg.idle_min_s) || 120);
     const max = Math.max(min, Number(cfg.idle_max_s) || 300);
     this.min = min * 1000; this.max = max * 1000;
+    const _wc = Number(cfg.wake_cooldown_s);                              // cooldown between on-demand wakes
+    this.wakeCd = Math.max(0, Number.isFinite(_wc) ? _wc : 60) * 1000;    // 0 = no cooldown; default 60s
+    this._reacting = false; this._lastWake = 0;
     this.queued = null; this.timer = null; this.stopped = true;
     for (const v of [front, back]) {
       v.muted = true; v.loop = false; v.playsInline = true;
@@ -54,6 +57,10 @@ export class CatPlayer {
       this.a.style.opacity = '0';
       const t = this.a; this.a = buf; this.b = t;          // swap roles
       this.a.onended = () => { if (!this.stopped) onEnded(); };
+      // Clear the outgoing clip's handler: on an on-demand interrupt (wake) the old
+      // clip is still playing hidden, and its stale 'ended' would otherwise fire a
+      // second, conflicting transition. (No-op in the normal at-boundary path.)
+      this.b.onended = null;
     };
     const cur = buf.getAttribute('src') || '';
     if (cur.indexOf(url) !== -1 && buf.readyState >= 2) begin();
@@ -72,6 +79,22 @@ export class CatPlayer {
 
   _rest() { this._go(this.rest, () => this._afterRest()); }
 
+  // Perk up on demand — e.g. the member starts engaging Glendalf's chat. Plays the
+  // wake clip once, then settles back to rest. Cooldown-gated so re-engaging fires
+  // it once per quiet spell (not every keystroke), and ignored while already
+  // reacting or when there's no react clip / the player is stopped.
+  wake() {
+    if (this.stopped || !this.react || this._reacting) return;
+    const now = this._now();
+    if (this._lastWake && (now - this._lastWake) < this.wakeCd) return;
+    this._lastWake = now;
+    this._reacting = true;
+    clearTimeout(this.timer); this.queued = null;       // drop any pending idle
+    this._go(this.react, () => { this._reacting = false; this._schedule(); this._rest(); });
+  }
+
+  _now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0; }
+
   _schedule() {
     clearTimeout(this.timer);
     if (!this.idle.length) return;
@@ -85,8 +108,9 @@ export class CatPlayer {
     this.stopped = false;
     this.a = this.front; this.b = this.back;
     this.a.style.opacity = '1'; this.b.style.opacity = '0';
-    const enter = () => { this._schedule(); this._rest(); };
+    const enter = () => { this._reacting = false; this._schedule(); this._rest(); };
     if (this.react) {
+      this._reacting = true; this._lastWake = this._now();   // arrival wake starts the cooldown
       this.a.src = this.react;
       this.a.onended = () => { if (!this.stopped) enter(); };
       try { this.a.currentTime = 0; } catch (e) {}
@@ -101,6 +125,7 @@ export class CatPlayer {
 
   stop() {
     this.stopped = true;
+    this._reacting = false;
     clearTimeout(this.timer);
     this.queued = null;
     for (const v of [this.front, this.back]) {
