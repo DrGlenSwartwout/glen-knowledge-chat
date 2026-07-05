@@ -123,3 +123,28 @@ def test_portal_view_carries_consult_block(client):
     d = client.get(f"/api/portal/{tok}/view").get_json()
     assert "consult" in d and d["consult"]["ready"] is True
     assert "stages" in d["consult"]
+
+
+def test_run_reminders_uses_consult_copy_for_consult_bookings(client, monkeypatch):
+    import sqlite3
+    from datetime import timedelta
+    from dashboard import evox
+    captured = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: captured.append((to, subj, html)),
+                        raising=False)
+    start = (appmod._hst_now() + timedelta(hours=30)).replace(microsecond=0).isoformat()
+    end = (appmod._hst_now() + timedelta(hours=30, minutes=30)).replace(microsecond=0).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        evox.init_evox_tables(cx)
+        cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+                   "session_type,medium,zoom_join_url) VALUES (?,?,?,?, 'booked', ?,?,?)",
+                   ("consult@x.com", "glen", start, end, "biofield-consult", "video",
+                    "https://zoom.us/j/consulttest"))
+        cx.commit()
+    r = client.post("/api/evox/run-reminders", headers=ADMIN)
+    assert r.status_code == 200 and r.get_json()["sent"] == 1
+    to, subj, html = captured[-1]
+    assert to == "consult@x.com"
+    assert subj == "Reminder: your Biofield Consult tomorrow"
+    assert "zoom.us/j/consulttest" in html and "call Rae" not in html

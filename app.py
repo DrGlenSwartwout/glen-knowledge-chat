@@ -14282,18 +14282,28 @@ def evox_run_reminders():
             "SELECT * FROM evox_bookings WHERE status='booked' AND reminded_at IS NULL "
             "AND start_ts BETWEEN ? AND ?", (lo, hi)).fetchall()
         for r in rows:
-            phone = EVOX_RAE_PHONE or "the number in your confirmation"
             nice = r["start_ts"].replace("T", " ")
-            html = (f"<p>Reminder: your EVOX session is tomorrow at <b>{nice} HST</b>. "
-                    f"Call Rae at {phone} at your appointment time.</p>")
+            keys = r.keys()
+            stype = r["session_type"] if "session_type" in keys else "evox"
+            if stype == "biofield-consult":
+                join = r["zoom_join_url"] if "zoom_join_url" in keys else None
+                join_line = (f"Join here: {join}" if join
+                             else "Your Zoom link will follow by email.")
+                subject = "Reminder: your Biofield Consult tomorrow"
+                html = (f"<p>Reminder: your Biofield Consult with Dr. Glen is tomorrow at "
+                        f"<b>{nice} HST</b>. {join_line}</p>")
+            else:
+                phone = EVOX_RAE_PHONE or "the number in your confirmation"
+                subject = "Reminder: your EVOX session tomorrow"
+                html = (f"<p>Reminder: your EVOX session is tomorrow at <b>{nice} HST</b>. "
+                        f"Call Rae at {phone} at your appointment time.</p>")
             try:
-                send_evox_email(r["email"], "", "Reminder: your EVOX session tomorrow",
-                                 html, html, b"")
+                send_evox_email(r["email"], "", subject, html, html, b"")
                 cx.execute("UPDATE evox_bookings SET reminded_at=? WHERE id=?",
                            (now.isoformat(), r["id"]))
                 sent += 1
             except Exception:
-                app.logger.exception("EVOX reminder send failed for booking %s", r["id"])
+                app.logger.exception("reminder send failed for booking %s", r["id"])
         cx.commit()
     return jsonify({"sent": sent})
 
