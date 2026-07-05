@@ -14500,6 +14500,7 @@ def api_client_portal(token):
         "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
         "messages": _portal_chat_thread(email_for_reports),
         "element_state": element_state,
+        "element_backdrop_enabled": ELEMENT_BACKDROP_ENABLED,
     }
     # Task 5: portal reorder module (real order history + repertoire pricing +
     # member savings + forward-framed locked rows). Additive keys only — never
