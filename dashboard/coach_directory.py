@@ -60,3 +60,14 @@ def list_active(cx):
                       "WHERE active=1 AND cert_ok=1 ORDER BY updated_at DESC").fetchall()
     return [{"name": r["name"], "focus": r["focus"], "intro_video_url": r["intro_video_url"]}
             for r in rows]
+
+
+def list_active_full(cx):
+    """Server-side: active+cert_ok volunteers WITH email + capacity (for ref +
+    capacity composition in the route). Never send this shape to a member."""
+    rows = cx.execute("SELECT email, name, focus, intro_video_url, capacity "
+                      "FROM coach_volunteers WHERE active=1 AND cert_ok=1 "
+                      "ORDER BY updated_at DESC").fetchall()
+    return [{"email": r["email"], "name": r["name"], "focus": r["focus"],
+             "intro_video_url": r["intro_video_url"], "capacity": r["capacity"]}
+            for r in rows]
