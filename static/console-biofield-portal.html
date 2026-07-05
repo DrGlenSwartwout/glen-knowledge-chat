@@ -147,6 +147,15 @@
       <span id="consult-ready-msg" class="muted small"></span>
     </div>
 
+    <div style="margin-top:12px">
+      <h3>Send triage invite</h3>
+      <input id="tri-email" placeholder="prospect email">
+      <input id="tri-name" placeholder="name">
+      <select id="tri-who"><option value="glen">Dr. Glen</option><option value="rae">Rae</option></select>
+      <button class="btn ghost sm" onclick="sendTriageInvite()">Send invite</button>
+      <span id="tri-msg" class="muted small"></span>
+    </div>
+
     <div class="card">
       <h2>Portal chat &mdash; reply as Dr. Glen</h2>
       <p class="muted small">The client's saved portal conversation. Your reply appears in their portal chat and is remembered.</p>
@@ -231,6 +240,14 @@ async function markConsultReady(ready){
   const r = await api('POST', '/api/console/consult-ready', {email, ready});
   $('consult-ready-msg').textContent =
     r.ok ? (ready ? 'Consult unlocked ✓' : 'Consult locked') : ('Error ' + r.status);
+}
+
+async function sendTriageInvite(){
+  const email=(document.getElementById('tri-email').value||'').trim();
+  const name=(document.getElementById('tri-name').value||'').trim();
+  const practitioner=document.getElementById('tri-who').value;
+  const r=await api('POST','/api/console/triage-invite',{email,name,practitioner});
+  document.getElementById('tri-msg').textContent = r.ok ? ('Sent: '+r.json.url) : ('Error '+r.status);
 }
 
 async function loadCatalog(){

@@ -31746,6 +31746,37 @@ def api_console_sales_import():
     return jsonify({"ok": True, "line_items": len(rows), "product_rows": len(agg), "written": written})
 
 
+@app.route("/api/console/triage-invite", methods=["POST"])
+def api_console_triage_invite():
+    """Console-gated: create a Triage/Discovery invite and email the prospect a
+    booking link. See dashboard/triage.py (tokenized, hashed, 7-day expiry)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import triage as _triage
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    practitioner = (body.get("practitioner") or "").strip().lower()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    if practitioner not in ("glen", "rae"):
+        return jsonify({"error": "bad_practitioner"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _triage.init_triage_tables(cx)
+        token = _triage.create_invite(cx, email, name, practitioner)
+    url = f"{PUBLIC_BASE_URL}/triage/{token}"
+    who = "Dr. Glen" if practitioner == "glen" else "Rae"
+    html = (f"<p>Hello{(' ' + name) if name else ''},</p>"
+            f"<p>You are invited to book a free 15 minute call with {who}. "
+            f"Pick a time here: <a href=\"{url}\">{url}</a></p>")
+    try:
+        send_evox_email(email, name, f"Your 15 minute call with {who}", html, html, b"")
+    except Exception:
+        app.logger.exception("triage invite email failed to %s", email)
+    return jsonify({"ok": True, "url": url})
+
+
 @app.route("/console/top-products")
 def console_top_products_page():
     resp = send_from_directory(STATIC, "console-top-products.html")
