@@ -123,3 +123,61 @@ def list_full(cx):
                     "interest_tags": _row_tags(r), "published_at": r["published_at"],
                     "outtakes": list_outtakes(cx, parent_id=r["id"])})
     return out
+
+
+_FEED_DDL = """
+CREATE TABLE IF NOT EXISTS community_embeddings (
+    content_id INTEGER PRIMARY KEY,
+    vec TEXT,
+    model TEXT,
+    updated_at TEXT
+);
+CREATE TABLE IF NOT EXISTS member_interest (
+    email TEXT PRIMARY KEY,
+    vec TEXT,
+    model TEXT,
+    built_at TEXT
+);
+"""
+
+
+def init_feed_tables(cx):
+    cx.executescript(_FEED_DDL)
+    cx.commit()
+
+
+def set_embedding(cx, content_id, vec, model):
+    cx.execute(
+        "INSERT INTO community_embeddings (content_id,vec,model,updated_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(content_id) DO UPDATE SET vec=excluded.vec, model=excluded.model, "
+        "updated_at=excluded.updated_at",
+        (content_id, json.dumps(list(vec)), model, _now()))
+    cx.commit()
+
+
+def get_embeddings(cx, content_ids, model):
+    if not content_ids:
+        return {}
+    qs = ",".join("?" * len(content_ids))
+    rows = cx.execute(
+        f"SELECT content_id, vec FROM community_embeddings "
+        f"WHERE model=? AND content_id IN ({qs})",
+        [model, *content_ids]).fetchall()
+    return {r["content_id"]: json.loads(r["vec"]) for r in rows}
+
+
+def set_member_interest(cx, email, vec, model):
+    cx.execute(
+        "INSERT INTO member_interest (email,vec,model,built_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(email) DO UPDATE SET vec=excluded.vec, model=excluded.model, "
+        "built_at=excluded.built_at",
+        ((email or "").strip().lower(), json.dumps(list(vec)), model, _now()))
+    cx.commit()
+
+
+def get_member_interest(cx, email, model):
+    row = cx.execute("SELECT vec, built_at FROM member_interest WHERE email=? AND model=?",
+                     ((email or "").strip().lower(), model)).fetchone()
+    if not row:
+        return None
+    return {"vec": json.loads(row["vec"]), "built_at": row["built_at"]}
