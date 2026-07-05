@@ -16215,16 +16215,174 @@ def community_publish():
 
 @app.route("/api/community/coaches")
 def community_coaches():
-    from dashboard import coach_directory as _cd, coaching as _co
+    from dashboard import coach_directory as _cd, coaching as _co, coach_connect as _cc
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _cd.init_coach_tables(cx); _co.init_coaching_table(cx)
+        _cd.init_coach_tables(cx); _co.init_coaching_table(cx); _cc.init_connect_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
             return jsonify({"error": "not_found"}), 404
         if not _co.active_window(cx, ident.email):
             return jsonify({"eligible": False, "coaches": []})
-        return jsonify({"eligible": True, "coaches": _cd.list_active(cx)})
+        candidates = _cd.list_active_full(cx)
+        coaches = []
+        for cand in candidates:
+            if _cc.accepted_count(cx, cand["email"]) >= (cand["capacity"] or 0):
+                continue
+            coaches.append({"ref": _cc.coach_ref(cand["email"]), "name": cand["name"],
+                            "focus": cand["focus"], "intro_video_url": cand["intro_video_url"]})
+        apps = _cc.member_applications(cx, ident.email)
+        applications = [{"ref": _cc.coach_ref(a["coach_email"]), "status": a["status"]}
+                        for a in apps]
+        return jsonify({"eligible": True, "coaches": coaches, "applications": applications,
+                        "matched": _cc.member_has_accepted(cx, ident.email),
+                        "all_full": bool(candidates) and not coaches})
+
+
+@app.route("/api/community/coach-request", methods=["POST"])
+def community_coach_request():
+    from dashboard import coaching as _co, coach_connect as _cc, coach_directory as _cd
+    # multipart: coach_ref + note + optional `video` file (member intro). Falls back
+    # to JSON when no file is sent.
+    ref = (request.form.get("coach_ref") or (request.get_json(silent=True) or {}).get("coach_ref") or "").strip()
+    note = (request.form.get("note") or (request.get_json(silent=True) or {}).get("note") or "").strip()
+    # 1) authenticate + resolve the coach BEFORE touching any uploaded file
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx); _co.init_coaching_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _co.active_window(cx, ident.email):
+            return jsonify({"error": "not_eligible"}), 403
+        coach_email = _cc.email_for_ref(cx, ref)
+        if not coach_email:
+            return jsonify({"error": "coach_unavailable"}), 404
+        vol = _cd.get_volunteer(cx, coach_email)
+        capacity = (vol or {}).get("capacity", 0) or 0
+        if _cc.accepted_count(cx, coach_email) >= capacity:
+            return jsonify({"error": "coach_unavailable"}), 404  # coach is full
+        member_email = ident.email
+        rec = None
+        try:
+            from dashboard import client_portal as _cp
+            rec = _cp.get_portal_content_by_email(cx, member_email)
+        except Exception:
+            rec = None
+        first_name = (((rec or {}).get("name") or "").strip().split(" ") or [""])[0]
+    # 2) authenticated + coach valid -> now write the optional intro video (outside the lock)
+    member_video_url = ""
+    vf = request.files.get("video")
+    if vf is not None and vf.filename:
+        fname = f"member-{secrets.token_hex(8)}.mp4"
+        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
+        member_video_url = f"/portal-asset/{fname}"
+    # 3) create the application under the write lock
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx)
+        rid = _cc.create_request(cx, coach_email, member_email, first_name, note,
+                                 member_video_url=member_video_url)
+        if rid is None:
+            # already matched, or already applied to this coach
+            return jsonify({"error": "cannot_apply"}), 409
+        return jsonify({"ok": True, "status": "pending"})
+
+
+@app.route("/api/community/coach-waitlist", methods=["POST"])
+def community_coach_waitlist():
+    from dashboard import coaching as _co, coach_connect as _cc
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _co.active_window(cx, ident.email):
+            return jsonify({"error": "not_eligible"}), 403
+        _cc.join_waitlist(cx, ident.email)
+        return jsonify({"ok": True})
+
+
+@app.route("/api/community/coaching-interest", methods=["POST"])
+def community_coaching_interest():
+    from dashboard import coach_connect as _cc
+    body = request.get_json(force=True) or {}
+    tier = (body.get("tier") or "").strip()
+    if tier not in ("rae", "glen"):
+        return jsonify({"error": "bad_tier"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        _cc.record_interest(cx, ident.email, tier)
+        email = ident.email
+    who = "Dr. Glen ($200/mo, Causal Biofield Analysis)" if tier == "glen" \
+        else "Rae ($100/mo, EVOX session)"
+    try:
+        html = f"<p>{email} is interested in paid coaching with {who}.</p>"
+        send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Coaching interest: {tier}", html, html, b"")
+    except Exception:
+        app.logger.exception("coaching interest notify failed")
+    return jsonify({"ok": True})
+
+
+def _coach_session_email():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return None
+    from dashboard.practitioner_portal import practitioner_email_by_id
+    return (practitioner_email_by_id(pid) or "").strip().lower() or None
+
+
+@app.route("/api/practitioner/coach-requests")
+def practitioner_coach_requests():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_connect as _cc, coach_directory as _cd
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
+        vol = _cd.get_volunteer(cx, email)
+        capacity = (vol or {}).get("capacity", 0) or 0
+        accepted = _cc.accepted_count(cx, email)
+        coachees = [{"member_name": r["member_name"]}
+                    for r in _cc.requests_for_coach(cx, email, status="accepted")]
+        return jsonify({"pending": _cc.requests_for_coach(cx, email, status="pending"),
+                        "coachees": coachees, "capacity": capacity,
+                        "slots_left": max(0, capacity - accepted)})
+
+
+@app.route("/api/practitioner/coach-request/respond", methods=["POST"])
+def practitioner_coach_request_respond():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_connect as _cc, coach_directory as _cd
+    body = request.get_json(force=True) or {}
+    rid = body.get("request_id")
+    accept = bool(body.get("accept"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
+        if _cc.request_owner(cx, rid) != email:
+            return jsonify({"error": "not_found"}), 404
+        if accept:
+            vol = _cd.get_volunteer(cx, email)
+            capacity = (vol or {}).get("capacity", 0) or 0
+            if _cc.accepted_count(cx, email) >= capacity:
+                return jsonify({"error": "at_capacity"}), 409
+            member_email = _cc.request_member(cx, rid)
+            if _cc.member_has_accepted(cx, member_email):
+                return jsonify({"error": "member_taken"}), 409   # another coach won the race
+            _cc.set_request_status(cx, rid, "accepted")
+            _cc.withdraw_other_pendings(cx, member_email, rid)   # first-accept-wins
+            return jsonify({"ok": True, "status": "accepted"})
+        _cc.set_request_status(cx, rid, "declined")
+        return jsonify({"ok": True, "status": "declined"})
 
 
 @app.route("/api/onboarding/state")

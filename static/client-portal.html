@@ -1280,11 +1280,12 @@ async function initCoachesCard(){
     const r = await fetch(`/api/community/coaches?token=${encodeURIComponent(token)}`);
     d = r.ok ? await r.json() : {};
   }catch(e){ d = {}; }
-  if(!d || !d.eligible || !Array.isArray(d.coaches) || !d.coaches.length){
+  const hasCoaches = Array.isArray(d.coaches) && d.coaches.length > 0;
+  if(!d || !d.eligible || (!hasCoaches && !d.all_full && !d.matched)){
     card.hidden = true; card.innerHTML = ""; return;
   }
   card.hidden = false;
-  renderCoachesCard(card, d.coaches);
+  renderCoachesCard(card, d);
 }
 
 function safeMediaUrl(url){
@@ -1300,11 +1301,23 @@ function isSelfHostedVideoFile(url){
   return /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
 }
 
-function renderCoachesCard(card, coaches){
+function renderCoachesCard(card, d){
   card.innerHTML = "";
   const h = document.createElement("h2");
   h.textContent = "Meet your coaches";
   card.appendChild(h);
+  const coaches = Array.isArray(d.coaches) ? d.coaches : [];
+  const matched = !!d.matched;
+  if(matched){
+    const m = document.createElement("p");
+    m.className = "muted small";
+    m.textContent = "You are matched with a coach.";
+    card.appendChild(m);
+  }
+  const appMap = {};
+  (Array.isArray(d.applications) ? d.applications : []).forEach(function(a){
+    if(a && a.ref) appMap[a.ref] = a.status;
+  });
   coaches.forEach(function(c){
     if(!c || typeof c !== "object") return;
     const row = document.createElement("div");
@@ -1339,14 +1352,197 @@ function renderCoachesCard(card, coaches){
       media.style.marginTop = ".4rem";
       row.appendChild(media);
     }
+    if(!matched){
+      renderCoachApplyControl(row, c, appMap);
+    }
     card.appendChild(row);
   });
-  const note = document.createElement("p");
-  note.className = "muted small";
-  note.textContent = "Choosing your coach is coming soon.";
-  card.appendChild(note);
+  if(!coaches.length && !matched && !d.all_full){
+    const note = document.createElement("p");
+    note.className = "muted small";
+    note.textContent = "No coaches are available to show right now.";
+    card.appendChild(note);
+  }
+  renderWaitlistAndUpsell(card, d);
 }
 <!-- END coaches script -->
+
+<!-- BEGIN coach-apply script -->
+// Per-coach apply control (note + optional intro video), the "all coaches
+// full" waitlist button, and the paid-tier upsell offer. Members may apply
+// to multiple coaches; a coach's apply control is only suppressed once the
+// member is matched (globally) or has already applied to that specific
+// coach (per-ref, from d.applications). All server-derived strings are
+// still set via textContent only in renderCoachesCard above; nothing here
+// ever assigns HTML from server data.
+
+function renderCoachApplyControl(row, c, appMap){
+  const ref = c.ref || "";
+  const status = appMap[ref];
+  if(status){
+    const s = document.createElement("p");
+    s.className = "muted small";
+    s.textContent = status === "accepted" ? "Matched" : "Applied, waiting for a reply";
+    row.appendChild(s);
+    return;
+  }
+
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "btn ghost";
+  toggle.style.marginTop = ".4rem";
+  toggle.textContent = "Apply to this coach";
+
+  const form = document.createElement("div");
+  form.style.marginTop = ".5rem";
+  form.hidden = true;
+
+  const note = document.createElement("textarea");
+  note.rows = 3;
+  note.placeholder = "What are you working on?";
+  note.style.cssText = "width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit;resize:vertical";
+  form.appendChild(note);
+
+  const videoLabel = document.createElement("label");
+  videoLabel.className = "muted small";
+  videoLabel.style.display = "block";
+  videoLabel.style.marginTop = ".4rem";
+  videoLabel.textContent = "Optional: a short video about what you are looking for help with";
+  form.appendChild(videoLabel);
+
+  const videoInput = document.createElement("input");
+  videoInput.type = "file";
+  videoInput.accept = "video/mp4,video/*";
+  videoInput.style.display = "block";
+  videoInput.style.marginTop = ".2rem";
+  form.appendChild(videoInput);
+
+  const err = document.createElement("p");
+  err.className = "small err";
+  err.hidden = true;
+  form.appendChild(err);
+
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.className = "btn full";
+  submit.style.marginTop = ".5rem";
+  submit.textContent = "Send application";
+  submit.addEventListener("click", function(){
+    submitCoachApply(ref, note, videoInput, submit, err);
+  });
+  form.appendChild(submit);
+
+  toggle.addEventListener("click", function(){
+    form.hidden = !form.hidden;
+    toggle.textContent = form.hidden ? "Apply to this coach" : "Cancel";
+  });
+
+  row.appendChild(toggle);
+  row.appendChild(form);
+}
+
+async function submitCoachApply(ref, noteEl, videoInput, btn, err){
+  err.hidden = true;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const fd = new FormData();
+    fd.append("coach_ref", ref);
+    fd.append("note", noteEl.value || "");
+    const f = videoInput.files && videoInput.files[0];
+    if(f) fd.append("video", f);
+    const r = await fetch(`/api/community/coach-request?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: fd,
+    });
+    if(!r.ok) throw new Error();
+    await initCoachesCard();
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
+    err.hidden = false;
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+function renderWaitlistAndUpsell(card, d){
+  if(!d.all_full) return;
+
+  const wl = document.createElement("div");
+  wl.style.marginTop = "1rem";
+  const wlBtn = document.createElement("button");
+  wlBtn.type = "button";
+  wlBtn.className = "btn full";
+  wlBtn.textContent = "Join the waitlist";
+  const wlMsg = document.createElement("p");
+  wlMsg.className = "muted small";
+  wlMsg.hidden = true;
+  wlBtn.addEventListener("click", async function(){
+    wlBtn.disabled = true; const label = wlBtn.textContent; wlBtn.textContent = "Joining…";
+    try{
+      const r = await fetch(`/api/community/coach-waitlist?token=${encodeURIComponent(token)}`, {method: "POST"});
+      if(!r.ok) throw new Error();
+      wlMsg.textContent = "You are on the waitlist. We will let you know as soon as a coach opens up.";
+      wlMsg.hidden = false;
+      wlBtn.hidden = true;
+    }catch(e){
+      wlBtn.disabled = false; wlBtn.textContent = label;
+    }
+  });
+  wl.appendChild(wlBtn);
+  wl.appendChild(wlMsg);
+  card.appendChild(wl);
+
+  const upsell = document.createElement("div");
+  upsell.className = "card";
+  upsell.style.marginTop = "1rem";
+  const uh = document.createElement("h3");
+  uh.style.margin = "0 0 .4rem";
+  uh.textContent = "Start coaching now";
+  upsell.appendChild(uh);
+  const up = document.createElement("p");
+  up.className = "muted small";
+  up.textContent = "Our student coaches are full right now. Join the waitlist, or start coaching now with Rae ($100 a month, includes an EVOX session) or Dr. Glen ($200 a month, includes a Causal Biofield Analysis).";
+  upsell.appendChild(up);
+  upsell.appendChild(renderCoachingInterestOffer("rae", "Rae, $100 a month, includes an EVOX session"));
+  upsell.appendChild(renderCoachingInterestOffer("glen", "Dr. Glen, $200 a month, includes a Causal Biofield Analysis"));
+  card.appendChild(upsell);
+}
+
+function renderCoachingInterestOffer(tier, label){
+  const row = document.createElement("div");
+  row.style.marginTop = ".6rem";
+  const l = document.createElement("div");
+  l.className = "muted small";
+  l.textContent = label;
+  row.appendChild(l);
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn full";
+  btn.style.marginTop = ".3rem";
+  btn.textContent = "I'm interested";
+  const msg = document.createElement("p");
+  msg.className = "muted small";
+  msg.hidden = true;
+  btn.addEventListener("click", function(){ submitCoachingInterest(tier, btn, msg); });
+  row.appendChild(btn);
+  row.appendChild(msg);
+  return row;
+}
+
+async function submitCoachingInterest(tier, btn, msg){
+  btn.disabled = true;
+  try{
+    await fetch(`/api/community/coaching-interest?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({tier: tier}),
+    });
+  }catch(e){ /* best-effort: still show the thank-you so the member isn't stuck */ }
+  msg.textContent = "Thanks, we will be in touch.";
+  msg.hidden = false;
+  btn.hidden = true;
+}
+<!-- END coach-apply script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.
