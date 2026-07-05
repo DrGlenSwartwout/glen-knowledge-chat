@@ -15964,24 +15964,18 @@ def _community_candidates(cx, is_paid):
 
 def _member_interest_vec(cx, email, liked_topics):
     """Return the member's interest vector ([] on cold start / failure). Cached in
-    member_interest; built from recent journal text + liked topics. Never raises."""
-    from dashboard import community as _cm, journal_store as _js, community_feed as _cf
+    member_interest; built from liked topics only. Never raises."""
+    from dashboard import community as _cm, community_feed as _cf
     cached = _cm.get_member_interest(cx, email, COMMUNITY_FEED_MODEL)
     if cached is not None:
         return cached["vec"]
     try:
-        from datetime import datetime, timedelta, timezone
-        since = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
-        entries = _js.select(cx, since_iso=since, order="desc", limit=20)
-        jtexts = []
-        for e in entries:
-            jtexts.append(" ".join(str(v) for v in e.values()
-                                   if isinstance(v, str) and v.strip())[:2000])
-        text = _cf.build_interest_text(jtexts, liked_topics, [])
+        text = _cf.build_interest_text([], liked_topics, [])
         if not text:
             return []
         vec = embed(text)
-        _cm.set_member_interest(cx, email, vec, COMMUNITY_FEED_MODEL)
+        with _db_lock:
+            _cm.set_member_interest(cx, email, vec, COMMUNITY_FEED_MODEL)
         return vec
     except Exception:
         app.logger.exception("member interest build failed")
@@ -16018,14 +16012,16 @@ def community_feed():
             text = (f.get("title", "") + " " + " ".join(f.get("interest_tags") or []) +
                     " " + (row.get("transcript") or "")[:2000])
             try:
-                v = embed(text); _cm.set_embedding(cx, c["id"], v, COMMUNITY_FEED_MODEL)
+                v = embed(text)
+                with _db_lock:
+                    _cm.set_embedding(cx, c["id"], v, COMMUNITY_FEED_MODEL)
                 have[c["id"]] = v
             except Exception:
                 app.logger.exception("content embed failed for %s", c["id"])
         member_vec = _member_interest_vec(cx, email, liked)
         ranked = _cf.rank(cands, member_vec, have, liked, blocked)
         k = COMMUNITY_FEED_PAID_K if is_paid else COMMUNITY_FEED_FREE_K
-        top = ranked[:k]
+        top = [{k2: v2 for k2, v2 in it.items() if k2 != "score"} for it in ranked[:k]]
         return jsonify({"items": top, "cold_start": not member_vec})
 
 
