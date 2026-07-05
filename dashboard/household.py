@@ -15,6 +15,17 @@ def _norm(e):
     return (e or "").strip().lower()
 
 
+DEPENDENT_RELATIONSHIPS = {"child", "pet", "dependent", "charge", "caregiving-client"}
+
+
+def is_dependent(relationship):
+    return (relationship or "").strip().lower() in DEPENDENT_RELATIONSHIPS
+
+
+def default_cc_for(relationship):
+    return 1 if is_dependent(relationship) else 0
+
+
 def init_household_tables(cx):
     cx.execute("""
         CREATE TABLE IF NOT EXISTS household_members (
@@ -29,6 +40,23 @@ def init_household_tables(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_hm_primary ON household_members(primary_email)")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_hm_member ON household_members(member_email)")
+
+    # v1 sharing/cc columns (additive). share_consent defaults 1 (member shared,
+    # revocable). cc_enabled default 0 at the column level, but a brand-new column
+    # is backfilled from relationship (dependents → 1) exactly once.
+    try:
+        cx.execute("ALTER TABLE household_members ADD COLUMN share_consent INTEGER DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cx.execute("ALTER TABLE household_members ADD COLUMN cc_enabled INTEGER DEFAULT 0")
+        # column is brand new (ALTER succeeded) → backfill dependents once
+        cx.execute(
+            "UPDATE household_members SET cc_enabled=1 WHERE lower(coalesce(relationship,'')) IN (%s)"
+            % ",".join("?" * len(DEPENDENT_RELATIONSHIPS)), tuple(sorted(DEPENDENT_RELATIONSHIPS)))
+    except Exception:
+        pass
+
     cx.execute("""
         CREATE TABLE IF NOT EXISTS scan_reassignments (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,8 +76,9 @@ def add_member(cx, primary_email, member_email, label="", relationship=""):
         return False
     cx.execute(
         "INSERT OR IGNORE INTO household_members "
-        "(primary_email, member_email, label, relationship, created_at) VALUES (?,?,?,?,?)",
-        (p, m, label or "", relationship or "", _now()))
+        "(primary_email, member_email, label, relationship, created_at, share_consent, cc_enabled) "
+        "VALUES (?,?,?,?,?,1,?)",
+        (p, m, label or "", relationship or "", _now(), default_cc_for(relationship)))
     cx.commit()
     return True
 
@@ -62,9 +91,11 @@ def remove_member(cx, primary_email, member_email):
 
 def members_for(cx, primary_email):
     rows = cx.execute(
-        "SELECT member_email, label, relationship FROM household_members "
+        "SELECT member_email, label, relationship, share_consent, cc_enabled FROM household_members "
         "WHERE primary_email=? ORDER BY created_at, id", (_norm(primary_email),)).fetchall()
-    return [{"email": r[0], "label": r[1] or "", "relationship": r[2] or ""} for r in rows]
+    return [{"email": r[0], "label": r[1] or "", "relationship": r[2] or "",
+             "share_consent": int(r[3] if r[3] is not None else 1),
+             "cc_enabled": int(r[4] if r[4] is not None else 0)} for r in rows]
 
 
 def can_view(cx, viewer_email, target_email):
@@ -74,8 +105,42 @@ def can_view(cx, viewer_email, target_email):
     if v == t:
         return True
     return cx.execute(
-        "SELECT 1 FROM household_members WHERE primary_email=? AND member_email=? LIMIT 1",
-        (v, t)).fetchone() is not None
+        "SELECT 1 FROM household_members WHERE primary_email=? AND member_email=? "
+        "AND share_consent=1 LIMIT 1", (v, t)).fetchone() is not None
+
+
+def set_share_consent(cx, primary_email, member_email, consent):
+    cx.execute("UPDATE household_members SET share_consent=? WHERE primary_email=? AND member_email=?",
+               (1 if consent else 0, _norm(primary_email), _norm(member_email)))
+    cx.commit()
+
+
+def set_cc_enabled(cx, primary_email, member_email, enabled):
+    cx.execute("UPDATE household_members SET cc_enabled=? WHERE primary_email=? AND member_email=?",
+               (1 if enabled else 0, _norm(primary_email), _norm(member_email)))
+    cx.commit()
+
+
+def viewable_members_for(cx, primary_email):
+    rows = cx.execute(
+        "SELECT member_email, label, relationship FROM household_members "
+        "WHERE primary_email=? AND share_consent=1 ORDER BY created_at, id",
+        (_norm(primary_email),)).fetchall()
+    return [{"email": r[0], "label": r[1] or "", "relationship": r[2] or ""} for r in rows]
+
+
+def cc_recipients_for(cx, member_email):
+    rows = cx.execute(
+        "SELECT primary_email FROM household_members "
+        "WHERE member_email=? AND share_consent=1 AND cc_enabled=1", (_norm(member_email),)).fetchall()
+    return [r[0] for r in rows]
+
+
+def caregivers_for(cx, member_email):
+    rows = cx.execute(
+        "SELECT primary_email, share_consent FROM household_members WHERE member_email=? "
+        "ORDER BY created_at, id", (_norm(member_email),)).fetchall()
+    return [{"primary_email": r[0], "share_consent": int(r[1] if r[1] is not None else 1)} for r in rows]
 
 
 def same_household(cx, a, b):

@@ -18,10 +18,12 @@ async function load(){
   const p = document.getElementById("primary").value.trim().toLowerCase();
   const r = await fetch("/api/console/household?primary_email="+encodeURIComponent(p),{headers:H});
   const j = await r.json();
-  let h = `<table><tr><th>Member</th><th>Label</th><th>Rel</th><th>Scan dates</th><th></th></tr>`;
+  let h = `<table><tr><th>Member</th><th>Label</th><th>Rel</th><th>Scan dates</th><th>Share</th><th>CC</th><th></th></tr>`;
   for(const m of (j.members||[])){
     h += `<tr><td>${esc(m.email)}</td><td>${esc(m.label)}</td><td>${esc(m.relationship)}</td>
       <td>${(m.scan_dates||[]).map(esc).join(", ")}</td>
+      <td><input type="checkbox" class="hh-share" data-member="${esc(m.email)}" ${m.share_consent ? "checked":""}></td>
+      <td><input type="checkbox" class="hh-cc" data-member="${esc(m.email)}" ${m.cc_enabled ? "checked":""}></td>
       <td><button class="hh-rm" data-email="${esc(m.email)}">remove</button></td></tr>`;
   }
   h += `</table><p>Add member: <input id="me" placeholder="member@email">
@@ -29,6 +31,14 @@ async function load(){
     <button onclick="add()">Add</button></p>`;
   document.getElementById("out").innerHTML = h;
   document.querySelectorAll(".hh-rm").forEach(b => b.addEventListener("click", () => rm(b.dataset.email)));
+  document.querySelectorAll(".hh-share").forEach(el => el.addEventListener("change", () =>
+    fetch("/api/console/household",{method:"POST",headers:H,body:JSON.stringify(
+      {primary_email:document.getElementById("primary").value.trim().toLowerCase(),
+       member_email:el.dataset.member, share_consent: el.checked?1:0})})));
+  document.querySelectorAll(".hh-cc").forEach(el => el.addEventListener("change", () =>
+    fetch("/api/console/household",{method:"POST",headers:H,body:JSON.stringify(
+      {primary_email:document.getElementById("primary").value.trim().toLowerCase(),
+       member_email:el.dataset.member, cc_enabled: el.checked?1:0})})));
 }
 async function add(){
   const p=document.getElementById("primary").value.trim().toLowerCase();

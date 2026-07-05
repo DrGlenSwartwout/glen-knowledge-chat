@@ -631,6 +631,29 @@ def _link_resend_generic(purpose, url_template, ttl):
     return handler
 
 
+def _household_cc_report(member_email, member_label_or_subject):
+    """Best-effort: send a private 'a new report is available for <member>' copy to each
+    caregiver who is consented + cc-subscribed for this member. Points them to their own
+    portal (no member token forwarded, no shared Cc header — addresses aren't cross-exposed)."""
+    if not _household_sharing_enabled():
+        return
+    try:
+        from dashboard import household as _hh
+        with sqlite3.connect(LOG_DB) as cx:
+            _hh.init_household_tables(cx)
+            recips = _hh.cc_recipients_for(cx, (member_email or "").strip().lower())
+        for care in recips:
+            subj = "A new biofield report is available for someone in your care"
+            body = ("A new biofield report was just published for a member of your household. "
+                    "Open your portal to view it.\n\nhttps://illtowell.com/portal/login")
+            try:
+                _send_inquiry_email(care, subj, body)
+            except Exception as _e:
+                print(f"[household-cc] report copy to {care}: {_e!r}", flush=True)
+    except Exception as _e:
+        print(f"[household-cc] report fanout: {_e!r}", flush=True)
+
+
 def _send_reveal_link(rid):
     """Mint a fresh reveal token (biofield_reveals.token_hash + auth_tokens), email the
     'ready' link, and mark notified only on a successful send. Returns True if sent.
@@ -665,6 +688,10 @@ def _send_reveal_link(rid):
     if sent:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.set_notified(cx, rid)
+        try:
+            _household_cc_report(email, None)
+        except Exception as _e:
+            print(f"[household-cc] report fanout call: {_e!r}", flush=True)
     return bool(sent)
 
 
@@ -13802,6 +13829,14 @@ def _household_view_enabled():
         "1", "true", "yes")
 
 
+def _household_sharing_enabled():
+    """Two-sided consent + cc-routing controls (Task 2). Default OFF — when off,
+    the two /share-consent and /cc-pref endpoints are inert (200 ok, recorded:false)
+    and the portal payload never gains 'household_cc'/'household_caregivers' keys."""
+    return (os.environ.get("HOUSEHOLD_SHARING_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
 def _read_receipts_enabled():
     """Read-receipts track-open feature (Task 2). Default OFF — when off, the two
     track-open endpoints are inert (200 ok, recorded:false) and the portal/invoice
@@ -14392,18 +14427,26 @@ def api_client_portal(token):
     # (fail-closed: never errors, never leaks whether an email exists).
     primary_email = email_for_reports
     household = []
+    household_cc = {}
+    household_caregivers = []
     if _household_view_enabled() and primary_email:
         try:
             from dashboard import household as _hh
             with sqlite3.connect(LOG_DB) as _cxh:
                 _hh.init_household_tables(_cxh)
-                household = _hh.members_for(_cxh, primary_email)
+                household = _hh.viewable_members_for(_cxh, primary_email)
+                if _household_sharing_enabled():
+                    _full = _hh.members_for(_cxh, primary_email)
+                    household_cc = {m["email"]: m["cc_enabled"] for m in _full}
+                    household_caregivers = _hh.caregivers_for(_cxh, primary_email)
                 _req_member = (request.args.get("member") or "").strip().lower()
                 if _req_member and _hh.can_view(_cxh, primary_email, _req_member):
                     email_for_reports = _req_member  # re-point the whole portal at the member
         except Exception as _e:
             print(f"[household] {_e!r}", flush=True)
             household = []
+            household_cc = {}
+            household_caregivers = []
     cx_r = sqlite3.connect(LOG_DB)
     _pbr.init_table(cx_r)
     dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
@@ -14530,6 +14573,9 @@ def api_client_portal(token):
     payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
     if _household_view_enabled():
         payload["household"] = household
+        if _household_sharing_enabled():
+            payload["household_cc"] = household_cc          # {member_email: 0|1} for the caregiver UI
+            payload["household_caregivers"] = household_caregivers  # this email's inbound caregivers
     if _read_receipts_enabled():
         try:
             from dashboard import opens as _op
@@ -14543,6 +14589,49 @@ def api_client_portal(token):
             print(f"[opens] payload {_e!r}", flush=True)
             payload["opens"] = {}
     return jsonify(payload)
+
+
+@app.route("/api/portal/<token>/share-consent", methods=["POST"])
+def api_portal_share_consent(token):
+    """The MEMBER sets whether they share their info+comms with a caregiver. Token-scoped:
+    only affects a link where the token's email is the MEMBER."""
+    if not _household_sharing_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    from dashboard import client_portal as _cp
+    from dashboard import household as _hh
+    data = request.get_json(silent=True) or {}
+    caregiver = (data.get("caregiver_email") or "").strip().lower()
+    consent = 1 if data.get("consent") else 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        member = (portal.get("email") or "").strip().lower()
+        # token owner is the MEMBER of (caregiver -> member)
+        _hh.set_share_consent(cx, caregiver, member, consent)
+    return jsonify({"ok": True, "recorded": True, "consent": consent})
+
+
+@app.route("/api/portal/<token>/cc-pref", methods=["POST"])
+def api_portal_cc_pref(token):
+    """The CAREGIVER (primary) sets cc for one of their members. Token-scoped: only affects
+    a link where the token's email is the PRIMARY."""
+    if not _household_sharing_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    from dashboard import client_portal as _cp
+    from dashboard import household as _hh
+    data = request.get_json(silent=True) or {}
+    member = (data.get("member_email") or "").strip().lower()
+    enabled = 1 if data.get("cc_enabled") else 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        primary = (portal.get("email") or "").strip().lower()
+        _hh.set_cc_enabled(cx, primary, member, enabled)
+    return jsonify({"ok": True, "recorded": True, "cc_enabled": enabled})
 
 
 @app.route("/api/portal/<token>/agree-tos", methods=["POST", "OPTIONS"])
@@ -15597,6 +15686,12 @@ def api_console_household():
         if request.method == "POST":
             _hh.add_member(cx, data.get("primary_email"), data.get("member_email"),
                            data.get("label", ""), data.get("relationship", ""))
+            if "share_consent" in data:
+                _hh.set_share_consent(cx, data.get("primary_email"), data.get("member_email"),
+                                      1 if data.get("share_consent") else 0)
+            if "cc_enabled" in data:
+                _hh.set_cc_enabled(cx, data.get("primary_email"), data.get("member_email"),
+                                   1 if data.get("cc_enabled") else 0)
         else:  # DELETE
             _hh.remove_member(cx, data.get("primary_email"), data.get("member_email"))
     return jsonify({"ok": True})
