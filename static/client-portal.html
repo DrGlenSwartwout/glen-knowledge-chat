@@ -1540,11 +1540,21 @@ load();
   }
   function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, { isVoicePlaying: voicePlaying, duck: 0.35 }); amb.start(); } catch (e) { amb = null; } syncBtn(); }
   function stopAudio(){ if (amb) { try { amb.stop(); } catch (e) {} amb = null; } syncBtn(); }
-  // Remembered "on": autoplay of audio needs a user gesture, so try now (works if
-  // audio is already unlocked) and also arm a one-shot gesture fallback.
+  // Autoplay needs a user gesture. Track whether the page has had one, so we don't
+  // pre-create a SILENT ambience on load (its play() would be rejected and the bed
+  // would never retry) — and so the speaker click can't turn "off" the very audio
+  // it was meant to turn on (the old code created amb before any gesture, then the
+  // click saw amb and stopped it).
+  let audioUnlocked = false;
+  const _markUnlocked = () => { audioUnlocked = true; };
+  window.addEventListener('pointerdown', _markUnlocked, { once: true, capture: true });
+  window.addEventListener('keydown', _markUnlocked, { once: true, capture: true });
+
+  // Remembered "on": start immediately if audio is already usable (mid-session
+  // element switch); otherwise wait for the first gesture and start THEN.
   function armAutoStart(){
-    startAudio();
-    const h = () => startAudio();
+    if (audioUnlocked) { startAudio(); return; }
+    const h = () => { if (soundOn()) startAudio(); };
     window.addEventListener('pointerdown', h, { once: true });
     window.addEventListener('keydown', h, { once: true });
   }
