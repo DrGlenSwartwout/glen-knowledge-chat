@@ -40,3 +40,17 @@ test('duck opt is clamped to (0,1); junk disables ducking', () => {
     assert.equal(a._levelFactor(), 1);
   }
 });
+
+test('alternate one-shot cycles variants round-robin at each item volume (never overlaps)', () => {
+  const plays = [];
+  global.Audio = class { constructor(src) { this.src = src; this.volume = 1; }
+    play() { plays.push({ src: this.src, volume: this.volume }); return { catch() {} }; } };
+  try {
+    const a = new Ambience(CFG, {});
+    const o = { alternate: [{ file: '/bowl.mp3', volume: 0.05 }, { file: '/chant.mp3', volume: 0.2 }] };
+    a._play(o); a._play(o); a._play(o); a._play(o);
+    // one clip per fire, strictly alternating (bowl first), each at its own volume
+    assert.deepEqual(plays.map(p => p.src), ['/bowl.mp3', '/chant.mp3', '/bowl.mp3', '/chant.mp3']);
+    assert.deepEqual(plays.map(p => p.volume), [0.05, 0.2, 0.05, 0.2]);
+  } finally { delete global.Audio; }
+});

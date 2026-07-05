@@ -155,10 +155,22 @@ export class Ambience {
   }
 
   _play(o) {
-    const src = pickSrc(o);
+    let src, vol;
+    if (Array.isArray(o.alternate) && o.alternate.length) {
+      // Round-robin: each fire advances to the next variant, so a set of clips
+      // (e.g. the Metal 172 Hz bowl and the Gregorian chant) take TURNS on one
+      // timer instead of overlapping and competing for the audio foreground.
+      o._altIdx = (typeof o._altIdx === 'number') ? (o._altIdx + 1) % o.alternate.length : 0;
+      const item = o.alternate[o._altIdx] || {};
+      src = item.file;
+      vol = (typeof item.volume === 'number') ? item.volume : o.volume;
+    } else {
+      src = pickSrc(o);
+      vol = o.volume;
+    }
     if (!src) return;
     const a = new Audio(src);
-    a.volume = o.volume;
+    a.volume = (typeof vol === 'number') ? vol : (o.volume || 0.1);
     a.play().catch(() => {});
     if (o.spark && this.sparkCtx) {
       if (this.cancelSpark) this.cancelSpark();
