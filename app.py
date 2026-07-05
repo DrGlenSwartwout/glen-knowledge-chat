@@ -16451,6 +16451,59 @@ def community_coach_subscribe_cancel():
         return jsonify({"ok": True})
 
 
+@app.route("/api/cron/coach-subscriptions/charge", methods=["POST"])
+def coach_subscriptions_charge_cron():
+    """Monthly charge cron for paid coaching subscriptions (arc slice 2b, Task 3).
+
+    Charges each active subscription whose next_charge_at is due, off the
+    vaulted card. On success: records the charge, grants this cycle's included
+    service, and advances next_charge_at one month (only way the date moves,
+    so a same-day re-run cannot double-charge). On failure: records the
+    charge, marks the sub past_due (no grant, no date advance), and does a
+    best-effort notify of the member and Glen."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_subscriptions as _cs, stripe_pay as _sp, subscriptions as _subs
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    charged = failed = 0
+    with sqlite3.connect(LOG_DB) as rcx:
+        rcx.row_factory = sqlite3.Row
+        _cs.init_sub_tables(rcx)
+        due_rows = _cs.due(rcx, today)
+    for sub in due_rows:
+        email = sub["member_email"]
+        tier = sub["tier"]
+        res = _sp.charge_off_session(
+            sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
+            description=f"Coaching with {_cs.TIERS.get(tier, {}).get('label', '')}",
+            metadata={"kind": "coach_sub_cycle", "tier": tier, "email": email})
+        ok = res.get("status") == "succeeded"
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _cs.init_sub_tables(cx)
+            _cs.record_charge(cx, email=email, tier=tier, amount_cents=sub["amount_cents"],
+                              pi_id=res.get("id") or "", status="succeeded" if ok else "failed")
+            if ok:
+                _grant_cycle_service(cx, email, tier)
+                _cs.mark_charged(cx, email, _subs.add_months(today, 1))
+            else:
+                _cs.mark_failed(cx, email)
+        if ok:
+            charged += 1
+        else:
+            failed += 1
+            try:
+                html = (f"<p>We could not process this month's coaching charge for {email}. "
+                        f"Please update the card on file to keep coaching active.</p>")
+                send_evox_email(email, "", "Your coaching payment did not go through", html, html, b"")
+                send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Coaching charge failed: {email}",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("coach sub failure notify failed for %s", email)
+    return jsonify({"charged": charged, "failed": failed})
+
+
 def _coach_session_email():
     pid = _practitioner_session_pid()
     if not pid:
