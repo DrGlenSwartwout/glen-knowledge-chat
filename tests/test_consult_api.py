@@ -140,16 +140,16 @@ def test_run_reminders_uses_consult_copy_for_consult_bookings(client, monkeypatc
     with sqlite3.connect(appmod.LOG_DB) as cx:
         evox.init_evox_tables(cx)
         cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
-                   "session_type,medium,zoom_join_url) VALUES (?,?,?,?, 'booked', ?,?,?)",
-                   ("consult@x.com", "glen", start, end, "biofield-consult", "video",
-                    "https://zoom.us/j/consulttest"))
+                   "session_type,medium) VALUES (?,?,?,?, 'booked', ?,?)",
+                   ("consult@x.com", "glen", start, end, "biofield-consult", "video"))
         cx.commit()
     r = client.post("/api/evox/run-reminders", headers=ADMIN)
     assert r.status_code == 200 and r.get_json()["sent"] == 1
     to, subj, html = captured[-1]
     assert to == "consult@x.com"
     assert subj == "Reminder: your Biofield Consult tomorrow"
-    assert "zoom.us/j/consulttest" in html and "call Rae" not in html
+    assert "portal" in html.lower() and "Biofield Consult" in html
+    assert "zoom.us/j/" not in html and "call Rae" not in html
 
 
 def test_consult_join_gated_by_window(client, monkeypatch):

@@ -14343,9 +14343,7 @@ def evox_run_reminders():
             keys = r.keys()
             stype = r["session_type"] if "session_type" in keys else "evox"
             if stype == "biofield-consult":
-                join = r["zoom_join_url"] if "zoom_join_url" in keys else None
-                join_line = (f"Join here: {join}" if join
-                             else "Your Zoom link will follow by email.")
+                join_line = "Join from your Healing Oasis portal at your appointment time."
                 subject = "Reminder: your Biofield Consult tomorrow"
                 html = (f"<p>Reminder: your Biofield Consult with Dr. Glen is tomorrow at "
                         f"<b>{nice} HST</b>. {join_line}</p>")

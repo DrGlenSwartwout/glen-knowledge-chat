@@ -1085,7 +1085,7 @@ async function consultBook(start_ts){
     });
     d = await r.json();
     if(d && d.ok){
-      if(box) box.innerHTML = `<p class="muted small">Booked. Check your email for the Zoom link and calendar invite.</p>`;
+      if(box) box.innerHTML = `<p class="muted small">Booked. Check your email for the calendar invite, and join from your portal at your appointment time.</p>`;
       return;
     }
   }catch(e){ d = {}; }
