@@ -1603,7 +1603,11 @@ load();
   function stopCat(){ if (catPlayer) { try { catPlayer.stop(); } catch (e) {} catPlayer = null; } }
   const loadManifest = () => (manifestP ||= fetch('/static/fireside/elements-manifest.json').then(r => r.ok ? r.json() : null).catch(() => null));
 
-  function syncBtn(){ const on = !!amb; sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  // Reflect the saved sound PREFERENCE, not the runtime amb — on a reload the pref
+  // can be "on" while audio waits for the first gesture, and the icon must not lie
+  // (an "off"-looking speaker that's actually pending-on is what made clicking it
+  // seem to do nothing / toggle the wrong way).
+  function syncBtn(){ const on = soundOn(); sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   // true while Dr. Glen's voice is playing (report audio/video) so the ambient beds
   // duck under him and swell back in the gaps. The backdrop video (#el-bg) is muted,
   // so it's excluded.
@@ -1613,18 +1617,34 @@ load();
   }
   function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, { isVoicePlaying: voicePlaying, duck: 0.35 }); amb.start(); } catch (e) { amb = null; } syncBtn(); }
   function stopAudio(){ if (amb) { try { amb.stop(); } catch (e) {} amb = null; } syncBtn(); }
-  // Remembered "on": autoplay of audio needs a user gesture, so try now (works if
-  // audio is already unlocked) and also arm a one-shot gesture fallback.
+  // Autoplay needs a user gesture. Track whether the page has had one, so we don't
+  // pre-create a SILENT ambience on load (its play() would be rejected and the bed
+  // would never retry) — and so the speaker click can't turn "off" the very audio
+  // it was meant to turn on (the old code created amb before any gesture, then the
+  // click saw amb and stopped it).
+  let audioUnlocked = false;
+  const _markUnlocked = () => { audioUnlocked = true; };
+  window.addEventListener('pointerdown', _markUnlocked, { once: true, capture: true });
+  window.addEventListener('keydown', _markUnlocked, { once: true, capture: true });
+
+  // Remembered "on": start immediately if audio is already usable (mid-session
+  // element switch); otherwise wait for the first gesture and start THEN.
   function armAutoStart(){
-    startAudio();
-    const h = () => startAudio();
+    if (audioUnlocked) { startAudio(); return; }
+    const h = () => { if (soundOn()) startAudio(); };
     window.addEventListener('pointerdown', h, { once: true });
     window.addEventListener('keydown', h, { once: true });
   }
 
+  // Flip the PREFERENCE (the source of truth), then start/stop to match. This click
+  // is itself a user gesture, so startAudio() can actually play. Keying off the pref
+  // (not amb) means the very gesture that armAutoStart might use to create amb can't
+  // then be read as "amb exists -> turn off".
   sndBtn.addEventListener('click', () => {
-    if (amb) { stopAudio(); localStorage.setItem('rm_portal_sound', 'off'); }
-    else { startAudio(); localStorage.setItem('rm_portal_sound', 'on'); }
+    const turnOn = !soundOn();
+    localStorage.setItem('rm_portal_sound', turnOn ? 'on' : 'off');
+    if (turnOn) startAudio(); else stopAudio();
+    syncBtn();
   });
 
   // Populate the scene dropdown from the manifest labels (once), and keep its
@@ -1688,7 +1708,7 @@ load();
       vid.src = entry.video;
       if (!reduceMotion) vid.play().catch(() => {}); // muted autoplay ok; else poster stays
     }
-    if (soundOn()) armAutoStart(); else syncBtn();
+    if (soundOn()) armAutoStart(); syncBtn();
   }
 
   // render() passes the server-computed element here; we store it as the Automatic
