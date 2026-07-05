@@ -16407,6 +16407,138 @@ def consult_join():
                         "start_ts": (upcoming[0] if upcoming else rows[-1]["start_ts"])}), 403
 
 
+def _triage_ident(cx, token):
+    from dashboard import triage as _triage
+    return _triage.resolve_invite(cx, token)
+
+
+def _triage_hours(practitioner):
+    return GLEN_CONSULT_HOURS if practitioner == "glen" else EVOX_HOURS
+
+
+def _triage_send_confirmations(token, invite, booking):
+    try:
+        from dashboard import evox as _ev
+        p = invite["practitioner"]; email = invite["email"]
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        if p == "rae":
+            who = "Rae"; note_email = EVOX_RAE_EMAIL
+            phone = EVOX_RAE_PHONE or "the number in this email"
+            line = f"At your appointment time, call Rae at {phone}."
+        else:
+            who = "Dr. Glen"; note_email = GLEN_CONSULT_EMAIL
+            page = f"{PUBLIC_BASE_URL}/triage/{token}"
+            line = f"At your appointment time, open your booking page and click Join your call: {page}"
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary=f"15 minute call with {who}",
+                            description=line, location=("Phone" if p == "rae" else "Zoom (join from your page)"))
+        c_html = (f"<p>Your 15 minute call with {who} is booked for <b>{nice} HST</b>.</p>"
+                  f"<p>{line}</p><p>The calendar invite is attached.</p>")
+        c_text = f"Call with {who} booked for {nice} HST. {line}"
+        n_html = f"<p>New triage booked: <b>{invite.get('name') or email}</b> ({email}) on <b>{nice} HST</b>.</p>"
+        for to, nm, subj, html, text in [
+            (email, invite.get("name") or "", f"Your call with {who} is booked", c_html, c_text),
+            (note_email, who, f"Triage booked: {email}", n_html, n_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("triage confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("triage confirmation build failed")
+
+
+@app.route("/triage/<token>")
+def triage_page(token):
+    return send_from_directory(STATIC, "triage.html")
+
+
+@app.route("/api/triage/state")
+def triage_state():
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import triage as _triage; _triage.init_triage_tables(cx)
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        medium = "video" if inv["practitioner"] == "glen" else "phone"
+        return jsonify({"name": inv["name"], "practitioner": inv["practitioner"],
+                        "medium": medium, "booked": inv["status"] == "booked",
+                        "booked_start": inv["booked_start"]})
+
+
+@app.route("/api/triage/availability")
+def triage_availability():
+    from dashboard import evox as _ev, triage as _triage
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["status"] == "booked":
+            return jsonify({"error": "already_booked"}), 409
+        p = inv["practitioner"]
+        days = _evox_days(request.args.get("range", "week"))
+        busy = _ev.rae_busy_intervals(cx, days[0].isoformat(), days[-1].isoformat(), practitioner=p)
+        booked = _ev.booked_starts(cx, practitioner=p)
+        slots = _ev.available_slots(days, _triage_hours(p), busy, booked, _hst_now(), duration_min=15)
+        return jsonify({"slots": slots})
+
+
+@app.route("/api/triage/book", methods=["POST"])
+def triage_book():
+    from dashboard import evox as _ev, triage as _triage
+    from datetime import date
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    token = request.args.get("token", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
+        inv = _triage_ident(cx, token)
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["status"] == "booked":
+            return jsonify({"error": "already_booked"}), 409
+        p = inv["practitioner"]
+        try:
+            d = date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat(), practitioner=p)
+        if start_ts not in _ev.available_slots([d], _triage_hours(p), busy,
+                                               _ev.booked_starts(cx, practitioner=p),
+                                               _hst_now(), duration_min=15):
+            return jsonify({"error": "slot_unavailable"}), 409
+        medium = "video" if p == "glen" else "phone"
+        try:
+            b = _ev.create_booking(cx, inv["email"], start_ts, duration_min=15,
+                                   practitioner=p, session_type="triage", medium=medium)
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+        _triage.mark_booked(cx, token, start_ts)
+    _triage_send_confirmations(token, inv, b)   # Task 4
+    return jsonify({"ok": True, "start_ts": start_ts})
+
+
+@app.route("/api/triage/join")
+def triage_join():
+    from dashboard import triage as _triage, consult as _consult
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _triage.init_triage_tables(cx)
+        inv = _triage_ident(cx, request.args.get("token", ""))
+        if inv is None:
+            return jsonify({"error": "invalid"}), 404
+        if inv["practitioner"] != "glen":
+            return jsonify({"error": "phone_call"}), 400
+        if inv["status"] != "booked" or not inv["booked_start"]:
+            return jsonify({"error": "no_booking"}), 404
+        if _consult.within_join_window(inv["booked_start"], _hst_now()):
+            return jsonify({"ok": True, "join_url": GLEN_PMI_URL})
+        return jsonify({"error": "not_in_window", "start_ts": inv["booked_start"]}), 403
+
+
 @app.route("/api/console/biofield-portal", methods=["GET"])
 def api_console_biofield_load():
     if not _portal_console_ok():
@@ -32577,6 +32709,37 @@ def api_console_sales_import():
             _ps.init_product_sales_table(cx)
             written = _ps.write_fmp_sales(cx, agg)
     return jsonify({"ok": True, "line_items": len(rows), "product_rows": len(agg), "written": written})
+
+
+@app.route("/api/console/triage-invite", methods=["POST"])
+def api_console_triage_invite():
+    """Console-gated: create a Triage/Discovery invite and email the prospect a
+    booking link. See dashboard/triage.py (tokenized, hashed, 7-day expiry)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import triage as _triage
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    practitioner = (body.get("practitioner") or "").strip().lower()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    if practitioner not in ("glen", "rae"):
+        return jsonify({"error": "bad_practitioner"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _triage.init_triage_tables(cx)
+        token = _triage.create_invite(cx, email, name, practitioner)
+    url = f"{PUBLIC_BASE_URL}/triage/{token}"
+    who = "Dr. Glen" if practitioner == "glen" else "Rae"
+    html = (f"<p>Hello{(' ' + name) if name else ''},</p>"
+            f"<p>You are invited to book a free 15 minute call with {who}. "
+            f"Pick a time here: <a href=\"{url}\">{url}</a></p>")
+    try:
+        send_evox_email(email, name, f"Your 15 minute call with {who}", html, html, b"")
+    except Exception:
+        app.logger.exception("triage invite email failed to %s", email)
+    return jsonify({"ok": True, "url": url})
 
 
 @app.route("/console/top-products")
