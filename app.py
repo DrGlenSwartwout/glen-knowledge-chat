@@ -206,6 +206,7 @@ EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000
 # Biofield Consult (Glen's lane): office-hours spec same format as EVOX_HOURS.
 GLEN_CONSULT_HOURS = os.environ.get("GLEN_CONSULT_HOURS", "1-7:09:00-17:00")
 GLEN_ZOOM_USER      = os.environ.get("GLEN_ZOOM_USER", "me")
+GLEN_PMI_URL        = os.environ.get("GLEN_PMI_URL", "https://zoom.us/j/9071793431")
 
 
 def _init_auth_tables():
@@ -15467,6 +15468,31 @@ def consult_book():
     b["join_url"] = join_url
     _consult_send_confirmations(email, b)   # Task 6
     return jsonify({"ok": True, "start_ts": start_ts, "join_url": join_url})
+
+
+@app.route("/api/consult/join")
+def consult_join():
+    from dashboard import consult as _consult
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        rows = cx.execute("SELECT start_ts FROM evox_bookings WHERE lower(email)=? "
+                          "AND session_type='biofield-consult' AND status='booked' "
+                          "ORDER BY start_ts", (ident.email,)).fetchall()
+        if not rows:
+            return jsonify({"error": "no_booking"}), 404
+        now = _hst_now()
+        for r in rows:
+            if _consult.within_join_window(r["start_ts"], now):
+                return jsonify({"ok": True, "join_url": GLEN_PMI_URL})
+        # not in any window: report the next upcoming consult start (if any)
+        upcoming = [r["start_ts"] for r in rows if r["start_ts"] >= now.isoformat()]
+        return jsonify({"error": "not_in_window",
+                        "start_ts": (upcoming[0] if upcoming else rows[-1]["start_ts"])}), 403
 
 
 @app.route("/api/console/biofield-portal", methods=["GET"])

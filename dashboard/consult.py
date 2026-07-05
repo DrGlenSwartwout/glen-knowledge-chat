@@ -1,7 +1,7 @@
 """Biofield Consult: eligibility gate + paid-test detection. Stdlib-only; import
 without importing app."""
 import sqlite3, json as _json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 CONSULT = {"session_type": "biofield-consult", "practitioner": "glen",
            "duration_min": 30, "medium": "video", "test_slug": "biofield-analysis"}
@@ -52,3 +52,8 @@ def has_paid_purchase(cx, email: str, slug: str) -> bool:
         except Exception:
             continue
     return False
+
+
+def within_join_window(start_ts, now, before_min: int = 10, after_min: int = 30) -> bool:
+    start = datetime.fromisoformat(str(start_ts)[:19])
+    return (start - timedelta(minutes=before_min)) <= now <= (start + timedelta(minutes=after_min))

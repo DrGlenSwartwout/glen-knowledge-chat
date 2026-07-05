@@ -148,3 +148,31 @@ def test_run_reminders_uses_consult_copy_for_consult_bookings(client, monkeypatc
     assert to == "consult@x.com"
     assert subj == "Reminder: your Biofield Consult tomorrow"
     assert "zoom.us/j/consulttest" in html and "call Rae" not in html
+
+
+def test_consult_join_gated_by_window(client, monkeypatch):
+    import sqlite3
+    from datetime import timedelta
+    from dashboard import evox
+    tok = _mk_portal("join@x.com")
+    # a consult starting 5 min from now (inside the -10/+30 window)
+    start = (appmod._hst_now() + timedelta(minutes=5)).replace(microsecond=0).isoformat()
+    end = (appmod._hst_now() + timedelta(minutes=35)).replace(microsecond=0).isoformat()
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        evox.init_evox_tables(cx)
+        cx.execute("INSERT INTO evox_bookings (email,practitioner,start_ts,end_ts,status,"
+                   "session_type,medium) VALUES (?,?,?,?, 'booked', 'biofield-consult','video')",
+                   ("join@x.com", "glen", start, end)); cx.commit()
+    r = client.get(f"/api/consult/join?token={tok}")
+    assert r.status_code == 200 and r.get_json()["join_url"] == appmod.GLEN_PMI_URL
+    # move the booking 2 hours out -> outside the window -> 403
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        far = (appmod._hst_now() + timedelta(hours=2)).replace(microsecond=0).isoformat()
+        cx.execute("UPDATE evox_bookings SET start_ts=? WHERE email='join@x.com'", (far,)); cx.commit()
+    r2 = client.get(f"/api/consult/join?token={tok}")
+    assert r2.status_code == 403 and r2.get_json()["error"] == "not_in_window"
+
+def test_consult_join_no_booking(client):
+    tok = _mk_portal("nobook@x.com")
+    r = client.get(f"/api/consult/join?token={tok}")
+    assert r.status_code == 404 and r.get_json()["error"] == "no_booking"
