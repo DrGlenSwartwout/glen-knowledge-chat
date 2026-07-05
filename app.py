@@ -15943,6 +15943,76 @@ def community_library():
         return jsonify({"tier": "free", "full": teasers})
 
 
+@app.route("/api/community/react", methods=["POST"])
+def community_react():
+    from dashboard import community as _cm, community_signals as _cs
+    body = request.get_json(force=True) or {}
+    reaction = (body.get("reaction") or "").strip()
+    content_id = body.get("content_id")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cm.init_community_tables(cx); _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if reaction not in _cs.REACTIONS:
+            return jsonify({"error": "bad_reaction"}), 400
+        item = _cm.get_content(cx, content_id)
+        if item is None or item["published"] != 1:
+            return jsonify({"error": "not_found"}), 404
+        on = _cs.toggle_reaction(cx, ident.email, content_id, reaction)
+        counts = _cs.reaction_counts(cx, content_id)
+        return jsonify({"ok": True, "on": on, "counts": counts})
+
+
+@app.route("/api/community/reactions")
+def community_reactions():
+    from dashboard import community_signals as _cs
+    content_id = request.args.get("content_id", type=int)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"counts": _cs.reaction_counts(cx, content_id),
+                        "mine": _cs.my_reactions(cx, ident.email, content_id)})
+
+
+@app.route("/api/community/signal", methods=["POST"])
+def community_signal():
+    from dashboard import community_signals as _cs
+    body = request.get_json(force=True) or {}
+    ttype = (body.get("target_type") or "").strip()
+    tkey = (body.get("target_key") or "").strip()
+    signal = (body.get("signal") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if ttype not in _cs.TARGET_TYPES or signal not in (_cs.SIGNALS + ["none"]):
+            return jsonify({"error": "bad_signal"}), 400
+        if signal == "none":
+            _cs.clear_signal(cx, ident.email, ttype, tkey)
+        else:
+            _cs.set_signal(cx, ident.email, ttype, tkey, signal)
+        return jsonify({"ok": True})
+
+
+@app.route("/api/community/signals")
+def community_signals():
+    from dashboard import community_signals as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify(_cs.my_signals(cx, ident.email))
+
+
 @app.route("/api/console/community/publish", methods=["POST"])
 def community_publish():
     if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
