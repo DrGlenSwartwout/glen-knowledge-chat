@@ -5588,6 +5588,7 @@
     },
     "electrolyte-mineral-manna": {
       "name": "Electrolyte Mineral Manna",
+      "inactive": true,
       "price_cents": 6997,
       "pinecone_title": "Electrolyte Mineral Manna",
       "url": "https://remedymatch.com/remedies/syntropy/542-electrolyte-mineral-manna",
