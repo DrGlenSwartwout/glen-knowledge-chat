@@ -109,3 +109,14 @@ def test_scan_list_flag_off(tmp_path, monkeypatch):
     if not token: pytest.skip("no mint helper")
     j = appmod.app.test_client().get(f"/api/portal/{token}").get_json()
     assert "available_scans" not in j
+
+
+def test_notified_flow():
+    from dashboard import client_scans as cs
+    import sqlite3
+    cx = sqlite3.connect(":memory:"); cs.init_client_scans_table(cx)
+    cs.upsert_scans(cx, "k@x.com", [{"scan_date": "2026-06-28"}, {"scan_date": "2026-06-25"}])
+    un = cs.unnotified(cx, "k@x.com")
+    assert {u["scan_date"] for u in un} == {"2026-06-28", "2026-06-25"}
+    cs.mark_notified(cx, "k@x.com", "2026-06-28")
+    assert [u["scan_date"] for u in cs.unnotified(cx, "k@x.com")] == ["2026-06-25"]

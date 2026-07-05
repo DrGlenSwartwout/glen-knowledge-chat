@@ -24,6 +24,10 @@ def init_client_scans_table(cx):
         )
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_cs_email ON client_scans(email)")
+    try:
+        cx.execute("ALTER TABLE client_scans ADD COLUMN notified_at TEXT")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -54,3 +58,20 @@ def scans_for(cx, email):
         "SELECT scan_date, scan_id FROM client_scans WHERE email=? ORDER BY scan_date DESC, id DESC",
         (_norm(email),)).fetchall()
     return [{"scan_date": r[0], "scan_id": r[1] or ""} for r in rows]
+
+
+def unnotified(cx, email=None, limit=500):
+    if email:
+        rows = cx.execute("SELECT email, scan_date, scan_id FROM client_scans "
+                          "WHERE email=? AND notified_at IS NULL ORDER BY scan_date DESC LIMIT ?",
+                          (_norm(email), int(limit))).fetchall()
+    else:
+        rows = cx.execute("SELECT email, scan_date, scan_id FROM client_scans "
+                          "WHERE notified_at IS NULL ORDER BY id LIMIT ?", (int(limit),)).fetchall()
+    return [{"email": r[0], "scan_date": r[1], "scan_id": r[2] or ""} for r in rows]
+
+
+def mark_notified(cx, email, scan_date):
+    cx.execute("UPDATE client_scans SET notified_at=? WHERE email=? AND scan_date=?",
+               (_now(), _norm(email), (scan_date or "").strip()))
+    cx.commit()
