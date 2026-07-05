@@ -69,6 +69,17 @@
       "label": "Fire",
       "video": "/static/fireside/video/elements/fire.mp4",
       "poster": "/static/fireside/video/elements/fire-poster.jpg",
+      "cat": {
+        "rest": "/static/fireside/video/elements/fire.mp4",
+        "idle": [
+          "/static/fireside/video/elements/fire-cat-earflick.mp4",
+          "/static/fireside/video/elements/fire-cat-paw.mp4",
+          "/static/fireside/video/elements/fire-cat-nose.mp4"
+        ],
+        "react": "/static/fireside/video/elements/fire-cat-wake.mp4",
+        "idle_min_s": 120,
+        "idle_max_s": 300
+      },
       "ambience": {
         "bed": "/static/fireside/audio/amb-fire-loop.mp3",
         "bed_volume": 0.036,
@@ -77,7 +88,7 @@
           { "id": "logsettle", "file": "/static/fireside/audio/amb-logsettle.mp3", "volume": 0.09, "spark": true, "min_gap_s": 60, "max_gap_s": 170 },
           { "id": "kettle", "file": "/static/fireside/audio/amb-kettle.mp3", "volume": 0.13, "min_gap_s": 90, "max_gap_s": 230 },
           { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.11, "min_gap_s": 120, "max_gap_s": 280 },
-          { "id": "purr", "file": "/static/fireside/audio/amb-catpurr.mp3", "volume": 0.045, "first_gap_s": 30, "min_gap_s": 150, "max_gap_s": 380 },
+          { "id": "purr", "file": "/static/fireside/audio/amb-catpurr.mp3", "volume": 0.05, "loop": true },
           { "id": "rainwave", "file": "/static/fireside/audio/amb-rainwave.mp3", "volume": 0.14, "min_gap_s": 220, "max_gap_s": 520 },
           { "id": "crow", "file": "/static/fireside/audio/amb-crow.mp3", "volume": 0.16, "min_gap_s": 320, "max_gap_s": 720 }
         ]
