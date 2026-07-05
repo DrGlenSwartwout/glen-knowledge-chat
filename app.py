@@ -14382,6 +14382,12 @@ def evox_run_reminders():
                 subject = "Reminder: your Biofield Consult tomorrow"
                 html = (f"<p>Reminder: your Biofield Consult with Dr. Glen is tomorrow at "
                         f"<b>{nice} HST</b>. {join_line}</p>")
+            elif stype == "onboarding":
+                phone = EVOX_RAE_PHONE or "the number on file"
+                subject = "Reminder: your welcome call with Rae tomorrow"
+                html = (f"<p>Reminder: your welcome call with Rae is tomorrow at "
+                        f"<b>{nice} HST</b>. This is a phone call. Rae will call you at "
+                        f"the number on file.</p>")
             else:
                 phone = EVOX_RAE_PHONE or "the number in your confirmation"
                 subject = "Reminder: your EVOX session tomorrow"
@@ -15468,6 +15474,110 @@ def _consult_send_confirmations(email, booking):
                 app.logger.exception("consult confirmation send failed to %s", to)
     except Exception:
         app.logger.exception("consult confirmation build failed")
+
+
+def _onboarding_send_confirmations(email, booking):
+    """Best-effort welcome-call confirmation to the member + Rae, with an ICS
+    invite. Phone call: Rae calls the member. Never raises into the booking
+    response."""
+    try:
+        from dashboard import evox as _ev
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        phone = EVOX_RAE_PHONE or "the number on file"
+        line = ("This is a phone call. Rae will call you at your appointment time at "
+                "the number on file. Questions before then? Reach out any time.")
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary="New-member welcome call with Rae",
+                            description=line, location="Phone")
+        client_html = (f"<p>Welcome to Healing Oasis. Your welcome call with Rae is booked for "
+                       f"<b>{nice} HST</b>.</p><p>{line}</p><p>The calendar invite is attached.</p>")
+        client_text = f"Welcome call with Rae booked for {nice} HST. {line}"
+        rae_html = (f"<p>New welcome call: <b>{email}</b> on <b>{nice} HST</b>. "
+                    f"Please call them at the number on file.</p>")
+        for to, nm, subj, html, text in [
+            (email, "", "Your welcome call with Rae is booked", client_html, client_text),
+            (EVOX_RAE_EMAIL, "Rae", f"Welcome call booked: {email}", rae_html, rae_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("onboarding confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("onboarding confirmation build failed")
+
+
+@app.route("/api/onboarding/state")
+def onboarding_state():
+    from dashboard import onboarding as _ob
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        row = _ob.existing_onboarding(cx, ident.email)
+        booked = {"start_ts": row["start_ts"]} if row else None
+        return jsonify({"eligible": _is_paid_member(ident.email), "booked": booked})
+
+
+@app.route("/api/onboarding/availability")
+def onboarding_availability():
+    from dashboard import evox as _ev, onboarding as _ob
+    _init_calendar_table()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _is_paid_member(ident.email):
+            return jsonify({"error": "not_member"}), 403
+        if _ob.existing_onboarding(cx, ident.email):
+            return jsonify({"slots": []})
+        days = _evox_days(request.args.get("range", "week"))
+        lo, hi = days[0].isoformat(), days[-1].isoformat()
+        busy = _ev.rae_busy_intervals(cx, lo, hi)
+        booked = _ev.booked_starts(cx)
+        slots = _ev.available_slots(days, EVOX_HOURS, busy, booked, _hst_now(),
+                                    duration_min=_ob.ONBOARDING["duration_min"])
+        return jsonify({"slots": slots})
+
+
+@app.route("/api/onboarding/book", methods=["POST"])
+def onboarding_book():
+    from dashboard import evox as _ev, onboarding as _ob
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    _init_calendar_table()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _is_paid_member(ident.email):
+            return jsonify({"error": "not_member"}), 403
+        if _ob.existing_onboarding(cx, ident.email):
+            return jsonify({"error": "already_booked"}), 409
+        try:
+            d = _evox_date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat())
+        if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
+                                               _ev.booked_starts(cx), _hst_now(),
+                                               duration_min=_ob.ONBOARDING["duration_min"]):
+            return jsonify({"error": "slot_unavailable"}), 409
+        try:
+            b = _ev.create_booking(cx, ident.email, start_ts, duration_min=15,
+                                   practitioner="rae", session_type="onboarding",
+                                   medium="phone")
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+        email = ident.email
+    # --- lock released ---
+    _onboarding_send_confirmations(email, b)
+    return jsonify({"ok": True, "start_ts": start_ts})
 
 
 @app.route("/api/consult/state")
