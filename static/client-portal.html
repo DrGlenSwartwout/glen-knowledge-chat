@@ -772,13 +772,18 @@ function render(d, v){
     }
   }
 
-  // Scan history — every E4L scan date (A: read-only; request action is sub-project B).
+  // Scan history — every E4L scan date (A: read-only; B: request-analysis button + states).
   if (d.available_scans && d.available_scans.length) {
     let rows = "";
     for (const s of d.available_scans) {
       const tag = s.processed
         ? `<span style="color:#2f6f5e;font-size:.8rem">Analyzed</span>`
-        : `<span style="color:var(--muted);font-size:.8rem">Available to analyze</span>`;
+        : s.requested
+          ? `<span style="color:var(--muted);font-size:.8rem">Requested</span>`
+          : d.scan_request_enabled
+            ? `<button class="ra-btn" data-scan="${esc(s.scan_date)}" data-sid="${esc(s.scan_id||"")}"
+               style="font-size:.8rem;padding:2px 10px;border-radius:8px;background:#2f6f5e;color:#fff;border:0;cursor:pointer">Request analysis</button>`
+            : `<span style="color:var(--muted);font-size:.8rem">Available</span>`;
       rows += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
         <strong style="font-size:.95rem">${esc(s.scan_date)}</strong><span style="flex:1"></span>${tag}</div>`;
     }
@@ -1079,6 +1084,25 @@ function render(d, v){
     t.addEventListener("click", ()=>selectScan(t.getAttribute("data-scan"))));
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
+
+  // Request analysis button + states (Scan history, sub-project B).
+  app.querySelectorAll(".ra-btn").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    let j = {};
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/request-analysis`,
+        {method:"POST",headers:{"Content-Type":"application/json"},
+         body:JSON.stringify({scan_date:b.dataset.scan, scan_id:b.dataset.sid})});
+      j = await r.json();
+    } catch(e){ j = {}; }
+    if (j.status === "pending" || j.status === "already" || j.status === "done")
+      b.replaceWith(Object.assign(document.createElement("span"),
+        {style:"color:var(--muted);font-size:.8rem", textContent:"Requested"}));
+    else if (j.reason === "monthly_quota")
+      b.replaceWith(Object.assign(document.createElement("span"),
+        {style:"color:var(--muted);font-size:.8rem", innerHTML:`1 free analysis/month — <a href="${esc(j.upgrade_url||"/prepay")}">upgrade</a>`}));
+    else b.disabled = false;
+  }));
 
   // Read-receipt: wire the collapsed report header's expand click without an
   // inline onclick (avoids interpolating the scan date into a JS string —
