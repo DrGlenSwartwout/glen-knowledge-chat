@@ -115,6 +115,33 @@ def test_full_coach_dropped_and_all_full():
     assert d["coaches"] == [] and d["all_full"] is True
 
 
+def test_apply_to_full_coach_404():
+    c = _client(); tok = _seed_member("m@x.com", capacity=1)
+    # fill the only coach's single slot with an accepted request from another member
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx)
+        rid = _cc.create_request(cx, "coach1@x.com", "other@x.com", "Oth", "n")
+        _cc.set_request_status(cx, rid, "accepted"); cx.commit()
+    r = c.post(f"/api/community/coach-request?token={tok}",
+               json={"coach_ref": _coach_ref(), "note": "sleep trouble"})
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "coach_unavailable"
+
+
+def test_apply_no_auth_writes_no_file():
+    import io
+    c = _client()
+    before = list(appmod._PORTAL_ASSETS_DIR.glob("member-*.mp4"))
+    data = {"coach_ref": "whatever", "note": "n",
+            "video": (io.BytesIO(b"\x00\x01vid"), "me.mp4")}
+    r = c.post("/api/community/coach-request?token=badtoken", data=data,
+               content_type="multipart/form-data")
+    assert r.status_code == 404
+    after = list(appmod._PORTAL_ASSETS_DIR.glob("member-*.mp4"))
+    assert len(after) == len(before)
+
+
 def test_waitlist_and_interest():
     c = _client(); tok = _seed_member("m@x.com")
     assert c.post(f"/api/community/coach-waitlist?token={tok}").get_json()["ok"] is True

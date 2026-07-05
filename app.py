@@ -16241,20 +16241,15 @@ def community_coaches():
 
 @app.route("/api/community/coach-request", methods=["POST"])
 def community_coach_request():
-    from dashboard import coaching as _co, coach_connect as _cc
+    from dashboard import coaching as _co, coach_connect as _cc, coach_directory as _cd
     # multipart: coach_ref + note + optional `video` file (member intro). Falls back
     # to JSON when no file is sent.
     ref = (request.form.get("coach_ref") or (request.get_json(silent=True) or {}).get("coach_ref") or "").strip()
     note = (request.form.get("note") or (request.get_json(silent=True) or {}).get("note") or "").strip()
-    member_video_url = ""
-    vf = request.files.get("video")
-    if vf is not None and vf.filename:
-        fname = f"member-{secrets.token_hex(8)}.mp4"
-        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
-        member_video_url = f"/portal-asset/{fname}"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    # 1) authenticate + resolve the coach BEFORE touching any uploaded file
+    with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _cc.init_connect_tables(cx)
+        _cc.init_connect_tables(cx); _cd.init_coach_tables(cx); _co.init_coaching_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
             return jsonify({"error": "not_found"}), 404
@@ -16263,11 +16258,30 @@ def community_coach_request():
         coach_email = _cc.email_for_ref(cx, ref)
         if not coach_email:
             return jsonify({"error": "coach_unavailable"}), 404
-        from dashboard import client_portal as _cp
-        _cp.init_client_portal_table(cx)
-        rec = _cp.get_portal_content_by_email(cx, ident.email)
-        first_name = ((rec or {}).get("name") or "").split(" ")[0]
-        rid = _cc.create_request(cx, coach_email, ident.email, first_name, note,
+        vol = _cd.get_volunteer(cx, coach_email)
+        capacity = (vol or {}).get("capacity", 0) or 0
+        if _cc.accepted_count(cx, coach_email) >= capacity:
+            return jsonify({"error": "coach_unavailable"}), 404  # coach is full
+        member_email = ident.email
+        rec = None
+        try:
+            from dashboard import client_portal as _cp
+            rec = _cp.get_portal_content_by_email(cx, member_email)
+        except Exception:
+            rec = None
+        first_name = (((rec or {}).get("name") or "").strip().split(" ") or [""])[0]
+    # 2) authenticated + coach valid -> now write the optional intro video (outside the lock)
+    member_video_url = ""
+    vf = request.files.get("video")
+    if vf is not None and vf.filename:
+        fname = f"member-{secrets.token_hex(8)}.mp4"
+        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
+        member_video_url = f"/portal-asset/{fname}"
+    # 3) create the application under the write lock
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_connect_tables(cx)
+        rid = _cc.create_request(cx, coach_email, member_email, first_name, note,
                                  member_video_url=member_video_url)
         if rid is None:
             # already matched, or already applied to this coach
