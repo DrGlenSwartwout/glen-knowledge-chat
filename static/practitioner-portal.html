@@ -338,6 +338,31 @@
     <button id="pricing-save" style="margin-top:14px">Save pricing</button>
     <div id="pricing-msg" style="margin-top:10px;font-size:14px"></div>
   </div>
+
+  <!-- BEGIN coach-volunteer script -->
+  <div class="panel" id="coach-panel">
+    <h2>Coaching volunteer</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 12px">Volunteer to coach members who want extra support. You will be listed once your certification is complete.</div>
+    <div class="row" style="margin-bottom:8px">
+      <input class="slug" id="coach-name" placeholder="Display name">
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input class="slug" id="coach-focus" placeholder="Your focus (e.g. gut health, sleep, stress)">
+    </div>
+    <div class="row" style="margin-bottom:8px;align-items:center">
+      <label for="coach-capacity" style="flex:1;font-size:13px">Members you can take on right now (0 to 12; 0 means not taking new members right now)</label>
+      <input class="qty" id="coach-capacity" type="number" min="0" max="12" step="1" value="0">
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <label for="coach-video" class="muted" style="font-size:13px">Intro video (optional; leave blank to keep your current one)</label>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input type="file" id="coach-video" accept="video/mp4,video/*">
+    </div>
+    <button id="coach-save" type="button">Save coaching profile</button>
+    <div id="coach-msg" style="margin-top:10px;font-size:14px"></div>
+  </div>
+  <!-- END coach-volunteer script -->
   </section>
 
   <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
@@ -741,6 +766,46 @@ $('pricing-save').addEventListener('click', function(){
     })
     .catch(function(){ $('pricing-save').disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
 });
+
+<!-- BEGIN coach-volunteer script -->
+$('coach-save').addEventListener('click', function(){
+  var btn = $('coach-save'), msg = $('coach-msg');
+  var name = ($('coach-name').value || '').trim();
+  var focus = ($('coach-focus').value || '').trim();
+  var capacity = Math.max(0, Math.min(12, parseInt($('coach-capacity').value, 10) || 0));
+  var fd = new FormData();
+  fd.append('name', name);
+  fd.append('focus', focus);
+  fd.append('capacity', String(capacity));
+  var videoInput = $('coach-video');
+  var file = videoInput && videoInput.files && videoInput.files[0];
+  if(file) fd.append('video', file);
+  btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Saving…';
+  fetch('/api/practitioner/coach-profile?token=' + encodeURIComponent(TOKEN), {method: 'POST', body: fd})
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      var d = res.body || {};
+      if(res.status === 200 && d.ok){
+        msg.style.color = '#8fd6a3';
+        if(!d.cert_ok){
+          msg.textContent = 'Your profile is saved. You will be listed once your certification is complete.';
+        } else if(d.capacity === 0){
+          msg.textContent = 'Saved. You are set to not taking new members right now.';
+        } else if(d.listed){
+          msg.textContent = 'You are listed for members to find.';
+        } else {
+          msg.textContent = 'Saved.';
+        }
+        if(videoInput) videoInput.value = '';
+      } else {
+        msg.style.color = 'var(--gold)';
+        msg.textContent = d.error || 'Could not save your coaching profile.';
+      }
+    })
+    .catch(function(){ btn.disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
+});
+<!-- END coach-volunteer script -->
 
 // Training tab: 12-module ASH curriculum with the practitioner's completion state.
 function renderTraining(d){

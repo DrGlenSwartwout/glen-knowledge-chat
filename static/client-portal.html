@@ -1019,6 +1019,11 @@ function render(d, v){
   // to put inside (slot picker vs. already-booked confirmation).
   html += `<div class="card" id="onboarding-card" hidden></div>`;
 
+  // Meet your coaches: member eligibility can't be checked here (portal_view.py
+  // has no app import), so render an empty, hidden placeholder and let
+  // initCoachesCard() fetch /api/community/coaches once this markup is attached.
+  html += `<div class="card" id="coaches-card" hidden></div>`;
+
   // Household sharing controls (member consent + caregiver cc).
   if (d.household_caregivers && d.household_caregivers.length) {
     let rows = "";
@@ -1048,6 +1053,7 @@ function render(d, v){
   app.hidden = false;
 
   initOnboardingCard();
+  initCoachesCard();
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
@@ -1257,6 +1263,90 @@ async function onboardingBook(start_ts){
   loadOnboardingSlots();
 }
 <!-- END onboarding card script -->
+
+<!-- BEGIN coaches script -->
+// Meet your coaches (coaching arc, Task 4). Member-gated by its own
+// /api/community/coaches fetch (see the placeholder in render()), mirroring
+// the onboarding card's own-fetch pattern above. Server strings (name, focus)
+// are set via textContent only, never innerHTML. The intro video is rendered
+// as a <video> element for self-hosted paths (e.g. /portal-asset/coach-<hex>.mp4)
+// or an <iframe> for an embeddable third-party link (e.g. Rumble); either way
+// only a validated http(s)/relative url is ever assigned as the src.
+async function initCoachesCard(){
+  const card = document.getElementById("coaches-card");
+  if(!card) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/community/coaches?token=${encodeURIComponent(token)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  if(!d || !d.eligible || !Array.isArray(d.coaches) || !d.coaches.length){
+    card.hidden = true; card.innerHTML = ""; return;
+  }
+  card.hidden = false;
+  renderCoachesCard(card, d.coaches);
+}
+
+function safeMediaUrl(url){
+  // Only allow http(s) absolute urls or site-relative paths (defense-in-depth,
+  // mirrors renderSuggestion's safeUrl pattern above).
+  if(typeof url !== "string" || !url) return "";
+  if(/^https?:\/\//i.test(url)) return url;
+  if(url.charAt(0) === "/") return url;
+  return "";
+}
+
+function isSelfHostedVideoFile(url){
+  return /\.(mp4|mov|webm|m4v)(\?|#|$)/i.test(url);
+}
+
+function renderCoachesCard(card, coaches){
+  card.innerHTML = "";
+  const h = document.createElement("h2");
+  h.textContent = "Meet your coaches";
+  card.appendChild(h);
+  coaches.forEach(function(c){
+    if(!c || typeof c !== "object") return;
+    const row = document.createElement("div");
+    row.className = "coach-row";
+    row.style.margin = ".8rem 0";
+    const name = document.createElement("div");
+    name.style.fontWeight = "600";
+    name.textContent = c.name || "";
+    row.appendChild(name);
+    if(c.focus){
+      const focus = document.createElement("div");
+      focus.className = "muted small";
+      focus.textContent = c.focus;
+      row.appendChild(focus);
+    }
+    const url = safeMediaUrl(c.intro_video_url);
+    if(url){
+      let media;
+      if(url.charAt(0) === "/" || isSelfHostedVideoFile(url)){
+        media = document.createElement("video");
+        media.src = url;
+        media.controls = true;
+      } else {
+        media = document.createElement("iframe");
+        media.src = url;
+        media.setAttribute("allowfullscreen", "");
+        media.style.border = "0";
+      }
+      media.style.width = "100%";
+      media.style.maxWidth = "360px";
+      media.style.display = "block";
+      media.style.marginTop = ".4rem";
+      row.appendChild(media);
+    }
+    card.appendChild(row);
+  });
+  const note = document.createElement("p");
+  note.className = "muted small";
+  note.textContent = "Choosing your coach is coming soon.";
+  card.appendChild(note);
+}
+<!-- END coaches script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.
