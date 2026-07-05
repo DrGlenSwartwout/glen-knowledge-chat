@@ -12511,7 +12511,33 @@ def api_console_biofield_reveals():
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
             d.update(_biofield_status_brief(cx, d.get("email")))
+        # Read-receipts (Task 5): additive, best-effort — a client's explicit
+        # report open (see /api/portal/<token>/open), keyed the same way the
+        # portal payload keys it (email|scan_date).
+        try:
+            from dashboard import opens as _op
+            _op.init_opens_table(cx)
+            for d in drafts + approved:
+                d["opened"] = _op.get_open(cx, "report", _op.report_key(d.get("email", ""), d.get("scan_date", "")))
+        except Exception as _e:
+            print(f"[opens] reveals annotate skipped: {_e!r}", flush=True)
     return jsonify({"drafts": drafts, "approved": approved})
+
+
+@app.route("/api/console/opens", methods=["GET"])
+def api_console_opens():
+    """Generic read-receipt lookup for console/owner tools: ?kind=report|invoice
+    &keys=comma,separated,keys. Not flag-gated (owner tools show whatever opens
+    data exists, regardless of READ_RECEIPTS_ENABLED)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import opens as _op
+    kind = (request.args.get("kind") or "").strip()
+    keys = [k for k in (request.args.get("keys") or "").split(",") if k]
+    with sqlite3.connect(LOG_DB) as cx:
+        _op.init_opens_table(cx)
+        data = _op.opens_for(cx, kind, keys)
+    return jsonify({"ok": True, "opens": data})
 
 
 @app.route("/console/biofield-reveals", methods=["GET"])
@@ -31385,6 +31411,20 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Read-receipts (Task 5): additive, best-effort — whether the client
+            # has opened the invoice link most recently SENT for this order
+            # (orders.invoice_token, set by orders.send_invoice). Orders that
+            # were never sent an invoice (or only reprinted, never sent) carry
+            # no token and get no annotation.
+            try:
+                from dashboard import opens as _op
+                _op.init_opens_table(cx)
+                for o in rows:
+                    tok = (o.get("invoice_token") or "").strip()
+                    if tok:
+                        o["invoice_opened"] = _op.get_open(cx, "invoice", _op.invoice_key(tok))
+            except Exception as _e:
+                print(f"[orders] invoice open annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})

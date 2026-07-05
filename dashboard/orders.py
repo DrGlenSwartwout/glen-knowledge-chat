@@ -84,6 +84,12 @@ def init_orders_table(cx):
         "ALTER TABLE orders ADD COLUMN adjustment_cents INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN practitioner_id TEXT",
         "ALTER TABLE orders ADD COLUMN margin_cents INTEGER DEFAULT 0",
+        # Read-receipts (Task 5): raw token from the invoice link most recently
+        # SENT to the customer (send_invoice), so the Orders board can look up
+        # whether the client has opened it (dashboard.opens.get_open). The
+        # console "Print invoice" reprint path does not touch this column —
+        # only the customer-facing send does.
+        "ALTER TABLE orders ADD COLUMN invoice_token TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -659,6 +665,13 @@ def _send_invoice_exec(params, ctx):
     except Exception as e:
         raise ValueError(f"could not send invoice email: {e}")
     mark_invoice_sent(cx, oid)
+    try:
+        # Read-receipts (Task 5): remember the token that actually went to the
+        # customer, so the Orders board can look up its open status later.
+        cx.execute("UPDATE orders SET invoice_token=? WHERE id=?", (tok, oid))
+        cx.commit()
+    except Exception as e:
+        print(f"[orders] invoice_token persist skipped for order #{oid}: {e!r}", flush=True)
     return {"order_id": oid, "link": link,
             "message": f"{'Receipt' if paid else 'Invoice'} {ref} emailed to {email}."}
 

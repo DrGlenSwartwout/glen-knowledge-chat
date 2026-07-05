@@ -72,3 +72,16 @@ def test_flag_off_inert(tmp_path, monkeypatch):
     from dashboard import opens
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert opens.get_open(cx, "report", "c@x.com|2026-06-25") is None   # inert
+
+
+def test_console_opens_read(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import opens
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        opens.init_opens_table(cx)
+        opens.record_open(cx, "invoice", "tokA", now="2026-07-04 10:00:00"); cx.commit()
+    c = appmod.app.test_client()
+    r = c.get("/api/console/opens?kind=invoice&keys=tokA,tokB")
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["opens"]["tokA"]["open_count"] == 1 and "tokB" not in j["opens"]
