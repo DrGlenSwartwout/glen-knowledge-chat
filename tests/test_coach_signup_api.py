@@ -77,3 +77,18 @@ def test_coach_cert_ok_fail_closed():
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         assert appmod._coach_cert_ok(cx, "nobody@nowhere.com") is False
+
+
+def test_edit_without_video_preserves_url():
+    c = _client()
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value="pid4"), \
+         mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="keep@x.com"), \
+         mock.patch.object(appmod, "_coach_cert_ok", return_value=True):
+        first = c.post("/api/practitioner/coach-profile?token=t", data=_form(),
+                       content_type="multipart/form-data").get_json()
+        assert first["intro_video_url"].startswith("/portal-asset/coach-")
+        original_url = first["intro_video_url"]
+        second = c.post("/api/practitioner/coach-profile?token=t",
+                        data=_form(capacity=5, with_video=False),
+                        content_type="multipart/form-data").get_json()
+    assert second["intro_video_url"] == original_url

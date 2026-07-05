@@ -13336,6 +13336,10 @@ def practitioner_coach_profile():
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx)
+        if not intro_video_url:
+            _existing = _cd.get_volunteer(cx, email)
+            if _existing:
+                intro_video_url = _existing.get("intro_video_url") or ""
         cert_ok = _coach_cert_ok(cx, email)
         _cd.upsert_volunteer(cx, email=email, name=name, focus=focus,
                              intro_video_url=intro_video_url, capacity=capacity,
