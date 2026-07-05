@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 from dashboard import community_catalog as _cat
 
 
@@ -28,7 +30,13 @@ class _FakeClient:
 
 def test_transcribe_returns_text_and_segments():
     client = _FakeClient("{}")
-    out = _cat.transcribe("/tmp/whatever.mp4", client=client)
+    tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    try:
+        tmp.write(b"fake audio bytes")
+        tmp.close()
+        out = _cat.transcribe(tmp.name, client=client)
+    finally:
+        os.unlink(tmp.name)
     assert out["text"].startswith("hello world")
     assert out["segments"][0]["end"] == 2.0
 

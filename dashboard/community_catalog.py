@@ -29,18 +29,8 @@ def _client(client):
 def transcribe(audio_path, *, client=None):
     """Whisper transcription → {"text", "segments":[{"start","end","text"}]}."""
     c = _client(client)
-    try:
-        fh = open(audio_path, "rb")
-    except OSError:
-        # Missing file (e.g. a test double's client not touching the path) —
-        # let the client surface its own error/behavior for the raw path.
-        fh = None
-    if fh is not None:
-        with fh:
-            r = c.audio.transcriptions.create(model="whisper-1", file=fh,
-                                              response_format="verbose_json")
-    else:
-        r = c.audio.transcriptions.create(model="whisper-1", file=audio_path,
+    with open(audio_path, "rb") as fh:
+        r = c.audio.transcriptions.create(model="whisper-1", file=fh,
                                           response_format="verbose_json")
     segs = []
     for s in (getattr(r, "segments", None) or []):
@@ -62,9 +52,11 @@ def suggest_catalog(transcript_text, *, client=None):
             messages=[{"role": "system", "content": _SUGGEST_SYSTEM},
                       {"role": "user", "content": transcript_text[:120000]}])
         data = json.loads(r.choices[0].message.content)
+        interest_tags = data.get("interest_tags", [])
+        outtakes = data.get("outtakes", [])
         return {"title": data.get("title", "") or "",
-                "interest_tags": list(data.get("interest_tags", []) or []),
-                "outtakes": list(data.get("outtakes", []) or [])}
+                "interest_tags": interest_tags if isinstance(interest_tags, list) else [],
+                "outtakes": outtakes if isinstance(outtakes, list) else []}
     except Exception as e:
         print(f"[community-catalog] suggest failed: {e!r}", flush=True)
         return empty
