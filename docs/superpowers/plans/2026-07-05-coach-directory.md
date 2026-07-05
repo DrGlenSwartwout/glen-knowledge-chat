@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A certification student volunteers to coach (profile + Rumble intro video, gated on cert completion), and members with an active coaching window browse a coach directory.
+**Goal:** A certification student volunteers to coach from their practitioner portal (sets capacity 0-12, uploads an intro video, gated on cert completion), and members with an active coaching window browse a coach directory.
 
-**Architecture:** A sqlite `coach_volunteers` store (denormalized name/focus/video so the member directory never queries Postgres); a console-gated signup route that runs a fail-closed cert-completion check; a member-portal-gated directory route gated on an active coaching window; a portal card. No Postgres in this slice; cert check + coaching eligibility are both sqlite.
+**Architecture:** A sqlite `coach_volunteers` store (denormalized name/focus/video so the member directory never queries Postgres); a practitioner-session-authed self-service signup route that stores the uploaded intro video via the existing asset mechanism and runs a fail-closed cert-completion check; a member-portal-gated directory route gated on an active coaching window; a member directory card + a practitioner-portal control. Cert check + coaching eligibility are both sqlite; the coach roster is the volunteer table (not Postgres).
 
 **Tech Stack:** Python 3 / Flask (single `app.py` + `dashboard/*.py`), sqlite (`chat_log.db`, `?` placeholders, `_db_lock`, `cx.row_factory = sqlite3.Row`), Rumble unlisted for intro video, vanilla JS/HTML.
 
@@ -13,7 +13,8 @@
 - **Privacy:** the member directory exposes only `{name, focus, intro_video_url}` — NEVER a coach's email. A coach who volunteers consents to being shown; a member never gets coach contact in this slice.
 - **Cert eligibility is fail-closed:** a volunteer is only listed if `cert_ok=1`, set from `cert_rules.evaluate(approved submissions).complete`; any lookup error → `cert_ok=0` (not listed).
 - **Member gate:** the directory is only served to members with an active coaching window (`coaching.active_window`); others get `{eligible:false, coaches:[]}`.
-- **Signup is CONSOLE_SECRET-gated** in this slice (self-service via the practitioner portal is deferred to slice 1b).
+- **Signup is practitioner-portal self-service:** a cert student, authed by their practitioner session token (`_practitioner_session_pid()` → practitioner_id → email via `practitioner_email_by_id`), sets their capacity (0-12) and uploads a short intro video from their own portal. Capacity 0 = not taking members (drops them from the directory). In-browser recording is a fast-follow; this slice is file **upload**.
+- **Intro video self-hosts** via the existing `_PORTAL_ASSETS_DIR` (written as `coach-<hex>.mp4`, served by `/portal-asset/<filename>` which already accepts `.mp4`); `intro_video_url` = `/portal-asset/<filename>`. No Rumble for these short intros.
 - **Video hosting = Rumble unlisted** (the `intro_video_url` is a Rumble link embedded in the card).
 - **Copy:** no em dashes, no ALL CAPS.
 - sqlite writes under `with _db_lock, sqlite3.connect(LOG_DB)`; emails lowercased.
@@ -197,22 +198,23 @@ git commit -m "feat(coach-directory): volunteer store"
 
 ---
 
-### Task 2: Signup route + cert eligibility (`app.py`)
+### Task 2: Practitioner self-service signup + video upload + cert eligibility (`app.py`)
 
 **Files:**
-- Modify: `app.py` (add `_coach_cert_ok` helper + the console-gated signup route)
+- Modify: `app.py` (add `_coach_cert_ok` helper + the practitioner-authed self-service route)
 - Test: `tests/test_coach_signup_api.py`
 
 **Interfaces:**
-- Consumes: `dashboard/coach_directory.py:upsert_volunteer`, `dashboard/cert_submissions.py:list_for_email`, `dashboard/cert_rules.py:evaluate`, `CONSOLE_SECRET`, `_db_lock`, `LOG_DB`.
-- Produces: `_coach_cert_ok(cx, email) -> bool`; `POST /api/console/coach-volunteers`.
+- Consumes: `dashboard/coach_directory.py:upsert_volunteer`/`set_active`, `dashboard/cert_submissions.py:list_for_email`, `dashboard/cert_rules.py:evaluate`, `_practitioner_session_pid()` (app.py — resolves the practitioner session token to a practitioner_id), `dashboard/practitioner_portal.py:practitioner_email_by_id`, `_PORTAL_ASSETS_DIR` + `secrets` (app.py), `_db_lock`, `LOG_DB`.
+- Produces: `_coach_cert_ok(cx, email) -> bool`; `POST /api/practitioner/coach-profile`.
 
-**Contract:** header `X-Console-Key` must equal `CONSOLE_SECRET` (else 401). Body `{email, name, focus, intro_video_url, capacity}`. Compute `cert_ok = _coach_cert_ok(cx, email)`, `upsert_volunteer(..., cert_ok=cert_ok)`. Returns `{ok:true, cert_ok:bool, listed:bool}` where `listed == cert_ok` (only cert-ok volunteers are listed). `_coach_cert_ok` filters to approved submissions, runs `evaluate`, returns its `complete`, and returns `False` on any error (fail-closed).
+**Contract:** `POST /api/practitioner/coach-profile?token=<practitioner session token>` — authed via `_practitioner_session_pid()` → practitioner_id → email via `practitioner_email_by_id` (no pid/email → 401). Multipart form: `name`, `focus`, `capacity` (int), and an optional file field `video`. Behavior: clamp `capacity` to 0..12; if a `video` file is present, write it to `_PORTAL_ASSETS_DIR` as `coach-<hex>.mp4` and set `intro_video_url = "/portal-asset/<that filename>"` (else keep the `intro_video_url` form field if provided); `cert_ok = _coach_cert_ok(cx, email)`; `upsert_volunteer(email, name, focus, intro_video_url, capacity, cert_ok)`; then `set_active(email, 1 if capacity > 0 else 0)` (capacity 0 = not taking members → inactive). Returns `{ok:true, cert_ok:bool, capacity:int, listed:bool, intro_video_url:str}` where `listed == (cert_ok and capacity > 0)`. `_coach_cert_ok` filters to approved submissions, runs `evaluate`, returns its `complete`, and returns `False` on any error (fail-closed).
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_coach_signup_api.py
+import io
 import sqlite3
 from unittest import mock
 import app as appmod
@@ -224,45 +226,69 @@ def _client():
     return appmod.app.test_client()
 
 
-def _payload(email="coach@x.com"):
-    return {"email": email, "name": "Cora", "focus": "sleep",
-            "intro_video_url": "https://rumble.com/v-c", "capacity": 3}
+def _form(*, name="Cora", focus="sleep", capacity=3, with_video=True):
+    data = {"name": name, "focus": focus, "capacity": str(capacity)}
+    if with_video:
+        data["video"] = (io.BytesIO(b"\x00\x01fakevideo"), "clip.mp4")
+    return data
 
 
-def test_signup_requires_console_key():
-    r = _client().post("/api/console/coach-volunteers", json=_payload())
+def test_signup_requires_practitioner_session():
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value=None):
+        r = _client().post("/api/practitioner/coach-profile?token=bad",
+                           data=_form(), content_type="multipart/form-data")
     assert r.status_code == 401
 
 
-def test_signup_certified_is_listed():
+def test_signup_certified_uploads_video_and_lists():
     c = _client()
-    h = {"X-Console-Key": appmod.CONSOLE_SECRET}
-    with mock.patch.object(appmod, "_coach_cert_ok", return_value=True):
-        r = c.post("/api/console/coach-volunteers", json=_payload("ok@x.com"), headers=h)
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value="pid1"), \
+         mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="ok@x.com"), \
+         mock.patch.object(appmod, "_coach_cert_ok", return_value=True):
+        r = c.post("/api/practitioner/coach-profile?token=t", data=_form(),
+                   content_type="multipart/form-data")
     d = r.get_json()
-    assert d["ok"] and d["cert_ok"] is True and d["listed"] is True
+    assert d["ok"] and d["cert_ok"] is True and d["listed"] is True and d["capacity"] == 3
+    assert d["intro_video_url"].startswith("/portal-asset/coach-") and d["intro_video_url"].endswith(".mp4")
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx)
         assert any(v["name"] == "Cora" for v in _cd.list_active(cx))
 
 
+def test_capacity_clamped_and_zero_unlists():
+    c = _client()
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value="pid2"), \
+         mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="cap@x.com"), \
+         mock.patch.object(appmod, "_coach_cert_ok", return_value=True):
+        hi = c.post("/api/practitioner/coach-profile?token=t", data=_form(capacity=99),
+                    content_type="multipart/form-data").get_json()
+        zero = c.post("/api/practitioner/coach-profile?token=t",
+                      data=_form(capacity=0, with_video=False),
+                      content_type="multipart/form-data").get_json()
+    assert hi["capacity"] == 12                    # clamped to 12
+    assert zero["capacity"] == 0 and zero["listed"] is False   # 0 = not taking members
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cd.init_coach_tables(cx)
+        assert _cd.get_volunteer(cx, "cap@x.com")["active"] == 0
+
+
 def test_signup_uncertified_not_listed():
     c = _client()
-    h = {"X-Console-Key": appmod.CONSOLE_SECRET}
-    with mock.patch.object(appmod, "_coach_cert_ok", return_value=False):
-        r = c.post("/api/console/coach-volunteers", json=_payload("no@x.com"), headers=h)
-    d = r.get_json()
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value="pid3"), \
+         mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="no@x.com"), \
+         mock.patch.object(appmod, "_coach_cert_ok", return_value=False):
+        d = c.post("/api/practitioner/coach-profile?token=t", data=_form(),
+                   content_type="multipart/form-data").get_json()
     assert d["cert_ok"] is False and d["listed"] is False
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx)
-        # stored, but cert_ok=0 (Task-1 store tests already prove cert_ok=0 → not in list_active)
-        assert _cd.get_volunteer(cx, "no@x.com")["cert_ok"] == 0
+        assert _cd.get_volunteer(cx, "no@x.com")["cert_ok"] == 0  # stored, not listed
 
 
 def test_coach_cert_ok_fail_closed():
-    # a bogus email with no cert data → not complete → False (never raises)
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         assert appmod._coach_cert_ok(cx, "nobody@nowhere.com") is False
@@ -275,7 +301,7 @@ Expected: FAIL — route 404 / `_coach_cert_ok` undefined.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `app.py` (near the other community routes):
+Add to `app.py` (near the other community routes). `secrets` and `_PORTAL_ASSETS_DIR` already exist in app.py:
 
 ```python
 def _coach_cert_ok(cx, email):
@@ -291,34 +317,51 @@ def _coach_cert_ok(cx, email):
         return False
 
 
-@app.route("/api/console/coach-volunteers", methods=["POST"])
-def coach_volunteer_signup():
-    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+@app.route("/api/practitioner/coach-profile", methods=["POST"])
+def practitioner_coach_profile():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard.practitioner_portal import practitioner_email_by_id
+    email = (practitioner_email_by_id(pid) or "").strip().lower()
+    if not email:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_directory as _cd
-    body = request.get_json(force=True) or {}
-    email = (body.get("email") or "").strip().lower()
+    name = (request.form.get("name") or "").strip()
+    focus = (request.form.get("focus") or "").strip()
+    try:
+        capacity = max(0, min(12, int(request.form.get("capacity") or 0)))
+    except (TypeError, ValueError):
+        capacity = 0
+    intro_video_url = (request.form.get("intro_video_url") or "").strip()
+    vf = request.files.get("video")
+    if vf is not None and vf.filename:
+        fname = f"coach-{secrets.token_hex(8)}.mp4"
+        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
+        intro_video_url = f"/portal-asset/{fname}"
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx)
         cert_ok = _coach_cert_ok(cx, email)
-        _cd.upsert_volunteer(cx, email=email, name=(body.get("name") or "").strip(),
-                             focus=(body.get("focus") or "").strip(),
-                             intro_video_url=(body.get("intro_video_url") or "").strip(),
-                             capacity=int(body.get("capacity") or 3), cert_ok=cert_ok)
-    return jsonify({"ok": True, "cert_ok": bool(cert_ok), "listed": bool(cert_ok)})
+        _cd.upsert_volunteer(cx, email=email, name=name, focus=focus,
+                             intro_video_url=intro_video_url, capacity=capacity,
+                             cert_ok=cert_ok)
+        _cd.set_active(cx, email, 1 if capacity > 0 else 0)
+    return jsonify({"ok": True, "cert_ok": bool(cert_ok), "capacity": capacity,
+                    "listed": bool(cert_ok and capacity > 0),
+                    "intro_video_url": intro_video_url})
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `export DATA_DIR="$(mktemp -d)" && doppler run -p remedy-match -c prd -- env DATA_DIR="$DATA_DIR" python3 -m pytest tests/test_coach_signup_api.py -q`
-Expected: PASS (4 passed)
+Expected: PASS (5 passed)
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add app.py tests/test_coach_signup_api.py
-git commit -m "feat(coach-directory): console signup + fail-closed cert check"
+git commit -m "feat(coach-directory): practitioner self-service signup + video upload + cert check"
 ```
 
 ---
@@ -459,15 +502,49 @@ git commit -m "feat(coach-directory): Meet your coaches portal card"
 
 ---
 
+### Task 5: Practitioner-portal coaching control (`static/practitioner-portal.html`)
+
+**Files:**
+- Modify: `static/practitioner-portal.html`
+- Test: manual JS parse check.
+
+**Interfaces:**
+- Consumes: `POST /api/practitioner/coach-profile?token=…` (multipart: `name`, `focus`, `capacity`, `video` file) → `{ok, cert_ok, capacity, listed, intro_video_url}` (Task 2).
+
+**Design note:** read `static/practitioner-portal.html` first — how it obtains the practitioner **session token** (the value passed as `?token=` to practitioner APIs) and its card idiom. Add a "Coaching volunteer" card, wrapped in `<!-- BEGIN coach-volunteer script -->` / `<!-- END coach-volunteer script -->`:
+- Fields: display name (text), focus (short text), **capacity** (a number input or slider, min 0 max 12, integer; label it so 0 reads as "not taking new members right now"), and a **file input** `accept="video/mp4,video/*"` for the intro video (upload; in-browser recording is a fast-follow).
+- On submit: build a `FormData` with `name`, `focus`, `capacity`, and the selected `video` file (omit `video` if none chosen), and `fetch('/api/practitioner/coach-profile?token='+TOKEN, {method:'POST', body: formData})` (do NOT set Content-Type; the browser sets the multipart boundary).
+- On the response: show a quiet status line built with `textContent` — if `!d.cert_ok`, "Your profile is saved. You will be listed once your certification is complete." If `d.cert_ok && d.listed`, "You are listed for members to find." If `d.capacity === 0`, "Saved. You are set to not taking new members right now."
+- Copy: no em dashes, no ALL CAPS. All status/response text via `textContent`.
+
+- [ ] **Step 1: Read the page and add the card**
+
+Read `static/practitioner-portal.html`; add the "Coaching volunteer" card + its FormData submit per the design note, using the page's existing practitioner session token var.
+
+- [ ] **Step 2: Verify the page JS parses**
+
+Run: `cd /tmp/wt-deploy-chat-cca589e9 && node --check <(python3 -c "import re; h=open('static/practitioner-portal.html').read(); print('\n;\n'.join(re.findall(r'<script>(.*?)</script>', h, re.S)))")`
+Expected: no output (clean parse).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add static/practitioner-portal.html
+git commit -m "feat(coach-directory): practitioner portal coaching-volunteer control"
+```
+
+---
+
 ## Definition of Done
 
-- A cert-complete volunteer coach (enrolled console-side) with a Rumble intro video appears in the directory; a non-cert-complete one does not.
+- A cert-complete student sets capacity (0-12) and uploads an intro video from their own practitioner portal; a non-cert-complete one can save but is not listed; capacity 0 unlists them.
 - Members with an active coaching window see the coach directory (name, focus, intro video) on their portal; ineligible members do not; no coach email is ever exposed.
 - All new tests pass; Community A/B/C1/C3 and cert/coaching stores are untouched (the directory reads them, writes only `coach_volunteers`).
 
 ## Deferred (not in this plan)
 
-- Slice 1b: coach self-service signup via the practitioner portal (+ verifying `portal_role='coach'` in Postgres at self-signup).
+- **In-browser video recording** (camera capture) in the practitioner portal — this slice ships file **upload**; recording is the immediate fast-follow.
+- Verifying `portal_role='coach'` in Postgres at signup (the practitioner-session auth already proves they're a practitioner; cert-completeness is the substantive automated gate).
 - Slice 2: member requests a coach → student accepts up to `capacity` (pairing).
 - Slice 3: the 1:1 coaching thread + report/block + moderation.
 - Coach-side dashboard; interest-matching of coaches to members; capacity enforcement.
