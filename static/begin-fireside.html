@@ -263,11 +263,24 @@
     sub.textContent = '';
     // 1. instant filler (zero-latency, so never silent) — the spoken break-in
     var f = pick(manifest.fillers, lastFiller);
-    if (f) { lastFiller = f.id; playClip(fillerAudio, f.file); }
-    // 1b. after the break-in (~1.1s), bridge with a murmur only if the reply isn't ready yet
+    // 1b. bridge with the thinking murmur only AFTER the spoken filler has ENDED,
+    // so the hum never competes with Glendalf's break-in line — and only if the
+    // reply still isn't ready. (Was a fixed 1.1s timer that overlapped longer fillers.)
     replyStarted = false;
     if (murmurTimer) clearTimeout(murmurTimer);
-    murmurTimer = setTimeout(startMurmurIfNeeded, 1100);
+    if (f) {
+      lastFiller = f.id;
+      fillerAudio.onended = function () {
+        fillerAudio.onended = null;
+        if (murmurTimer) { clearTimeout(murmurTimer); murmurTimer = null; }
+        startMurmurIfNeeded();
+      };
+      playClip(fillerAudio, f.file);
+      // fallback if 'ended' never fires (filler failed to load, etc.)
+      murmurTimer = setTimeout(function () { fillerAudio.onended = null; startMurmurIfNeeded(); }, 3000);
+    } else {
+      murmurTimer = setTimeout(startMurmurIfNeeded, 1100);   // no filler -> brief bridge
+    }
     // 2. pondering video while we think
     pondering();
     // 3 + 4. stream subtitles via SSE while TTS renders in parallel
