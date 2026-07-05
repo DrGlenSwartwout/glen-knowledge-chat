@@ -16474,16 +16474,25 @@ def coach_subscriptions_charge_cron():
     for sub in due_rows:
         email = sub["member_email"]
         tier = sub["tier"]
-        res = _sp.charge_off_session(
-            sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
-            description=f"Coaching with {_cs.TIERS.get(tier, {}).get('label', '')}",
-            metadata={"kind": "coach_sub_cycle", "tier": tier, "email": email})
-        ok = res.get("status") == "succeeded"
+        try:
+            res = _sp.charge_off_session(
+                sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
+                description=f"Coaching with {_cs.TIERS.get(tier, {}).get('label', '')}",
+                metadata={"kind": "coach_sub_cycle", "tier": tier, "email": email})
+            ok = res.get("status") == "succeeded"
+            pi_id = res.get("id") or ""
+        except Exception:
+            # A raised exception (timeout, connection error, etc.) is treated the
+            # same as a non-succeeded charge for THIS sub only, so it cannot abort
+            # the batch and skip every subscription after it.
+            app.logger.exception("coach sub charge raised for %s", email)
+            ok = False
+            pi_id = ""
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _cs.init_sub_tables(cx)
             _cs.record_charge(cx, email=email, tier=tier, amount_cents=sub["amount_cents"],
-                              pi_id=res.get("id") or "", status="succeeded" if ok else "failed")
+                              pi_id=pi_id, status="succeeded" if ok else "failed")
             if ok:
                 _grant_cycle_service(cx, email, tier)
                 _cs.mark_charged(cx, email, _subs.add_months(today, 1))
@@ -16493,14 +16502,17 @@ def coach_subscriptions_charge_cron():
             charged += 1
         else:
             failed += 1
+            html = (f"<p>We could not process this month's coaching charge for {email}. "
+                    f"Please update the card on file to keep coaching active.</p>")
             try:
-                html = (f"<p>We could not process this month's coaching charge for {email}. "
-                        f"Please update the card on file to keep coaching active.</p>")
                 send_evox_email(email, "", "Your coaching payment did not go through", html, html, b"")
+            except Exception:
+                app.logger.exception("coach sub failure notify (member) failed for %s", email)
+            try:
                 send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Coaching charge failed: {email}",
                                 html, html, b"")
             except Exception:
-                app.logger.exception("coach sub failure notify failed for %s", email)
+                app.logger.exception("coach sub failure notify (glen) failed for %s", email)
     return jsonify({"charged": charged, "failed": failed})
 
 
