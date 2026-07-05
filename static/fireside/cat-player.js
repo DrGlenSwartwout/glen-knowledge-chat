@@ -29,7 +29,12 @@ export class CatPlayer {
     this.queued = null; this.timer = null; this.stopped = true;
     for (const v of [front, back]) {
       v.muted = true; v.loop = false; v.playsInline = true;
-      v.style.transition = 'opacity .12s linear';
+      // Hard-cut swaps (NOT a crossfade). Every clip begins/ends on the identical
+      // boundary frame, so an instant cut is invisible. A crossfade briefly drops
+      // BOTH videos to partial opacity, which lets the (transparent body -> white
+      // page canvas) bleed through and brightens the dark scene = a periodic bright
+      // flash at each ~12s loop seam. 'none' also overrides the 1.4s CSS transition.
+      v.style.transition = 'none';
       if (cfg.poster) v.poster = cfg.poster;
     }
   }
