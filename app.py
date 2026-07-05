@@ -16329,6 +16329,193 @@ def community_coaching_interest():
     return jsonify({"ok": True})
 
 
+def _grant_cycle_service(cx, email, tier):
+    """Grant this cycle's included service: Rae -> 1 EVOX credit; Glen -> Causal
+    Biofield entitlement. Best-effort; never raises."""
+    try:
+        if tier == "rae":
+            from dashboard import evox as _ev
+            _ev.add_session_credits(cx, email, 1)
+        elif tier == "glen":
+            from dashboard import consult as _cn
+            _cn.set_consult_ready(cx, email, True)
+    except Exception:
+        app.logger.exception("coach sub grant failed for %s/%s", email, tier)
+
+
+@app.route("/api/community/coach-subscribe", methods=["POST"])
+def community_coach_subscribe():
+    """Start a Stripe Checkout for a paid monthly coaching subscription (Rae
+    $100/mo or Dr. Glen $200/mo). Vaults the card (save_card=True) — month 1 is
+    charged now via this checkout; months 2..N are billed by the monthly cron
+    (Task 3) off the vaulted card."""
+    from dashboard import coach_subscriptions as _cs
+    body = request.get_json(force=True) or {}
+    tier = (body.get("tier") or "").strip()
+    if tier not in _cs.TIERS:
+        return jsonify({"error": "bad_tier"}), 400
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "unavailable"}), 503
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        email = ident.email
+    from dashboard import stripe_pay as _sp
+    base = PUBLIC_BASE_URL.rstrip("/")
+    sess = _sp.create_checkout_session(
+        _cs.TIERS[tier]["amount_cents"], customer_email=email,
+        description=f"Coaching with {_cs.TIERS[tier]['label']}",
+        metadata={"kind": "coach_sub", "tier": tier, "email": email},
+        success_url=f"{base}/coach-subscribe/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/", save_card=True)
+    return jsonify({"ok": True, "url": sess.get("url")})
+
+
+def _fulfill_coach_sub(session_id):
+    """Create a paid coaching subscription from a paid+vaulted coach_sub checkout,
+    idempotently (claim-then-create on coach_sub_grants(session_id) PRIMARY KEY,
+    mirroring _fulfill_continuous_care_monthly). Callable from the
+    /coach-subscribe/return redirect AND the webhook, so a closed tab / dropped
+    redirect still gets fulfilled. Re-fetches the session + PaymentIntent; only
+    proceeds on a succeeded payment WITH a vaulted customer + payment method.
+    Never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, coach_subscriptions as _cs, subscriptions as _subs
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "coach_sub":
+            return {"ok": False, "reason": "not_coach_sub"}
+        email = (md.get("email") or "").strip().lower()
+        tier = (md.get("tier") or "").strip()
+        pi_id = sess.get("payment_intent")
+        if not (email and tier in _cs.TIERS and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        pi = _sp.get_payment_intent(pi_id)
+        if pi.get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        customer, pm = pi.get("customer"), pi.get("payment_method")
+        if not (customer and pm):
+            return {"ok": False, "reason": "no_card"}
+        from datetime import date as _date
+        next_charge = _subs.add_months(_date.today().isoformat(), 1)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            cx.execute("CREATE TABLE IF NOT EXISTS coach_sub_grants "
+                       "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
+            _cs.init_sub_tables(cx)
+            claimed = cx.execute(
+                "INSERT OR IGNORE INTO coach_sub_grants (session_id,email,created_at) VALUES (?,?,?)",
+                (session_id, email, _cs._now())).rowcount == 1
+            cx.commit()
+            if not claimed:
+                return {"ok": True, "reason": "already_fulfilled"}
+            _cs.create_sub(cx, email=email, tier=tier, customer_id=customer,
+                           payment_method_id=pm, next_charge_at=next_charge)
+            _cs.record_charge(cx, email=email, tier=tier,
+                              amount_cents=_cs.TIERS[tier]["amount_cents"], pi_id=pi_id,
+                              status="succeeded")
+            _grant_cycle_service(cx, email, tier)
+        try:
+            html = (f"<p>Your monthly coaching with {_cs.TIERS[tier]['label']} is active. "
+                    f"This cycle includes your included session. You can cancel any time from "
+                    f"your portal.</p>")
+            send_evox_email(email, "", "Your coaching subscription is active", html, html, b"")
+        except Exception:
+            app.logger.exception("coach sub confirmation failed")
+        return {"ok": True}
+    except Exception:
+        app.logger.exception("coach sub fulfill failed for %s", session_id)
+        return {"ok": False, "reason": "error"}
+
+
+@app.route("/coach-subscribe/return")
+def coach_subscribe_return():
+    sid = request.args.get("session_id", "")
+    if sid:
+        _fulfill_coach_sub(sid)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
+
+
+@app.route("/api/community/coach-subscribe/cancel", methods=["POST"])
+def community_coach_subscribe_cancel():
+    from dashboard import coach_subscriptions as _cs
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_sub_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        _cs.set_status(cx, ident.email, "canceled")
+        return jsonify({"ok": True})
+
+
+@app.route("/api/cron/coach-subscriptions/charge", methods=["POST"])
+def coach_subscriptions_charge_cron():
+    """Monthly charge cron for paid coaching subscriptions (arc slice 2b, Task 3).
+
+    Charges each active subscription whose next_charge_at is due, off the
+    vaulted card. On success: records the charge, grants this cycle's included
+    service, and advances next_charge_at one month (only way the date moves,
+    so a same-day re-run cannot double-charge). On failure: records the
+    charge, marks the sub past_due (no grant, no date advance), and does a
+    best-effort notify of the member and Glen."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_subscriptions as _cs, stripe_pay as _sp, subscriptions as _subs
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    charged = failed = 0
+    with sqlite3.connect(LOG_DB) as rcx:
+        rcx.row_factory = sqlite3.Row
+        _cs.init_sub_tables(rcx)
+        due_rows = _cs.due(rcx, today)
+    for sub in due_rows:
+        email = sub["member_email"]
+        tier = sub["tier"]
+        try:
+            res = _sp.charge_off_session(
+                sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
+                description=f"Coaching with {_cs.TIERS.get(tier, {}).get('label', '')}",
+                metadata={"kind": "coach_sub_cycle", "tier": tier, "email": email})
+            ok = res.get("status") == "succeeded"
+            pi_id = res.get("id") or ""
+        except Exception:
+            # A raised exception (timeout, connection error, etc.) is treated the
+            # same as a non-succeeded charge for THIS sub only, so it cannot abort
+            # the batch and skip every subscription after it.
+            app.logger.exception("coach sub charge raised for %s", email)
+            ok = False
+            pi_id = ""
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _cs.init_sub_tables(cx)
+            _cs.record_charge(cx, email=email, tier=tier, amount_cents=sub["amount_cents"],
+                              pi_id=pi_id, status="succeeded" if ok else "failed")
+            if ok:
+                _grant_cycle_service(cx, email, tier)
+                _cs.mark_charged(cx, email, _subs.add_months(today, 1))
+            else:
+                _cs.mark_failed(cx, email)
+        if ok:
+            charged += 1
+        else:
+            failed += 1
+            html = (f"<p>We could not process this month's coaching charge for {email}. "
+                    f"Please update the card on file to keep coaching active.</p>")
+            try:
+                send_evox_email(email, "", "Your coaching payment did not go through", html, html, b"")
+            except Exception:
+                app.logger.exception("coach sub failure notify (member) failed for %s", email)
+            try:
+                send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Coaching charge failed: {email}",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("coach sub failure notify (glen) failed for %s", email)
+    return jsonify({"charged": charged, "failed": failed})
+
+
 def _coach_session_email():
     pid = _practitioner_session_pid()
     if not pid:
@@ -20799,6 +20986,7 @@ def webhook_stripe():
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
                 _fulfill_masterclass(session_id)
+                _fulfill_coach_sub(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)

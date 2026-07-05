@@ -1503,12 +1503,13 @@ function renderWaitlistAndUpsell(card, d){
   up.className = "muted small";
   up.textContent = "Our student coaches are full right now. Join the waitlist, or start coaching now with Rae ($100 a month, includes an EVOX session) or Dr. Glen ($200 a month, includes a Causal Biofield Analysis).";
   upsell.appendChild(up);
-  upsell.appendChild(renderCoachingInterestOffer("rae", "Rae, $100 a month, includes an EVOX session"));
-  upsell.appendChild(renderCoachingInterestOffer("glen", "Dr. Glen, $200 a month, includes a Causal Biofield Analysis"));
+  upsell.appendChild(renderCoachingSubscribeOffer("rae", "Rae, $100 a month, includes an EVOX session"));
+  upsell.appendChild(renderCoachingSubscribeOffer("glen", "Dr. Glen, $200 a month, includes a Causal Biofield Analysis"));
+  upsell.appendChild(renderCoachingCancelLink());
   card.appendChild(upsell);
 }
 
-function renderCoachingInterestOffer(tier, label){
+function renderCoachingSubscribeOffer(tier, label){
   const row = document.createElement("div");
   row.style.marginTop = ".6rem";
   const l = document.createElement("div");
@@ -1519,28 +1520,70 @@ function renderCoachingInterestOffer(tier, label){
   btn.type = "button";
   btn.className = "btn full";
   btn.style.marginTop = ".3rem";
-  btn.textContent = "I'm interested";
+  btn.textContent = "Subscribe";
   const msg = document.createElement("p");
   msg.className = "muted small";
   msg.hidden = true;
-  btn.addEventListener("click", function(){ submitCoachingInterest(tier, btn, msg); });
+  btn.addEventListener("click", function(){ subscribeCoaching(tier, btn, msg); });
   row.appendChild(btn);
   row.appendChild(msg);
   return row;
 }
 
-async function submitCoachingInterest(tier, btn, msg){
+async function subscribeCoaching(tier, btn, msg){
   btn.disabled = true;
+  const label = btn.textContent;
+  msg.textContent = "Redirecting to secure checkout...";
+  msg.hidden = false;
   try{
-    await fetch(`/api/community/coaching-interest?token=${encodeURIComponent(token)}`, {
+    const r = await fetch(`/api/community/coach-subscribe?token=${encodeURIComponent(token)}`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({tier: tier}),
     });
-  }catch(e){ /* best-effort: still show the thank-you so the member isn't stuck */ }
-  msg.textContent = "Thanks, we will be in touch.";
-  msg.hidden = false;
-  btn.hidden = true;
+    const data = await r.json();
+    if(!r.ok || !data.ok || !data.url) throw new Error();
+    window.location = data.url;
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+    msg.textContent = "Something went wrong. Please try again.";
+    msg.hidden = false;
+  }
+}
+
+function renderCoachingCancelLink(){
+  const row = document.createElement("div");
+  row.style.marginTop = ".8rem";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "muted small";
+  btn.style.background = "none";
+  btn.style.border = "none";
+  btn.style.textDecoration = "underline";
+  btn.style.cursor = "pointer";
+  btn.style.padding = "0";
+  btn.textContent = "Cancel coaching";
+  const msg = document.createElement("p");
+  msg.className = "muted small";
+  msg.hidden = true;
+  btn.addEventListener("click", async function(){
+    btn.disabled = true;
+    try{
+      const r = await fetch(`/api/community/coach-subscribe/cancel?token=${encodeURIComponent(token)}`, {method: "POST"});
+      const data = await r.json();
+      if(!r.ok || !data.ok) throw new Error();
+      msg.textContent = "Your coaching is canceled.";
+      msg.hidden = false;
+      btn.hidden = true;
+    }catch(e){
+      btn.disabled = false;
+      msg.textContent = "Something went wrong. Please try again.";
+      msg.hidden = false;
+    }
+  });
+  row.appendChild(btn);
+  row.appendChild(msg);
+  return row;
 }
 <!-- END coach-apply script -->
 
