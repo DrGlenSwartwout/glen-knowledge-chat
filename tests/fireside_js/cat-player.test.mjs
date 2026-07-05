@@ -121,4 +121,37 @@ const cfg = {
   cp.stop();
 }
 
+// 8. crossfade: a clip CHANGE gets an opacity transition; a same-clip re-loop cuts.
+{
+  const a = fakeVideo(), b = fakeVideo();
+  const cp = new CatPlayer(a, b, { rest: '/rest.mp4', idle: ['/gust.mp4'], idle_min_s: 35, idle_max_s: 95, crossfade: 700 });
+  cp.start();                                   // a plays rest (no react clip)
+  // Same-clip re-loop (rest -> rest): hard cut, transition stays 'none'.
+  cp.a.onended();
+  assert.equal(cp.a.style.transition, 'none', 'same-clip re-loop hard-cuts (transition none)');
+  // Clip change (rest -> gust): crossfade transition applied to the swapped element.
+  cp.queued = '/gust.mp4';
+  cp.a.onended();                               // rest boundary dispatches the queued gust
+  assert.equal(cp.a.src, '/gust.mp4', 'gust plays on clip change');
+  assert.equal(cp.a.style.transition, 'opacity 700ms linear', 'clip change crossfades');
+  cp.stop();
+}
+
+// 9. onClip fires with (url, isRest): true for the rest clip, false for a gust clip.
+{
+  const a = fakeVideo(), b = fakeVideo();
+  const seen = [];
+  const cp = new CatPlayer(a, b, {
+    rest: '/rest.mp4', idle: ['/gust.mp4'], idle_min_s: 35, idle_max_s: 95,
+    crossfade: 700, onClip: (url, isRest) => seen.push([url, isRest]),
+  });
+  cp.start();
+  cp.a.onended();                               // rest re-loop -> onClip(rest, true)
+  cp.queued = '/gust.mp4';
+  cp.a.onended();                               // gust -> onClip(gust, false)
+  assert.deepEqual(seen.find(x => x[0] === '/rest.mp4'), ['/rest.mp4', true], 'rest clip reports isRest=true');
+  assert.deepEqual(seen.find(x => x[0] === '/gust.mp4'), ['/gust.mp4', false], 'gust clip reports isRest=false');
+  cp.stop();
+}
+
 console.log('cat-player.test.mjs: all assertions passed');

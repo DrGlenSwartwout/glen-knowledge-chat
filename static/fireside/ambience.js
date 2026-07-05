@@ -117,6 +117,23 @@ export class Ambience {
     const L = { el: a, volume: o.volume, swell: o.swell || null };
     this.loopEls.push(L);
     if (L.swell) this._startSwell(L);
+    // A gust layer is a normal soft loop that ALSO gets driven up to a peak on demand
+    // (gust(ms)) to accompany a visual canopy-wind gust, then settles back to base.
+    if (o.gust === true) {
+      this._gustLayer = { el: a, base: o.volume, peak: (Number(o.gust_peak) > 0 ? Number(o.gust_peak) : 0.3) };
+    }
+  }
+
+  // One-shot wind swell to accompany a visual gust: ramp the gust layer up to its
+  // peak over ~40% of ms, then back to base over the rest. No-op if no gust layer.
+  gust(ms) {
+    const L = this._gustLayer; if (!L) return;
+    const up = Math.max(200, Math.round((Number(ms) || 9000) * 0.4));
+    const down = Math.max(400, (Number(ms) || 9000) - up);
+    const f = (typeof this._levelFactor === 'function') ? this._levelFactor() : 1;
+    try { this._rampEl(L.el, L.peak * f, up); } catch (e) {}
+    clearTimeout(this._gustT);
+    this._gustT = setTimeout(() => { try { this._rampEl(L.el, L.base * f, down); } catch (e) {} }, up);
   }
 
   // Continuous amplitude LFO for a loop layer: eases its volume between swell.min
@@ -185,6 +202,7 @@ export class Ambience {
 
   stop() {
     if (this._monTimer) { clearInterval(this._monTimer); this._monTimer = null; }
+    clearTimeout(this._gustT); this._gustLayer = null;
     this.timers.forEach(clearTimeout); this.timers = [];
     if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
     if (this.bedEl) { this._fadeOutAndPause(this.bedEl, 1200); this.bedEl = null; }

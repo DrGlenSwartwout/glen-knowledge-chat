@@ -30,6 +30,8 @@ export class CatPlayer {
     this.wakeCd = Math.max(0, Number.isFinite(_wc) ? _wc : 60) * 1000;    // 0 = no cooldown; default 60s
     this._reacting = false; this._lastWake = 0;
     this.queued = null; this.timer = null; this.stopped = true;
+    this.crossfade = Math.max(0, Number(cfg.crossfade) || 0);          // ms, 0 = hard cut (default, preserves cat)
+    this.onClip = (typeof cfg.onClip === 'function') ? cfg.onClip : null;
     for (const v of [front, back]) {
       v.muted = true; v.loop = false; v.playsInline = true;
       // Hard-cut swaps (NOT a crossfade). Every clip begins/ends on the identical
@@ -48,11 +50,19 @@ export class CatPlayer {
   _go(url, onEnded) {
     if (this.stopped) return;
     const buf = this.b;
+    // A same-clip re-loop (e.g. base->base at the boomerang boundary) hard-cuts —
+    // the boundary frame is identical so a cut is invisible AND a crossfade there
+    // would dip both to partial opacity = a periodic flash. A CLIP CHANGE (base<->gust)
+    // crossfades when opted in (this.crossfade > 0). Cat leaves crossfade at 0 = always cut.
+    const same = ((this.a.getAttribute('src') || '').indexOf(url) !== -1);
     const begin = () => {
       buf.removeEventListener('canplay', begin);
       if (this.stopped) return;
       try { buf.currentTime = 0; } catch (e) {}
       this._play(buf);
+      const xf = (!same && this.crossfade > 0) ? this.crossfade : 0;
+      buf.style.transition = xf ? ('opacity ' + xf + 'ms linear') : 'none';
+      this.a.style.transition = xf ? ('opacity ' + xf + 'ms linear') : 'none';
       buf.style.opacity = '1';
       this.a.style.opacity = '0';
       const t = this.a; this.a = buf; this.b = t;          // swap roles
@@ -61,6 +71,7 @@ export class CatPlayer {
       // clip is still playing hidden, and its stale 'ended' would otherwise fire a
       // second, conflicting transition. (No-op in the normal at-boundary path.)
       this.b.onended = null;
+      if (this.onClip) { try { this.onClip(url, url === this.rest); } catch (e) {} }
     };
     const cur = buf.getAttribute('src') || '';
     if (cur.indexOf(url) !== -1 && buf.readyState >= 2) begin();
