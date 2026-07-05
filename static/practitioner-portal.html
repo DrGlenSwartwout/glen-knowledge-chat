@@ -1023,11 +1023,6 @@ function renderCoachThreadDetail(threadId, d){
   var host = $('coach-messages-thread');
   host.innerHTML = '';
 
-  var title = document.createElement('div');
-  title.style.cssText = 'font-weight:600;margin-bottom:10px';
-  title.textContent = d.member_first_name || 'This member';
-  host.appendChild(title);
-
   if(d.status === 'blocked'){
     var ended = document.createElement('div');
     ended.className = 'notice';
@@ -1035,6 +1030,11 @@ function renderCoachThreadDetail(threadId, d){
     host.appendChild(ended);
     return;
   }
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-weight:600;margin-bottom:10px';
+  title.textContent = d.member_first_name || 'This member';
+  host.appendChild(title);
 
   var msgList = document.createElement('div');
   msgList.style.cssText = 'max-height:280px;overflow-y:auto;margin-bottom:12px';
