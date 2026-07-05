@@ -56,7 +56,11 @@
     border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);
     cursor:pointer;padding:0 12px;font-size:.85rem;box-shadow:var(--shadow);display:none;
     max-width:40vw}
-  body.has-bg .el-picker{display:inline-block}
+  /* The scene picker stays available whenever the feature is on, even with no
+     active backdrop — so "Automatic" (which can resolve to no scene) never strands
+     the member with no way to pick one back. The sound toggle stays has-bg-gated. */
+  body.has-bg .el-picker,
+  body.scene-capable .el-picker{display:inline-block}
   /* hero text sits directly on the scene (not a card) -> theme-aware halo for
      legibility on any backdrop (shadow uses --bg, which is opposite the text). */
   body.has-bg .hero .hello,
@@ -419,6 +423,9 @@ function render(d, v){
     var _ovr = (_es && _es.override) || null;      // member's server-saved choice
     window.__pendingBackdrop = _setting;
     window.__serverScenePref = _ovr;
+    // Feature on -> keep the scene picker available even when no backdrop is active
+    // (so "Automatic" with no computed element doesn't hide the only way back).
+    document.body.classList.toggle('scene-capable', !!d.element_backdrop_enabled);
     if (window.applyElementBackdrop) window.applyElementBackdrop(_setting, _ovr);
   } catch (e) {}
   if (d && d.tos_agreed === false) {
