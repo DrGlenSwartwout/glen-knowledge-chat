@@ -15727,6 +15727,62 @@ def _onboarding_send_confirmations(email, booking):
         app.logger.exception("onboarding confirmation build failed")
 
 
+@app.route("/community")
+def community_page():
+    return send_from_directory(STATIC, "community.html")
+
+
+@app.route("/api/community/library")
+def community_library():
+    from dashboard import community as _cm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        _cm.init_community_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        full = _cm.list_full(cx)
+        if _is_paid_member(ident.email):
+            return jsonify({"tier": "paid", "full": full,
+                            "outtakes": _cm.list_outtakes(cx)})
+        # Free member: strip every full item's Rumble video_ref; expose metadata
+        # + the item's free out-takes only. The full link never reaches a non-member.
+        teasers = []
+        for it in full:
+            teasers.append({"id": it["id"], "type": it["type"], "title": it["title"],
+                            "description": it["description"],
+                            "interest_tags": it["interest_tags"],
+                            "published_at": it["published_at"],
+                            "teaser_outtakes": it["outtakes"]})
+        return jsonify({"tier": "free", "full": teasers})
+
+
+@app.route("/api/console/community/publish", methods=["POST"])
+def community_publish():
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import community as _cm
+    body = request.get_json(force=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cm.init_community_tables(cx)
+        cid = _cm.upsert_full(cx, type=body.get("type", "coaching_replay"),
+                              title=body.get("title", ""), description=body.get("description", ""),
+                              video_ref=body.get("video_ref", ""),
+                              interest_tags=body.get("interest_tags", []),
+                              transcript=body.get("transcript", ""))
+        n = 0
+        for ot in (body.get("outtakes") or []):
+            oid = _cm.add_outtake(cx, parent_id=cid, title=ot.get("title", ""),
+                                  video_ref=ot.get("video_ref", ""),
+                                  interest_tags=ot.get("interest_tags", []))
+            _cm.publish(cx, oid); n += 1
+        _cm.publish(cx, cid)
+    return jsonify({"ok": True, "content_id": cid, "outtakes": n})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
@@ -21314,8 +21370,8 @@ def clips_delete(filename):
 
 _PORTAL_ASSETS_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "portal-assets"
 _PORTAL_ASSETS_DIR.mkdir(exist_ok=True)
-_PORTAL_ASSET_RE = r'^[\w\-]+\.(mp3|pdf)$'
-_PORTAL_ASSET_MIME = {"mp3": "audio/mpeg", "pdf": "application/pdf"}
+_PORTAL_ASSET_RE = r'^[\w\-]+\.(mp3|pdf|mp4)$'
+_PORTAL_ASSET_MIME = {"mp3": "audio/mpeg", "pdf": "application/pdf", "mp4": "video/mp4"}
 
 
 @app.route("/portal-asset/upload", methods=["PUT"])
