@@ -66,3 +66,17 @@ def test_triage_join_glen_vs_rae(client):
     client.post(f"/api/triage/book?token={tok_g}", json={"start_ts": slots[-1]})
     # slots[-1] is >30min out unless today's last slot; assert it is either 200 or 403 (both valid states)
     assert client.get(f"/api/triage/join?token={tok_g}").status_code in (200, 403)
+
+def test_triage_confirmations(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(appmod, "send_evox_email",
+                        lambda to, name, subj, html, text, ics: calls.append((to, html)), raising=False)
+    monkeypatch.setattr(appmod, "EVOX_RAE_PHONE", "808-555-1212", raising=False)
+    tok = _invite(client, "rae", "conf@x.com")
+    slots = client.get(f"/api/triage/availability?token={tok}&range=week").get_json()["slots"]
+    calls.clear()
+    client.post(f"/api/triage/book?token={tok}", json={"start_ts": slots[0]})
+    tos = [to for (to, h) in calls]
+    assert "conf@x.com" in tos                       # prospect notified
+    prospect_html = [h for (to, h) in calls if to == "conf@x.com"][0]
+    assert "808-555-1212" in prospect_html and "zoom.us/j/" not in prospect_html

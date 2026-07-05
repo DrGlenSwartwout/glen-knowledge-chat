@@ -15585,7 +15585,34 @@ def _triage_hours(practitioner):
 
 
 def _triage_send_confirmations(token, invite, booking):
-    pass  # Task 4 replaces this with actual email/portal confirmation sends
+    try:
+        from dashboard import evox as _ev
+        p = invite["practitioner"]; email = invite["email"]
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        if p == "rae":
+            who = "Rae"; note_email = EVOX_RAE_EMAIL
+            phone = EVOX_RAE_PHONE or "the number in this email"
+            line = f"At your appointment time, call Rae at {phone}."
+        else:
+            who = "Dr. Glen"; note_email = GLEN_CONSULT_EMAIL
+            page = f"{PUBLIC_BASE_URL}/triage/{token}"
+            line = f"At your appointment time, open your booking page and click Join your call: {page}"
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary=f"15 minute call with {who}",
+                            description=line, location=("Phone" if p == "rae" else "Zoom (join from your page)"))
+        c_html = (f"<p>Your 15 minute call with {who} is booked for <b>{nice} HST</b>.</p>"
+                  f"<p>{line}</p><p>The calendar invite is attached.</p>")
+        c_text = f"Call with {who} booked for {nice} HST. {line}"
+        n_html = f"<p>New triage booked: <b>{invite.get('name') or email}</b> ({email}) on <b>{nice} HST</b>.</p>"
+        for to, nm, subj, html, text in [
+            (email, invite.get("name") or "", f"Your call with {who} is booked", c_html, c_text),
+            (note_email, who, f"Triage booked: {email}", n_html, n_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("triage confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("triage confirmation build failed")
 
 
 @app.route("/triage/<token>")
