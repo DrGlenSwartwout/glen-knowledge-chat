@@ -124,3 +124,22 @@ def test_member_query_household_and_unlinked_fallback(tmp_path, monkeypatch):
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert aq.claimed_this_month(cx, primary) is True
         assert aq.claimed_this_month(cx, "stranger@x.com") is False
+
+
+def test_new_scan_email_gated_and_once(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    monkeypatch.setattr(appmod, "_is_paid_member", lambda e: False)   # free member
+    sent = []
+    monkeypatch.setattr(appmod, "_send_inquiry_email", lambda to, s, b, **k: sent.append(to) or (True, ""))
+    # need a portal token so the email can carry a one-click link
+    from dashboard import client_portal as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx); cp.upsert_portal(cx, "k@x.com", "K", {}); cx.commit()
+    c = appmod.app.test_client()
+    # sync a new scan → email fires (free member, slot unused)
+    c.post("/api/console/client-scans/sync", json={"email": "k@x.com", "scans": [{"scan_date": "2026-06-28", "scan_id": 9}]})
+    assert "k@x.com" in sent
+    sent.clear()
+    # re-sync same scan → no re-email (notified_at set)
+    c.post("/api/console/client-scans/sync", json={"email": "k@x.com", "scans": [{"scan_date": "2026-06-28", "scan_id": 9}]})
+    assert sent == []

@@ -10443,7 +10443,55 @@ def api_console_client_scans_sync():
                 total += _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
             except Exception as _e:
                 print(f"[client-scans-sync] skipped bad item: {_e!r}", flush=True)
+    if _scan_request_enabled():
+        try:
+            from dashboard import analysis_quota as _aq
+            from dashboard import notify_state as _ns2
+            from dashboard import email_suppression as _es
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _cs.init_client_scans_table(cx); _aq.init_analysis_quota_table(cx)
+                for row in _cs.unnotified(cx):
+                    em, sd, sid = row["email"], row["scan_date"], row["scan_id"]
+                    try:
+                        # anti-nag: only when the owner can actually act on it
+                        can_act = _is_paid_member(em) or not _aq.claimed_this_month(cx, em)
+                        if can_act and not _es.is_suppressed(cx, em):
+                            # lookup-only: the stable raw token stashed by client_portal
+                            # (upsert_portal/ensure_token) in portal_notify_state. Never
+                            # mints a portal for an email that doesn't have one.
+                            tok = _ns2.get_state(cx, em).get("portal_token")
+                            if tok:
+                                _send_new_scan_email(em, sd, sid, tok)
+                    except Exception as _e:
+                        print(f"[new-scan-email] {em}: {_e!r}", flush=True)
+                    _cs.mark_notified(cx, em, sd)   # mark regardless, so we never re-nag
+        except Exception as _e:
+            print(f"[new-scan-email] {_e!r}", flush=True)
     return jsonify({"ok": True, "upserted": total})
+
+
+def _send_new_scan_email(email, scan_date, scan_id, token):
+    """New-scan invite: a one-click analyze link + the client's limit + upgrade path. Best-effort.
+    Cc'd (private separate copy) to consented+subscribed caregivers via household.cc_recipients_for."""
+    base = "https://illtowell.com"
+    link = f"{base}/portal/{token}/analyze?scan_id={scan_id}&scan_date={scan_date}"
+    subj = "Your new biofield scan is ready to analyze"
+    body = (f"A new biofield scan ({scan_date}) is on file for you.\n\n"
+            f"Would you like it analyzed? Free members get one analysis per month; members get unlimited.\n\n"
+            f"Analyze this scan: {link}\n\nUpgrade for unlimited: {base}/prepay")
+    recips = [email]
+    try:
+        from dashboard import household as _hh
+        with sqlite3.connect(LOG_DB) as _cxh:
+            _hh.init_household_tables(_cxh)
+            recips += _hh.cc_recipients_for(_cxh, email)   # caregivers get their own copy
+    except Exception:
+        pass
+    for to in dict.fromkeys(recips):   # de-dup, private separate copies
+        try:
+            _send_inquiry_email(to, subj, body)
+        except Exception as _e:
+            print(f"[new-scan-email] to {to}: {_e!r}", flush=True)
 
 
 def membership_category(email):
