@@ -81,7 +81,8 @@
         ],
         "react": "/static/fireside/video/elements/fire-cat-wake.mp4",
         "idle_min_s": 120,
-        "idle_max_s": 300
+        "idle_max_s": 300,
+        "wake_cooldown_s": 45
       },
       "ambience": {
         "bed": "/static/fireside/audio/amb-fire-loop.mp3",
