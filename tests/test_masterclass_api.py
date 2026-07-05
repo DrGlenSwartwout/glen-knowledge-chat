@@ -33,3 +33,36 @@ def test_console_create_makes_event_and_zoom(client):
         cx.row_factory = sqlite3.Row
         ev = mc.get_event(cx, d["event_id"])
         assert ev["zoom_join_url"] == "https://zoom.us/j/mc"
+
+
+def _mk_event(client, price=0, mprice=0):
+    r = client.post("/api/console/masterclass",
+                    json={"topic": "T", "description": "d", "start_ts": "2026-07-10T18:00:00",
+                          "duration_min": 60, "price_cents": price, "member_price_cents": mprice}, headers=ADMIN)
+    return r.get_json()["event_id"]
+
+def test_public_get_event(client):
+    eid = _mk_event(client, price=5000)
+    d = client.get(f"/api/masterclass/{eid}").get_json()
+    assert d["topic"] == "T" and d["price_cents"] == 5000 and "zoom_join_url" not in d
+
+def test_register_free_returns_join_link(client, monkeypatch):
+    eid = _mk_event(client, price=0, mprice=0)
+    r = client.post(f"/api/masterclass/{eid}/register", json={"email": "free@x.com", "name": "F"})
+    d = r.get_json()
+    assert r.status_code == 200 and d["registered"] is True and d["join_url"] == "https://zoom.us/j/mc"
+
+def test_register_nonmember_paid_returns_checkout(client, monkeypatch):
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True, raising=False)
+    import dashboard.stripe_pay as _sp
+    cap = {}
+    def fake_session(amount_cents, *, customer_email, description, metadata, success_url, cancel_url, save_card=False):
+        cap["amount"] = amount_cents; cap["metadata"] = metadata
+        return {"id": "cs_test", "url": "https://stripe/mc"}
+    monkeypatch.setattr(_sp, "create_checkout_session", fake_session)
+    monkeypatch.setattr(appmod.stripe_pay, "create_checkout_session", fake_session, raising=False)
+    eid = _mk_event(client, price=5000, mprice=0)
+    r = client.post(f"/api/masterclass/{eid}/register", json={"email": "nonmember@x.com", "name": "N"})
+    d = r.get_json()
+    assert r.status_code == 200 and d["checkout_url"] == "https://stripe/mc"
+    assert cap["amount"] == 5000 and cap["metadata"]["kind"] == "masterclass" and cap["metadata"]["event_id"] == str(eid)

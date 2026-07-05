@@ -12631,6 +12631,90 @@ def api_console_masterclass_zoom_url(event_id):
     return jsonify({"ok": True})
 
 
+MASTERCLASS_FROM = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail.com")
+
+
+@app.route("/masterclass/<int:event_id>")
+def masterclass_page(event_id):
+    return send_from_directory(STATIC, "masterclass.html")
+
+
+@app.route("/api/masterclass/<int:event_id>")
+def api_masterclass_get(event_id):
+    from dashboard import masterclass as _mc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+    if not ev:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"topic": ev["topic"], "description": ev["description"],
+                    "start_ts": ev["start_ts"], "duration_min": ev["duration_min"],
+                    "price_cents": ev["price_cents"], "member_price_cents": ev["member_price_cents"]})
+
+
+def _masterclass_send_confirmation(event, email, name):
+    """Best-effort confirmation email with the Zoom join link + an .ics invite.
+    Swallows send errors (logs) — never raises into the register response."""
+    try:
+        from dashboard import evox as _ev
+        start = event["start_ts"]; nice = start.replace("T", " ")
+        join = event.get("zoom_join_url") or ""
+        join_line = (f"Join here: {join}" if join else "Your join link will follow by email.")
+        try:
+            end = (datetime.fromisoformat(start[:19]) + timedelta(minutes=int(event["duration_min"]))).isoformat()
+        except Exception:
+            end = start
+        ics = _ev.build_ics(uid=f"masterclass-{event['id']}-{(email or '').strip().lower()}@illtowell.com",
+                            start_ts=start, end_ts=end, summary=f"MasterClass: {event['topic']}",
+                            description=join_line, location=(join or "Zoom"))
+        html = (f"<p>You are registered for <b>{event['topic']}</b> on <b>{nice} HST</b>.</p>"
+                f"<p>{join_line}</p><p>The calendar invite is attached.</p>")
+        try:
+            send_evox_email(email, name or "", f"You are registered: {event['topic']}", html, html, ics)
+        except Exception:
+            app.logger.exception("masterclass confirmation send failed to %s", email)
+    except Exception:
+        app.logger.exception("masterclass confirmation build failed")
+
+
+@app.route("/api/masterclass/<int:event_id>/register", methods=["POST"])
+def api_masterclass_register(event_id):
+    from dashboard import masterclass as _mc
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+        if not ev:
+            return jsonify({"error": "not_found"}), 404
+        is_member = _is_paid_member(email)
+        amount = _mc.price_for(ev, is_member)
+        if amount <= 0:
+            _mc.register(cx, event_id, email, name, is_member, 0, paid=True)
+    if amount <= 0:
+        _masterclass_send_confirmation(ev, email, name)
+        return jsonify({"ok": True, "registered": True, "join_url": ev.get("zoom_join_url")})
+    # paid non-member
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "payment_unavailable"}), 503
+    from dashboard import stripe_pay as _sp
+    sess = _sp.create_checkout_session(
+        amount, customer_email=email, description=f"MasterClass: {ev['topic']}",
+        metadata={"kind": "masterclass", "event_id": str(event_id), "email": email, "name": name},
+        success_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}?paid=1",
+        cancel_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.register(cx, event_id, email, name, is_member, amount, paid=False)
+    return jsonify({"ok": True, "checkout_url": sess.get("url")})
+
+
 @app.route("/console/biofield-reveals", methods=["GET"])
 def console_biofield_reveals_page():
     """Serve the biofield reveals review console page."""
