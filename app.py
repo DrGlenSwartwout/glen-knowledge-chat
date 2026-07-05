@@ -12511,7 +12511,33 @@ def api_console_biofield_reveals():
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
             d.update(_biofield_status_brief(cx, d.get("email")))
+        # Read-receipts (Task 5): additive, best-effort — a client's explicit
+        # report open (see /api/portal/<token>/open), keyed the same way the
+        # portal payload keys it (email|scan_date).
+        try:
+            from dashboard import opens as _op
+            _op.init_opens_table(cx)
+            for d in drafts + approved:
+                d["opened"] = _op.get_open(cx, "report", _op.report_key(d.get("email", ""), d.get("scan_date", "")))
+        except Exception as _e:
+            print(f"[opens] reveals annotate skipped: {_e!r}", flush=True)
     return jsonify({"drafts": drafts, "approved": approved})
+
+
+@app.route("/api/console/opens", methods=["GET"])
+def api_console_opens():
+    """Generic read-receipt lookup for console/owner tools: ?kind=report|invoice
+    &keys=comma,separated,keys. Not flag-gated (owner tools show whatever opens
+    data exists, regardless of READ_RECEIPTS_ENABLED)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import opens as _op
+    kind = (request.args.get("kind") or "").strip()
+    keys = [k for k in (request.args.get("keys") or "").split(",") if k]
+    with sqlite3.connect(LOG_DB) as cx:
+        _op.init_opens_table(cx)
+        data = _op.opens_for(cx, kind, keys)
+    return jsonify({"ok": True, "opens": data})
 
 
 @app.route("/console/biofield-reveals", methods=["GET"])
@@ -13737,6 +13763,27 @@ def _portal_console_ok():
     return True
 
 
+def _portal_open_is_owner():
+    """True only when this request presents a valid console/owner key. Deliberately
+    distinct from _portal_console_ok(), which vacuously returns True whenever
+    CONSOLE_SECRET isn't configured at all (that gate protects console-only routes:
+    'no secret configured → don't lock anyone out'). The read-receipts owner-skip
+    needs the opposite default: absent an explicit owner key, treat the caller as a
+    real client so a genuine portal/invoice open still records. Checks both this
+    module's CONSOLE_SECRET and dashboard.CONSOLE_SECRET (the shared
+    require_console_key gate) since either may be the one actually configured,
+    plus a per-user OWNER-role token."""
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    if not key:
+        return False
+    if CONSOLE_SECRET and key == CONSOLE_SECRET:
+        return True
+    import dashboard as _dash
+    if _dash.CONSOLE_SECRET and key == _dash.CONSOLE_SECRET:
+        return True
+    return _owner_token_ok(key)
+
+
 def _client_login_enabled() -> bool:
     """Real client login (magic-link → session cookie), gated by CLIENT_LOGIN_ENABLED.
     LIVE in prod since 2026-06-26 (set in Doppler prd; see PRs #333/#334) as part of
@@ -13751,6 +13798,15 @@ def _household_view_enabled():
     portal payload never gains a 'household' key and ?member= is ignored, so the
     response is byte-identical to pre-household behavior."""
     return (os.environ.get("HOUSEHOLD_VIEW_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
+def _read_receipts_enabled():
+    """Read-receipts track-open feature (Task 2). Default OFF — when off, the two
+    track-open endpoints are inert (200 ok, recorded:false) and the portal/invoice
+    payloads never gain 'opens'/'opened' keys, so responses stay byte-identical to
+    pre-read-receipts behavior."""
+    return (os.environ.get("READ_RECEIPTS_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes")
 
 
@@ -14474,6 +14530,18 @@ def api_client_portal(token):
     payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
     if _household_view_enabled():
         payload["household"] = household
+    if _read_receipts_enabled():
+        try:
+            from dashboard import opens as _op
+            with sqlite3.connect(LOG_DB) as _cxo:
+                _op.init_opens_table(_cxo)
+                _keys = [_op.report_key(email_for_reports, d) for d in (bf_scan_dates or [])]
+                _byk = _op.opens_for(_cxo, "report", _keys)
+                payload["opens"] = {d: _byk.get(_op.report_key(email_for_reports, d))
+                                    for d in (bf_scan_dates or []) if _byk.get(_op.report_key(email_for_reports, d))}
+        except Exception as _e:
+            print(f"[opens] payload {_e!r}", flush=True)
+            payload["opens"] = {}
     return jsonify(payload)
 
 
@@ -14532,6 +14600,59 @@ def api_portal_scene_pref(token):
             return jsonify({"error": "not found"}), 404
         _mes.set_override(cx, (portal.get("email") or "").strip().lower(), saved)
     return jsonify({"ok": True, "element": saved})
+
+
+@app.route("/api/portal/<token>/open", methods=["POST"])
+def api_portal_open(token):
+    """Record a real 'client opened this report' event (fired by the expand-click).
+    Owner previews (console key) return ok but don't record. Resolves ?member= like
+    api_client_portal so a caregiver's open records against the member's key."""
+    if not _read_receipts_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    from dashboard import client_portal as _cp
+    from dashboard import opens as _op
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    email_for_reports = (portal.get("email") or "").strip().lower()
+    # same household ?member= resolution as api_client_portal (fail-closed)
+    if _household_view_enabled() and email_for_reports:
+        try:
+            from dashboard import household as _hh
+            with sqlite3.connect(LOG_DB) as _cxh:
+                _hh.init_household_tables(_cxh)
+                _m = (request.args.get("member") or (request.get_json(silent=True) or {}).get("member") or "").strip().lower()
+                if _m and _hh.can_view(_cxh, email_for_reports, _m):
+                    email_for_reports = _m
+        except Exception as _e:
+            print(f"[open] household {_e!r}", flush=True)
+    scan_date = ((request.get_json(silent=True) or {}).get("scan_date") or "").strip()
+    if not scan_date or not email_for_reports:
+        return jsonify({"ok": False, "error": "missing scan_date"}), 400
+    if _portal_open_is_owner():   # explicit owner/console key → don't record
+        return jsonify({"ok": True, "recorded": False, "reason": "owner"})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _op.init_opens_table(cx)
+        st = _op.record_open(cx, "report", _op.report_key(email_for_reports, scan_date))
+    return jsonify({"ok": True, "recorded": True, "open": st})
+
+
+@app.route("/api/invoice/<token>/open", methods=["POST"])
+def api_invoice_open(token):
+    """Record a real 'client opened this invoice' event (fired by the expand-click)."""
+    if not _read_receipts_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    if not _pp.order_id_from_invoice_token(token):
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    from dashboard import opens as _op
+    if _portal_open_is_owner():
+        return jsonify({"ok": True, "recorded": False, "reason": "owner"})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _op.init_opens_table(cx)
+        st = _op.record_open(cx, "invoice", _op.invoice_key(token))
+    return jsonify({"ok": True, "recorded": True, "open": st})
 
 
 @app.route("/api/portal/<token>/chat", methods=["POST", "OPTIONS"])
@@ -15475,6 +15596,13 @@ def api_console_household_reassign():
         _hh.init_household_tables(cx); _pbr.init_table(cx)
         res = _hh.reassign_report(cx, data.get("scan_date"), data.get("from_email"),
                                   data.get("to_email"), by="console")
+        if res.get("ok"):
+            try:
+                from dashboard import opens as _op
+                _op.init_opens_table(cx)
+                _op.clear_open(cx, "report", _op.report_key(data.get("from_email"), data.get("scan_date")))
+            except Exception as _e:
+                print(f"[opens] reassign-clear {_e!r}", flush=True)
     return jsonify(res), (200 if res.get("ok") else 400)
 
 
@@ -30356,6 +30484,7 @@ def _invoice_summary(order):
         "member_credit_cents": member_credit_cents,
         "points_balance_cents": _invoice_points_balance(order),
         "external_ref": order.get("external_ref"),
+        "created_at": order.get("created_at"),
         "name": _invoice_display_name(order),
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
@@ -30393,6 +30522,14 @@ def api_invoice_get(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     summary = _invoice_summary(order)
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    if _read_receipts_enabled():
+        try:
+            from dashboard import opens as _op
+            with sqlite3.connect(LOG_DB) as _cxo:
+                _op.init_opens_table(_cxo)
+                summary["opened"] = _op.get_open(_cxo, "invoice", _op.invoice_key(token))
+        except Exception as _e:
+            print(f"[opens] invoice {_e!r}", flush=True)
     return jsonify({"ok": True, "order": summary})
 
 
@@ -31274,6 +31411,20 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Read-receipts (Task 5): additive, best-effort — whether the client
+            # has opened the invoice link most recently SENT for this order
+            # (orders.invoice_token, set by orders.send_invoice). Orders that
+            # were never sent an invoice (or only reprinted, never sent) carry
+            # no token and get no annotation.
+            try:
+                from dashboard import opens as _op
+                _op.init_opens_table(cx)
+                for o in rows:
+                    tok = (o.get("invoice_token") or "").strip()
+                    if tok:
+                        o["invoice_opened"] = _op.get_open(cx, "invoice", _op.invoice_key(tok))
+            except Exception as _e:
+                print(f"[orders] invoice open annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
         return jsonify({"ok": True, "data": rows})

@@ -198,6 +198,64 @@ async function load() {
   $('print-btn').style.display = 'inline-block';
   // Console "Print invoice" deep-links here with ?print=1 to auto-open the dialog.
   if (new URLSearchParams(location.search).get('print')) setTimeout(printInvoice, 250);
+
+  // Read-receipt: collapse invoice detail behind a New/date header; expand = tracked open.
+  if (ORDER.opened !== undefined) {
+    const isNew = !ORDER.opened;
+    const invoiceDateStr = ORDER.created_at || '';
+    const invoiceDate = invoiceDateStr
+      ? new Date(invoiceDateStr).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'})
+      : '—';
+
+    // Guarded so re-clicking an already-expanded header doesn't re-POST the
+    // open event (mirrors client-portal.html's rr-header dataset.opened flag).
+    let _invoiceOpened = false;
+    window.__openInvoice = async () => {
+      if (_invoiceOpened) return;
+      _invoiceOpened = true;
+      try { await fetch('/api/invoice/' + encodeURIComponent(TOKEN) + '/open', {method:'POST'}); } catch(e) {}
+      const det = document.getElementById('inv-detail'); if (det) det.style.display = '';
+      const b = document.getElementById('inv-new'); if (b) b.remove();
+    };
+
+    const headerHtml = `<div style="display:flex;align-items:center;gap:10px;cursor:pointer" onclick="window.__openInvoice()">
+      <strong>Invoice — ${esc(invoiceDate)}</strong>
+      ${isNew ? `<span id="inv-new" style="background:#d4a843;color:#000;font-size:12px;font-weight:700;padding:1px 7px;border-radius:10px">New</span>` : ``}
+      <span style="flex:1"></span><span style="color:var(--muted)">▾</span>
+    </div>`;
+
+    // Find items and summary cards
+    const cards = document.querySelectorAll('.card');
+    let itemsCardIdx = -1, summaryCardIdx = -1;
+    for (let i = 0; i < cards.length; i++) {
+      const h2 = cards[i].querySelector('h2');
+      if (h2) {
+        if (h2.textContent === 'Items') itemsCardIdx = i;
+        else if (h2.textContent === 'Summary') summaryCardIdx = i;
+      }
+    }
+
+    if (itemsCardIdx >= 0) {
+      const itemsCard = cards[itemsCardIdx];
+      const summaryCard = summaryCardIdx >= 0 ? cards[summaryCardIdx] : null;
+
+      // Create wrapper for invoice detail
+      const wrapper = document.createElement('div');
+      wrapper.id = 'inv-detail';
+      wrapper.style.display = isNew ? 'none' : '';
+
+      // Insert wrapper before items card
+      itemsCard.parentNode.insertBefore(wrapper, itemsCard);
+
+      // Move items and summary cards into wrapper
+      wrapper.appendChild(itemsCard);
+      if (summaryCard) wrapper.appendChild(summaryCard);
+
+      // Insert header before wrapper
+      wrapper.insertAdjacentHTML('beforebegin', headerHtml);
+    }
+  }
+
   try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
 }
 
