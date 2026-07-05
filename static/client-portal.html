@@ -1484,6 +1484,38 @@ function renderSuggestion(sugg){
   return el;
 }
 
+// --- Community-related cards (Layer C slice C3 Task 3) ---
+function renderRelated(items){
+  if(!Array.isArray(items) || !items.length) return null;
+  var el = document.createElement("div");
+  el.className = "chat-related";
+  var heading = document.createElement("div");
+  heading.className = "chat-related-heading";
+  heading.textContent = "From the community";
+  el.appendChild(heading);
+  items.forEach(function(item){
+    if(!item || typeof item !== "object") return;
+    var title = (item.title != null) ? String(item.title) : "";
+    if(!title) return;
+    var row = document.createElement("div");
+    row.className = "chat-related-item";
+    var link = document.createElement("a");
+    link.className = "chat-related-link";
+    link.href = "/community?token=" + encodeURIComponent(token);
+    link.textContent = title; // server-supplied title: textContent only, never innerHTML
+    row.appendChild(link);
+    if(item.kind === "teaser"){
+      var nudge = document.createElement("div");
+      nudge.className = "chat-related-nudge";
+      nudge.textContent = "Become a member to watch the full session.";
+      row.appendChild(nudge);
+    }
+    el.appendChild(row);
+  });
+  return el;
+}
+// --- end community-related cards ---
+
 function appendChatBubble(role, text){
   var msgs = document.getElementById("chatMsgs");
   if(!msgs) return null;
@@ -1551,6 +1583,9 @@ async function sendChatMessage(){
             } else if(evt.suggestion){
               var suggEl = renderSuggestion(evt.suggestion);
               if(suggEl && msgs){ msgs.appendChild(suggEl); }
+            } else if(evt.related){
+              var relEl = renderRelated(evt.related);
+              if(relEl && msgs){ msgs.appendChild(relEl); msgs.scrollTop = msgs.scrollHeight; }
             } else if(evt.error){
               if(assistantBubble){
                 assistantBubble.className = "chat-bubble error";
