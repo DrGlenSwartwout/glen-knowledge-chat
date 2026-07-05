@@ -411,9 +411,12 @@ function render(d, v){
   // Premium element backdrop: key the Glendalf scene off the member's deficient
   // element (null when not a paid member / not yet computed -> plain portal).
   try {
-    var _setting = (d.element_state && d.element_state.setting) || null;
+    var _es = d.element_state || null;
+    var _setting = (_es && _es.setting) || null;
+    var _ovr = (_es && _es.override) || null;      // member's server-saved choice
     window.__pendingBackdrop = _setting;
-    if (window.applyElementBackdrop) window.applyElementBackdrop(_setting);
+    window.__serverScenePref = _ovr;
+    if (window.applyElementBackdrop) window.applyElementBackdrop(_setting, _ovr);
   } catch (e) {}
   if (d && d.tos_agreed === false) {
     // Reveal the page before painting the gate: this branch returns early, before
@@ -1380,28 +1383,49 @@ load();
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const soundOn = () => localStorage.getItem('rm_portal_sound') === 'on';
 
-  // Scene preference: a member (or Dr. Glen, testing) can override the automatically
-  // computed deficient element and have it remembered. Keyed per portal token so one
-  // browser viewing several portals doesn't bleed the choice across members.
+  // Scene preference. Two layers:
+  //  - serverPref: the member's saved choice (element_state.override), authoritative
+  //    and remembered per member ACROSS devices. Set via the dropdown, persisted by
+  //    POST /scene-pref.
+  //  - preview: a ?element=<id> testing override, remembered for THIS browser session
+  //    only (sessionStorage). Non-destructive — it never writes the member's saved
+  //    choice, so testing on a client's portal can't change what they see later.
+  // Precedence: preview -> serverPref -> computed deficient element (Automatic).
   const PORTAL_ID = (location.pathname.match(/\/portal\/([^\/?#]+)/) || [])[1] || 'default';
-  const PREF_KEY = 'rm_portal_element:' + PORTAL_ID;
-  let autoSetting = null;   // element_state.setting from the server (Automatic value)
-  const savedPref = () => { try { return localStorage.getItem(PREF_KEY); } catch (e) { return null; } };
-  const setPref = (v) => { try { if (v && v !== 'auto') localStorage.setItem(PREF_KEY, v); else localStorage.removeItem(PREF_KEY); } catch (e) {} };
+  const PREVIEW_KEY = 'rm_scene_preview:' + PORTAL_ID;
+  let autoSetting = null;   // element_state.setting from the server (the Automatic value)
+  let serverPref = null;    // element_state.override — the member's saved choice
+  const preview = () => { try { return sessionStorage.getItem(PREVIEW_KEY); } catch (e) { return null; } };
+  const setPreview = (v) => { try { if (v === null) sessionStorage.removeItem(PREVIEW_KEY); else sessionStorage.setItem(PREVIEW_KEY, v); } catch (e) {} };
+  // The active preference: a session preview wins over the saved choice; either may be
+  // null/'auto' -> Automatic.
+  const activePref = () => { const pv = preview(); return (pv !== null) ? pv : serverPref; };
 
-  // A ?element=<id> query param sets (and remembers) the preference, then is stripped
-  // from the URL so a shared/bookmarked link isn't permanently pinned to one scene.
+  // A ?element=<id> query param previews a scene for this browser session, then is
+  // stripped from the URL so a shared/bookmarked link isn't permanently pinned.
   (function consumeQueryOverride(){
     try {
       const p = new URLSearchParams(location.search);
       if (!p.has('element')) return;
       const raw = (p.get('element') || '').trim().toLowerCase();
-      if (raw === 'auto' || raw === '' || ELEMENT_KEYS.includes(raw)) setPref(raw);
+      if (raw === '' || raw === 'auto') setPreview('auto');
+      else if (ELEMENT_KEYS.includes(raw)) setPreview(raw);
       p.delete('element');
       const qs = p.toString();
       history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     } catch (e) {}
   })();
+
+  // Persist the member's saved choice across devices (element key, or null/Automatic).
+  function saveServerPref(el){
+    try {
+      fetch('/api/portal/' + encodeURIComponent(PORTAL_ID) + '/scene-pref', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ element: el || 'auto' }),
+      }).catch(() => {});
+    } catch (e) {}
+  }
 
   let manifestP = null, current = null, amb = null, catPlayer = null;
   function stopCat(){ if (catPlayer) { try { catPlayer.stop(); } catch (e) {} catPlayer = null; } }
@@ -1445,17 +1469,22 @@ load();
   }
   function syncPicker(){
     if (!elPicker) return;
-    const pref = savedPref();
+    const pref = activePref();
     elPicker.value = (pref && ELEMENT_KEYS.includes(pref)) ? pref : 'auto';
   }
+  // A deliberate pick is the member's saved choice: clear any session preview, apply
+  // optimistically, and persist it server-side so it follows them across devices.
   if (elPicker) elPicker.addEventListener('change', () => {
-    setPref(elPicker.value);
+    const v = elPicker.value === 'auto' ? null : elPicker.value;
+    setPreview(null);
+    serverPref = v;
+    saveServerPref(v);
     applyResolved();
   });
 
   // Resolve preference over the computed element, then render. This is the single
   // entry point render() and the picker both drive through.
-  async function applyResolved(){ await apply(resolveBackdrop(savedPref(), autoSetting)); syncPicker(); }
+  async function applyResolved(){ await apply(resolveBackdrop(activePref(), autoSetting)); syncPicker(); }
 
   async function apply(setting){
     const manifest = await loadManifest();
@@ -1492,9 +1521,13 @@ load();
 
   // render() passes the server-computed element here; we store it as the Automatic
   // value and render whatever the preference resolves to.
-  window.applyElementBackdrop = (computed) => { autoSetting = computed; applyResolved(); };
+  window.applyElementBackdrop = (computed, serverOverride) => {
+    autoSetting = computed;
+    if (serverOverride !== undefined) serverPref = serverOverride || null;
+    applyResolved();
+  };
   syncBtn();
-  if (window.__pendingBackdrop !== undefined) window.applyElementBackdrop(window.__pendingBackdrop);
+  if (window.__pendingBackdrop !== undefined) window.applyElementBackdrop(window.__pendingBackdrop, window.__serverScenePref);
 </script>
 </body>
 </html>

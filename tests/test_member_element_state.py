@@ -42,3 +42,44 @@ def test_upsert_overwrites_same_email():
 
 def test_get_missing_returns_none():
     assert mes.get(_cx(), "nobody@x.com") is None
+
+
+def test_set_override_creates_row_without_scores():
+    cx = _cx()
+    row = mes.set_override(cx, "New@X.com", "fire")
+    assert row["scene_override"] == "fire"
+    assert row["deficient_element"] is None       # no analysis yet
+    assert row["element_scores"] == {}
+
+
+def test_set_override_preserves_computed_scores():
+    cx = _cx()
+    mes.upsert(cx, "j@x.com", {"Wood": 80, "Fire": 60, "Earth": 40, "Metal": 20, "Water": 5})
+    mes.set_override(cx, "j@x.com", "metal")
+    got = mes.get(cx, "j@x.com")
+    assert got["scene_override"] == "metal"
+    assert got["deficient_element"] == "Water"    # untouched
+    assert got["element_scores"]["Fire"] == 60
+
+
+def test_set_override_auto_and_none_clear_the_choice():
+    cx = _cx()
+    mes.set_override(cx, "j@x.com", "fire")
+    assert mes.get(cx, "j@x.com")["scene_override"] == "fire"
+    mes.set_override(cx, "j@x.com", "auto")
+    assert mes.get(cx, "j@x.com")["scene_override"] is None
+    mes.set_override(cx, "j@x.com", "fire")
+    mes.set_override(cx, "j@x.com", None)
+    assert mes.get(cx, "j@x.com")["scene_override"] is None
+
+
+def test_override_column_migrates_onto_a_legacy_table():
+    cx = sqlite3.connect(":memory:")
+    # a pre-scene_override table (no migration yet)
+    cx.execute(
+        "CREATE TABLE member_element_state (email TEXT PRIMARY KEY, element_scores TEXT, "
+        "dominant_element TEXT, deficient_element TEXT, source TEXT, updated_at TEXT)"
+    )
+    cx.execute("INSERT INTO member_element_state (email) VALUES ('legacy@x.com')")
+    mes.set_override(cx, "legacy@x.com", "water")   # triggers _ensure_override_col
+    assert mes.get(cx, "legacy@x.com")["scene_override"] == "water"

@@ -9,4 +9,8 @@ def element_view(cx, email):
         return None
     dfc = row.get("deficient_element")
     row["setting"] = dfc.lower() if dfc else None
+    # The member's explicit backdrop choice (element key) overriding `setting`;
+    # None/absent means Automatic (use the computed deficient element).
+    ov = (row.get("scene_override") or "").strip().lower()
+    row["override"] = ov or None
     return row
