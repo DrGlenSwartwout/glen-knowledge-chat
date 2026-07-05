@@ -15727,6 +15727,38 @@ def _onboarding_send_confirmations(email, booking):
         app.logger.exception("onboarding confirmation build failed")
 
 
+@app.route("/community")
+def community_page():
+    return send_from_directory(STATIC, "community.html")
+
+
+@app.route("/api/community/library")
+def community_library():
+    from dashboard import community as _cm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        _cm.init_community_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        full = _cm.list_full(cx)
+        if _is_paid_member(ident.email):
+            return jsonify({"tier": "paid", "full": full,
+                            "outtakes": _cm.list_outtakes(cx)})
+        # Free member: strip every full item's Rumble video_ref; expose metadata
+        # + the item's free out-takes only. The full link never reaches a non-member.
+        teasers = []
+        for it in full:
+            teasers.append({"id": it["id"], "type": it["type"], "title": it["title"],
+                            "description": it["description"],
+                            "interest_tags": it["interest_tags"],
+                            "published_at": it["published_at"],
+                            "teaser_outtakes": it["outtakes"]})
+        return jsonify({"tier": "free", "full": teasers})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
