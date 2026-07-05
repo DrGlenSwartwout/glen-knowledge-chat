@@ -616,8 +616,8 @@ function renderCoachThreadList(threads){
     var row = document.createElement('div'); row.className = 'reitem';
     var top = document.createElement('div'); top.className = 'top';
     var info = document.createElement('span');
-    info.textContent = t.coach_email + ' ↔ ' + t.member_email + ' — ' + t.status
-      + (t.reported ? ' — reported' : '') + ' — ' + (t.message_count || 0) + ' messages';
+    info.textContent = t.coach_email + ' ↔ ' + t.member_email + ' · ' + t.status
+      + (t.reported ? ' · reported' : '') + ' · ' + (t.message_count || 0) + ' messages';
     top.appendChild(info); row.appendChild(top);
 
     var actions = document.createElement('div');
@@ -654,14 +654,14 @@ function renderCoachThreadView(t){
   var head = document.createElement('div');
   head.style.cssText = 'font-weight:700;margin-bottom:.4rem';
   head.textContent = 'Thread #' + t.id + ': ' + t.coach_email + ' ↔ ' + t.member_email
-    + ' — status: ' + t.status;
+    + ' · status: ' + t.status;
   pane.appendChild(head);
   (t.messages || []).forEach(function(m){
     var d = document.createElement('div');
     d.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin:4px 0;background:var(--surface2)';
     var who = document.createElement('div');
     who.style.cssText = 'font-size:.72rem;font-weight:700;opacity:.75';
-    who.textContent = m.sender_role + ' — ' + (m.created_at || '');
+    who.textContent = m.sender_role + ' · ' + (m.created_at || '');
     var body = document.createElement('div');
     body.style.cssText = 'white-space:pre-wrap;word-break:break-word';
     body.textContent = m.body;
@@ -675,7 +675,7 @@ function renderCoachThreadView(t){
     t.reports.forEach(function(rep){
       var r = document.createElement('div'); r.className = 'muted small';
       r.textContent = rep.reporter_role + ': ' + (rep.reason || '(no reason given)')
-        + ' — ' + (rep.resolved ? 'resolved' : 'open');
+        + ' · ' + (rep.resolved ? 'resolved' : 'open');
       pane.appendChild(r);
     });
   }

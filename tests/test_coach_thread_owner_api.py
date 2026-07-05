@@ -28,6 +28,7 @@ def test_all_owner_routes_401_without_key():
         assert c.get("/api/console/coach-threads").status_code == 401
         assert c.get("/api/console/coach-threads/1").status_code == 401
         assert c.post("/api/console/coach-threads/1/unmatch").status_code == 401
+        assert c.post("/api/console/coach-threads/1/resolve-report").status_code == 401
 
 
 def test_transcript_shows_blocked_history():

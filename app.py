@@ -16829,13 +16829,15 @@ def console_coach_thread_unmatch(thread_id):
         if pair and pair["coach_email"] == t["coach_email"]:
             _cc.set_request_status(cx, pair["request_id"], "ended")
         member_email, coach_email = t["member_email"], t["coach_email"]
-    try:
-        note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
-                "from your portal whenever you are ready.</p>")
-        send_evox_email(member_email, "", "Your coaching pairing has ended", note, note, b"")
-        send_evox_email(coach_email, "", "A coaching pairing has ended", note, note, b"")
-    except Exception:
-        app.logger.exception("unmatch notify failed")
+    note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
+            "from your portal whenever you are ready.</p>")
+    for to, subj in [
+        (member_email, "Your coaching pairing has ended"),
+        (coach_email, "A coaching pairing has ended")]:
+        try:
+            send_evox_email(to, "", subj, note, note, b"")
+        except Exception:
+            app.logger.exception("unmatch notify failed to %s", to)
     return jsonify({"ok": True})
 
 
@@ -16848,6 +16850,9 @@ def console_coach_thread_resolve_report(thread_id):
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
+        t = _ct.get_thread(cx, thread_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
         cx.execute("UPDATE coach_threads SET reported=0 WHERE id=?", (thread_id,))
         cx.execute("UPDATE coach_thread_reports SET resolved=1 WHERE thread_id=?", (thread_id,))
         cx.commit()
