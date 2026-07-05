@@ -8158,6 +8158,39 @@ def _fulfill_biofield_program(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _fulfill_masterclass(session_id):
+    """Mark a MasterClass registration paid + send the Zoom join link confirmation
+    from a completed Stripe checkout, idempotently. Re-fetches the session +
+    PaymentIntent (the security guarantee); only proceeds on a succeeded masterclass
+    payment. Best-effort; never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, masterclass as _mc
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "masterclass":
+            return {"ok": False, "reason": "not_masterclass"}
+        email = (md.get("email") or "").strip().lower()
+        try:
+            event_id = int(md.get("event_id"))
+        except Exception:
+            return {"ok": False, "reason": "no_event"}
+        pi_id = sess.get("payment_intent")
+        if not (email and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        if _sp.get_payment_intent(pi_id).get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _mc.init_masterclass_tables(cx)
+            _mc.mark_paid(cx, event_id, email)
+            ev = _mc.get_event(cx, event_id)
+        _masterclass_send_confirmation(ev, email, md.get("name") or "")
+        return {"ok": True, "email": email, "event_id": event_id}
+    except Exception as e:
+        print(f"[masterclass] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -12566,6 +12599,153 @@ def api_console_opens():
         _op.init_opens_table(cx)
         data = _op.opens_for(cx, kind, keys)
     return jsonify({"ok": True, "opens": data})
+
+
+@app.route("/api/console/masterclass", methods=["POST"])
+def api_console_masterclass_create():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc, zoom as _zoom
+    body = request.get_json(silent=True) or {}
+    topic = (body.get("topic") or "").strip()
+    start_ts = (body.get("start_ts") or "").strip()
+    if not topic or not start_ts:
+        return jsonify({"error": "topic and start_ts required"}), 400
+    duration = int(body.get("duration_min") or 60)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx); _init_calendar_table()
+        eid = _mc.create_event(cx, topic=topic, description=body.get("description") or "",
+                               start_ts=start_ts, duration_min=duration,
+                               price_cents=int(body.get("price_cents") or 0),
+                               member_price_cents=int(body.get("member_price_cents") or 0))
+        # synthetic glen-lane calendar row
+        try:
+            end_ts = (datetime.fromisoformat(start_ts[:19]) + timedelta(minutes=duration)).isoformat()
+        except Exception:
+            end_ts = start_ts
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            cx.execute(
+                "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
+                "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+                "VALUES (?, 'delegated', ?, 'MasterClass', ?, ?, ?, 'Zoom', 'glen', 'visible', 0)",
+                (now, f"masterclass-{eid}", f"MasterClass: {topic}", start_ts, end_ts))
+        except Exception:
+            app.logger.exception("masterclass calendar insert failed")
+        cx.commit()
+    # best-effort Zoom (outside the lock)
+    zoom_ok = False
+    try:
+        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
+                              os.environ["ZOOM_CLIENT_SECRET"])
+        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic=f"MasterClass: {topic}",
+                                 start_iso=start_ts, duration_min=duration, waiting_room=False)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+            _mc.init_masterclass_tables(cx2)
+            _mc.set_zoom(cx2, eid, m.get("join_url"), m.get("meeting_id"))
+        zoom_ok = bool(m.get("join_url"))
+    except Exception:
+        app.logger.exception("masterclass zoom create failed")
+    return jsonify({"ok": True, "event_id": eid,
+                    "event_url": f"{PUBLIC_BASE_URL}/masterclass/{eid}", "zoom_ok": zoom_ok})
+
+
+@app.route("/api/console/masterclass/<int:event_id>/zoom-url", methods=["POST"])
+def api_console_masterclass_zoom_url(event_id):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc
+    url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.set_zoom(cx, event_id, url, "")
+    return jsonify({"ok": True})
+
+
+MASTERCLASS_FROM = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail.com")
+
+
+@app.route("/masterclass/<int:event_id>")
+def masterclass_page(event_id):
+    return send_from_directory(STATIC, "masterclass.html")
+
+
+@app.route("/api/masterclass/<int:event_id>")
+def api_masterclass_get(event_id):
+    from dashboard import masterclass as _mc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+    if not ev:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"topic": ev["topic"], "description": ev["description"],
+                    "start_ts": ev["start_ts"], "duration_min": ev["duration_min"],
+                    "price_cents": ev["price_cents"], "member_price_cents": ev["member_price_cents"]})
+
+
+def _masterclass_send_confirmation(event, email, name):
+    """Best-effort confirmation email with the Zoom join link + an .ics invite.
+    Swallows send errors (logs) — never raises into the register response."""
+    try:
+        from dashboard import evox as _ev
+        start = event["start_ts"]; nice = start.replace("T", " ")
+        join = event.get("zoom_join_url") or ""
+        join_line = (f"Join here: {join}" if join else "Your join link will follow by email.")
+        try:
+            end = (datetime.fromisoformat(start[:19]) + timedelta(minutes=int(event["duration_min"]))).isoformat()
+        except Exception:
+            end = start
+        ics = _ev.build_ics(uid=f"masterclass-{event['id']}-{(email or '').strip().lower()}@illtowell.com",
+                            start_ts=start, end_ts=end, summary=f"MasterClass: {event['topic']}",
+                            description=join_line, location=(join or "Zoom"))
+        html = (f"<p>You are registered for <b>{event['topic']}</b> on <b>{nice} HST</b>.</p>"
+                f"<p>{join_line}</p><p>The calendar invite is attached.</p>")
+        try:
+            send_evox_email(email, name or "", f"You are registered: {event['topic']}", html, html, ics)
+        except Exception:
+            app.logger.exception("masterclass confirmation send failed to %s", email)
+    except Exception:
+        app.logger.exception("masterclass confirmation build failed")
+
+
+@app.route("/api/masterclass/<int:event_id>/register", methods=["POST"])
+def api_masterclass_register(event_id):
+    from dashboard import masterclass as _mc
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+        if not ev:
+            return jsonify({"error": "not_found"}), 404
+        is_member = _is_paid_member(email)
+        amount = _mc.price_for(ev, is_member)
+        if amount <= 0:
+            _mc.register(cx, event_id, email, name, is_member, 0, paid=True)
+    if amount <= 0:
+        _masterclass_send_confirmation(ev, email, name)
+        return jsonify({"ok": True, "registered": True, "join_url": ev.get("zoom_join_url")})
+    # paid non-member
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "payment_unavailable"}), 503
+    from dashboard import stripe_pay as _sp
+    sess = _sp.create_checkout_session(
+        amount, customer_email=email, description=f"MasterClass: {ev['topic']}",
+        metadata={"kind": "masterclass", "event_id": str(event_id), "email": email, "name": name},
+        success_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}?paid=1",
+        cancel_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.register(cx, event_id, email, name, is_member, amount, paid=False)
+    return jsonify({"ok": True, "checkout_url": sess.get("url")})
 
 
 @app.route("/console/biofield-reveals", methods=["GET"])
@@ -19676,6 +19856,7 @@ def webhook_stripe():
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
+                _fulfill_masterclass(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
