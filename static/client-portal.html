@@ -772,6 +772,26 @@ function render(d, v){
     }
   }
 
+  // Scan history — every E4L scan date (A: read-only; B: request-analysis button + states).
+  if (d.available_scans && d.available_scans.length) {
+    let rows = "";
+    for (const s of d.available_scans) {
+      const tag = s.processed
+        ? `<span style="color:#2f6f5e;font-size:.8rem">Analyzed</span>`
+        : s.requested
+          ? `<span style="color:var(--muted);font-size:.8rem">Requested</span>`
+          : d.scan_request_enabled
+            ? `<button class="ra-btn" data-scan="${esc(s.scan_date)}" data-sid="${esc(s.scan_id||"")}"
+               style="font-size:.8rem;padding:2px 10px;border-radius:8px;background:#2f6f5e;color:#fff;border:0;cursor:pointer">Request analysis</button>`
+            : `<span style="color:var(--muted);font-size:.8rem">Available</span>`;
+      rows += `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        <strong style="font-size:.95rem">${esc(s.scan_date)}</strong><span style="flex:1"></span>${tag}</div>`;
+    }
+    html += `<div class="card"><h2 style="font-size:1rem">Scan history</h2>
+      <p style="color:var(--muted);font-size:.85rem;margin:.2rem 0 .6rem">Every scan on file. Analyzed scans have a full report; others are available to analyze.</p>
+      ${rows}</div>`;
+  }
+
   // Task 3: the patient's active practitioner recommendation ("Your practitioner
   // recommends…") — remedy NAMES only (no $0 suggested price shown), one-tap
   // accept (→ adds to reorder list) and a dismiss. Absent when there's no
@@ -992,6 +1012,13 @@ function render(d, v){
     }
   }
 
+  // Welcome call (onboarding): membership eligibility can't be checked here
+  // (portal_view.py has no app import), so render an empty, hidden placeholder
+  // and let initOnboardingCard() — called once this markup is attached to the
+  // DOM — fetch /api/onboarding/state and decide whether to show it and what
+  // to put inside (slot picker vs. already-booked confirmation).
+  html += `<div class="card" id="onboarding-card" hidden></div>`;
+
   // Household sharing controls (member consent + caregiver cc).
   if (d.household_caregivers && d.household_caregivers.length) {
     let rows = "";
@@ -1019,6 +1046,8 @@ function render(d, v){
   app.innerHTML = html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
+
+  initOnboardingCard();
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
@@ -1055,6 +1084,25 @@ function render(d, v){
     t.addEventListener("click", ()=>selectScan(t.getAttribute("data-scan"))));
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
+
+  // Request analysis button + states (Scan history, sub-project B).
+  app.querySelectorAll(".ra-btn").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    let j = {};
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/request-analysis`,
+        {method:"POST",headers:{"Content-Type":"application/json"},
+         body:JSON.stringify({scan_date:b.dataset.scan, scan_id:b.dataset.sid})});
+      j = await r.json();
+    } catch(e){ j = {}; }
+    if (j.status === "pending" || j.status === "already" || j.status === "done")
+      b.replaceWith(Object.assign(document.createElement("span"),
+        {style:"color:var(--muted);font-size:.8rem", textContent:"Requested"}));
+    else if (j.reason === "monthly_quota")
+      b.replaceWith(Object.assign(document.createElement("span"),
+        {style:"color:var(--muted);font-size:.8rem", innerHTML:`1 free analysis/month — <a href="${esc(j.upgrade_url||"/prepay")}">upgrade</a>`}));
+    else b.disabled = false;
+  }));
 
   // Read-receipt: wire the collapsed report header's expand click without an
   // inline onclick (avoids interpolating the scan date into a JS string —
@@ -1145,6 +1193,70 @@ async function consultJoin(){
   document.getElementById("consult-join-msg").textContent =
     "Your consult is at " + when + ". The Join button opens 10 minutes before.";
 }
+
+<!-- BEGIN onboarding card script -->
+// Welcome call (onboarding) card. Member-gated by its own /api/onboarding/state
+// fetch (see the placeholder in render()) rather than by v.onboarding, since
+// portal_view.py can't check membership. Mirrors the consult card's
+// schedule/book/confirm pattern (consultSchedule/consultBook above).
+async function initOnboardingCard(){
+  const card = document.getElementById("onboarding-card");
+  if(!card) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/state?token=${encodeURIComponent(seg)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  if(!d || !d.eligible){ card.hidden = true; card.innerHTML = ""; return; }
+  card.hidden = false;
+  renderOnboardingCard(card, d.booked);
+}
+
+function renderOnboardingCard(card, booked){
+  if(booked){
+    const when = (booked.start_ts||"").replace("T"," ");
+    card.innerHTML = `<h2>Welcome call</h2>
+      <p class="muted">Your welcome call with Rae is booked for <b>${esc(when)} HST</b>. This is a phone call, and Rae will call you at your appointment time.</p>`;
+    return;
+  }
+  card.innerHTML = `<h2>Book your welcome call</h2>
+    <p class="muted">A free 15-minute phone call with Rae to welcome you and answer your first questions. Rae will call you.</p>
+    <div id="onboarding-slots" style="margin-top:.6rem"><p class="muted small">Loading available times…</p></div>`;
+  loadOnboardingSlots();
+}
+
+async function loadOnboardingSlots(){
+  const box = document.getElementById("onboarding-slots");
+  if(!box) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/availability?token=${encodeURIComponent(seg)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  const slots = d.slots || [];
+  box.innerHTML = slots.length
+    ? slots.map(s => `<button class="btn" style="margin:.2rem .3rem .2rem 0" onclick="onboardingBook('${esc(s)}')">${esc(s.replace("T"," "))}</button>`).join("")
+    : `<p class="muted small">No open times right now. Please check back soon.</p>`;
+}
+
+async function onboardingBook(start_ts){
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/book?token=${encodeURIComponent(seg)}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({start_ts}),
+    });
+    d = await r.json();
+    if(d && d.ok){
+      const card = document.getElementById("onboarding-card");
+      if(card) renderOnboardingCard(card, {start_ts});
+      return;
+    }
+  }catch(e){ d = {}; }
+  alert("That time is no longer available. Please pick another.");
+  loadOnboardingSlots();
+}
+<!-- END onboarding card script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.
@@ -1372,6 +1484,38 @@ function renderSuggestion(sugg){
   return el;
 }
 
+// --- Community-related cards (Layer C slice C3 Task 3) ---
+function renderRelated(items){
+  if(!Array.isArray(items) || !items.length) return null;
+  var el = document.createElement("div");
+  el.className = "chat-related";
+  var heading = document.createElement("div");
+  heading.className = "chat-related-heading";
+  heading.textContent = "From the community";
+  el.appendChild(heading);
+  items.forEach(function(item){
+    if(!item || typeof item !== "object") return;
+    var title = (item.title != null) ? String(item.title) : "";
+    if(!title) return;
+    var row = document.createElement("div");
+    row.className = "chat-related-item";
+    var link = document.createElement("a");
+    link.className = "chat-related-link";
+    link.href = "/community?token=" + encodeURIComponent(token);
+    link.textContent = title; // server-supplied title: textContent only, never innerHTML
+    row.appendChild(link);
+    if(item.kind === "teaser"){
+      var nudge = document.createElement("div");
+      nudge.className = "chat-related-nudge";
+      nudge.textContent = "Become a member to watch the full session.";
+      row.appendChild(nudge);
+    }
+    el.appendChild(row);
+  });
+  return el;
+}
+// --- end community-related cards ---
+
 function appendChatBubble(role, text){
   var msgs = document.getElementById("chatMsgs");
   if(!msgs) return null;
@@ -1439,6 +1583,9 @@ async function sendChatMessage(){
             } else if(evt.suggestion){
               var suggEl = renderSuggestion(evt.suggestion);
               if(suggEl && msgs){ msgs.appendChild(suggEl); }
+            } else if(evt.related){
+              var relEl = renderRelated(evt.related);
+              if(relEl && msgs){ msgs.appendChild(relEl); msgs.scrollTop = msgs.scrollHeight; }
             } else if(evt.error){
               if(assistantBubble){
                 assistantBubble.className = "chat-bubble error";
@@ -1528,9 +1675,21 @@ load();
 
   let manifestP = null, current = null, amb = null, catPlayer = null;
   function stopCat(){ if (catPlayer) { try { catPlayer.stop(); } catch (e) {} catPlayer = null; } }
+
+  // Resident cat perks up when you start engaging Glendalf's chat (focus the input
+  // or send a message). No-op unless the Fire cat is active; the cooldown lives in
+  // CatPlayer.wake(), so it fires once per re-engagement, not on every keystroke.
+  const _wakeCat = () => { try { if (catPlayer) catPlayer.wake(); } catch (e) {} };
+  const _ci = document.getElementById('chatInput'), _cs = document.getElementById('chatSend');
+  if (_ci) _ci.addEventListener('focus', _wakeCat);
+  if (_cs) _cs.addEventListener('click', _wakeCat);
   const loadManifest = () => (manifestP ||= fetch('/static/fireside/elements-manifest.json').then(r => r.ok ? r.json() : null).catch(() => null));
 
-  function syncBtn(){ const on = !!amb; sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  // Reflect the saved sound PREFERENCE, not the runtime amb — on a reload the pref
+  // can be "on" while audio waits for the first gesture, and the icon must not lie
+  // (an "off"-looking speaker that's actually pending-on is what made clicking it
+  // seem to do nothing / toggle the wrong way).
+  function syncBtn(){ const on = soundOn(); sndBtn.innerHTML = on ? SPK_ON : SPK_OFF; sndBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
   // true while Dr. Glen's voice is playing (report audio/video) so the ambient beds
   // duck under him and swell back in the gaps. The backdrop video (#el-bg) is muted,
   // so it's excluded.
@@ -1540,18 +1699,34 @@ load();
   }
   function startAudio(){ if (amb || !current) return; try { amb = new Ambience(current.ambience, { isVoicePlaying: voicePlaying, duck: 0.35 }); amb.start(); } catch (e) { amb = null; } syncBtn(); }
   function stopAudio(){ if (amb) { try { amb.stop(); } catch (e) {} amb = null; } syncBtn(); }
-  // Remembered "on": autoplay of audio needs a user gesture, so try now (works if
-  // audio is already unlocked) and also arm a one-shot gesture fallback.
+  // Autoplay needs a user gesture. Track whether the page has had one, so we don't
+  // pre-create a SILENT ambience on load (its play() would be rejected and the bed
+  // would never retry) — and so the speaker click can't turn "off" the very audio
+  // it was meant to turn on (the old code created amb before any gesture, then the
+  // click saw amb and stopped it).
+  let audioUnlocked = false;
+  const _markUnlocked = () => { audioUnlocked = true; };
+  window.addEventListener('pointerdown', _markUnlocked, { once: true, capture: true });
+  window.addEventListener('keydown', _markUnlocked, { once: true, capture: true });
+
+  // Remembered "on": start immediately if audio is already usable (mid-session
+  // element switch); otherwise wait for the first gesture and start THEN.
   function armAutoStart(){
-    startAudio();
-    const h = () => startAudio();
+    if (audioUnlocked) { startAudio(); return; }
+    const h = () => { if (soundOn()) startAudio(); };
     window.addEventListener('pointerdown', h, { once: true });
     window.addEventListener('keydown', h, { once: true });
   }
 
+  // Flip the PREFERENCE (the source of truth), then start/stop to match. This click
+  // is itself a user gesture, so startAudio() can actually play. Keying off the pref
+  // (not amb) means the very gesture that armAutoStart might use to create amb can't
+  // then be read as "amb exists -> turn off".
   sndBtn.addEventListener('click', () => {
-    if (amb) { stopAudio(); localStorage.setItem('rm_portal_sound', 'off'); }
-    else { startAudio(); localStorage.setItem('rm_portal_sound', 'on'); }
+    const turnOn = !soundOn();
+    localStorage.setItem('rm_portal_sound', turnOn ? 'on' : 'off');
+    if (turnOn) startAudio(); else stopAudio();
+    syncBtn();
   });
 
   // Populate the scene dropdown from the manifest labels (once), and keep its
@@ -1615,7 +1790,7 @@ load();
       vid.src = entry.video;
       if (!reduceMotion) vid.play().catch(() => {}); // muted autoplay ok; else poster stays
     }
-    if (soundOn()) armAutoStart(); else syncBtn();
+    if (soundOn()) armAutoStart(); syncBtn();
   }
 
   // render() passes the server-computed element here; we store it as the Automatic

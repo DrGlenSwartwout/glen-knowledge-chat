@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Community · Healing Oasis</title>
+<script>
+  (function(){var t=localStorage.getItem('rm_portal_theme');
+    if(!t) t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+    document.documentElement.setAttribute('data-theme',t);})();
+</script>
+<style>
+  :root[data-theme="dark"]{
+    --bg:#0a150d; --card:#13241a; --card2:#16291d; --line:#274033;
+    --ink:#f3efe2; --muted:#9fb0a4;
+    --brand:#5bbf9e; --brand-soft:rgba(91,191,158,.14);
+    --btn-bg:#d4a843; --btn-fg:#0a150d; --err:#e88a8a;
+    --shadow:0 1px 2px rgba(0,0,0,.30);
+  }
+  :root[data-theme="light"]{
+    --bg:#FBF8F3; --card:#ffffff; --card2:#f6f2e9; --line:#e7e1d4;
+    --ink:#1E2A2A; --muted:#6b7268;
+    --brand:#2f6f5e; --brand-soft:rgba(47,111,94,.10);
+    --btn-bg:#2f6f5e; --btn-fg:#ffffff; --err:#9a3b3b;
+    --shadow:0 1px 2px rgba(40,40,30,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 64px}
+  h1{font-size:1.6rem;margin:0 0 6px}
+  .lede{color:var(--muted);margin:0 0 28px}
+  .state{max-width:520px;margin:80px auto;text-align:center;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .card h2{margin:0 0 4px;font-size:1.15rem}
+  .card p.desc{color:var(--muted);margin:4px 0 10px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+  .tag{background:var(--brand-soft);color:var(--brand);border-radius:999px;
+    padding:3px 10px;font-size:.78rem;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px}
+  .embed{position:relative;width:100%;padding-top:56.25%;border-radius:10px;
+    overflow:hidden;background:#000;margin:10px 0}
+  .embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+  video{width:100%;border-radius:10px;background:#000;margin:6px 0}
+  .outtakes{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+  .outtakes h3{font-size:.9rem;color:var(--muted);margin:0 0 8px;font-weight:600}
+  .out-item{margin-bottom:14px}
+  .out-item .out-title{font-size:.92rem;margin:0 0 4px}
+  .locked{background:var(--card2);border:1px dashed var(--line);border-radius:10px;
+    padding:14px;margin-top:10px;color:var(--muted)}
+  .locked a{color:var(--brand);font-weight:600;text-decoration:none}
+  .locked a:hover{text-decoration:underline}
+  .err{color:var(--err)}
+  .sig-btn{border:0;background:transparent;color:var(--muted);font-size:.72rem;
+    font-weight:600;cursor:pointer;padding:0 2px;line-height:1}
+  .sig-btn:hover{color:var(--ink)}
+  .sig-btn.active{color:var(--brand)}
+  .reactions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+  .react-btn{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);
+    background:var(--card2);color:var(--muted);border-radius:999px;padding:5px 12px;
+    font-size:.82rem;font-weight:600;cursor:pointer}
+  .react-btn:hover{color:var(--ink);border-color:var(--brand)}
+  .react-btn.active{color:var(--brand-fg,var(--btn-fg));background:var(--brand);border-color:var(--brand)}
+  .react-count{opacity:.8}
+  #interests .tags .tag{padding:4px 10px}
+  #interests .tag button{border:0;background:transparent;color:var(--muted);
+    font-size:.72rem;font-weight:600;cursor:pointer;text-decoration:underline}
+  #interests .tag button:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Community</h1>
+  <p class="lede">Coaching replays, course sessions, and behind-the-scenes moments from Healing Oasis.</p>
+  <div id="interests" class="card" hidden>
+    <h2>Your interests</h2>
+    <p id="interests-empty" class="desc" hidden>Like a topic to see more of it here.</p>
+    <div id="interests-list" class="tags"></div>
+  </div>
+  <div id="foryou" hidden>
+    <h2 id="foryou-header"></h2>
+    <div id="foryou-list"></div>
+  </div>
+  <div id="loading" class="state">Gathering your library…</div>
+  <div id="notfound" class="state" hidden>
+    <p class="err">We couldn't find that link.</p>
+    <p>Please check the link Dr. Glen &amp; Rae sent you, or reach out and we'll send a fresh one.</p>
+  </div>
+  <div id="list"></div>
+</div>
+
+<!-- BEGIN signal-layer script -->
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  let token = params.get("token") || "";
+  if(!token){
+    const seg = location.pathname.split("/").filter(Boolean).pop();
+    if(seg && seg !== "community") token = seg;
+  }
+  const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
+  const REACTIONS = [["helpful","Helpful"],["inspiring","Inspiring"],["this_is_me","This is me"]];
+
+  const interestsEl = document.getElementById("interests");
+  const interestsEmpty = document.getElementById("interests-empty");
+  const interestsList = document.getElementById("interests-list");
+
+  let signalsPromise = null;
+  function fetchSignals(){
+    if(!token) return Promise.resolve({likes: [], blocks: []});
+    if(!signalsPromise){
+      signalsPromise = fetch("/api/community/signals?token=" + encodeURIComponent(token))
+        .then(function(r){ if(!r.ok) throw new Error("not_found"); return r.json(); })
+        .catch(function(){ return {likes: [], blocks: []}; });
+    }
+    return signalsPromise;
+  }
+
+  function invalidateSignals(){ signalsPromise = null; }
+
+  function topicState(data, tag){
+    if((data.likes || []).some(function(e){ return e.target_type === "topic" && e.target_key === tag; })) return "like";
+    if((data.blocks || []).some(function(e){ return e.target_type === "topic" && e.target_key === tag; })) return "block";
+    return null;
+  }
+
+  function postSignal(tag, signal){
+    return fetch("/api/community/signal?token=" + encodeURIComponent(token), {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({target_type: "topic", target_key: tag, signal: signal})
+    }).then(function(r){ return r.json(); });
+  }
+
+  const tagControlRegistry = [];
+  function broadcastSignals(data){
+    tagControlRegistry.forEach(function(entry){ entry(data); });
+    renderInterests(data);
+  }
+
+  function refreshSignals(){
+    invalidateSignals();
+    return fetchSignals().then(broadcastSignals);
+  }
+
+  function renderInterests(data){
+    if(!interestsEl) return;
+    interestsList.innerHTML = "";
+    const likes = (data.likes || []).filter(function(e){ return e.target_type === "topic"; });
+    const blocks = (data.blocks || []).filter(function(e){ return e.target_type === "topic"; });
+    interestsEl.hidden = false;
+    if(!likes.length && !blocks.length){
+      interestsEmpty.hidden = false;
+      return;
+    }
+    interestsEmpty.hidden = true;
+    function addRow(entry, kind){
+      const chip = $('<span class="tag"></span>');
+      const label = document.createElement("span");
+      label.textContent = (kind === "block" ? "Blocked: " : "Liked: ") + entry.target_key;
+      chip.appendChild(label);
+      const clear = document.createElement("button");
+      clear.type = "button";
+      clear.textContent = "Clear";
+      clear.addEventListener("click", function(){
+        postSignal(entry.target_key, "none").then(refreshSignals);
+      });
+      chip.appendChild(clear);
+      interestsList.appendChild(chip);
+    }
+    likes.forEach(function(e){ addRow(e, "like"); });
+    blocks.forEach(function(e){ addRow(e, "block"); });
+  }
+
+  function enhanceTag(span, tag){
+    const likeBtn = document.createElement("button");
+    likeBtn.type = "button";
+    likeBtn.className = "sig-btn";
+    likeBtn.textContent = "Like";
+    const blockBtn = document.createElement("button");
+    blockBtn.type = "button";
+    blockBtn.className = "sig-btn";
+    blockBtn.textContent = "Block";
+    span.appendChild(likeBtn);
+    span.appendChild(blockBtn);
+
+    function update(data){
+      const state = topicState(data, tag);
+      likeBtn.classList.toggle("active", state === "like");
+      blockBtn.classList.toggle("active", state === "block");
+    }
+    tagControlRegistry.push(update);
+
+    function act(kind){
+      const active = kind === "like" ? likeBtn.classList.contains("active") : blockBtn.classList.contains("active");
+      const signal = active ? "none" : kind;
+      postSignal(tag, signal).then(refreshSignals);
+    }
+    likeBtn.addEventListener("click", function(){ act("like"); });
+    blockBtn.addEventListener("click", function(){ act("block"); });
+
+    fetchSignals().then(update);
+  }
+
+  function reactionRow(itemId){
+    const row = $('<div class="reactions"></div>');
+    const buttons = {};
+    REACTIONS.forEach(function(pair){
+      const key = pair[0], label = pair[1];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "react-btn";
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = label;
+      const countSpan = document.createElement("span");
+      countSpan.className = "react-count";
+      countSpan.textContent = "0";
+      btn.appendChild(labelSpan);
+      btn.appendChild(countSpan);
+      btn.addEventListener("click", function(){
+        if(!token || !itemId) return;
+        fetch("/api/community/react?token=" + encodeURIComponent(token), {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({content_id: itemId, reaction: key})
+        }).then(function(r){ return r.json(); })
+          .then(function(d){
+            if(!d || d.ok !== true) return;
+            btn.classList.toggle("active", !!d.on);
+            const c = (d.counts && d.counts[key]) || 0;
+            countSpan.textContent = String(c);
+          });
+      });
+      buttons[key] = btn;
+      row.appendChild(btn);
+    });
+
+    if(token && itemId){
+      fetch("/api/community/reactions?token=" + encodeURIComponent(token) + "&content_id=" + encodeURIComponent(itemId))
+        .then(function(r){ if(!r.ok) throw new Error("not_found"); return r.json(); })
+        .then(function(d){
+          const counts = d.counts || {};
+          const mine = d.mine || [];
+          REACTIONS.forEach(function(pair){
+            const key = pair[0];
+            buttons[key].classList.toggle("active", mine.indexOf(key) !== -1);
+            buttons[key].querySelector(".react-count").textContent = String(counts[key] || 0);
+          });
+        })
+        .catch(function(){});
+    }
+    return row;
+  }
+
+  window.SignalLayer = {
+    enhanceTags: function(tagsRowEl, tags){
+      const spans = tagsRowEl.querySelectorAll(".tag");
+      (tags || []).forEach(function(tag, i){
+        if(spans[i]) enhanceTag(spans[i], tag);
+      });
+    },
+    reactionRow: reactionRow
+  };
+
+  if(token) fetchSignals().then(renderInterests);
+})();
+</script>
+<!-- END signal-layer script -->
+
+<!-- BEGIN community script -->
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  let token = params.get("token") || "";
+  if(!token){
+    const seg = location.pathname.split("/").filter(Boolean).pop();
+    if(seg && seg !== "community") token = seg;
+  }
+  const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
+  const loading = document.getElementById("loading");
+  const notfound = document.getElementById("notfound");
+  const list = document.getElementById("list");
+
+  function setText(el, value){ el.textContent = value == null ? "" : String(value); }
+
+  function tagsRow(tags){
+    const row = $('<div class="tags"></div>');
+    (tags || []).forEach(function(tag){
+      const span = $('<span class="tag"></span>');
+      setText(span, tag);
+      row.appendChild(span);
+    });
+    return row;
+  }
+
+  function outtakeBlock(o){
+    const wrap = $('<div class="out-item"></div>');
+    const title = $('<p class="out-title"></p>');
+    setText(title, o.title);
+    wrap.appendChild(title);
+    const vid = $('<video controls playsinline></video>');
+    vid.src = o.video_ref || "";
+    wrap.appendChild(vid);
+    return wrap;
+  }
+
+  function paidCard(item){
+    const card = $('<div class="card"></div>');
+    const h2 = $("<h2></h2>"); setText(h2, item.title); card.appendChild(h2);
+    const desc = $('<p class="desc"></p>'); setText(desc, item.description); card.appendChild(desc);
+    const tags = tagsRow(item.interest_tags);
+    card.appendChild(tags);
+    if(window.SignalLayer) window.SignalLayer.enhanceTags(tags, item.interest_tags);
+    if(item.video_ref){
+      const embedWrap = $('<div class="embed"></div>');
+      const iframe = document.createElement("iframe");
+      iframe.src = item.video_ref;
+      iframe.allow = "autoplay; fullscreen";
+      iframe.allowFullscreen = true;
+      embedWrap.appendChild(iframe);
+      card.appendChild(embedWrap);
+    }
+    const outs = item.outtakes || [];
+    if(outs.length){
+      const otWrap = $('<div class="outtakes"></div>');
+      const h3 = $("<h3>Out-takes</h3>");
+      otWrap.appendChild(h3);
+      outs.forEach(function(o){ otWrap.appendChild(outtakeBlock(o)); });
+      card.appendChild(otWrap);
+    }
+    if(window.SignalLayer) card.appendChild(window.SignalLayer.reactionRow(item.id));
+    return card;
+  }
+
+  function freeCard(item){
+    const card = $('<div class="card"></div>');
+    const h2 = $("<h2></h2>"); setText(h2, item.title); card.appendChild(h2);
+    const desc = $('<p class="desc"></p>'); setText(desc, item.description); card.appendChild(desc);
+    const tags = tagsRow(item.interest_tags);
+    card.appendChild(tags);
+    if(window.SignalLayer) window.SignalLayer.enhanceTags(tags, item.interest_tags);
+    const teasers = item.teaser_outtakes || [];
+    if(teasers.length){
+      const otWrap = $('<div class="outtakes"></div>');
+      const h3 = $("<h3>A little taste</h3>");
+      otWrap.appendChild(h3);
+      teasers.forEach(function(o){ otWrap.appendChild(outtakeBlock(o)); });
+      card.appendChild(otWrap);
+    }
+    const locked = $('<div class="locked"></div>');
+    const p = document.createElement("p");
+    p.textContent = "Become a member to watch the full session. ";
+    const a = document.createElement("a");
+    a.href = "/begin";
+    a.textContent = "See membership";
+    p.appendChild(a);
+    locked.appendChild(p);
+    card.appendChild(locked);
+    if(window.SignalLayer) card.appendChild(window.SignalLayer.reactionRow(item.id));
+    return card;
+  }
+
+  window.CommunityCards = { paidCard: paidCard, freeCard: freeCard };
+
+  function render(data){
+    list.innerHTML = "";
+    const items = data.full || [];
+    if(!items.length){
+      list.appendChild($('<p class="lede">Nothing published yet. Check back soon, there is more on the way.</p>'));
+      return;
+    }
+    items.forEach(function(item){
+      list.appendChild(data.tier === "paid" ? paidCard(item) : freeCard(item));
+    });
+  }
+
+  if(!token){
+    loading.hidden = true;
+    notfound.hidden = false;
+  } else {
+    fetch("/api/community/library?token=" + encodeURIComponent(token))
+      .then(function(r){
+        if(!r.ok) throw new Error("not_found");
+        return r.json();
+      })
+      .then(function(data){
+        loading.hidden = true;
+        render(data);
+      })
+      .catch(function(){
+        loading.hidden = true;
+        notfound.hidden = false;
+      });
+  }
+})();
+</script>
+<!-- END community script -->
+
+<!-- BEGIN foryou script -->
+<script>
+(function(){
+  const params = new URLSearchParams(location.search);
+  let token = params.get("token") || "";
+  if(!token){
+    const seg = location.pathname.split("/").filter(Boolean).pop();
+    if(seg && seg !== "community") token = seg;
+  }
+  const section = document.getElementById("foryou");
+  const header = document.getElementById("foryou-header");
+  const listEl = document.getElementById("foryou-list");
+  if(!section || !header || !listEl || !token) return;
+
+  function reasonLine(reason){
+    const p = document.createElement("p");
+    p.className = "desc";
+    p.textContent = reason == null ? "" : String(reason);
+    return p;
+  }
+
+  function renderFeed(data){
+    const items = (data && data.items) || [];
+    if(!items.length){
+      section.hidden = true;
+      return;
+    }
+    const cards = window.CommunityCards;
+    if(!cards){
+      section.hidden = true;
+      return;
+    }
+    listEl.innerHTML = "";
+    items.forEach(function(item){
+      const isPaid = Object.prototype.hasOwnProperty.call(item, "video_ref");
+      const card = isPaid ? cards.paidCard(item) : cards.freeCard(item);
+      card.appendChild(reasonLine(item.reason));
+      listEl.appendChild(card);
+    });
+    header.textContent = data.cold_start ? "New in the community" : "For you";
+    section.hidden = false;
+  }
+
+  fetch("/api/community/feed?token=" + encodeURIComponent(token))
+    .then(function(r){ if(!r.ok) throw new Error("not_found"); return r.json(); })
+    .then(renderFeed)
+    .catch(function(){ section.hidden = true; });
+})();
+</script>
+<!-- END foryou script -->
+</body>
+</html>

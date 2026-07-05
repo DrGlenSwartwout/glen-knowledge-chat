@@ -156,6 +156,16 @@
       <span id="tri-msg" class="muted small"></span>
     </div>
 
+    <div style="margin-top:12px">
+      <h3>Create MasterClass</h3>
+      <input id="mc-topic" placeholder="topic">
+      <input id="mc-start" placeholder="2026-07-10T18:00:00 (HST)">
+      <input id="mc-price" placeholder="non-member price (cents)" value="0">
+      <input id="mc-mprice" placeholder="member price (cents)" value="0">
+      <button onclick="createMasterclass()">Create</button>
+      <span id="mc-msg"></span>
+    </div>
+
     <div class="card">
       <h2>Portal chat &mdash; reply as Dr. Glen</h2>
       <p class="muted small">The client's saved portal conversation. Your reply appears in their portal chat and is remembered.</p>
@@ -248,6 +258,16 @@ async function sendTriageInvite(){
   const practitioner=document.getElementById('tri-who').value;
   const r=await api('POST','/api/console/triage-invite',{email,name,practitioner});
   document.getElementById('tri-msg').textContent = r.ok ? ('Sent: '+r.json.url) : ('Error '+r.status);
+}
+
+async function createMasterclass(){
+  const topic=(document.getElementById('mc-topic').value||'').trim();
+  const start_ts=(document.getElementById('mc-start').value||'').trim();
+  const price_cents=parseInt(document.getElementById('mc-price').value||'0',10);
+  const member_price_cents=parseInt(document.getElementById('mc-mprice').value||'0',10);
+  const r=await api('POST','/api/console/masterclass',{topic,start_ts,duration_min:60,price_cents,member_price_cents});
+  document.getElementById('mc-msg').textContent = r.ok
+    ? (r.json.event_url + (r.json.zoom_ok?' (Zoom ready)':' (add Zoom link manually)')) : ('Error '+r.status);
 }
 
 async function loadCatalog(){

@@ -58,7 +58,7 @@ export class Ambience {
   _applyLevels(ms = 500) {
     const f = this._levelFactor();
     this._rampBed(this.amb.bed_volume * f, ms);
-    for (const L of this.loopEls) this._rampEl(L.el, L.volume * f, ms);
+    for (const L of this.loopEls) if (!L.swell) this._rampEl(L.el, L.volume * f, ms);
   }
 
   _rampEl(el, target, ms) {
@@ -112,9 +112,32 @@ export class Ambience {
   _startLoop(o) {
     const a = new Audio(o.file);
     a.loop = true;
-    a.volume = this.muted ? 0 : o.volume;
+    a.volume = this.muted ? 0 : (o.swell ? o.swell.min : o.volume);
     a.play().catch(() => {});
-    this.loopEls.push({ el: a, volume: o.volume });
+    const L = { el: a, volume: o.volume, swell: o.swell || null };
+    this.loopEls.push(L);
+    if (L.swell) this._startSwell(L);
+  }
+
+  // Continuous amplitude LFO for a loop layer: eases its volume between swell.min
+  // and swell.max along a sine over swell.period_s, so e.g. the purr breathes (ebbs
+  // and flows) instead of droning. Re-reads the mute/duck level each frame so it
+  // still ducks under Dr. Glen's voice.
+  _startSwell(L) {
+    const sw = L.swell;
+    const min = (typeof sw.min === 'number') ? sw.min : 0;
+    const max = (typeof sw.max === 'number') ? sw.max : L.volume;
+    const period = (Number(sw.period_s) > 0 ? Number(sw.period_s) : 14) * 1000;
+    const t0 = performance.now();
+    const tick = (now) => {
+      if (!L.el) return;
+      const phase = ((now - t0) % period) / period;
+      const eased = 0.5 - 0.5 * Math.cos(2 * Math.PI * phase);   // 0 -> 1 -> 0 sine
+      const v = (min + (max - min) * eased) * this._levelFactor();
+      try { L.el.volume = Math.max(0, Math.min(1, v)); } catch (e) {}
+      L._swellRaf = requestAnimationFrame(tick);
+    };
+    L._swellRaf = requestAnimationFrame(tick);
   }
 
   _schedule(o, isFirst = false) {
@@ -132,10 +155,22 @@ export class Ambience {
   }
 
   _play(o) {
-    const src = pickSrc(o);
+    let src, vol;
+    if (Array.isArray(o.alternate) && o.alternate.length) {
+      // Round-robin: each fire advances to the next variant, so a set of clips
+      // (e.g. the Metal 172 Hz bowl and the Gregorian chant) take TURNS on one
+      // timer instead of overlapping and competing for the audio foreground.
+      o._altIdx = (typeof o._altIdx === 'number') ? (o._altIdx + 1) % o.alternate.length : 0;
+      const item = o.alternate[o._altIdx] || {};
+      src = item.file;
+      vol = (typeof item.volume === 'number') ? item.volume : o.volume;
+    } else {
+      src = pickSrc(o);
+      vol = o.volume;
+    }
     if (!src) return;
     const a = new Audio(src);
-    a.volume = o.volume;
+    a.volume = (typeof vol === 'number') ? vol : (o.volume || 0.1);
     a.play().catch(() => {});
     if (o.spark && this.sparkCtx) {
       if (this.cancelSpark) this.cancelSpark();
@@ -153,7 +188,7 @@ export class Ambience {
     this.timers.forEach(clearTimeout); this.timers = [];
     if (this._bedRaf) { cancelAnimationFrame(this._bedRaf); this._bedRaf = null; }
     if (this.bedEl) { this._fadeOutAndPause(this.bedEl, 1200); this.bedEl = null; }
-    for (const L of this.loopEls) { try { L.el.pause(); } catch (e) {} }
+    for (const L of this.loopEls) { try { if (L._swellRaf) cancelAnimationFrame(L._swellRaf); L.el.pause(); } catch (e) {} }
     this.loopEls = [];
     if (this.cancelSpark) { this.cancelSpark(); this.cancelSpark = null; }
   }

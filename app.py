@@ -1575,7 +1575,7 @@ RULES:
 - PRODUCT REFERENCES: Each request includes a PRODUCT LINK INJECTION TABLE listing every Glen Swartwout formulation by its clinical name and the canonical URL to use. When you mention a product, append the URL as a markdown link immediately after the name, e.g. [Terrain Restore](URL). Do NOT invent URLs. If a product isn't in the table, link to the search URL pattern from the table or the store homepage instead.
 - FORMULATION-FIRST ORDERING (symptoms & conditions): When answering about a symptom or condition, lead the recommendations with Glen's Functional Formulations — the Advanced Botanical Formulations and Advanced Nutritional Formulations — as the FIRST category, before any list of individual natural ingredients or single nutrients. The formulations are pre-combined for the terrain pattern, so they simplify implementation versus assembling separate ingredients. If you group recommendations under headings, an "Advanced Botanical Formulations" and/or "Advanced Nutritional Formulations" heading comes first; present individual ingredients only afterward, as an optional layer or as the mechanism behind the formulations. Within a formulation category, list the most condition-specific formulation first.
 - ACTIVE DISCOUNT CODE: When the request includes an ACTIVE DISCOUNT block, include today's code naturally — once per response, only when at least one product is recommended.
-- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://remedymatch.com/resources/439-molecular-hydrogen) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
+- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://remedymatch.com/resources/439-molecular-hydrogen) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). The "Electrolyte Mineral Manna" is also DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
@@ -8158,6 +8158,39 @@ def _fulfill_biofield_program(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _fulfill_masterclass(session_id):
+    """Mark a MasterClass registration paid + send the Zoom join link confirmation
+    from a completed Stripe checkout, idempotently. Re-fetches the session +
+    PaymentIntent (the security guarantee); only proceeds on a succeeded masterclass
+    payment. Best-effort; never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, masterclass as _mc
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "masterclass":
+            return {"ok": False, "reason": "not_masterclass"}
+        email = (md.get("email") or "").strip().lower()
+        try:
+            event_id = int(md.get("event_id"))
+        except Exception:
+            return {"ok": False, "reason": "no_event"}
+        pi_id = sess.get("payment_intent")
+        if not (email and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        if _sp.get_payment_intent(pi_id).get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _mc.init_masterclass_tables(cx)
+            _mc.mark_paid(cx, event_id, email)
+            ev = _mc.get_event(cx, event_id)
+        _masterclass_send_confirmation(ev, email, md.get("name") or "")
+        return {"ok": True, "email": email, "event_id": event_id}
+    except Exception as e:
+        print(f"[masterclass] fulfill failed: {e!r}", flush=True)
+        return {"ok": False, "reason": "error"}
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -10391,6 +10424,116 @@ def api_console_biofield_mark_paid():
                     "unlocked": _portal_biofield_unlocked(email)})
 
 
+@app.route("/api/console/client-scans/sync", methods=["POST"])
+def api_console_client_scans_sync():
+    """Owner sync: upsert a client's (or a batch of clients') E4L scan-date manifest into
+    client_scans (populated by the local e4l-scan-manifest-push, since prod can't read e4l.db)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_scans as _cs
+    data = request.get_json(silent=True) or {}
+    items = data.get("batch") or [{"email": data.get("email"), "scans": data.get("scans")}]
+    total = 0
+    new_rows = []            # ONLY genuinely newly-inserted scans this sync (not re-pushes)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cs.init_client_scans_table(cx)
+        for it in items:
+            try:
+                if not isinstance(it, dict):
+                    continue
+                _new = _cs.upsert_scans(cx, it.get("email"), it.get("scans") or [])
+                new_rows.extend(_new); total += len(_new)
+            except Exception as _e:
+                print(f"[client-scans-sync] skipped bad item: {_e!r}", flush=True)
+    # New-scan invite: keyed on the rows actually inserted THIS sync — never the global
+    # notified_at backlog. A re-pushed manifest yields no new rows, so flipping the flag on
+    # (with a fully-backfilled client_scans, per A) cannot mass-email the history.
+    if _scan_request_enabled() and new_rows:
+        try:
+            from dashboard import analysis_quota as _aq
+            from dashboard import notify_state as _ns2
+            from dashboard import email_suppression as _es
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _cs.init_client_scans_table(cx); _aq.init_analysis_quota_table(cx)
+                for row in new_rows:
+                    em, sd, sid = row["email"], row["scan_date"], row["scan_id"]
+                    try:
+                        # anti-nag: only when the owner can actually act on it
+                        can_act = _is_paid_member(em) or not _aq.claimed_this_month(cx, em)
+                        if can_act and not _es.is_suppressed(cx, em):
+                            # lookup-only: the stable raw token stashed by client_portal
+                            # (upsert_portal/ensure_token) in portal_notify_state. Never
+                            # mints a portal for an email that doesn't have one.
+                            _stt = _ns2.get_state(cx, em)
+                            tok = _stt.get("portal_token")
+                            if tok and _stt.get("opt_status") != "out":   # respect notify_state opt-out
+                                _send_new_scan_email(em, sd, sid, tok)
+                    except Exception as _e:
+                        print(f"[new-scan-email] {em}: {_e!r}", flush=True)
+                    _cs.mark_notified(cx, em, sd)   # mark regardless, so we never re-nag
+        except Exception as _e:
+            print(f"[new-scan-email] {_e!r}", flush=True)
+    return jsonify({"ok": True, "upserted": total})
+
+
+@app.route("/api/console/analysis-requests", methods=["GET"])
+def api_console_analysis_requests():
+    """Owner tool: list pending analysis requests for the local fulfillment worker."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import analysis_requests as _ar
+    with sqlite3.connect(LOG_DB) as cx:
+        _ar.init_analysis_requests_table(cx)
+        reqs = _ar.pending(cx, int(request.args.get("limit", 50)))
+    return jsonify({"ok": True, "requests": reqs})
+
+
+@app.route("/api/console/analysis-requests/<int:req_id>/complete", methods=["POST"])
+def api_console_analysis_request_complete(req_id):
+    """Owner tool: the local fulfillment worker marks a request done (or failed)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import analysis_requests as _ar
+    status = ((request.get_json(silent=True) or {}).get("status") or "done").strip()
+    if status not in ("done", "failed"):
+        status = "done"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _ar.init_analysis_requests_table(cx)
+        _ar.mark(cx, req_id, status)
+    return jsonify({"ok": True, "status": status})
+
+
+def _send_new_scan_email(email, scan_date, scan_id, token):
+    """New-scan invite: a one-click analyze link + the client's limit + upgrade path. Best-effort.
+    Cc'd (private separate copy) to consented+subscribed caregivers via household.cc_recipients_for."""
+    base = "https://illtowell.com"
+    link = f"{base}/portal/{token}/analyze?scan_id={scan_id}&scan_date={scan_date}"
+    subj = "Your new biofield scan is ready to analyze"
+    body = (f"A new biofield scan ({scan_date}) is on file for you.\n\n"
+            f"Would you like it analyzed? Free members get one analysis per month; members get unlimited.\n\n"
+            f"Analyze this scan: {link}\n\nUpgrade for unlimited: {base}/prepay")
+    recips = [email]
+    try:
+        from dashboard import household as _hh
+        with sqlite3.connect(LOG_DB) as _cxh:
+            _hh.init_household_tables(_cxh)
+            recips += _hh.cc_recipients_for(_cxh, email)   # caregivers get their own copy
+    except Exception:
+        pass
+    for to in dict.fromkeys(recips):   # de-dup, private separate copies
+        try:
+            try:
+                from dashboard import email_suppression as _es
+                with sqlite3.connect(LOG_DB) as _cxsup:
+                    if _es.is_suppressed(_cxsup, to):
+                        continue
+            except Exception as _se:
+                print(f"[new-scan-email] suppression check failed for {to}: {_se!r}", flush=True)
+            _send_inquiry_email(to, subj, body)
+        except Exception as _e:
+            print(f"[new-scan-email] to {to}: {_e!r}", flush=True)
+
+
 def membership_category(email):
     """Classify a member into 'none' | 'trial' | 'full' | 'paused' (see
     dashboard.subscriptions.category_for). 'full' is the gate for paid-member
@@ -12568,6 +12711,153 @@ def api_console_opens():
     return jsonify({"ok": True, "opens": data})
 
 
+@app.route("/api/console/masterclass", methods=["POST"])
+def api_console_masterclass_create():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc, zoom as _zoom
+    body = request.get_json(silent=True) or {}
+    topic = (body.get("topic") or "").strip()
+    start_ts = (body.get("start_ts") or "").strip()
+    if not topic or not start_ts:
+        return jsonify({"error": "topic and start_ts required"}), 400
+    duration = int(body.get("duration_min") or 60)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx); _init_calendar_table()
+        eid = _mc.create_event(cx, topic=topic, description=body.get("description") or "",
+                               start_ts=start_ts, duration_min=duration,
+                               price_cents=int(body.get("price_cents") or 0),
+                               member_price_cents=int(body.get("member_price_cents") or 0))
+        # synthetic glen-lane calendar row
+        try:
+            end_ts = (datetime.fromisoformat(start_ts[:19]) + timedelta(minutes=duration)).isoformat()
+        except Exception:
+            end_ts = start_ts
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            cx.execute(
+                "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
+                "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+                "VALUES (?, 'delegated', ?, 'MasterClass', ?, ?, ?, 'Zoom', 'glen', 'visible', 0)",
+                (now, f"masterclass-{eid}", f"MasterClass: {topic}", start_ts, end_ts))
+        except Exception:
+            app.logger.exception("masterclass calendar insert failed")
+        cx.commit()
+    # best-effort Zoom (outside the lock)
+    zoom_ok = False
+    try:
+        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
+                              os.environ["ZOOM_CLIENT_SECRET"])
+        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic=f"MasterClass: {topic}",
+                                 start_iso=start_ts, duration_min=duration, waiting_room=False)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+            _mc.init_masterclass_tables(cx2)
+            _mc.set_zoom(cx2, eid, m.get("join_url"), m.get("meeting_id"))
+        zoom_ok = bool(m.get("join_url"))
+    except Exception:
+        app.logger.exception("masterclass zoom create failed")
+    return jsonify({"ok": True, "event_id": eid,
+                    "event_url": f"{PUBLIC_BASE_URL}/masterclass/{eid}", "zoom_ok": zoom_ok})
+
+
+@app.route("/api/console/masterclass/<int:event_id>/zoom-url", methods=["POST"])
+def api_console_masterclass_zoom_url(event_id):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import masterclass as _mc
+    url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.set_zoom(cx, event_id, url, "")
+    return jsonify({"ok": True})
+
+
+MASTERCLASS_FROM = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail.com")
+
+
+@app.route("/masterclass/<int:event_id>")
+def masterclass_page(event_id):
+    return send_from_directory(STATIC, "masterclass.html")
+
+
+@app.route("/api/masterclass/<int:event_id>")
+def api_masterclass_get(event_id):
+    from dashboard import masterclass as _mc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+    if not ev:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"topic": ev["topic"], "description": ev["description"],
+                    "start_ts": ev["start_ts"], "duration_min": ev["duration_min"],
+                    "price_cents": ev["price_cents"], "member_price_cents": ev["member_price_cents"]})
+
+
+def _masterclass_send_confirmation(event, email, name):
+    """Best-effort confirmation email with the Zoom join link + an .ics invite.
+    Swallows send errors (logs) — never raises into the register response."""
+    try:
+        from dashboard import evox as _ev
+        start = event["start_ts"]; nice = start.replace("T", " ")
+        join = event.get("zoom_join_url") or ""
+        join_line = (f"Join here: {join}" if join else "Your join link will follow by email.")
+        try:
+            end = (datetime.fromisoformat(start[:19]) + timedelta(minutes=int(event["duration_min"]))).isoformat()
+        except Exception:
+            end = start
+        ics = _ev.build_ics(uid=f"masterclass-{event['id']}-{(email or '').strip().lower()}@illtowell.com",
+                            start_ts=start, end_ts=end, summary=f"MasterClass: {event['topic']}",
+                            description=join_line, location=(join or "Zoom"))
+        html = (f"<p>You are registered for <b>{event['topic']}</b> on <b>{nice} HST</b>.</p>"
+                f"<p>{join_line}</p><p>The calendar invite is attached.</p>")
+        try:
+            send_evox_email(email, name or "", f"You are registered: {event['topic']}", html, html, ics)
+        except Exception:
+            app.logger.exception("masterclass confirmation send failed to %s", email)
+    except Exception:
+        app.logger.exception("masterclass confirmation build failed")
+
+
+@app.route("/api/masterclass/<int:event_id>/register", methods=["POST"])
+def api_masterclass_register(event_id):
+    from dashboard import masterclass as _mc
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()
+    if "@" not in email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        ev = _mc.get_event(cx, event_id)
+        if not ev:
+            return jsonify({"error": "not_found"}), 404
+        is_member = _is_paid_member(email)
+        amount = _mc.price_for(ev, is_member)
+        if amount <= 0:
+            _mc.register(cx, event_id, email, name, is_member, 0, paid=True)
+    if amount <= 0:
+        _masterclass_send_confirmation(ev, email, name)
+        return jsonify({"ok": True, "registered": True, "join_url": ev.get("zoom_join_url")})
+    # paid non-member
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "payment_unavailable"}), 503
+    from dashboard import stripe_pay as _sp
+    sess = _sp.create_checkout_session(
+        amount, customer_email=email, description=f"MasterClass: {ev['topic']}",
+        metadata={"kind": "masterclass", "event_id": str(event_id), "email": email, "name": name},
+        success_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}?paid=1",
+        cancel_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_masterclass_tables(cx)
+        _mc.register(cx, event_id, email, name, is_member, amount, paid=False)
+    return jsonify({"ok": True, "checkout_url": sess.get("url")})
+
+
 @app.route("/console/biofield-reveals", methods=["GET"])
 def console_biofield_reveals_page():
     """Serve the biofield reveals review console page."""
@@ -13846,6 +14136,23 @@ def _read_receipts_enabled():
         "1", "true", "yes")
 
 
+def _scan_list_enabled():
+    """Available-scan list feature (Task 2). Default OFF — when off, the portal
+    payload never gains the 'available_scans' key, so responses stay byte-identical
+    to pre-scan-list behavior."""
+    return (os.environ.get("SCAN_LIST_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
+def _scan_request_enabled():
+    """Request-further-analysis feature (Task 3). Default OFF — when off, the
+    request endpoint is inert ({ok:true,status:"disabled"}, no DB writes) and the
+    portal payload's 'available_scans' items still get a 'requested' key (always
+    False with no request rows ever created)."""
+    return (os.environ.get("SCAN_REQUEST_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes")
+
+
 def _portal_offers_enabled() -> bool:
     """Master flag for the portal 'What's next' offer surface. Dark by default."""
     return os.environ.get("PORTAL_OFFERS_ENABLED", "").strip().lower() in (
@@ -14382,6 +14689,12 @@ def evox_run_reminders():
                 subject = "Reminder: your Biofield Consult tomorrow"
                 html = (f"<p>Reminder: your Biofield Consult with Dr. Glen is tomorrow at "
                         f"<b>{nice} HST</b>. {join_line}</p>")
+            elif stype == "onboarding":
+                phone = EVOX_RAE_PHONE or "the number on file"
+                subject = "Reminder: your welcome call with Rae tomorrow"
+                html = (f"<p>Reminder: your welcome call with Rae is tomorrow at "
+                        f"<b>{nice} HST</b>. This is a phone call. Rae will call you at "
+                        f"the number on file.</p>")
             else:
                 phone = EVOX_RAE_PHONE or "the number in your confirmation"
                 subject = "Reminder: your EVOX session tomorrow"
@@ -14588,6 +14901,26 @@ def api_client_portal(token):
         except Exception as _e:
             print(f"[opens] payload {_e!r}", flush=True)
             payload["opens"] = {}
+    if _scan_list_enabled():
+        try:
+            from dashboard import client_scans as _cs
+            from dashboard import analysis_requests as _ar
+            with sqlite3.connect(LOG_DB) as _cxs:
+                _cs.init_client_scans_table(_cxs)
+                _synced = _cs.scans_for(_cxs, email_for_reports)
+                _ar.init_analysis_requests_table(_cxs)
+                _reqst = _ar.statuses_for(_cxs, email_for_reports)
+            _processed = set(bf_scan_dates or [])   # published report dates for this email
+            payload["available_scans"] = [
+                {"scan_date": s["scan_date"], "scan_id": s["scan_id"],
+                 "processed": s["scan_date"] in _processed,
+                 "requested": _reqst.get(s["scan_date"]) in ("pending", "done")} for s in _synced]
+            # Gate the Request-analysis affordance separately: A (scan-list) can be live
+            # while B (request) is still dark, so the frontend must fall back to a read-only
+            # "Available" label rather than render a button whose endpoint returns disabled.
+            payload["scan_request_enabled"] = _scan_request_enabled()
+        except Exception as _e:
+            print(f"[scan-list] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -14728,6 +15061,85 @@ def api_portal_open(token):
     return jsonify({"ok": True, "recorded": True, "open": st})
 
 
+def _request_analysis_core(token, scan_id, scan_date):
+    """Shared by the POST endpoint and the one-click page (Task 4). Token-scoped
+    (resolves the owning email from the portal token, same ?member= household
+    resolution as api_client_portal/api_portal_open — fail-closed). Quota is keyed
+    on the SCAN OWNER (email_for_reports) and reuses the existing analysis_quota
+    module; paid members bypass it. Already-processed (published report exists) or
+    already-pending/done requests short-circuit without spending quota.
+    Returns a (result_dict, http_status) tuple."""
+    from dashboard import client_portal as _cp
+    from dashboard import analysis_requests as _ar
+    from dashboard import analysis_quota as _aq
+    from dashboard import portal_biofield_reports as _pbr
+    scan_date = (scan_date or "").strip()
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return {"ok": False, "error": "not found"}, 404
+    email_for_reports = (portal.get("email") or "").strip().lower()
+    # same ?member= household resolution as api_portal_open (fail-closed)
+    if _household_view_enabled() and email_for_reports:
+        try:
+            from dashboard import household as _hh
+            with sqlite3.connect(LOG_DB) as _cxh:
+                _hh.init_household_tables(_cxh)
+                _m = (request.args.get("member") or (request.get_json(silent=True) or {}).get("member") or "").strip().lower()
+                if _m and _hh.can_view(_cxh, email_for_reports, _m):
+                    email_for_reports = _m
+        except Exception as _e:
+            print(f"[request-analysis] household {_e!r}", flush=True)
+    if not scan_date or not email_for_reports:
+        return {"ok": False, "error": "missing scan_date"}, 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        # already processed (published report) or already requested → no quota spent
+        _pbr.init_table(cx)
+        if scan_date in set(_pbr.list_report_dates(cx, email_for_reports)):
+            return {"ok": True, "status": "already"}, 200
+        _ar.init_analysis_requests_table(cx)
+        _st = _ar.statuses_for(cx, email_for_reports).get(scan_date)
+        if _st in ("pending", "done"):
+            return {"ok": True, "status": _st}, 200
+        if _st == "failed":
+            _ar.requeue(cx, email_for_reports, scan_date)   # retry, no new charge
+            return {"ok": True, "status": "pending"}, 200
+        claimed = False
+        if not _is_paid_member(email_for_reports):
+            _aq.init_analysis_quota_table(cx)
+            if not _aq.try_claim(cx, email_for_reports):
+                return {"ok": False, "reason": "monthly_quota",
+                        "upgrade_url": "https://illtowell.com/prepay"}, 200
+            claimed = True
+        res = _ar.create_request(cx, email_for_reports, scan_id, scan_date)
+        if not res["created"] and claimed:
+            _aq.release(cx, email_for_reports)   # defensive: didn't queue a new one → refund the slot
+    return {"ok": True, "status": res["status"]}, 200
+
+
+@app.route("/api/portal/<token>/request-analysis", methods=["POST"])
+def api_portal_request_analysis(token):
+    """The client requests further analysis of an as-yet-unprocessed E4L scan.
+    Behind SCAN_REQUEST_ENABLED — off means the endpoint is inert (no DB change).
+    Free members get 1 claim per calendar month (analysis_quota); paid members
+    (_is_paid_member) bypass the quota entirely."""
+    if not _scan_request_enabled():
+        return jsonify({"ok": True, "status": "disabled"})
+    body = request.get_json(silent=True) or {}
+    res, code = _request_analysis_core(token, body.get("scan_id"), body.get("scan_date"))
+    return jsonify(res), code
+
+
+@app.route("/portal/<token>/analyze")
+def portal_analyze_page(token):
+    # Landing page for the new-scan email's one-click link. The page's confirm button
+    # POSTs /request-analysis — so an email-scanner GET-prefetch can't consume a slot.
+    resp = send_from_directory(STATIC, "portal-analyze.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/invoice/<token>/open", methods=["POST"])
 def api_invoice_open(token):
     """Record a real 'client opened this invoice' event (fired by the expand-click)."""
@@ -14772,13 +15184,28 @@ def api_portal_chat(token):
     _ally_ov = ash_ally.ally_overlay(LOG_DB, email)
     if _ally_ov:
         _sys = _ally_ov + "\n\n" + _sys
-    # RAG (best-effort, fail-open)
+    # RAG (best-effort, fail-open) — embed the query ONCE and reuse for both the
+    # knowledge base and Community content retrieval.
     context_str = ""
+    qvec = None
     try:
-        matches = _match_query_namespaces(embed(query))
+        qvec = embed(query)
+        matches = _match_query_namespaces(qvec)
         context_str, _ = build_context(matches) if matches else ("", [])
     except Exception as e:
         print(f"[portal-concierge] retrieval: {e}", flush=True)
+    community_related = []
+    if qvec is not None:
+        try:
+            with sqlite3.connect(LOG_DB) as ccx:
+                ccx.row_factory = sqlite3.Row
+                community_related = _community_related(ccx, qvec, _is_paid_member(email), k=2)
+        except Exception as e:
+            print(f"[community-chat] related: {e}", flush=True)
+    if community_related:
+        titles = "; ".join(r["title"] for r in community_related)
+        context_str = (context_str + "\n" if context_str else "") + \
+            f"Relevant community sessions the member can open: {titles}."
     messages = []
     for m in history[-8:]:
         c = (m.get("content") or "").strip()
@@ -14790,6 +15217,8 @@ def api_portal_chat(token):
     messages.append({"role": "user", "content": user_block})
 
     def generate():
+        if community_related:
+            yield sse({"related": community_related})
         full = []
         try:
             with _cl.messages.stream(model="claude-haiku-4-5-20251001", max_tokens=700,
@@ -15468,6 +15897,343 @@ def _consult_send_confirmations(email, booking):
                 app.logger.exception("consult confirmation send failed to %s", to)
     except Exception:
         app.logger.exception("consult confirmation build failed")
+
+
+def _onboarding_send_confirmations(email, booking):
+    """Best-effort welcome-call confirmation to the member + Rae, with an ICS
+    invite. Phone call: Rae calls the member. Never raises into the booking
+    response."""
+    try:
+        from dashboard import evox as _ev
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        phone = EVOX_RAE_PHONE or "the number on file"
+        line = ("This is a phone call. Rae will call you at your appointment time at "
+                "the number on file. Questions before then? Reach out any time.")
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary="New-member welcome call with Rae",
+                            description=line, location="Phone")
+        client_html = (f"<p>Welcome to Healing Oasis. Your welcome call with Rae is booked for "
+                       f"<b>{nice} HST</b>.</p><p>{line}</p><p>The calendar invite is attached.</p>")
+        client_text = f"Welcome call with Rae booked for {nice} HST. {line}"
+        rae_html = (f"<p>New welcome call: <b>{email}</b> on <b>{nice} HST</b>. "
+                    f"Please call them at the number on file.</p>")
+        for to, nm, subj, html, text in [
+            (email, "", "Your welcome call with Rae is booked", client_html, client_text),
+            (EVOX_RAE_EMAIL, "Rae", f"Welcome call booked: {email}", rae_html, rae_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("onboarding confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("onboarding confirmation build failed")
+
+
+@app.route("/community")
+def community_page():
+    return send_from_directory(STATIC, "community.html")
+
+
+@app.route("/api/community/library")
+def community_library():
+    from dashboard import community as _cm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        _cm.init_community_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        full = _cm.list_full(cx)
+        if _is_paid_member(ident.email):
+            return jsonify({"tier": "paid", "full": full,
+                            "outtakes": _cm.list_outtakes(cx)})
+        # Free member: strip every full item's Rumble video_ref; expose metadata
+        # + the item's free out-takes only. The full link never reaches a non-member.
+        teasers = []
+        for it in full:
+            teasers.append({"id": it["id"], "type": it["type"], "title": it["title"],
+                            "description": it["description"],
+                            "interest_tags": it["interest_tags"],
+                            "published_at": it["published_at"],
+                            "teaser_outtakes": it["outtakes"]})
+        return jsonify({"tier": "free", "full": teasers})
+
+
+COMMUNITY_FEED_MODEL = "text-embedding-ada-002"
+COMMUNITY_FEED_FREE_K = int(os.environ.get("COMMUNITY_FEED_FREE_K", "3"))
+COMMUNITY_FEED_PAID_K = int(os.environ.get("COMMUNITY_FEED_PAID_K", "10"))
+
+
+def _community_candidates(cx, is_paid):
+    """Tier-visible full items as ranking candidates. Free strips video_ref."""
+    from dashboard import community as _cm
+    full = _cm.list_full(cx)
+    if is_paid:
+        return full, {f["id"]: f for f in full}
+    teasers = []
+    for it in full:
+        teasers.append({"id": it["id"], "type": it["type"], "title": it["title"],
+                        "description": it["description"], "interest_tags": it["interest_tags"],
+                        "published_at": it["published_at"], "teaser_outtakes": it["outtakes"]})
+    return teasers, {f["id"]: f for f in full}  # full lookup for embed text only
+
+
+def _community_related(cx, query_vec, is_paid, *, k=2, min_sim=0.72):
+    """Top-k tier-visible Community items most similar to the query vector, above
+    min_sim. Card-shaped {id, title, kind}; never carries video_ref; never raises.
+    Items without a current-model embedding are skipped (no lazy embed here)."""
+    try:
+        from dashboard import community as _cm, community_feed as _cf
+        cands, _ = _community_candidates(cx, is_paid)
+        vecs = _cm.get_embeddings(cx, [c["id"] for c in cands], COMMUNITY_FEED_MODEL)
+        scored = []
+        for c in cands:
+            v = vecs.get(c["id"])
+            if not v:
+                continue
+            s = _cf.cosine(query_vec, v)
+            if s >= min_sim:
+                scored.append((s, c))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        kind = "full" if is_paid else "teaser"
+        return [{"id": c["id"], "title": c.get("title", ""), "kind": kind}
+                for _, c in scored[:k]]
+    except Exception:
+        app.logger.exception("community_related failed")
+        return []
+
+
+def _member_interest_vec(cx, email, liked_topics):
+    """Return the member's interest vector ([] on cold start / failure). Cached in
+    member_interest; built from liked topics only. Never raises."""
+    from dashboard import community as _cm, community_feed as _cf
+    cached = _cm.get_member_interest(cx, email, COMMUNITY_FEED_MODEL)
+    if cached is not None:
+        return cached["vec"]
+    try:
+        text = _cf.build_interest_text([], liked_topics, [])
+        if not text:
+            return []
+        vec = embed(text)
+        with _db_lock:
+            _cm.set_member_interest(cx, email, vec, COMMUNITY_FEED_MODEL)
+        return vec
+    except Exception:
+        app.logger.exception("member interest build failed")
+        return []
+
+
+@app.route("/api/community/feed")
+def community_feed():
+    from dashboard import (community as _cm, community_signals as _cs, community_feed as _cf,
+                           evox as _ev, client_portal as _cp)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _cp.init_client_portal_table(cx)
+        _cm.init_community_tables(cx); _cm.init_feed_tables(cx); _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        email = ident.email
+        is_paid = _is_paid_member(email)
+        cands, full_by_id = _community_candidates(cx, is_paid)
+        sig = _cs.my_signals(cx, email)
+        liked = [s["target_key"] for s in sig["likes"] if s["target_type"] == "topic"]
+        blocked = [s["target_key"] for s in sig["blocks"] if s["target_type"] == "topic"]
+        for c in cands:
+            c["reaction_count"] = sum(_cs.reaction_counts(cx, c["id"]).values())
+        # lazy-embed any candidate missing a current-model vector
+        have = _cm.get_embeddings(cx, [c["id"] for c in cands], COMMUNITY_FEED_MODEL)
+        for c in cands:
+            if c["id"] in have:
+                continue
+            f = full_by_id.get(c["id"], c)
+            # list_full omits transcript, so pull it via get_content for the embed text
+            row = _cm.get_content(cx, c["id"]) or {}
+            text = (f.get("title", "") + " " + " ".join(f.get("interest_tags") or []) +
+                    " " + (row.get("transcript") or "")[:2000])
+            try:
+                v = embed(text)
+                with _db_lock:
+                    _cm.set_embedding(cx, c["id"], v, COMMUNITY_FEED_MODEL)
+                have[c["id"]] = v
+            except Exception:
+                app.logger.exception("content embed failed for %s", c["id"])
+        member_vec = _member_interest_vec(cx, email, liked)
+        ranked = _cf.rank(cands, member_vec, have, liked, blocked)
+        k = COMMUNITY_FEED_PAID_K if is_paid else COMMUNITY_FEED_FREE_K
+        top = [{k2: v2 for k2, v2 in it.items() if k2 != "score"} for it in ranked[:k]]
+        return jsonify({"items": top, "cold_start": not member_vec})
+
+
+@app.route("/api/community/react", methods=["POST"])
+def community_react():
+    from dashboard import community as _cm, community_signals as _cs
+    body = request.get_json(force=True) or {}
+    reaction = (body.get("reaction") or "").strip()
+    content_id = body.get("content_id")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cm.init_community_tables(cx); _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if reaction not in _cs.REACTIONS:
+            return jsonify({"error": "bad_reaction"}), 400
+        item = _cm.get_content(cx, content_id)
+        if item is None or item["published"] != 1:
+            return jsonify({"error": "not_found"}), 404
+        on = _cs.toggle_reaction(cx, ident.email, content_id, reaction)
+        counts = _cs.reaction_counts(cx, content_id)
+        return jsonify({"ok": True, "on": on, "counts": counts})
+
+
+@app.route("/api/community/reactions")
+def community_reactions():
+    from dashboard import community_signals as _cs
+    content_id = request.args.get("content_id", type=int)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"counts": _cs.reaction_counts(cx, content_id),
+                        "mine": _cs.my_reactions(cx, ident.email, content_id)})
+
+
+@app.route("/api/community/signal", methods=["POST"])
+def community_signal():
+    from dashboard import community_signals as _cs
+    body = request.get_json(force=True) or {}
+    ttype = (body.get("target_type") or "").strip()
+    tkey = (body.get("target_key") or "").strip()
+    signal = (body.get("signal") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if ttype not in _cs.TARGET_TYPES or signal not in (_cs.SIGNALS + ["none"]):
+            return jsonify({"error": "bad_signal"}), 400
+        if signal == "none":
+            _cs.clear_signal(cx, ident.email, ttype, tkey)
+        else:
+            _cs.set_signal(cx, ident.email, ttype, tkey, signal)
+        return jsonify({"ok": True})
+
+
+@app.route("/api/community/signals")
+def community_signals():
+    from dashboard import community_signals as _cs
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_signal_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify(_cs.my_signals(cx, ident.email))
+
+
+@app.route("/api/console/community/publish", methods=["POST"])
+def community_publish():
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import community as _cm
+    body = request.get_json(force=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cm.init_community_tables(cx)
+        cid = _cm.upsert_full(cx, type=body.get("type", "coaching_replay"),
+                              title=body.get("title", ""), description=body.get("description", ""),
+                              video_ref=body.get("video_ref", ""),
+                              interest_tags=body.get("interest_tags", []),
+                              transcript=body.get("transcript", ""))
+        n = 0
+        for ot in (body.get("outtakes") or []):
+            oid = _cm.add_outtake(cx, parent_id=cid, title=ot.get("title", ""),
+                                  video_ref=ot.get("video_ref", ""),
+                                  interest_tags=ot.get("interest_tags", []))
+            _cm.publish(cx, oid); n += 1
+        _cm.publish(cx, cid)
+    return jsonify({"ok": True, "content_id": cid, "outtakes": n})
+
+
+@app.route("/api/onboarding/state")
+def onboarding_state():
+    from dashboard import onboarding as _ob
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        row = _ob.existing_onboarding(cx, ident.email)
+        booked = {"start_ts": row["start_ts"]} if row else None
+        return jsonify({"eligible": _is_paid_member(ident.email), "booked": booked})
+
+
+@app.route("/api/onboarding/availability")
+def onboarding_availability():
+    from dashboard import evox as _ev, onboarding as _ob
+    _init_calendar_table()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _is_paid_member(ident.email):
+            return jsonify({"error": "not_member"}), 403
+        if _ob.existing_onboarding(cx, ident.email):
+            return jsonify({"slots": []})
+        days = _evox_days(request.args.get("range", "week"))
+        lo, hi = days[0].isoformat(), days[-1].isoformat()
+        busy = _ev.rae_busy_intervals(cx, lo, hi)
+        booked = _ev.booked_starts(cx)
+        slots = _ev.available_slots(days, EVOX_HOURS, busy, booked, _hst_now(),
+                                    duration_min=_ob.ONBOARDING["duration_min"])
+        return jsonify({"slots": slots})
+
+
+@app.route("/api/onboarding/book", methods=["POST"])
+def onboarding_book():
+    from dashboard import evox as _ev, onboarding as _ob
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    _init_calendar_table()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _is_paid_member(ident.email):
+            return jsonify({"error": "not_member"}), 403
+        if _ob.existing_onboarding(cx, ident.email):
+            return jsonify({"error": "already_booked"}), 409
+        try:
+            d = _evox_date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat())
+        if start_ts not in _ev.available_slots([d], EVOX_HOURS, busy,
+                                               _ev.booked_starts(cx), _hst_now(),
+                                               duration_min=_ob.ONBOARDING["duration_min"]):
+            return jsonify({"error": "slot_unavailable"}), 409
+        try:
+            b = _ev.create_booking(cx, ident.email, start_ts, duration_min=15,
+                                   practitioner="rae", session_type="onboarding",
+                                   medium="phone")
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+        email = ident.email
+    # --- lock released ---
+    _onboarding_send_confirmations(email, b)
+    return jsonify({"ok": True, "start_ts": start_ts})
 
 
 @app.route("/api/consult/state")
@@ -19808,6 +20574,7 @@ def webhook_stripe():
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
+                _fulfill_masterclass(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
@@ -21113,8 +21880,8 @@ def clips_delete(filename):
 
 _PORTAL_ASSETS_DIR = Path(os.environ.get("DATA_DIR", str(Path(__file__).parent))) / "portal-assets"
 _PORTAL_ASSETS_DIR.mkdir(exist_ok=True)
-_PORTAL_ASSET_RE = r'^[\w\-]+\.(mp3|pdf)$'
-_PORTAL_ASSET_MIME = {"mp3": "audio/mpeg", "pdf": "application/pdf"}
+_PORTAL_ASSET_RE = r'^[\w\-]+\.(mp3|pdf|mp4)$'
+_PORTAL_ASSET_MIME = {"mp3": "audio/mpeg", "pdf": "application/pdf", "mp4": "video/mp4"}
 
 
 @app.route("/portal-asset/upload", methods=["PUT"])
