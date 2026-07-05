@@ -1313,6 +1313,10 @@ function renderCoachesCard(card, d){
     m.className = "muted small";
     m.textContent = "You are matched with a coach.";
     card.appendChild(m);
+    const threadHost = document.createElement("div");
+    threadHost.id = "coach-thread-panel";
+    card.appendChild(threadHost);
+    loadCoachThread(threadHost);
   }
   const appMap = {};
   (Array.isArray(d.applications) ? d.applications : []).forEach(function(a){
@@ -1586,6 +1590,177 @@ function renderCoachingCancelLink(){
   return row;
 }
 <!-- END coach-apply script -->
+
+<!-- BEGIN coach-thread member script -->
+// 1:1 coaching thread panel for a matched member (Task 5). Renders below the
+// "You are matched with a coach." line in renderCoachesCard's matched branch.
+// All coach/member message bodies are untrusted server strings and are set
+// via textContent only, mirroring the rest of this file's pattern.
+async function loadCoachThread(host){
+  let d = {};
+  try{
+    const r = await fetch(`/api/coach-thread/member?token=${encodeURIComponent(token)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  renderCoachThreadPanel(host, d);
+}
+
+function renderCoachThreadPanel(host, d){
+  host.innerHTML = "";
+  host.style.marginTop = "1rem";
+
+  if(d.status === "blocked"){
+    const note = document.createElement("p");
+    note.className = "muted small";
+    note.textContent = "This coaching conversation has ended.";
+    host.appendChild(note);
+    return;
+  }
+
+  const heading = document.createElement("h3");
+  heading.style.margin = "0 0 .4rem";
+  heading.textContent = d.coach_name || "Your coach";
+  host.appendChild(heading);
+
+  const messages = Array.isArray(d.messages) ? d.messages : [];
+  const list = document.createElement("div");
+  list.style.marginBottom = ".6rem";
+  if(!messages.length){
+    const empty = document.createElement("p");
+    empty.className = "muted small";
+    empty.textContent = "No messages yet. Say hello.";
+    list.appendChild(empty);
+  }
+  messages.forEach(function(msg){
+    if(!msg || typeof msg !== "object") return;
+    const row = document.createElement("div");
+    row.className = "coach-row";
+    row.style.margin = ".4rem 0";
+    const who = document.createElement("div");
+    who.className = "muted small";
+    who.style.fontWeight = "600";
+    who.textContent = msg.sender_role === "member" ? "You" : (d.coach_name || "Your coach");
+    row.appendChild(who);
+    const body = document.createElement("div");
+    body.className = "small";
+    body.textContent = msg.body || "";
+    row.appendChild(body);
+    list.appendChild(row);
+  });
+  host.appendChild(list);
+
+  const err = document.createElement("p");
+  err.className = "small err";
+  err.hidden = true;
+
+  if(d.can_post){
+    const compose = document.createElement("textarea");
+    compose.rows = 3;
+    compose.placeholder = "Write a message to your coach";
+    compose.style.cssText = "width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit;resize:vertical";
+    host.appendChild(compose);
+    host.appendChild(err);
+
+    const sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.className = "btn full";
+    sendBtn.style.marginTop = ".4rem";
+    sendBtn.textContent = "Send";
+    sendBtn.addEventListener("click", function(){
+      sendCoachMessage(host, compose, sendBtn, err);
+    });
+    host.appendChild(sendBtn);
+  }
+
+  const linksRow = document.createElement("div");
+  linksRow.style.marginTop = ".8rem";
+
+  const blockBtn = document.createElement("button");
+  blockBtn.type = "button";
+  blockBtn.className = "muted small";
+  blockBtn.style.background = "none";
+  blockBtn.style.border = "none";
+  blockBtn.style.textDecoration = "underline";
+  blockBtn.style.cursor = "pointer";
+  blockBtn.style.padding = "0";
+  blockBtn.style.marginRight = "1rem";
+  blockBtn.textContent = "Block this coach";
+  blockBtn.addEventListener("click", function(){ blockCoachThread(host, blockBtn); });
+  linksRow.appendChild(blockBtn);
+
+  const reportBtn = document.createElement("button");
+  reportBtn.type = "button";
+  reportBtn.className = "muted small";
+  reportBtn.style.background = "none";
+  reportBtn.style.border = "none";
+  reportBtn.style.textDecoration = "underline";
+  reportBtn.style.cursor = "pointer";
+  reportBtn.style.padding = "0";
+  reportBtn.textContent = "Report a concern";
+  reportBtn.addEventListener("click", function(){ reportCoachThread(reportBtn); });
+  linksRow.appendChild(reportBtn);
+
+  host.appendChild(linksRow);
+}
+
+async function sendCoachMessage(host, compose, btn, err){
+  err.hidden = true;
+  const body = (compose.value || "").trim();
+  if(!body) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const r = await fetch(`/api/coach-thread/member/message?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({body: body}),
+    });
+    if(!r.ok) throw new Error();
+    compose.value = "";
+    await loadCoachThread(host);
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
+    err.hidden = false;
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function blockCoachThread(host, btn){
+  if(!window.confirm("End this coaching pairing? This cannot be undone.")) return;
+  btn.disabled = true;
+  try{
+    const r = await fetch(`/api/coach-thread/member/block?token=${encodeURIComponent(token)}`, {method: "POST"});
+    const data = await r.json();
+    if(!r.ok || !data.ok) throw new Error();
+    renderCoachThreadPanel(host, {status: "blocked"});
+  }catch(e){
+    btn.disabled = false;
+    alert("Something went wrong. Please try again.");
+  }
+}
+
+async function reportCoachThread(btn){
+  const reason = window.prompt("What is the concern? A short note is fine.");
+  if(reason === null) return;
+  const trimmed = reason.trim();
+  if(!trimmed) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const r = await fetch(`/api/coach-thread/member/report?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({reason: trimmed}),
+    });
+    const data = await r.json();
+    if(!r.ok || !data.ok) throw new Error();
+    btn.textContent = "Thank you, we will review this.";
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+    alert("Something went wrong. Please try again.");
+  }
+}
+<!-- END coach-thread member script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.

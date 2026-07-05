@@ -16572,6 +16572,293 @@ def practitioner_coach_request_respond():
         return jsonify({"ok": True, "status": "declined"})
 
 
+COACH_MESSAGE_MAX_CHARS = int(os.environ.get("COACH_MESSAGE_MAX_CHARS", "4000"))
+
+
+def _coach_thread_nudge(to_email, from_label):
+    """Best-effort 'you have a new message' nudge. Never raises, never exposes the
+    other party's email."""
+    try:
+        base = PUBLIC_BASE_URL.rstrip("/")
+        html = (f"<p>You have a new message from {from_label}. Open your portal to read and "
+                f"reply:</p><p><a href=\"{base}/\">Go to your portal</a></p>")
+        send_evox_email(to_email, "", f"A new message from {from_label}", html, html, b"")
+    except Exception:
+        app.logger.exception("coach thread nudge failed")
+
+
+def _coach_thread_owner_alert(subject, detail):
+    try:
+        send_evox_email(GLEN_CONSULT_EMAIL, "Glen", subject, f"<p>{detail}</p>",
+                        f"<p>{detail}</p>", b"")
+    except Exception:
+        app.logger.exception("coach thread owner alert failed")
+
+
+def _member_thread_ctx(cx, token):
+    """(ident_email, pair) for a matched member, or (None, None). Falls back to an
+    existing thread's coach_email when the pairing is no longer 'accepted' (e.g.
+    just blocked, which sets the request to 'ended') so block/report/GET keep
+    resolving the SAME thread instead of 404ing right after block."""
+    ident = _evox_ident(cx, token)
+    if ident is None:
+        return None, None
+    from dashboard import coach_connect as _cc
+    pair = _cc.accepted_pair(cx, ident.email)
+    if pair is None:
+        row = cx.execute("SELECT coach_email FROM coach_threads WHERE member_email=? "
+                         "ORDER BY id DESC LIMIT 1", (ident.email,)).fetchone()
+        if row is not None:
+            pair = {"request_id": None, "coach_email": row["coach_email"]}
+    if pair is None:
+        return None, None
+    return ident.email, pair
+
+
+@app.route("/api/coach-thread/member")
+def coach_thread_member_get():
+    from dashboard import coach_threads as _ct, coach_directory as _cd
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _cd.init_coach_tables(cx)
+        email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
+        if email is None or pair is None:
+            return jsonify({"error": "not_found"}), 404
+        t = _ct.get_or_create_thread(cx, coach_email=pair["coach_email"], member_email=email)
+        _ct.mark_read(cx, t["id"], "member")
+        vol = _cd.get_volunteer(cx, pair["coach_email"]) or {}
+        blocked = t["status"] == "blocked"
+        return jsonify({"coach_name": vol.get("name") or "Your coach", "status": t["status"],
+                        "can_post": not blocked,
+                        "messages": [] if blocked else _ct.messages(cx, t["id"])})
+
+
+@app.route("/api/coach-thread/member/message", methods=["POST"])
+def coach_thread_member_message():
+    from dashboard import coach_threads as _ct
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
+        if email is None or pair is None:
+            return jsonify({"error": "not_found"}), 404
+        if not body or len(body) > COACH_MESSAGE_MAX_CHARS:
+            return jsonify({"error": "bad_body"}), 400
+        t = _ct.get_or_create_thread(cx, coach_email=pair["coach_email"], member_email=email)
+        if t["status"] == "blocked":
+            return jsonify({"error": "blocked"}), 409
+        _ct.post_message(cx, thread_id=t["id"], sender_role="member", body=body)
+        coach_email = pair["coach_email"]
+    _coach_thread_nudge(coach_email, "your client")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/coach-thread/member/block", methods=["POST"])
+def coach_thread_member_block():
+    from dashboard import coach_threads as _ct, coach_connect as _cc
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
+        email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
+        if email is None or pair is None:
+            return jsonify({"error": "not_found"}), 404
+        t = _ct.get_or_create_thread(cx, coach_email=pair["coach_email"], member_email=email)
+        _ct.block_thread(cx, t["id"], "member")
+        _cc.set_request_status(cx, pair["request_id"], "ended")
+    _coach_thread_owner_alert("A member ended a coaching pairing",
+                              "A member blocked their coach; the pairing has ended.")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/coach-thread/member/report", methods=["POST"])
+def coach_thread_member_report():
+    from dashboard import coach_threads as _ct
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
+        if email is None or pair is None:
+            return jsonify({"error": "not_found"}), 404
+        t = _ct.get_or_create_thread(cx, coach_email=pair["coach_email"], member_email=email)
+        _ct.report_thread(cx, thread_id=t["id"], reporter_role="member", reason=reason)
+    _coach_thread_owner_alert("A coaching thread was reported",
+                              "A member reported their coaching thread. Review it in the console.")
+    return jsonify({"ok": True})
+
+
+def _coach_first_name(cx, member_email):
+    from dashboard import client_portal as _cp
+    row = _cp.get_portal_content_by_email(cx, member_email) or {}
+    return ((row.get("name") or "").strip().split() or ["Your client"])[0]
+
+
+@app.route("/api/coach-thread/coach/list")
+def coach_thread_coach_list():
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct, coach_connect as _cc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
+        out = []
+        for m in _cc.accepted_members(cx, email):
+            t = _ct.get_or_create_thread(cx, coach_email=email, member_email=m["member_email"])
+            out.append({"member_first_name": _coach_first_name(cx, m["member_email"]),
+                        "thread_id": t["id"], "status": t["status"],
+                        "unread": _ct.unread_count(cx, t["id"], "coach")})
+        return jsonify(out)
+
+
+def _coach_owns(cx, thread_id, coach_email):
+    from dashboard import coach_threads as _ct
+    t = _ct.get_thread(cx, thread_id)
+    return t if (t and t["coach_email"] == (coach_email or "").strip().lower()) else None
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>")
+def coach_thread_coach_get(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.mark_read(cx, thread_id, "coach")
+        blocked = t["status"] == "blocked"
+        return jsonify({"member_first_name": _coach_first_name(cx, t["member_email"]),
+                        "status": t["status"], "can_post": not blocked,
+                        "messages": [] if blocked else _ct.messages(cx, thread_id)})
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>/message", methods=["POST"])
+def coach_thread_coach_message(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        if not body or len(body) > COACH_MESSAGE_MAX_CHARS:
+            return jsonify({"error": "bad_body"}), 400
+        if t["status"] == "blocked":
+            return jsonify({"error": "blocked"}), 409
+        _ct.post_message(cx, thread_id=thread_id, sender_role="coach", body=body)
+        member_email = t["member_email"]
+    _coach_thread_nudge(member_email, "your coach")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/coach-thread/coach/<int:thread_id>/report", methods=["POST"])
+def coach_thread_coach_report(thread_id):
+    email = _coach_session_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _coach_owns(cx, thread_id, email)
+        if not t:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.report_thread(cx, thread_id=thread_id, reporter_role="coach", reason=reason)
+    _coach_thread_owner_alert("A coaching thread was reported",
+                              "A coach reported their coaching thread. Review it in the console.")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/coach-threads")
+def console_coach_threads():
+    """Owner: every coaching thread, reported/blocked ones first. Moderation
+    context — the owner may see both emails here."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        return jsonify({"threads": _ct.list_all_threads(cx)})
+
+
+@app.route("/api/console/coach-threads/<int:thread_id>")
+def console_coach_thread_transcript(thread_id):
+    """Owner: the FULL transcript incl. blocked history, plus its report rows."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _ct.get_thread(cx, thread_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
+        reports = [dict(r) for r in cx.execute(
+            "SELECT reporter_role, reason, created_at, resolved FROM coach_thread_reports "
+            "WHERE thread_id=? ORDER BY id", (thread_id,)).fetchall()]
+        return jsonify({**t, "messages": _ct.messages(cx, thread_id), "reports": reports})
+
+
+@app.route("/api/console/coach-threads/<int:thread_id>/unmatch", methods=["POST"])
+def console_coach_thread_unmatch(thread_id):
+    """Owner: end a coaching pairing. Blocks the thread + ends the pair's accepted
+    coach_requests row in one _db_lock write, then emails both parties best-effort.
+    Idempotent: a missing/mismatched accepted pair just skips the status flip."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct, coach_connect as _cc
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
+        t = _ct.get_thread(cx, thread_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
+        _ct.block_thread(cx, thread_id, "owner")
+        pair = _cc.accepted_pair(cx, t["member_email"])
+        if pair and pair["coach_email"] == t["coach_email"]:
+            _cc.set_request_status(cx, pair["request_id"], "ended")
+        member_email, coach_email = t["member_email"], t["coach_email"]
+    note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
+            "from your portal whenever you are ready.</p>")
+    for to, subj in [
+        (member_email, "Your coaching pairing has ended"),
+        (coach_email, "A coaching pairing has ended")]:
+        try:
+            send_evox_email(to, "", subj, note, note, b"")
+        except Exception:
+            app.logger.exception("unmatch notify failed to %s", to)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/coach-threads/<int:thread_id>/resolve-report", methods=["POST"])
+def console_coach_thread_resolve_report(thread_id):
+    """Owner: clear the reported flag on a thread and mark its report rows resolved."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import coach_threads as _ct
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        t = _ct.get_thread(cx, thread_id)
+        if not t:
+            return jsonify({"error": "not_found"}), 404
+        cx.execute("UPDATE coach_threads SET reported=0 WHERE id=?", (thread_id,))
+        cx.execute("UPDATE coach_thread_reports SET resolved=1 WHERE thread_id=?", (thread_id,))
+        cx.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob

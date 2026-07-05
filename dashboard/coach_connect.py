@@ -127,6 +127,22 @@ def accepted_count(cx, coach_email):
                       "AND status='accepted'", (_lc(coach_email),)).fetchone()[0]
 
 
+def accepted_pair(cx, member_email):
+    """The member's single accepted coach + that request id, or None."""
+    row = cx.execute("SELECT id, coach_email FROM coach_requests WHERE member_email=? "
+                     "AND status='accepted' ORDER BY id LIMIT 1", (_lc(member_email),)).fetchone()
+    return {"request_id": row["id"], "coach_email": row["coach_email"]} if row else None
+
+
+def accepted_members(cx, coach_email):
+    """The coach's accepted members: [{request_id, member_email, member_name}]."""
+    rows = cx.execute("SELECT id, member_email, member_name FROM coach_requests "
+                      "WHERE coach_email=? AND status='accepted' ORDER BY id",
+                      (_lc(coach_email),)).fetchall()
+    return [{"request_id": r["id"], "member_email": r["member_email"],
+             "member_name": r["member_name"]} for r in rows]
+
+
 def set_request_status(cx, request_id, status):
     cx.execute("UPDATE coach_requests SET status=?, decided_at=? WHERE id=?",
                (status, _now(), request_id))

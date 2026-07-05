@@ -179,6 +179,17 @@
         <span id="pcStatus" class="muted small"></span>
       </div>
     </div>
+
+    <!-- BEGIN coach-threads console panel -->
+    <div class="card">
+      <h2>Coaching threads</h2>
+      <p class="muted small">Owner moderation: every 1:1 coaching thread. View a full transcript (including blocked history and reports), unmatch a pair, or resolve a report.</p>
+      <button class="btn ghost sm" onclick="loadCoachThreads()">Load coaching threads</button>
+      <span id="coachThreadStatus" class="muted small"></span>
+      <div id="coachThreadList" style="margin-top:.7rem"></div>
+      <div id="coachThreadView" style="margin-top:.9rem"></div>
+    </div>
+    <!-- END coach-threads console panel -->
   </div>
 
 <script>
@@ -587,6 +598,109 @@ async function sendReply(){
     else { $('pcStatus').textContent='Send failed ('+r.status+').'; } }
   catch(e){ $('pcStatus').textContent='Send failed: '+e; }
 }
+
+// BEGIN coach-threads console panel
+async function loadCoachThreads(){
+  $('coachThreadStatus').textContent = 'Loading…';
+  try{
+    var r = await api('GET', '/api/console/coach-threads');
+    if(!r.ok){ $('coachThreadStatus').textContent = 'Load failed (' + r.status + ').'; return; }
+    renderCoachThreadList((r.json && r.json.threads) || []);
+    $('coachThreadStatus').textContent = '';
+  }catch(e){ $('coachThreadStatus').textContent = 'Load failed: ' + e; }
+}
+function renderCoachThreadList(threads){
+  var box = $('coachThreadList'); box.textContent = '';
+  if(!threads.length){ box.textContent = 'No coaching threads yet.'; return; }
+  threads.forEach(function(t){
+    var row = document.createElement('div'); row.className = 'reitem';
+    var top = document.createElement('div'); top.className = 'top';
+    var info = document.createElement('span');
+    info.textContent = t.coach_email + ' ↔ ' + t.member_email + ' · ' + t.status
+      + (t.reported ? ' · reported' : '') + ' · ' + (t.message_count || 0) + ' messages';
+    top.appendChild(info); row.appendChild(top);
+
+    var actions = document.createElement('div');
+    var viewBtn = document.createElement('button');
+    viewBtn.className = 'btn ghost sm'; viewBtn.textContent = 'View';
+    viewBtn.onclick = function(){ viewCoachThread(t.id); };
+    actions.appendChild(viewBtn);
+
+    var unmatchBtn = document.createElement('button');
+    unmatchBtn.className = 'btn ghost sm'; unmatchBtn.textContent = 'Unmatch';
+    unmatchBtn.onclick = function(){ unmatchCoachThread(t.id); };
+    actions.appendChild(unmatchBtn);
+
+    if(t.reported){
+      var resolveBtn = document.createElement('button');
+      resolveBtn.className = 'btn ghost sm'; resolveBtn.textContent = 'Resolve report';
+      resolveBtn.onclick = function(){ resolveCoachThreadReport(t.id); };
+      actions.appendChild(resolveBtn);
+    }
+    row.appendChild(actions);
+    box.appendChild(row);
+  });
+}
+async function viewCoachThread(threadId){
+  var pane = $('coachThreadView'); pane.textContent = 'Loading…';
+  try{
+    var r = await api('GET', '/api/console/coach-threads/' + threadId);
+    if(!r.ok){ pane.textContent = 'Load failed (' + r.status + ').'; return; }
+    renderCoachThreadView(r.json);
+  }catch(e){ pane.textContent = 'Load failed: ' + e; }
+}
+function renderCoachThreadView(t){
+  var pane = $('coachThreadView'); pane.textContent = '';
+  var head = document.createElement('div');
+  head.style.cssText = 'font-weight:700;margin-bottom:.4rem';
+  head.textContent = 'Thread #' + t.id + ': ' + t.coach_email + ' ↔ ' + t.member_email
+    + ' · status: ' + t.status;
+  pane.appendChild(head);
+  (t.messages || []).forEach(function(m){
+    var d = document.createElement('div');
+    d.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin:4px 0;background:var(--surface2)';
+    var who = document.createElement('div');
+    who.style.cssText = 'font-size:.72rem;font-weight:700;opacity:.75';
+    who.textContent = m.sender_role + ' · ' + (m.created_at || '');
+    var body = document.createElement('div');
+    body.style.cssText = 'white-space:pre-wrap;word-break:break-word';
+    body.textContent = m.body;
+    d.appendChild(who); d.appendChild(body);
+    pane.appendChild(d);
+  });
+  if((t.reports || []).length){
+    var rh = document.createElement('div');
+    rh.style.cssText = 'margin-top:.6rem;font-weight:700'; rh.textContent = 'Reports';
+    pane.appendChild(rh);
+    t.reports.forEach(function(rep){
+      var r = document.createElement('div'); r.className = 'muted small';
+      r.textContent = rep.reporter_role + ': ' + (rep.reason || '(no reason given)')
+        + ' · ' + (rep.resolved ? 'resolved' : 'open');
+      pane.appendChild(r);
+    });
+  }
+}
+async function unmatchCoachThread(threadId){
+  $('coachThreadStatus').textContent = 'Ending pairing…';
+  try{
+    var r = await api('POST', '/api/console/coach-threads/' + threadId + '/unmatch');
+    if(r.ok && r.json && r.json.ok){
+      $('coachThreadStatus').textContent = 'Pairing ended.';
+      loadCoachThreads(); viewCoachThread(threadId);
+    } else { $('coachThreadStatus').textContent = 'Unmatch failed (' + r.status + ').'; }
+  }catch(e){ $('coachThreadStatus').textContent = 'Unmatch failed: ' + e; }
+}
+async function resolveCoachThreadReport(threadId){
+  $('coachThreadStatus').textContent = 'Resolving report…';
+  try{
+    var r = await api('POST', '/api/console/coach-threads/' + threadId + '/resolve-report');
+    if(r.ok && r.json && r.json.ok){
+      $('coachThreadStatus').textContent = 'Report resolved.';
+      loadCoachThreads();
+    } else { $('coachThreadStatus').textContent = 'Resolve failed (' + r.status + ').'; }
+  }catch(e){ $('coachThreadStatus').textContent = 'Resolve failed: ' + e; }
+}
+// END coach-threads console panel
 
 boot();
 </script>
