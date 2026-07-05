@@ -992,6 +992,13 @@ function render(d, v){
     }
   }
 
+  // Welcome call (onboarding): membership eligibility can't be checked here
+  // (portal_view.py has no app import), so render an empty, hidden placeholder
+  // and let initOnboardingCard() — called once this markup is attached to the
+  // DOM — fetch /api/onboarding/state and decide whether to show it and what
+  // to put inside (slot picker vs. already-booked confirmation).
+  html += `<div class="card" id="onboarding-card" hidden></div>`;
+
   // Household sharing controls (member consent + caregiver cc).
   if (d.household_caregivers && d.household_caregivers.length) {
     let rows = "";
@@ -1019,6 +1026,8 @@ function render(d, v){
   app.innerHTML = html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
+
+  initOnboardingCard();
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
@@ -1145,6 +1154,70 @@ async function consultJoin(){
   document.getElementById("consult-join-msg").textContent =
     "Your consult is at " + when + ". The Join button opens 10 minutes before.";
 }
+
+<!-- BEGIN onboarding card script -->
+// Welcome call (onboarding) card. Member-gated by its own /api/onboarding/state
+// fetch (see the placeholder in render()) rather than by v.onboarding, since
+// portal_view.py can't check membership. Mirrors the consult card's
+// schedule/book/confirm pattern (consultSchedule/consultBook above).
+async function initOnboardingCard(){
+  const card = document.getElementById("onboarding-card");
+  if(!card) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/state?token=${encodeURIComponent(seg)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  if(!d || !d.eligible){ card.hidden = true; card.innerHTML = ""; return; }
+  card.hidden = false;
+  renderOnboardingCard(card, d.booked);
+}
+
+function renderOnboardingCard(card, booked){
+  if(booked){
+    const when = (booked.start_ts||"").replace("T"," ");
+    card.innerHTML = `<h2>Welcome call</h2>
+      <p class="muted">Your welcome call with Rae is booked for <b>${esc(when)} HST</b>. This is a phone call, and Rae will call you at your appointment time.</p>`;
+    return;
+  }
+  card.innerHTML = `<h2>Book your welcome call</h2>
+    <p class="muted">A free 15-minute phone call with Rae to welcome you and answer your first questions. Rae will call you.</p>
+    <div id="onboarding-slots" style="margin-top:.6rem"><p class="muted small">Loading available times…</p></div>`;
+  loadOnboardingSlots();
+}
+
+async function loadOnboardingSlots(){
+  const box = document.getElementById("onboarding-slots");
+  if(!box) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/availability?token=${encodeURIComponent(seg)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  const slots = d.slots || [];
+  box.innerHTML = slots.length
+    ? slots.map(s => `<button class="btn" style="margin:.2rem .3rem .2rem 0" onclick="onboardingBook('${esc(s)}')">${esc(s.replace("T"," "))}</button>`).join("")
+    : `<p class="muted small">No open times right now. Please check back soon.</p>`;
+}
+
+async function onboardingBook(start_ts){
+  let d = {};
+  try{
+    const r = await fetch(`/api/onboarding/book?token=${encodeURIComponent(seg)}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({start_ts}),
+    });
+    d = await r.json();
+    if(d && d.ok){
+      const card = document.getElementById("onboarding-card");
+      if(card) renderOnboardingCard(card, {start_ts});
+      return;
+    }
+  }catch(e){ d = {}; }
+  alert("That time is no longer available. Please pick another.");
+  loadOnboardingSlots();
+}
+<!-- END onboarding card script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.
