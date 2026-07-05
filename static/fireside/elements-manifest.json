@@ -18,12 +18,21 @@
     },
     "wood": {
       "label": "Wood",
-      "video": "/static/fireside/video/elements/wood.mp4",
-      "poster": "/static/fireside/video/elements/wood-poster.jpg",
+      "video": "/static/fireside/video/elements/wood-glendalf-base.mp4",
+      "poster": "/static/fireside/video/elements/wood-glendalf-poster.jpg",
+      "companion": {
+        "rest": "/static/fireside/video/elements/wood-glendalf-base.mp4",
+        "idle": ["/static/fireside/video/elements/wood-glendalf-gust.mp4"],
+        "idle_min_s": 35,
+        "idle_max_s": 95,
+        "crossfade": 700,
+        "gust_swell_ms": 9000
+      },
       "ambience": {
         "bed": "/static/fireside/audio/amb-windtrees.mp3",
         "bed_volume": 0.00616,
         "oneshots": [
+          { "id": "windgust", "file": "/static/fireside/audio/amb-windtrees.mp3", "loop": true, "volume": 0.02, "gust": true, "gust_peak": 0.34 },
           { "id": "brook", "file": "/static/fireside/audio/amb-brook.mp3", "loop": true, "volume": 0.06 },
           { "id": "woodthrush", "file": "/static/fireside/audio/amb-woodthrush.mp3", "volume": 0.16, "first_gap_s": 5, "min_gap_s": 15, "max_gap_s": 45 },
           { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.08, "min_gap_s": 90, "max_gap_s": 220 },

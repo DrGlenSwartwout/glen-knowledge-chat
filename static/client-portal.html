@@ -2282,9 +2282,14 @@ load();
     // Fire element ships a resident cat with idle actions + a wake reaction: the
     // CatPlayer double-buffers #el-bg/#el-bg2 and swaps clips at loop boundaries.
     // Everything else (and reduce-motion) uses the plain muted-loop backdrop.
-    if (entry.cat && !reduceMotion) {
+    const comp = entry.companion || entry.cat;
+    if (comp && !reduceMotion) {
       vid.style.opacity = ''; vid2.style.opacity = '';
-      catPlayer = new CatPlayer(vid, vid2, Object.assign({ poster: entry.poster || '' }, entry.cat));
+      const cfg = Object.assign({ poster: entry.poster || '' }, comp);
+      // On a non-rest (gust) clip, swell the wind ambience to match the canopy gust.
+      // `amb` is read live in the closure — it may be null now but set by the time it fires.
+      cfg.onClip = (url, isRest) => { if (!isRest && amb && typeof amb.gust === 'function') { try { amb.gust(comp.gust_swell_ms || 9000); } catch (e) {} } };
+      catPlayer = new CatPlayer(vid, vid2, cfg);
       catPlayer.start();
     } else {
       try { vid2.pause(); } catch (e) {}
