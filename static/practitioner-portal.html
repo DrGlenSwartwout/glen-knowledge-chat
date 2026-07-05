@@ -374,6 +374,15 @@
     <!-- END coach-requests script -->
   </div>
   <!-- END coach-volunteer script -->
+
+  <!-- BEGIN coach-thread coach panel -->
+  <div class="panel" id="coach-messages-panel" style="display:none">
+    <h2>Messages</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 12px">Message the members you are coaching.</div>
+    <div id="coach-messages-list"></div>
+    <div id="coach-messages-thread" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px"></div>
+  </div>
+  <!-- END coach-thread coach panel -->
   </section>
 
   <section class="pane" data-pane="ambassador" role="tabpanel" aria-label="Ambassador">
@@ -932,6 +941,215 @@ function respondToCoachRequest(requestId, accept, btnRow){
 }
 <!-- END coach-requests script -->
 
+<!-- BEGIN coach-thread coach script -->
+function loadCoachMessages(){
+  var panel = $('coach-messages-panel'); if(!panel) return;
+  fetch('/api/coach-thread/coach/list?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d){ panel.style.display = 'none'; return; }
+      panel.style.display = '';
+      renderCoachMemberList(d);
+    })
+    .catch(function(){ panel.style.display = 'none'; });
+}
+function renderCoachMemberList(items){
+  var list = $('coach-messages-list');
+  list.innerHTML = '';
+  items = items || [];
+  if(!items.length){
+    var empty = document.createElement('div');
+    empty.className = 'muted';
+    empty.style.fontSize = '13px';
+    empty.textContent = 'No members yet.';
+    list.appendChild(empty);
+  } else {
+    items.forEach(function(m){ list.appendChild(coachMemberRow(m)); });
+  }
+}
+function coachMemberRow(m){
+  var row = document.createElement('div');
+  row.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;cursor:pointer';
+
+  var nameEl = document.createElement('div');
+  nameEl.style.fontWeight = '600';
+  nameEl.textContent = m.member_first_name || 'This member';
+  row.appendChild(nameEl);
+
+  if(m.unread){
+    var badge = document.createElement('span');
+    badge.className = 'badge ok';
+    badge.textContent = m.unread > 1 ? (m.unread + ' new') : '1 new';
+    row.appendChild(badge);
+  }
+
+  row.addEventListener('click', function(){ openCoachMemberThread(m.thread_id); });
+  return row;
+}
+function openCoachMemberThread(threadId){
+  var host = $('coach-messages-thread');
+  host.style.display = '';
+  host.innerHTML = '';
+  var loading = document.createElement('div');
+  loading.className = 'muted';
+  loading.style.fontSize = '13px';
+  loading.textContent = 'Loading...';
+  host.appendChild(loading);
+
+  fetch('/api/coach-thread/coach/' + encodeURIComponent(threadId) + '?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d){
+        host.innerHTML = '';
+        var errEl = document.createElement('div');
+        errEl.className = 'muted';
+        errEl.style.fontSize = '13px';
+        errEl.textContent = 'Could not load this conversation.';
+        host.appendChild(errEl);
+        return;
+      }
+      renderCoachThreadDetail(threadId, d);
+    })
+    .catch(function(){
+      host.innerHTML = '';
+      var errEl = document.createElement('div');
+      errEl.className = 'muted';
+      errEl.style.fontSize = '13px';
+      errEl.textContent = 'Network error.';
+      host.appendChild(errEl);
+    });
+}
+function renderCoachThreadDetail(threadId, d){
+  var host = $('coach-messages-thread');
+  host.innerHTML = '';
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-weight:600;margin-bottom:10px';
+  title.textContent = d.member_first_name || 'This member';
+  host.appendChild(title);
+
+  if(d.status === 'blocked'){
+    var ended = document.createElement('div');
+    ended.className = 'notice';
+    ended.textContent = 'This conversation has ended.';
+    host.appendChild(ended);
+    return;
+  }
+
+  var msgList = document.createElement('div');
+  msgList.style.cssText = 'max-height:280px;overflow-y:auto;margin-bottom:12px';
+  var messages = d.messages || [];
+  if(!messages.length){
+    var noMsg = document.createElement('div');
+    noMsg.className = 'muted';
+    noMsg.style.fontSize = '13px';
+    noMsg.textContent = 'No messages yet. Say hello.';
+    msgList.appendChild(noMsg);
+  } else {
+    messages.forEach(function(m){ msgList.appendChild(coachThreadMessageRow(m, d.member_first_name)); });
+  }
+  host.appendChild(msgList);
+
+  var errEl = document.createElement('div');
+  errEl.style.cssText = 'font-size:13px;min-height:16px;margin-bottom:6px';
+  host.appendChild(errEl);
+
+  if(d.can_post){
+    var textarea = document.createElement('textarea');
+    textarea.rows = 3;
+    textarea.style.cssText = 'width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:var(--surface-2);color:var(--cream)';
+    textarea.placeholder = 'Write a message...';
+    host.appendChild(textarea);
+
+    var actionRow = document.createElement('div');
+    actionRow.style.cssText = 'margin-top:8px;display:flex;gap:8px;align-items:center';
+
+    var sendBtn = document.createElement('button');
+    sendBtn.type = 'button';
+    sendBtn.textContent = 'Send';
+    sendBtn.addEventListener('click', function(){ sendCoachThreadMessage(threadId, textarea, sendBtn, errEl); });
+    actionRow.appendChild(sendBtn);
+
+    var reportLink = document.createElement('a');
+    reportLink.href = '#';
+    reportLink.className = 'muted';
+    reportLink.style.cssText = 'font-size:12px;margin-left:auto';
+    reportLink.textContent = 'Report a concern';
+    reportLink.addEventListener('click', function(ev){ ev.preventDefault(); reportCoachThread(threadId, errEl); });
+    actionRow.appendChild(reportLink);
+
+    host.appendChild(actionRow);
+  }
+}
+function coachThreadMessageRow(m, memberFirstName){
+  var row = document.createElement('div');
+  row.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border)';
+
+  var who = document.createElement('div');
+  who.className = 'muted';
+  who.style.fontSize = '12px';
+  who.textContent = m.sender_role === 'coach' ? 'You' : (memberFirstName || 'This member');
+  row.appendChild(who);
+
+  var body = document.createElement('div');
+  body.textContent = m.body;
+  row.appendChild(body);
+
+  return row;
+}
+function sendCoachThreadMessage(threadId, textarea, sendBtn, errEl){
+  var body = (textarea.value || '').trim();
+  if(!body) return;
+  sendBtn.disabled = true;
+  errEl.style.color = '';
+  errEl.textContent = '';
+  fetch('/api/coach-thread/coach/' + encodeURIComponent(threadId) + '/message?token=' + encodeURIComponent(TOKEN), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({body: body})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status: r.status, body: d}; }); })
+    .then(function(res){
+      if(res.status === 200 && res.body && res.body.ok){
+        openCoachMemberThread(threadId);
+        loadCoachMessages();
+      } else {
+        sendBtn.disabled = false;
+        errEl.style.color = 'var(--gold)';
+        errEl.textContent = 'Something went wrong. Please try again.';
+      }
+    })
+    .catch(function(){
+      sendBtn.disabled = false;
+      errEl.style.color = 'var(--gold)';
+      errEl.textContent = 'Something went wrong. Please try again.';
+    });
+}
+function reportCoachThread(threadId, errEl){
+  var reason = window.prompt('What is the concern? (optional)');
+  if(reason === null) return;
+  fetch('/api/coach-thread/coach/' + encodeURIComponent(threadId) + '/report?token=' + encodeURIComponent(TOKEN), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({reason: reason})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status: r.status, body: d}; }); })
+    .then(function(res){
+      if(res.status === 200 && res.body && res.body.ok){
+        errEl.style.color = '#8fd6a3';
+        errEl.textContent = 'Thank you, we will review this.';
+      } else {
+        errEl.style.color = 'var(--gold)';
+        errEl.textContent = 'Something went wrong. Please try again.';
+      }
+    })
+    .catch(function(){
+      errEl.style.color = 'var(--gold)';
+      errEl.textContent = 'Something went wrong. Please try again.';
+    });
+}
+<!-- END coach-thread coach script -->
+
 // Training tab: 12-module ASH curriculum with the practitioner's completion state.
 function renderTraining(d){
   var tr = d.training; if(!tr) return;
@@ -1095,6 +1313,7 @@ function render(d){
   renderRecommended(d);
   loadContinuity();
   loadCoachRequests();
+  loadCoachMessages();
   renderPricing(d);
 }
 
