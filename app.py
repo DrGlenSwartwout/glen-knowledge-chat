@@ -14514,6 +14514,26 @@ def api_portal_notify_pref(token):
     return jsonify({"ok": True, "pref": pref})
 
 
+@app.route("/api/portal/<token>/scene-pref", methods=["POST"])
+def api_portal_scene_pref(token):
+    """Persist the member's fireside backdrop choice server-side so it follows them
+    across devices. `element` is one of the five element keys, or "auto"/"" for
+    Automatic (clears the override -> the computed deficient element shows)."""
+    from dashboard import member_element_state as _mes
+    el = ((request.get_json(silent=True) or {}).get("element") or "").strip().lower()
+    if el not in ("water", "wood", "earth", "metal", "fire", "auto", ""):
+        return jsonify({"error": "invalid element"}), 400
+    saved = None if el in ("auto", "") else el
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        _mes.set_override(cx, (portal.get("email") or "").strip().lower(), saved)
+    return jsonify({"ok": True, "element": saved})
+
+
 @app.route("/api/portal/<token>/chat", methods=["POST", "OPTIONS"])
 def api_portal_chat(token):
     if request.method == "OPTIONS":

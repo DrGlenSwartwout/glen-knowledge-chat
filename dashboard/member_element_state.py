@@ -19,10 +19,42 @@ def init_table(cx):
           dominant_element TEXT,
           deficient_element TEXT,
           source TEXT,
+          scene_override TEXT,
           updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         )
         """
     )
+    _ensure_override_col(cx)
+
+
+def _ensure_override_col(cx):
+    """Additive migration for tables created before scene_override existed."""
+    cols = [r[1] for r in cx.execute("PRAGMA table_info(member_element_state)").fetchall()]
+    if cols and "scene_override" not in cols:
+        cx.execute("ALTER TABLE member_element_state ADD COLUMN scene_override TEXT")
+
+
+def set_override(cx, email, override):
+    """Persist the member's explicit backdrop choice (an element key, or None for
+    Automatic). Creates a row if the member has no computed element yet, and never
+    clobbers their element_scores/deficient_element."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    init_table(cx)
+    ov = (override or "").strip().lower() or None
+    if ov == "auto":
+        ov = None
+    cx.execute(
+        """
+        INSERT INTO member_element_state (email, scene_override)
+        VALUES (?, ?)
+        ON CONFLICT(email) DO UPDATE SET scene_override=excluded.scene_override
+        """,
+        (email, ov),
+    )
+    cx.commit()
+    return get(cx, email)
 
 
 def _scored(element_scores):
