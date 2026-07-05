@@ -15962,6 +15962,31 @@ def _community_candidates(cx, is_paid):
     return teasers, {f["id"]: f for f in full}  # full lookup for embed text only
 
 
+def _community_related(cx, query_vec, is_paid, *, k=2, min_sim=0.72):
+    """Top-k tier-visible Community items most similar to the query vector, above
+    min_sim. Card-shaped {id, title, kind}; never carries video_ref; never raises.
+    Items without a current-model embedding are skipped (no lazy embed here)."""
+    try:
+        from dashboard import community as _cm, community_feed as _cf
+        cands, _ = _community_candidates(cx, is_paid)
+        vecs = _cm.get_embeddings(cx, [c["id"] for c in cands], COMMUNITY_FEED_MODEL)
+        scored = []
+        for c in cands:
+            v = vecs.get(c["id"])
+            if not v:
+                continue
+            s = _cf.cosine(query_vec, v)
+            if s >= min_sim:
+                scored.append((s, c))
+        scored.sort(key=lambda t: t[0], reverse=True)
+        kind = "full" if is_paid else "teaser"
+        return [{"id": c["id"], "title": c.get("title", ""), "kind": kind}
+                for _, c in scored[:k]]
+    except Exception:
+        app.logger.exception("community_related failed")
+        return []
+
+
 def _member_interest_vec(cx, email, liked_topics):
     """Return the member's interest vector ([] on cold start / failure). Cached in
     member_interest; built from liked topics only. Never raises."""
