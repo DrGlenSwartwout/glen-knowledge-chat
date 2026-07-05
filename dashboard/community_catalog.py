@@ -60,3 +60,48 @@ def suggest_catalog(transcript_text, *, client=None):
     except Exception as e:
         print(f"[community-catalog] suggest failed: {e!r}", flush=True)
         return empty
+
+
+def cut_outtakes(src_path, outtakes, *, workdir, trimmer=None):
+    """Cut each approved out-take range into workdir/outtake-<i>.mp4. Returns a list
+    of {title, interest_tags, path}. trimmer injectable (defaults to video_trim)."""
+    import os as _os
+    if trimmer is None:
+        from dashboard.video_trim import trim_video as trimmer
+    results = []
+    for i, ot in enumerate(outtakes):
+        dst = _os.path.join(workdir, f"outtake-{i}.mp4")
+        trimmer(src_path, dst, float(ot["start"]), float(ot["end"]))
+        results.append({"title": ot.get("title", ""),
+                        "interest_tags": list(ot.get("interest_tags", []) or []),
+                        "path": dst})
+    return results
+
+
+def publish_session(*, base_url, console_key, full, outtake_files,
+                    uploader=None, poster=None):
+    """Upload each out-take clip file, then POST the catalog entry to the prod
+    publish endpoint. Returns the response JSON. uploader/poster injectable."""
+    import os as _os
+    if uploader is None:
+        from dashboard.biofield_portal_publish import upload_asset as uploader
+    if poster is None:
+        import requests
+        poster = requests.post
+    outtakes = []
+    for f in outtake_files:
+        with open(f["path"], "rb") as fh:
+            data = fh.read()
+        filename = _os.path.basename(f["path"])
+        url = uploader(data, filename, base_url=base_url, console_key=console_key)
+        outtakes.append({"title": f["title"], "interest_tags": f["interest_tags"],
+                         "video_ref": url})
+    body = {"type": full["type"], "title": full["title"],
+            "description": full.get("description", ""), "video_ref": full["video_ref"],
+            "interest_tags": full.get("interest_tags", []),
+            "transcript": full.get("transcript", ""), "outtakes": outtakes}
+    r = poster(f"{base_url.rstrip('/')}/api/console/community/publish",
+               json=body, headers={"X-Console-Key": console_key}, timeout=60)
+    if not (200 <= r.status_code < 300):
+        raise RuntimeError(f"publish failed {r.status_code}")
+    return r.json()
