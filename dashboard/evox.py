@@ -182,7 +182,9 @@ def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
     booking_id = cur.lastrowid
     ev_id = f"{session_type}-{booking_id}"
     location = "Video" if medium == "video" else "Phone"
-    label = "Biofield Consult" if session_type == "biofield-consult" else "EVOX"
+    label = {"biofield-consult": "Biofield Consult",
+             "triage": "Discovery Call",
+             "onboarding": "Welcome Call"}.get(session_type, "EVOX")
     cx.execute(
         "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
         "calendar_name,summary,start,end,location,owner,status,cal_alert) "
