@@ -80,3 +80,7 @@ def test_triage_confirmations(client, monkeypatch):
     assert "conf@x.com" in tos                       # prospect notified
     prospect_html = [h for (to, h) in calls if to == "conf@x.com"][0]
     assert "808-555-1212" in prospect_html and "zoom.us/j/" not in prospect_html
+
+def test_triage_page_served(client):
+    r = client.get("/triage/anytoken")
+    assert r.status_code == 200 and b"Book your call" in r.data

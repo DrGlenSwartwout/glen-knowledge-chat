@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book your call — Healing Oasis</title>
+<style>
+ body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;padding:24px;color:#1b2a26;background:#f6f8f7}
+ h1{color:#2f6f5e} button{background:#2f6f5e;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer;margin:4px}
+ .slot{display:inline-block} .day{margin:12px 0} .hidden{display:none} .muted{color:#5a6b64}
+</style></head><body>
+<h1>Book your call</h1>
+<div id="v-load"><p class="muted">Loading your invitation...</p></div>
+<div id="v-slots" class="hidden"><p id="intro"></p><div id="slots"></div></div>
+<div id="v-done" class="hidden"><h2>Booked</h2><p id="done-msg"></p>
+  <button id="join-btn" class="hidden" onclick="triageJoin()">Join your call</button>
+  <div id="join-msg" class="muted"></div></div>
+<script>
+const TOKEN = decodeURIComponent((location.pathname.split("/triage/")[1]||"").split(/[?#]/)[0]);
+let STATE = null;
+const $=id=>document.getElementById(id), show=v=>{for(const x of ["load","slots","done"])$("v-"+x).classList.toggle("hidden",x!==v)};
+async function j(u,o){const r=await fetch(u,o);return {status:r.status, body:await r.json().catch(()=>({}))}}
+function who(){return STATE && STATE.practitioner==="glen" ? "Dr. Glen" : "Rae";}
+async function load(){
+  const s=await j(`/api/triage/state?token=${encodeURIComponent(TOKEN)}`);
+  if(s.status!==200){ $("v-load").innerHTML='<p class="muted">This invitation is invalid or has expired.</p>'; return; }
+  STATE=s.body;
+  if(STATE.booked){ confirmed(STATE.booked_start); return; }
+  const a=await j(`/api/triage/availability?token=${encodeURIComponent(TOKEN)}&range=week`);
+  $("intro").textContent = `Pick a 15 minute time with ${who()} (HST).`;
+  $("slots").innerHTML = (a.body.slots||[]).map(x=>`<button class="slot" onclick="book('${x}')">${x.replace("T"," ")}</button>`).join("") || '<p class="muted">No open times right now. Please check back soon.</p>';
+  show("slots");
+}
+async function book(start_ts){
+  const r=await j(`/api/triage/book?token=${encodeURIComponent(TOKEN)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({start_ts})});
+  if(r.body.ok){ confirmed(start_ts); } else { alert("That time is no longer available. Please pick another."); load(); }
+}
+function confirmed(start){
+  const nice=(start||"").replace("T"," ");
+  if(STATE.practitioner==="glen"){
+    $("done-msg").textContent = `Your call with Dr. Glen is booked for ${nice} HST. At your appointment time, click Join your call below.`;
+    $("join-btn").classList.remove("hidden");
+  } else {
+    $("done-msg").textContent = `Your call with Rae is booked for ${nice} HST. At your appointment time, call Rae at the number in your confirmation email.`;
+  }
+  show("done");
+}
+async function triageJoin(){
+  const r=await j(`/api/triage/join?token=${encodeURIComponent(TOKEN)}`);
+  if(r.body.ok && r.body.join_url){ window.open(r.body.join_url,"_blank","noopener"); return; }
+  $("join-msg").textContent = "The Join button opens 10 minutes before your appointment time.";
+}
+load();
+</script></body></html>
