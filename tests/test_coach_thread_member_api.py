@@ -75,3 +75,19 @@ def test_report_flags_and_emails_owner():
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row; _ct.init_thread_tables(cx)
         assert _ct.thread_for_pair(cx, "c@x.com", "m@x.com")["reported"] == 1
+
+
+def test_oversized_body_400():
+    c = _client(); tok = _matched()
+    body = "x" * (appmod.COACH_MESSAGE_MAX_CHARS + 1)
+    r = c.post(f"/api/coach-thread/member/message?token={tok}", json={"body": body})
+    assert r.status_code == 400
+
+
+def test_bad_token_message_404_not_400():
+    c = _client()
+    r = c.post("/api/coach-thread/member/message?token=bogus", json={"body": "hi"})
+    assert r.status_code == 404
+    r2 = c.post("/api/coach-thread/member/message?token=bogus",
+                data="{not json", content_type="application/json")
+    assert r2.status_code == 404

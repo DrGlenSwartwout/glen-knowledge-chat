@@ -16606,8 +16606,8 @@ def _member_thread_ctx(cx, token):
     from dashboard import coach_connect as _cc
     pair = _cc.accepted_pair(cx, ident.email)
     if pair is None:
-        row = cx.execute("SELECT coach_email FROM coach_threads WHERE member_email=?",
-                         (ident.email,)).fetchone()
+        row = cx.execute("SELECT coach_email FROM coach_threads WHERE member_email=? "
+                         "ORDER BY id DESC LIMIT 1", (ident.email,)).fetchone()
         if row is not None:
             pair = {"request_id": None, "coach_email": row["coach_email"]}
     if pair is None:
@@ -16636,7 +16636,7 @@ def coach_thread_member_get():
 @app.route("/api/coach-thread/member/message", methods=["POST"])
 def coach_thread_member_message():
     from dashboard import coach_threads as _ct
-    body = ((request.get_json(force=True) or {}).get("body") or "").strip()
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
@@ -16674,7 +16674,7 @@ def coach_thread_member_block():
 @app.route("/api/coach-thread/member/report", methods=["POST"])
 def coach_thread_member_report():
     from dashboard import coach_threads as _ct
-    reason = ((request.get_json(force=True) or {}).get("reason") or "").strip()
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
