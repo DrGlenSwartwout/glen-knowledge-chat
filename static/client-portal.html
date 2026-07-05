@@ -923,6 +923,25 @@ function render(d, v){
       <button class="btn${on?"":" full"}" id="notifBtn" data-on="${on?"1":"0"}">${on?"Turn off":"Turn on"}</button></div>`;
   }
 
+  // Biofield Consult: booked (confirmed with Zoom link on the way) / ready
+  // (report posted, show the scheduler) / not yet (journey status only).
+  if(v && v.consult){
+    const c = v.consult;
+    if(c.booked){
+      html += `<div class="card"><h2>Biofield Consult</h2>
+        <p class="muted">Your consult with Dr. Glen is booked. Check your email for the Zoom link and calendar invite.</p></div>`;
+    } else if(c.ready){
+      html += `<div class="card"><h2>Biofield Consult</h2>
+        <p class="muted">Your report is ready. Schedule your 30 minute consult with Dr. Glen to review your program.</p>
+        <button class="btn full" id="consult-sched" onclick="consultSchedule()">Schedule your consult</button>
+        <div id="consult-slots" style="margin-top:.6rem"></div></div>`;
+    } else {
+      html += `<div class="card"><h2>Biofield Consult</h2>
+        <p class="muted">Your Biofield Consult with Dr. Glen unlocks once your Causal report and program are posted.
+        We will let you know when it is ready to schedule.</p></div>`;
+    }
+  }
+
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
 
   app.innerHTML = html;
@@ -990,6 +1009,39 @@ function render(d, v){
   app.querySelectorAll(".remBtn").forEach(rb=>{
     rb.addEventListener("click", ()=>reorderItem(rb));
   });
+}
+
+async function consultSchedule(){
+  // fetchJson lives inside load(), out of scope here; fetch directly instead.
+  let d = {};
+  try{
+    const r = await fetch(`/api/consult/availability?token=${encodeURIComponent(seg)}&range=week`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  const box = document.getElementById("consult-slots");
+  if(!box) return;
+  const slots = d.slots || [];
+  box.innerHTML = slots.length
+    ? slots.map(s => `<button class="btn" style="margin:.2rem .3rem .2rem 0" onclick="consultBook('${esc(s)}')">${esc(s.replace("T"," "))}</button>`).join("")
+    : `<p class="muted small">No open times this week. Please check back soon.</p>`;
+}
+
+async function consultBook(start_ts){
+  const box = document.getElementById("consult-slots");
+  let d = {};
+  try{
+    const r = await fetch(`/api/consult/book?token=${encodeURIComponent(seg)}`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({start_ts}),
+    });
+    d = await r.json();
+    if(d && d.ok){
+      if(box) box.innerHTML = `<p class="muted small">Booked. Check your email for the Zoom link and calendar invite.</p>`;
+      return;
+    }
+  }catch(e){ d = {}; }
+  alert("That time is no longer available. Please pick another.");
+  consultSchedule();
 }
 
 async function setNotifyPref(btn){

@@ -141,6 +141,12 @@
       <a id="previewLink" class="preview" target="_blank" rel="noopener" style="display:none">Preview portal ↗</a>
     </p>
 
+    <div style="margin-top:10px">
+      <button class="btn ghost sm" onclick="markConsultReady(true)">Mark consult ready</button>
+      <button class="btn ghost sm" onclick="markConsultReady(false)">Clear consult ready</button>
+      <span id="consult-ready-msg" class="muted small"></span>
+    </div>
+
     <div class="card">
       <h2>Portal chat &mdash; reply as Dr. Glen</h2>
       <p class="muted small">The client's saved portal conversation. Your reply appears in their portal chat and is remembered.</p>
@@ -217,6 +223,14 @@ async function api(method, path, body){
   if(body){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
   const r = await fetch(path, opt);
   return {ok:r.ok, status:r.status, json: await r.json().catch(()=>({}))};
+}
+
+async function markConsultReady(ready){
+  const email = ($('email')?.value || '').trim();
+  if(!email){ $('consult-ready-msg').textContent = 'Enter an email first.'; return; }
+  const r = await api('POST', '/api/console/consult-ready', {email, ready});
+  $('consult-ready-msg').textContent =
+    r.ok ? (ready ? 'Consult unlocked ✓' : 'Consult locked') : ('Error ' + r.status);
 }
 
 async function loadCatalog(){

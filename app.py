@@ -203,6 +203,10 @@ EVOX_RAE_PHONE           = os.environ.get("EVOX_RAE_PHONE", "")
 EVOX_RAE_EMAIL           = os.environ.get("EVOX_RAE_EMAIL", "suerae1111@gmail.com")
 EVOX_SESSION_PRICE_CENTS = int(os.environ.get("EVOX_SESSION_PRICE_CENTS", "15000"))
 
+# Biofield Consult (Glen's lane): office-hours spec same format as EVOX_HOURS.
+GLEN_CONSULT_HOURS = os.environ.get("GLEN_CONSULT_HOURS", "1-7:09:00-17:00")
+GLEN_ZOOM_USER      = os.environ.get("GLEN_ZOOM_USER", "me")
+
 
 def _init_auth_tables():
     with sqlite3.connect(LOG_DB) as cx:
@@ -15166,6 +15170,152 @@ def api_console_biofield_publish():
             print(f"[biofield-publish] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "token": token, "url": url, "portal_id": pid,
                     "updated": token is None, "emailed": emailed, "email_status": email_status})
+
+
+@app.route("/api/console/consult-ready", methods=["POST"])
+def api_console_consult_ready():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import consult as _consult
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    ready = bool(body.get("ready"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _consult.init_consult_tables(cx)
+        new_state = _consult.set_consult_ready(cx, email, ready)
+    return jsonify({"ok": True, "email": email, "ready": new_state})
+
+
+def _get_consult_booked(cx):
+    try:
+        rows = cx.execute("SELECT lower(email) FROM evox_bookings "
+                          "WHERE session_type='biofield-consult' AND status='booked'").fetchall()
+        return {r[0] for r in rows}
+    except Exception:
+        return set()
+
+
+GLEN_CONSULT_EMAIL = os.environ.get("GLEN_CONSULT_EMAIL", "drglenswartwout@gmail.com")
+
+
+def _consult_send_confirmations(email, booking):
+    """Best-effort: client + Glen Biofield Consult confirmations with the Zoom link + ICS.
+    Never raises into the booking response."""
+    try:
+        from dashboard import evox as _ev
+        start = booking["start_ts"]; nice = start.replace("T", " ")
+        join = booking.get("join_url")
+        join_line = (f"Join your Zoom consult here: {join}" if join
+                     else "Your Zoom link will follow by email shortly.")
+        ics = _ev.build_ics(uid=booking["ics_uid"], start_ts=start, end_ts=booking["end_ts"],
+                            summary="Biofield Consult with Dr. Glen",
+                            description=join_line, location=(join or "Video"))
+        client_html = (f"<p>Your Biofield Consult with Dr. Glen is booked for "
+                       f"<b>{nice} HST</b>.</p><p>{join_line}</p>"
+                       "<p>The calendar invite is attached.</p>")
+        client_text = f"Biofield Consult booked for {nice} HST. {join_line}"
+        glen_html = (f"<p>New Biofield Consult: <b>{email}</b> on <b>{nice} HST</b>.</p>"
+                     f"<p>{join_line}</p>")
+        for to, nm, subj, html, text in [
+            (email, "", "Your Biofield Consult is booked", client_html, client_text),
+            (GLEN_CONSULT_EMAIL, "Glen", f"Biofield Consult booked: {email}", glen_html, glen_html)]:
+            try:
+                send_evox_email(to, nm, subj, html, text, ics)
+            except Exception:
+                app.logger.exception("consult confirmation send failed to %s", to)
+    except Exception:
+        app.logger.exception("consult confirmation build failed")
+
+
+@app.route("/api/consult/state")
+def consult_state():
+    from dashboard import consult as _consult
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _consult.init_consult_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        ready = _consult.consult_is_ready(cx, ident.email)
+        booked = ident.email in _get_consult_booked(cx)
+        stages = {"member": _is_paid_member(ident.email),
+                  "test_paid": _consult.has_paid_purchase(cx, ident.email, _consult.CONSULT["test_slug"]),
+                  "ready": ready}
+        return jsonify({"ready": ready, "booked": booked, "stages": stages})
+
+
+@app.route("/api/consult/availability")
+def consult_availability():
+    from dashboard import evox as _ev, consult as _consult
+    _init_calendar_table()  # rae_busy_intervals reads calendar_events
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _consult.init_consult_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _consult.consult_is_ready(cx, ident.email):
+            return jsonify({"error": "not_ready"}), 403
+        days = _evox_days(request.args.get("range", "week"))
+        lo, hi = days[0].isoformat(), days[-1].isoformat()
+        busy = _ev.rae_busy_intervals(cx, lo, hi, practitioner="glen")
+        booked = _ev.booked_starts(cx, practitioner="glen")
+        slots = _ev.available_slots(days, GLEN_CONSULT_HOURS, busy, booked, _hst_now(),
+                                    duration_min=_consult.CONSULT["duration_min"])
+        return jsonify({"slots": slots})
+
+
+@app.route("/api/consult/book", methods=["POST"])
+def consult_book():
+    from dashboard import evox as _ev, consult as _consult, zoom as _zoom
+    body = request.get_json(force=True) or {}
+    start_ts = (body.get("start_ts") or "").strip()
+    _init_calendar_table()  # create_booking inserts a calendar_events row
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ev.init_evox_tables(cx); _consult.init_consult_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if not _consult.consult_is_ready(cx, ident.email):
+            return jsonify({"error": "not_ready"}), 403
+        try:
+            d = _evox_date.fromisoformat(start_ts[:10])
+        except ValueError:
+            return jsonify({"error": "bad_start_ts"}), 400
+        busy = _ev.rae_busy_intervals(cx, d.isoformat(), d.isoformat(), practitioner="glen")
+        if start_ts not in _ev.available_slots([d], GLEN_CONSULT_HOURS, busy,
+                                               _ev.booked_starts(cx, practitioner="glen"),
+                                               _hst_now(), duration_min=30):
+            return jsonify({"error": "slot_unavailable"}), 409
+        try:
+            b = _ev.create_booking(cx, ident.email, start_ts, duration_min=30,
+                                   practitioner="glen", session_type="biofield-consult",
+                                   medium="video")
+        except _ev.SlotTaken:
+            return jsonify({"error": "slot_taken"}), 409
+        email = ident.email
+    # --- lock released; Zoom network below MUST NOT hold _db_lock ---
+    # Zoom (best-effort; never blocks the booking)
+    join_url = None
+    try:
+        tok = _zoom.get_token(os.environ["ZOOM_ACCOUNT_ID"], os.environ["ZOOM_CLIENT_ID"],
+                              os.environ["ZOOM_CLIENT_SECRET"])
+        m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic="Biofield Consult with Dr. Glen",
+                                 start_iso=start_ts, duration_min=30)
+        join_url = m.get("join_url")
+        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+            cx2.execute("UPDATE evox_bookings SET zoom_join_url=?, zoom_meeting_id=? WHERE id=?",
+                        (join_url, m.get("meeting_id"), b["id"]))
+            cx2.commit()
+    except Exception:
+        app.logger.exception("consult Zoom meeting create failed")
+    b["join_url"] = join_url
+    _consult_send_confirmations(email, b)   # Task 6
+    return jsonify({"ok": True, "start_ts": start_ts, "join_url": join_url})
 
 
 @app.route("/api/console/biofield-portal", methods=["GET"])
