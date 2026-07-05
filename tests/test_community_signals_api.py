@@ -75,3 +75,25 @@ def test_signal_bad_type_400():
 def test_bad_token_404():
     c = _client()
     assert c.get("/api/community/signals?token=nope").status_code == 404
+
+
+def test_bad_token_wins_over_bad_body():
+    c = _client()
+    r = c.post("/api/community/react?token=nope",
+               json={"content_id": 1, "reaction": "nope"})
+    assert r.status_code == 404
+
+
+def test_signals_scoped_across_members():
+    c = _client(); tok_a, _ = _seed(email="member-a@x.com")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import evox as _ev
+        tok_b = _ev.ensure_portal_token(cx, "member-b@x.com", "")
+        cx.commit()
+    c.post(f"/api/community/signal?token={tok_a}",
+           json={"target_type": "topic", "target_key": "sleep", "signal": "like"})
+    d_a = c.get(f"/api/community/signals?token={tok_a}").get_json()
+    assert d_a["likes"] == [{"target_type": "topic", "target_key": "sleep"}]
+    d_b = c.get(f"/api/community/signals?token={tok_b}").get_json()
+    assert d_b["likes"] == []

@@ -15765,14 +15765,14 @@ def community_react():
     body = request.get_json(force=True) or {}
     reaction = (body.get("reaction") or "").strip()
     content_id = body.get("content_id")
-    if reaction not in _cs.REACTIONS:
-        return jsonify({"error": "bad_reaction"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cm.init_community_tables(cx); _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
             return jsonify({"error": "not_found"}), 404
+        if reaction not in _cs.REACTIONS:
+            return jsonify({"error": "bad_reaction"}), 400
         item = _cm.get_content(cx, content_id)
         if item is None or item["published"] != 1:
             return jsonify({"error": "not_found"}), 404
@@ -15802,14 +15802,14 @@ def community_signal():
     ttype = (body.get("target_type") or "").strip()
     tkey = (body.get("target_key") or "").strip()
     signal = (body.get("signal") or "").strip()
-    if ttype not in _cs.TARGET_TYPES or signal not in (_cs.SIGNALS + ["none"]):
-        return jsonify({"error": "bad_signal"}), 400
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
             return jsonify({"error": "not_found"}), 404
+        if ttype not in _cs.TARGET_TYPES or signal not in (_cs.SIGNALS + ["none"]):
+            return jsonify({"error": "bad_signal"}), 400
         if signal == "none":
             _cs.clear_signal(cx, ident.email, ttype, tkey)
         else:
