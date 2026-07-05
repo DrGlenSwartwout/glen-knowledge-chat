@@ -89,3 +89,8 @@ def test_fulfill_masterclass_marks_paid_and_sends(client, monkeypatch):
     # non-masterclass session is a no-op
     monkeypatch.setattr(_sp, "get_session", lambda sid: {"metadata": {"kind": "retail"}})
     assert appmod._fulfill_masterclass("cs_other")["ok"] is False
+
+
+def test_masterclass_page_served(client):
+    r = client.get("/masterclass/1")
+    assert r.status_code == 200 and b"MasterClass" in r.data

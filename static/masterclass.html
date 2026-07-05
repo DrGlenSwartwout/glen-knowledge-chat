@@ -1,0 +1,49 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MasterClass · Healing Oasis</title>
+<style>
+ body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;padding:24px;color:#1b2a26;background:#f6f8f7}
+ h1{color:#2f6f5e} button{background:#2f6f5e;color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer}
+ input{display:block;width:100%;box-sizing:border-box;padding:10px;margin:6px 0;border:1px solid #d7e0dc;border-radius:8px;font-size:15px}
+ .muted{color:#5a6b64} .hidden{display:none}
+</style></head><body>
+<div id="v-load"><p class="muted">Loading...</p></div>
+<div id="v-event" class="hidden">
+  <h1 id="topic"></h1><p id="when" class="muted"></p><p id="price"></p><p id="desc"></p>
+  <input id="f-name" placeholder="Your name">
+  <input id="f-email" placeholder="you@email.com" type="email">
+  <p id="err" class="muted"></p>
+  <button onclick="register()">Register</button>
+</div>
+<div id="v-done" class="hidden"><h1>You are registered</h1><p id="done-msg"></p>
+  <p id="join-wrap" class="hidden">Join link: <a id="join-link" target="_blank" rel="noopener"></a></p></div>
+<script>
+const ID = (location.pathname.split("/masterclass/")[1]||"").split(/[?#]/)[0];
+const $=id=>document.getElementById(id), show=v=>{for(const x of ["load","event","done"])$("v-"+x).classList.toggle("hidden",x!==v)};
+function money(c){return "$"+(c/100).toFixed(2);}
+async function load(){
+  const r=await fetch(`/api/masterclass/${encodeURIComponent(ID)}`); if(!r.ok){$("v-load").innerHTML='<p class="muted">This class was not found.</p>';return;}
+  const e=await r.json();
+  $("topic").textContent=e.topic; $("when").textContent=(e.start_ts||"").replace("T"," ")+" HST · "+e.duration_min+" min";
+  $("desc").textContent=e.description||"";
+  $("price").textContent = e.price_cents>0
+    ? (e.member_price_cents>0 ? (money(e.member_price_cents)+" for members, "+money(e.price_cents)+" otherwise")
+                              : ("Free with membership, "+money(e.price_cents)+" otherwise"))
+    : "Free";
+  show("event");
+}
+async function register(){
+  const email=($("f-email").value||"").trim(), name=($("f-name").value||"").trim();
+  if(email.indexOf("@")<0){$("err").textContent="Please enter your email.";return;}
+  const r=await fetch(`/api/masterclass/${encodeURIComponent(ID)}/register`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,name})});
+  const d=await r.json();
+  if(d.checkout_url){ window.location=d.checkout_url; return; }
+  if(d.registered){
+    $("done-msg").textContent="Check your email for the calendar invite and join link.";
+    if(d.join_url){ $("join-link").href=d.join_url; $("join-link").textContent=d.join_url; $("join-wrap").classList.remove("hidden"); }
+    show("done"); return;
+  }
+  $("err").textContent = (d.error==="payment_unavailable") ? "Registration is not open yet. Please try again soon." : "Something went wrong. Please try again.";
+}
+load();
+</script></body></html>
