@@ -15032,6 +15032,15 @@ def api_portal_request_analysis(token):
     return jsonify(res), code
 
 
+@app.route("/portal/<token>/analyze")
+def portal_analyze_page(token):
+    # Landing page for the new-scan email's one-click link. The page's confirm button
+    # POSTs /request-analysis — so an email-scanner GET-prefetch can't consume a slot.
+    resp = send_from_directory(STATIC, "portal-analyze.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/invoice/<token>/open", methods=["POST"])
 def api_invoice_open(token):
     """Record a real 'client opened this invoice' event (fired by the expand-click)."""
