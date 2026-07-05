@@ -69,3 +69,59 @@ def test_recent_failure_count_window(monkeypatch):
 def test_recent_count_no_table_is_zero():
     cx = sqlite3.connect(":memory:")  # table not initialized
     assert SA.recent_failure_count(cx, minutes=30) == 0
+
+
+def test_record_returns_persisted_and_db_path(tmp_path, monkeypatch):
+    """The return exposes WHERE the row landed + a post-commit read-back, so an
+    'alerted but not in the console' incident is self-diagnosing."""
+    monkeypatch.setattr(INBOX, "send_email", lambda *a, **k: {"id": "x"})
+    dbfile = tmp_path / "chat_log.db"
+    cx = sqlite3.connect(str(dbfile))
+    SA.init_stripe_alerts_table(cx)
+    r = SA.record_failure(cx, "invoice-card", "stripe 401 unauthorized",
+                          throttle_min=20, now=_t(0))
+    assert r["id"] > 0
+    assert r["persisted"] is True
+    assert r["db_path"] == str(dbfile)  # absolute file the row committed to
+
+
+def test_alert_email_is_self_locating(monkeypatch):
+    """The owner email carries host + ledger DB path + persistence status, so a
+    non-durable write (email but no console row) is visible on the next incident."""
+    sent = {}
+    monkeypatch.setattr(INBOX, "send_email",
+                        lambda to, subj, body, **k: sent.update(body=body) or {"id": "x"})
+    import socket
+    cx = _db()
+    SA.record_failure(cx, "invoice-card", "stripe 401", throttle_min=20, now=_t(0))
+    body = sent["body"]
+    assert socket.gethostname() in body
+    assert "Ledger DB:" in body
+    assert "Persistence:" in body
+
+
+class _Empty:
+    def fetchone(self):
+        return None
+
+
+class _NoReadbackConn(sqlite3.Connection):
+    """A connection whose post-commit read-back finds nothing — simulates a write
+    that didn't land durably (email fires but the ledger stays empty)."""
+    def execute(self, sql, *a):
+        if sql.strip().startswith("SELECT 1 FROM stripe_failures WHERE id="):
+            return _Empty()
+        return super().execute(sql, *a)
+
+
+def test_persisted_false_surfaces_in_email(monkeypatch):
+    """If the read-back can't find the row (durability failure), the email says so
+    instead of silently implying the failure reached the ledger."""
+    captured = {}
+    monkeypatch.setattr(INBOX, "send_email",
+                        lambda to, subj, body, **k: captured.update(body=body) or {"id": "x"})
+    cx = sqlite3.connect(":memory:", factory=_NoReadbackConn)
+    SA.init_stripe_alerts_table(cx)
+    r = SA.record_failure(cx, "invoice-card", "stripe 401", throttle_min=20, now=_t(0))
+    assert r["persisted"] is False
+    assert "NOT PERSISTED" in captured["body"]

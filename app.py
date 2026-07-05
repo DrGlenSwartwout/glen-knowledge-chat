@@ -30135,9 +30135,17 @@ def _alert_stripe(context, err):
     try:
         cx = _sqlite3.connect(LOG_DB)
         try:
-            _stripe_alerts.record_failure(cx, context, str(err))
+            res = _stripe_alerts.record_failure(cx, context, str(err))
         finally:
             cx.close()
+        # Log WHERE the row landed so an "alerted but console empty" incident is
+        # traceable from prod logs alone (db path + persisted flag), not just email.
+        if res.get("persisted"):
+            print(f"[stripe-alert] {context}: recorded id={res.get('id')} "
+                  f"emailed={res.get('emailed')} db={res.get('db_path')!r}", flush=True)
+        else:
+            print(f"[stripe-alert] {context}: NOT PERSISTED to durable ledger "
+                  f"(db={res.get('db_path')!r})", flush=True)
     except Exception as _e:
         print(f"[stripe-alert] skipped: {_e!r}", flush=True)
 
