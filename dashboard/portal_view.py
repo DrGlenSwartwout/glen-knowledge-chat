@@ -196,6 +196,21 @@ def _consult_block(cx, email):
         return {"ready": False, "booked": False, "booked_start": None, "stages": {}}
 
 
+def _onboarding_block(cx, email):
+    """Whether the member has a booked new-member welcome call. Membership
+    eligibility is decided by the client JS via /api/onboarding/state (this
+    layer has no app import); here `eligible` is a render hint that is True only
+    when a booking already exists. Defensive: any failure falls back to a safe
+    not-eligible/not-booked default so it never breaks the portal payload."""
+    from dashboard import onboarding as _ob
+    try:
+        row = _ob.existing_onboarding(cx, email)
+        start = row["start_ts"] if row else None
+        return {"eligible": start is not None, "booked_start": start}
+    except Exception:
+        return {"eligible": False, "booked_start": None}
+
+
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
                     biofield_unlocked=True):
@@ -231,4 +246,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
         "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
         "consult": _consult_block(cx, email),
+        "onboarding": _onboarding_block(cx, email),
     }
