@@ -48,14 +48,16 @@
   /* Fireside controls live BOTTOM-right (the top-right is owned by the journey nav
      shell / "My Path" quest button) and sit above that shell's z-index (9999) so
      they aren't buried. See portal nav-shell (js-shell / jq-overlay) layering. */
-  .sound-toggle{position:fixed;bottom:16px;right:16px;z-index:10000;width:40px;height:40px;
-    border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);
-    cursor:pointer;display:none;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+  .sound-toggle{position:fixed;bottom:18px;right:18px;z-index:10000;width:48px;height:48px;
+    border-radius:50%;border:1px solid rgba(255,255,255,.28);background:#1F5A4D;color:#fff;
+    cursor:pointer;display:none;align-items:center;justify-content:center;
+    box-shadow:0 4px 16px rgba(0,0,0,.38)}
   body.has-bg .sound-toggle{display:flex}
-  .el-picker{position:fixed;bottom:16px;right:64px;z-index:10000;height:40px;
-    border-radius:20px;border:1px solid var(--line);background:var(--card);color:var(--ink);
-    cursor:pointer;padding:0 12px;font-size:.85rem;box-shadow:var(--shadow);display:none;
-    max-width:40vw}
+  .el-picker{position:fixed;bottom:18px;right:76px;z-index:10000;height:48px;
+    border-radius:24px;border:1px solid rgba(255,255,255,.28);background:#1F5A4D;color:#fff;
+    cursor:pointer;padding:0 16px;font-size:.9rem;font-weight:600;
+    box-shadow:0 4px 16px rgba(0,0,0,.38);display:none;max-width:42vw}
+  .el-picker option{color:#111;background:#fff}
   /* The scene picker stays available whenever the feature is on, even with no
      active backdrop — so "Automatic" (which can resolve to no scene) never strands
      the member with no way to pick one back. The sound toggle stays has-bg-gated. */

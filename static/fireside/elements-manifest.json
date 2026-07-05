@@ -82,13 +82,13 @@
       },
       "ambience": {
         "bed": "/static/fireside/audio/amb-fire-loop.mp3",
-        "bed_volume": 0.036,
+        "bed_volume": 0.11,
         "oneshots": [
           { "id": "embers", "file": "/static/fireside/audio/amb-embers.mp3", "volume": 0.08, "spark": true, "min_gap_s": 50, "max_gap_s": 140 },
           { "id": "logsettle", "file": "/static/fireside/audio/amb-logsettle.mp3", "volume": 0.09, "spark": true, "min_gap_s": 60, "max_gap_s": 170 },
           { "id": "kettle", "file": "/static/fireside/audio/amb-kettle.mp3", "volume": 0.13, "min_gap_s": 90, "max_gap_s": 230 },
           { "id": "owl", "file": "/static/fireside/audio/amb-owl.mp3", "volume": 0.11, "min_gap_s": 120, "max_gap_s": 280 },
-          { "id": "purr", "file": "/static/fireside/audio/amb-catpurr.mp3", "volume": 0.05, "loop": true },
+          { "id": "purr", "file": "/static/fireside/audio/amb-catpurr.mp3", "volume": 0.13, "loop": true },
           { "id": "rainwave", "file": "/static/fireside/audio/amb-rainwave.mp3", "volume": 0.14, "min_gap_s": 220, "max_gap_s": 520 },
           { "id": "crow", "file": "/static/fireside/audio/amb-crow.mp3", "volume": 0.16, "min_gap_s": 320, "max_gap_s": 720 }
         ]
