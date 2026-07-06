@@ -107,7 +107,8 @@ def create_request(cx, coach_email, member_email, member_name, note, member_vide
         "member_video_url,status,created_at) VALUES (?,?,?,?,?, 'pending', ?) "
         "ON CONFLICT(coach_email,member_email) DO UPDATE SET status='pending', "
         "member_name=excluded.member_name, note=excluded.note, "
-        "member_video_url=excluded.member_video_url, created_at=excluded.created_at",
+        "member_video_url=excluded.member_video_url, created_at=excluded.created_at, "
+        "decided_at=NULL",   # re-apply to a previously declined/withdrawn coach starts fresh
         (_lc(coach_email), member_email, member_name, (note or "")[:500],
          member_video_url or "", _now()))
     cx.commit()
