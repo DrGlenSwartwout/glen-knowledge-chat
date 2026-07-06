@@ -55,7 +55,7 @@ def _schedule(report):
         if not here:
             continue
         cells = "; ".join(
-            f"{_e(e.get('name'))} <span class=food>({_e(e.get('dosage'))}"
+            f"{_e(e.get('name'))} <span class=food>({_e(e.get('per_slot') or e.get('dosage'))}"
             + (f", {_e(e.get('food'))}" if e.get("food") else "") + ")</span>"
             for e in here)
         rows += f"<tr><td class=slot>{_e(slot)}</td><td>{cells}</td></tr>"
