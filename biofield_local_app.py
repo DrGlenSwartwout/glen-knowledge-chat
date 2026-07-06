@@ -490,16 +490,71 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             data = _st.list_stresses(cx, test_id, chain_rows)
         return {"data": data, "html": render_stress_panel(data)}
 
+    def _chain_rows_for(rep):
+        return [{"layer": l.get("layer"), "head": l.get("head"), "remedy": l.get("remedy")}
+                for l in (rep.get("layers") or [])]
+
+    def _suggest_payload(data):
+        return {"ok": True, "picks": data["picks"], "uncovered": data["uncovered"],
+                "source": data["source"], "pattern_key": data["pattern_key"],
+                "has_pattern": data["has_pattern"], "html": render_suggest_panel(data)}
+
     @app.route("/author/<test_id>/suggest-remedies")
     def author_suggest_remedies(test_id):
         from dashboard import biofield_stress as _st
+        force = request.args.get("force") == "computed"
         with sqlite3.connect(db_path) as cx:
             rep = _report_for(cx, test_id)
-            chain_rows = [{"head": l.get("head"), "remedy": l.get("remedy")}
-                          for l in (rep.get("layers") or [])]
-            data = _st.suggest_minimal_remedies(cx, test_id, chain_rows)
-        return {"picks": data["picks"], "uncovered": data["uncovered"],
-                "html": render_suggest_panel(data)}
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep), force_computed=force)
+        return _suggest_payload(data)
+
+    @app.route("/author/<test_id>/remedy-set", methods=["POST"])
+    def author_remedy_set_save(test_id):
+        from dashboard import biofield_stress as _st
+        rems = (request.get_json(silent=True) or {}).get("remedies") or []
+        with sqlite3.connect(db_path) as cx:
+            _st.save_remedy_set(cx, test_id, rems)
+            rep = _report_for(cx, test_id)
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
+        return _suggest_payload(data)
+
+    @app.route("/author/<test_id>/remedy-set/recompute", methods=["POST"])
+    def author_remedy_set_recompute(test_id):
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            _st.clear_remedy_set(cx, test_id)
+            rep = _report_for(cx, test_id)
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep), force_computed=True)
+        return _suggest_payload(data)
+
+    @app.route("/author/<test_id>/remedy-set/save-pattern", methods=["POST"])
+    def author_remedy_set_save_pattern(test_id):
+        from dashboard import biofield_stress as _st
+        rems = (request.get_json(silent=True) or {}).get("remedies") or []
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            res = _st.save_pattern_set(cx, test_id, _chain_rows_for(rep), rems)
+        return res
+
+    @app.route("/author/<test_id>/remedy-set/apply-to-chain", methods=["POST"])
+    def author_remedy_set_apply(test_id):
+        from dashboard import biofield_stress as _st
+        rems = [(r or "").strip() for r in
+                ((request.get_json(silent=True) or {}).get("remedies") or []) if (r or "").strip()]
+        tnum = int(str(test_id).lstrip("a") or 0)
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
+            cover_by = {p["remedy"]: (p.get("covers") or []) for p in data["picks"]}
+            nxt = int(cx.execute("SELECT COALESCE(MAX(layer),0) FROM biofield_auth_chain "
+                                 "WHERE test_id=?", (tnum,)).fetchone()[0] or 0)
+            added = 0
+            for r in rems:
+                nxt += 1
+                head = ", ".join(cover_by.get(r, []))[:200]
+                add_chain_row(cx, test_id, nxt, head, "", r, "", "", "", confirmed=1, origin="live")
+                added += 1
+        return {"ok": True, "added": added}
 
     @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
     def author_stress_balance(test_id, sid):

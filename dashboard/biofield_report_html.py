@@ -102,6 +102,13 @@ _STYLE = """
    padding:1px 8px;margin:0 3px 3px 0;font-size:12px;color:var(--muted)}
  li.sdrag{cursor:grab}
  li.sdrag:hover{color:var(--accent)}
+ li.mrrow{display:flex;align-items:center;gap:8px;margin:4px 0;padding:3px 4px;border-radius:6px}
+ li.mrrow.drag{opacity:.45}
+ li.mrrow.over{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+ .mrhandle{cursor:grab;color:var(--muted);font-size:15px;line-height:1;user-select:none}
+ .mrname{flex:0 0 240px;max-width:52%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:6px;padding:5px 7px;font:inherit;font-size:13px}
+ .mrname:focus{border-color:var(--accent);outline:none}
  .btn.saved,.ghost.saved{background:var(--ok);color:#0c0e12;border-color:var(--ok)}
  @keyframes savedpulse{0%{box-shadow:0 0 0 2px var(--ok)}100%{box-shadow:0 0 0 2px transparent}}
  .savedflash{animation:savedpulse 1s ease-out}
@@ -514,6 +521,36 @@ async function suggestRemedies(){
  try{var j=await (await fetch('/author/__TID__/suggest-remedies')).json();
   document.getElementById('suggestpanel').innerHTML=j.html}
  catch(e){document.getElementById('suggestpanel').innerHTML=''}}
+// --- Minimal-remedy set: editable + searchable + drag-reorder + persist ---
+function mrNames(){return [].slice.call(document.querySelectorAll('#mrlist .mrname'))
+ .map(function(i){return (i.value||'').trim()}).filter(Boolean)}
+function mrSetPanel(j){if(j&&j.html!==undefined)document.getElementById('suggestpanel').innerHTML=j.html}
+async function mrSave(){mrSetPanel(await post('/author/__TID__/remedy-set',{remedies:mrNames()}))}
+async function mrEdit(inp){await mrSave()}
+var _mrDrag=null;
+function mrDragStart(e){_mrDrag=e.currentTarget;e.currentTarget.classList.add('drag');
+ if(e.dataTransfer){e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text','x')}catch(_){}}}
+function mrDragEnd(e){e.currentTarget.classList.remove('drag');
+ document.querySelectorAll('#mrlist .over').forEach(function(c){c.classList.remove('over')})}
+function mrDragOver(e){e.preventDefault();var t=e.currentTarget;
+ if(_mrDrag&&t!==_mrDrag&&_mrDrag.parentNode===t.parentNode)t.classList.add('over')}
+function mrDragLeave(e){e.currentTarget.classList.remove('over')}
+function mrDrop(e){e.preventDefault();var t=e.currentTarget;t.classList.remove('over');
+ if(!_mrDrag||t===_mrDrag||_mrDrag.parentNode!==t.parentNode)return;
+ var box=t.parentNode,items=[].slice.call(box.children);
+ var di=items.indexOf(_mrDrag),ti=items.indexOf(t);
+ box.insertBefore(_mrDrag,di<ti?t.nextSibling:t);mrSave()}
+async function mrRecompute(){mrSetPanel(await post('/author/__TID__/remedy-set/recompute',{}))}
+async function mrSavePattern(btn){var o=btn.textContent;btn.disabled=true;
+ try{var j=await post('/author/__TID__/remedy-set/save-pattern',{remedies:mrNames()});
+  btn.textContent=(j&&j.ok)?('Saved pattern \\u2713 ('+j.count+')'):('Failed: '+((j&&j.reason)||'error'))}
+ catch(e){btn.textContent='Failed'}
+ finally{btn.disabled=false;setTimeout(function(){btn.textContent=o},2600)}}
+async function mrApplyChain(btn){btn.disabled=true;var o=btn.textContent;btn.textContent='Adding\\u2026';
+ try{var j=await post('/author/__TID__/remedy-set/apply-to-chain',{remedies:mrNames()});
+  if(j&&j.ok){location.reload()}else{btn.textContent='Failed';btn.disabled=false;
+   setTimeout(function(){btn.textContent=o},2000)}}
+ catch(e){btn.textContent='Failed';btn.disabled=false}}
 loadLists();
 loadE4L();
 loadStress();
@@ -878,21 +915,47 @@ def render_list_html(tests, q="", authored=None):
 
 
 def render_suggest_panel(data):
+    """Editable minimal-remedy set: each remedy is a searchable input (catalog
+    datalist), rows drag-reorder, edits + order auto-save per test. Buttons:
+    recompute from scan, save as a reusable stress-pattern template, and append
+    the whole sequence as new causal-chain layers."""
     data = data or {}
     picks = data.get("picks") or []
     unc = data.get("uncovered") or []
     if not picks and not unc:
         return "<div class=card><div class=food>No active required stresses to consolidate.</div></div>"
-    items = ""
+    source = data.get("source") or "computed"
+    badge = {"saved": "your edits", "pattern": "from saved pattern",
+             "computed": "computed"}.get(source, source)
+    rows = ""
     for p in picks:
+        rem = _e(p.get("remedy") or "")
         covers = p.get("covers") or []
-        items += (f"<li><b>{_e(p.get('remedy') or '')}</b> &rarr; covers "
-                  f"{_e(', '.join(covers))} <span class=pill>{len(covers)}</span></li>")
-    body = f"<ol style='margin:4px 0 0;padding-left:20px'>{items}</ol>" if items else ""
-    unc_html = (f"<div class=food style='margin-top:6px'>No scan remedy for: "
+        cov = ((f"<span class=food>covers {_e(', '.join(covers))} "
+                f"<span class=pill>{len(covers)}</span></span>") if covers else
+               "<span class=food>covers nothing listed</span>")
+        rows += (
+            "<li class=mrrow draggable=true ondragstart='mrDragStart(event)' "
+            "ondragover='mrDragOver(event)' ondragleave='mrDragLeave(event)' "
+            "ondrop='mrDrop(event)' ondragend='mrDragEnd(event)'>"
+            "<span class=mrhandle title='Drag to reorder'>&#9776;</span>"
+            f"<input class=mrname list=catalog value=\"{rem}\" onchange='mrEdit(this)' "
+            "title='Click and type to search remedies'>"
+            f"{cov}</li>")
+    unc_html = (f"<div class=food style='margin-top:6px'>No listed remedy for: "
                 f"{_e(', '.join(unc))}</div>" if unc else "")
-    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
-            f"letter-spacing:.08em'>Minimal remedy set</div>{body}{unc_html}</div>")
+    btns = ("<div style='margin-top:8px;display:flex;gap:6px;flex-wrap:wrap'>"
+            "<button class='btn ghost' style='font-size:11px' onclick='mrRecompute()'>"
+            "Recompute from scan</button>"
+            "<button class='btn ghost' style='font-size:11px' onclick='mrSavePattern(this)'>"
+            "Save for this stress pattern</button>"
+            "<button class='btn' style='font-size:11px' onclick='mrApplyChain(this)'>"
+            "Add to causal chain</button></div>")
+    head = ("<div class=food style='text-transform:uppercase;font-size:11px;letter-spacing:.08em'>"
+            f"Minimal remedy set <span class=pill>{_e(badge)}</span></div>")
+    return (f"<div class=card>{head}"
+            f"<ol id=mrlist style='margin:6px 0 0;padding-left:20px'>{rows}</ol>"
+            f"{unc_html}{btns}</div>")
 
 
 def render_stress_panel(data):

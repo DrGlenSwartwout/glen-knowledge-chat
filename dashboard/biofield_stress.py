@@ -1,6 +1,8 @@
 """Per-test master stress list + remedy<->stress coverage map for the local
 Biofield Intake balancing loop (B1). Pure sqlite; the caller passes a connection.
 Balanced state is DERIVED at read time, never stored (see list_stresses)."""
+import hashlib
+import json
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -47,6 +49,13 @@ def init_stress_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_remedy_coverage(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, remedy TEXT, code TEXT,
         UNIQUE(test_id, remedy, code))""")
+    # Per-test edited/ordered minimal-remedy set (survives reload).
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_remedy_set(
+        test_id INTEGER PRIMARY KEY, remedies_json TEXT, updated_at TEXT)""")
+    # Reusable minimal-remedy set keyed by the active required-stress pattern.
+    cx.execute("""CREATE TABLE IF NOT EXISTS biofield_remedy_pattern(
+        pattern_key TEXT PRIMARY KEY, tokens_json TEXT, remedies_json TEXT,
+        label TEXT, updated_at TEXT)""")
     cx.commit()
 
 
@@ -302,11 +311,9 @@ def add_voice_stress(cx, tid, label):
     return add_stress(cx, tid, label, source="voice", balance="required")
 
 
-def suggest_minimal_remedies(cx, tid, chain_rows):
-    """Fewest remedies covering active+required stresses (scan via the coverage map,
-    non-scan via historical stress_suggestions). Cover token = E4L code (scan) or
-    _norm(label) (non-scan). Returns picks (remedy + covered LABELS) + uncovered labels."""
-    from dashboard.biofield_setcover import minimal_remedies
+def _remedy_context(cx, tid, chain_rows):
+    """Set-cover inputs: active required tokens, token->label, remedy->codes coverage.
+    Cover token = E4L code (scan) or _norm(label) (non-scan)."""
     data = list_stresses(cx, tid, chain_rows)
     token_label, active_tokens, coverage = {}, set(), {}
     # scan coverage from the persisted map
@@ -330,8 +337,117 @@ def suggest_minimal_remedies(cx, tid, chain_rows):
             token_label[tok] = s.get("label") or tok
             for rem in historical_remedies(cx, s.get("label") or ""):
                 coverage.setdefault(rem, set()).add(tok)
-    res = minimal_remedies(active_tokens, coverage)
-    picks = [{"remedy": p["remedy"], "covers": [token_label.get(c, c) for c in p["covers"]]}
-             for p in res["picks"]]
-    uncovered = [token_label.get(c, c) for c in res["uncovered"]]
+    return active_tokens, token_label, coverage
+
+
+def _pattern_key(active_tokens):
+    """Order-independent fingerprint of the active required-stress set."""
+    toks = sorted(active_tokens)
+    key = hashlib.sha1("\n".join(toks).encode("utf-8")).hexdigest() if toks else ""
+    return key, toks
+
+
+def _covers_for(remedies, active_tokens, token_label, coverage):
+    """Per-remedy covered LABELS + overall uncovered LABELS for an ordered name list."""
+    covered_tokens, picks = set(), []
+    for r in remedies:
+        codes = coverage.get((r or "").strip().lower(), set()) & active_tokens
+        covered_tokens |= codes
+        picks.append({"remedy": r, "covers": [token_label.get(c, c) for c in codes]})
+    uncovered = [token_label.get(c, c) for c in active_tokens if c not in covered_tokens]
+    return picks, uncovered
+
+
+def _computed_set(active_tokens, coverage):
+    from dashboard.biofield_setcover import minimal_remedies
+    return [p["remedy"] for p in minimal_remedies(active_tokens, coverage)["picks"]]
+
+
+def suggest_minimal_remedies(cx, tid, chain_rows):
+    """Fewest remedies covering active+required stresses. Returns picks + uncovered
+    (kept for any caller that wants the raw computed set)."""
+    active_tokens, token_label, coverage = _remedy_context(cx, tid, chain_rows)
+    picks, uncovered = _covers_for(_computed_set(active_tokens, coverage),
+                                   active_tokens, token_label, coverage)
     return {"picks": picks, "uncovered": uncovered}
+
+
+def get_saved_remedy_set(cx, tid):
+    row = cx.execute("SELECT remedies_json FROM biofield_auth_remedy_set WHERE test_id=?",
+                     (_num(tid),)).fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        return [r for r in json.loads(row[0]) if isinstance(r, str)]
+    except Exception:
+        return None
+
+
+def save_remedy_set(cx, tid, remedies):
+    init_stress_tables(cx)
+    rems = [(r or "").strip() for r in (remedies or []) if (r or "").strip()]
+    cx.execute("INSERT INTO biofield_auth_remedy_set(test_id,remedies_json,updated_at) "
+               "VALUES(?,?,?) ON CONFLICT(test_id) DO UPDATE SET "
+               "remedies_json=excluded.remedies_json, updated_at=excluded.updated_at",
+               (_num(tid), json.dumps(rems), _now()))
+    cx.commit()
+    return rems
+
+
+def clear_remedy_set(cx, tid):
+    cx.execute("DELETE FROM biofield_auth_remedy_set WHERE test_id=?", (_num(tid),))
+    cx.commit()
+
+
+def _get_pattern_set(cx, key):
+    if not key:
+        return None
+    row = cx.execute("SELECT remedies_json FROM biofield_remedy_pattern WHERE pattern_key=?",
+                     (key,)).fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        return [r for r in json.loads(row[0]) if isinstance(r, str)]
+    except Exception:
+        return None
+
+
+def save_pattern_set(cx, tid, chain_rows, remedies):
+    """Persist the current ordered set as a reusable template keyed by the stress pattern."""
+    init_stress_tables(cx)
+    active_tokens, token_label, _cov = _remedy_context(cx, tid, chain_rows)
+    key, toks = _pattern_key(active_tokens)
+    if not key:
+        return {"ok": False, "reason": "no active required stresses to key a pattern"}
+    rems = [(r or "").strip() for r in (remedies or []) if (r or "").strip()]
+    label = ", ".join(token_label.get(t, t) for t in toks)[:240]
+    cx.execute("INSERT INTO biofield_remedy_pattern"
+               "(pattern_key,tokens_json,remedies_json,label,updated_at) VALUES(?,?,?,?,?) "
+               "ON CONFLICT(pattern_key) DO UPDATE SET tokens_json=excluded.tokens_json, "
+               "remedies_json=excluded.remedies_json, label=excluded.label, "
+               "updated_at=excluded.updated_at",
+               (key, json.dumps(toks), json.dumps(rems), label, _now()))
+    cx.commit()
+    return {"ok": True, "pattern_key": key, "count": len(rems)}
+
+
+def resolve_remedy_set(cx, tid, chain_rows, force_computed=False):
+    """Panel source of truth. Priority: per-test saved set -> exact stress-pattern
+    template -> freshly computed set-cover. force_computed skips the first two."""
+    active_tokens, token_label, coverage = _remedy_context(cx, tid, chain_rows)
+    key, _toks = _pattern_key(active_tokens)
+    remedies, source = None, "computed"
+    if not force_computed:
+        saved = get_saved_remedy_set(cx, tid)
+        if saved is not None:
+            remedies, source = saved, "saved"
+        else:
+            pat = _get_pattern_set(cx, key)
+            if pat is not None:
+                remedies, source = pat, "pattern"
+    if remedies is None:
+        remedies = _computed_set(active_tokens, coverage)
+    picks, uncovered = _covers_for(remedies, active_tokens, token_label, coverage)
+    return {"picks": picks, "uncovered": uncovered, "remedies": remedies,
+            "source": source, "pattern_key": key,
+            "has_pattern": _get_pattern_set(cx, key) is not None}
