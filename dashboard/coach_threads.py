@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS coach_threads (
     created_at TEXT,
     coach_last_read_at TEXT,
     member_last_read_at TEXT,
+    active_epoch INTEGER NOT NULL DEFAULT 1,
     UNIQUE(coach_email, member_email)
 );
 CREATE TABLE IF NOT EXISTS coach_messages (
@@ -22,7 +23,8 @@ CREATE TABLE IF NOT EXISTS coach_messages (
     thread_id INTEGER NOT NULL,
     sender_role TEXT NOT NULL,
     body TEXT NOT NULL,
-    created_at TEXT
+    created_at TEXT,
+    epoch INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS ix_cmsg_thread ON coach_messages(thread_id, id);
 CREATE TABLE IF NOT EXISTS coach_thread_reports (
@@ -47,7 +49,34 @@ def _lc(email):
 
 def init_thread_tables(cx):
     cx.executescript(_DDL)
+    # Lazy migration for tables created before the epoch columns existed (prod already
+    # has coach_threads/coach_messages from slice 3). ALTER raises if the column exists.
+    for tbl, col in (("coach_threads", "active_epoch"), ("coach_messages", "epoch")):
+        try:
+            cx.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} INTEGER NOT NULL DEFAULT 1")
+        except Exception:
+            pass
     cx.commit()
+
+
+def reactivate_thread(cx, coach_email, member_email):
+    """On a fresh re-accept of a previously-matched pair, give the two participants a
+    clean slate: bump active_epoch so prior messages are hidden from BOTH sides (but
+    kept for the owner transcript), clear the blocked/reported flags, resolve old
+    reports, and reset read marks. No-op when no thread exists yet (a first-time
+    accept). Returns True when a thread was reactivated."""
+    ce, me = _lc(coach_email), _lc(member_email)
+    row = cx.execute("SELECT id FROM coach_threads WHERE coach_email=? AND member_email=?",
+                     (ce, me)).fetchone()
+    if not row:
+        return False
+    tid = row["id"]
+    cx.execute("UPDATE coach_threads SET status='active', blocked_by=NULL, reported=0, "
+               "active_epoch=active_epoch+1, coach_last_read_at=NULL, member_last_read_at=NULL "
+               "WHERE id=?", (tid,))
+    cx.execute("UPDATE coach_thread_reports SET resolved=1 WHERE thread_id=?", (tid,))
+    cx.commit()
+    return True
 
 
 def get_or_create_thread(cx, *, coach_email, member_email, source="coaching"):
@@ -71,15 +100,24 @@ def thread_for_pair(cx, coach_email, member_email):
 
 
 def post_message(cx, *, thread_id, sender_role, body):
-    cur = cx.execute("INSERT INTO coach_messages (thread_id, sender_role, body, created_at) "
-                     "VALUES (?,?,?,?)", (thread_id, sender_role, body, _now()))
+    ep = cx.execute("SELECT active_epoch FROM coach_threads WHERE id=?", (thread_id,)).fetchone()
+    epoch = (ep["active_epoch"] if ep else 1) or 1
+    cur = cx.execute("INSERT INTO coach_messages (thread_id, sender_role, body, created_at, epoch) "
+                     "VALUES (?,?,?,?,?)", (thread_id, sender_role, body, _now(), epoch))
     cx.commit()
     return cur.lastrowid
 
 
-def messages(cx, thread_id):
-    rows = cx.execute("SELECT id, sender_role, body, created_at FROM coach_messages "
-                      "WHERE thread_id=? ORDER BY id", (thread_id,)).fetchall()
+def messages(cx, thread_id, epoch=None):
+    """Messages for a thread. With `epoch` (the thread's active_epoch), returns only
+    that session's messages — the participant view, which hides pre-reactivation
+    history. Without `epoch` (the owner transcript), returns the full history."""
+    if epoch is None:
+        rows = cx.execute("SELECT id, sender_role, body, created_at, epoch FROM coach_messages "
+                          "WHERE thread_id=? ORDER BY id", (thread_id,)).fetchall()
+    else:
+        rows = cx.execute("SELECT id, sender_role, body, created_at, epoch FROM coach_messages "
+                          "WHERE thread_id=? AND epoch=? ORDER BY id", (thread_id, epoch)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -92,10 +130,14 @@ def mark_read(cx, thread_id, role):
 def unread_count(cx, thread_id, role):
     col = "coach_last_read_at" if role == "coach" else "member_last_read_at"
     other = "member" if role == "coach" else "coach"
-    row = cx.execute(f"SELECT {col} AS lr FROM coach_threads WHERE id=?", (thread_id,)).fetchone()
-    last = (row["lr"] if row else None) or ""
+    row = cx.execute(f"SELECT {col} AS lr, active_epoch FROM coach_threads WHERE id=?",
+                     (thread_id,)).fetchone()
+    if not row:
+        return 0
+    last = row["lr"] or ""
+    ep = row["active_epoch"] or 1
     return cx.execute("SELECT COUNT(*) FROM coach_messages WHERE thread_id=? AND sender_role=? "
-                      "AND created_at > ?", (thread_id, other, last)).fetchone()[0]
+                      "AND epoch=? AND created_at > ?", (thread_id, other, ep, last)).fetchone()[0]
 
 
 def block_thread(cx, thread_id, blocked_by_role):
