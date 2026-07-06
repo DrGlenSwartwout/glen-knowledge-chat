@@ -61,15 +61,19 @@ def test_semantic_fills_when_no_exact_overlap():
     assert f"{p}_close@x.com" not in json.dumps(d)                              # anonymous
 
 
-def test_exact_overlap_never_triggers_semantic():
-    p = "zzz_sem2"
+def test_exact_topic_candidate_wins_in_blend():
     c = _client()
-    me = _member(f"{p}_me@x.com", f"{p}_liver"); _member(f"{p}_share@x.com", f"{p}_liver")
-    _optin(f"{p}_me@x.com", f"{p}_share@x.com")
+    me = _member("zzz_ex_me@x.com", "liver")
+    _member("zzz_ex_share@x.com", "liver")
+    for email in ("zzz_ex_me@x.com", "zzz_ex_share@x.com"):
+        with sqlite3.connect(appmod.LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row; _pc.init_peer_tables(cx)
+            _pc.set_optin(cx, email, True); cx.commit()
     with mock.patch.object(appmod, "_is_paid_member", return_value=True), \
-         mock.patch.object(appmod, "_member_interest_vec", side_effect=AssertionError("semantic must not run")):
+         mock.patch.object(appmod, "_member_interest_vec",
+                           side_effect=lambda cx, email, liked: [1.0, 0.0]):
         d = c.get(f"/api/peer/proposal?token={me}").get_json()
-    assert d["candidate"]["shared_topics"] == [f"{p}_liver"] and "semantic" not in d["candidate"]
+    assert d["candidate"]["shared_topics"] == ["liver"] and d["candidate"]["semantic"] is False
 
 
 def test_below_threshold_returns_no_candidate():
