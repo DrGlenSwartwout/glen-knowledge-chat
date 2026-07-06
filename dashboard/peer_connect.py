@@ -125,25 +125,37 @@ def _pair_has_match(cx, e1, e2):
                       (a, b)).fetchone() is not None
 
 
+def eligible_candidates(cx, me, is_paid=None):
+    """Opted-in members that pass every v1 exclusion (self, non-paid, existing match,
+    already-acted, skipped-me, person-blocked) — WITHOUT the shared-topic requirement.
+    The exact matcher ranks these by shared topics; the semantic gap-filler ranks the
+    exact-less remainder by interest-vector cosine."""
+    me = _lc(me)
+    out = []
+    for n in opted_in_members(cx):
+        if n == me:
+            continue
+        if is_paid is not None and not is_paid(n):
+            continue
+        if _pair_has_match(cx, me, n):
+            continue
+        if interest_kind(cx, me, n) is not None:
+            continue
+        if interest_kind(cx, n, me) == "skip":
+            continue
+        if _person_blocked(cx, me, n) or _person_blocked(cx, n, me):
+            continue
+        out.append(n)
+    return out
+
+
 def next_candidate(cx, me, is_paid=None):
     me = _lc(me)
     mine = liked_topics(cx, me) - blocked_topics(cx, me)
     if not mine:
         return None
     best = None
-    for n in opted_in_members(cx):
-        if n == me:
-            continue
-        if is_paid is not None and not is_paid(n):              # no longer a current paid member
-            continue
-        if _pair_has_match(cx, me, n):
-            continue
-        if interest_kind(cx, me, n) is not None:            # I already acted on them
-            continue
-        if interest_kind(cx, n, me) == "skip":              # they passed on me
-            continue
-        if _person_blocked(cx, me, n) or _person_blocked(cx, n, me):
-            continue
+    for n in eligible_candidates(cx, me, is_paid=is_paid):
         shared = mine & (liked_topics(cx, n) - blocked_topics(cx, n))
         if not shared:
             continue
