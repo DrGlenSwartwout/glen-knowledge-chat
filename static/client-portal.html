@@ -1913,9 +1913,13 @@ function renderPeerProposal(host, d){
   row.style.margin = ".4rem 0";
 
   const desc = document.createElement("div");
-  desc.textContent = topics.length
-    ? ("A member who also resonates with " + topics.join(" and "))
-    : "You seem to be walking a similar path.";
+  if(topics.length){
+    desc.textContent = "A member who also resonates with " + topics.join(" and ");
+  } else if(candidate.reason_topic){
+    desc.textContent = "Another member exploring themes close to your interest in " + candidate.reason_topic + ".";
+  } else {
+    desc.textContent = "You seem to be walking a similar path.";
+  }
   row.appendChild(desc);
 
   const err = document.createElement("p");
