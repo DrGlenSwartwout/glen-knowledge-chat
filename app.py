@@ -16635,6 +16635,9 @@ def practitioner_coach_request_respond():
         _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
         if _cc.request_owner(cx, rid) != email:
             return jsonify({"error": "not_found"}), 404
+        if _cc.request_status(cx, rid) != "pending":
+            # already decided (accepted/declined/withdrawn/ended) — do not resurrect it
+            return jsonify({"error": "not_pending"}), 409
         if accept:
             vol = _cd.get_volunteer(cx, email)
             capacity = (vol or {}).get("capacity", 0) or 0

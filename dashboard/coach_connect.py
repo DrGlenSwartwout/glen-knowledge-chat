@@ -156,6 +156,12 @@ def request_owner(cx, request_id):
     return row["coach_email"] if row else None
 
 
+def request_status(cx, request_id):
+    """The current status of a request id, or None."""
+    row = cx.execute("SELECT status FROM coach_requests WHERE id=?", (request_id,)).fetchone()
+    return row["status"] if row else None
+
+
 def join_waitlist(cx, member_email):
     cx.execute("INSERT OR IGNORE INTO coach_waitlist (member_email,created_at) VALUES (?,?)",
                (_lc(member_email), _now()))
