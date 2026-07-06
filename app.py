@@ -16833,15 +16833,25 @@ def console_coach_thread_unmatch(thread_id):
         if not t:
             return jsonify({"error": "not_found"}), 404
         _ct.block_thread(cx, thread_id, "owner")
-        pair = _cc.accepted_pair(cx, t["member_email"])
-        if pair and pair["coach_email"] == t["coach_email"]:
-            _cc.set_request_status(cx, pair["request_id"], "ended")
+        if t["source"] == "peer":
+            from dashboard import peer_connect as _pc
+            _pc.init_peer_tables(cx)
+            _pc.end_match(cx, thread_id)
+        else:
+            pair = _cc.accepted_pair(cx, t["member_email"])
+            if pair and pair["coach_email"] == t["coach_email"]:
+                _cc.set_request_status(cx, pair["request_id"], "ended")
         member_email, coach_email = t["member_email"], t["coach_email"]
-    note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
-            "from your portal whenever you are ready.</p>")
-    for to, subj in [
-        (member_email, "Your coaching pairing has ended"),
-        (coach_email, "A coaching pairing has ended")]:
+    if t["source"] == "peer":
+        note = "<p>Your peer connection has ended.</p>"
+        subjects = [(member_email, "A peer connection has ended"),
+                    (coach_email, "A peer connection has ended")]
+    else:
+        note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
+                "from your portal whenever you are ready.</p>")
+        subjects = [(member_email, "Your coaching pairing has ended"),
+                    (coach_email, "A coaching pairing has ended")]
+    for to, subj in subjects:
         try:
             send_evox_email(to, "", subj, note, note, b"")
         except Exception:
@@ -16978,6 +16988,105 @@ def peer_connections():
                 "thread_id": m["thread_id"], "status": m["status"]}
                for m in _pc.matches_for(cx, ident.email)]
         return jsonify(out)
+
+
+def _peer_thread_role(cx, thread_id, email):
+    """(thread, role) if `email` is a participant of this peer thread, else (thread, None).
+    role = 'coach' for the coach_email slot, 'member' for the member_email slot."""
+    from dashboard import coach_threads as _ct, peer_connect as _pc
+    t = _ct.get_thread(cx, thread_id)
+    if not t or t["source"] != "peer":
+        return None, None
+    e = (email or "").strip().lower()
+    if not _pc.match_for_pair(cx, t["coach_email"], t["member_email"]):
+        return t, None
+    if e == t["coach_email"]:
+        return t, "coach"
+    if e == t["member_email"]:
+        return t, "member"
+    return t, None
+
+
+@app.route("/api/peer-thread/<int:thread_id>")
+def peer_thread_get(thread_id):
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.mark_read(cx, thread_id, role)
+        other = t["member_email"] if role == "coach" else t["coach_email"]
+        blocked = t["status"] == "blocked"
+        return jsonify({"other_first_name": _peer_first_name(cx, other), "status": t["status"],
+                        "can_post": not blocked,
+                        "messages": [] if blocked else _ct.messages(cx, thread_id,
+                                                                    epoch=t["active_epoch"])})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/message", methods=["POST"])
+def peer_thread_message(thread_id):
+    from dashboard import coach_threads as _ct
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        if not body or len(body) > COACH_MESSAGE_MAX_CHARS:
+            return jsonify({"error": "bad_body"}), 400
+        if t["status"] == "blocked":
+            return jsonify({"error": "blocked"}), 409
+        _ct.post_message(cx, thread_id=thread_id, sender_role=role, body=body)
+        other = t["member_email"] if role == "coach" else t["coach_email"]
+    _coach_thread_nudge(other, "a member you connected with")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/block", methods=["POST"])
+def peer_thread_block(thread_id):
+    from dashboard import coach_threads as _ct, peer_connect as _pc
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _pc.init_peer_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.block_thread(cx, thread_id, role)
+        _pc.end_match(cx, thread_id)
+    _coach_thread_owner_alert("A peer connection ended",
+                              "A member blocked a peer connection; it has ended.")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/report", methods=["POST"])
+def peer_thread_report(thread_id):
+    from dashboard import coach_threads as _ct
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.report_thread(cx, thread_id=thread_id, reporter_role=role, reason=reason)
+    _coach_thread_owner_alert("A peer thread was reported",
+                              "A member reported a peer thread. Review it in the console.")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/onboarding/state")
