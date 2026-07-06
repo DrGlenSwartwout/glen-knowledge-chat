@@ -16926,6 +16926,38 @@ def peer_optin():
         return jsonify({"ok": True, "opted_in": active})
 
 
+PEER_SEMANTIC_MIN_COSINE = float(os.environ.get("PEER_SEMANTIC_MIN_COSINE", "0.80"))
+
+
+def _peer_semantic_candidate(cx, me, pool):
+    """Gap-filler: the eligible member whose interest vector is closest to `me`'s,
+    above PEER_SEMANTIC_MIN_COSINE. Anonymous ({member_ref, shared_topics:[],
+    semantic:True}); reuses the feed's cached member vectors. Best-effort: any
+    failure or a member with no vector yields no candidate. Never raises."""
+    try:
+        from dashboard import peer_connect as _pc, community_feed as _cf
+        my_vec = _member_interest_vec(cx, me, sorted(_pc.liked_topics(cx, me)))
+        if not my_vec:
+            return None
+        best = None
+        for n in pool:
+            v = _member_interest_vec(cx, n, sorted(_pc.liked_topics(cx, n)))
+            if not v:
+                continue
+            score = _cf.cosine(my_vec, v)
+            if score < PEER_SEMANTIC_MIN_COSINE:
+                continue
+            ref = _pc.member_ref(n)
+            if best is None or score > best[0] or (score == best[0] and ref < best[1]):
+                best = (score, ref)
+        if best is None:
+            return None
+        return {"member_ref": best[1], "shared_topics": [], "semantic": True}
+    except Exception:
+        app.logger.exception("peer semantic candidate failed")
+        return None
+
+
 @app.route("/api/peer/proposal")
 def peer_proposal():
     from dashboard import peer_connect as _pc
@@ -16937,7 +16969,11 @@ def peer_proposal():
             return jsonify({"error": "not_found"}), 404
         if not (eligible and _pc.is_opted_in(cx, email)):
             return jsonify({"candidate": None})
-        return jsonify({"candidate": _pc.next_candidate(cx, email, is_paid=_is_paid_member)})
+        cand = _pc.next_candidate(cx, email, is_paid=_is_paid_member)
+        if cand is None:
+            pool = _pc.eligible_candidates(cx, email, is_paid=_is_paid_member)
+            cand = _peer_semantic_candidate(cx, email, pool)
+        return jsonify({"candidate": cand})
 
 
 @app.route("/api/peer/interest", methods=["POST"])
