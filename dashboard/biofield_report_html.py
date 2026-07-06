@@ -517,10 +517,16 @@ async function mineComms(){rstat('Mining recent comms for stresses…');
  var j=await post('/author/__TID__/mine-comms',{});
  if(j.error){rstat('Mine comms: '+j.error);return}
  rstat('Added '+j.added+' comm stress(es).');loadStress()}
+// Clicking "Suggest" resolves AND persists the set per test, so it survives the
+// page reloads a live biofield recording triggers.
 async function suggestRemedies(){
- try{var j=await (await fetch('/author/__TID__/suggest-remedies')).json();
-  document.getElementById('suggestpanel').innerHTML=j.html}
+ try{mrSetPanel(await post('/author/__TID__/remedy-set/suggest',{}))}
  catch(e){document.getElementById('suggestpanel').innerHTML=''}}
+// On page load, silently restore a previously-suggested list (if one is saved for
+// this test) so it stays put across a live recording.
+async function suggestPreserved(){
+ try{var j=await (await fetch('/author/__TID__/suggest-remedies?only_persisted=1')).json();
+  if(j&&j.html)document.getElementById('suggestpanel').innerHTML=j.html}catch(e){}}
 // --- Minimal-remedy set: editable + searchable + drag-reorder + persist ---
 function mrNames(){return [].slice.call(document.querySelectorAll('#mrlist .mrname'))
  .map(function(i){return (i.value||'').trim()}).filter(Boolean)}
@@ -551,9 +557,17 @@ async function mrApplyChain(btn){btn.disabled=true;var o=btn.textContent;btn.tex
   if(j&&j.ok){location.reload()}else{btn.textContent='Failed';btn.disabled=false;
    setTimeout(function(){btn.textContent=o},2000)}}
  catch(e){btn.textContent='Failed';btn.disabled=false}}
+// Append a single suggested remedy as a new layer at the bottom of the chain now.
+async function mrAddOne(btn){var row=btn.closest('.mrrow');var inp=row?row.querySelector('.mrname'):null;
+ var rem=inp?(inp.value||'').trim():'';if(!rem){return}
+ btn.disabled=true;var o=btn.textContent;btn.textContent='\\u2026';
+ try{var j=await post('/author/__TID__/remedy-set/add-one',{remedy:rem});
+  if(j&&j.ok){location.reload()}else{btn.textContent=o;btn.disabled=false}}
+ catch(e){btn.textContent=o;btn.disabled=false}}
 loadLists();
 loadE4L();
 loadStress();
+suggestPreserved();
 setPhase(1);
 restoreDepth();
 </script>"""
@@ -925,7 +939,7 @@ def render_suggest_panel(data):
     if not picks and not unc:
         return "<div class=card><div class=food>No active required stresses to consolidate.</div></div>"
     source = data.get("source") or "computed"
-    badge = {"saved": "your edits", "pattern": "from saved pattern",
+    badge = {"saved": "saved", "pattern": "from saved pattern",
              "computed": "computed"}.get(source, source)
     rows = ""
     for p in picks:
@@ -941,6 +955,10 @@ def render_suggest_panel(data):
             "<span class=mrhandle title='Drag to reorder'>&#9776;</span>"
             f"<input class=mrname list=catalog value=\"{rem}\" onchange='mrEdit(this)' "
             "title='Click and type to search remedies'>"
+            "<button type=button class='btn ghost mraddone' style='font-size:11px' "
+            "onclick='mrAddOne(this)' "
+            "title='Append this remedy as a new layer at the bottom of the chain now'>"
+            "+ layer</button>"
             f"{cov}</li>")
     unc_html = (f"<div class=food style='margin-top:6px'>No listed remedy for: "
                 f"{_e(', '.join(unc))}</div>" if unc else "")

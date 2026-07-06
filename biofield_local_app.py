@@ -499,14 +499,60 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 "source": data["source"], "pattern_key": data["pattern_key"],
                 "has_pattern": data["has_pattern"], "html": render_suggest_panel(data)}
 
+    def _append_layers(cx, test_id, rems):
+        """Append each remedy as a new causal-chain layer at the bottom (existing
+        layers untouched); head = the stresses that remedy covers. Returns count."""
+        from dashboard import biofield_stress as _st
+        rems = [(r or "").strip() for r in (rems or []) if (r or "").strip()]
+        if not rems:
+            return 0
+        tnum = int(str(test_id).lstrip("a") or 0)
+        rep = _report_for(cx, test_id)
+        data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
+        cover_by = {p["remedy"]: (p.get("covers") or []) for p in data["picks"]}
+        nxt = int(cx.execute("SELECT COALESCE(MAX(layer),0) FROM biofield_auth_chain "
+                             "WHERE test_id=?", (tnum,)).fetchone()[0] or 0)
+        added = 0
+        for r in rems:
+            nxt += 1
+            head = ", ".join(cover_by.get(r, []))[:200]
+            add_chain_row(cx, test_id, nxt, head, "", r, "", "", "", confirmed=1, origin="live")
+            added += 1
+        return added
+
     @app.route("/author/<test_id>/suggest-remedies")
     def author_suggest_remedies(test_id):
         from dashboard import biofield_stress as _st
         force = request.args.get("force") == "computed"
+        only_saved = request.args.get("only_persisted") == "1"
         with sqlite3.connect(db_path) as cx:
+            # Init-time restore: render only if a set was previously preserved for
+            # this test, else stay hidden (empty html).
+            if only_saved and _st.get_saved_remedy_set(cx, test_id) is None:
+                return {"ok": True, "html": "", "picks": [], "uncovered": [],
+                        "source": None, "pattern_key": "", "has_pattern": False}
             rep = _report_for(cx, test_id)
             data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep), force_computed=force)
         return _suggest_payload(data)
+
+    @app.route("/author/<test_id>/remedy-set/suggest", methods=["POST"])
+    def author_remedy_set_suggest(test_id):
+        # Resolve + PERSIST, so the suggested list survives the reloads a live
+        # biofield recording triggers.
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
+            _st.save_remedy_set(cx, test_id, data["remedies"])
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
+        return _suggest_payload(data)
+
+    @app.route("/author/<test_id>/remedy-set/add-one", methods=["POST"])
+    def author_remedy_set_add_one(test_id):
+        rem = (request.get_json(silent=True) or {}).get("remedy") or ""
+        with sqlite3.connect(db_path) as cx:
+            added = _append_layers(cx, test_id, [rem])
+        return {"ok": True, "added": added}
 
     @app.route("/author/<test_id>/remedy-set", methods=["POST"])
     def author_remedy_set_save(test_id):
@@ -525,6 +571,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             _st.clear_remedy_set(cx, test_id)
             rep = _report_for(cx, test_id)
             data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep), force_computed=True)
+            _st.save_remedy_set(cx, test_id, data["remedies"])  # preserve the recompute
+            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
         return _suggest_payload(data)
 
     @app.route("/author/<test_id>/remedy-set/save-pattern", methods=["POST"])
@@ -538,22 +586,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     @app.route("/author/<test_id>/remedy-set/apply-to-chain", methods=["POST"])
     def author_remedy_set_apply(test_id):
-        from dashboard import biofield_stress as _st
-        rems = [(r or "").strip() for r in
-                ((request.get_json(silent=True) or {}).get("remedies") or []) if (r or "").strip()]
-        tnum = int(str(test_id).lstrip("a") or 0)
+        rems = (request.get_json(silent=True) or {}).get("remedies") or []
         with sqlite3.connect(db_path) as cx:
-            rep = _report_for(cx, test_id)
-            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep))
-            cover_by = {p["remedy"]: (p.get("covers") or []) for p in data["picks"]}
-            nxt = int(cx.execute("SELECT COALESCE(MAX(layer),0) FROM biofield_auth_chain "
-                                 "WHERE test_id=?", (tnum,)).fetchone()[0] or 0)
-            added = 0
-            for r in rems:
-                nxt += 1
-                head = ", ".join(cover_by.get(r, []))[:200]
-                add_chain_row(cx, test_id, nxt, head, "", r, "", "", "", confirmed=1, origin="live")
-                added += 1
+            added = _append_layers(cx, test_id, rems)
         return {"ok": True, "added": added}
 
     @app.route("/author/<test_id>/stress/<int:sid>/balance", methods=["POST"])
