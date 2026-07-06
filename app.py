@@ -16567,6 +16567,12 @@ def practitioner_coach_request_respond():
                 return jsonify({"error": "member_taken"}), 409   # another coach won the race
             _cc.set_request_status(cx, rid, "accepted")
             _cc.withdraw_other_pendings(cx, member_email, rid)   # first-accept-wins
+            # If this pair was matched and blocked before, re-accepting gives them a
+            # clean slate: reactivate the thread with a fresh epoch (prior messages
+            # stay in the owner transcript only). No-op for a first-time match.
+            from dashboard import coach_threads as _ct
+            _ct.init_thread_tables(cx)
+            _ct.reactivate_thread(cx, email, member_email)
             return jsonify({"ok": True, "status": "accepted"})
         _cc.set_request_status(cx, rid, "declined")
         return jsonify({"ok": True, "status": "declined"})
@@ -16630,7 +16636,8 @@ def coach_thread_member_get():
         blocked = t["status"] == "blocked"
         return jsonify({"coach_name": vol.get("name") or "Your coach", "status": t["status"],
                         "can_post": not blocked,
-                        "messages": [] if blocked else _ct.messages(cx, t["id"])})
+                        "messages": [] if blocked else _ct.messages(cx, t["id"],
+                                                                     epoch=t["active_epoch"])})
 
 
 @app.route("/api/coach-thread/member/message", methods=["POST"])
@@ -16734,7 +16741,8 @@ def coach_thread_coach_get(thread_id):
         blocked = t["status"] == "blocked"
         return jsonify({"member_first_name": _coach_first_name(cx, t["member_email"]),
                         "status": t["status"], "can_post": not blocked,
-                        "messages": [] if blocked else _ct.messages(cx, thread_id)})
+                        "messages": [] if blocked else _ct.messages(cx, thread_id,
+                                                                    epoch=t["active_epoch"])})
 
 
 @app.route("/api/coach-thread/coach/<int:thread_id>/message", methods=["POST"])
