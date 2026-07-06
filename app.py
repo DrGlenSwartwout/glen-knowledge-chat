@@ -17034,8 +17034,11 @@ def _peer_blended_candidate(cx, me, pool):
                 best = (score, ref, sorted(shared))
         if best is None:
             return None
-        return {"member_ref": best[1], "shared_topics": best[2],
-                "semantic": len(best[2]) == 0}
+        shared = best[2]
+        out = {"member_ref": best[1], "shared_topics": shared, "semantic": len(shared) == 0}
+        if not shared and my_liked:
+            out["reason_topic"] = sorted(my_liked)[0]   # asker's own topic; never the winner's
+        return out
     except Exception:
         app.logger.exception("peer blended candidate failed")
         return None
