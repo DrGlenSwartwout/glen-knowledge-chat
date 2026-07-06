@@ -569,7 +569,7 @@ def _row_inputs(p, l):
                 f"<button type=button class=xpand onclick=\"xpand(this)\" "
                 f"title=\"Show full text\">&#8690;</button><div class=full></div></span></td>")
     head = f'<input id="{p}_head" list="vocab" value="{g("head")}" title="{g("head")}">'
-    most = f'<input id="{p}_most" value="{g("most_affected")}" title="{g("most_affected")}">'
+    most = f'<input id="{p}_most" list="vocab" value="{g("most_affected")}" title="{g("most_affected")}">'
     remedy = (f'<input id="{p}_remedy" list="catalog" value="{g("remedy")}" '
               f'title="{g("remedy")}" onchange="fillDose(\'{p}\')">')
     return (
@@ -774,7 +774,7 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
         he, me, n = _e(g["head"]), _e(g["most_affected"]), g["layer"]
         lines = "".join(_remedy_line(r, depth_values) for r in g["rows"])
         head_in = _xwrap(f'<input id={gid}_head list=vocab value="{he}" title="{he}" oninput="dirtyLayer(this)">')
-        tail_in = _xwrap(f'<input id={gid}_most value="{me}" title="{me}" oninput="dirtyLayer(this)">')
+        tail_in = _xwrap(f'<input id={gid}_most list=vocab value="{me}" title="{me}" oninput="dirtyLayer(this)">')
         cards += (
             f"<div class=lcard draggable=true data-gid={gid} data-rids=\"{rids}\" "
             "ondragstart=dragStart(event) ondragend=dragEnd(event) ondragover=dragOver(event) "
@@ -793,7 +793,7 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
         "<div class=lcard data-gid=gnew data-nodrop=1><div class=lhdr><span class=lnum>+</span>"
         "<div class=htfields>"
         "<label>Head</label><input id=gnew_head list=vocab placeholder='new layer stress (head)'>"
-        "<label>Tail</label><input id=gnew_most placeholder='most affected (tail)'>"
+        "<label>Tail</label><input id=gnew_most list=vocab placeholder='most affected (tail)'>"
         "</div><input type=hidden id=gnew_layer value=''></div>"
         + _new_remedy_line("gnew", "Add layer") + "</div>")
     return cards
