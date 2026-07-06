@@ -8,6 +8,8 @@ turn-history mapping. The actual streaming LLM call lives in app.py's route
 (mirroring /chat). Session-scoped ASH coverage reuses the pure functions in
 dashboard/ash_map.py — no email key, no rebuild.
 """
+import re
+
 from dashboard import ash_map
 
 FIRESIDE_MODEL = "claude-haiku-4-5-20251001"   # swap to an Opus id for more depth
@@ -53,6 +55,52 @@ _HOOK_PERMISSION = (
     "not yet feel earned this turn, keep listening instead and omit the marker."
 )
 
+_ACTION_READY = (
+    "READY TO ACT: This traveler is directly asking for testing, a scan, a remedy, "
+    "or a program. They already know they want help and are asking how to get it — "
+    "they are problem- and solution-aware. Do NOT slow them down to draw out their "
+    "story, and do NOT ask for details they did not offer. In one warm breath, "
+    "affirm their readiness and point them straight to the next step: name what "
+    "they are ready for and invite them onward — e.g. 'Then let us not wait — shall "
+    "we go and find your Remedy Match?'. Then on a new line output the exact marker "
+    + HOOK_SENTINEL + " and nothing after it."
+)
+
+# Direct, unambiguous requests to ACT (get tested/remedies/a program, book, buy,
+# get started). A traveler who says one of these is problem+solution aware and
+# ready — fast-track them to the next step instead of eliciting their story.
+_ACTION_CUES = (
+    r"biofield", r"get(?:ting)? tested", r"be tested",
+    r"(?:get|want|book|schedule|take|need|have|do) a test", r"a (?:biofield|voice) test",
+    r"voice scan", r"get scanned", r"\bscan\b", r"book a (?:test|scan|session|call)",
+    r"schedule a (?:test|scan|session|call)",
+    r"get (?:me )?(?:the |my )?remedies", r"want (?:the |my )?remedies",
+    r"need (?:the |my )?remedies", r"find (?:me )?(?:the |my )?remedies",
+    r"which remed", r"what remed", r"my remedy match",
+    r"remedy match", r"recommend (?:a )?remed",
+    r"the program", r"your program", r"join (?:the|your)", r"enroll", r"sign up",
+    r"sign me up", r"get started", r"getting started", r"how do i (?:start|begin|get)",
+    r"where do i (?:start|begin)", r"next step", r"how can i get",
+    r"book an? appointment", r"appointment", r"consultation", r"a consult\b",
+    r"ready to (?:start|begin|move|go)", r"i'?m ready", r"i am ready",
+    r"let'?s (?:do it|do this|begin|go|get started)", r"count me in",
+    r"how much", r"the cost\b", r"what does it cost", r"the price\b", r"pricing",
+    r"\bpurchase\b", r"\bbuy\b",
+)
+_ACTION_RE = re.compile(r"\b(?:" + "|".join(_ACTION_CUES) + r")", re.I)
+
+
+def wants_action(user_message: str) -> bool:
+    """True when the traveler directly asks to be tested / get remedies / join a
+    program / book / buy — i.e. they are ready to act, not still exploring."""
+    return bool(_ACTION_RE.search((user_message or "").lower()))
+
+
+def should_hook(turn_count: int, coverage: dict, user_message: str = "") -> bool:
+    """Server-side gate on honoring the closing hook: either the normal
+    heard-enough eligibility, or a direct action request that fast-tracks them."""
+    return hook_eligible(turn_count, coverage) or wants_action(user_message)
+
 
 def hook_eligible(turn_count: int, coverage: dict) -> bool:
     tc = int(turn_count or 0)
@@ -75,9 +123,14 @@ def parse_hook(full_text: str) -> tuple[str, bool]:
     return (text, False)
 
 
-def build_system(coverage: dict, turn_count: int) -> str:
+def build_system(coverage: dict, turn_count: int, user_message: str = "") -> str:
     ctx = ash_map.context_block(coverage or {})
-    gate = _HOOK_PERMISSION if hook_eligible(turn_count, coverage) else _HOOK_FORBIDDEN
+    if wants_action(user_message):
+        gate = _ACTION_READY
+    elif hook_eligible(turn_count, coverage):
+        gate = _HOOK_PERMISSION
+    else:
+        gate = _HOOK_FORBIDDEN
     return (
         GLENDALF_PERSONA
         + "\n--- WHAT YOU ALREADY KNOW ABOUT THIS TRAVELER ---\n"
