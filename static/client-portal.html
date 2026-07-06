@@ -1024,6 +1024,11 @@ function render(d, v){
   // initCoachesCard() fetch /api/community/coaches once this markup is attached.
   html += `<div class="card" id="coaches-card" hidden></div>`;
 
+  // Connect with members (peer matching): member eligibility can't be checked
+  // here either, so render an empty, hidden placeholder and let initPeerCard()
+  // fetch /api/peer/state once this markup is attached.
+  html += `<div class="card" id="peer-card" hidden></div>`;
+
   // Household sharing controls (member consent + caregiver cc).
   if (d.household_caregivers && d.household_caregivers.length) {
     let rows = "";
@@ -1054,6 +1059,7 @@ function render(d, v){
 
   initOnboardingCard();
   initCoachesCard();
+  initPeerCard();
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
@@ -1761,6 +1767,426 @@ async function reportCoachThread(btn){
   }
 }
 <!-- END coach-thread member script -->
+
+<!-- BEGIN peer-match script -->
+// "Connect with members" card + peer thread panel (community peer matching,
+// Task 4). Mirrors the coaches card's own-fetch pattern (member eligibility
+// can't be checked where the placeholder markup is built) and the
+// coach-thread member script's message-panel pattern. All server-derived
+// strings (candidate shared topics, connection first names, message bodies)
+// are untrusted and are set via textContent only, never innerHTML.
+async function initPeerCard(){
+  const card = document.getElementById("peer-card");
+  if(!card) return;
+  let d = {};
+  try{
+    const r = await fetch(`/api/peer/state?token=${encodeURIComponent(token)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  if(!d || typeof d !== "object"){ card.hidden = true; card.innerHTML = ""; return; }
+  card.hidden = false;
+  renderPeerCard(card, d);
+}
+
+function renderPeerCard(card, d){
+  card.innerHTML = "";
+  const h = document.createElement("h2");
+  h.textContent = "Connect with members";
+  card.appendChild(h);
+
+  if(!d.eligible){
+    renderPeerLockedTease(card);
+    return;
+  }
+
+  if(!d.opted_in){
+    renderPeerOptIn(card);
+    return;
+  }
+
+  renderPeerOptedIn(card);
+}
+
+function renderPeerLockedTease(card){
+  const p = document.createElement("p");
+  p.className = "muted small";
+  p.textContent = "Membership opens like-minded member connections.";
+  card.appendChild(p);
+  const link = document.createElement("a");
+  link.className = "btn full";
+  link.href = "/prepay";
+  link.textContent = "Become a member";
+  card.appendChild(link);
+}
+
+function renderPeerOptIn(card){
+  const p = document.createElement("p");
+  p.className = "muted small";
+  p.textContent = "Meet another member who resonates with what you're working on. It's anonymous, and only reveals names if you both say yes.";
+  card.appendChild(p);
+
+  const err = document.createElement("p");
+  err.className = "small err";
+  err.hidden = true;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn full";
+  btn.textContent = "Open to meeting like-minded members";
+  btn.addEventListener("click", function(){ optInPeer(btn, err); });
+  card.appendChild(btn);
+  card.appendChild(err);
+}
+
+async function optInPeer(btn, err){
+  err.hidden = true;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Saving…";
+  try{
+    const r = await fetch(`/api/peer/optin?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({active: true}),
+    });
+    if(!r.ok) throw new Error();
+    await initPeerCard();
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
+    err.hidden = false;
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+function renderPeerOptedIn(card){
+  const proposalHost = document.createElement("div");
+  proposalHost.id = "peer-proposal-host";
+  card.appendChild(proposalHost);
+  loadPeerProposal(proposalHost);
+
+  const connHeading = document.createElement("h3");
+  connHeading.style.margin = "1rem 0 .3rem";
+  connHeading.style.fontSize = ".9rem";
+  connHeading.textContent = "Your connections";
+  card.appendChild(connHeading);
+
+  const connHost = document.createElement("div");
+  connHost.id = "peer-connections-host";
+  card.appendChild(connHost);
+  loadPeerConnections(connHost);
+
+  const threadHost = document.createElement("div");
+  threadHost.id = "peer-thread-host";
+  card.appendChild(threadHost);
+}
+
+async function loadPeerProposal(host){
+  let d = {};
+  try{
+    const r = await fetch(`/api/peer/proposal?token=${encodeURIComponent(token)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  renderPeerProposal(host, d);
+}
+
+function renderPeerProposal(host, d){
+  host.innerHTML = "";
+  const candidate = d && d.candidate;
+  if(!candidate || typeof candidate !== "object"){
+    const p = document.createElement("p");
+    p.className = "muted small";
+    p.textContent = "No new members to introduce right now. Check back soon.";
+    host.appendChild(p);
+    return;
+  }
+
+  const topics = Array.isArray(candidate.shared_topics) ? candidate.shared_topics.filter(Boolean) : [];
+  const row = document.createElement("div");
+  row.className = "coach-row";
+  row.style.margin = ".4rem 0";
+
+  const desc = document.createElement("div");
+  desc.textContent = topics.length
+    ? ("A member who also resonates with " + topics.join(" and "))
+    : "A member who also resonates with what you're working on";
+  row.appendChild(desc);
+
+  const err = document.createElement("p");
+  err.className = "small err";
+  err.hidden = true;
+
+  const msg = document.createElement("p");
+  msg.className = "muted small";
+  msg.hidden = true;
+
+  const connectBtn = document.createElement("button");
+  connectBtn.type = "button";
+  connectBtn.className = "btn full";
+  connectBtn.style.marginTop = ".4rem";
+  connectBtn.textContent = "Connect";
+
+  const skipBtn = document.createElement("button");
+  skipBtn.type = "button";
+  skipBtn.className = "btn ghost";
+  skipBtn.style.marginTop = ".4rem";
+  skipBtn.textContent = "Not now";
+
+  connectBtn.addEventListener("click", function(){
+    peerInterest(host, candidate.member_ref, "connect", connectBtn, skipBtn, msg, err);
+  });
+  skipBtn.addEventListener("click", function(){
+    peerInterest(host, candidate.member_ref, "skip", connectBtn, skipBtn, msg, err);
+  });
+
+  row.appendChild(connectBtn);
+  row.appendChild(skipBtn);
+  row.appendChild(msg);
+  row.appendChild(err);
+  host.appendChild(row);
+}
+
+async function peerInterest(host, memberRef, kind, connectBtn, skipBtn, msg, err){
+  err.hidden = true;
+  connectBtn.disabled = true; skipBtn.disabled = true;
+  try{
+    const r = await fetch(`/api/peer/interest?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({member_ref: memberRef, kind: kind}),
+    });
+    const data = r.ok ? await r.json() : {};
+    if(!r.ok || !data.ok) throw new Error();
+    if(kind === "connect"){
+      connectBtn.hidden = true; skipBtn.hidden = true;
+      if(data.matched){
+        msg.textContent = "You are connected.";
+        msg.hidden = false;
+        const connHost = document.getElementById("peer-connections-host");
+        if(connHost) loadPeerConnections(connHost);
+      } else {
+        msg.textContent = "We will let you know if it is mutual.";
+        msg.hidden = false;
+      }
+    } else {
+      await loadPeerProposal(host);
+    }
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
+    err.hidden = false;
+    connectBtn.disabled = false; skipBtn.disabled = false;
+  }
+}
+
+async function loadPeerConnections(host){
+  let list = [];
+  try{
+    const r = await fetch(`/api/peer/connections?token=${encodeURIComponent(token)}`);
+    list = r.ok ? await r.json() : [];
+  }catch(e){ list = []; }
+  renderPeerConnections(host, Array.isArray(list) ? list : []);
+}
+
+function renderPeerConnections(host, list){
+  host.innerHTML = "";
+  if(!list.length){
+    const p = document.createElement("p");
+    p.className = "muted small";
+    p.textContent = "No connections yet.";
+    host.appendChild(p);
+    return;
+  }
+  list.forEach(function(c){
+    if(!c || typeof c !== "object") return;
+    const row = document.createElement("div");
+    row.className = "coach-row";
+    row.style.margin = ".3rem 0";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "muted small";
+    btn.style.background = "none";
+    btn.style.border = "none";
+    btn.style.textDecoration = "underline";
+    btn.style.cursor = "pointer";
+    btn.style.padding = "0";
+    btn.style.fontWeight = "600";
+    const name = c.first_name || "Member";
+    btn.textContent = c.status === "blocked" ? (name + " (ended)") : name;
+    btn.addEventListener("click", function(){ openPeerThread(c.thread_id); });
+    row.appendChild(btn);
+    host.appendChild(row);
+  });
+}
+
+function openPeerThread(threadId){
+  const host = document.getElementById("peer-thread-host");
+  if(!host || !threadId) return;
+  host.style.marginTop = "1rem";
+  loadPeerThread(host, threadId);
+}
+
+async function loadPeerThread(host, threadId){
+  let d = {};
+  try{
+    const r = await fetch(`/api/peer-thread/${encodeURIComponent(threadId)}?token=${encodeURIComponent(token)}`);
+    d = r.ok ? await r.json() : {};
+  }catch(e){ d = {}; }
+  renderPeerThreadPanel(host, threadId, d);
+}
+
+function renderPeerThreadPanel(host, threadId, d){
+  host.innerHTML = "";
+
+  if(d.status === "blocked"){
+    const note = document.createElement("p");
+    note.className = "muted small";
+    note.textContent = "This connection has ended.";
+    host.appendChild(note);
+    return;
+  }
+
+  const heading = document.createElement("h3");
+  heading.style.margin = "0 0 .4rem";
+  heading.textContent = d.other_first_name || "Your connection";
+  host.appendChild(heading);
+
+  const messages = Array.isArray(d.messages) ? d.messages : [];
+  const list = document.createElement("div");
+  list.style.marginBottom = ".6rem";
+  if(!messages.length){
+    const empty = document.createElement("p");
+    empty.className = "muted small";
+    empty.textContent = "No messages yet. Say hello.";
+    list.appendChild(empty);
+  }
+  messages.forEach(function(msg){
+    if(!msg || typeof msg !== "object") return;
+    const row = document.createElement("div");
+    row.className = "coach-row";
+    row.style.margin = ".4rem 0";
+    const who = document.createElement("div");
+    who.className = "muted small";
+    who.style.fontWeight = "600";
+    who.textContent = msg.sender_role === "member" ? "You" : (d.other_first_name || "Your connection");
+    row.appendChild(who);
+    const body = document.createElement("div");
+    body.className = "small";
+    body.textContent = msg.body || "";
+    row.appendChild(body);
+    list.appendChild(row);
+  });
+  host.appendChild(list);
+
+  const err = document.createElement("p");
+  err.className = "small err";
+  err.hidden = true;
+
+  if(d.can_post){
+    const compose = document.createElement("textarea");
+    compose.rows = 3;
+    compose.placeholder = "Write a message";
+    compose.style.cssText = "width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit;resize:vertical";
+    host.appendChild(compose);
+    host.appendChild(err);
+
+    const sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.className = "btn full";
+    sendBtn.style.marginTop = ".4rem";
+    sendBtn.textContent = "Send";
+    sendBtn.addEventListener("click", function(){
+      sendPeerMessage(host, threadId, compose, sendBtn, err);
+    });
+    host.appendChild(sendBtn);
+  }
+
+  const linksRow = document.createElement("div");
+  linksRow.style.marginTop = ".8rem";
+
+  const blockBtn = document.createElement("button");
+  blockBtn.type = "button";
+  blockBtn.className = "muted small";
+  blockBtn.style.background = "none";
+  blockBtn.style.border = "none";
+  blockBtn.style.textDecoration = "underline";
+  blockBtn.style.cursor = "pointer";
+  blockBtn.style.padding = "0";
+  blockBtn.style.marginRight = "1rem";
+  blockBtn.textContent = "Block";
+  blockBtn.addEventListener("click", function(){ blockPeerThread(host, threadId, blockBtn); });
+  linksRow.appendChild(blockBtn);
+
+  const reportBtn = document.createElement("button");
+  reportBtn.type = "button";
+  reportBtn.className = "muted small";
+  reportBtn.style.background = "none";
+  reportBtn.style.border = "none";
+  reportBtn.style.textDecoration = "underline";
+  reportBtn.style.cursor = "pointer";
+  reportBtn.style.padding = "0";
+  reportBtn.textContent = "Report";
+  reportBtn.addEventListener("click", function(){ reportPeerThread(threadId, reportBtn); });
+  linksRow.appendChild(reportBtn);
+
+  host.appendChild(linksRow);
+}
+
+async function sendPeerMessage(host, threadId, compose, btn, err){
+  err.hidden = true;
+  const body = (compose.value || "").trim();
+  if(!body) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const r = await fetch(`/api/peer-thread/${encodeURIComponent(threadId)}/message?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({body: body}),
+    });
+    if(!r.ok) throw new Error();
+    compose.value = "";
+    await loadPeerThread(host, threadId);
+  }catch(e){
+    err.textContent = "Something went wrong. Please try again.";
+    err.hidden = false;
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function blockPeerThread(host, threadId, btn){
+  if(!window.confirm("End this connection?")) return;
+  btn.disabled = true;
+  try{
+    const r = await fetch(`/api/peer-thread/${encodeURIComponent(threadId)}/block?token=${encodeURIComponent(token)}`, {method: "POST"});
+    const data = await r.json();
+    if(!r.ok || !data.ok) throw new Error();
+    renderPeerThreadPanel(host, threadId, {status: "blocked"});
+  }catch(e){
+    btn.disabled = false;
+    alert("Something went wrong. Please try again.");
+  }
+}
+
+async function reportPeerThread(threadId, btn){
+  const reason = window.prompt("What is the concern? A short note is fine.");
+  if(reason === null) return;
+  const trimmed = reason.trim();
+  if(!trimmed) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = "Sending…";
+  try{
+    const r = await fetch(`/api/peer-thread/${encodeURIComponent(threadId)}/report?token=${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({reason: trimmed}),
+    });
+    const data = await r.json();
+    if(!r.ok || !data.ok) throw new Error();
+    btn.textContent = "Thank you, we will review this.";
+  }catch(e){
+    btn.disabled = false; btn.textContent = label;
+    alert("Something went wrong. Please try again.");
+  }
+}
+<!-- END peer-match script -->
 
 async function setNotifyPref(btn){
   // Toggle the client's notification opt status, then re-render to reflect it.
