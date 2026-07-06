@@ -17009,6 +17009,7 @@ def peer_optin():
 
 PEER_SEMANTIC_MIN_COSINE = float(os.environ.get("PEER_SEMANTIC_MIN_COSINE", "0.80"))
 PEER_BLEND_WEIGHT = float(os.environ.get("PEER_BLEND_WEIGHT", "1.75"))
+PEER_SKIP_COOLOFF_DAYS = int(os.environ.get("PEER_SKIP_COOLOFF_DAYS", "30"))
 
 
 def _peer_blended_candidate(cx, me, pool):
@@ -17053,7 +17054,14 @@ def peer_proposal():
         if not (eligible and _pc.is_opted_in(cx, email)):
             return jsonify({"candidate": None})
         pool = _pc.eligible_candidates(cx, email, is_paid=_is_paid_member)
-        return jsonify({"candidate": _peer_blended_candidate(cx, email, pool)})
+        cand = _peer_blended_candidate(cx, email, pool)
+        if cand is None:
+            # pool dry -> re-admit skips older than the cool-off and try once more
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=PEER_SKIP_COOLOFF_DAYS)).isoformat()
+            fb = _pc.eligible_candidates(cx, email, is_paid=_is_paid_member,
+                                         include_stale_skips=True, cutoff_iso=cutoff)
+            cand = _peer_blended_candidate(cx, email, fb)
+        return jsonify({"candidate": cand})
 
 
 @app.route("/api/peer/interest", methods=["POST"])

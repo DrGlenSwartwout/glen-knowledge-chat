@@ -109,6 +109,14 @@ def interest_kind(cx, from_email, to_email):
     return row["kind"] if row else None
 
 
+def _my_interest(cx, from_email, to_email):
+    """(kind, created_at) of the caller's directional interest toward a member, or
+    (None, None)."""
+    row = cx.execute("SELECT kind, created_at FROM peer_interest WHERE from_email=? "
+                     "AND to_email=?", (_lc(from_email), _lc(to_email))).fetchone()
+    return (row["kind"], row["created_at"]) if row else (None, None)
+
+
 def _person_blocked(cx, blocker, blocked):
     # A future person-block UI must key on member_ref computed AT READ TIME (as here),
     # never persist the ref as a stored value: member_ref is HMAC-salted, so a stored
@@ -125,11 +133,15 @@ def _pair_has_match(cx, e1, e2):
                       (a, b)).fetchone() is not None
 
 
-def eligible_candidates(cx, me, is_paid=None):
-    """Opted-in members that pass every v1 exclusion (self, non-paid, existing match,
-    already-acted, skipped-me, person-blocked) — WITHOUT the shared-topic requirement.
-    The exact matcher ranks these by shared topics; the semantic gap-filler ranks the
-    exact-less remainder by interest-vector cosine."""
+def eligible_candidates(cx, me, is_paid=None, *, include_stale_skips=False, cutoff_iso=None):
+    """Opted-in members that pass every exclusion (self, non-paid, existing match,
+    they-skipped-me, person-blocked) and my own prior interest — WITHOUT the
+    shared-topic requirement. The exact matcher ranks these by shared topics; the
+    semantic gap-filler ranks the exact-less remainder by interest-vector cosine.
+
+    My `connect` (standing yes) is always excluded. My `skip` is excluded UNLESS
+    include_stale_skips and the skip is older than cutoff_iso (the pool-dry
+    fallback pass). The default (no kwargs) reproduces the fresh pass exactly."""
     me = _lc(me)
     out = []
     for n in opted_in_members(cx):
@@ -139,12 +151,17 @@ def eligible_candidates(cx, me, is_paid=None):
             continue
         if _pair_has_match(cx, me, n):
             continue
-        if interest_kind(cx, me, n) is not None:
-            continue
         if interest_kind(cx, n, me) == "skip":
             continue
         if _person_blocked(cx, me, n) or _person_blocked(cx, n, me):
             continue
+        mine_kind, mine_at = _my_interest(cx, me, n)
+        if mine_kind == "connect":
+            continue                                     # standing yes; never re-propose
+        if mine_kind == "skip":
+            stale = bool(include_stale_skips and cutoff_iso and mine_at and mine_at < cutoff_iso)
+            if not stale:
+                continue                                 # fresh skip (or fallback off) -> excluded
         out.append(n)
     return out
 
