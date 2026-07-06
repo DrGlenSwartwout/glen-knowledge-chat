@@ -56,6 +56,10 @@ if _env.exists():
 # ── App setup ─────────────────────────────────────────────────────────────────
 STATIC = Path(__file__).parent / "static"
 app = Flask(__name__, static_folder=str(STATIC))
+# Global upload ceiling on every request body (bounds a memory/disk DoS from an
+# unbounded POST). Generous enough for a phone intro video / audio memo / scan PDF;
+# tune via MAX_UPLOAD_BYTES without a deploy. Flask returns 413 when exceeded.
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(250 * 1024 * 1024)))
 CORS(app)
 
 # ── Voice Journal blueprint (T2 — Whisper + Haiku + ada-002 + pgvector) ──────
@@ -16339,10 +16343,12 @@ def community_coach_request():
         first_name = (((rec or {}).get("name") or "").strip().split(" ") or [""])[0]
     # 2) authenticated + coach valid -> now write the optional intro video (outside the lock)
     member_video_url = ""
+    _video_path = None
     vf = request.files.get("video")
     if vf is not None and vf.filename:
         fname = f"member-{secrets.token_hex(8)}.mp4"
-        (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
+        _video_path = _PORTAL_ASSETS_DIR / fname
+        _video_path.write_bytes(vf.read())
         member_video_url = f"/portal-asset/{fname}"
     # 3) create the application under the write lock
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -16351,7 +16357,12 @@ def community_coach_request():
         rid = _cc.create_request(cx, coach_email, member_email, first_name, note,
                                  member_video_url=member_video_url)
         if rid is None:
-            # already matched, or already applied to this coach
+            # already matched, or already applied to this coach — drop the orphaned video
+            if _video_path is not None:
+                try:
+                    _video_path.unlink()
+                except OSError:
+                    pass
             return jsonify({"error": "cannot_apply"}), 409
         return jsonify({"ok": True, "status": "pending"})
 

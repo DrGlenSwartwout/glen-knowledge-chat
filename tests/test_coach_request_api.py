@@ -103,6 +103,29 @@ def test_apply_with_video_is_stored():
         assert pend[0]["member_video_url"].startswith("/portal-asset/member-")
 
 
+def test_rejected_application_unlinks_video():
+    import io, os as _os
+    c = _client(); tok = _seed_member("m@x.com")
+    # first apply succeeds (stores a video)
+    c.post(f"/api/community/coach-request?token={tok}",
+           data={"coach_ref": _coach_ref(), "note": "first",
+                 "video": (io.BytesIO(b"\x00\x01vid"), "a.mp4")},
+           content_type="multipart/form-data")
+    before = set(_os.listdir(str(appmod._PORTAL_ASSETS_DIR)))
+    # second apply to the SAME coach is a dup -> 409; its video must not orphan
+    r = c.post(f"/api/community/coach-request?token={tok}",
+               data={"coach_ref": _coach_ref(), "note": "dup",
+                     "video": (io.BytesIO(b"\x00\x01vid2"), "b.mp4")},
+               content_type="multipart/form-data")
+    assert r.status_code == 409
+    assert set(_os.listdir(str(appmod._PORTAL_ASSETS_DIR))) == before   # no orphan added
+
+
+def test_upload_cap_is_configured():
+    cap = appmod.app.config.get("MAX_CONTENT_LENGTH")
+    assert cap is not None and cap >= 50 * 1024 * 1024   # a generous global bound exists
+
+
 def test_full_coach_dropped_and_all_full():
     c = _client(); tok = _seed_member("m@x.com", capacity=1)
     # fill the only coach's single slot with an accepted request from another member
