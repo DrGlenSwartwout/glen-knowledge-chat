@@ -15,8 +15,23 @@ def _lc(email):
     return (email or "").strip().lower()
 
 
+def _ref_key():
+    import os
+    return (os.environ.get("PEER_REF_SALT") or os.environ.get("CONSOLE_SECRET") or "").encode("utf-8")
+
+
 def member_ref(email):
-    return hashlib.sha256(_lc(email).encode("utf-8")).hexdigest()[:16]
+    """Anonymized handle for a member. HMAC-salted with a server secret so a party
+    who already knows a target's email cannot precompute their ref and confirm, from a
+    proposal, that they are opted in and share topics (pre-mutual de-anonymization).
+    Falls back to a plain hash only when no secret is configured (local/test) so the
+    handle stays deterministic there."""
+    import hmac
+    msg = _lc(email).encode("utf-8")
+    key = _ref_key()
+    if key:
+        return hmac.new(key, msg, hashlib.sha256).hexdigest()[:16]
+    return hashlib.sha256(msg).hexdigest()[:16]
 
 
 _DDL = """
@@ -95,6 +110,9 @@ def interest_kind(cx, from_email, to_email):
 
 
 def _person_blocked(cx, blocker, blocked):
+    # A future person-block UI must key on member_ref computed AT READ TIME (as here),
+    # never persist the ref as a stored value: member_ref is HMAC-salted, so a stored
+    # ref would stop matching if the salt (CONSOLE_SECRET/PEER_REF_SALT) ever rotates.
     row = cx.execute("SELECT 1 FROM community_signals WHERE email=? AND target_type='person' "
                      "AND target_key=? AND signal='block'",
                      (_lc(blocker), member_ref(blocked))).fetchone()

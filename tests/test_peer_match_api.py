@@ -29,6 +29,19 @@ def test_free_member_not_eligible():
         assert c.post(f"/api/peer/optin?token={tok}", json={"active": True}).status_code == 403
 
 
+def test_state_autoclears_optin_on_downgrade():
+    c = _client(); tok = _member("dg@x.com", "liver")
+    with mock.patch.object(appmod, "_is_paid_member", return_value=True):
+        c.post(f"/api/peer/optin?token={tok}", json={"active": True})
+        assert c.get(f"/api/peer/state?token={tok}").get_json()["opted_in"] is True
+    with mock.patch.object(appmod, "_is_paid_member", return_value=False):
+        d = c.get(f"/api/peer/state?token={tok}").get_json()
+        assert d["eligible"] is False and d["opted_in"] is False
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; _pc.init_peer_tables(cx)
+        assert _pc.is_opted_in(cx, "dg@x.com") is False        # record cleared, out of the pool
+
+
 def test_proposal_is_anonymous():
     c = _client(); a = _member("a@x.com", "liver", "sleep"); b = _member("b@x.com", "liver", "sleep")
     with mock.patch.object(appmod, "_is_paid_member", return_value=True):

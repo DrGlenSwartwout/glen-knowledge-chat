@@ -17,9 +17,18 @@ def _like(cx, email, *topics):
         _cs.set_signal(cx, email, "topic", t, "like")
 
 
-def test_member_ref_matches_coach_ref_shape():
+def test_member_ref_deterministic_and_case_insensitive():
+    r = _pc.member_ref("A@x.com")
+    assert r == _pc.member_ref("a@x.com")            # case-insensitive, deterministic
+    assert len(r) == 16 and all(ch in "0123456789abcdef" for ch in r)
+
+
+def test_member_ref_is_salted_when_secret_present(monkeypatch):
     import hashlib
-    assert _pc.member_ref("A@x.com") == hashlib.sha256(b"a@x.com").hexdigest()[:16]
+    monkeypatch.setenv("PEER_REF_SALT", "s3cr3t-salt")
+    r = _pc.member_ref("a@x.com")
+    assert r != hashlib.sha256(b"a@x.com").hexdigest()[:16]   # HMAC path actually fires
+    assert len(r) == 16
 
 
 def test_optin_pool():

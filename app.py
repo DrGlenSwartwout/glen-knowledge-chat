@@ -16894,13 +16894,18 @@ def _peer_ident_paid(cx, token):
 @app.route("/api/peer/state")
 def peer_state():
     from dashboard import peer_connect as _pc
-    with sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
         email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
         if email is None:
             return jsonify({"error": "not_found"}), 404
-        opted = _pc.is_opted_in(cx, email) if eligible else False
+        opted = _pc.is_opted_in(cx, email)
+        if opted and not eligible:
+            # Self-heal: a member who downgraded leaves the pool on their next visit.
+            # (The matcher already excludes non-paid candidates; this keeps the record clean.)
+            _pc.set_optin(cx, email, False)
+            opted = False
         has_prop = bool(eligible and opted and _pc.next_candidate(cx, email, is_paid=_is_paid_member))
         return jsonify({"eligible": eligible, "opted_in": opted, "has_proposal": has_prop})
 
