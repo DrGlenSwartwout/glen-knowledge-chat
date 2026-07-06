@@ -194,10 +194,15 @@
     }
     tagControlRegistry.push(update);
 
+    let pending = false;
     function act(kind){
+      if(pending) return;                       // ignore a fast double-click on a stale state
+      pending = true;
+      likeBtn.disabled = true; blockBtn.disabled = true;
       const active = kind === "like" ? likeBtn.classList.contains("active") : blockBtn.classList.contains("active");
       const signal = active ? "none" : kind;
-      postSignal(tag, signal).then(refreshSignals);
+      function done(){ pending = false; likeBtn.disabled = false; blockBtn.disabled = false; }
+      postSignal(tag, signal).then(refreshSignals).then(done, done);   // re-enable after state refreshes
     }
     likeBtn.addEventListener("click", function(){ act("like"); });
     blockBtn.addEventListener("click", function(){ act("block"); });
