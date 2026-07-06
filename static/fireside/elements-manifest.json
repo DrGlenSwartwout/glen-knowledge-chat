@@ -51,9 +51,10 @@
         "bed_volume": 0.021,
         "oneshots": [
           { "id": "birdsong", "file": "/static/fireside/audio/amb-birdsong.mp3", "volume": 0.12, "min_gap_s": 70, "max_gap_s": 180 },
-          { "id": "chicks", "file": "/static/fireside/audio/amb-chicks.mp3", "volume": 0.11, "first_gap_s": 5, "min_gap_s": 18, "max_gap_s": 45 },
+          { "id": "chicks", "file": "/static/fireside/audio/amb-henchicks.mp3", "volume": 0.14, "first_gap_s": 5, "min_gap_s": 16, "max_gap_s": 40 },
           { "id": "cow", "file": "/static/fireside/audio/amb-cow.mp3", "volume": 0.14, "min_gap_s": 130, "max_gap_s": 320 },
           { "id": "crickets", "file": "/static/fireside/audio/amb-crickets.mp3", "volume": 0.09, "loop": true, "swell": { "min": 0.045, "max": 0.11, "period_s": 30 } },
+          { "id": "breeze", "file": "/static/fireside/audio/amb-wind.mp3", "volume": 0.05, "loop": true, "swell": { "min": 0.02, "max": 0.10, "period_s": 27 } },
           { "id": "bell", "file": "/static/fireside/audio/amb-bell.mp3", "volume": 0.09, "min_gap_s": 220, "max_gap_s": 520 },
           { "id": "dogbark", "file": "/static/fireside/audio/amb-dogbark.mp3", "volume": 0.08, "min_gap_s": 200, "max_gap_s": 460 }
         ]
