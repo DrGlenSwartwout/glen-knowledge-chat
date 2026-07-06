@@ -37,6 +37,19 @@ def test_blank_query_and_missing_get():
     assert spr.get(cx, 9999) is None
 
 
+def test_stale_working_row_does_not_block_new_request():
+    cx = _cx()
+    a = spr.create_request(cx, "Sean Luscombe")
+    spr.mark(cx, a["id"], "working")
+    # a fresh working row DOES still dedup
+    assert spr.create_request(cx, "Sean Luscombe")["id"] == a["id"]
+    # backdate the working row past the staleness window → it no longer blocks
+    cx.execute("UPDATE scan_pull_requests SET updated_at='2000-01-01 00:00:00' WHERE id=?", (a["id"],))
+    cx.commit()
+    c = spr.create_request(cx, "Sean Luscombe")
+    assert c["created"] is True and c["id"] != a["id"]
+
+
 import importlib, sys
 from pathlib import Path
 import pytest
