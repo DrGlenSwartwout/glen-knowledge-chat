@@ -85,7 +85,9 @@ def test_first_accept_wins_second_coach_member_taken():
          mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="coach2@x.com"):
         r2 = c.post("/api/practitioner/coach-request/respond?token=t",
                     json={"request_id": rid2, "accept": True})
-    assert r2.status_code == 409 and r2.get_json()["error"] == "member_taken"
+    # first-accept-wins withdrew rid2 sequentially -> not_pending; a true cross-worker
+    # race (rid2 still pending when read) -> member_taken. Either 409 correctly blocks it.
+    assert r2.status_code == 409 and r2.get_json()["error"] in ("member_taken", "not_pending")
 
 
 def test_respond_non_owner_404():
@@ -100,3 +102,19 @@ def test_respond_non_owner_404():
 def test_requests_requires_session():
     with mock.patch.object(appmod, "_practitioner_session_pid", return_value=None):
         assert _client().get("/api/practitioner/coach-requests?token=x").status_code == 401
+
+
+def test_respond_to_non_pending_request_409():
+    c = _client(); rid = _seed(capacity=1)
+    with mock.patch.object(appmod, "_practitioner_session_pid", return_value="pid1"), \
+         mock.patch("dashboard.practitioner_portal.practitioner_email_by_id", return_value="coach1@x.com"):
+        d1 = c.post("/api/practitioner/coach-request/respond?token=t",
+                    json={"request_id": rid, "accept": False})
+        assert d1.get_json()["status"] == "declined"
+        # re-accepting the now-declined request is rejected, not resurrected
+        d2 = c.post("/api/practitioner/coach-request/respond?token=t",
+                    json={"request_id": rid, "accept": True})
+        assert d2.status_code == 409 and d2.get_json()["error"] == "not_pending"
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; _cc.init_connect_tables(cx)
+        assert _cc.request_status(cx, rid) == "declined"        # stays declined
