@@ -16994,53 +16994,52 @@ def peer_optin():
 
 
 PEER_SEMANTIC_MIN_COSINE = float(os.environ.get("PEER_SEMANTIC_MIN_COSINE", "0.80"))
+PEER_BLEND_WEIGHT = float(os.environ.get("PEER_BLEND_WEIGHT", "1.75"))
 
 
-def _peer_semantic_candidate(cx, me, pool):
-    """Gap-filler: the eligible member whose interest vector is closest to `me`'s,
-    above PEER_SEMANTIC_MIN_COSINE. Anonymous ({member_ref, shared_topics:[],
-    semantic:True}); reuses the feed's cached member vectors. Best-effort: any
-    failure or a member with no vector yields no candidate. Never raises."""
+def _peer_blended_candidate(cx, me, pool):
+    """Co-ranked blend over the eligible pool: score each candidate
+    len(shared_topics) + PEER_BLEND_WEIGHT * cosine(interest vectors). Qualify with
+    >=1 shared topic OR cosine >= PEER_SEMANTIC_MIN_COSINE (the zero-shared floor).
+    Returns the top anonymized ({member_ref, shared_topics, semantic}); the winner's
+    real shared_topics drive the why-line. Best-effort; never raises."""
     try:
         from dashboard import peer_connect as _pc, community_feed as _cf
-        my_vec = _member_interest_vec(cx, me, sorted(_pc.liked_topics(cx, me)))
-        if not my_vec:
-            return None
-        best = None
+        my_liked = _pc.liked_topics(cx, me) - _pc.blocked_topics(cx, me)
+        my_vec = _member_interest_vec(cx, me, sorted(my_liked))
+        best = None                                    # (score, member_ref, shared_sorted)
         for n in pool:
-            v = _member_interest_vec(cx, n, sorted(_pc.liked_topics(cx, n)))
-            if not v:
+            shared = my_liked & (_pc.liked_topics(cx, n) - _pc.blocked_topics(cx, n))
+            cos = _cf.cosine(my_vec, _member_interest_vec(cx, n, sorted(_pc.liked_topics(cx, n))))
+            if not shared and cos < PEER_SEMANTIC_MIN_COSINE:
                 continue
-            score = _cf.cosine(my_vec, v)
-            if score < PEER_SEMANTIC_MIN_COSINE:
-                continue
+            score = len(shared) + PEER_BLEND_WEIGHT * cos
             ref = _pc.member_ref(n)
             if best is None or score > best[0] or (score == best[0] and ref < best[1]):
-                best = (score, ref)
+                best = (score, ref, sorted(shared))
         if best is None:
             return None
-        return {"member_ref": best[1], "shared_topics": [], "semantic": True}
+        return {"member_ref": best[1], "shared_topics": best[2],
+                "semantic": len(best[2]) == 0}
     except Exception:
-        app.logger.exception("peer semantic candidate failed")
+        app.logger.exception("peer blended candidate failed")
         return None
 
 
 @app.route("/api/peer/proposal")
 def peer_proposal():
-    from dashboard import peer_connect as _pc
+    from dashboard import peer_connect as _pc, community as _cm
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
+        _cm.init_community_tables(cx); _cm.init_feed_tables(cx)   # member_interest cache
         email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
         if email is None:
             return jsonify({"error": "not_found"}), 404
         if not (eligible and _pc.is_opted_in(cx, email)):
             return jsonify({"candidate": None})
-        cand = _pc.next_candidate(cx, email, is_paid=_is_paid_member)
-        if cand is None:
-            pool = _pc.eligible_candidates(cx, email, is_paid=_is_paid_member)
-            cand = _peer_semantic_candidate(cx, email, pool)
-        return jsonify({"candidate": cand})
+        pool = _pc.eligible_candidates(cx, email, is_paid=_is_paid_member)
+        return jsonify({"candidate": _peer_blended_candidate(cx, email, pool)})
 
 
 @app.route("/api/peer/interest", methods=["POST"])
