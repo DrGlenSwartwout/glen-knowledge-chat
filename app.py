@@ -10503,6 +10503,68 @@ def api_console_analysis_request_complete(req_id):
     return jsonify({"ok": True, "status": status})
 
 
+@app.route("/api/console/scan-pull-requests", methods=["POST"])
+def api_console_scan_pull_create():
+    """Owner console: enqueue a 'pull this client's latest scan from E4L' request.
+    Behind SCAN_PULL_ENABLED — off means inert (no DB change)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _scan_pull_enabled():
+        return jsonify({"ok": True, "status": "disabled"})
+    from dashboard import scan_pull_requests as _spr
+    query = ((request.get_json(silent=True) or {}).get("query") or "").strip()
+    if not query:
+        return jsonify({"ok": False, "error": "query required"}), 400
+    requested_by = request.headers.get("X-Console-User", "") or None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _spr.init_scan_pull_requests_table(cx)
+        res = _spr.create_request(cx, query, requested_by)
+    return jsonify({"ok": True, "id": res["id"], "status": res["status"]})
+
+
+@app.route("/api/console/scan-pull-requests", methods=["GET"])
+def api_console_scan_pull_list():
+    """Owner tool: list pending scan-pull requests for the local worker."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_pull_requests as _spr
+    with sqlite3.connect(LOG_DB) as cx:
+        _spr.init_scan_pull_requests_table(cx)
+        reqs = _spr.pending(cx, int(request.args.get("limit", 50)))
+    return jsonify({"ok": True, "requests": reqs})
+
+
+@app.route("/api/console/scan-pull-requests/<int:req_id>/complete", methods=["POST"])
+def api_console_scan_pull_complete(req_id):
+    """Owner tool: the local worker marks a request done (or failed) with result."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_pull_requests as _spr
+    body = request.get_json(silent=True) or {}
+    status = (body.get("status") or "done").strip()
+    if status not in ("done", "failed", "working"):
+        status = "done"
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _spr.init_scan_pull_requests_table(cx)
+        _spr.mark(cx, req_id, status, scan_id=body.get("scan_id"),
+                  draft_id=body.get("draft_id"), message=body.get("message"))
+    return jsonify({"ok": True, "status": status})
+
+
+@app.route("/api/console/scan-pull-requests/<int:req_id>", methods=["GET"])
+def api_console_scan_pull_get(req_id):
+    """Owner console: poll a single scan-pull request's status."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_pull_requests as _spr
+    with sqlite3.connect(LOG_DB) as cx:
+        _spr.init_scan_pull_requests_table(cx)
+        row = _spr.get(cx, req_id)
+    if not row:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True, "request": row})
+
+
 def _send_new_scan_email(email, scan_date, scan_id, token):
     """New-scan invite: a one-click analyze link + the client's limit + upgrade path. Best-effort.
     Cc'd (private separate copy) to consented+subscribed caregivers via household.cc_recipients_for."""
@@ -12692,7 +12754,8 @@ def api_console_biofield_reveals():
                 d["opened"] = _op.get_open(cx, "report", _op.report_key(d.get("email", ""), d.get("scan_date", "")))
         except Exception as _e:
             print(f"[opens] reveals annotate skipped: {_e!r}", flush=True)
-    return jsonify({"drafts": drafts, "approved": approved})
+    return jsonify({"drafts": drafts, "approved": approved,
+                    "scan_pull_enabled": _scan_pull_enabled()})
 
 
 @app.route("/api/console/opens", methods=["GET"])
@@ -14203,6 +14266,10 @@ def _scan_request_enabled():
     False with no request rows ever created)."""
     return (os.environ.get("SCAN_REQUEST_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes")
+
+
+def _scan_pull_enabled():
+    return (os.environ.get("SCAN_PULL_ENABLED", "") or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _portal_offers_enabled() -> bool:

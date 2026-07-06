@@ -63,6 +63,10 @@
   .btn.approved{ background:#2f5d43; color:#cfe9d8; cursor:default; }
   .btn.approved::before{ content:'✓ '; }
   .btn.ghost{ background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .pullwrap{ display:inline-flex; gap:6px; align-items:center; }
+  .pullinput{ background:transparent; color:var(--fg); border:1px solid var(--line);
+              border-radius:8px; padding:8px 10px; font:inherit; min-width:220px; }
+  .pullstatus{ font-size:13px; color:var(--fg); opacity:.8; }
   .status{ min-height:18px; color:var(--muted); font-size:13px; margin-top:8px; }
   .dropped-note{ color:var(--muted); font-size:13px; margin-top:8px; }
   #gate{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
@@ -199,6 +203,7 @@ function wireRemember(cb, rem){
 
 async function loadList(){
   var r = await api('GET', '/api/console/biofield-reveals');
+  window.__SCAN_PULL_ENABLED__ = !!(r.json && r.json.scan_pull_enabled);
   var el = document.getElementById('list');
   if(!r.ok){
     el.textContent = 'Could not load (check console key).';
@@ -237,7 +242,29 @@ async function loadList(){
   sendAllBtn.className = 'btn';
   sendAllBtn.textContent = 'Send all approved un-notified';
   sendAllBtn.onclick = doSendAll;
-  toolbar.appendChild(sendAllBtn);
+  // --- Pull-scan control (left of Send all), only when the feature is on ---
+  if (window.__SCAN_PULL_ENABLED__) {
+    var pullWrap = document.createElement('span');
+    pullWrap.className = 'pullwrap';
+    var pullInput = document.createElement('input');
+    pullInput.type = 'text';
+    pullInput.className = 'pullinput';
+    pullInput.placeholder = 'email, E4L client id, or name';
+    var pullBtn = document.createElement('button');
+    pullBtn.className = 'btn ghost';
+    pullBtn.textContent = 'Pull scan';
+    var pullStatus = document.createElement('span');
+    pullStatus.className = 'pullstatus';
+    pullBtn.onclick = function(){ doPullScan(pullInput, pullBtn, pullStatus); };
+    pullInput.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { doPullScan(pullInput, pullBtn, pullStatus); }
+    });
+    pullWrap.appendChild(pullInput);
+    pullWrap.appendChild(pullBtn);
+    pullWrap.appendChild(pullStatus);
+    toolbar.appendChild(pullWrap);
+  }
+  toolbar.appendChild(sendAllBtn);   // <-- existing line stays; ensure it is AFTER the block above
   el.appendChild(toolbar);
 
   var board = document.createElement('div');
@@ -775,6 +802,45 @@ async function doSendAll(){
   } else {
     alert('Send-all failed (HTTP ' + r.status + ').');
   }
+}
+
+async function doPullScan(input, btn, st){
+  var q = (input.value || '').trim();
+  if(!q){ input.focus(); return; }
+  btn.disabled = true; input.disabled = true;
+  st.textContent = 'Queued, pulling from E4L. Usually a few minutes.';
+  var r = await api('POST', '/api/console/scan-pull-requests', { query: q });
+  if(!r.ok || !r.json || !r.json.id){
+    st.textContent = (r.json && r.json.status === 'disabled')
+      ? 'Scan pull is currently off.'
+      : 'Could not queue (HTTP ' + r.status + ').';
+    btn.disabled = false; input.disabled = false;
+    return;
+  }
+  pollPull(r.json.id, input, btn, st, 0);
+}
+
+async function pollPull(id, input, btn, st, tries){
+  if(tries > 30){   // about 5 minutes at 10s
+    st.textContent = 'Still working. Refresh shortly.';
+    btn.disabled = false; input.disabled = false;
+    return;
+  }
+  var r = await api('GET', '/api/console/scan-pull-requests/' + id);
+  var row = r.ok && r.json && r.json.request;
+  if(row && row.status === 'done'){
+    st.textContent = 'Pulled. Draft ready.';
+    input.value = '';
+    btn.disabled = false; input.disabled = false;
+    loadList();
+    return;
+  }
+  if(row && row.status === 'failed'){
+    st.textContent = row.message || 'Pull failed.';
+    btn.disabled = false; input.disabled = false;
+    return;
+  }
+  setTimeout(function(){ pollPull(id, input, btn, st, tries + 1); }, 10000);
 }
 
 boot();
