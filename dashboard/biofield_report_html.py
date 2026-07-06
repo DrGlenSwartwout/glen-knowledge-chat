@@ -330,10 +330,15 @@ async function addRow(){var b=rowVals('new');if(!b.head&&!b.remedy){astat('Enter
 async function saveRow(rid){await post('/author/__TID__/row/'+rid,rowVals('r'+rid));astat('Row saved.')}
 async function delRow(rid){if(!confirm('Delete this row?'))return;
  await post('/author/__TID__/row/'+rid+'/delete',{});location.reload()}
-async function fillDose(p){var n=val(p+'_remedy');if(!n)return;
+// Fill dose/freq/timing from the catalog. Default: only fill EMPTY fields, so
+// correcting a remedy's name never overwrites a dose already captured from the
+// transcript. force=true (the explicit "dose" button) refreshes all fields.
+async function fillDose(p,force){var n=val(p+'_remedy');if(!n)return;
  const r=await (await fetch('/api/dosing?name='+encodeURIComponent(n))).json();
- if(r.dosage)set(p+'_dosage',r.dosage);if(r.frequency)set(p+'_frequency',r.frequency);
- if(r.timing)set(p+'_timing',r.timing);astat('Dosing filled from catalog.');
+ function put(k,v){if(!v)return;var el=document.getElementById(p+'_'+k);if(!el)return;
+  if(force||!(el.value||'').trim())el.value=v}
+ put('dosage',r.dosage);put('frequency',r.frequency);put('timing',r.timing);
+ astat(force?'Dosing filled from catalog.':'Dosing filled into empty fields.');
  var el=document.getElementById(p+'_remedy');var line=el&&el.closest?el.closest('.rline'):null;
  if(line)markDirty(line.querySelector('.savebtn'))}
 async function suggest(p){var s=val(p+'_head');var box=document.getElementById(p+'_sug');box.textContent='';
@@ -734,7 +739,7 @@ def _remedy_line(l, depth_values):
             f"<input id=\"{p}_frequency\" class=dz value=\"{g('frequency')}\" placeholder=freq oninput=\"dirtyRow(this)\">"
             f"<input id=\"{p}_timing\" class=dz value=\"{g('timing')}\" placeholder=timing oninput=\"dirtyRow(this)\">"
             + depth +
-            f"<button class=chip onclick=\"fillDose('{p}')\">dose</button>"
+            f"<button class=chip onclick=\"fillDose('{p}',true)\">dose</button>"
             f"<button class=chip onclick=\"suggestFor(this,'{p}')\">uses</button>"
             f"{confirm_btn}"
             f"<button class='btn savebtn' data-dirty=Update onclick=\"saveRemedy('{rid}',this)\">Save</button>"
