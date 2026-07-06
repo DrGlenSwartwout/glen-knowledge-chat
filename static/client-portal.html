@@ -1938,23 +1938,35 @@ function renderPeerProposal(host, d){
   skipBtn.style.marginTop = ".4rem";
   skipBtn.textContent = "Not now";
 
+  const blockBtn = document.createElement("button");
+  blockBtn.type = "button";
+  blockBtn.className = "btn ghost";
+  blockBtn.style.marginTop = ".4rem";
+  blockBtn.textContent = "Not a fit";
+
   connectBtn.addEventListener("click", function(){
-    peerInterest(host, candidate.member_ref, "connect", connectBtn, skipBtn, msg, err);
+    peerInterest(host, candidate.member_ref, "connect", connectBtn, skipBtn, msg, err, blockBtn);
   });
   skipBtn.addEventListener("click", function(){
-    peerInterest(host, candidate.member_ref, "skip", connectBtn, skipBtn, msg, err);
+    peerInterest(host, candidate.member_ref, "skip", connectBtn, skipBtn, msg, err, blockBtn);
+  });
+  blockBtn.addEventListener("click", function(){
+    if(!window.confirm("You will not be shown this person again.")) return;
+    peerInterest(host, candidate.member_ref, "block", connectBtn, skipBtn, msg, err, blockBtn);
   });
 
   row.appendChild(connectBtn);
   row.appendChild(skipBtn);
+  row.appendChild(blockBtn);
   row.appendChild(msg);
   row.appendChild(err);
   host.appendChild(row);
 }
 
-async function peerInterest(host, memberRef, kind, connectBtn, skipBtn, msg, err){
+async function peerInterest(host, memberRef, kind, connectBtn, skipBtn, msg, err, blockBtn){
   err.hidden = true;
   connectBtn.disabled = true; skipBtn.disabled = true;
+  if(blockBtn) blockBtn.disabled = true;
   try{
     const r = await fetch(`/api/peer/interest?token=${encodeURIComponent(token)}`, {
       method: "POST",
@@ -1965,6 +1977,7 @@ async function peerInterest(host, memberRef, kind, connectBtn, skipBtn, msg, err
     if(!r.ok || !data.ok) throw new Error();
     if(kind === "connect"){
       connectBtn.hidden = true; skipBtn.hidden = true;
+      if(blockBtn) blockBtn.hidden = true;
       if(data.matched){
         msg.textContent = "You are connected.";
         msg.hidden = false;
@@ -1981,6 +1994,7 @@ async function peerInterest(host, memberRef, kind, connectBtn, skipBtn, msg, err
     err.textContent = "Something went wrong. Please try again.";
     err.hidden = false;
     connectBtn.disabled = false; skipBtn.disabled = false;
+    if(blockBtn) blockBtn.disabled = false;
   }
 }
 

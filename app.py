@@ -17070,7 +17070,7 @@ def peer_interest():
     body = request.get_json(silent=True) or {}
     ref = (body.get("member_ref") or "").strip()
     kind = (body.get("kind") or "").strip()
-    if kind not in ("connect", "skip"):
+    if kind not in ("connect", "skip", "block"):
         kind = None
     matched = False
     both = ()
@@ -17087,6 +17087,11 @@ def peer_interest():
         target = _pc.resolve_ref(cx, email, ref)
         if target is None:
             return jsonify({"error": "not_found"}), 404
+        if kind == "block":
+            from dashboard import community_signals as _cs
+            _cs.init_signal_tables(cx)
+            _cs.set_signal(cx, email, "person", _pc.member_ref(target), "block")
+            return jsonify({"ok": True, "matched": False})
         _pc.record_interest(cx, email, target, kind)
         already = _pc.match_for_pair(cx, email, target)
         if kind == "connect" and already is not None:
