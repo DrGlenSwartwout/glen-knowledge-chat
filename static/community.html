@@ -37,6 +37,7 @@
     padding:18px;margin-bottom:20px;box-shadow:var(--shadow)}
   .card h2{margin:0 0 4px;font-size:1.15rem}
   .card p.desc{color:var(--muted);margin:4px 0 10px}
+  .card p.foryou-reason{color:var(--brand);font-size:.8rem;font-weight:600;margin:2px 0 10px}
   .tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
   .tag{background:var(--brand-soft);color:var(--brand);border-radius:999px;
     padding:3px 10px;font-size:.78rem;font-weight:600;
@@ -420,7 +421,7 @@
 
   function reasonLine(reason){
     const p = document.createElement("p");
-    p.className = "desc";
+    p.className = "foryou-reason";   // distinct from the item description
     p.textContent = reason == null ? "" : String(reason);
     return p;
   }
