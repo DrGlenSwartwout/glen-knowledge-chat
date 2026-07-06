@@ -38,8 +38,10 @@ Grounded in prior shipped work — see `2026-07-04-available-scan-list-design.md
 
 Add a control to the toolbar (built at lines 234-241), inserted **before** the "Send all approved un-notified" button so it renders to its left (flex order = insertion order):
 
-- A text input (`placeholder="client name or email"`) + a `Pull scan` button (`.btn.ghost`).
+- A text input (`placeholder="email, E4L client id, or name"`) + a `Pull scan` button (`.btn.ghost`).
 - On click → `POST /api/console/scan-pull-requests {query}`. Disable + show inline status ("Queued — pulling from E4L, usually a few minutes…").
+
+**Identity resolution (the uniqueness key — "request this client specifically").** A name is *not* a unique key — `e4l.db` has multiple "Sean" and three "Luscombe" accounts — so the request must resolve to exactly one E4L client. The worker resolves `query` in order of specificity: **(1) all-digits → E4L client-id** (`scrape-e4l-http.py --client <id>`, exact); **(2) contains `@` → email**, looked up in `e4l.db` (`e4l_clients.email`) → the client's E4L id → `--client <id>` (exact); **(3) otherwise → name** (`--client-name`, which auto-picks the account with the most-recent scan). For Sean's class of case this works because he already exists in `e4l.db` from prior scans (client 97515), so his email `luscombesean@gmail.com` resolves exactly even though only today's scan is missing. When a name matches multiple `e4l.db` accounts with different emails, the worker returns `failed` with the candidate list (name · email · last local scan date) so Glen re-requests with the exact email or id. An email not present in `e4l.db` (a client never ingested) also returns `failed` with a note to use the E4L client name or id — we can't map an unseen email to an E4L id without walking E4L.
 - Poll `GET /api/console/scan-pull-requests/<id>` every ~10s (cap ~5 min). On `done` → toast (`Pulled — draft ready`) + `loadList()` to surface the new draft. On `failed` → show `message` (e.g. ambiguous name, no scan found). On timeout → "Still working; refresh shortly."
 
 ### 1b. Prod store + endpoints — deploy-chat
@@ -58,22 +60,24 @@ scan_pull_requests (
   updated_at  TEXT
 )
 ```
-Functions: `init_table(cx)`, `enqueue(cx, query, requested_by) -> id`, `list_pending(cx, limit)`, `mark(cx, id, status, **fields)`, `get(cx, id)`.
+Functions (mirroring `dashboard/analysis_requests.py` conventions — `_now()`, lazy `init_*`): `init_scan_pull_requests_table(cx)`; `create_request(cx, query, requested_by) -> {created, id, status}` (dedup: if a `pending`/`working` row exists for the same normalized query, return it, don't insert a duplicate); `pending(cx, limit)`; `mark(cx, req_id, status, scan_id=None, draft_id=None, message=None)`; `get(cx, req_id) -> dict|None`. **Uniqueness key = normalized query while pending/working** (not `(email, scan_date)` — the scan_date is unknown until the pull happens).
 
-Endpoints in `app.py` (all `CONSOLE_SECRET`-gated, matching analysis-requests):
-- `POST /api/console/scan-pull-requests` `{query}` → `enqueue` → `{id}`.
-- `GET  /api/console/scan-pull-requests?status=pending&limit=N` → worker poll → `{requests:[...]}`.
-- `POST /api/console/scan-pull-requests/<id>/complete` `{status, scan_id?, draft_id?, message?}` → `mark`.
-- `GET  /api/console/scan-pull-requests/<id>` → console status poll → the row.
+Endpoints in `app.py` (gating mirrors analysis-requests exactly):
+- `POST /api/console/scan-pull-requests` `{query}` → `create_request` → `{ok, id, status}`. Gated by `_portal_console_ok()` **and** `_scan_pull_enabled()`.
+- `GET  /api/console/scan-pull-requests?limit=N` → worker poll → `{ok, requests:[{id, query}]}`. `_portal_console_ok()`. (Filter is hardcoded to pending in `pending()`, like the analysis-requests GET — no `?status=`.)
+- `POST /api/console/scan-pull-requests/<id>/complete` `{status, scan_id?, draft_id?, message?}` → `mark`. `_portal_console_ok()`.
+- `GET  /api/console/scan-pull-requests/<id>` → console status poll → `{ok, request:{...}}`. `_portal_console_ok()`.
 
-Behind `SCAN_PULL_ENABLED` (the UI control + the enqueue endpoint; the worker/complete endpoints may stay open like the analysis-requests worker path).
+Behind `SCAN_PULL_ENABLED` (the UI control + the enqueue endpoint; the worker poll/complete endpoints stay `_portal_console_ok()`-gated only, like the analysis-requests worker path, so the worker functions even while the button is dark).
+
+> Auth note: the console endpoints use `_portal_console_ok()` (X-Console-Key header or `?key=`). The reveal-draft push the worker ultimately makes (`POST /api/e4l/reveal-draft`) is a **separate** gate — `X-Cron-Secret`/`CRON_SECRET` (falls back to `CONSOLE_SECRET`) — already handled inside `e4l_reveal_lib.post_reveal_draft`; the worker doesn't re-implement it.
 
 ### 1c. Mac worker — `02 Skills/scan-pull-fulfill.py`
 
 Mirrors `e4l-analysis-fulfill.py`. Per pending request:
 1. `mark working`.
-2. **Resolve query → client name.** If it looks like an email, look up the name in `e4l.db` (`e4l_clients.email`); else use as name. If the name resolves to multiple E4L accounts and `scrape-e4l-http`'s most-recent-scan auto-pick is not confident (ambiguous), `mark failed` with a candidate list in `message` ("ambiguous — enter the email"). (v1 leans on `pick_client`'s existing most-recent-scan tiebreak; email forces exactness.)
-3. **Scrape-first:** run `scrape-e4l-http.py --client-name "<name>"` (subprocess, Doppler prd). This downloads any new scan PDF not yet in `e4l.db`.
+2. **Resolve query → exact E4L client** (see "Identity resolution" in 1a): all-digits → `--client <id>`; email → `e4l.db` lookup → `--client <id>`; name → `--client-name`. Ambiguous name (multiple `e4l.db` emails) or unseen email → `mark failed` with the candidate list / note in `message`; do not scrape.
+3. **Scrape-first:** run `scrape-e4l-http.py --client <id>` (or `--client-name "<name>"`) as a subprocess with the system python, inheriting the Doppler env. Downloads any scan PDF not yet in `e4l.db`. Also captures the resolved email (from `e4l_clients` by the resolved client_id) for the reveal push.
 4. `parse-e4l-scans.py` (with the same small retry the email-trigger uses) → confirm the scan is in `e4l.db`.
 5. `bulk-vectorize-e4l-scans.py --batch-size 30`.
 6. **Reveal-push (silent):** reuse the `e4l-analysis-fulfill.py` `_real_synth`/`_real_publish` path but with `notify=False`, resolving the client's **latest** scan in `e4l.db` (handles both a brand-new scan and an already-ingested-but-never-drafted scan). Returns the draft id.
