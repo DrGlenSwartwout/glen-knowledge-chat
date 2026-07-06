@@ -65,3 +65,35 @@ def test_skip_removes_from_next_proposal():
         c.post(f"/api/peer/interest?token={a}", json={"member_ref": _pc.member_ref("b@x.com"),
                                                        "kind": "skip"})
         assert c.get(f"/api/peer/proposal?token={a}").get_json()["candidate"] is None
+
+
+def test_connections_visible_after_downgrade():
+    c = _client(); a = _member("a@x.com", "liver"); b = _member("b@x.com", "liver")
+    with mock.patch.object(appmod, "_is_paid_member", return_value=True), \
+         mock.patch.object(appmod, "send_evox_email"):
+        c.post(f"/api/peer/optin?token={a}", json={"active": True})
+        c.post(f"/api/peer/optin?token={b}", json={"active": True})
+        ref_b = _pc.member_ref("b@x.com"); ref_a = _pc.member_ref("a@x.com")
+        c.post(f"/api/peer/interest?token={a}", json={"member_ref": ref_b, "kind": "connect"})
+        c.post(f"/api/peer/interest?token={b}", json={"member_ref": ref_a, "kind": "connect"})
+    with mock.patch.object(appmod, "_is_paid_member", return_value=False):
+        conns = c.get(f"/api/peer/connections?token={a}").get_json()
+    assert conns and conns[0]["first_name"] == "B"
+
+
+def test_reconnect_when_already_matched_returns_matched_true():
+    c = _client(); a = _member("a@x.com", "liver"); b = _member("b@x.com", "liver")
+    with mock.patch.object(appmod, "_is_paid_member", return_value=True), \
+         mock.patch.object(appmod, "send_evox_email"):
+        c.post(f"/api/peer/optin?token={a}", json={"active": True})
+        c.post(f"/api/peer/optin?token={b}", json={"active": True})
+        ref_b = _pc.member_ref("b@x.com"); ref_a = _pc.member_ref("a@x.com")
+        c.post(f"/api/peer/interest?token={a}", json={"member_ref": ref_b, "kind": "connect"})
+        c.post(f"/api/peer/interest?token={b}", json={"member_ref": ref_a, "kind": "connect"})
+        r = c.post(f"/api/peer/interest?token={a}", json={"member_ref": ref_b, "kind": "connect"})
+        assert r.get_json()["matched"] is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; _pc.init_peer_tables(cx)
+        rows = cx.execute("SELECT * FROM peer_matches WHERE a_email=? AND b_email=?",
+                          ("a@x.com", "b@x.com")).fetchall()
+        assert len(rows) == 1

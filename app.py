@@ -16873,7 +16873,7 @@ def _peer_first_name(cx, email):
     return ((row.get("name") or "").strip().split() or ["A member"])[0]
 
 
-def _peer_ident_paid(cx, token, *, require_paid=True):
+def _peer_ident_paid(cx, token):
     """(email or None, eligible bool). eligible=False for a free member."""
     ident = _evox_ident(cx, token)
     if ident is None:
@@ -16949,8 +16949,10 @@ def peer_interest():
         if target is None:
             return jsonify({"error": "not_found"}), 404
         _pc.record_interest(cx, email, target, kind)
-        if kind == "connect" and _pc.interest_kind(cx, target, email) == "connect" \
-                and not _pc.match_for_pair(cx, email, target):
+        already = _pc.match_for_pair(cx, email, target)
+        if kind == "connect" and already is not None:
+            matched = True                                       # already matched; don't re-create
+        elif kind == "connect" and _pc.interest_kind(cx, target, email) == "connect":
             a, b = sorted([email, target])                       # slot: a->coach, b->member
             t = _ct.get_or_create_thread(cx, coach_email=a, member_email=b, source="peer")
             _pc.create_match(cx, a, b, t["id"])
@@ -16968,12 +16970,13 @@ def peer_connections():
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
-        email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
-        if email is None:
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
             return jsonify({"error": "not_found"}), 404
+        # Existing connections persist regardless of paid status (peer threads are not paid-gated).
         out = [{"first_name": _peer_first_name(cx, m["other_email"]),
                 "thread_id": m["thread_id"], "status": m["status"]}
-               for m in _pc.matches_for(cx, email)]
+               for m in _pc.matches_for(cx, ident.email)]
         return jsonify(out)
 
 
