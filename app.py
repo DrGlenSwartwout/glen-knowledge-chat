@@ -16833,15 +16833,25 @@ def console_coach_thread_unmatch(thread_id):
         if not t:
             return jsonify({"error": "not_found"}), 404
         _ct.block_thread(cx, thread_id, "owner")
-        pair = _cc.accepted_pair(cx, t["member_email"])
-        if pair and pair["coach_email"] == t["coach_email"]:
-            _cc.set_request_status(cx, pair["request_id"], "ended")
+        if t["source"] == "peer":
+            from dashboard import peer_connect as _pc
+            _pc.init_peer_tables(cx)
+            _pc.end_match(cx, thread_id)
+        else:
+            pair = _cc.accepted_pair(cx, t["member_email"])
+            if pair and pair["coach_email"] == t["coach_email"]:
+                _cc.set_request_status(cx, pair["request_id"], "ended")
         member_email, coach_email = t["member_email"], t["coach_email"]
-    note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
-            "from your portal whenever you are ready.</p>")
-    for to, subj in [
-        (member_email, "Your coaching pairing has ended"),
-        (coach_email, "A coaching pairing has ended")]:
+    if t["source"] == "peer":
+        note = "<p>Your peer connection has ended.</p>"
+        subjects = [(member_email, "A peer connection has ended"),
+                    (coach_email, "A peer connection has ended")]
+    else:
+        note = ("<p>Your coaching pairing has ended. You are welcome to choose another coach "
+                "from your portal whenever you are ready.</p>")
+        subjects = [(member_email, "Your coaching pairing has ended"),
+                    (coach_email, "A coaching pairing has ended")]
+    for to, subj in subjects:
         try:
             send_evox_email(to, "", subj, note, note, b"")
         except Exception:
@@ -16864,6 +16874,219 @@ def console_coach_thread_resolve_report(thread_id):
         cx.execute("UPDATE coach_threads SET reported=0 WHERE id=?", (thread_id,))
         cx.execute("UPDATE coach_thread_reports SET resolved=1 WHERE thread_id=?", (thread_id,))
         cx.commit()
+    return jsonify({"ok": True})
+
+
+def _peer_first_name(cx, email):
+    from dashboard import client_portal as _cp
+    row = _cp.get_portal_content_by_email(cx, email) or {}
+    return ((row.get("name") or "").strip().split() or ["A member"])[0]
+
+
+def _peer_ident_paid(cx, token):
+    """(email or None, eligible bool). eligible=False for a free member."""
+    ident = _evox_ident(cx, token)
+    if ident is None:
+        return None, False
+    return ident.email, _is_paid_member(ident.email)
+
+
+@app.route("/api/peer/state")
+def peer_state():
+    from dashboard import peer_connect as _pc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pc.init_peer_tables(cx)
+        email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
+        if email is None:
+            return jsonify({"error": "not_found"}), 404
+        opted = _pc.is_opted_in(cx, email) if eligible else False
+        has_prop = bool(eligible and opted and _pc.next_candidate(cx, email, is_paid=_is_paid_member))
+        return jsonify({"eligible": eligible, "opted_in": opted, "has_proposal": has_prop})
+
+
+@app.route("/api/peer/optin", methods=["POST"])
+def peer_optin():
+    from dashboard import peer_connect as _pc
+    active = bool((request.get_json(silent=True) or {}).get("active"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pc.init_peer_tables(cx)
+        email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
+        if email is None:
+            return jsonify({"error": "not_found"}), 404
+        if not eligible:
+            return jsonify({"error": "not_eligible"}), 403
+        _pc.set_optin(cx, email, active)
+        return jsonify({"ok": True, "opted_in": active})
+
+
+@app.route("/api/peer/proposal")
+def peer_proposal():
+    from dashboard import peer_connect as _pc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pc.init_peer_tables(cx)
+        email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
+        if email is None:
+            return jsonify({"error": "not_found"}), 404
+        if not (eligible and _pc.is_opted_in(cx, email)):
+            return jsonify({"candidate": None})
+        return jsonify({"candidate": _pc.next_candidate(cx, email, is_paid=_is_paid_member)})
+
+
+@app.route("/api/peer/interest", methods=["POST"])
+def peer_interest():
+    from dashboard import peer_connect as _pc, coach_threads as _ct
+    body = request.get_json(silent=True) or {}
+    ref = (body.get("member_ref") or "").strip()
+    kind = (body.get("kind") or "").strip()
+    if kind not in ("connect", "skip"):
+        kind = None
+    matched = False
+    both = ()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pc.init_peer_tables(cx); _ct.init_thread_tables(cx)
+        email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
+        if email is None:
+            return jsonify({"error": "not_found"}), 404
+        if not (eligible and _pc.is_opted_in(cx, email)):
+            return jsonify({"error": "not_eligible"}), 403
+        if not kind:
+            return jsonify({"error": "bad_kind"}), 400
+        target = _pc.resolve_ref(cx, email, ref)
+        if target is None:
+            return jsonify({"error": "not_found"}), 404
+        _pc.record_interest(cx, email, target, kind)
+        already = _pc.match_for_pair(cx, email, target)
+        if kind == "connect" and already is not None:
+            matched = True                                       # already matched; don't re-create
+        elif (kind == "connect" and _pc.interest_kind(cx, target, email) == "connect"
+                and _is_paid_member(target)):                    # only NEW matches need target currently paid
+            a, b = sorted([email, target])                       # slot: a->coach, b->member
+            t = _ct.get_or_create_thread(cx, coach_email=a, member_email=b, source="peer")
+            _pc.create_match(cx, a, b, t["id"])
+            matched = True
+            both = (target, email)
+    if matched:
+        for who in both:
+            _coach_thread_nudge(who, "a member you connected with")
+    return jsonify({"ok": True, "matched": matched})
+
+
+@app.route("/api/peer/connections")
+def peer_connections():
+    from dashboard import peer_connect as _pc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pc.init_peer_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        # Existing connections persist regardless of paid status (peer threads are not paid-gated).
+        out = [{"first_name": _peer_first_name(cx, m["other_email"]),
+                "thread_id": m["thread_id"], "status": m["status"]}
+               for m in _pc.matches_for(cx, ident.email)]
+        return jsonify(out)
+
+
+def _peer_thread_role(cx, thread_id, email):
+    """(thread, role) if `email` is a participant of this peer thread, else (thread, None).
+    role = 'coach' for the coach_email slot, 'member' for the member_email slot."""
+    from dashboard import coach_threads as _ct, peer_connect as _pc
+    t = _ct.get_thread(cx, thread_id)
+    if not t or t["source"] != "peer":
+        return None, None
+    e = (email or "").strip().lower()
+    if not _pc.match_for_pair(cx, t["coach_email"], t["member_email"]):
+        return t, None
+    if e == t["coach_email"]:
+        return t, "coach"
+    if e == t["member_email"]:
+        return t, "member"
+    return t, None
+
+
+@app.route("/api/peer-thread/<int:thread_id>")
+def peer_thread_get(thread_id):
+    from dashboard import coach_threads as _ct
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.mark_read(cx, thread_id, role)
+        other = t["member_email"] if role == "coach" else t["coach_email"]
+        blocked = t["status"] == "blocked"
+        return jsonify({"other_first_name": _peer_first_name(cx, other), "status": t["status"],
+                        "can_post": not blocked,
+                        "messages": [] if blocked else _ct.messages(cx, thread_id,
+                                                                    epoch=t["active_epoch"])})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/message", methods=["POST"])
+def peer_thread_message(thread_id):
+    from dashboard import coach_threads as _ct
+    body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        if not body or len(body) > COACH_MESSAGE_MAX_CHARS:
+            return jsonify({"error": "bad_body"}), 400
+        if t["status"] == "blocked":
+            return jsonify({"error": "blocked"}), 409
+        _ct.post_message(cx, thread_id=thread_id, sender_role=role, body=body)
+        other = t["member_email"] if role == "coach" else t["coach_email"]
+    _coach_thread_nudge(other, "a member you connected with")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/block", methods=["POST"])
+def peer_thread_block(thread_id):
+    from dashboard import coach_threads as _ct, peer_connect as _pc
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx); _pc.init_peer_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.block_thread(cx, thread_id, role)
+        _pc.end_match(cx, thread_id)
+    _coach_thread_owner_alert("A peer connection ended",
+                              "A member blocked a peer connection; it has ended.")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/peer-thread/<int:thread_id>/report", methods=["POST"])
+def peer_thread_report(thread_id):
+    from dashboard import coach_threads as _ct
+    reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _ct.init_thread_tables(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        t, role = _peer_thread_role(cx, thread_id, ident.email)
+        if role is None:
+            return jsonify({"error": "forbidden"}), 403
+        _ct.report_thread(cx, thread_id=thread_id, reporter_role=role, reason=reason)
+    _coach_thread_owner_alert("A peer thread was reported",
+                              "A member reported a peer thread. Review it in the console.")
     return jsonify({"ok": True})
 
 
