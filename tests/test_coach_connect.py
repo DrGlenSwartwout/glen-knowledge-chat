@@ -92,3 +92,13 @@ def test_list_active_full_has_email_and_capacity():
                          intro_video_url="u", capacity=3, cert_ok=1)
     full = _cd.list_active_full(cx)
     assert full[0]["email"] == "c@x.com" and full[0]["capacity"] == 3
+
+
+def test_reapply_after_decline_clears_decided_at():
+    cx = _cx()
+    rid = _cc.create_request(cx, "c@x.com", "m@x.com", "Mel", "first")
+    _cc.set_request_status(cx, rid, "declined")     # stamps decided_at
+    assert cx.execute("SELECT decided_at FROM coach_requests WHERE id=?", (rid,)).fetchone()[0] is not None
+    rid2 = _cc.create_request(cx, "c@x.com", "m@x.com", "Mel", "second chance")   # re-apply
+    row = cx.execute("SELECT status, decided_at FROM coach_requests WHERE id=?", (rid2,)).fetchone()
+    assert rid2 == rid and row["status"] == "pending" and row["decided_at"] is None  # fresh pending
