@@ -81,6 +81,35 @@ def test_connections_visible_after_downgrade():
     assert conns and conns[0]["first_name"] == "B"
 
 
+def test_downgraded_member_not_proposed():
+    c = _client(); a = _member("c@x.com", "zzz_downgrade_topic"); b = _member("d@x.com", "zzz_downgrade_topic")
+    with mock.patch.object(appmod, "_is_paid_member", return_value=True):
+        c.post(f"/api/peer/optin?token={a}", json={"active": True})
+        c.post(f"/api/peer/optin?token={b}", json={"active": True})
+    with mock.patch.object(appmod, "_is_paid_member", side_effect=lambda e: e != "d@x.com"):
+        d = c.get(f"/api/peer/proposal?token={a}").get_json()
+    assert d["candidate"] is None                                # d@x.com downgraded, no longer matchable
+
+
+def test_no_new_match_with_now_free_target():
+    c = _client(); a = _member("e@x.com", "zzz_freetarget_topic"); b = _member("f@x.com", "zzz_freetarget_topic")
+    with mock.patch.object(appmod, "_is_paid_member", return_value=True), \
+         mock.patch.object(appmod, "send_evox_email"):
+        c.post(f"/api/peer/optin?token={a}", json={"active": True})
+        c.post(f"/api/peer/optin?token={b}", json={"active": True})
+        ref_a = _pc.member_ref("e@x.com")
+        r1 = c.post(f"/api/peer/interest?token={b}", json={"member_ref": ref_a, "kind": "connect"})
+        assert r1.get_json()["matched"] is False                 # f connects to e, not yet mutual
+    with mock.patch.object(appmod, "_is_paid_member", side_effect=lambda e: e != "f@x.com"), \
+         mock.patch.object(appmod, "send_evox_email"):
+        ref_b = _pc.member_ref("f@x.com")
+        r2 = c.post(f"/api/peer/interest?token={a}", json={"member_ref": ref_b, "kind": "connect"})
+        assert r2.get_json()["matched"] is False                 # f is now free; no new match created
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; _pc.init_peer_tables(cx)
+        assert _pc.match_for_pair(cx, "e@x.com", "f@x.com") is None
+
+
 def test_reconnect_when_already_matched_returns_matched_true():
     c = _client(); a = _member("a@x.com", "liver"); b = _member("b@x.com", "liver")
     with mock.patch.object(appmod, "_is_paid_member", return_value=True), \

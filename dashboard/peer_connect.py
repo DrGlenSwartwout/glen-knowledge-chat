@@ -107,7 +107,7 @@ def _pair_has_match(cx, e1, e2):
                       (a, b)).fetchone() is not None
 
 
-def next_candidate(cx, me):
+def next_candidate(cx, me, is_paid=None):
     me = _lc(me)
     mine = liked_topics(cx, me) - blocked_topics(cx, me)
     if not mine:
@@ -115,6 +115,8 @@ def next_candidate(cx, me):
     best = None
     for n in opted_in_members(cx):
         if n == me:
+            continue
+        if is_paid is not None and not is_paid(n):              # no longer a current paid member
             continue
         if _pair_has_match(cx, me, n):
             continue

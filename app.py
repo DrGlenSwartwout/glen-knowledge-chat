@@ -16901,7 +16901,7 @@ def peer_state():
         if email is None:
             return jsonify({"error": "not_found"}), 404
         opted = _pc.is_opted_in(cx, email) if eligible else False
-        has_prop = bool(eligible and opted and _pc.next_candidate(cx, email))
+        has_prop = bool(eligible and opted and _pc.next_candidate(cx, email, is_paid=_is_paid_member))
         return jsonify({"eligible": eligible, "opted_in": opted, "has_proposal": has_prop})
 
 
@@ -16932,7 +16932,7 @@ def peer_proposal():
             return jsonify({"error": "not_found"}), 404
         if not (eligible and _pc.is_opted_in(cx, email)):
             return jsonify({"candidate": None})
-        return jsonify({"candidate": _pc.next_candidate(cx, email)})
+        return jsonify({"candidate": _pc.next_candidate(cx, email, is_paid=_is_paid_member)})
 
 
 @app.route("/api/peer/interest", methods=["POST"])
@@ -16962,7 +16962,8 @@ def peer_interest():
         already = _pc.match_for_pair(cx, email, target)
         if kind == "connect" and already is not None:
             matched = True                                       # already matched; don't re-create
-        elif kind == "connect" and _pc.interest_kind(cx, target, email) == "connect":
+        elif (kind == "connect" and _pc.interest_kind(cx, target, email) == "connect"
+                and _is_paid_member(target)):                    # only NEW matches need target currently paid
             a, b = sorted([email, target])                       # slot: a->coach, b->member
             t = _ct.get_or_create_thread(cx, coach_email=a, member_email=b, source="peer")
             _pc.create_match(cx, a, b, t["id"])
