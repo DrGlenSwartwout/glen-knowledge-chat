@@ -2315,7 +2315,7 @@ def begin_fireside_agent():
                 user_name = cand
 
     this_turn = prior_turns + 1
-    system = fireside_agent.build_system(coverage, this_turn)
+    system = fireside_agent.build_system(coverage, this_turn, message)
     messages = fireside_agent.build_messages(transcript, message)
     full = []
 
@@ -2339,7 +2339,7 @@ def begin_fireside_agent():
             return
 
         clean, hooked = fireside_agent.parse_hook("".join(full))
-        hooked = bool(hooked and fireside_agent.hook_eligible(this_turn, coverage))
+        hooked = bool(hooked and fireside_agent.should_hook(this_turn, coverage, message))
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             fireside_store.append_turn(cx, fireside_id, "glendalf", clean)
             if hooked:
