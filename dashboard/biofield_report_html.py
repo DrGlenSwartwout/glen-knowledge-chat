@@ -6,6 +6,7 @@ HTML-escaped.
 """
 import os
 from html import escape as _e
+from urllib.parse import quote as _q
 
 # Where the deployed console lives (for the "Back to Console" link in the header bar).
 CONSOLE_BASE = os.environ.get("CONSOLE_BASE_URL", "https://illtowell.com").rstrip("/")
@@ -26,6 +27,14 @@ _STYLE = """
  .opbar a.optab{display:inline-flex;align-items:center;height:100%;padding:0 13px;color:#9aa0b4;
    text-decoration:none;border-bottom:2px solid transparent}
  .opbar a.optab:hover{color:#e6edf3;background:rgba(255,255,255,.03)}
+ .wfnav{display:flex;gap:4px;margin:0 0 14px;padding:4px;background:var(--card);
+   border:1px solid var(--line);border-radius:10px}
+ .wfnav a{padding:6px 14px;border-radius:7px;color:var(--muted);font-size:13px;font-weight:600;
+   text-decoration:none}
+ .wfnav a:hover{background:rgba(255,255,255,.05);color:var(--fg);text-decoration:none}
+ .wfnav a.active{background:var(--accent);color:#0c0e12}
+ .wfaction{margin:0 0 16px}
+ .wfaction a.btn{text-decoration:none;display:inline-block}
  .wrap{max-width:1040px;margin:0 auto;padding:22px}
  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
  h1{font-size:21px;margin:0 0 2px} h2{font-size:15px;color:var(--muted);margin:22px 0 8px;
@@ -157,6 +166,47 @@ def _page(title, body):
             f"<meta name=viewport content='width=device-width,initial-scale=1'>"
             f"<title>{_e(title)}</title>{_STYLE}</head>"
             f"<body>{_bar()}<div class=wrap>{body}</div></body></html>")
+
+
+# The Match pillar's four steps (mirrors prod static/op-nav.js — kept in sync by hand since
+# these local :8011 pages deliberately don't load the prod nav bundle).
+_WF_TABS = (
+    ("biofield", "Biofield", "biofield-portal"),
+    ("reveals", "Reveals", "biofield-reveals"),
+    ("intake", "Intake", "biofield-intake"),
+    ("tags", "Tags", "clinical-tags"),
+)
+
+
+def _workflow_nav(active, client_email=""):
+    """Match sub-tab strip (Biofield / Reveals / Intake / Tags) shared by both local pages
+    (`/author/<id>` and `/clinical-tags`), so neither dead-ends at Console -> Overview.
+    Each tab links to the deployed console page, carrying the console key so the link lands
+    authed; `active` (one of the ids in _WF_TABS) highlights the current page.
+
+    When `client_email` is given (Intake page only), also renders a "Mark consult-ready"
+    button that deep-links to Biofield with the client pre-selected -- the prod
+    console-biofield-portal.html page already reads `?email=` on load and pre-fills it.
+    Blank CONSOLE_SECRET renders links without `?key=` rather than crashing; blank
+    client_email simply omits the button.
+    """
+    base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+    secret = os.environ.get("CONSOLE_SECRET", "")
+    key_qs = f"?key={_q(secret)}" if secret else ""
+    tabs = "".join(
+        f"<a class=\"{'active' if tid == active else ''}\" "
+        f"href=\"{_e(base + '/console/' + page + key_qs)}\">{label}</a>"
+        for tid, label, page in _WF_TABS
+    )
+    strip = f"<nav class=wfnav>{tabs}</nav>"
+    client_email = (client_email or "").strip()
+    if not client_email:
+        return strip
+    href = f"{base}/console/biofield-portal?email={_q(client_email)}"
+    if secret:
+        href += f"&key={_q(secret)}"
+    action = f"<div class=wfaction><a class=btn href=\"{_e(href)}\">Mark consult-ready &rarr;</a></div>"
+    return strip + action
 
 
 def render_report_html(report, notes="", narrative="", video_script="", stresses=None):
@@ -871,7 +921,8 @@ def render_fee_panel(state):
 def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative="", fee_state=None):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
-    head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
+    head = (_workflow_nav("intake", c.get("email") or "")
+            + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
             f"<a href='/test/{tid}'>View report &rarr;</a></p><h1>Edit Biofield Test</h1>"
             "<div class=btnrow><button class=btn onclick=confirmAll()>&#10003; Confirm all rows</button>"
             "<button class='btn ghost' onclick=delTest()>Delete test</button></div>")

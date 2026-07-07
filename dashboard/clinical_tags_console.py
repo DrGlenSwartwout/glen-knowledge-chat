@@ -4,7 +4,7 @@ reject → status='retired'. Read-only chrome reused from biofield_report_html (
 import datetime as _dt
 import os as _os
 
-from dashboard.biofield_report_html import _e, _page
+from dashboard.biofield_report_html import _e, _page, _workflow_nav
 
 TABLE = "client_clinical_tags"
 
@@ -14,7 +14,9 @@ OS_URL = _os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 
 
 def _os_header():
-    return f"<p class=sub><a href='{_e(OS_URL)}'>&larr; Business OS</a></p>"
+    # Match workflow strip (Tags active) plus the existing Business OS back link -- additive,
+    # so the page still has a way back to the board, not just the clinical workflow.
+    return _workflow_nav("tags") + f"<p class=sub><a href='{_e(OS_URL)}'>&larr; Business OS</a></p>"
 
 
 def _has_table(cx):
