@@ -334,8 +334,18 @@ function renderIntakeAnswers(answers, panel, row){
     panel.appendChild(line);
     return;
   }
-  const ids = Object.keys(answers).sort();
-  if(!ids.length){ panel.textContent = 'No answers recorded.'; return; }
+  if (answers && answers._imported) {
+    const line = document.createElement('div'); line.className = 'intake-row';
+    line.textContent = 'Imported from Practice Better';
+    panel.appendChild(line);
+  }
+  const ids = Object.keys(answers).filter(fid => fid !== '_imported' && fid !== '_external' && fid !== '_note').sort();
+  if(!ids.length){
+    const empty = document.createElement('div'); empty.className = 'intake-row';
+    empty.textContent = 'No answers recorded.';
+    panel.appendChild(empty);
+    return;
+  }
   ids.forEach(fid => {
     const val = answers[fid];
     const row = document.createElement('div'); row.className = 'intake-row';
