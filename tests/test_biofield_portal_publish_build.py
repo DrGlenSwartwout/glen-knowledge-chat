@@ -106,3 +106,13 @@ def test_build_findings_empty_when_provider_raises(tmp_path):
     out = bpp.build_portal_content(cx, aid, special_price_cents=5000,
                                    catalog=CATALOG, findings_provider=boom)
     assert out["content"]["findings"] == []
+
+
+def test_build_includes_time_of_day_schedule():
+    cx = sqlite3.connect(":memory:")
+    aid = _seed_karin(cx)
+    c = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)["content"]
+    sched = c.get("schedule") or {}
+    assert sched.get("slots") and sched.get("entries")          # time-of-day schedule present
+    names = {e.get("name") for e in sched["entries"]}
+    assert "Vitality" in names                                   # a dosed remedy is scheduled
