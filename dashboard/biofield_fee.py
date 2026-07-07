@@ -89,11 +89,11 @@ def default_fee_get(email):
         req = urllib.request.Request(url, headers={"X-Console-Key": key})
         with urllib.request.urlopen(req, timeout=20) as r:
             resp = _json.loads(r.read().decode() or "{}")
+        out = parse_courtesy(resp)
+        out["available"] = True
+        return out
     except Exception:
         return {"available": False, "courtesy_cents": None, "note": ""}
-    out = parse_courtesy(resp)
-    out["available"] = True
-    return out
 
 
 def default_fee_set(email, cents, note=""):

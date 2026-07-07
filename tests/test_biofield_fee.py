@@ -75,6 +75,26 @@ def test_default_fee_get_network_failure_is_unavailable(monkeypatch):
     assert bf.default_fee_get("j@x.com")["available"] is False
 
 
+def test_default_fee_get_malformed_json_array_is_unavailable(monkeypatch):
+    monkeypatch.setenv("CONSOLE_SECRET", "k")
+    class _Resp:
+        def read(self): return b'["unexpected","array"]'
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(bf.urllib.request, "urlopen", lambda *a, **k: _Resp())
+    assert bf.default_fee_get("j@x.com") == {"available": False, "courtesy_cents": None, "note": ""}
+
+
+def test_default_fee_get_malformed_prices_row_is_unavailable(monkeypatch):
+    monkeypatch.setenv("CONSOLE_SECRET", "k")
+    class _Resp:
+        def read(self): return b'{"ok":true,"prices":[{"slug":"biofield-analysis"}]}'
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+    monkeypatch.setattr(bf.urllib.request, "urlopen", lambda *a, **k: _Resp())
+    assert bf.default_fee_get("j@x.com") == {"available": False, "courtesy_cents": None, "note": ""}
+
+
 def test_default_fee_set_no_secret_is_not_ok(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
     assert bf.default_fee_set("j@x.com", 10000, "n") == {"ok": False}
