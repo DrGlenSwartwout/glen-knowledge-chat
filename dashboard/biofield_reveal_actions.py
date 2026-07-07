@@ -32,6 +32,12 @@ def _exec_edit(params, ctx):
     if isinstance(params.get("layers"), list):
         from dashboard import biofield_meanings as _bm
         _bm.init_table(ctx["cx"])
+        # Prior remedy per layer (keyed by its stable stress patterns), so a remedy
+        # SWAP can be detected and its stale description dropped (see below).
+        _prev_by_patterns = {}
+        for _sl in (cur.get("layers") or []):
+            if isinstance(_sl, dict) and isinstance(_sl.get("remedy"), dict):
+                _prev_by_patterns[tuple(_sl.get("patterns") or [])] = _sl["remedy"]
         stored_layers = []
         derived = []
         for layer in params["layers"]:
@@ -55,6 +61,17 @@ def _exec_edit(params, ctx):
                             slug = ""
                     if slug:
                         clean_rem["slug"] = slug
+                # A remedy SWAP must not inherit the prior remedy's description.
+                # If the slug changed and the submitted meaning is exactly the old
+                # remedy's meaning (stale carryover from the editor), drop it so the
+                # fill-below re-derives the NEW remedy's meaning. A meaning Glen
+                # actually typed (differs from the old one) is left untouched.
+                prev_rem = _prev_by_patterns.get(tuple(layer.get("patterns") or []), {})
+                prev_slug = (prev_rem.get("slug") or "").strip()
+                if (slug and prev_slug and slug != prev_slug
+                        and (clean_rem.get("meaning") or "").strip()
+                        == (prev_rem.get("meaning") or "").strip()):
+                    clean_rem["meaning"] = ""
                 meaning = (clean_rem.get("meaning") or "").strip()
                 # Fill the meaning when a slug resolved but no meaning was typed:
                 # canonical store first, else AI-propose (and remember it).
