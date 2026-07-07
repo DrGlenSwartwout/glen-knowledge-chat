@@ -18188,7 +18188,7 @@ def healing_oasis_request():
         return jsonify({"ok": False, "error": "Please enter a valid email address."}), 400
     ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "").split(",")[0].strip()
     generic = {"ok": True,
-               "message": "Check your email — your Healing Oasis link is on its way."}
+               "message": "Check your email for your link."}
 
     from dashboard import evox as _ev, customers as _cu, client_portal as _cp
     from dashboard import notify_state as _ns
