@@ -840,10 +840,14 @@ def render_fee_panel(state):
         note = f" &middot; {_e(state['note'])}" if state["note"] else ""
         cur = f"<div class=food>This client: <b>Courtesy: ${cents_to_dollars(cc)}</b>{note}</div>"
         clear = ("<button class='btn ghost' onclick=clearFee()>Clear &rarr; back to standard</button>")
+    # Prefill the amount + note fields with the currently-set courtesy so the panel
+    # visibly confirms the saved value after "Set courtesy" (empty fields read as unsaved).
+    amt_val = cents_to_dollars(cc) if cc is not None else ""
+    note_val = _e(state["note"]) if cc is not None and state["note"] else ""
     controls = (
         "<div class=btnrow style='margin-top:8px'>"
-        "<label>Courtesy $</label><input id=fee_amt style='width:100px' inputmode=decimal>"
-        "<label>Note</label><input id=fee_note style='width:200px'>"
+        f"<label>Courtesy $</label><input id=fee_amt value=\"{amt_val}\" style='width:100px' inputmode=decimal>"
+        f"<label>Note</label><input id=fee_note value=\"{note_val}\" style='width:200px'>"
         "<button class=btn onclick=setFee()>Set courtesy</button>" + clear + "</div>"
         "<div class=btnrow style='margin-top:4px'>"
         "<button class='btn ghost' onclick='preFee(697)'>$697 courtesy</button>"
