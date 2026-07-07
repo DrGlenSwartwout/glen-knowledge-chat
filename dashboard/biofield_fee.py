@@ -3,7 +3,7 @@
 Pure functions + thin best-effort network calls to the prod console
 `/api/console/client-prices` endpoint. The panel on /author/<id> uses these to
 see and set a client's courtesy price; prod `client_prices` stays the single
-source the pricer reads. Never raises into the page — network failures degrade
+source the pricer reads. Never raises into the page: network failures degrade
 to an "unavailable" state.
 """
 import json as _json
