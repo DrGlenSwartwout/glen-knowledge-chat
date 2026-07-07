@@ -70,3 +70,39 @@ def test_build_unresolved_remedy_is_reported_not_published(tmp_path):
     out = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)
     assert out["unresolved"] == ["Invented Remedy ZZZ"]
     assert out["content"]["reorder_items"] == []
+
+def test_build_populates_findings_from_scan(tmp_path):
+    cx = sqlite3.connect(":memory:")
+    aid = _seed_karin(cx)
+    captured = {}
+    def fake_scan_context(email, today):
+        captured["args"] = (email, today)
+        return {"findings": [
+            {"code": "ED3", "name": "Cell Driver", "rank": 1,
+             "description": "The Cell Driver supports cellular energy.",
+             "category": "ED", "group": "infoceutical"},
+            {"code": "ER9", "name": "Environmental Load", "rank": 2,
+             "description": "", "category": "ER", "group": "stress"},
+        ]}
+    out = bpp.build_portal_content(cx, aid, special_price_cents=5000,
+                                   catalog=CATALOG, scan_context=fake_scan_context)
+    f = out["content"]["findings"]
+    assert len(f) == 2
+    # trimmed to exactly the four portal-consumed fields; description preserved
+    assert f[0] == {"code": "ED3", "name": "Cell Driver",
+                    "description": "The Cell Driver supports cellular energy.", "rank": 1}
+    # blank-description finding kept, description == ""
+    assert f[1] == {"code": "ER9", "name": "Environmental Load",
+                    "description": "", "rank": 2}
+    # aligned to the published scan_date, not "latest"
+    assert captured["args"] == ("permanentlyyours777@hawaiiantel.net", "2026-06-25")
+
+
+def test_build_findings_empty_when_scan_context_raises(tmp_path):
+    cx = sqlite3.connect(":memory:")
+    aid = _seed_karin(cx)
+    def boom(email, today):
+        raise RuntimeError("e4l.db unreadable")
+    out = bpp.build_portal_content(cx, aid, special_price_cents=5000,
+                                   catalog=CATALOG, scan_context=boom)
+    assert out["content"]["findings"] == []
