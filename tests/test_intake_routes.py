@@ -17,6 +17,15 @@ def client(monkeypatch):
         return _Ident("member@x.com") if token == "good" else None
     monkeypatch.setattr(appmod, "_evox_ident", fake_ident)
     appmod.app.config["TESTING"] = True
+
+    # Clean slate: other tests/runs may have left rows in the shared
+    # DATA_DIR sqlite DB. Clear the intake table (not the whole DB file,
+    # since other app tables live in the same DB) so each run is isolated.
+    with sqlite3.connect(appmod.LOG_DB) as _cx:
+        intake.init_intake_table(_cx)
+        _cx.execute("DELETE FROM intake_responses")
+        _cx.commit()
+
     return appmod.app.test_client()
 
 
@@ -35,6 +44,15 @@ def test_state_bad_token_404(client):
 def test_token_gate_precedes_body_on_submit(client):
     r = client.post("/api/intake/submit?token=bad", json={"garbage": True})
     assert r.status_code == 404  # token wins over validation
+
+
+def test_token_gate_precedes_malformed_body_on_submit(client):
+    # A bad token must 404 even when the body is unparseable JSON — the
+    # auth check must run before request.get_json() is ever called.
+    r = client.post("/api/intake/submit?token=bad", data="not json",
+                     content_type="application/json")
+    assert r.status_code == 404
+    assert r.get_json()["error"] == "not_found"
 
 
 def test_save_draft_then_state(client):
