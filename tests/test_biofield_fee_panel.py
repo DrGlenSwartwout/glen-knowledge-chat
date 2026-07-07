@@ -48,6 +48,19 @@ def test_author_html_injects_panel_when_state_given():
     assert "feepanel" in html and "$300" in html
 
 
+def test_panel_prefills_amount_field_with_set_courtesy():
+    """After 'Set courtesy', the amount input must carry the saved value — an empty
+    field reads as 'not saved' (the bug Glen reported on Donna's intake)."""
+    html = render_fee_panel(_state(courtesy_cents=10000, note="special"))
+    assert 'id=fee_amt value="100"' in html          # amount prefilled into the field
+    assert 'id=fee_note value="special"' in html      # note prefilled too
+
+
+def test_panel_amount_field_empty_when_no_courtesy():
+    html = render_fee_panel(_state())                 # no courtesy set
+    assert 'id=fee_amt value=""' in html              # field blank, not stale
+
+
 def test_panel_zero_courtesy_is_comp_not_standard():
     html = render_fee_panel(_state(courtesy_cents=0, note="comp"))
     assert "Courtesy: $0" in html          # $0 is a comp courtesy...
