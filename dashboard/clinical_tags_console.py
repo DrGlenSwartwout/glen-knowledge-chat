@@ -8,9 +8,9 @@ from dashboard.biofield_report_html import _e, _page
 
 TABLE = "client_clinical_tags"
 
-# Return-to-OS link target: the Business OS runs on the public app (this local page was opened
-# from it via /console/clinical-tags). The prod cookie keeps that origin authed on the way back.
-OS_URL = _os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/") + "/console"
+# Return-to-OS link target: the Business OS board (same place op-nav's "Business OS" tab goes,
+# /console/orders — NOT the Console home /console). The prod cookie keeps that origin authed.
+OS_URL = _os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/") + "/console/orders"
 
 
 def _os_header():
