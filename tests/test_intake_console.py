@@ -31,3 +31,49 @@ def test_console_intake_returns_response(client):
 def test_console_submissions_list(client):
     r = client.get("/api/console/intake-submissions?key=K")
     assert any(x["email"] == "seed@x.com" for x in r.get_json()["submissions"])
+
+
+def test_intake_on_file_requires_key(client):
+    r = client.post("/api/console/intake-on-file", json={"email": "new@x.com", "on_file": True})
+    assert r.status_code == 401
+
+
+def test_intake_on_file_requires_email(client):
+    r = client.post("/api/console/intake-on-file?key=K", json={"on_file": True})
+    assert r.status_code == 400
+
+
+def test_intake_on_file_marks_submitted(client):
+    import app as appmod
+    from dashboard import intake
+    r = client.post("/api/console/intake-on-file?key=K",
+                     json={"email": "new@x.com", "on_file": True})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        assert intake.is_submitted(cx, "new@x.com") is True
+
+
+def test_intake_on_file_clear_removes(client):
+    import app as appmod
+    from dashboard import intake
+    client.post("/api/console/intake-on-file?key=K",
+                json={"email": "new2@x.com", "on_file": True})
+    r = client.post("/api/console/intake-on-file?key=K",
+                     json={"email": "new2@x.com", "on_file": False})
+    assert r.status_code == 200
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        assert intake.is_submitted(cx, "new2@x.com") is False
+
+
+def test_intake_on_file_guard_preserves_real_submission(client):
+    r = client.post("/api/console/intake-on-file?key=K",
+                     json={"email": "seed@x.com", "on_file": True})
+    assert r.status_code == 200
+    import app as appmod
+    from dashboard import intake
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = intake.get_response(cx, "seed@x.com")
+        assert row["answers"] == {"first_name": "Seed"}

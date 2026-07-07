@@ -16133,6 +16133,28 @@ def console_intake_submissions():
     return jsonify({"submissions": subs})
 
 
+@app.route("/api/console/intake-on-file", methods=["POST"])
+def api_console_intake_on_file():
+    """Mark (or clear) intake as satisfied out of band, for existing clients
+    who already completed intake in Practice Better and have no portal row."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    on_file = bool(body.get("on_file"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        if on_file:
+            _intake.mark_on_file(cx, email, _hst_now().isoformat())
+        else:
+            _intake.clear_intake(cx, email)
+    return jsonify({"ok": True, "email": email, "on_file": on_file})
+
+
 def _get_consult_booked(cx):
     try:
         rows = cx.execute("SELECT lower(email) FROM evox_bookings "
