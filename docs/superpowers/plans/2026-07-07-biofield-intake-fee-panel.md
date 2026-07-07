@@ -435,11 +435,11 @@ def render_fee_panel(state):
         return head + "<div class=food>Pricing unavailable (couldn't reach console).</div></div>"
     cc = state["courtesy_cents"]
     if cc is None:
-        cur = f"<div class=food>This client: <b>Standard &mdash; ${std}</b></div>"
+        cur = f"<div class=food>This client: <b>Standard: ${std}</b></div>"
         clear = ""
     else:
         note = f" &middot; {_e(state['note'])}" if state["note"] else ""
-        cur = f"<div class=food>This client: <b>Courtesy &mdash; ${cents_to_dollars(cc)}</b>{note}</div>"
+        cur = f"<div class=food>This client: <b>Courtesy: ${cents_to_dollars(cc)}</b>{note}</div>"
         clear = ("<button class='btn ghost' onclick=clearFee()>Clear &rarr; back to standard</button>")
     controls = (
         "<div class=btnrow style='margin-top:8px'>"
