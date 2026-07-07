@@ -12512,10 +12512,11 @@ def console_rnd():
 
 @app.route("/api/guide", methods=["POST"])
 def api_guide():
-    """Ask & Guide panel — log a page-tagged change request into the Projects (todos) board.
+    """Ask & Guide panel — log a page-tagged change request onto the Projects board's IDEAS
+    queue (the same pending-ideas path as the board's 'New idea' box, read by /console/projects).
     Store-raw, no AI. Gated on the console key."""
-    import dashboard as _dashboard, hashlib, sqlite3 as _sq
-    from datetime import datetime as _dt, timezone as _tz
+    import dashboard as _dashboard
+    from dashboard import projects as _projects
     key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
     if _dashboard.CONSOLE_SECRET and key != _dashboard.CONSOLE_SECRET:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -12525,24 +12526,13 @@ def api_guide():
         return jsonify({"ok": False, "error": "empty"}), 400
     active = (data.get("active") or "").strip() or "unknown"
     sub = (data.get("sub") or "").strip()
-    url = (data.get("url") or "").strip()
     page = active + "/" + sub if sub else active
-    now = _dt.now(_tz.utc).isoformat()
-    title = text.splitlines()[0][:80]
-    body = text + "\n\n— from " + page + ((" (" + url + ")") if url else "")
-    dedup = "guide:" + hashlib.sha1((text + page + now).encode("utf-8")).hexdigest()[:16]
+    idea = (text + "  — from " + page)[:490]   # add_pending_idea caps at 500
     try:
-        cx = _sq.connect(str(LOG_DB))
-        try:
-            cx.execute(
-                "INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(dedup_key) DO NOTHING",
-                (now, "glen", "Guidance", title, body, "normal", "ask-guide:" + page, dedup))
-            cx.commit()
-            r = cx.execute("SELECT id FROM todos WHERE dedup_key=?", (dedup,)).fetchone()
-        finally:
-            cx.close()
-        return jsonify({"ok": True, "id": r[0] if r else None})
+        res = _projects.add_pending_idea(idea)
+        return jsonify({"ok": True, "id": (res or {}).get("id")})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)[:200]}), 500
 
