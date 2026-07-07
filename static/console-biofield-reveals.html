@@ -143,8 +143,17 @@ function attachRemedySearch(nameInput, slugInput, meaningArea){
   function pick(p){
     nameInput.value = p.name || '';
     if(slugInput) slugInput.value = p.slug || '';
-    var m = _canonMeaning(p.slug);
-    if(meaningArea && m) meaningArea.value = m;   // autofill meaning when we have one
+    // Picking a remedy is an explicit SWAP: the description must track the new
+    // remedy, never keep the previously-entered one. Use its canonical (Glen-
+    // reviewed) meaning if we have one; otherwise clear the field so the stale
+    // description can't persist — the server fills a fresh one for the new remedy
+    // on save (canonical, else AI-proposed).
+    if(meaningArea){
+      var m = _canonMeaning(p.slug);
+      meaningArea.value = m || '';
+      meaningArea.placeholder = m ? '' :
+        ('A description for ' + (p.name || 'this remedy') + ' will be generated when you save.');
+    }
     hide();
     if(slugInput) slugInput.dispatchEvent(new Event('change'));
   }

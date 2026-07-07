@@ -101,6 +101,52 @@ def test_edit_layer_remember_checked_promotes_to_canonical(tmp_path):
     assert bm.get_map(cx).get("x") == "reviewed meaning"   # remembered (source glen)
 
 
+def test_edit_layer_swapped_remedy_drops_stale_meaning_and_rederives(tmp_path):
+    """Swapping a layer's remedy must not leave the PRIOR remedy's description
+    behind. When the slug changes but the submitted meaning still equals the old
+    remedy's meaning (stale carryover), the edit drops it and re-derives the new
+    remedy's meaning from the canonical store."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    bm.upsert(cx, "remedy-b", "Description of remedy B.", "glen", "glen")
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+                                "remedy": {"name": "Remedy A", "slug": "remedy-a",
+                                           "meaning": "Description of remedy A."}}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    # Glen swapped to remedy B, but the meaning field still carries A's description.
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "Remedy B", "slug": "remedy-b",
+                    "meaning": "Description of remedy A."}}]},
+        {"cx": cx, "actor": _Actor()})
+    lyr = br.get(cx, rid)["layers"][0]
+    assert lyr["remedy"]["slug"] == "remedy-b"
+    assert lyr["remedy"]["meaning"] == "Description of remedy B."  # re-derived, not stale A
+
+
+def test_edit_layer_swapped_remedy_keeps_glens_typed_meaning(tmp_path):
+    """The stale-drop must be precise: a meaning Glen actually typed for the new
+    remedy (different from the old remedy's) is preserved, never clobbered."""
+    br, acts = _mods(); cx = _cx(tmp_path)
+    from dashboard import biofield_meanings as bm
+    bm.init_table(cx)
+    bm.upsert(cx, "remedy-b", "Canonical B.", "glen", "glen")
+    rid, _ = br.upsert(cx, "a@x.com", "2026-06-19", {"greeting": "Hi"}, [], "s",
+                       layers=[{"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+                                "remedy": {"name": "Remedy A", "slug": "remedy-a",
+                                           "meaning": "Description of remedy A."}}])
+    acts.configure(resolve_slug=lambda r: r.get("slug") or None, products={}, client=None)
+    acts._exec_edit({"id": rid, "layers": [
+        {"n": 1, "title": "T", "summary": "s", "patterns": ["ED1"],
+         "remedy": {"name": "Remedy B", "slug": "remedy-b",
+                    "meaning": "Glen's own words for B.", "remember": False}}]},
+        {"cx": cx, "actor": _Actor()})
+    lyr = br.get(cx, rid)["layers"][0]
+    assert lyr["remedy"]["meaning"] == "Glen's own words for B."  # typed meaning kept
+
+
 def test_edit_layer_unresolvable_name_is_dropped(tmp_path):
     """A typed name that matches no catalog product still drops (anti-bypass)."""
     br, acts = _mods(); cx = _cx(tmp_path)
