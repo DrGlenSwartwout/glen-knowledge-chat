@@ -43,3 +43,65 @@ def build_invoice_lines(client, remedies, catalog):
         else:
             skipped.append(rname)
     return {"lines": lines, "skipped": skipped}
+
+
+def _console():
+    key = os.environ.get("CONSOLE_SECRET")
+    if not key:
+        return None, None
+    base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+    return base, key
+
+
+def default_fetch_catalog():
+    base, key = _console()
+    if not base:
+        return []
+    try:
+        url = f"{base}/api/console/biofield-portal/catalog?key=" + urllib.parse.quote(key)
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        return resp.get("products") or []
+    except Exception:
+        return []
+
+
+def default_create_order(customer, lines):
+    base, key = _console()
+    if not base:
+        return {"ok": False, "error": "No console configured (CONSOLE_SECRET missing)."}
+    try:
+        body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
+                "lines": lines, "pickup": True,
+                "invoice_note": "Biofield Analysis and remedies. Payable by check."}
+        url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
+        req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
+                                     headers={"X-Console-Key": key, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        if not resp.get("ok"):
+            return {"ok": False, "error": resp.get("error") or "Order creation failed."}
+        totals = resp.get("totals") or {}
+        return {"ok": True, "order_id": resp.get("order_id"),
+                "external_ref": resp.get("external_ref"),
+                "total_cents": totals.get("total_cents"), "error": None}
+    except Exception:
+        return {"ok": False, "error": "Couldn't reach the console to create the order."}
+
+
+def default_invoice_link(order_id):
+    base, key = _console()
+    if not base or not order_id:
+        return {"ok": False, "error": "link unavailable"}
+    try:
+        url = (f"{base}/api/console/order/{int(order_id)}/invoice-link?key="
+               + urllib.parse.quote(key))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        if resp.get("ok") and resp.get("link"):
+            return {"ok": True, "print_url": resp["link"], "error": None}
+        return {"ok": False, "error": "link unavailable"}
+    except Exception:
+        return {"ok": False, "error": "link unavailable"}
