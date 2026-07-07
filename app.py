@@ -16107,6 +16107,32 @@ def api_console_consult_ready():
     return jsonify({"ok": True, "email": email, "ready": new_state})
 
 
+@app.route("/api/console/intake/<path:email>")
+def console_intake(email):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        row = _intake.get_response(cx, email)
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(row)
+
+
+@app.route("/api/console/intake-submissions")
+def console_intake_submissions():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        subs = _intake.list_submitted(cx)
+    return jsonify({"submissions": subs})
+
+
 def _get_consult_booked(cx):
     try:
         rows = cx.execute("SELECT lower(email) FROM evox_bookings "
