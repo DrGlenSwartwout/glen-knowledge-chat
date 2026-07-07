@@ -30,10 +30,15 @@ def client(monkeypatch):
 
 
 def test_form_endpoint_returns_sections(client):
-    r = client.get("/api/intake/form")
+    r = client.get("/api/intake/form?token=good")
     assert r.status_code == 200
     assert r.get_json()["version"]
     assert any(s["id"] == "dimensions" for s in r.get_json()["sections"])
+
+
+def test_form_endpoint_requires_token(client):
+    r = client.get("/api/intake/form?token=bad")
+    assert r.status_code == 404 and r.get_json()["error"] == "not_found"
 
 
 def test_state_bad_token_404(client):

@@ -1406,7 +1406,7 @@ async function renderIntakeForm(host, tokenVal, onDone){
   let formDef = null, stateData = null;
   try{
     const results = await Promise.all([
-      fetch(`/api/intake/form`),
+      fetch(`/api/intake/form?token=${encodeURIComponent(tokenVal)}`),
       fetch(`/api/intake/state?token=${encodeURIComponent(tokenVal)}`),
     ]);
     formDef = results[0].ok ? await results[0].json() : null;
