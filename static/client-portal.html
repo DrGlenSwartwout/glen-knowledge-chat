@@ -239,6 +239,14 @@
   .pat-chip--detail[aria-expanded="true"]::after{border-color:var(--btn-fg)}
   .pat-chip--detail[aria-expanded="true"]::after{transform:rotate(-135deg) translateY(1px)}
   .pat-chip--detail:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .pat-detail{margin:.15rem 0 .7rem;padding:.6rem .8rem;border-radius:10px;
+    background:var(--card2);border:1px solid var(--line);
+    box-shadow:inset 3px 0 0 var(--brand);font-size:.9rem;line-height:1.5}
+  .pat-detail .pat-detail-name{font-weight:700;font-size:.82rem;letter-spacing:.02em;
+    margin-bottom:.25rem;color:var(--brand)}
+  .pat-detail:not([hidden]){animation:patExpand .28s ease}
+  @keyframes patExpand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion: reduce){.pat-detail:not([hidden]){animation:none}}
   @media (prefers-reduced-motion: reduce){.reveal{animation:none;opacity:1;transform:none}}
   /* Ask Dr. Glen concierge chat */
   .chat-msgs{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:.8rem;min-height:48px}
@@ -476,6 +484,39 @@ function pollPending(){
     return;
   }
   load();
+}
+
+// Stress-pattern detail: one delegated click listener bound ONCE to the
+// persistent #app container, so it survives render()'s poll re-renders. A
+// described chip (button.pat-chip--detail) toggles the single inline #patDetail
+// panel: click to open, click again (or another chip) to swap/close. Only one
+// panel is ever open. data-pname/data-pdesc are read back decoded, then re-esc()'d
+// on inject (never trust them as raw HTML).
+let _patWired = false;
+function wirePatternDetails(){
+  if(_patWired) return;
+  const app = document.getElementById("app");
+  if(!app) return;
+  _patWired = true;
+  app.addEventListener("click", (e)=>{
+    const chip = e.target.closest(".pat-chip--detail");
+    if(!chip || !app.contains(chip)) return;
+    const panel = document.getElementById("patDetail");
+    if(!panel) return;
+    const wasOpen = chip.getAttribute("aria-expanded") === "true";
+    app.querySelectorAll('.pat-chip--detail[aria-expanded="true"]')
+       .forEach(c => c.setAttribute("aria-expanded", "false"));
+    if(wasOpen){
+      panel.hidden = true;
+      panel.innerHTML = "";
+      return;
+    }
+    chip.setAttribute("aria-expanded", "true");
+    const nm = chip.getAttribute("data-pname") || "";
+    const ds = chip.getAttribute("data-pdesc") || "";
+    panel.innerHTML = `<div class="pat-detail-name">${esc(nm)}</div><div>${esc(ds)}</div>`;
+    panel.hidden = false;
+  });
 }
 
 function render(d, v){
@@ -1136,6 +1177,7 @@ function render(d, v){
   initOnboardingCard();
   initCoachesCard();
   initPeerCard();
+  wirePatternDetails();
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }
