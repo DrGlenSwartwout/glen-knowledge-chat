@@ -818,7 +818,53 @@ def _render_chain_cards(report, depth_values, covered_by_layer=None):
     return cards
 
 
-def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative=""):
+def render_fee_panel(state):
+    """The Fee card on the authoring page: value + standard + this client's fee,
+    with set/clear controls. Renders from a build_fee_state() dict."""
+    from dashboard.biofield_fee import cents_to_dollars
+    val = cents_to_dollars(state["value_cents"])
+    std = cents_to_dollars(state["standard_cents"])
+    head = (f"<div class=card id=feepanel><h2>Fee</h2>"
+            f"<p class=sub>Value ${val} &middot; standard charge ${std}. "
+            "Set a courtesy below; it applies automatically when you raise the invoice in console. "
+            "This panel does not invoice.</p>")
+    if not state["has_email"]:
+        return head + "<div class=food>Add a client email in the header to set a fee.</div></div>"
+    if not state["available"]:
+        return head + "<div class=food>Pricing unavailable (couldn't reach console).</div></div>"
+    cc = state["courtesy_cents"]
+    if cc is None:
+        cur = f"<div class=food>This client: <b>Standard: ${std}</b></div>"
+        clear = ""
+    else:
+        note = f" &middot; {_e(state['note'])}" if state["note"] else ""
+        cur = f"<div class=food>This client: <b>Courtesy: ${cents_to_dollars(cc)}</b>{note}</div>"
+        clear = ("<button class='btn ghost' onclick=clearFee()>Clear &rarr; back to standard</button>")
+    controls = (
+        "<div class=btnrow style='margin-top:8px'>"
+        "<label>Courtesy $</label><input id=fee_amt style='width:100px' inputmode=decimal>"
+        "<label>Note</label><input id=fee_note style='width:200px'>"
+        "<button class=btn onclick=setFee()>Set courtesy</button>" + clear + "</div>"
+        "<div class=btnrow style='margin-top:4px'>"
+        "<button class='btn ghost' onclick='preFee(697)'>$697 courtesy</button>"
+        "<button class='btn ghost' onclick='preFee(100)'>$100 special</button>"
+        "<button class='btn ghost' onclick='preFee(0)'>$0 comp</button>"
+        "<span id=feestat class=food></span></div>")
+    js = (
+        "<script>"
+        "function preFee(v){document.getElementById('fee_amt').value=v;}"
+        "function feeSwap(u){var b=document.getElementById('fee_amt');"
+        "var body=u.indexOf('clear')>-1?{}:{dollars:b.value,note:document.getElementById('fee_note').value};"
+        "fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})"
+        ".then(r=>r.json()).then(j=>{if(j.html){document.getElementById('feepanel').outerHTML=j.html;}"
+        "else{document.getElementById('feestat').textContent=j.error||'error';}});}"
+        "function setFee(){feeSwap(location.pathname.replace(/\\/$/,'')+'/fee');}"
+        "function clearFee(){feeSwap(location.pathname.replace(/\\/$/,'')+'/fee/clear');}"
+        "</script>")
+    return head + cur + controls + js + "</div>"
+
+
+def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative="", fee_state=None):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
@@ -884,8 +930,9 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
         f"<textarea id=narrEd rows=14 oninput=\"markDirty(document.getElementById('narrSaveBtn'))\" "
         f"placeholder='Click Generate narrative to draft one from the transcript + chain…'>"
         f"{_e(narrative)}</textarea>")
+    fee_html = render_fee_panel(fee_state) if fee_state else ""
     return _page("Edit Biofield Test",
-                 head + hdr + "<div id=e4lpanel></div>"
+                 head + hdr + fee_html + "<div id=e4lpanel></div>"
                  "<div class=btnrow style='margin:6px 0'>"
                  "<button class='btn ghost' onclick=mineProfile()>Mine profile &rarr; stresses</button>"
                  "<button class='btn ghost' onclick=mineComms()>Mine recent comms &rarr; stresses</button>"
