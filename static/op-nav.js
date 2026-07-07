@@ -23,6 +23,58 @@
  *   - Uses neutral dark styling that sits on top of all page palettes
  */
 (function () {
+  // ---------- node-exportable nav data (pure; no DOM) ----------
+  function buildPillars(qs) {
+    return [
+      { id:"home",          label:"",       href:"/console"+qs,                 zone:"front", logo:true },
+      { id:"marketing",     label:"Market", href:"/funnel"+qs,                  zone:"front" },
+      { id:"clinical",      label:"Match",  href:"/console/biofield-portal"+qs, zone:"front" },
+      { id:"sales",         label:"Sell",   href:"/console/orders"+qs,          zone:"front" },
+      { id:"fulfillment",   label:"Fill",   href:"/admin/shipping"+qs,          zone:"front" },
+      { id:"people",        label:"People", href:"/console/crm"+qs,             zone:"front" },
+      { id:"communication", label:"Comm",   href:"/console/inbox"+qs,           zone:"front" },
+      { id:"rnd",           label:"R&D",    href:"/console/rnd"+qs,             zone:"back" },
+      { id:"production",    label:"Make",   href:"/console/products"+qs,        zone:"back" },
+      { id:"finance",       label:"Money",  href:"/console/money"+qs,           zone:"back" },
+      { id:"admin",         label:"Admin",  href:"/console/approvals"+qs,       zone:"back" }
+    ];
+  }
+  function buildPillarPages(qs) {
+    return {
+      home:          [ {id:"overview",label:"Overview",href:"/console"+qs}, {id:"dashboard",label:"Dashboard",href:"/dashboard"+qs} ],
+      marketing:     [ {id:"funnel",label:"Funnel",href:"/funnel"+qs}, {id:"pages",label:"Pages",href:"/console/pages"+qs},
+                       {id:"social",label:"Social Media",href:"/console/social"+qs}, {id:"reviews",label:"Reviews",href:"/console/reviews"+qs},
+                       {id:"invite-queue",label:"Invite Queue",href:"/console/testimonial-invites"+qs}, {id:"top-products",label:"Top Products",href:"/console/top-products"+qs} ],
+      clinical:      [ {id:"biofield",label:"Biofield",href:"/console/biofield-portal"+qs}, {id:"reveals",label:"Reveals",href:"/console/biofield-reveals"+qs},
+                       {id:"intake",label:"Intake",href:"/console/biofield-intake"+qs}, {id:"tags",label:"Tags",href:"/console/clinical-tags"+qs},
+                       {id:"remedy-meanings",label:"Remedy Meanings",href:"/console/remedy-meanings"+qs} ],
+      sales:         [ {id:"orders",label:"Orders",href:"/console/orders"+qs}, {id:"new-order",label:"New Order",href:"/orders/new"+qs},
+                       {id:"client-orders",label:"Client Orders",href:"/console/client-orders"+qs} ],
+      fulfillment:   [ {id:"shipping",label:"Shipping",href:"/admin/shipping"+qs}, {id:"household",label:"Household",href:"/console/household"+qs} ],
+      people:        [ {id:"crm",label:"CRM",href:"/console/crm"+qs}, {id:"members",label:"Members",href:"/console/members"+qs},
+                       {id:"membership",label:"Membership",href:"/admin/membership"+qs}, {id:"practitioners",label:"Practitioners",href:"/console/practitioners"+qs},
+                       {id:"coaching",label:"Coaching",href:"/console/coaching-cohort"+qs}, {id:"cert",label:"Cert",href:"/console/cert"+qs} ],
+      communication: [ {id:"inbox",label:"Inbox",href:"/console/inbox"+qs}, {id:"portal-links",label:"Portal Links",href:"/console/portal-links"+qs} ],
+      rnd:           [ {id:"rnd",label:"R&D Home",href:"/console/rnd"+qs} ],
+      production:    [ {id:"products",label:"Products",href:"/console/products"+qs}, {id:"ingredients",label:"Ingredients",href:"/admin/ingredients"+qs} ],
+      finance:       [ {id:"money",label:"Money",href:"/console/money"+qs}, {id:"pricing",label:"Pricing",href:"/console/pricing-settings"+qs},
+                       {id:"studio-credits",label:"Studio Credits",href:"/console/studio-credits"+qs}, {id:"tax",label:"Tax",href:"/admin/tax"+qs} ],
+      admin:         [ {id:"approvals",label:"Approvals",href:"/console/approvals"+qs}, {id:"projects",label:"Projects",href:"/console/projects"+qs},
+                       {id:"settings",label:"Settings",href:"/console/settings"+qs} ]
+    };
+  }
+  var NAV_PROFILES = {
+    glen:   { pillars: buildPillars("").map(function(p){return p.id;}), hideRest:false },
+    rae:    { pillars: ["home","marketing","sales","fulfillment","people","communication","finance"], hideRest:false },
+    shaira: { pillars: ["home","marketing","communication","people"], hideRest:true }
+  };
+  function navPillarsFor(name){ return (NAV_PROFILES[name] || NAV_PROFILES.glen).pillars.slice(); }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { PILLARS: buildPillars(""), PILLAR_PAGES: buildPillarPages(""),
+                       NAV_PROFILES: NAV_PROFILES, navPillarsFor: navPillarsFor };
+  }
+  if (typeof document === "undefined") return;   // node require: data only, no DOM
+  // ---------- browser render below ----------
   var script = document.currentScript;
   var active = (script && script.dataset && script.dataset.active) || "";
   var sub = (script && script.dataset && script.dataset.sub) || "";
@@ -65,42 +117,8 @@
   var effKey = urlKey || storedKey;
   var qs = effKey ? ("?key=" + encodeURIComponent(effKey)) : "";
 
-  var tabs = [
-    { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
-    { id: "console",   label: "Console",   href: "/console"   + qs },
-    { id: "bos",       label: "Business OS", href: "/console/orders" + qs },
-    { id: "projects",  label: "Projects",  href: "/console/projects" + qs },
-    { id: "inbox",     label: "Inbox",     href: "/console/inbox" + qs },
-    { id: "settings",  label: "Settings",  href: "/console/settings" + qs },
-    { id: "funnel",    label: "Funnel",    href: "/funnel" + qs },
-  ];
-
-  // Business OS module boards — rendered as a secondary sub-tab row under the main
-  // bar whenever the BOS section is active. Shipping + New Order were folded in
-  // from the old standalone top tabs.
-  var bosMods = [
-    { id: "orders",   label: "Orders",    href: "/console/orders" + qs },
-    { id: "client-orders", label: "Client Orders", href: "/console/client-orders" + qs },
-    { id: "money",    label: "Money",     href: "/console/money" + qs },
-    { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
-    { id: "products", label: "Products",  href: "/console/products" + qs },
-    { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
-    { id: "pages",    label: "Pages",      href: "/console/pages" + qs },
-    { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
-    { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
-    { id: "clinical-tags", label: "Tags", href: "/console/clinical-tags" + qs },
-    { id: "approvals", label: "Approvals", href: "/console/approvals" + qs },
-    { id: "testimonial-invites", label: "Invite Queue", href: "/console/testimonial-invites" + qs },
-    { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
-    { id: "neworder", label: "New Order", href: "/orders/new" + qs },
-    { id: "practitioners", label: "Practitioners", href: "/console/practitioners" + qs },
-    { id: "top-products",  label: "Top Products",  href: "/console/top-products" + qs },
-    { id: "remedy-meanings", label: "Remedy Meanings", href: "/console/remedy-meanings" + qs },
-    { id: "ingredients-ops", label: "Ingredients (Ops)", href: "/admin/ingredients" + qs },
-    { id: "coaching",      label: "Coaching",      href: "/console/coaching-cohort" + qs },
-    { id: "membership",    label: "Membership",    href: "/admin/membership" + qs },
-    { id: "members",       label: "Members",       href: "/console/members" + qs },
-  ];
+  var PILLARS = buildPillars(qs);
+  var PILLAR_PAGES = buildPillarPages(qs);
 
   var styles = ''
     + '<style id="op-nav-styles">'
