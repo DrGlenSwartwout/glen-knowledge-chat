@@ -198,6 +198,35 @@ MEMBERSHIP_CANCEL_TTL_DAYS = 1095  # ~3 years: the emailed one-click cancel link
 SESSION_TTL_DAYS    = 30           # session cookie validity
 PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 MEMBERSHIP_JOIN_URL = os.environ.get("MEMBERSHIP_JOIN_URL", f"{PUBLIC_BASE_URL}/begin")
+
+
+def portal_base():
+    """Base URL for CLIENT portal links (the Healing Oasis surface). Read at call
+    time so a prod env flip takes effect without reimport. Defaults to
+    PUBLIC_BASE_URL, so behavior is unchanged until PORTAL_BASE_URL is set — this
+    is what makes the myhealingoasis.com migration a config flip, not a code cutover.
+    NOTE: the practitioner portal is a different surface and stays on PUBLIC_BASE_URL."""
+    return (os.environ.get("PORTAL_BASE_URL") or PUBLIC_BASE_URL).rstrip("/")
+
+
+def portal_link(token):
+    """Absolute /portal/<token> link on the client portal host."""
+    return f"{portal_base()}/portal/{token}"
+
+
+def _portal_host():
+    """Hostname of PORTAL_BASE_URL when it is a DISTINCT host from the funnel;
+    empty when portals share the funnel domain (nothing to special-case)."""
+    from urllib.parse import urlparse
+    h = urlparse(os.environ.get("PORTAL_BASE_URL") or "").hostname or ""
+    return h if h and h != urlparse(PUBLIC_BASE_URL).hostname else ""
+
+
+def _on_portal_host():
+    """True when THIS request arrived on the dedicated portal host. Always False
+    until PORTAL_BASE_URL names a separate domain, so it is inert pre-migration."""
+    ph = _portal_host()
+    return bool(ph) and (request.host or "").split(":")[0].lower() == ph.lower()
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
 # EVOX remote-session booking (Rae's lane). Office-hours spec: "days:HH:MM-HH:MM"
@@ -575,7 +604,7 @@ def _member_join_welcome(cx, email, source=None):
                 name = row[0]
         except Exception:
             pass
-        login_url = PUBLIC_BASE_URL + "/portal/login"
+        login_url = portal_base() + "/portal/login"
         threading.Thread(
             target=send_portal_welcome_email, args=(em, name, login_url), daemon=True
         ).start()
@@ -606,7 +635,7 @@ def _send_portal_welcome(email, name, token):
                 (em, datetime.now(timezone.utc).isoformat()))
             if cur.rowcount == 0:   # token link already sent to this email
                 return
-        url = f"{PUBLIC_BASE_URL}/portal/{token}"
+        url = portal_link(token)
         body = (f"Aloha {name or ''},\n\nYour personal healing home is ready:\n\n{url}\n\n"
                 f"It is where your remedies, protocol, and your concierge live. "
                 f"Reply anytime.\n\nWith aloha,\nDr. Glen & Rae")
@@ -649,7 +678,7 @@ def _household_cc_report(member_email, member_label_or_subject):
         for care in recips:
             subj = "A new biofield report is available for someone in your care"
             body = ("A new biofield report was just published for a member of your household. "
-                    "Open your portal to view it.\n\nhttps://illtowell.com/portal/login")
+                    f"Open your portal to view it.\n\n{portal_base()}/portal/login")
             try:
                 _send_inquiry_email(care, subj, body)
             except Exception as _e:
@@ -1959,6 +1988,11 @@ def _serve_funnel_home():
 
 @app.route("/")
 def index():
+    # On the dedicated portal host (myhealingoasis.com) the front door is the
+    # portal sign-in, not the funnel. Inert until PORTAL_BASE_URL names that host.
+    if _on_portal_host():
+        from flask import redirect as _redirect
+        return _redirect("/portal/login", code=302)
     return _serve_funnel_home()
 
 
@@ -15457,7 +15491,7 @@ def _notify_client_of_reply(email, name):
             if _ns.get_state(cx, email).get("opt_status") == "out":
                 return False
             token = _cp.ensure_token(cx, email, name or "")
-        link = f"{PUBLIC_BASE_URL}/portal/{token}"
+        link = portal_link(token)
         _send_full_report_email(
             email, name, "Dr. Glen replied to you 🌺",
             f"Aloha {name or ''},\n\nDr. Glen just replied to you in your Healing Oasis "
@@ -15559,7 +15593,7 @@ def _triage_portal_message(email, name, query, answer):
             with _db_lock, sqlite3.connect(LOG_DB) as cx:
                 from dashboard import client_portal as _cp
                 token = _cp.ensure_token(cx, email, name or "")
-            link = f"{PUBLIC_BASE_URL}/portal/{token}" if token else ""
+            link = portal_link(token) if token else ""
         except Exception:
             link = ""
         body = (f"A client message may need your attention.\n\n"
@@ -15958,7 +15992,7 @@ def api_console_biofield_publish():
             _pbr.upsert_report(cx, email, scan_date,
                                (body.get("scan_id") or ""), content, "confirmed")
         _log_biofield_correction(cx, email, scan_date, content)
-    url = f"{PUBLIC_BASE_URL}/portal/{link_token}" if link_token else None
+    url = portal_link(link_token) if link_token else None
     emailed = False
     email_status = None
     if link_token and body.get("send"):
@@ -17390,9 +17424,9 @@ def consult_book():
         from dashboard import client_portal as _cp
         with sqlite3.connect(LOG_DB) as cx2:
             token = _cp.ensure_token(cx2, email, "") if hasattr(_cp, "ensure_token") else None
-        b["portal_url"] = f"{PUBLIC_BASE_URL}/portal/{token}" if token else f"{PUBLIC_BASE_URL}/portal/login"
+        b["portal_url"] = portal_link(token) if token else f"{portal_base()}/portal/login"
     except Exception:
-        b["portal_url"] = f"{PUBLIC_BASE_URL}/portal/login"
+        b["portal_url"] = f"{portal_base()}/portal/login"
     _consult_send_confirmations(email, b)
     return jsonify({"ok": True, "start_ts": start_ts})
 
@@ -17609,7 +17643,7 @@ def api_console_portal_link():
     from dashboard import client_portal as _cp
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
-        link, reissued = _cp.portal_link_for(cx, email, PUBLIC_BASE_URL)
+        link, reissued = _cp.portal_link_for(cx, email, portal_base())
     if not link:
         return jsonify({"ok": True, "found": False, "email": email})
     return jsonify({"ok": True, "found": True, "email": email,
@@ -17629,13 +17663,13 @@ def api_console_portal_link_resend():
     from dashboard import client_portal as _cp
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
-        link, reissued = _cp.portal_link_for(cx, email, PUBLIC_BASE_URL)
+        link, reissued = _cp.portal_link_for(cx, email, portal_base())
         row = cx.execute("SELECT name FROM client_portals WHERE email=?", (email,)).fetchone()
         name = (row[0] if row else "") or ""
     if not link:
         return jsonify({"ok": False, "error": "no portal for that email"}), 404
     first = (" " + name.split()[0]) if name.strip() else ""
-    login = PUBLIC_BASE_URL.rstrip("/") + "/portal/login"
+    login = portal_base() + "/portal/login"
     sent_via, err = _send_full_report_email(
         email, name, "Your Remedy Match portal link",
         f"Aloha{first},\n\nHere is the link to your personal Remedy Match portal:\n\n{link}\n\n"
@@ -17936,7 +17970,7 @@ def client_login_request():
                     _send_full_report_email(
                         email, row[1] or "", "Your Remedy Match sign-in link",
                         "Aloha,\n\nClick to sign in to your healing home:\n"
-                        f"{PUBLIC_BASE_URL}/portal/login-verify?token={magic}\n\n"
+                        f"{portal_base()}/portal/login-verify?token={magic}\n\n"
                         "This link expires in 15 minutes.")
                 except Exception as e:
                     print(f"[client-login] email failed: {e!r}", flush=True)
@@ -17997,9 +18031,9 @@ def portal_group_join_checkout():
             customer_email=ident.email,
             metadata={"kind": "group_join", "email": ident.email,
                       **({"referral_code": referral_code} if referral_code else {})},
-            success_url=(f"{PUBLIC_BASE_URL}/portal/offer/live-group/return"
+            success_url=(f"{portal_base()}/portal/offer/live-group/return"
                          f"?session_id={{CHECKOUT_SESSION_ID}}"),
-            cancel_url=f"{PUBLIC_BASE_URL}/portal/me")
+            cancel_url=f"{portal_base()}/portal/me")
     except Exception:
         app.logger.exception("group-join setup session failed")
         return jsonify({"error": "Could not start checkout. Please reach out and we'll help."}), 502
@@ -18073,7 +18107,7 @@ def admin_client_portal_upsert():
     if token is None:
         with _db_lock, sqlite3.connect(LOG_DB) as _tcx:
             token = _cp.ensure_token(_tcx, email, name)
-    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    url = portal_link(token)
     emailed = False
     if body.get("send"):
         try:
@@ -18111,7 +18145,7 @@ def _portal_claim_sign(email):
 def _portal_claim_url(email):
     from urllib.parse import quote
     email = (email or "").strip().lower()
-    return f"{PUBLIC_BASE_URL}/portal/claim?e={quote(email)}&s={_portal_claim_sign(email)}"
+    return f"{portal_base()}/portal/claim?e={quote(email)}&s={_portal_claim_sign(email)}"
 
 
 @app.route("/portal/claim", methods=["GET"])
@@ -18204,7 +18238,7 @@ def healing_oasis_request():
             except Exception:
                 app.logger.exception("healing-oasis person upsert failed for %s", email)
             token = _ev.ensure_portal_token(cx, email, name)
-            link = f"{PUBLIC_BASE_URL}/portal/{token}"
+            link = portal_link(token)
     # Network send runs OUTSIDE the DB lock. If throttled (link is None) we simply
     # skip the send and still return the generic message.
     if link:
@@ -18239,7 +18273,7 @@ def admin_portal_get_or_create_link():
         _cp.init_client_portal_table(cx)
         _ns.init_table(cx)
         token = _cp.ensure_token(cx, email, name)
-    return jsonify({"ok": True, "email": email, "url": f"{PUBLIC_BASE_URL}/portal/{token}"})
+    return jsonify({"ok": True, "email": email, "url": portal_link(token)})
 
 
 @app.route("/admin/portal/rollout-enroll", methods=["POST"])
@@ -18275,7 +18309,7 @@ def admin_portal_rollout_enroll():
             _cp.init_client_portal_table(cx)
             _ns.init_table(cx)
             token = _cp.ensure_token(cx, email, name)
-        url = f"{PUBLIC_BASE_URL}/portal/{token}"
+        url = portal_link(token)
     # Set the portal-URL custom field FIRST so the workflow's Send Email step renders
     # a live {{contact.portal_url}} (not an empty one).
     contact_id, _created, err = ghl_upsert_contact(
@@ -18340,7 +18374,7 @@ def admin_portal_reissue_link():
         rec = _cp.get_portal_content_by_email(cx, email)
     if not token:
         return jsonify({"error": "no portal for that email"}), 404
-    url = f"{PUBLIC_BASE_URL}/portal/{token}"
+    url = portal_link(token)
     emailed = False
     if body.get("send"):
         try:
@@ -18371,7 +18405,7 @@ def api_admin_notify_state():
         token = _cp.ensure_token(cx, email, body.get("name") or "")
         st = _ns.get_state(cx, email)
         d = _ns.decide(st)
-    return jsonify({**d, "engaged": st["engaged"], "url": f"{PUBLIC_BASE_URL}/portal/{token}",
+    return jsonify({**d, "engaged": st["engaged"], "url": portal_link(token),
                     "unsubscribe": f"{PUBLIC_BASE_URL}/unsubscribe?token={token}"})
 
 
@@ -33468,7 +33502,7 @@ def api_console_test_portal_welcome():
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     dry = request.args.get("dry_run", "1") == "1"
-    login_url = PUBLIC_BASE_URL + "/portal/login"
+    login_url = portal_base() + "/portal/login"
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute("CREATE TABLE IF NOT EXISTS portal_welcome_sent ("
                    "  email TEXT PRIMARY KEY, sent_at TEXT)")
