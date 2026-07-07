@@ -314,6 +314,30 @@
   .chat-related-link{color:var(--brand);text-decoration:none;font-weight:600;font-size:.9rem}
   .chat-related-link:hover{text-decoration:underline}
   .chat-related-nudge{color:var(--muted);font-size:.78rem;margin-top:.1rem}
+  /* Task 5: Portal intake card — gates the Biofield Consult slot-picker on the
+     client's own clinical intake (brought home from Practice Better). Layout
+     only; the form is built generically in JS from GET /api/intake/form. */
+  .intake-sec{margin:0 0 1.1rem}
+  .intake-sec h3{font-size:1rem;margin:0 0 .6rem;color:var(--brand)}
+  .intake-field{margin:0 0 .85rem}
+  .intake-field>label{display:block;font-weight:600;font-size:.92rem;margin-bottom:.3rem}
+  .intake-help{color:var(--muted);font-size:.8rem;margin:.15rem 0 .35rem}
+  .intake-input{width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;font-size:.92rem;font-family:inherit;box-sizing:border-box}
+  textarea.intake-input{resize:vertical}
+  .intake-scale{display:flex;flex-direction:column;gap:.15rem}
+  .intake-scale-opt{display:flex;align-items:flex-start;gap:8px;font-weight:400;font-size:.9rem;margin:.15rem 0}
+  .intake-scale-opt input{margin-top:.25rem}
+  .intake-table-wrap{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card2)}
+  .intake-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .intake-row:last-of-type{border-bottom:0}
+  .intake-col{flex:1 1 120px;min-width:100px}
+  .intake-col label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:.2rem;font-weight:600}
+  .intake-consent-wrap{margin:0 0 .85rem}
+  .intake-consent{display:flex;align-items:flex-start;gap:8px;font-size:.92rem;font-weight:400;margin-bottom:.6rem}
+  .intake-consent input{margin-top:.25rem}
+  .intake-sublabel{display:block;font-weight:600;font-size:.85rem;margin:.4rem 0 .25rem}
+  .intake-err{border:1px solid var(--err) !important;border-radius:8px;box-shadow:0 0 0 1px var(--err)}
 </style>
 </head>
 <body>
@@ -1120,6 +1144,7 @@ function render(d, v){
     } else if(c.ready){
       html += `<div class="card"><h2>Biofield Consult</h2>
         <p class="muted">Your report is ready. Schedule your 30 minute consult with Dr. Glen to review your program.</p>
+        <div id="consult-intake-host"></div>
         <button class="btn full" id="consult-sched" onclick="consultSchedule()">Schedule your consult</button>
         <div id="consult-slots" style="margin-top:.6rem"></div></div>`;
     } else {
@@ -1177,6 +1202,7 @@ function render(d, v){
   initOnboardingCard();
   initCoachesCard();
   initPeerCard();
+  initConsultIntakeCard();
   wirePatternDetails();
 
   var chatSendEl = document.getElementById("chatSend");
@@ -1310,6 +1336,14 @@ async function consultBook(start_ts){
       if(box) box.innerHTML = `<p class="muted small">Booked. Check your email for the calendar invite, and join from your portal at your appointment time.</p>`;
       return;
     }
+    // Defense-in-depth: the server re-checks the intake gate at book time too
+    // (in case a draft was submitted in another tab, or the client raced the
+    // gate). If it 409s intake_required, re-show the intake form instead of
+    // the generic "slot taken" message.
+    if(d && d.error === "intake_required"){
+      initConsultIntakeCard();
+      return;
+    }
   }catch(e){ d = {}; }
   alert("That time is no longer available. Please pick another.");
   consultSchedule();
@@ -1323,6 +1357,381 @@ async function consultJoin(){
   document.getElementById("consult-join-msg").textContent =
     "Your consult is at " + when + ". The Join button opens 10 minutes before.";
 }
+
+<!-- BEGIN intake card script -->
+// Task 5: client clinical intake, gating the Biofield Consult slot-picker.
+// Renders the declarative form from GET /api/intake/form, prefills from
+// GET /api/intake/state, autosaves via POST /api/intake/save-draft (1.2s
+// debounce after any field change), and on POST /api/intake/submit success
+// (or a 409 already_submitted) reveals the existing consult-sched/consult-slots
+// UI and re-runs consultSchedule() to load times immediately. All labels/help/
+// options come from Glen's own INTAKE_FORM (dashboard/intake.py) but are still
+// built via createElement/textContent only — never innerHTML — matching the
+// coaches-card pattern above.
+async function initConsultIntakeCard(){
+  const schedBtn = document.getElementById("consult-sched");
+  const host = document.getElementById("consult-intake-host");
+  if(!schedBtn || !host) return; // consult card isn't in the "ready" state
+  let s = {};
+  try{
+    const r = await fetch(`/api/consult/state?token=${encodeURIComponent(seg)}`);
+    s = r.ok ? await r.json() : {};
+  }catch(e){ s = {}; }
+  if(s && s.intake_submitted){ host.hidden = true; host.innerHTML = ""; return; }
+  const slotsBox = document.getElementById("consult-slots");
+  host.hidden = false;
+  schedBtn.hidden = true;
+  if(slotsBox) slotsBox.hidden = true;
+  renderIntakeForm(host, seg, function(){
+    host.hidden = true;
+    host.innerHTML = "";
+    schedBtn.hidden = false;
+    if(slotsBox) slotsBox.hidden = false;
+    consultSchedule();
+  });
+}
+
+async function renderIntakeForm(host, tokenVal, onDone){
+  host.innerHTML = "";
+  const loading = document.createElement("p");
+  loading.className = "muted small";
+  loading.textContent = "Loading your intake form…";
+  host.appendChild(loading);
+
+  let formDef = null, stateData = null;
+  try{
+    const results = await Promise.all([
+      fetch(`/api/intake/form`),
+      fetch(`/api/intake/state?token=${encodeURIComponent(tokenVal)}`),
+    ]);
+    formDef = results[0].ok ? await results[0].json() : null;
+    stateData = results[1].ok ? await results[1].json() : null;
+  }catch(e){ /* handled by the null-checks below */ }
+
+  host.innerHTML = "";
+
+  if(stateData && stateData.submitted){ if(onDone) onDone(); return; }
+  if(!formDef || !Array.isArray(formDef.sections)){
+    const err = document.createElement("p");
+    err.className = "err small";
+    err.textContent = "We could not load your intake form. Please refresh the page.";
+    host.appendChild(err);
+    return;
+  }
+
+  const answers = (stateData && stateData.answers) || {};
+  const getters = {};   // field id -> () => current value
+  const fieldEls = {};  // field id -> element to highlight on a 400
+
+  const title = document.createElement("h2");
+  title.textContent = "Before your consult";
+  host.appendChild(title);
+  const intro = document.createElement("p");
+  intro.className = "muted small";
+  intro.textContent = "Please complete your intake so Dr. Glen can prepare for your consult.";
+  host.appendChild(intro);
+
+  const collectAnswers = ()=>{
+    const out = {};
+    Object.keys(getters).forEach(fid => { out[fid] = getters[fid](); });
+    return out;
+  };
+
+  let saveTimer = null;
+  const scheduleSave = ()=>{
+    if(saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(async ()=>{
+      try{
+        await fetch(`/api/intake/save-draft?token=${encodeURIComponent(tokenVal)}`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({answers: collectAnswers()}),
+        });
+      }catch(e){ /* best-effort autosave; Submit re-sends everything anyway */ }
+    }, 1200);
+  };
+
+  formDef.sections.forEach(sec => {
+    const secWrap = document.createElement("div");
+    secWrap.className = "intake-sec";
+    const h3 = document.createElement("h3");
+    h3.textContent = sec.title || "";
+    secWrap.appendChild(h3);
+    (sec.fields || []).forEach(f => {
+      secWrap.appendChild(renderIntakeField(f, answers[f.id], getters, fieldEls, scheduleSave));
+    });
+    host.appendChild(secWrap);
+  });
+
+  const errMsg = document.createElement("p");
+  errMsg.className = "err small";
+  errMsg.hidden = true;
+  host.appendChild(errMsg);
+
+  const submitBtn = document.createElement("button");
+  submitBtn.type = "button";
+  submitBtn.className = "btn full";
+  submitBtn.style.marginTop = ".4rem";
+  submitBtn.textContent = "Submit my intake";
+  submitBtn.addEventListener("click", async ()=>{
+    submitBtn.disabled = true;
+    errMsg.hidden = true;
+    Object.keys(fieldEls).forEach(fid => {
+      const el = fieldEls[fid];
+      if(el && el.classList) el.classList.remove("intake-err");
+    });
+    if(saveTimer) clearTimeout(saveTimer);
+    let r, d;
+    try{
+      r = await fetch(`/api/intake/submit?token=${encodeURIComponent(tokenVal)}`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({answers: collectAnswers()}),
+      });
+      d = await r.json().catch(()=>({}));
+    }catch(e){ d = {}; }
+    if(r && r.ok){ if(onDone) onDone(); return; }
+    if(r && r.status === 409 && d && d.error === "already_submitted"){ if(onDone) onDone(); return; }
+    if(r && r.status === 400 && d && Array.isArray(d.errors)){
+      errMsg.textContent = "Please complete the highlighted fields.";
+      errMsg.hidden = false;
+      d.errors.forEach(fid => {
+        const el = fieldEls[fid];
+        if(el && el.classList) el.classList.add("intake-err");
+      });
+      submitBtn.disabled = false;
+      return;
+    }
+    errMsg.textContent = "Something went wrong saving your intake. Please try again.";
+    errMsg.hidden = false;
+    submitBtn.disabled = false;
+  });
+  host.appendChild(submitBtn);
+}
+
+// Builds one field's markup for any INTAKE_FORM field type and wires its
+// getter (into `getters`) + change listener (debounced autosave via
+// `onChange`). Returns the wrapper element to append to the section.
+function renderIntakeField(f, val, getters, fieldEls, onChange){
+  const ftype = f.type;
+
+  if(ftype === "consent"){
+    const wrap = document.createElement("div");
+    wrap.className = "intake-consent-wrap";
+    const row = document.createElement("label");
+    row.className = "intake-consent";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!(val && val.agreed);
+    cb.addEventListener("change", onChange);
+    row.appendChild(cb);
+    const span = document.createElement("span");
+    span.textContent = f.label + (f.required ? " *" : "");
+    row.appendChild(span);
+    wrap.appendChild(row);
+
+    const sigLabel = document.createElement("label");
+    sigLabel.className = "intake-sublabel";
+    sigLabel.textContent = "Signature (type your full name)";
+    wrap.appendChild(sigLabel);
+    const sig = document.createElement("input");
+    sig.type = "text";
+    sig.className = "intake-input";
+    sig.value = (val && val.signature) || "";
+    sig.addEventListener("input", onChange);
+    wrap.appendChild(sig);
+
+    const dateLabel = document.createElement("label");
+    dateLabel.className = "intake-sublabel";
+    dateLabel.textContent = "Date";
+    wrap.appendChild(dateLabel);
+    const dt = document.createElement("input");
+    dt.type = "date";
+    dt.className = "intake-input";
+    dt.value = (val && val.date) || "";
+    dt.addEventListener("change", onChange);
+    wrap.appendChild(dt);
+
+    getters[f.id] = ()=> ({agreed: cb.checked, signature: sig.value, date: dt.value});
+    fieldEls[f.id] = wrap;
+    return wrap;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "intake-field";
+  const label = document.createElement("label");
+  label.textContent = f.label + (f.required ? " *" : "");
+  wrap.appendChild(label);
+  if(f.help){
+    const help = document.createElement("p");
+    help.className = "intake-help";
+    help.textContent = f.help;
+    wrap.appendChild(help);
+  }
+
+  if(ftype === "table"){
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "intake-table-wrap";
+    const rowsBox = document.createElement("div");
+    tableWrap.appendChild(rowsBox);
+    const rows = [];
+    const columns = f.columns || [];
+
+    const addRow = (rowVal)=>{
+      const row = document.createElement("div");
+      row.className = "intake-row";
+      const colGetters = {};
+      columns.forEach(col => {
+        const colWrap = document.createElement("div");
+        colWrap.className = "intake-col";
+        const colLabel = document.createElement("label");
+        colLabel.textContent = col.label || "";
+        colWrap.appendChild(colLabel);
+        let input;
+        if(col.type === "single_choice"){
+          input = document.createElement("select");
+          input.className = "intake-input";
+          const blank = document.createElement("option");
+          blank.value = ""; blank.textContent = "Select…";
+          input.appendChild(blank);
+          (col.options || []).forEach(opt => {
+            const o = document.createElement("option");
+            o.value = opt; o.textContent = opt;
+            input.appendChild(o);
+          });
+          input.value = (rowVal && rowVal[col.id]) || "";
+          input.addEventListener("change", onChange);
+          colGetters[col.id] = ()=> input.value || "";
+        } else if(col.type === "number"){
+          input = document.createElement("input");
+          input.type = "number";
+          input.className = "intake-input";
+          input.value = (rowVal && rowVal[col.id] != null) ? rowVal[col.id] : "";
+          input.addEventListener("input", onChange);
+          colGetters[col.id] = ()=> (input.value === "" ? null : Number(input.value));
+        } else {
+          input = document.createElement("input");
+          input.type = "text";
+          input.className = "intake-input";
+          input.value = (rowVal && rowVal[col.id]) || "";
+          input.addEventListener("input", onChange);
+          colGetters[col.id] = ()=> input.value;
+        }
+        colWrap.appendChild(input);
+        row.appendChild(colWrap);
+      });
+      const rowEntry = {getters: colGetters};
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn ghost";
+      removeBtn.style.cssText = "padding:6px 12px;font-size:.82rem;flex:0 0 auto;align-self:center";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", ()=>{
+        const idx = rows.indexOf(rowEntry);
+        if(idx > -1) rows.splice(idx, 1);
+        row.remove();
+        onChange();
+      });
+      row.appendChild(removeBtn);
+      rows.push(rowEntry);
+      rowsBox.appendChild(row);
+    };
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn ghost";
+    addBtn.style.cssText = "margin-top:.5rem;padding:7px 14px;font-size:.85rem";
+    addBtn.textContent = "Add row";
+    addBtn.addEventListener("click", ()=> addRow(null));
+    tableWrap.appendChild(addBtn);
+    (Array.isArray(val) ? val : []).forEach(rv => addRow(rv));
+
+    wrap.appendChild(tableWrap);
+    getters[f.id] = ()=> rows.map(re => {
+      const obj = {};
+      Object.keys(re.getters).forEach(cid => { obj[cid] = re.getters[cid](); });
+      return obj;
+    });
+    fieldEls[f.id] = tableWrap;
+    return wrap;
+  }
+
+  if(ftype === "scale"){
+    const group = document.createElement("div");
+    group.className = "intake-scale";
+    (f.options || []).forEach(opt => {
+      const optLabel = document.createElement("label");
+      optLabel.className = "intake-scale-opt";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "intake-scale-" + f.id;
+      radio.value = String(opt.value);
+      if(val === opt.value) radio.checked = true;
+      radio.addEventListener("change", onChange);
+      optLabel.appendChild(radio);
+      const span = document.createElement("span");
+      span.textContent = opt.value + " — " + opt.label;
+      optLabel.appendChild(span);
+      group.appendChild(optLabel);
+    });
+    wrap.appendChild(group);
+    getters[f.id] = ()=>{
+      const checked = group.querySelector("input[type=radio]:checked");
+      return checked ? Number(checked.value) : null;
+    };
+    fieldEls[f.id] = group;
+    return wrap;
+  }
+
+  if(ftype === "single_choice"){
+    const select = document.createElement("select");
+    select.className = "intake-input";
+    const blank = document.createElement("option");
+    blank.value = ""; blank.textContent = "Select…";
+    select.appendChild(blank);
+    (f.options || []).forEach(opt => {
+      const o = document.createElement("option");
+      o.value = opt; o.textContent = opt;
+      select.appendChild(o);
+    });
+    select.value = (typeof val === "string") ? val : "";
+    select.addEventListener("change", onChange);
+    wrap.appendChild(select);
+    getters[f.id] = ()=> select.value || "";
+    fieldEls[f.id] = select;
+    return wrap;
+  }
+
+  if(ftype === "textarea"){
+    const ta = document.createElement("textarea");
+    ta.className = "intake-input";
+    ta.rows = 3;
+    ta.value = (typeof val === "string") ? val : "";
+    ta.addEventListener("input", onChange);
+    wrap.appendChild(ta);
+    getters[f.id] = ()=> ta.value;
+    fieldEls[f.id] = ta;
+    return wrap;
+  }
+
+  // text / email / tel / date / number
+  const input = document.createElement("input");
+  input.className = "intake-input";
+  let inputType = "text";
+  if(ftype === "email" || ftype === "tel" || ftype === "date" || ftype === "number") inputType = ftype;
+  input.type = inputType;
+  if(ftype === "number"){
+    input.value = (val != null) ? val : "";
+    input.addEventListener("input", onChange);
+    getters[f.id] = ()=> (input.value === "" ? null : Number(input.value));
+  } else {
+    input.value = (typeof val === "string") ? val : "";
+    input.addEventListener("input", onChange);
+    getters[f.id] = ()=> input.value;
+  }
+  wrap.appendChild(input);
+  fieldEls[f.id] = input;
+  return wrap;
+}
+<!-- END intake card script -->
 
 <!-- BEGIN onboarding card script -->
 // Welcome call (onboarding) card. Member-gated by its own /api/onboarding/state
