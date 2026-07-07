@@ -362,7 +362,7 @@ def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
     dims = get_bottle_dims(db_path=db)
     assert dims["15ml"] == (30, 100)
     assert dims["120cap"] == (80, 100)
-    assert len(dims) == 9
+    assert len(dims) == 10
     assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
 
 def test_set_packing_setting_updates_value(tmp_path):
@@ -447,7 +447,7 @@ def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
     assert dims["30g"] == (70, 70)
     assert dims["30ml"] == (40, 110)
     assert "100cos" not in dims
-    assert len(dims) == 9
+    assert len(dims) == 10
 
 
 # ── Dimension-aware bottle CRUD ───────────────────────────────────────────────
@@ -483,3 +483,41 @@ def test_product_override_crud_and_resolution(tmp_path):
     assert list_product_bottle_overrides(db_path=db)["x"] == "30ml"
     clear_product_bottle_override("x", db_path=db)
     assert resolve_bottle_type("x", {"bottle_type": "15ml"}, db_path=db) == "15ml"
+
+
+def test_delete_rate_reverts_to_previous_confirmed(tmp_path):
+    from dashboard.shipping import (init_shipping_schema, propose_rate_update,
+                                    confirm_rate_update, delete_rate, get_current_rates)
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    rid = propose_rate_update("S", 3375, "u", "2026-07-06", db_path=db)   # wrong rate on top of the seed
+    confirm_rate_update(rid, "glen", db_path=db)
+    assert get_current_rates(db_path=db)["S"]["usps_retail_cents"] == 3375
+    assert delete_rate(rid, db_path=db) == "S"
+    assert get_current_rates(db_path=db)["S"]["usps_retail_cents"] == 1265  # reverted to the seed
+
+
+def test_delete_rate_refuses_last_confirmed(tmp_path):
+    import pytest as _pt
+    from dashboard.shipping import init_shipping_schema, delete_rate
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+        seed_id = cx.execute("SELECT id FROM usps_rates WHERE box_size='S'").fetchone()[0]
+    with _pt.raises(ValueError):
+        delete_rate(seed_id, db_path=db)   # only confirmed S rate -> no fallback, refuse
+
+
+def test_check_usps_rates_flags_implausible_jump(tmp_path, monkeypatch):
+    from dashboard import shipping as sh
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        sh.init_shipping_schema(cx)
+    # scraper returns a >40% jump for S (the mis-scrape); M/L unchanged
+    monkeypatch.setattr(sh, "fetch_usps_retail_prices",
+                        lambda *a, **k: {"S": 3375, "M": 2295, "L": 3150})
+    summary = sh.check_usps_rates(today="2026-07-07", db_path=db)
+    assert "S" in [f["box_size"] for f in summary["flagged"]]     # flagged, not proposed
+    assert not any(p["box_size"] == "S" for p in summary["proposed"])
+    assert "M" in summary["unchanged"] and "L" in summary["unchanged"]

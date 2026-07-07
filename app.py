@@ -28406,6 +28406,18 @@ def api_shipping_confirm_rate(rid):
     except Exception as e: return fail(e)
 
 
+@app.route("/api/shipping/rates/<int:rid>", methods=["DELETE"])
+@require_console_key
+def api_shipping_delete_rate(rid):
+    """Un-set a rate row (a wrong entry) so its box size reverts to the previous
+    confirmed rate. Refuses to remove the only fallback for a size."""
+    try:
+        box_size = _shipping.delete_rate(rid)
+        return ok({"unset": rid, "box_size": box_size})
+    except ValueError as e: return fail(e, status=400)
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/shipping/quote", methods=["POST"])
 @require_console_key
 def api_shipping_quote():
