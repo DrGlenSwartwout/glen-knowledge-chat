@@ -17457,6 +17457,10 @@ def onboarding_book():
 @app.route("/api/intake/form")
 def intake_form():
     from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        if _evox_ident(cx, request.args.get("token", "")) is None:
+            return jsonify({"error": "not_found"}), 404
     return jsonify(_intake.INTAKE_FORM)
 
 
