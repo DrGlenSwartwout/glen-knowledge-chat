@@ -94,7 +94,7 @@ def segment_narrative(narrative, layers):
 
 
 def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
-                         audio_url=None, report_pdf_url=None, scan_context=None):
+                         audio_url=None, report_pdf_url=None, findings_provider=None):
     """Map an authored intake report to the portal content payload.
 
     Returns {email, name, scan_date, scan_id, content, unresolved}. Never raises
@@ -138,19 +138,20 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
         reorder.append({"slug": slug, "qty": 1, "price_cents": int(special_price_cents)})
 
     # Bake the scan's findings (name + e4l_description) into the portal content so
-    # the client-portal stress-pattern chips render. scan_context reads the local
-    # e4l.db; passing scan_date as `today` aligns findings to THIS report's scan,
-    # not "latest". Injectable for tests; never raises (portal must publish even
-    # when e4l.db is missing/unreadable). Trimmed to the fields the portal uses.
+    # the client-portal stress-pattern chips render. findings_for_scan_date reads the
+    # local e4l.db and returns the findings for the EXACT scan_date being published
+    # (scan_context would always return the latest scan). Injectable for tests; never
+    # raises (portal must publish even when e4l.db is missing/unreadable). Trimmed to
+    # the fields the portal uses. Empty when no scan matches that date.
     email = (client.get("email") or "").strip().lower()
     scan_date = rep.get("date") or ""
     findings = []
     if email and scan_date:
         try:
-            _scan_ctx = scan_context
-            if _scan_ctx is None:
-                from dashboard.biofield_e4l import scan_context as _scan_ctx
-            raw = _scan_ctx(email, scan_date).get("findings") or []
+            _fp = findings_provider
+            if _fp is None:
+                from dashboard.biofield_e4l import findings_for_scan_date as _fp
+            raw = _fp(email, scan_date) or []
             findings = [{"code": f.get("code", ""), "name": f.get("name", ""),
                          "description": f.get("description", ""), "rank": f.get("rank")}
                         for f in raw]
