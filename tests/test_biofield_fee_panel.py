@@ -46,3 +46,9 @@ def test_author_html_injects_panel_when_state_given():
     rep = {"test_id": "a1", "client": {"name": "Jane", "email": "j@x.com"}, "date": "2026-06-23", "layers": []}
     html = render_author_html(rep, fee_state=_state())
     assert "feepanel" in html and "$300" in html
+
+
+def test_panel_zero_courtesy_is_comp_not_standard():
+    html = render_fee_panel(_state(courtesy_cents=0, note="comp"))
+    assert "Courtesy: $0" in html          # $0 is a comp courtesy...
+    assert "Standard: $" not in html       # ...not a fall-through to standard

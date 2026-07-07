@@ -87,7 +87,8 @@ def default_fee_get(email):
         url = (f"{base}/api/console/client-prices?key=" + urllib.parse.quote(key)
                + "&email=" + urllib.parse.quote(email))
         req = urllib.request.Request(url, headers={"X-Console-Key": key})
-        with urllib.request.urlopen(req, timeout=20) as r:
+        # Page-load path: keep this snappy, don't let a slow/unreachable prod stall the page.
+        with urllib.request.urlopen(req, timeout=6) as r:
             resp = _json.loads(r.read().decode() or "{}")
         out = parse_courtesy(resp)
         out["available"] = True

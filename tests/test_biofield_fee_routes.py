@@ -61,3 +61,12 @@ def test_set_fee_bad_amount_is_400(tmp_path):
     tid = _new(client, "j@x.com")
     r = client.post(f"/author/{tid}/fee", json={"dollars": "-5"})
     assert r.status_code == 400 and r.get_json()["ok"] is False
+
+
+def test_set_fee_zero_is_comp(tmp_path):
+    store = {}
+    client = _app(str(tmp_path / "c.db"), store).test_client()
+    tid = _new(client, "j@x.com")
+    j = client.post(f"/author/{tid}/fee", json={"dollars": "0", "note": "comp"}).get_json()
+    assert j["ok"] and store["j@x.com"] == 0
+    assert "Courtesy: $0" in j["html"]
