@@ -634,6 +634,59 @@
 </head>
 <body>
 
+  <!-- My Healing Oasis — self-serve portal link. Button stays hidden until
+       /api/healing-oasis/status reports the feature is live (HEALING_OASIS_ENABLED). -->
+  <button id="oasis-btn" type="button" hidden aria-haspopup="dialog" aria-controls="oasis-modal">My Healing Oasis</button>
+  <div id="oasis-modal" class="oasis-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="oasis-title">
+    <div class="oasis-card" role="document">
+      <button class="oasis-x" type="button" aria-label="Close">&times;</button>
+      <h2 id="oasis-title">Your Healing Oasis</h2>
+      <p class="oasis-lead">Enter your name and email and we&rsquo;ll send a private link to your personal healing home.</p>
+      <form id="oasis-form" novalidate>
+        <label class="oasis-field"><span>Name</span>
+          <input id="oasis-name" name="name" type="text" autocomplete="name" required></label>
+        <label class="oasis-field"><span>Email</span>
+          <input id="oasis-email" name="email" type="email" autocomplete="email" required></label>
+        <button class="oasis-submit" type="submit">Send my link</button>
+        <p id="oasis-msg" class="oasis-msg" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </div>
+  <style>
+    /* Lives inside the shared #journey-shell top bar (relocated there by JS), so
+       it matches the .js-mypath-btn pills but is gold-filled as the primary CTA. */
+    #oasis-btn{font-family:"Raleway",system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.02em;
+      color:var(--bg);background:var(--gold);border:1px solid var(--gold);border-radius:14px;
+      padding:4px 12px;cursor:pointer;white-space:nowrap;transition:filter .18s var(--ease);}
+    #oasis-btn:hover{filter:brightness(1.08);}
+    /* Fallback when the top bar is absent: pin to the top-right corner. */
+    #oasis-btn.oasis-floating{position:fixed;top:14px;right:14px;z-index:60;border-radius:999px;
+      padding:9px 16px;box-shadow:0 4px 18px rgba(0,0,0,.35);}
+    @media (max-width:560px){#oasis-btn.oasis-floating{top:10px;right:10px;padding:8px 13px;font-size:12px;}}
+    .oasis-overlay{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;
+      padding:20px;background:rgba(5,10,7,.72);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+    .oasis-overlay[hidden]{display:none;}
+    .oasis-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);
+      border-radius:var(--radius);padding:26px 24px 24px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+    .oasis-x{position:absolute;top:10px;right:14px;background:none;border:none;color:var(--muted);
+      font-size:26px;line-height:1;cursor:pointer;}
+    .oasis-x:hover{color:var(--cream);}
+    #oasis-title{color:var(--gold);font-size:22px;margin-bottom:6px;}
+    .oasis-lead{color:var(--muted);font-size:14px;margin-bottom:16px;}
+    .oasis-field{display:block;margin-bottom:12px;}
+    .oasis-field span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;letter-spacing:.03em;}
+    .oasis-field input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;
+      color:var(--cream);font-size:15px;padding:11px 12px;font-family:inherit;}
+    .oasis-field input:focus{outline:none;border-color:var(--gold);}
+    .oasis-submit{width:100%;margin-top:6px;background:var(--green);color:var(--cream);border:none;
+      border-radius:9px;padding:12px;font-family:"Raleway",system-ui,sans-serif;font-weight:600;font-size:15px;
+      cursor:pointer;transition:filter .18s var(--ease);}
+    .oasis-submit:hover{filter:brightness(1.08);}
+    .oasis-submit:disabled{opacity:.6;cursor:default;}
+    .oasis-msg{min-height:18px;margin-top:11px;font-size:13.5px;text-align:center;}
+    .oasis-msg.ok{color:var(--green);} .oasis-msg.err{color:#e28b7b;}
+  </style>
+
   <!-- LAYER 0: Brand bar + greeting — always visible, no locked class -->
   <div data-layer="layer0">
     <div class="brandbar reveal">
@@ -1307,5 +1360,64 @@
     <span id="explore-nudge" style="color:var(--muted);font-size:13px;display:none;">
       Activate your free membership above to explore everything.</span>
   </section>
+
+  <script>
+  // ---- My Healing Oasis: reveal button when live, modal → email a portal link ----
+  (function(){
+    var btn=document.getElementById('oasis-btn'),
+        modal=document.getElementById('oasis-modal'),
+        form=document.getElementById('oasis-form'),
+        msg=document.getElementById('oasis-msg'),
+        nameEl=document.getElementById('oasis-name'),
+        emailEl=document.getElementById('oasis-email'),
+        submit=form?form.querySelector('.oasis-submit'):null,
+        xBtn=modal?modal.querySelector('.oasis-x'):null;
+    if(!btn||!modal||!form) return;
+
+    // Reveal only when live, and dock the button into the shared top bar next to
+    // My Path / Wallet. The bar (#journey-shell) is built async by shell.js, so
+    // poll briefly for it; fall back to a fixed top-right pin if it never appears.
+    function dockAndReveal(){
+      var tries=0;
+      (function place(){
+        var bar=document.getElementById('journey-shell');
+        if(bar){ var theme=bar.querySelector('.js-theme');
+          if(theme) bar.insertBefore(btn, theme); else bar.appendChild(btn);
+          btn.hidden=false; return; }
+        if(tries++<30){ setTimeout(place,100); }
+        else { btn.classList.add('oasis-floating'); btn.hidden=false; }  // no bar → pin
+      })();
+    }
+    fetch('/api/healing-oasis/status').then(function(r){return r.json();})
+      .then(function(d){ if(d&&d.enabled){ dockAndReveal(); } }).catch(function(){});
+
+    function open(){ modal.hidden=false; msg.textContent=''; msg.className='oasis-msg';
+      var known=document.querySelector('[data-name]');
+      if(known&&!nameEl.value&&known.textContent&&known.textContent.trim()!=='there'){nameEl.value=known.textContent.trim();}
+      setTimeout(function(){ (nameEl.value?emailEl:nameEl).focus(); },30); }
+    function close(){ modal.hidden=true; }
+
+    btn.addEventListener('click',open);
+    if(xBtn) xBtn.addEventListener('click',close);
+    modal.addEventListener('click',function(e){ if(e.target===modal) close(); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!modal.hidden) close(); });
+
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      var email=(emailEl.value||'').trim();
+      if(email.indexOf('@')<1){ msg.className='oasis-msg err'; msg.textContent='Please enter a valid email address.'; return; }
+      submit.disabled=true; msg.className='oasis-msg'; msg.textContent='Sending…';
+      fetch('/api/healing-oasis/request',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:(nameEl.value||'').trim(),email:email})})
+        .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d};});})
+        .then(function(res){
+          if(res.ok&&res.d&&res.d.ok){ msg.className='oasis-msg ok'; msg.textContent=res.d.message||'Check your email.'; form.reset(); }
+          else { msg.className='oasis-msg err'; msg.textContent=(res.d&&res.d.error)||'Something went wrong. Please try again.'; }
+        })
+        .catch(function(){ msg.className='oasis-msg err'; msg.textContent='Network error. Please try again.'; })
+        .finally(function(){ submit.disabled=false; });
+    });
+  })();
+  </script>
 </body>
 </html>
