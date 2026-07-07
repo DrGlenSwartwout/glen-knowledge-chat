@@ -236,7 +236,8 @@ async function loadRates() {
         <div class="size">${label}</div>
         <div class="charged">${fmtDollars(r.charged_cents)}</div>
         <div class="retail">USPS retail ${fmtCents(r.usps_retail_cents)}</div>
-        <div class="effective">Effective ${r.effective_date}</div>`;
+        <div class="effective">Effective ${r.effective_date}</div>
+        <button class="ghost" style="margin-top:8px;font-size:12px" onclick="unsetRate(${r.id})">Un-set (revert to previous)</button>`;
     } else {
       card.className = "rate-card missing";
       card.innerHTML = `
@@ -262,6 +263,17 @@ async function loadRates() {
       div.appendChild(row);
     }
     pwrap.appendChild(div);
+  }
+}
+
+async function unsetRate(id) {
+  if (!confirm("Un-set this rate? The box size reverts to its previous confirmed rate.")) return;
+  try {
+    await api(`/api/shipping/rates/${id}`, { method: "DELETE" });
+    toast("Rate un-set — reverted to the previous rate");
+    await loadRates();
+  } catch (e) {
+    toast(e.message || "Could not un-set (no previous rate to fall back to)", "error");
   }
 }
 

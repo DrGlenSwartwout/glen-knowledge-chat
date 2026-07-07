@@ -641,6 +641,33 @@ def confirm_rate_update(
         cx.commit()
 
 
+def delete_rate(rate_id: int, db_path: Optional[str] = None) -> str:
+    """Un-set a rate row (a wrong entry) so the box size reverts to its previous
+    confirmed rate. Refuses to delete the last remaining confirmed rate for a size
+    (which would leave that size with no price). Returns the deleted row's box_size.
+    Raises ValueError if the row is missing or is the only fallback for its size."""
+    with _connect(db_path) as cx:
+        row = cx.execute("SELECT box_size, confirmed_by FROM usps_rates WHERE id = ?",
+                         (rate_id,)).fetchone()
+        if not row:
+            raise ValueError(f"no rate with id {rate_id}")
+        box_size = row["box_size"]
+        # A confirmed rate may only be un-set when another confirmed rate exists for
+        # the same size to fall back to; a pending row can always be removed.
+        if row["confirmed_by"] not in (None, PENDING):
+            others = cx.execute(
+                "SELECT COUNT(*) FROM usps_rates WHERE box_size = ? AND id != ? "
+                "AND confirmed_by IS NOT NULL AND confirmed_by != ?",
+                (box_size, rate_id, PENDING)).fetchone()[0]
+            if others == 0:
+                raise ValueError(
+                    f"can't un-set the only confirmed rate for size {box_size} "
+                    f"(there would be no fallback price)")
+        cx.execute("DELETE FROM usps_rates WHERE id = ?", (rate_id,))
+        cx.commit()
+        return box_size
+
+
 # ── USPS rate watcher ────────────────────────────────────────────────────────
 # Scrapes a USPS retail-prices page and compares to current confirmed rates.
 # Pure parsing is split from network fetch so it's unit-testable. Source URL
@@ -652,6 +679,11 @@ USPS_PRICES_URL = os.environ.get(
     "USPS_PRICES_URL",
     "https://www.usps.com/business/prices.htm",
 )
+
+# A scraped rate that moves more than this fraction from the current confirmed rate
+# is treated as a likely mis-scrape (USPS page layout shift) and flagged for manual
+# review rather than auto-proposed. Flat-rate box prices don't jump 40% year to year.
+MAX_RATE_JUMP_PCT = 0.40
 
 # Order matters: "Large" before "Medium" before "Small" so the regex doesn't
 # greedy-match "Small" inside "Small Flat Rate Box". We match per-size
@@ -719,6 +751,7 @@ def check_usps_rates(
         "scraped": None,
         "proposed": [],
         "unchanged": [],
+        "flagged": [],
         "errors": [],
     }
     try:
@@ -740,6 +773,21 @@ def check_usps_rates(
         if (size, retail_cents) in pending_keys:
             summary["unchanged"].append(f"{size} (already pending)")
             continue
+        # Plausibility guard: the USPS page layout can shift so the scraper grabs an
+        # adjacent (wrong) price. A confirmed rate that jumps more than MAX_RATE_JUMP_PCT
+        # is almost certainly a mis-scrape, so FLAG it for manual review instead of
+        # auto-proposing garbage that could then be confirmed (the 2026-07 incident:
+        # $12.65 -> $33.75). A first-ever rate (no current) is not gated.
+        if cur and cur.get("usps_retail_cents"):
+            base = cur["usps_retail_cents"]
+            if abs(retail_cents - base) > base * MAX_RATE_JUMP_PCT:
+                summary["flagged"].append({
+                    "box_size": size, "scraped_cents": retail_cents, "current_cents": base,
+                    "reason": (f"scraped ${retail_cents/100:.2f} differs more than "
+                               f"{int(MAX_RATE_JUMP_PCT*100)}% from the current ${base/100:.2f}; "
+                               f"not auto-proposed (possible USPS page change) — review at /admin/shipping"),
+                })
+                continue
         try:
             rid = propose_rate_update(
                 box_size=size,
