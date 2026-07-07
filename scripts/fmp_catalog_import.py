@@ -48,10 +48,16 @@ def _description(row):
     return " ".join(p for p in parts if p)[:1200] or None
 
 
+def clean_name(name):
+    """FMP names carry a trailing '*' internal marker; drop it for a clean catalog
+    name (and so 'D-Mannose Syntropy*' dedups against an existing 'D-Mannose Syntropy')."""
+    return (name or "").strip().rstrip("*").strip()
+
+
 def build_entry(row):
     """FMP row dict -> (slug, catalog_entry) or None when it can't be sold
     (no name or no numeric price)."""
-    name = (row.get("product_name") or "").strip()
+    name = clean_name(row.get("product_name"))
     price_cents = _cents(row.get("sold_price"))
     if not name or not price_cents:   # skip no-name and $0 (comp/sample) — not sellable lines
         return None
@@ -85,8 +91,12 @@ def select_and_build(fmp_rows, existing):
             continue
         if (row.get("type") or "") not in TYPE_WHITELIST:
             continue
-        if (row.get("product_name") or "").strip().lower() in have_names:
-            continue   # already sold under this name
+        raw_name = (row.get("product_name") or "")
+        if re.search(r"\bstock\b", raw_name, re.I):
+            skipped.append((raw_name.strip(), "bulk stock / production input, not a retail SKU"))
+            continue
+        if clean_name(raw_name).lower() in have_names:
+            continue   # already sold under this name (asterisk-variant aware)
         built = build_entry(row)
         if not built:
             skipped.append(((row.get("product_name") or "").strip(), "no price"))
