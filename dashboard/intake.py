@@ -250,6 +250,20 @@ def clear_intake(cx, email):
     cx.commit()
 
 
+def import_response(cx, email, answers, now, source="practice-better"):
+    """Write a client's out-of-band intake (parsed from a PB export) as a real
+    submitted record. Guard: never overwrite a genuine portal submission (one
+    with no _imported / _external marker). An _external level-1 stub is
+    overwritable (it holds no real data)."""
+    existing = get_response(cx, email)
+    if existing and existing["status"] == "submitted":
+        a = existing["answers"] or {}
+        if not a.get("_imported") and not a.get("_external"):
+            return
+    payload = {**(answers or {}), "_imported": source}
+    _upsert(cx, email, payload, "submitted", now, now)
+
+
 def list_submitted(cx):
     rows = cx.execute(
         "SELECT * FROM intake_responses WHERE status='submitted' ORDER BY submitted_at").fetchall()

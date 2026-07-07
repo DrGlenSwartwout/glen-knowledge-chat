@@ -100,3 +100,40 @@ def test_mark_on_file_then_clear_intake_removes_row():
     intake.clear_intake(cx, "gone@x.com")
     assert intake.is_submitted(cx, "gone@x.com") is False
     assert intake.get_response(cx, "gone@x.com") is None
+
+
+def test_import_response_writes_real_answers_with_marker():
+    cx = _cx()
+    intake.import_response(cx, "a@x.com",
+                           {"first_name": "Ann", "terrain": 3}, "2026-07-07T00:00:00")
+    assert intake.is_submitted(cx, "a@x.com") is True
+    a = intake.get_response(cx, "a@x.com")["answers"]
+    assert a["first_name"] == "Ann" and a["terrain"] == 3
+    assert a["_imported"] == "practice-better"
+
+
+def test_import_preserves_dimension_keys_for_puller():
+    cx = _cx()
+    dims = {"terrain": 1, "response": 3, "tissue_layer": 3, "penetration": 5, "commitment": 8}
+    intake.import_response(cx, "b@x.com", dict(dims), "2026-07-07T00:00:00")
+    a = intake.get_response(cx, "b@x.com")["answers"]
+    for k, v in dims.items():
+        assert a[k] == v  # keys the puller reads survive the import intact
+
+
+def test_import_does_not_clobber_a_real_submission():
+    cx = _cx()
+    real = {"first_name": "Real", "terrain": 2,
+            "terms": {"agreed": True, "signature": "Real", "date": "2026-07-07"}}
+    intake.submit(cx, "c@x.com", real, "2026-07-07T00:00:00")
+    intake.import_response(cx, "c@x.com", {"first_name": "Imported"}, "2026-07-07T01:00:00")
+    a = intake.get_response(cx, "c@x.com")["answers"]
+    assert a["first_name"] == "Real" and "_imported" not in a  # guard held
+
+
+def test_import_may_overwrite_an_external_stub():
+    cx = _cx()
+    intake.mark_on_file(cx, "d@x.com", "2026-07-07T00:00:00")
+    intake.import_response(cx, "d@x.com", {"first_name": "Now Real"}, "2026-07-07T01:00:00")
+    a = intake.get_response(cx, "d@x.com")["answers"]
+    assert a["first_name"] == "Now Real" and a["_imported"] == "practice-better"
