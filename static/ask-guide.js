@@ -32,7 +32,11 @@
       "color:#fdf4d8;border:1px solid #21472d;border-radius:8px;padding:8px;font:inherit;font-size:13px;resize:vertical}" +
     ".ag-send{margin-top:9px;background:#d4a843;color:#0a150d;border:0;border-radius:7px;padding:8px 14px;font:600 13px/1 inherit;cursor:pointer}" +
     ".ag-send[disabled]{opacity:.5;cursor:not-allowed}" +
-    ".ag-msg{margin-top:8px;font-size:12px;min-height:16px}.ag-msg.ok{color:#7fd6a0}.ag-msg.err{color:#f0857d}";
+    ".ag-msg{margin-top:8px;font-size:12px;min-height:16px}.ag-msg.ok{color:#7fd6a0}.ag-msg.err{color:#f0857d}" +
+    ".ag-q{width:100%;box-sizing:border-box;background:#0a150d;color:#fdf4d8;border:1px solid #21472d;border-radius:8px;padding:8px;font:inherit;font-size:13px}" +
+    ".ag-ask-send{margin-top:9px;background:#d4a843;color:#0a150d;border:0;border-radius:7px;padding:8px 14px;font:600 13px/1 inherit;cursor:pointer}" +
+    ".ag-answer{margin-top:10px;font-size:13px;white-space:pre-wrap;line-height:1.45}" +
+    ".ag-sources{margin-top:8px;font-size:11px;color:#9db29f}";
   document.head.appendChild(css);
 
   var ctx = sub ? (active + " › " + sub) : active;
@@ -43,9 +47,13 @@
       '<div class="ag-hd"><div><b>Ask &amp; Guide</b><div class="ag-ctx">Guidance for: ' + ctx + '</div></div>' +
         '<button class="ag-x" type="button" aria-label="Close">✕</button></div>' +
       '<div class="ag-tabs"><button class="ag-tab on" type="button" data-t="guide">Guide</button>' +
-        '<button class="ag-tab" type="button" data-t="ask" disabled title="Coming in the next slice">Ask</button></div>' +
+        '<button class="ag-tab" type="button" data-t="ask">Ask</button></div>' +
       '<div class="ag-body"><textarea placeholder="Describe a change you want on this page…" aria-label="Guidance"></textarea>' +
         '<button class="ag-send" type="button">Send to Projects</button><div class="ag-msg" role="status"></div></div>' +
+      '<div class="ag-body ag-ask" style="display:none">' +
+        '<input class="ag-q" type="text" placeholder="Ask how a system works…" aria-label="Ask a question">' +
+        '<button class="ag-ask-send" type="button">Ask</button>' +
+        '<div class="ag-answer" role="status"></div><div class="ag-sources"></div></div>' +
     '</div>';
   document.body.appendChild(wrap);
 
@@ -73,4 +81,37 @@
       })
       .catch(function () { send.disabled = false; msg.textContent = "Couldn't send — try again."; msg.className = "ag-msg err"; });
   });
+
+  // Ask tab: switch views + query /api/ask (Slice 2).
+  var guideBody = wrap.querySelector(".ag-body:not(.ag-ask)"), askBody = wrap.querySelector(".ag-ask");
+  wrap.querySelectorAll(".ag-tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      wrap.querySelectorAll(".ag-tab").forEach(function (x) { x.classList.remove("on"); });
+      t.classList.add("on");
+      var ask = t.getAttribute("data-t") === "ask";
+      guideBody.style.display = ask ? "none" : "block";
+      askBody.style.display = ask ? "block" : "none";
+    });
+  });
+  var q = wrap.querySelector(".ag-q"), askSend = wrap.querySelector(".ag-ask-send");
+  var ans = wrap.querySelector(".ag-answer"), srcs = wrap.querySelector(".ag-sources");
+  function doAsk() {
+    var text = (q.value || "").trim();
+    if (!text) { ans.textContent = "Type a question first."; return; }
+    askSend.disabled = true; ans.textContent = "Thinking…"; srcs.textContent = "";
+    fetch("/api/ask" + (key ? "?key=" + encodeURIComponent(key) : ""), {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Console-Key": key },
+      body: JSON.stringify({ question: text, active: active, sub: sub })
+    }).then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
+      .then(function (d) {
+        askSend.disabled = false;
+        if (d && d.ok) {
+          ans.textContent = d.answer || "";
+          srcs.textContent = (d.sources && d.sources.length) ? ("Sources: " + d.sources.map(function (s) { return s.title || s.source; }).join(", ")) : "";
+        } else { ans.textContent = "Ask is unavailable right now."; }
+      })
+      .catch(function () { askSend.disabled = false; ans.textContent = "Ask is unavailable right now."; });
+  }
+  askSend.addEventListener("click", doAsk);
+  q.addEventListener("keydown", function (e) { if (e.key === "Enter") doAsk(); });
 })();
