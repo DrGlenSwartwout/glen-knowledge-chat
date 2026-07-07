@@ -12510,6 +12510,46 @@ def console_rnd():
     return send_from_directory(STATIC, "console-rnd.html")
 
 
+_ASK_SYSTEM = (
+    "You answer questions about Dr. Glen's internal systems (his console/Business OS, clinical "
+    "tagging, formulations pipeline, integrations) using ONLY the provided docs. If the answer is "
+    "not in them, say 'That isn't in our systems docs yet.' Be concise and concrete. Reference the "
+    "source file names you used. Never invent system behavior."
+)
+
+
+@app.route("/api/ask", methods=["POST"])
+def api_ask():
+    """Ask & Guide — answer a systems question grounded in the Pinecone 'systems' namespace."""
+    import dashboard as _dashboard
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    if _dashboard.CONSOLE_SECRET and key != _dashboard.CONSOLE_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    q = ((request.get_json(silent=True) or {}).get("question") or "").strip()
+    if not q:
+        return jsonify({"ok": False, "error": "empty"}), 400
+    try:
+        matches = _idx.query(vector=embed(q), top_k=6, namespace="systems", include_metadata=True).matches
+        if not matches:
+            return jsonify({"ok": True, "answer": "That isn't in our systems docs yet.", "sources": []})
+        parts, sources, seen = [], [], set()
+        for m in matches:
+            md = getattr(m, "metadata", None) or {}
+            parts.append("### " + (md.get("title") or md.get("source") or "") + "\n" + (md.get("text") or "")[:3000])
+            src = md.get("source")
+            if src and src not in seen:
+                seen.add(src)
+                sources.append({"source": src, "title": md.get("title") or src})
+        context = "\n\n".join(parts)[:12000]
+        resp = _cl.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=700, system=_ASK_SYSTEM,
+            messages=[{"role": "user", "content": "Question: " + q + "\n\nOUR DOCS:\n" + context}])
+        answer = "".join(getattr(b, "text", "") for b in resp.content).strip()
+        return jsonify({"ok": True, "answer": answer, "sources": sources})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+
 @app.route("/api/guide", methods=["POST"])
 def api_guide():
     """Ask & Guide panel — log a page-tagged change request onto the Projects board's IDEAS
