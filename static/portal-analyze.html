@@ -15,19 +15,31 @@ const TOKEN = location.pathname.split("/")[2];
 const SCAN_ID = P.get("scan_id")||"", SCAN_DATE = P.get("scan_date")||"";
 document.getElementById("d").textContent = SCAN_DATE;
 document.getElementById("go").addEventListener("click", async () => {
-  document.getElementById("go").disabled = true;
-  let j = {};
+  const btn = document.getElementById("go");
+  const out = document.getElementById("out");
+  btn.disabled = true; out.textContent = "";
+  let r = null, j = {};
   try {
-    const r = await fetch(`/api/portal/${encodeURIComponent(TOKEN)}/request-analysis`,
+    r = await fetch(`/api/portal/${encodeURIComponent(TOKEN)}/request-analysis`,
       {method:"POST",headers:{"Content-Type":"application/json"},
        body:JSON.stringify({scan_id:SCAN_ID, scan_date:SCAN_DATE})});
     j = await r.json();
-  } catch(e){ j = {ok:false}; }
-  const out = document.getElementById("out");
-  document.getElementById("go").style.display = "none";
-  if (j.status === "pending") out.textContent = "Your analysis is being prepared. It will appear in your portal shortly.";
-  else if (j.status === "already" || j.status === "done") out.textContent = "This scan has already been analyzed — check your portal.";
-  else if (j.reason === "monthly_quota") out.innerHTML = `<span class="up">You've used your free analysis this month. <a href="${esc(j.upgrade_url||"https://illtowell.com/prepay")}">Upgrade for unlimited</a>.</span>`;
-  else out.textContent = "Sorry, we couldn't process that right now.";
+  } catch(e){ j = {}; }
+  const code = r ? r.status : 0;
+  // Terminal states: hide the button. Recoverable errors: re-enable it so the client can retry.
+  if (j.status === "pending") { btn.style.display = "none";
+    out.textContent = "Your analysis is being prepared. It will appear in your portal shortly."; }
+  else if (j.status === "already" || j.status === "done") { btn.style.display = "none";
+    out.textContent = "This scan has already been analyzed. Check your portal to view it."; }
+  else if (j.reason === "monthly_quota") { btn.style.display = "none";
+    out.innerHTML = `<span class="up">You've used your free analysis this month. <a href="${esc(j.upgrade_url||"https://illtowell.com/prepay")}">Upgrade for unlimited</a>.</span>`; }
+  else if (j.status === "disabled") { btn.style.display = "none";
+    out.textContent = "Analysis requests are paused right now. We've noted your scan and Dr. Glen's team will follow up. Nothing more is needed on your end."; }
+  else if (code === 404) { btn.style.display = "none";
+    out.textContent = "We couldn't find this scan on file. Please open the full link from your most recent scan email, or reply to that email and we'll sort it out."; }
+  else if (code === 400) { btn.style.display = "none";
+    out.textContent = "This link looks incomplete. Please tap the full Analyze link in your scan email again."; }
+  else { btn.disabled = false;
+    out.textContent = "Sorry, something went wrong on our end. Please try again in a few minutes, or reply to your scan email and we'll take care of it."; }
 });
 </script></body></html>
