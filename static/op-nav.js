@@ -590,4 +590,13 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", runHashRouter);
   else runHashRouter();
+
+  // Load the Ask & Guide panel on every console page (browser only).
+  try {
+    if (!document.querySelector('script[src="/static/ask-guide.js"]')) {
+      var _ag = document.createElement("script");
+      _ag.src = "/static/ask-guide.js"; _ag.defer = true;
+      document.body.appendChild(_ag);
+    }
+  } catch (e) {}
 })();

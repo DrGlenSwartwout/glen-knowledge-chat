@@ -12510,6 +12510,43 @@ def console_rnd():
     return send_from_directory(STATIC, "console-rnd.html")
 
 
+@app.route("/api/guide", methods=["POST"])
+def api_guide():
+    """Ask & Guide panel — log a page-tagged change request into the Projects (todos) board.
+    Store-raw, no AI. Gated on the console key."""
+    import dashboard as _dashboard, hashlib, sqlite3 as _sq
+    from datetime import datetime as _dt, timezone as _tz
+    key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    if _dashboard.CONSOLE_SECRET and key != _dashboard.CONSOLE_SECRET:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"ok": False, "error": "empty"}), 400
+    active = (data.get("active") or "").strip() or "unknown"
+    sub = (data.get("sub") or "").strip()
+    url = (data.get("url") or "").strip()
+    page = active + "/" + sub if sub else active
+    now = _dt.now(_tz.utc).isoformat()
+    title = text.splitlines()[0][:80]
+    body = text + "\n\n— from " + page + ((" (" + url + ")") if url else "")
+    dedup = "guide:" + hashlib.sha1((text + page + now).encode("utf-8")).hexdigest()[:16]
+    try:
+        cx = _sq.connect(str(LOG_DB))
+        try:
+            cx.execute(
+                "INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(dedup_key) DO NOTHING",
+                (now, "glen", "Guidance", title, body, "normal", "ask-guide:" + page, dedup))
+            cx.commit()
+            r = cx.execute("SELECT id FROM todos WHERE dedup_key=?", (dedup,)).fetchone()
+        finally:
+            cx.close()
+        return jsonify({"ok": True, "id": r[0] if r else None})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+
 @app.route("/console/biofield-intake")
 def console_biofield_intake():
     """Launcher: bounce the browser to the LOCAL Biofield Intake portal (the voice
