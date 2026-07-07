@@ -78,3 +78,22 @@ def test_submit_success_then_double_submit_409(client):
     assert client.get("/api/intake/state?token=good").get_json()["submitted"] is True
     r2 = client.post("/api/intake/submit?token=good", json=good)
     assert r2.status_code == 409 and r2.get_json()["error"] == "already_submitted"
+
+
+def test_save_draft_after_submit_is_noop(client):
+    good = {"answers": {
+        "first_name": "Ann", "last_name": "Lee", "email": "a@x.com", "dob": "1970-01-01",
+        "terrain": 1, "penetration": 5, "tissue_layer": 3, "response": 3, "commitment": 8,
+        "terms": {"agreed": True, "signature": "Ann Lee", "date": "2026-07-07"}}}
+    assert client.post("/api/intake/submit?token=good", json=good).status_code == 200
+    assert client.get("/api/intake/state?token=good").get_json()["submitted"] is True
+
+    r = client.post("/api/intake/save-draft?token=good",
+                     json={"answers": {"first_name": "CHANGED"}})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    body = client.get("/api/intake/state?token=good").get_json()
+    assert body["submitted"] is True
+    assert body["status"] == "submitted"
+    assert body["answers"]["first_name"] == "Ann"

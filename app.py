@@ -17486,6 +17486,8 @@ def intake_save_draft():
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
             return jsonify({"error": "not_found"}), 404
+        if _intake.is_submitted(cx, ident.email):
+            return jsonify({"ok": True})
         answers = (request.get_json(silent=True) or {}).get("answers") or {}
         _intake.save_draft(cx, ident.email, answers, _hst_now().isoformat())
     return jsonify({"ok": True})
