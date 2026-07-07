@@ -18117,6 +18117,94 @@ def portal_claim():
     return redirect(f"/portal/{token}")
 
 
+# ── "My Healing Oasis" — public self-serve portal front door ──────────────────
+# A visitor on the home page gives their name + email in a modal; we ensure their
+# portal exists and email them the /portal/<token> magic link. Distinct from the
+# console rollout (/admin/portal/*) which pushes links to KNOWN contacts, and from
+# /portal/login (existing-client sign-in only). This one provisions for anyone —
+# it's the open front gate. Dark until HEALING_OASIS_ENABLED is set.
+
+def _healing_oasis_enabled() -> bool:
+    return os.environ.get("HEALING_OASIS_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+# Sliding-window throttle: at most N link-emails per email and per IP in the
+# window. Every attempt is recorded (so a flood keeps extending the block); a
+# blocked attempt still returns the same generic response, so the endpoint never
+# reveals whether an email exists OR that a limit was hit.
+_OASIS_WINDOW_MIN = 60
+_OASIS_PER_EMAIL  = 3
+_OASIS_PER_IP     = 10
+
+
+def _oasis_rate_ok(cx, email, ip):
+    cx.execute("CREATE TABLE IF NOT EXISTS healing_oasis_requests "
+               "(email TEXT, ip TEXT, ts TEXT)")
+    now = _now_utc()
+    cutoff = (now - timedelta(minutes=_OASIS_WINDOW_MIN)).isoformat()
+    cx.execute("INSERT INTO healing_oasis_requests (email, ip, ts) VALUES (?,?,?)",
+               (email, ip or "", now.isoformat()))
+    n_email = cx.execute("SELECT COUNT(*) FROM healing_oasis_requests "
+                         "WHERE email=? AND ts>?", (email, cutoff)).fetchone()[0]
+    n_ip = cx.execute("SELECT COUNT(*) FROM healing_oasis_requests "
+                      "WHERE ip=? AND ts>?", (ip or "", cutoff)).fetchone()[0]
+    return n_email <= _OASIS_PER_EMAIL and n_ip <= _OASIS_PER_IP
+
+
+@app.route("/api/healing-oasis/status", methods=["GET"])
+def healing_oasis_status():
+    """Lets the static home page reveal the button only when the feature is live."""
+    return jsonify({"enabled": _healing_oasis_enabled()})
+
+
+@app.route("/api/healing-oasis/request", methods=["POST"])
+def healing_oasis_request():
+    """Provision the caller's Healing Oasis (idempotent) and email them the link.
+    Always returns the same generic message (no account enumeration, no throttle
+    tell). The portal token is a bearer credential — it is emailed, never returned
+    to this unauthenticated caller."""
+    if not _healing_oasis_enabled():
+        return jsonify({"error": "not found"}), 404
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    name = (body.get("name") or "").strip()[:120]
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return jsonify({"ok": False, "error": "Please enter a valid email address."}), 400
+    ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "").split(",")[0].strip()
+    generic = {"ok": True,
+               "message": "Check your email — your Healing Oasis link is on its way."}
+
+    from dashboard import evox as _ev, customers as _cu, client_portal as _cp
+    from dashboard import notify_state as _ns
+    _init_people_table()
+    link = None
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ns.init_table(cx)
+        if _oasis_rate_ok(cx, email, ip):
+            try:
+                _cu.find_or_create_by_email(cx, email=email, name=name)
+            except Exception:
+                app.logger.exception("healing-oasis person upsert failed for %s", email)
+            token = _ev.ensure_portal_token(cx, email, name)
+            link = f"{PUBLIC_BASE_URL}/portal/{token}"
+    # Network send runs OUTSIDE the DB lock. If throttled (link is None) we simply
+    # skip the send and still return the generic message.
+    if link:
+        first = (" " + name.split()[0]) if name else ""
+        try:
+            _send_full_report_email(
+                email, name, "Your Healing Oasis",
+                f"Aloha{first},\n\nHere is your personal Healing Oasis — your home base "
+                f"with Dr. Glen Swartwout:\n\n{link}\n\nBookmark it; it's yours to return "
+                f"to anytime.\n\n— Dr. Glen Swartwout")
+        except Exception:
+            app.logger.exception("healing-oasis send failed for %s", email)
+    return jsonify(generic)
+
+
 @app.route("/admin/portal/get-or-create-link", methods=["POST"])
 def admin_portal_get_or_create_link():
     """Idempotent portal link for the staged rollout: returns the client's STABLE
