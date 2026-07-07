@@ -228,6 +228,17 @@
   .pat-wrap{margin:.6rem 0}
   .pat-chip{display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:14px;
     background:var(--brand-soft);border:1px solid var(--line,#21472d);font-size:.85rem}
+  .pat-chip--detail{-webkit-appearance:none;appearance:none;color:inherit;font:inherit;
+    line-height:inherit;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+  .pat-chip--detail::after{content:"";display:inline-block;width:5px;height:5px;margin-left:6px;
+    border-right:1.5px solid var(--brand);border-bottom:1.5px solid var(--brand);
+    transform:rotate(45deg) translateY(-1px);opacity:.7;transition:transform .15s ease}
+  .pat-chip--detail:hover,.pat-chip--detail:focus-visible,
+  .pat-chip--detail[aria-expanded="true"]{background:var(--brand);color:var(--btn-fg)}
+  .pat-chip--detail:hover::after,.pat-chip--detail:focus-visible::after,
+  .pat-chip--detail[aria-expanded="true"]::after{border-color:var(--btn-fg)}
+  .pat-chip--detail[aria-expanded="true"]::after{transform:rotate(-135deg) translateY(1px)}
+  .pat-chip--detail:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
   @media (prefers-reduced-motion: reduce){.reveal{animation:none;opacity:1;transform:none}}
   /* Ask Dr. Glen concierge chat */
   .chat-msgs{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:.8rem;min-height:48px}
@@ -709,12 +720,25 @@ function render(d, v){
     const rvlCls = firstTime ? " reveal" : "";
     const layerDelay = (i)=> firstTime
       ? ` style="animation-delay:${(findingsCount*120 + 300 + i*400)}ms"` : "";
-    // Patterns block (chips) — staged before the layers on first view.
-    const patternsBlock = (firstTime && findingsCount)
-      ? `<p class="muted small${rvlCls}" style="margin:.2rem 0 .2rem">Your scan identified these stress patterns</p>
-         <div class="pat-wrap">${findings.map((f,i)=>
-           `<span class="pat-chip reveal" style="animation-delay:${i*120}ms">${esc(f.name||f.code||"")}</span>`
-         ).join("")}</div>`
+    const patDelay = (i)=> firstTime ? ` style="animation-delay:${i*120}ms"` : "";
+    // Patterns block (chips). Rendered on EVERY view so a returning client (and
+    // confirmed reports) can revisit their patterns — not just the first-view
+    // unfold. The reveal stagger stays a first-view-only flourish (rvlCls/patDelay
+    // are empty when !firstTime). A finding WITH a description becomes a <button>
+    // that toggles the inline #patDetail panel (wired in wirePatternDetails());
+    // a finding WITHOUT one stays a plain, non-interactive <span> — about half the
+    // E4L catalog (ER stresses, Nutrition, Environmental) has no description.
+    const anyDetail = findings.some(f => (f.description||"").trim());
+    const patternsBlock = findingsCount
+      ? `<p class="muted small${rvlCls}" style="margin:.2rem 0 .2rem">Your scan identified these stress patterns${anyDetail ? " &middot; tap one to learn more" : ""}</p>
+         <div class="pat-wrap">${findings.map((f,i)=>{
+           const nm = esc(f.name||f.code||"");
+           const ds = (f.description||"").trim();
+           return ds
+             ? `<button type="button" class="pat-chip pat-chip--detail${rvlCls}"${patDelay(i)} data-pname="${esc(f.name||f.code||"")}" data-pdesc="${esc(ds)}" aria-expanded="false" aria-controls="patDetail">${nm}</button>`
+             : `<span class="pat-chip${rvlCls}"${patDelay(i)}>${nm}</span>`;
+         }).join("")}</div>
+         <div class="pat-detail" id="patDetail" hidden></div>`
       : "";
     // Set the guard once, in this render pass, so the unfold does not replay on the
     // next poll/re-render. Only flips when we are actually rendering the analysis.
