@@ -9508,8 +9508,17 @@
       "bottle_type": "30cap",
       "fmp_id": "373"
     },
+    "green-jasper-gem-elixir": {
+      "name": "Green Jasper Gem Elixir in Terrain Restore",
+      "price_cents": 6997,
+      "pinecone_title": "Green Jasper Gem Elixir in Terrain Restore",
+      "qty_pricing": true,
+      "fmp_id": "626",
+      "ingredients_source": "fmp_snap",
+      "description": "Green Jasper gem elixir in a Terrain Restore base (Essence). Dose: 10 drops under the tongue or in water, 3 times a day, ideally 30 minutes before meals with affirmation and visualization. Healing qualities: reconnects the body's rhythms with the Earth's rhythm when the natural flow has been disrupted; helps reconnect to the wild feminine; restores earthly sensuality and healthy sexuality."
+    },
     "b17-syntropy": {
-      "name": "Blushwood B17 Complex",
+      "name": "B17 Syntropy",
       "price_cents": 6997,
       "pinecone_title": "Blushwood B17 Complex",
       "url": "https://remedymatch.com/remedies/syntropy/12-b17-syntropy",
