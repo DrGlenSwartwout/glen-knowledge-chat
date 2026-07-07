@@ -144,12 +144,12 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
     # when e4l.db is missing/unreadable). Trimmed to the fields the portal uses.
     email = (client.get("email") or "").strip().lower()
     scan_date = rep.get("date") or ""
-    _scan_ctx = scan_context
-    if _scan_ctx is None:
-        from dashboard.biofield_e4l import scan_context as _scan_ctx
     findings = []
     if email and scan_date:
         try:
+            _scan_ctx = scan_context
+            if _scan_ctx is None:
+                from dashboard.biofield_e4l import scan_context as _scan_ctx
             raw = _scan_ctx(email, scan_date).get("findings") or []
             findings = [{"code": f.get("code", ""), "name": f.get("name", ""),
                          "description": f.get("description", ""), "rank": f.get("rank")}
@@ -173,7 +173,7 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
     return {
         "email": email,
         "name": name,
-        "scan_date": rep.get("date") or "",
+        "scan_date": scan_date,
         "scan_id": "",
         "content": content,
         "unresolved": unresolved,
