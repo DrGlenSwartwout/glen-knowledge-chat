@@ -48,6 +48,7 @@ def test_routes_confirm_via_test_client(tmp_path, monkeypatch):
     client = create_app(db, e4l_db=db).test_client()
     r = client.get("/clinical-tags")
     assert r.status_code == 200 and b"review queue" in r.data and b"Steve Fox" in r.data
+    assert b"Business OS" in r.data and b"/console" in r.data   # return-to-OS header link
     r = client.get("/clinical-tags/1")
     assert r.status_code == 200 and b"system:cardiovascular" in r.data
     r = client.post("/clinical-tags/1", data={"tags": ["system:cardiovascular", "focus:sleep"], "action": "confirm"})

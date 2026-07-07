@@ -2,10 +2,19 @@
 (the `client_clinical_tags` ledger in e4l.db). Confirm → status='active', confirmed_by='glen';
 reject → status='retired'. Read-only chrome reused from biofield_report_html (_page/_e)."""
 import datetime as _dt
+import os as _os
 
 from dashboard.biofield_report_html import _e, _page
 
 TABLE = "client_clinical_tags"
+
+# Return-to-OS link target: the Business OS runs on the public app (this local page was opened
+# from it via /console/clinical-tags). The prod cookie keeps that origin authed on the way back.
+OS_URL = _os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/") + "/console"
+
+
+def _os_header():
+    return f"<p class=sub><a href='{_e(OS_URL)}'>&larr; Business OS</a></p>"
 
 
 def _has_table(cx):
@@ -67,7 +76,8 @@ def render_queue_html(queue):
             f"<td><span class=pill>{q['n']}</span></td></tr>" for q in queue)
     else:
         rows = "<tr><td colspan=2 class=food>Nothing to review — all caught up.</td></tr>"
-    body = ("<h1>Clinical Tags — review queue</h1>"
+    body = (_os_header()
+            + "<h1>Clinical Tags — review queue</h1>"
             "<p class=sub>Clients with suggested tags awaiting your confirm.</p>"
             "<table><tr><th>Client</th><th>Suggested</th></tr>" + rows + "</table>")
     return _page("Clinical Tags", body)
@@ -97,7 +107,8 @@ def render_client_html(data):
         f"<tr><td><code>{_e(r['tag'])}</code></td><td>{_e(r['axis'])}</td>"
         f"<td>{'&#10003; glen' if r.get('confirmed_by') else 'auto'}</td></tr>" for r in active
     ) or "<tr><td colspan=3 class=food>none</td></tr>"
-    body = ("<p><a href='/clinical-tags'>&larr; review queue</a></p>"
+    body = (_os_header()
+            + "<p><a href='/clinical-tags'>&larr; review queue</a></p>"
             f"<h1>{_e(data['name'])}</h1>"
             "<h2>Suggested — confirm or reject</h2>" + form +
             "<h2>Active</h2><table><tr><th>Tag</th><th>Axis</th><th>Confirmed</th></tr>" + arows + "</table>")
