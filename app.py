@@ -16155,6 +16155,25 @@ def api_console_intake_on_file():
     return jsonify({"ok": True, "email": email, "on_file": on_file})
 
 
+@app.route("/api/console/intake-import", methods=["POST"])
+def console_intake_import():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    answers = body.get("answers")
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    if not isinstance(answers, dict):
+        return jsonify({"error": "answers must be an object"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _intake.import_response(cx, email, answers, _hst_now().isoformat())
+    return jsonify({"ok": True})
+
+
 def _get_consult_booked(cx):
     try:
         rows = cx.execute("SELECT lower(email) FROM evox_bookings "

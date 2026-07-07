@@ -77,3 +77,27 @@ def test_intake_on_file_guard_preserves_real_submission(client):
         cx.row_factory = sqlite3.Row
         row = intake.get_response(cx, "seed@x.com")
         assert row["answers"] == {"first_name": "Seed"}
+
+
+def test_intake_import_requires_key(client):
+    r = client.post("/api/console/intake-import", json={"email": "x@x.com", "answers": {}})
+    assert r.status_code == 401
+
+
+def test_intake_import_bad_answers_400(client):
+    r = client.post("/api/console/intake-import?key=K",
+                    json={"email": "x@x.com", "answers": "not-a-dict"})
+    assert r.status_code == 400
+
+
+def test_intake_import_writes_and_gates(client):
+    import sqlite3, app as appmod
+    from dashboard import intake
+    r = client.post("/api/console/intake-import?key=K",
+                    json={"email": "imp@x.com", "answers": {"first_name": "Ann", "terrain": 3}})
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        intake.init_intake_table(cx)
+        assert intake.is_submitted(cx, "imp@x.com") is True
+        assert intake.get_response(cx, "imp@x.com")["answers"]["_imported"] == "practice-better"
