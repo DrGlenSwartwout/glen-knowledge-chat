@@ -77,3 +77,10 @@ def test_panel_has_raise_invoice_button_when_email():
 def test_panel_no_invoice_button_without_email():
     html = render_fee_panel(_state(email="", has_email=False, available=False))
     assert "Raise invoice" not in html
+
+
+def test_author_html_has_print_report_link():
+    rep = {"test_id": "a5", "client": {"name": "Donna", "email": "d@x.com"}, "date": "2026-07-06", "layers": []}
+    html = render_author_html(rep)
+    assert "/test/a5/report.pdf" in html            # printable PDF reachable from the intake page
+    assert "Print report" in html
