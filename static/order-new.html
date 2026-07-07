@@ -419,6 +419,7 @@ async function saveFFFlat(){
   if(!j.ok){ toast(j.error||"Could not save","error"); return; }
   $("cprices-note").textContent="Saved $"+(cents/100).toFixed(2)+" as "+email+"'s flat rate for ALL FFs.";
   toast("FF flat rate saved");
+  refreshPreview();   // re-price the open invoice so the just-saved rate shows now
 }
 async function saveTheseFFs(){
   const email=_cpEmail(); if(!email){ toast("Enter the client's email first","error"); return; }
@@ -431,6 +432,7 @@ async function saveTheseFFs(){
   if(!j.ok){ toast(j.error||"Could not save","error"); return; }
   $("cprices-note").textContent="Applied $"+(cents/100).toFixed(2)+" to "+j.saved+" FF(s) on this invoice for "+email+".";
   toast("Saved for "+j.saved+" FF(s)");
+  refreshPreview();   // re-price the open invoice so the just-saved price shows now
 }
 async function saveClientPrices(){
   const email = _cpEmail();
