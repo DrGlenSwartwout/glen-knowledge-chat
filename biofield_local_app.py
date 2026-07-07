@@ -23,7 +23,7 @@ import sqlite3
 
 from flask import Flask, Response, redirect, request, send_from_directory
 
-from dashboard import biofield_fee
+from dashboard import biofield_fee, biofield_invoice
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_fee_panel, render_list_html,
@@ -172,7 +172,8 @@ DEFAULT_DB = os.environ.get(
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
-               e4l_db=None, fee_get=None, fee_set=None, fee_clear=None):
+               e4l_db=None, fee_get=None, fee_set=None, fee_clear=None,
+               invoice_fetch_catalog=None, invoice_create=None, invoice_link=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -194,6 +195,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     fee_get = fee_get or biofield_fee.default_fee_get
     fee_set = fee_set or biofield_fee.default_fee_set
     fee_clear = fee_clear or biofield_fee.default_fee_clear
+    invoice_fetch_catalog = invoice_fetch_catalog or biofield_invoice.default_fetch_catalog
+    invoice_create = invoice_create or biofield_invoice.default_create_order
+    invoice_link = invoice_link or biofield_invoice.default_invoice_link
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -471,6 +475,38 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         fee_clear(email)
         state = biofield_fee.build_fee_state(email, fee_get)
         return {"ok": True, "html": render_fee_panel(state)}
+
+    @app.route("/author/<test_id>/invoice", methods=["POST"])
+    def author_invoice(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        client = rep.get("client") or {}
+        email = (client.get("email") or "").strip()
+        if not email:
+            return {"ok": False, "error": "Add a client email in the header first."}, 400
+        remedies = [(l.get("remedy") or "").strip()
+                    for l in (rep.get("layers") or []) if (l.get("remedy") or "").strip()]
+        catalog = invoice_fetch_catalog()
+        built = biofield_invoice.build_invoice_lines(client, remedies, catalog)
+        created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
+        if not created.get("ok"):
+            return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
+        link = invoice_link(created.get("order_id"))
+        total = created.get("total_cents")
+        accepted = created.get("accepted_slugs") or []
+        added_count = len(accepted) if accepted else len(built["lines"])
+        warning = ""
+        if accepted and biofield_invoice.BIOFIELD_SLUG not in accepted:
+            warning = "The Biofield Analysis line was not accepted by the console; open the order in Orders to check."
+        elif accepted and len(accepted) < len(built["lines"]):
+            warning = f"{len(built['lines']) - len(accepted)} line(s) were not accepted by the console."
+        return {"ok": True,
+                "print_url": link.get("print_url") if link.get("ok") else "",
+                "external_ref": created.get("external_ref"),
+                "added": added_count,
+                "skipped": built["skipped"],
+                "warning": warning,
+                "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
 
     @app.route("/author/<test_id>/e4l")
     def author_e4l(test_id):

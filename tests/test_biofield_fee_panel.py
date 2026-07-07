@@ -65,3 +65,15 @@ def test_panel_zero_courtesy_is_comp_not_standard():
     html = render_fee_panel(_state(courtesy_cents=0, note="comp"))
     assert "Courtesy: $0" in html          # $0 is a comp courtesy...
     assert "Standard: $" not in html       # ...not a fall-through to standard
+
+
+def test_panel_has_raise_invoice_button_when_email():
+    html = render_fee_panel(_state(courtesy_cents=10000))
+    assert "Raise invoice" in html
+    assert "id=invresult" in html
+    assert "function raiseInvoice()" in html
+
+
+def test_panel_no_invoice_button_without_email():
+    html = render_fee_panel(_state(email="", has_email=False, available=False))
+    assert "Raise invoice" not in html
