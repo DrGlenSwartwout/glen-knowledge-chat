@@ -23,10 +23,11 @@ import sqlite3
 
 from flask import Flask, Response, redirect, request, send_from_directory
 
+from dashboard import biofield_fee
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
-    render_author_html, render_e4l_panel, render_list_html, render_report_html,
-    render_stress_panel, render_suggest_panel)
+    render_author_html, render_e4l_panel, render_fee_panel, render_list_html,
+    render_report_html, render_stress_panel, render_suggest_panel)
 from dashboard.biofield_e4l import (
     _db_path as _e4l_db_path, fetch_live as _fetch_live,
     scan_context as _scan_context, search_clients as _search_clients)
@@ -171,7 +172,7 @@ DEFAULT_DB = os.environ.get(
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
-               e4l_db=None):
+               e4l_db=None, fee_get=None, fee_set=None, fee_clear=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -190,6 +191,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     fetch_runner = fetch_runner  # None -> fetch_live uses the real scraper+parser
     fetch_profile = fetch_profile or _default_fetch_profile
     fetch_recent_comms = fetch_recent_comms or _default_fetch_recent_comms
+    fee_get = fee_get or biofield_fee.default_fee_get
+    fee_set = fee_set or biofield_fee.default_fee_set
+    fee_clear = fee_clear or biofield_fee.default_fee_clear
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -415,8 +419,11 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             sdata = list_stresses(cx, test_id, chain_rows)
             covered = {L["layer"]: L["stresses"] for L in sdata.get("by_layer") or []}
             narrative = get_narrative(cx, test_id)
+            c_email = ((rep.get("client") or {}).get("email") or "").strip()
+        fstate = biofield_fee.build_fee_state(c_email, fee_get)
         return Response(render_author_html(rep, dv, transcript, covered_by_layer=covered,
-                                           narrative=narrative), mimetype="text/html")
+                                           narrative=narrative, fee_state=fstate),
+                        mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):
@@ -437,6 +444,33 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             ctx, _ = _e4l(cx, test_id)  # client now known -> pull recent E4L scan
             _seed_stresses(cx, test_id)  # synthesize + seed stress coverage if scan found
         return {"ok": True, "e4l": ctx, "html": render_e4l_panel(ctx)}
+
+    @app.route("/author/<test_id>/fee", methods=["POST"])
+    def author_fee(test_id):
+        d = request.get_json(silent=True) or {}
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"ok": False, "error": "Add a client email in the header first."}, 400
+        try:
+            cents = biofield_fee.dollars_to_cents(d.get("dollars"))
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "Enter a valid non-negative amount."}, 400
+        fee_set(email, cents, (d.get("note") or "").strip())
+        state = biofield_fee.build_fee_state(email, fee_get)
+        return {"ok": True, "html": render_fee_panel(state)}
+
+    @app.route("/author/<test_id>/fee/clear", methods=["POST"])
+    def author_fee_clear(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"ok": False, "error": "Add a client email in the header first."}, 400
+        fee_clear(email)
+        state = biofield_fee.build_fee_state(email, fee_get)
+        return {"ok": True, "html": render_fee_panel(state)}
 
     @app.route("/author/<test_id>/e4l")
     def author_e4l(test_id):
