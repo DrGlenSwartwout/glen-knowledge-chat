@@ -20,7 +20,7 @@ import urllib.request
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))  # repo root, for `dashboard`
-from dashboard.biofield_e4l import scan_context  # noqa: E402
+from dashboard.biofield_e4l import scan_context, findings_for_scan_date  # noqa: E402
 
 INTAKE_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(_HERE), "chat_log.db"))
@@ -112,11 +112,14 @@ def main(argv=None):
         return d.get("scan_dates") or []
 
     def findings_of(email, scan_date):
-        # scan_date None -> latest scan for the portal-record patch
+        # A dated report row must get THAT scan's findings -- scan_context() always
+        # returns the latest scan, so use the date-specific lookup. The portal-record
+        # patch (scan_date None) legitimately wants the latest scan.
+        if scan_date:
+            return _trim(findings_for_scan_date(email, scan_date))
         from datetime import date
-        today = scan_date or date.today().isoformat()
         try:
-            return _trim(scan_context(email, today).get("findings") or [])
+            return _trim(scan_context(email, date.today().isoformat()).get("findings") or [])
         except Exception:
             return []
 

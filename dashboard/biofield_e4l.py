@@ -163,6 +163,44 @@ def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
             "infoceuticals": infoceuticals, "stresses": stresses, "message": message}
 
 
+def findings_for_scan_date(email, scan_date, *, db_path=None, limit=12):
+    """Findings for the client's scan on a SPECIFIC scan_date (within the merged
+    identity), same shape and per-group caps as scan_context()['findings'].
+    Returns [] when email/scan_date is blank, the DB is missing, or no scan exists
+    on that date. Never raises. scan_context() always resolves the LATEST scan
+    (its `today` arg only affects the freshness message); this targets the exact
+    date, which is what backfilling a historical report row requires."""
+    if not (email or "").strip() or not (scan_date or "").strip():
+        return []
+    cx = _connect_ro(_db_path(db_path))
+    if cx is None:
+        return []
+    try:
+        crows = cx.execute("SELECT client_id FROM e4l_clients WHERE lower(email)=lower(?)",
+                           (str(email).strip(),)).fetchall()
+        if not crows:
+            return []
+        group = set()
+        for cr in crows:
+            group |= _merge_group(cx, cr["client_id"])
+        ph = ",".join("?" for _ in group)
+        row = cx.execute(
+            f"SELECT scan_id FROM e4l_scans WHERE client_id IN ({ph}) AND scan_date=? "
+            f"ORDER BY scan_id DESC LIMIT 1", (*group, str(scan_date).strip())).fetchone()
+        if not row:
+            return []
+        all_findings = _findings(cx, row["scan_id"])
+    except sqlite3.Error:
+        return []
+    finally:
+        cx.close()
+    infoceuticals = [f for f in all_findings if f["group"] == "infoceutical"]
+    stresses = [f for f in all_findings if f["group"] == "stress"]
+    if limit:
+        infoceuticals, stresses = infoceuticals[:limit], stresses[:limit]
+    return infoceuticals + stresses
+
+
 # --- Client name picker -----------------------------------------------------
 
 def search_clients(q, *, db_path=None, limit=20):
