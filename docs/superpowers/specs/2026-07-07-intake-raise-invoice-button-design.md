@@ -22,7 +22,8 @@ On the local Biofield Intake authoring page (`/author/<id>`, Mac-only :8011), ad
 - **Print link:** prod `GET /api/console/order/<oid>/invoice-link` (`app.py:31750`) → `/invoice/<token>?print=1` (owner-internal, no email, no Stripe).
 - **Courtesy:** `client_prices` (slug `biofield-analysis`), set via the fee panel / `/api/console/client-prices`. Already the pricer's source of truth.
 - **Console call pattern:** `dashboard/biofield_fee.py::_request` / `_console()` — the exact `CONSOLE_SECRET` + `PUBLIC_BASE_URL` prod-call pattern the fee panel already uses.
-- **Name→product resolution:** `biofield_authoring.resolve_remedy_name` resolves a chain remedy to a catalog **product name**; the products catalog maps name↔slug.
+- **Slug catalog:** prod `GET /api/console/biofield-portal/catalog` → `{"products":[{slug,name}]}` (328 SKUs) — the authoritative name↔slug map the reveal editor already uses. The intake's `fmp_snap_products` is name-only, and `/api/orders/manual` requires a **slug** (it silently drops lines with no resolvable slug), so the button resolves name→slug against this catalog before POSTing.
+- **Fuzzy match:** the same `difflib` close-match approach as `biofield_authoring.resolve_remedy_name` (cutoff 0.82) for names that don't hit an exact (case-insensitive) catalog match.
 
 **Not touched:** the prod order/invoice endpoints (used as-is), the fee panel, the causal-chain authoring.
 
@@ -40,13 +41,16 @@ Pure, testable core plus thin prod calls (mirrors `biofield_fee.py`).
 BIOFIELD_SLUG = "biofield-analysis"
 
 def resolve_line_slug(name, catalog) -> str | None
-    # name -> sellable slug via the products catalog (exact/case-insensitive,
-    # then the same fuzzy match resolve_remedy_name uses). None if no sellable match.
+    # catalog = [{slug,name}]. Exact case-insensitive name match first, then a
+    # difflib close match (cutoff 0.82, like resolve_remedy_name). None if no match.
 
 def build_invoice_lines(client, remedies, catalog) -> {"lines": [...], "skipped": [...]}
     # lines[0] is ALWAYS {"slug": BIOFIELD_SLUG, "qty": 1} (top line).
     # then one {"slug": <resolved>, "qty": 1} per remedy that resolves.
     # skipped = [remedy names with no sellable slug], preserved for display.
+
+def default_fetch_catalog() -> list[{slug,name}]
+    # GET prod /api/console/biofield-portal/catalog -> resp["products"]. [] on failure.
 
 def default_create_order(customer, lines) -> {"ok", "order_id", "external_ref", "total_cents", "error"}
     # POST prod /api/orders/manual {customer:{name,email}, lines, pickup:true}. Explicit
@@ -64,7 +68,7 @@ Mirrors `author_fee`. Injected deps `invoice_build` / `invoice_create` / `invoic
 
 1. Load `authored_report(cx, test_id)` → client `{name, email}` + chain remedies (names).
 2. If no client email → `{"ok": False, "error": "Add a client email in the header first."}`, 400 (same guard as `author_fee`).
-3. `build_invoice_lines(client, remedies, catalog)` → `{lines, skipped}`. Catalog from the local `products` import.
+3. `invoice_fetch_catalog()` → `[{slug,name}]`; `build_invoice_lines(client, remedies, catalog)` → `{lines, skipped}`.
 4. `invoice_create({"name","email"}, lines)`. On failure → `{"ok": False, "error": <explicit>}`, 502.
 5. `invoice_link(order_id)` → `print_url` (best-effort; if it fails, still return success with the order ref and a note that the print link couldn't be minted).
 6. Return `{"ok": True, "print_url", "external_ref", "added": [...], "skipped": [...], "total_dollars"}`.
