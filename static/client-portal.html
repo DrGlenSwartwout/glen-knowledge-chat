@@ -14,7 +14,12 @@
     document.documentElement.setAttribute('data-theme',t);})();
 </script>
 <style>
-  /* Brand palette — deep green + gold (matches the live funnel). */
+  /* Brand palette — deep green + gold (matches the live funnel). Dark is the
+     brand default, so it is ALSO defined on bare :root: shell.js can leave
+     data-theme unset for a first-time visitor (empty localStorage), and without
+     a :root fallback every var goes undefined and the page collapses to unstyled
+     white. With this, the portal always renders branded; light is the override. */
+  :root,
   :root[data-theme="dark"]{
     --bg:#0a150d; --card:#13241a; --card2:#16291d; --line:#274033;
     --ink:#f3efe2; --muted:#9fb0a4;
