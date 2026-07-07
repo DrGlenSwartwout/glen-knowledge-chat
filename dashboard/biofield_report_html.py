@@ -942,7 +942,9 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
     c = report.get("client") or {}
     head = (_workflow_nav("intake", c.get("email") or "")
             + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
-            f"<a href='/test/{tid}'>View report &rarr;</a></p><h1>Edit Biofield Test</h1>"
+            f"<a href='/test/{tid}'>View report &rarr;</a> &nbsp;&middot;&nbsp; "
+            f"<a href='/test/{tid}/report.pdf' target='_blank'>&#128424; Print report (PDF) &rarr;</a>"
+            "</p><h1>Edit Biofield Test</h1>"
             "<div class=btnrow><button class=btn onclick=confirmAll()>&#10003; Confirm all rows</button>"
             "<button class='btn ghost' onclick=delTest()>Delete test</button></div>")
     hdr = (
