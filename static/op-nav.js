@@ -3,15 +3,15 @@
  * Usage: drop one synchronous script tag immediately after <body> on each page:
  *   <script src="/static/op-nav.js" data-active="dashboard"></script>
  *
- * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "settings" | "funnel"
- *
- * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
- * boards renders under the main bar. Mark the active board with data-sub, e.g.
- *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "orders" | "client-orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "approvals" | "shipping" | "neworder"
- * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
- *  standalone top tabs. The old "home" board is retired; its signals now live on
- *  the /console front door.)
+ * Nav = 11 functional PILLARS (top row) each with its own PAGES (second row), defined in
+ * buildPillars()/buildPillarPages() at the top of the IIFE (and exported for node tests).
+ * data-active = the pillar id; data-sub = the page id within that pillar.
+ *   <script src="/static/op-nav.js" data-active="finance" data-sub="money"></script>
+ * Pillar ids (front→back): home · marketing · clinical · sales · fulfillment · people ·
+ *   communication ‖ rnd · production · finance · admin. Labels shorten (clinical→"Match",
+ *   production→"Make", finance→"Money"); Home renders the phoenix /static/logo.png.
+ * Role-aware: /api/me returns nav = glen | rae | va; owners overflow non-primary pillars to
+ *   "More ▾", the VA (shaira) has non-scoped pillars removed entirely (NAV_PROFILES).
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
@@ -23,6 +23,58 @@
  *   - Uses neutral dark styling that sits on top of all page palettes
  */
 (function () {
+  // ---------- node-exportable nav data (pure; no DOM) ----------
+  function buildPillars(qs) {
+    return [
+      { id:"home",          label:"",       href:"/console"+qs,                 zone:"front", logo:true },
+      { id:"marketing",     label:"Market", href:"/funnel"+qs,                  zone:"front" },
+      { id:"clinical",      label:"Match",  href:"/console/biofield-portal"+qs, zone:"front" },
+      { id:"sales",         label:"Sell",   href:"/console/orders"+qs,          zone:"front" },
+      { id:"fulfillment",   label:"Fill",   href:"/admin/shipping"+qs,          zone:"front" },
+      { id:"people",        label:"People", href:"/console/crm"+qs,             zone:"front" },
+      { id:"communication", label:"Comm",   href:"/console/inbox"+qs,           zone:"front" },
+      { id:"rnd",           label:"R&D",    href:"/console/rnd"+qs,             zone:"back" },
+      { id:"production",    label:"Make",   href:"/console/products"+qs,        zone:"back" },
+      { id:"finance",       label:"Money",  href:"/console/money"+qs,           zone:"back" },
+      { id:"admin",         label:"Admin",  href:"/console/approvals"+qs,       zone:"back" }
+    ];
+  }
+  function buildPillarPages(qs) {
+    return {
+      home:          [ {id:"overview",label:"Overview",href:"/console"+qs}, {id:"dashboard",label:"Dashboard",href:"/dashboard"+qs} ],
+      marketing:     [ {id:"funnel",label:"Funnel",href:"/funnel"+qs}, {id:"pages",label:"Pages",href:"/console/pages"+qs},
+                       {id:"social",label:"Social Media",href:"/console/social"+qs}, {id:"reviews",label:"Reviews",href:"/console/reviews"+qs},
+                       {id:"invite-queue",label:"Invite Queue",href:"/console/testimonial-invites"+qs}, {id:"top-products",label:"Top Products",href:"/console/top-products"+qs} ],
+      clinical:      [ {id:"biofield",label:"Biofield",href:"/console/biofield-portal"+qs}, {id:"reveals",label:"Reveals",href:"/console/biofield-reveals"+qs},
+                       {id:"intake",label:"Intake",href:"/console/biofield-intake"+qs}, {id:"tags",label:"Tags",href:"/console/clinical-tags"+qs},
+                       {id:"remedy-meanings",label:"Remedy Meanings",href:"/console/remedy-meanings"+qs} ],
+      sales:         [ {id:"orders",label:"Orders",href:"/console/orders"+qs}, {id:"new-order",label:"New Order",href:"/orders/new"+qs},
+                       {id:"client-orders",label:"Client Orders",href:"/console/client-orders"+qs} ],
+      fulfillment:   [ {id:"shipping",label:"Shipping",href:"/admin/shipping"+qs}, {id:"household",label:"Household",href:"/console/household"+qs} ],
+      people:        [ {id:"crm",label:"CRM",href:"/console/crm"+qs}, {id:"members",label:"Members",href:"/console/members"+qs},
+                       {id:"membership",label:"Membership",href:"/admin/membership"+qs}, {id:"practitioners",label:"Practitioners",href:"/console/practitioners"+qs},
+                       {id:"coaching",label:"Coaching",href:"/console/coaching-cohort"+qs}, {id:"cert",label:"Cert",href:"/console/cert"+qs} ],
+      communication: [ {id:"inbox",label:"Inbox",href:"/console/inbox"+qs}, {id:"portal-links",label:"Portal Links",href:"/console/portal-links"+qs} ],
+      rnd:           [ {id:"rnd",label:"R&D Home",href:"/console/rnd"+qs} ],
+      production:    [ {id:"products",label:"Products",href:"/console/products"+qs}, {id:"ingredients",label:"Ingredients",href:"/admin/ingredients"+qs} ],
+      finance:       [ {id:"money",label:"Money",href:"/console/money"+qs}, {id:"pricing",label:"Pricing",href:"/console/pricing-settings"+qs},
+                       {id:"studio-credits",label:"Studio Credits",href:"/console/studio-credits"+qs}, {id:"tax",label:"Tax",href:"/admin/tax"+qs} ],
+      admin:         [ {id:"approvals",label:"Approvals",href:"/console/approvals"+qs}, {id:"projects",label:"Projects",href:"/console/projects"+qs},
+                       {id:"settings",label:"Settings",href:"/console/settings"+qs} ]
+    };
+  }
+  var NAV_PROFILES = {
+    glen:   { pillars: buildPillars("").map(function(p){return p.id;}), hideRest:false },
+    rae:    { pillars: ["home","marketing","sales","fulfillment","people","communication","finance"], hideRest:false },
+    shaira: { pillars: ["home","marketing","communication","people"], hideRest:true }
+  };
+  function navPillarsFor(name){ return (NAV_PROFILES[name] || NAV_PROFILES.glen).pillars.slice(); }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { PILLARS: buildPillars(""), PILLAR_PAGES: buildPillarPages(""),
+                       NAV_PROFILES: NAV_PROFILES, navPillarsFor: navPillarsFor };
+  }
+  if (typeof document === "undefined") return;   // node require: data only, no DOM
+  // ---------- browser render below ----------
   var script = document.currentScript;
   var active = (script && script.dataset && script.dataset.active) || "";
   var sub = (script && script.dataset && script.dataset.sub) || "";
@@ -65,42 +117,8 @@
   var effKey = urlKey || storedKey;
   var qs = effKey ? ("?key=" + encodeURIComponent(effKey)) : "";
 
-  var tabs = [
-    { id: "dashboard", label: "Dashboard", href: "/dashboard" + qs },
-    { id: "console",   label: "Console",   href: "/console"   + qs },
-    { id: "bos",       label: "Business OS", href: "/console/orders" + qs },
-    { id: "projects",  label: "Projects",  href: "/console/projects" + qs },
-    { id: "inbox",     label: "Inbox",     href: "/console/inbox" + qs },
-    { id: "settings",  label: "Settings",  href: "/console/settings" + qs },
-    { id: "funnel",    label: "Funnel",    href: "/funnel" + qs },
-  ];
-
-  // Business OS module boards — rendered as a secondary sub-tab row under the main
-  // bar whenever the BOS section is active. Shipping + New Order were folded in
-  // from the old standalone top tabs.
-  var bosMods = [
-    { id: "orders",   label: "Orders",    href: "/console/orders" + qs },
-    { id: "client-orders", label: "Client Orders", href: "/console/client-orders" + qs },
-    { id: "money",    label: "Money",     href: "/console/money" + qs },
-    { id: "crm",      label: "CRM",       href: "/console/crm" + qs },
-    { id: "products", label: "Products",  href: "/console/products" + qs },
-    { id: "biofield", label: "Biofield",  href: "/console/biofield-portal" + qs },
-    { id: "pages",    label: "Pages",      href: "/console/pages" + qs },
-    { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
-    { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
-    { id: "clinical-tags", label: "Tags", href: "/console/clinical-tags" + qs },
-    { id: "approvals", label: "Approvals", href: "/console/approvals" + qs },
-    { id: "testimonial-invites", label: "Invite Queue", href: "/console/testimonial-invites" + qs },
-    { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
-    { id: "neworder", label: "New Order", href: "/orders/new" + qs },
-    { id: "practitioners", label: "Practitioners", href: "/console/practitioners" + qs },
-    { id: "top-products",  label: "Top Products",  href: "/console/top-products" + qs },
-    { id: "remedy-meanings", label: "Remedy Meanings", href: "/console/remedy-meanings" + qs },
-    { id: "ingredients-ops", label: "Ingredients (Ops)", href: "/admin/ingredients" + qs },
-    { id: "coaching",      label: "Coaching",      href: "/console/coaching-cohort" + qs },
-    { id: "membership",    label: "Membership",    href: "/admin/membership" + qs },
-    { id: "members",       label: "Members",       href: "/console/members" + qs },
-  ];
+  var PILLARS = buildPillars(qs);
+  var PILLAR_PAGES = buildPillarPages(qs);
 
   var styles = ''
     + '<style id="op-nav-styles">'
@@ -131,6 +149,9 @@
     +   'color:#fff;border-bottom-color:#7c5cbf;'
     + '}'
     + '.op-nav-bar .op-nav-spacer{flex:1}'
+    + '.op-nav-bar a.op-nav-home{padding:0 8px;display:inline-flex;align-items:center}'
+    + '.op-nav-logo{height:22px;width:auto;display:block}'
+    + '.op-nav-zone-div{width:1px;height:20px;background:#21472d;margin:0 8px;align-self:center}'
     + '.op-nav-bar .op-nav-key-warn{'
     +   'color:#f85149;font-size:11px;margin-right:10px;'
     + '}'
@@ -215,10 +236,21 @@
 
   var bar = '<nav class="op-nav-bar" role="navigation" aria-label="Glen ops">'
     + '<span class="op-nav-brand">GLEN <b>·</b> OPS</span>';
-  for (var i = 0; i < tabs.length; i++) {
-    var t = tabs[i];
+  var prevZone = null;
+  for (var i = 0; i < PILLARS.length; i++) {
+    var t = PILLARS[i];
+    if (prevZone === "front" && t.zone === "back") {
+      bar += '<span class="op-nav-zone-div" aria-hidden="true"></span>';
+    }
+    prevZone = t.zone;
     var cls = (t.id === active) ? "op-nav-tab active" : "op-nav-tab";
-    bar += '<a class="' + cls + '" data-id="' + t.id + '" href="' + t.href + '">' + t.label + '</a>';
+    if (t.logo) {
+      bar += '<a class="' + cls + ' op-nav-home" data-id="' + t.id + '" href="' + t.href + '" aria-label="Home">'
+        + '<img src="/static/logo.png" alt="Home" class="op-nav-logo" '
+        + 'onerror="this.onerror=null;this.src=\'/static/favicon.png\'"></a>';
+    } else {
+      bar += '<a class="' + cls + '" data-id="' + t.id + '" href="' + t.href + '">' + t.label + '</a>';
+    }
   }
   bar += '<span class="op-nav-more" id="op-nav-more-top" style="display:none">'
     + '<button type="button" class="op-nav-tab op-nav-more-btn">More ▾</button>'
@@ -238,76 +270,43 @@
     + '</span>';
   bar += '</nav>';
 
-  if (active === "bos") {
-    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Business OS modules">'
-      + '<span class="op-nav-sub-brand">Business OS</span>';
-    for (var j = 0; j < bosMods.length; j++) {
-      var m = bosMods[j];
+  var subPages = PILLAR_PAGES[active];
+  if (subPages && subPages.length) {
+    var _p = null;
+    for (var pi = 0; pi < PILLARS.length; pi++) { if (PILLARS[pi].id === active) { _p = PILLARS[pi]; break; } }
+    var brand = (_p && _p.label) || active;
+    bar += '<nav class="op-nav-sub" role="navigation" aria-label="' + brand + ' pages">'
+      + '<span class="op-nav-sub-brand">' + brand + '</span>';
+    for (var j = 0; j < subPages.length; j++) {
+      var m = subPages[j];
       var scls = (m.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
       bar += '<a class="' + scls + '" data-id="' + m.id + '" href="' + m.href + '">' + m.label + '</a>';
-    }
-    bar += '<span class="op-nav-more" id="op-nav-more-bos" style="display:none">'
-      + '<button type="button" class="op-nav-subtab op-nav-more-btn">More ▾</button>'
-      + '<span class="op-nav-more-menu"></span></span>';
-    bar += '</nav>';
-  }
-
-  if (active === "settings") {
-    var setMods = [
-      { id: "pricing",  label: "Pricing",         href: "/console/pricing-settings" + qs },
-      { id: "shipping", label: "Shipping-config",  href: "/admin/shipping" + qs },
-      { id: "tax",      label: "Tax",              href: "/admin/tax" + qs },
-      { id: "writemac", label: "Write-Mac",        href: "/console/settings" + qs }
-    ];
-    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Settings">'
-      + '<span class="op-nav-sub-brand">Settings</span>';
-    for (var s = 0; s < setMods.length; s++) {
-      var sm = setMods[s];
-      var smcls = (sm.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
-      bar += '<a class="' + smcls + '" data-id="' + sm.id + '" href="' + sm.href + '">' + sm.label + '</a>';
     }
     bar += '</nav>';
   }
 
   document.write(styles + bar);
 
-  // ── Role-aware nav: reorganize the rendered bar per the caller's nav profile ──
-  // primary = stays on the bar; everything else moves into the matching "More ▾".
-  var NAV_PROFILES = {
-    glen: {
-      tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
-      bos:  ["orders","client-orders","money","crm","products","biofield","pages",
-             "biofield-reveals","biofield-intake",
-             "approvals","shipping","neworder"]
-    },
-    rae: {
-      tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","client-orders","money","crm","approvals","shipping","neworder"]
-    }
-  };
-
-  function reorg(wrapId, linkSelector, primaryIds) {
-    var wrap = document.getElementById(wrapId);
+  // ── Role-aware nav: owners overflow non-primary pillars to "More ▾"; the VA has
+  //    hidden pillars removed entirely. NAV_PROFILES is defined at the top of the file. ──
+  function moveToMore(a) {
+    var wrap = document.getElementById("op-nav-more-top");
     if (!wrap) return;
     var menu = wrap.querySelector(".op-nav-more-menu");
-    var bar = wrap.parentNode;
-    var moved = 0;
-    bar.querySelectorAll(linkSelector).forEach(function (a) {
-      var id = a.getAttribute("data-id");
-      if (!id) return;
-      if (primaryIds.indexOf(id) === -1) {
-        a.classList.remove("op-nav-tab", "op-nav-subtab");
-        menu.appendChild(a);
-        moved++;
-      }
-    });
-    wrap.style.display = (moved || menu.querySelectorAll("a").length) ? "inline-flex" : "none";
+    a.classList.remove("op-nav-tab");
+    menu.appendChild(a);
+    wrap.style.display = "inline-flex";
   }
 
   function applyNavProfile(navName) {
     var prof = NAV_PROFILES[navName] || NAV_PROFILES.glen;
-    reorg("op-nav-more-top", ".op-nav-bar > a.op-nav-tab", prof.tabs);
-    reorg("op-nav-more-bos", ".op-nav-sub > a.op-nav-subtab", prof.bos);
+    var keep = {}; prof.pillars.forEach(function (id) { keep[id] = true; });
+    document.querySelectorAll('.op-nav-bar > a.op-nav-tab').forEach(function (a) {
+      var id = a.getAttribute("data-id");
+      if (!id || keep[id]) return;
+      if (prof.hideRest) { a.parentNode.removeChild(a); }   // VA: remove hidden pillars entirely
+      else { moveToMore(a); }                               // owners: overflow to "More ▾"
+    });
   }
 
   // Toggle "More" dropdowns (event delegation; survives reorg).
@@ -324,18 +323,19 @@
   var NAV_CACHE_KEY = "op_nav_profile";
   try {
     var cached = localStorage.getItem(NAV_CACHE_KEY);
-    if (cached === "rae" || cached === "glen") applyNavProfile(cached);
+    if (cached === "rae" || cached === "shaira" || cached === "glen") applyNavProfile(cached);
   } catch (e) {}
 
   fetch("/api/me" + (effKey ? "?key=" + encodeURIComponent(effKey) : ""),
         { headers: effKey ? { "X-Console-Key": effKey } : {} })
     .then(function (r) { return r.json(); })
     .then(function (me) {
-      var navName = (me && me.nav === "rae") ? "rae" : "glen";  // only 'rae' streamlines
+      var raw = me && me.nav;                                    // "glen" | "rae" | "va" | null
+      var navName = raw === "va" ? "shaira" : (raw === "rae" ? "rae" : "glen");
       try { localStorage.setItem(NAV_CACHE_KEY, navName); } catch (e) {}
       applyNavProfile(navName);
     })
-    .catch(function () { /* leave full bar */ });
+    .catch(function () { /* owner-safe: full bar. A VA is already narrowed by the cached 'shaira' profile applied above. */ });
 
   // Wire the light/dark toggle. Reflects the active theme, persists to localStorage,
   // and live-syncs across same-origin documents via the 'storage' event.
