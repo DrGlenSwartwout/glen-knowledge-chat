@@ -18,7 +18,10 @@ _CSS = """
   * { box-sizing: border-box; }
   body { font: 14px/1.5 Georgia, 'Times New Roman', serif; color: var(--ink);
          max-width: 760px; margin: 0 auto; padding: 28px; }
-  .masthead { text-align: center; border-bottom: 2px solid var(--gold); padding-bottom: 12px; margin-bottom: 18px; }
+  .masthead { display: flex; align-items: center; gap: 14px; text-align: left;
+              border-bottom: 2px solid var(--gold); padding-bottom: 12px; margin-bottom: 18px; }
+  .masthead .logo { width: 54px; height: auto; flex: 0 0 auto; }
+  .masthead .mh-text { flex: 1 1 auto; }
   .masthead .wordmark { font-weight: 700; letter-spacing: .04em; font-size: 20px; }
   .masthead .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
   h2 { color: var(--gold); font-size: 16px; border-bottom: 1px solid var(--hair); padding-bottom: 3px; margin: 22px 0 8px; }
@@ -38,11 +41,28 @@ _CSS = """
 """
 
 
+def _logo_data_uri():
+    """Header logo (resized static/logo-mark.png) as a data URI, embedded so it
+    survives the standalone-HTML -> Playwright PDF render (no server/base URL)."""
+    import base64
+    import os
+    try:
+        p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "static", "logo-mark.png")
+        with open(p, "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+    except Exception:
+        return ""
+
+
 def _masthead(report):
     c = report.get("client") or {}
     sub = " · ".join(x for x in (_e(c.get("name")), _e(report.get("date"))) if x)
-    return (f'<div class="masthead"><div class="wordmark">{_e(WORDMARK)}</div>'
-            f'<div class="sub">Biofield Analysis · {sub}</div></div>')
+    logo = _logo_data_uri()
+    img = f'<img class="logo" src="{logo}" alt="">' if logo else ""
+    return (f'<div class="masthead">{img}'
+            f'<div class="mh-text"><div class="wordmark">{_e(WORDMARK)}</div>'
+            f'<div class="sub">Biofield Analysis · {sub}</div></div></div>')
 
 
 def _schedule(report):

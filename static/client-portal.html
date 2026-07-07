@@ -145,6 +145,12 @@
   .rx{font-size:.92rem;background:var(--brand-soft);border-radius:8px;padding:8px 10px}
   .rx b{color:var(--brand)}
   .dose{display:block;color:var(--muted);font-size:.86rem;margin-top:2px}
+  .sched{margin-top:1rem}
+  .sched h3{margin:0 0 .4rem;font-size:1rem}
+  .sched-tbl{width:100%;border-collapse:collapse;font-size:.9rem}
+  .sched-tbl th,.sched-tbl td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--brand-soft);vertical-align:top}
+  .sched-tbl th{color:var(--muted);font-weight:600}
+  .sched-when{white-space:nowrap;font-weight:600}
   .reitem{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line)}
   .reitem:last-child{border-bottom:0}
   .reitem .nm{font-weight:600}
@@ -379,6 +385,28 @@ const isMe = (seg === "me");
 const token = seg; // reused by reorder()/checkout; "me" resolves via the session
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
+// Only rendered for a confirmed analysis (dosing is server-gated). "" when empty.
+function scheduleHtml(sched){
+  sched = sched || {};
+  const entries = Array.isArray(sched.entries) ? sched.entries : [];
+  const slots = Array.isArray(sched.slots) ? sched.slots : [];
+  const placed = entries.filter(e=>!e.as_directed);
+  let rows = "";
+  slots.forEach(slot=>{
+    const here = placed.filter(e=>Array.isArray(e.slots) && e.slots.indexOf(slot)!==-1);
+    if(!here.length) return;
+    const cells = here.map(e=>`${esc(e.name||"")} <span class="dose" style="display:inline;margin:0">(${esc(e.per_slot||e.dosage||"")}${e.food?", "+esc(e.food):""})</span>`).join("; ");
+    rows += `<tr><td class="sched-when">${esc(slot)}</td><td>${cells}</td></tr>`;
+  });
+  const asdir = entries.filter(e=>e.as_directed);
+  if(asdir.length){
+    const cells = asdir.map(e=>`${esc(e.name||"")} <span class="dose" style="display:inline;margin:0">(${esc(e.timing||"as directed")})</span>`).join("; ");
+    rows += `<tr><td class="sched-when">As directed</td><td>${cells}</td></tr>`;
+  }
+  if(!rows) return "";
+  return `<div class="sched"><h3>Your remedy schedule</h3><table class="sched-tbl"><tr><th>When</th><th>Take</th></tr>${rows}</table></div>`;
+}
 // Render a free-text note (e.g. the biofield greeting) as safe rich HTML:
 // escape first, then **bold** -> <strong>, blank lines -> separate <p>, and
 // single newlines -> <br>. Empty input yields "" so callers' default-string
@@ -879,6 +907,7 @@ function render(d, v){
         ${patternsBlock}
         <p class="muted small">From the surface layer down to the deepest root, we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>
+        ${status === "confirmed" ? scheduleHtml(d.schedule) : ""}
         ${extra}
         ${status === "confirmed" ? `<div style="margin-top:1.1rem"><button class="btn" onclick="printReport()">🖨 Save Report as PDF</button></div>` : ""}
         ${status !== "confirmed" ? disclose : ""}`;

@@ -58,3 +58,8 @@ def test_empty_narrative_section_omitted_or_placeholder():
     html = render_present(REPORT, narrative="")
     # narrative heading still present (section exists), no crash
     assert "Narrative" in html
+
+
+def test_masthead_includes_logo():
+    html = render_present(REPORT, "hello")
+    assert 'class="logo"' in html and "data:image/png;base64," in html   # logo embedded upper-left

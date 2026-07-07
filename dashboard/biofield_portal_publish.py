@@ -166,6 +166,10 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
         "pricing_note": "",
         "findings": findings,
         "biofield_status": "confirmed",
+        # Time-of-day remedy schedule (Breakfast/Lunch/Dinner/etc.), same source the
+        # printed report uses (authored_report -> build_schedule). Forward-only:
+        # existing portals must be re-published to gain it.
+        "schedule": rep.get("schedule") or {},
     }
     if audio_url:
         content["audio"] = {"url": audio_url, "label": "Listen to your walkthrough"}
