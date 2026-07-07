@@ -24,12 +24,15 @@ TYPE_WHITELIST = {
     "Homeopathic", "Gemmotherapy", "Spirit Mineral", "Simple Solution", "Infoceutical",
 }
 FF_VOLUME_TYPES = {"Functional Formulation"}
+# Infoceuticals are all priced at a flat $39.97 (Glen), overriding FMP's per-row price.
+INFOCEUTICAL_PRICE_CENTS = 3997
 _DESC_FIELDS = ("healing_qualities", "indications", "zc_dosage_display")
 
 
 def _cents(v):
-    """A FMP price string ('70', '70.00') -> integer cents, or None if not numeric."""
-    v = (v or "").strip()
+    """A FMP price string ('70', '70.00', '$40', '1,200') -> integer cents, or None.
+    FMP is inconsistent: most types store a bare number but Infoceuticals store '$40'."""
+    v = (v or "").strip().lstrip("$").replace(",", "").strip()
     if not v:
         return None
     try:
@@ -58,7 +61,10 @@ def build_entry(row):
     """FMP row dict -> (slug, catalog_entry) or None when it can't be sold
     (no name or no numeric price)."""
     name = clean_name(row.get("product_name"))
-    price_cents = _cents(row.get("sold_price"))
+    if row.get("type") == "Infoceutical":
+        price_cents = INFOCEUTICAL_PRICE_CENTS   # flat $39.97 for all infoceuticals
+    else:
+        price_cents = _cents(row.get("sold_price"))
     if not name or not price_cents:   # skip no-name and $0 (comp/sample) — not sellable lines
         return None
     entry = {

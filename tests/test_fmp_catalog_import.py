@@ -57,3 +57,15 @@ def test_select_de_collides_slugs():
     # two "rescue" slugs collide -> second gets -2
     assert "rescue" in additions and "rescue-2" in additions
     assert any(c[1] == "rescue-2" for c in collisions)
+
+
+def test_cents_strips_dollar_sign_and_commas():
+    assert _cents("$40") == 4000
+    assert _cents("1,200") == 120000
+
+
+def test_infoceutical_flat_price_overrides_fmp():
+    slug, e = build_entry({"product_name": "ED9 Muscle Energetic Driver Infoceutical",
+                           "type": "Infoceutical", "sold_price": "$40", "id_pk": "209"})
+    assert e["price_cents"] == 3997          # flat $39.97, not FMP's $40
+    assert e["qty_pricing"] is False         # infoceuticals are list price (not FF volume)
