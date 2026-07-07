@@ -97,7 +97,7 @@ def main(argv=None):
     # Seed from the portal list: every tokened portal is a candidate. A candidate whose
     # scan yields no findings (no e4l scan under that email) is skipped by the planner.
     candidate_emails = sorted(portal_emails)
-    if args.limit:
+    if args.limit is not None:
         candidate_emails = candidate_emails[:args.limit]
 
     # token cache so report_dates_of can read /api/portal/<token> scan_dates
