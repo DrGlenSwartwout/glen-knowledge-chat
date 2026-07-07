@@ -56,3 +56,66 @@ def build_fee_state(email, fee_get):
     state["courtesy_cents"] = got.get("courtesy_cents")
     state["note"] = got.get("note") or ""
     return state
+
+
+def _console():
+    """(base_url, key) or (None, None) when no CONSOLE_SECRET is set."""
+    key = os.environ.get("CONSOLE_SECRET")
+    if not key:
+        return None, None
+    base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+    return base, key
+
+
+def _request(method, base, key, body=None):
+    """POST/DELETE to the client-prices endpoint with a JSON body. Returns parsed JSON."""
+    url = f"{base}/api/console/client-prices?key=" + urllib.parse.quote(key)
+    data = _json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        url, data=data, method=method,
+        headers={"X-Console-Key": key, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return _json.loads(r.read().decode() or "{}")
+
+
+def default_fee_get(email):
+    email = (email or "").strip().lower()
+    base, key = _console()
+    if not email or not base:
+        return {"available": False, "courtesy_cents": None, "note": ""}
+    try:
+        url = (f"{base}/api/console/client-prices?key=" + urllib.parse.quote(key)
+               + "&email=" + urllib.parse.quote(email))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+    except Exception:
+        return {"available": False, "courtesy_cents": None, "note": ""}
+    out = parse_courtesy(resp)
+    out["available"] = True
+    return out
+
+
+def default_fee_set(email, cents, note=""):
+    email = (email or "").strip().lower()
+    base, key = _console()
+    if not email or not base:
+        return {"ok": False}
+    try:
+        resp = _request("POST", base, key, {"email": email, "slug": BIOFIELD_SLUG,
+                                            "price_cents": int(cents), "note": note or ""})
+        return {"ok": bool(resp.get("ok", True))}
+    except Exception:
+        return {"ok": False}
+
+
+def default_fee_clear(email):
+    email = (email or "").strip().lower()
+    base, key = _console()
+    if not email or not base:
+        return {"ok": False}
+    try:
+        resp = _request("DELETE", base, key, {"email": email, "slug": BIOFIELD_SLUG})
+        return {"ok": bool(resp.get("ok", True))}
+    except Exception:
+        return {"ok": False}
