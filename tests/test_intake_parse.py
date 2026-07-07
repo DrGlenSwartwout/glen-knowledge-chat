@@ -38,3 +38,16 @@ def test_parse_uses_complete_and_coerces():
 def test_parse_bad_json_returns_empty():
     out = intake_parse.parse(FORM, "text", lambda s, u: "not json")
     assert out == {}
+
+
+def test_coerce_flattens_section_nested_output():
+    """The LLM returns answers grouped by section; coerce must flatten one level."""
+    raw = {
+        "personal": {"first_name": "Steven", "last_name": "Fox"},
+        "dimensions": {"terrain": 3, "penetration": 5, "commitment": 10},
+        "goals": {"health_concerns": [{"concern": "cataracts", "rating": "10"}]},
+    }
+    out = intake_parse.coerce_parsed(FORM, raw)
+    assert out["first_name"] == "Steven"
+    assert out["terrain"] == 3 and out["penetration"] == 5 and out["commitment"] == 10
+    assert out["health_concerns"] == [{"concern": "cataracts", "rating": "10"}]

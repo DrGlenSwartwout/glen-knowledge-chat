@@ -36,7 +36,24 @@ def build_parse_prompt(form, pasted_text):
             else:
                 lines.append(f"  {f['id']} ({f['type']})")
     schema = "\n".join(lines)
-    return f"{schema}\n\nIntake export text:\n\"\"\"\n{pasted_text}\n\"\"\"\n\nReturn the JSON now."
+    return (f"{schema}\n\nIntake export text:\n\"\"\"\n{pasted_text}\n\"\"\"\n\n"
+            "Return a single FLAT JSON object keyed by field id. Do not group the "
+            "fields by section. Return the JSON now.")
+
+
+def _flatten(idx, raw):
+    """The model sometimes returns answers nested by section
+    ({section_id: {field_id: val}}), mirroring the prompt's grouping. Flatten one
+    level so field ids are matched whether the model nested them or not."""
+    flat = {}
+    for k, v in raw.items():
+        if k in idx:
+            flat[k] = v
+        elif isinstance(v, dict):
+            for fk, fv in v.items():
+                if fk in idx:
+                    flat[fk] = fv
+    return flat
 
 
 def coerce_parsed(form, raw):
@@ -44,7 +61,7 @@ def coerce_parsed(form, raw):
         return {}
     idx = _field_index(form)
     out = {}
-    for fid, val in raw.items():
+    for fid, val in _flatten(idx, raw).items():
         f = idx.get(fid)
         if not f:
             continue
