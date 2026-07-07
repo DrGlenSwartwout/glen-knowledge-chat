@@ -14991,6 +14991,7 @@ def api_client_portal(token):
     household = []
     household_cc = {}
     household_caregivers = []
+    _member_name = None
     if _household_view_enabled() and primary_email:
         try:
             from dashboard import household as _hh
@@ -15004,6 +15005,14 @@ def api_client_portal(token):
                 _req_member = (request.args.get("member") or "").strip().lower()
                 if _req_member and _hh.can_view(_cxh, primary_email, _req_member):
                     email_for_reports = _req_member  # re-point the whole portal at the member
+                    # …and re-point the DISPLAYED name to the member (else the page keeps
+                    # the account-holder's name while showing the member's report).
+                    try:
+                        from dashboard import client_portal as _cp_m
+                        _mrec = _cp_m.get_portal_content_by_email(_cxh, _req_member)
+                        _member_name = (_mrec or {}).get("name") or None
+                    except Exception:
+                        _member_name = None
         except Exception as _e:
             print(f"[household] {_e!r}", flush=True)
             household = []
@@ -15087,7 +15096,7 @@ def api_client_portal(token):
         except Exception:
             element_state = None
     payload = {
-        "name": portal.get("name"),
+        "name": _member_name or portal.get("name"),
         "membership_category": membership_cat,
         "trial_credit_cents": trial_credit_cents,
         "biofield_status": bf_status, "blurred": not bf_show,
