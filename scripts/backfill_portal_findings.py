@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Backfill content.findings on portals published before findings were baked in
-at publish time (#661). Surgical + guarded: only emails that already have a portal
-AND whose scan yields findings are patched, via the findings-only endpoint. No
-email is ever sent; no portal is ever created. Dry-run by default; --apply executes.
+"""Backfill content.findings on portals published before findings were baked in at
+publish time (#661). Seeds from the tokened portal list and patches each portal whose
+scan (in this Mac's e4l.db) yields findings, via the findings-only endpoint. No email
+is ever sent; no portal is ever created; only content.findings is written. A candidate
+with no matching scan is skipped. Dry-run by default; --apply executes.
 
 Env: CONSOLE_SECRET (console key), PORTAL_PUBLISH_BASE_URL or --base (prod base),
 E4L_DB (defaults to ~/AI-Training/e4l.db via dashboard.biofield_e4l).
 
-Run:  python3 scripts/backfill_portal_findings.py            # dry-run
-      python3 scripts/backfill_portal_findings.py --apply    # execute
+Run:  python3 scripts/backfill_portal_findings.py                 # dry-run, all portals
+      python3 scripts/backfill_portal_findings.py --apply --limit 10   # first 10, for real
 """
 import argparse
 import json
 import os
-import sqlite3
 import sys
 import urllib.parse
 import urllib.request
@@ -22,9 +22,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))  # repo root, for `dashboard`
 from dashboard.biofield_e4l import scan_context, findings_for_scan_date  # noqa: E402
 
-INTAKE_DB = os.environ.get(
-    "BIOFIELD_DB", os.path.join(os.path.dirname(_HERE), "chat_log.db"))
-
 
 def _trim(raw):
     return [{"code": f.get("code", ""), "name": f.get("name", ""),
@@ -32,26 +29,32 @@ def _trim(raw):
             for f in (raw or [])]
 
 
-def plan_backfill(portal_emails, intake_emails, report_dates_of, findings_of):
+def plan_backfill(portal_emails, candidate_emails, report_dates_of, findings_of):
     """Pure planner. Returns (patches, skips).
-    patches: [{email, scan_date (None=portal record), findings}]. skips: [{email, reason}]."""
+    patches: [{email, scan_date (None=portal record), findings}]. skips: [{email, reason}].
+    A candidate whose report_dates_of/findings_of raises is skipped (reason "error: ...")
+    so one client's network blip can't abort the whole run."""
     patches, skips = [], []
-    for email in intake_emails:
+    for email in candidate_emails:
         e = (email or "").strip().lower()
         if e not in portal_emails:
             skips.append({"email": e, "reason": "no existing portal (would create/dup)"})
             continue
-        dates = report_dates_of(e) or []
-        entries = []
-        if dates:
-            for d in dates:
-                f = findings_of(e, d) or []
+        try:
+            dates = report_dates_of(e) or []
+            entries = []
+            if dates:
+                for d in dates:
+                    f = findings_of(e, d) or []
+                    if f:
+                        entries.append({"email": e, "scan_date": d, "findings": f})
+            else:
+                f = findings_of(e, None) or []
                 if f:
-                    entries.append({"email": e, "scan_date": d, "findings": f})
-        else:
-            f = findings_of(e, None) or []
-            if f:
-                entries.append({"email": e, "scan_date": None, "findings": f})
+                    entries.append({"email": e, "scan_date": None, "findings": f})
+        except Exception as ex:
+            skips.append({"email": e, "reason": f"error: {ex}"})
+            continue
         if not entries:
             skips.append({"email": e, "reason": "no findings computed"})
             continue
@@ -78,6 +81,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="execute (default: dry-run)")
     ap.add_argument("--base", default=os.environ.get("PORTAL_PUBLISH_BASE_URL", ""))
+    ap.add_argument("--limit", type=int, default=None,
+                    help="cap the number of portals processed (for a batched first run)")
     args = ap.parse_args(argv)
     key = os.environ.get("CONSOLE_SECRET", "")
     base = args.base.rstrip("/")
@@ -89,11 +94,11 @@ def main(argv=None):
     portal_emails = {(p.get("email") or "").strip().lower()
                      for p in portals if p.get("has_token")}
 
-    cx = sqlite3.connect(f"file:{INTAKE_DB}?mode=ro", uri=True)
-    intake_emails = sorted({(r[0] or "").strip().lower()
-                            for r in cx.execute("SELECT email FROM biofield_auth_tests")
-                            if (r[0] or "").strip()})
-    cx.close()
+    # Seed from the portal list: every tokened portal is a candidate. A candidate whose
+    # scan yields no findings (no e4l scan under that email) is skipped by the planner.
+    candidate_emails = sorted(portal_emails)
+    if args.limit:
+        candidate_emails = candidate_emails[:args.limit]
 
     # token cache so report_dates_of can read /api/portal/<token> scan_dates
     _tok = {}
@@ -123,7 +128,7 @@ def main(argv=None):
         except Exception:
             return []
 
-    patches, skips = plan_backfill(portal_emails, intake_emails, report_dates_of, findings_of)
+    patches, skips = plan_backfill(portal_emails, candidate_emails, report_dates_of, findings_of)
 
     for s in skips:
         print(f"SKIP {s['email']}: {s['reason']}")
@@ -135,8 +140,11 @@ def main(argv=None):
             body = {"email": p["email"], "findings": p["findings"]}
             if p["scan_date"]:
                 body["scan_date"] = p["scan_date"]
-            res = _post(f"{base}/api/console/portal/backfill-findings", key, body)
-            print(f"      -> {res}")
+            try:
+                res = _post(f"{base}/api/console/portal/backfill-findings", key, body)
+                print(f"      -> {res}")
+            except Exception as ex:
+                print(f"      -> ERROR (skipped, re-runnable): {ex}")
     print(f"\n{len(patches)} patch(es), {len(skips)} skip(s). "
           f"{'APPLIED' if args.apply else 'DRY-RUN (use --apply)'}")
     return 0

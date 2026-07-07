@@ -14,7 +14,7 @@ _F = [{"code": "ED3", "name": "Cell Driver", "description": "d", "rank": 1}]
 def test_skips_email_without_portal():
     patches, skips = mod.plan_backfill(
         portal_emails={"has@p.com"},
-        intake_emails=["missing@p.com"],
+        candidate_emails=["missing@p.com"],
         report_dates_of=lambda e: [],
         findings_of=lambda e, d: _F)
     assert patches == []
@@ -24,7 +24,7 @@ def test_skips_email_without_portal():
 def test_matched_with_report_dates_patches_each_date():
     patches, skips = mod.plan_backfill(
         portal_emails={"a@p.com"},
-        intake_emails=["a@p.com"],
+        candidate_emails=["a@p.com"],
         report_dates_of=lambda e: ["2026-06-25", "2026-07-01"],
         findings_of=lambda e, d: _F if d == "2026-06-25" else [])
     # only the date that yields findings is patched; the empty one is dropped
@@ -35,7 +35,7 @@ def test_matched_with_report_dates_patches_each_date():
 def test_matched_no_report_dates_patches_portal_record():
     patches, skips = mod.plan_backfill(
         portal_emails={"a@p.com"},
-        intake_emails=["a@p.com"],
+        candidate_emails=["a@p.com"],
         report_dates_of=lambda e: [],
         findings_of=lambda e, d: _F)
     assert patches == [{"email": "a@p.com", "scan_date": None, "findings": _F}]
@@ -44,8 +44,23 @@ def test_matched_no_report_dates_patches_portal_record():
 def test_matched_but_no_findings_is_skipped():
     patches, skips = mod.plan_backfill(
         portal_emails={"a@p.com"},
-        intake_emails=["a@p.com"],
+        candidate_emails=["a@p.com"],
         report_dates_of=lambda e: [],
         findings_of=lambda e, d: [])
     assert patches == []
     assert skips == [{"email": "a@p.com", "reason": "no findings computed"}]
+
+
+def test_candidate_error_is_skipped_not_fatal():
+    def boom_findings(e, d):
+        if e == "boom@p.com":
+            raise RuntimeError("network blip")
+        return _F
+    patches, skips = mod.plan_backfill(
+        portal_emails={"boom@p.com", "ok@p.com"},
+        candidate_emails=["boom@p.com", "ok@p.com"],
+        report_dates_of=lambda e: [],
+        findings_of=boom_findings)
+    # boom is skipped with an error reason; ok is still patched (one blip is not fatal)
+    assert {"email": "ok@p.com", "scan_date": None, "findings": _F} in patches
+    assert any(s["email"] == "boom@p.com" and s["reason"].startswith("error:") for s in skips)
