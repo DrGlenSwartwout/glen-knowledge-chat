@@ -17428,6 +17428,62 @@ def onboarding_book():
     return jsonify({"ok": True, "start_ts": start_ts})
 
 
+@app.route("/api/intake/form")
+def intake_form():
+    from dashboard import intake as _intake
+    return jsonify(_intake.INTAKE_FORM)
+
+
+@app.route("/api/intake/state")
+def intake_state():
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        row = _intake.get_response(cx, ident.email)
+    return jsonify({
+        "submitted": bool(row) and row["status"] == "submitted",
+        "status": row["status"] if row else "none",
+        "answers": row["answers"] if row else {},
+    })
+
+
+@app.route("/api/intake/save-draft", methods=["POST"])
+def intake_save_draft():
+    from dashboard import intake as _intake
+    answers = (request.get_json(force=True) or {}).get("answers") or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        _intake.save_draft(cx, ident.email, answers, _hst_now().isoformat())
+    return jsonify({"ok": True})
+
+
+@app.route("/api/intake/submit", methods=["POST"])
+def intake_submit():
+    from dashboard import intake as _intake
+    answers = (request.get_json(force=True) or {}).get("answers") or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "already_submitted"}), 409
+        errors = _intake.validate_response(answers)
+        if errors:
+            return jsonify({"error": "invalid", "errors": errors}), 400
+        _intake.submit(cx, ident.email, answers, _hst_now().isoformat())
+    return jsonify({"ok": True})
+
+
 @app.route("/api/consult/state")
 def consult_state():
     from dashboard import consult as _consult
