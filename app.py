@@ -12500,6 +12500,16 @@ def console_household_page():
     return resp
 
 
+@app.route("/console/social")
+def console_social():
+    return send_from_directory(STATIC, "console-social.html")
+
+
+@app.route("/console/rnd")
+def console_rnd():
+    return send_from_directory(STATIC, "console-rnd.html")
+
+
 @app.route("/console/biofield-intake")
 def console_biofield_intake():
     """Launcher: bounce the browser to the LOCAL Biofield Intake portal (the voice
