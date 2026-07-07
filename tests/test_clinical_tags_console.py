@@ -44,7 +44,8 @@ def test_review_queue_and_confirm_reject(tmp_path):
 def test_routes_confirm_via_test_client(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
     db = _seed_db(tmp_path)
-    client = create_app(db).test_client()
+    # ledger lives in the e4l db, which the routes read via e4l_db (not the app's db_path)
+    client = create_app(db, e4l_db=db).test_client()
     r = client.get("/clinical-tags")
     assert r.status_code == 200 and b"review queue" in r.data and b"Steve Fox" in r.data
     r = client.get("/clinical-tags/1")
