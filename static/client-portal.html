@@ -1145,8 +1145,8 @@ function render(d, v){
       html += `<div class="card"><h2>Biofield Consult</h2>
         <p class="muted">Your report is ready. Schedule your 30 minute consult with Dr. Glen to review your program.</p>
         <div id="consult-intake-host"></div>
-        <button class="btn full" id="consult-sched" onclick="consultSchedule()">Schedule your consult</button>
-        <div id="consult-slots" style="margin-top:.6rem"></div></div>`;
+        <button class="btn full" id="consult-sched" onclick="consultSchedule()" hidden>Schedule your consult</button>
+        <div id="consult-slots" style="margin-top:.6rem" hidden></div></div>`;
     } else {
       html += `<div class="card"><h2>Biofield Consult</h2>
         <p class="muted">Your Biofield Consult with Dr. Glen unlocks once your Causal report and program are posted.
@@ -1377,8 +1377,13 @@ async function initConsultIntakeCard(){
     const r = await fetch(`/api/consult/state?token=${encodeURIComponent(seg)}`);
     s = r.ok ? await r.json() : {};
   }catch(e){ s = {}; }
-  if(s && s.intake_submitted){ host.hidden = true; host.innerHTML = ""; return; }
   const slotsBox = document.getElementById("consult-slots");
+  if(s && s.intake_submitted){
+    host.hidden = true; host.innerHTML = "";
+    schedBtn.hidden = false;
+    if(slotsBox) slotsBox.hidden = false;
+    return;
+  }
   host.hidden = false;
   schedBtn.hidden = true;
   if(slotsBox) slotsBox.hidden = true;
@@ -1668,7 +1673,7 @@ function renderIntakeField(f, val, getters, fieldEls, onChange){
       radio.addEventListener("change", onChange);
       optLabel.appendChild(radio);
       const span = document.createElement("span");
-      span.textContent = opt.value + " — " + opt.label;
+      span.textContent = opt.value + ": " + opt.label;
       optLabel.appendChild(span);
       group.appendChild(optLabel);
     });
