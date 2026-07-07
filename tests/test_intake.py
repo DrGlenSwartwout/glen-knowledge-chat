@@ -72,3 +72,31 @@ def test_list_submitted_only_returns_submitted():
     rows = intake.list_submitted(cx)
     assert [r["email"] for r in rows] == ["done@x.com"]
     assert rows[0]["answers"] == {"a": 2}
+
+
+def test_mark_on_file_sets_submitted_with_external_marker():
+    cx = _cx()
+    intake.mark_on_file(cx, "Ext@X.com", "2026-07-07T00:00:00")
+    assert intake.is_submitted(cx, "ext@x.com") is True
+    row = intake.get_response(cx, "ext@x.com")
+    assert row["answers"]["_external"] is True
+    assert row["answers"]["_note"] == "Completed via Practice Better"
+    assert row["submitted_at"] == "2026-07-07T00:00:00"
+
+
+def test_mark_on_file_guard_does_not_overwrite_real_submission():
+    cx = _cx()
+    intake.submit(cx, "real@x.com", {"first_name": "Real"}, "2026-07-07T00:00:00")
+    intake.mark_on_file(cx, "real@x.com", "2026-07-07T01:00:00")
+    row = intake.get_response(cx, "real@x.com")
+    assert row["answers"] == {"first_name": "Real"}
+    assert row["submitted_at"] == "2026-07-07T00:00:00"
+
+
+def test_mark_on_file_then_clear_intake_removes_row():
+    cx = _cx()
+    intake.mark_on_file(cx, "gone@x.com", "2026-07-07T00:00:00")
+    assert intake.is_submitted(cx, "gone@x.com") is True
+    intake.clear_intake(cx, "gone@x.com")
+    assert intake.is_submitted(cx, "gone@x.com") is False
+    assert intake.get_response(cx, "gone@x.com") is None

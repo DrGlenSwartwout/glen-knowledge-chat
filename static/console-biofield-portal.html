@@ -152,6 +152,12 @@
       <span id="consult-ready-msg" class="muted small"></span>
     </div>
 
+    <div style="margin-top:10px">
+      <button class="btn ghost sm" onclick="markIntakeOnFile(true)">Intake on file</button>
+      <button class="btn ghost sm" onclick="markIntakeOnFile(false)">Clear intake</button>
+      <span id="intake-onfile-msg" class="muted small"></span>
+    </div>
+
     <div class="card" style="margin-top:12px">
       <h2>Client intake</h2>
       <p class="muted small">Read-only. Pulls the client's submitted intake form for the email above.</p>
@@ -276,6 +282,14 @@ async function markConsultReady(ready){
     r.ok ? (ready ? 'Consult unlocked ✓' : 'Consult locked') : ('Error ' + r.status);
 }
 
+async function markIntakeOnFile(onFile){
+  const email = ($('email')?.value || '').trim();
+  if(!email){ $('intake-onfile-msg').textContent = 'Enter an email first.'; return; }
+  const r = await api('POST', '/api/console/intake-on-file', {email, on_file: onFile});
+  $('intake-onfile-msg').textContent =
+    r.ok ? (onFile ? 'Intake marked on file' : 'Intake cleared') : ('Error ' + r.status);
+}
+
 // ── Client intake (read-only) ────────────────────────────────────────────
 // Scale field labels mirror dashboard/intake.py's option definitions exactly,
 // so a value renders as "label (value)" without a second network round trip.
@@ -307,11 +321,19 @@ async function loadIntake(){
   }
   const when = r.json.submitted_at || r.json.created_at || '';
   msg.textContent = 'Status: ' + (r.json.status || 'unknown') + (when ? (', ' + when) : '');
-  renderIntakeAnswers(r.json.answers || {}, panel);
+  renderIntakeAnswers(r.json.answers || {}, panel, r.json);
 }
 
-function renderIntakeAnswers(answers, panel){
+function renderIntakeAnswers(answers, panel, row){
   panel.textContent = '';
+  if (answers && answers._external) {
+    const line = document.createElement('div'); line.className = 'intake-row';
+    const note = answers._note || 'Completed via Practice Better';
+    const when = (row && (row.submitted_at || row.created_at)) || '';
+    line.textContent = 'Intake on file (completed externally): ' + note + (when ? (' (' + when + ')') : '');
+    panel.appendChild(line);
+    return;
+  }
   const ids = Object.keys(answers).sort();
   if(!ids.length){ panel.textContent = 'No answers recorded.'; return; }
   ids.forEach(fid => {

@@ -232,6 +232,24 @@ def get_response(cx, email):
     return _row_to_dict(row) if row else None
 
 
+def mark_on_file(cx, email, now, note="Completed via Practice Better"):
+    """Mark intake as satisfied out of band (e.g. already done in Practice
+    Better). Upserts a submitted row carrying an external marker in place of
+    real answers. GUARD: never overwrite a real (non-external) submitted row."""
+    email = (email or "").strip().lower()
+    existing = get_response(cx, email)
+    if existing and existing["status"] == "submitted" and not existing["answers"].get("_external"):
+        return
+    _upsert(cx, email, {"_external": True, "_note": note}, "submitted", now, now)
+
+
+def clear_intake(cx, email):
+    """Remove a client's intake row entirely (undo a mistaken on-file mark, or reset)."""
+    email = (email or "").strip().lower()
+    cx.execute("DELETE FROM intake_responses WHERE email=?", (email,))
+    cx.commit()
+
+
 def list_submitted(cx):
     rows = cx.execute(
         "SELECT * FROM intake_responses WHERE status='submitted' ORDER BY submitted_at").fetchall()
