@@ -12481,6 +12481,21 @@ def console_biofield_intake():
     return redirect(base + ("/?key=" + key if key else "/"))
 
 
+@app.route("/console/clinical-tags")
+def console_clinical_tags():
+    """Launcher: bounce to the LOCAL Clinical Tags review page (the client_clinical_tags
+    ledger lives in Glen's local e4l.db, which this server can't read). Carries the console
+    key through so the local tool can gate on it. Mirrors console_biofield_intake."""
+    import dashboard as _dashboard
+    if _dashboard.CONSOLE_SECRET:
+        _key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if _key != _dashboard.CONSOLE_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    base = os.environ.get("BIOFIELD_LOCAL_URL", "http://127.0.0.1:8011")
+    key = request.args.get("key", "")
+    return redirect(base + "/clinical-tags" + ("?key=" + key if key else ""))
+
+
 def _sales_console_ok():
     """Phase-5 console gate. Returns None if authorized, else a 401 (response, status).
     Gates on dashboard.CONSOLE_SECRET -- the SAME secret the /api/action write path uses

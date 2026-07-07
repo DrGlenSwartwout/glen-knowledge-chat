@@ -88,6 +88,7 @@
     { id: "pages",    label: "Pages",      href: "/console/pages" + qs },
     { id: "biofield-reveals", label: "Biofield Reveals", href: "/console/biofield-reveals" + qs },
     { id: "biofield-intake", label: "Biofield Intake", href: "/console/biofield-intake" + qs },
+    { id: "clinical-tags", label: "Tags", href: "/console/clinical-tags" + qs },
     { id: "approvals", label: "Approvals", href: "/console/approvals" + qs },
     { id: "testimonial-invites", label: "Invite Queue", href: "/console/testimonial-invites" + qs },
     { id: "shipping", label: "Shipping",  href: "/admin/shipping" + qs },
