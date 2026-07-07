@@ -17756,6 +17756,47 @@ def api_console_portal_link_resend():
                     "link": link, "reissued": reissued})
 
 
+@app.route("/api/console/portal/backfill-findings", methods=["POST"])
+def api_console_portal_backfill_findings():
+    """Surgically set content.findings on an EXISTING portal (or one of its
+    biofield-report rows) without touching any other field, sending any email, or
+    ever creating a portal. Backfills portals published before findings were baked
+    in at publish time. scan_date present -> patch that report row; absent -> patch
+    the portal record. Console-key gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    findings = body.get("findings")
+    scan_date = (body.get("scan_date") or "").strip()
+    if not email or not isinstance(findings, list):
+        return jsonify({"ok": False, "error": "email and findings[] required"}), 400
+    from dashboard import client_portal as _cp, portal_biofield_reports as _pbr
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        rec = _cp.get_portal_content_by_email(cx, email)
+        if not rec:
+            return jsonify({"ok": False, "found": False}), 404   # never create
+        patched_portal = False
+        patched_reports = 0
+        if scan_date:
+            rep = _pbr.get_report(cx, email, scan_date)
+            if rep:
+                rc = dict(rep.get("content") or {})
+                rc["findings"] = findings
+                _pbr.upsert_report(cx, email, scan_date, rep.get("scan_id") or "",
+                                   rc, rep.get("status") or "confirmed")
+                patched_reports = 1
+        else:
+            content = dict(rec.get("content") or {})
+            content["findings"] = findings
+            _cp.upsert_portal(cx, email, rec.get("name") or "", content)
+            patched_portal = True
+    return jsonify({"ok": True, "found": True,
+                    "patched_portal": patched_portal, "patched_reports": patched_reports})
+
+
 @app.route("/api/console/household", methods=["GET", "POST", "DELETE"])
 def api_console_household():
     if not _portal_console_ok():
