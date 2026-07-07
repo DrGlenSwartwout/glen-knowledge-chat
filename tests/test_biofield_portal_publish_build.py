@@ -75,17 +75,17 @@ def test_build_populates_findings_from_scan(tmp_path):
     cx = sqlite3.connect(":memory:")
     aid = _seed_karin(cx)
     captured = {}
-    def fake_scan_context(email, today):
-        captured["args"] = (email, today)
-        return {"findings": [
+    def fake_provider(email, scan_date):
+        captured["args"] = (email, scan_date)
+        return [
             {"code": "ED3", "name": "Cell Driver", "rank": 1,
              "description": "The Cell Driver supports cellular energy.",
              "category": "ED", "group": "infoceutical"},
             {"code": "ER9", "name": "Environmental Load", "rank": 2,
              "description": "", "category": "ER", "group": "stress"},
-        ]}
+        ]
     out = bpp.build_portal_content(cx, aid, special_price_cents=5000,
-                                   catalog=CATALOG, scan_context=fake_scan_context)
+                                   catalog=CATALOG, findings_provider=fake_provider)
     f = out["content"]["findings"]
     assert len(f) == 2
     # trimmed to exactly the four portal-consumed fields; description preserved
@@ -94,15 +94,15 @@ def test_build_populates_findings_from_scan(tmp_path):
     # blank-description finding kept, description == ""
     assert f[1] == {"code": "ER9", "name": "Environmental Load",
                     "description": "", "rank": 2}
-    # aligned to the published scan_date, not "latest"
+    # aligned to the published scan_date
     assert captured["args"] == ("permanentlyyours777@hawaiiantel.net", "2026-06-25")
 
 
-def test_build_findings_empty_when_scan_context_raises(tmp_path):
+def test_build_findings_empty_when_provider_raises(tmp_path):
     cx = sqlite3.connect(":memory:")
     aid = _seed_karin(cx)
-    def boom(email, today):
+    def boom(email, scan_date):
         raise RuntimeError("e4l.db unreadable")
     out = bpp.build_portal_content(cx, aid, special_price_cents=5000,
-                                   catalog=CATALOG, scan_context=boom)
+                                   catalog=CATALOG, findings_provider=boom)
     assert out["content"]["findings"] == []
