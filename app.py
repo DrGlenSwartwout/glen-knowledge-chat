@@ -17498,7 +17498,11 @@ def consult_state():
         stages = {"member": _is_paid_member(ident.email),
                   "test_paid": _consult.has_paid_purchase(cx, ident.email, _consult.CONSULT["test_slug"]),
                   "ready": ready}
-        return jsonify({"ready": ready, "booked": booked, "stages": stages})
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        intake_done = _intake.is_submitted(cx, ident.email)
+        return jsonify({"ready": ready, "booked": booked, "stages": stages,
+                        "intake_submitted": intake_done})
 
 
 @app.route("/api/consult/availability")
@@ -17513,6 +17517,10 @@ def consult_availability():
             return jsonify({"error": "not_found"}), 404
         if not _consult.consult_is_ready(cx, ident.email):
             return jsonify({"error": "not_ready"}), 403
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        if not _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "intake_required"}), 409
         days = _evox_days(request.args.get("range", "week"))
         lo, hi = days[0].isoformat(), days[-1].isoformat()
         busy = _ev.rae_busy_intervals(cx, lo, hi, practitioner="glen")
@@ -17536,6 +17544,10 @@ def consult_book():
             return jsonify({"error": "not_found"}), 404
         if not _consult.consult_is_ready(cx, ident.email):
             return jsonify({"error": "not_ready"}), 403
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        if not _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "intake_required"}), 409
         try:
             d = _evox_date.fromisoformat(start_ts[:10])
         except ValueError:
