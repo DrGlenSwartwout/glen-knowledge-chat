@@ -3,15 +3,15 @@
  * Usage: drop one synchronous script tag immediately after <body> on each page:
  *   <script src="/static/op-nav.js" data-active="dashboard"></script>
  *
- * Valid data-active values: "dashboard" | "console" | "bos" | "projects" | "inbox" | "settings" | "funnel"
- *
- * Business OS sub-tabs: when data-active="bos", a secondary row of the BOS module
- * boards renders under the main bar. Mark the active board with data-sub, e.g.
- *   <script src="/static/op-nav.js" data-active="bos" data-sub="finance"></script>
- * Valid data-sub values: "orders" | "client-orders" | "payments" | "finance" | "crm" | "products" | "biofield" | "sales" | "ingredients" | "approvals" | "shipping" | "neworder"
- * (Shipping = /admin/shipping, New Order = /orders/new — folded in from the old
- *  standalone top tabs. The old "home" board is retired; its signals now live on
- *  the /console front door.)
+ * Nav = 11 functional PILLARS (top row) each with its own PAGES (second row), defined in
+ * buildPillars()/buildPillarPages() at the top of the IIFE (and exported for node tests).
+ * data-active = the pillar id; data-sub = the page id within that pillar.
+ *   <script src="/static/op-nav.js" data-active="finance" data-sub="money"></script>
+ * Pillar ids (front→back): home · marketing · clinical · sales · fulfillment · people ·
+ *   communication ‖ rnd · production · finance · admin. Labels shorten (clinical→"Match",
+ *   production→"Make", finance→"Money"); Home renders the phoenix /static/logo.png.
+ * Role-aware: /api/me returns nav = glen | rae | va; owners overflow non-primary pillars to
+ *   "More ▾", the VA (shaira) has non-scoped pillars removed entirely (NAV_PROFILES).
  *
  * The bar:
  *   - Renders synchronously via document.write so there is no flash
@@ -149,6 +149,9 @@
     +   'color:#fff;border-bottom-color:#7c5cbf;'
     + '}'
     + '.op-nav-bar .op-nav-spacer{flex:1}'
+    + '.op-nav-bar a.op-nav-home{padding:0 8px;display:inline-flex;align-items:center}'
+    + '.op-nav-logo{height:22px;width:auto;display:block}'
+    + '.op-nav-zone-div{width:1px;height:20px;background:#21472d;margin:0 8px;align-self:center}'
     + '.op-nav-bar .op-nav-key-warn{'
     +   'color:#f85149;font-size:11px;margin-right:10px;'
     + '}'
@@ -233,10 +236,21 @@
 
   var bar = '<nav class="op-nav-bar" role="navigation" aria-label="Glen ops">'
     + '<span class="op-nav-brand">GLEN <b>·</b> OPS</span>';
-  for (var i = 0; i < tabs.length; i++) {
-    var t = tabs[i];
+  var prevZone = null;
+  for (var i = 0; i < PILLARS.length; i++) {
+    var t = PILLARS[i];
+    if (prevZone === "front" && t.zone === "back") {
+      bar += '<span class="op-nav-zone-div" aria-hidden="true"></span>';
+    }
+    prevZone = t.zone;
     var cls = (t.id === active) ? "op-nav-tab active" : "op-nav-tab";
-    bar += '<a class="' + cls + '" data-id="' + t.id + '" href="' + t.href + '">' + t.label + '</a>';
+    if (t.logo) {
+      bar += '<a class="' + cls + ' op-nav-home" data-id="' + t.id + '" href="' + t.href + '" aria-label="Home">'
+        + '<img src="/static/logo.png" alt="Home" class="op-nav-logo" '
+        + 'onerror="this.onerror=null;this.src=\'/static/favicon.png\'"></a>';
+    } else {
+      bar += '<a class="' + cls + '" data-id="' + t.id + '" href="' + t.href + '">' + t.label + '</a>';
+    }
   }
   bar += '<span class="op-nav-more" id="op-nav-more-top" style="display:none">'
     + '<button type="button" class="op-nav-tab op-nav-more-btn">More ▾</button>'
@@ -256,76 +270,43 @@
     + '</span>';
   bar += '</nav>';
 
-  if (active === "bos") {
-    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Business OS modules">'
-      + '<span class="op-nav-sub-brand">Business OS</span>';
-    for (var j = 0; j < bosMods.length; j++) {
-      var m = bosMods[j];
+  var subPages = PILLAR_PAGES[active];
+  if (subPages && subPages.length) {
+    var _p = null;
+    for (var pi = 0; pi < PILLARS.length; pi++) { if (PILLARS[pi].id === active) { _p = PILLARS[pi]; break; } }
+    var brand = (_p && _p.label) || active;
+    bar += '<nav class="op-nav-sub" role="navigation" aria-label="' + brand + ' pages">'
+      + '<span class="op-nav-sub-brand">' + brand + '</span>';
+    for (var j = 0; j < subPages.length; j++) {
+      var m = subPages[j];
       var scls = (m.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
       bar += '<a class="' + scls + '" data-id="' + m.id + '" href="' + m.href + '">' + m.label + '</a>';
-    }
-    bar += '<span class="op-nav-more" id="op-nav-more-bos" style="display:none">'
-      + '<button type="button" class="op-nav-subtab op-nav-more-btn">More ▾</button>'
-      + '<span class="op-nav-more-menu"></span></span>';
-    bar += '</nav>';
-  }
-
-  if (active === "settings") {
-    var setMods = [
-      { id: "pricing",  label: "Pricing",         href: "/console/pricing-settings" + qs },
-      { id: "shipping", label: "Shipping-config",  href: "/admin/shipping" + qs },
-      { id: "tax",      label: "Tax",              href: "/admin/tax" + qs },
-      { id: "writemac", label: "Write-Mac",        href: "/console/settings" + qs }
-    ];
-    bar += '<nav class="op-nav-sub" role="navigation" aria-label="Settings">'
-      + '<span class="op-nav-sub-brand">Settings</span>';
-    for (var s = 0; s < setMods.length; s++) {
-      var sm = setMods[s];
-      var smcls = (sm.id === sub) ? "op-nav-subtab active" : "op-nav-subtab";
-      bar += '<a class="' + smcls + '" data-id="' + sm.id + '" href="' + sm.href + '">' + sm.label + '</a>';
     }
     bar += '</nav>';
   }
 
   document.write(styles + bar);
 
-  // ── Role-aware nav: reorganize the rendered bar per the caller's nav profile ──
-  // primary = stays on the bar; everything else moves into the matching "More ▾".
-  var NAV_PROFILES = {
-    glen: {
-      tabs: ["dashboard","console","bos","projects","inbox","settings","funnel"],
-      bos:  ["orders","client-orders","money","crm","products","biofield","pages",
-             "biofield-reveals","biofield-intake",
-             "approvals","shipping","neworder"]
-    },
-    rae: {
-      tabs: ["dashboard","console","bos","inbox"],
-      bos:  ["orders","client-orders","money","crm","approvals","shipping","neworder"]
-    }
-  };
-
-  function reorg(wrapId, linkSelector, primaryIds) {
-    var wrap = document.getElementById(wrapId);
+  // ── Role-aware nav: owners overflow non-primary pillars to "More ▾"; the VA has
+  //    hidden pillars removed entirely. NAV_PROFILES is defined at the top of the file. ──
+  function moveToMore(a) {
+    var wrap = document.getElementById("op-nav-more-top");
     if (!wrap) return;
     var menu = wrap.querySelector(".op-nav-more-menu");
-    var bar = wrap.parentNode;
-    var moved = 0;
-    bar.querySelectorAll(linkSelector).forEach(function (a) {
-      var id = a.getAttribute("data-id");
-      if (!id) return;
-      if (primaryIds.indexOf(id) === -1) {
-        a.classList.remove("op-nav-tab", "op-nav-subtab");
-        menu.appendChild(a);
-        moved++;
-      }
-    });
-    wrap.style.display = (moved || menu.querySelectorAll("a").length) ? "inline-flex" : "none";
+    a.classList.remove("op-nav-tab");
+    menu.appendChild(a);
+    wrap.style.display = "inline-flex";
   }
 
   function applyNavProfile(navName) {
     var prof = NAV_PROFILES[navName] || NAV_PROFILES.glen;
-    reorg("op-nav-more-top", ".op-nav-bar > a.op-nav-tab", prof.tabs);
-    reorg("op-nav-more-bos", ".op-nav-sub > a.op-nav-subtab", prof.bos);
+    var keep = {}; prof.pillars.forEach(function (id) { keep[id] = true; });
+    document.querySelectorAll('.op-nav-bar > a.op-nav-tab').forEach(function (a) {
+      var id = a.getAttribute("data-id");
+      if (!id || keep[id]) return;
+      if (prof.hideRest) { a.parentNode.removeChild(a); }   // VA: remove hidden pillars entirely
+      else { moveToMore(a); }                               // owners: overflow to "More ▾"
+    });
   }
 
   // Toggle "More" dropdowns (event delegation; survives reorg).
@@ -342,18 +323,19 @@
   var NAV_CACHE_KEY = "op_nav_profile";
   try {
     var cached = localStorage.getItem(NAV_CACHE_KEY);
-    if (cached === "rae" || cached === "glen") applyNavProfile(cached);
+    if (cached === "rae" || cached === "shaira" || cached === "glen") applyNavProfile(cached);
   } catch (e) {}
 
   fetch("/api/me" + (effKey ? "?key=" + encodeURIComponent(effKey) : ""),
         { headers: effKey ? { "X-Console-Key": effKey } : {} })
     .then(function (r) { return r.json(); })
     .then(function (me) {
-      var navName = (me && me.nav === "rae") ? "rae" : "glen";  // only 'rae' streamlines
+      var raw = me && me.nav;                                    // "glen" | "rae" | "va" | null
+      var navName = raw === "va" ? "shaira" : (raw === "rae" ? "rae" : "glen");
       try { localStorage.setItem(NAV_CACHE_KEY, navName); } catch (e) {}
       applyNavProfile(navName);
     })
-    .catch(function () { /* leave full bar */ });
+    .catch(function () { /* owner-safe: full bar. A VA is already narrowed by the cached 'shaira' profile applied above. */ });
 
   // Wire the light/dark toggle. Reflects the active theme, persists to localStorage,
   // and live-syncs across same-origin documents via the 'storage' event.
