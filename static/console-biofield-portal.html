@@ -56,6 +56,11 @@
   .fdesc{display:none;color:var(--muted);font-size:.86em;margin:2px 0 4px 12px;white-space:pre-wrap}
   .finding.open .fdesc{display:block}
   #unbalanced .finding .fhead input{margin-right:6px;width:auto}
+  .intake-row{padding:4px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .intake-field{color:var(--muted)}
+  .intake-value{color:var(--cream)}
+  .intake-table{margin:4px 0 4px 12px}
+  .intake-table-row{color:var(--cream);font-size:12.5px;padding:2px 0}
 </style>
 </head>
 <body>
@@ -145,6 +150,14 @@
       <button class="btn ghost sm" onclick="markConsultReady(true)">Mark consult ready</button>
       <button class="btn ghost sm" onclick="markConsultReady(false)">Clear consult ready</button>
       <span id="consult-ready-msg" class="muted small"></span>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>Client intake</h2>
+      <p class="muted small">Read-only. Pulls the client's submitted intake form for the email above.</p>
+      <button class="btn ghost sm" onclick="loadIntake()">Load intake</button>
+      <span id="intake-msg" class="muted small"></span>
+      <div id="intakePanel" style="margin-top:.7rem"></div>
     </div>
 
     <div style="margin-top:12px">
@@ -261,6 +274,82 @@ async function markConsultReady(ready){
   const r = await api('POST', '/api/console/consult-ready', {email, ready});
   $('consult-ready-msg').textContent =
     r.ok ? (ready ? 'Consult unlocked ✓' : 'Consult locked') : ('Error ' + r.status);
+}
+
+// ── Client intake (read-only) ────────────────────────────────────────────
+// Scale field labels mirror dashboard/intake.py's option definitions exactly,
+// so a value renders as "label (value)" without a second network round trip.
+const SCALE_LABELS = {
+  terrain: {1:"Cancer, Degeneration, Viral or Low Energy", 2:"Rapid Aging, Bacterial, or Parasitic",
+    3:"Fungal, Deposition, Slow Metabolism, or Low Body Temperature", 4:"Allergy or Toxicity",
+    5:"Stress or Hormonal Imbalance"},
+  penetration: {1:"Genetic or epigenetic expression", 2:"Cell metabolism or mitochondrial dysfunction",
+    3:"Connective tissue, immunity, autonomic or other nerve challenges",
+    4:"Circulation, lymph drainage issues", 5:"Poor digestion, dysbiosis, or other gut concerns"},
+  tissue_layer: {1:"Urogenital or Muscle", 2:"Connective Tissue, Immune, or Cardiovascular",
+    3:"Digestive or Respiratory", 4:"Neuroendocrine", 5:"Skin"},
+  response: {1:"No change", 2:"Feel worse before better",
+    3:"Mixed: some symptoms worse, but others better", 4:"Some gradual improvement",
+    5:"Rapid improvement"},
+  commitment: {1:"1",2:"2",3:"3",4:"4",5:"5",6:"6",7:"7",8:"8",9:"9",10:"10"},
+};
+
+async function loadIntake(){
+  const email = ($('email')?.value || '').trim();
+  const msg = $('intake-msg'), panel = $('intakePanel');
+  panel.textContent = '';
+  if(!email){ msg.textContent = 'Enter an email first.'; return; }
+  msg.textContent = 'Loading...';
+  const r = await api('GET', `/api/console/intake/${encodeURIComponent(email)}`);
+  if(!r.ok){
+    msg.textContent = r.status === 404 ? 'No intake on file for this email.' : ('Error ' + r.status);
+    return;
+  }
+  const when = r.json.submitted_at || r.json.created_at || '';
+  msg.textContent = 'Status: ' + (r.json.status || 'unknown') + (when ? (', ' + when) : '');
+  renderIntakeAnswers(r.json.answers || {}, panel);
+}
+
+function renderIntakeAnswers(answers, panel){
+  panel.textContent = '';
+  const ids = Object.keys(answers).sort();
+  if(!ids.length){ panel.textContent = 'No answers recorded.'; return; }
+  ids.forEach(fid => {
+    const val = answers[fid];
+    const row = document.createElement('div'); row.className = 'intake-row';
+    const label = document.createElement('span'); label.className = 'intake-field';
+    label.textContent = fid.replace(/_/g, ' ') + ': ';
+    row.appendChild(label);
+    if (Array.isArray(val)) {
+      const table = document.createElement('div'); table.className = 'intake-table';
+      if (!val.length) {
+        const empty = document.createElement('span'); empty.className = 'muted small'; empty.textContent = '(none)';
+        table.appendChild(empty);
+      } else {
+        val.forEach(rowObj => {
+          const line = document.createElement('div'); line.className = 'intake-table-row';
+          line.textContent = Object.entries(rowObj || {})
+            .map(([k, v]) => `${k}: ${v == null || v === '' ? '(blank)' : v}`).join('   ');
+          table.appendChild(line);
+        });
+      }
+      row.appendChild(table);
+    } else if (val && typeof val === 'object') {
+      const value = document.createElement('span'); value.className = 'intake-value';
+      value.textContent = Object.entries(val).map(([k, v]) => `${k}: ${v}`).join(', ');
+      row.appendChild(value);
+    } else if (SCALE_LABELS[fid] !== undefined && val !== null && val !== undefined && val !== '') {
+      const value = document.createElement('span'); value.className = 'intake-value';
+      const lbl = SCALE_LABELS[fid][val];
+      value.textContent = lbl ? `${lbl} (${val})` : String(val);
+      row.appendChild(value);
+    } else {
+      const value = document.createElement('span'); value.className = 'intake-value';
+      value.textContent = (val === null || val === undefined || val === '') ? '(blank)' : String(val);
+      row.appendChild(value);
+    }
+    panel.appendChild(row);
+  });
 }
 
 async function sendTriageInvite(){

@@ -40,6 +40,14 @@ def _mk_portal(email="p@x.com"):
         token, _ = cp.upsert_portal(cx, email, "P", {"source": "test"})
     return token
 
+def _submit_intake(email):
+    import sqlite3
+    from dashboard import intake
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        intake.init_intake_table(cx)
+        intake.submit(cx, email, {}, "2026-01-01T00:00:00")
+
+
 def test_availability_blocked_until_ready(client, monkeypatch):
     monkeypatch.setattr(appmod, "send_evox_email", lambda *a, **k: ("console-log", None), raising=False)
     tok = _mk_portal("p1@x.com")
@@ -53,6 +61,7 @@ def test_full_consult_flow(client, monkeypatch):
                         lambda *a, **k: {"join_url": "https://zoom.us/j/1", "meeting_id": "1", "start_url": "x"})
     tok = _mk_portal("p2@x.com")
     client.post("/api/console/consult-ready", json={"email": "p2@x.com", "ready": True}, headers=ADMIN)
+    _submit_intake("p2@x.com")
     slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
     assert slots
     r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
@@ -77,6 +86,7 @@ def test_consult_slot_taken_via_race(client, monkeypatch):
 
     tok = _mk_portal("race@x.com")
     client.post("/api/console/consult-ready", json={"email": "race@x.com", "ready": True}, headers=ADMIN)
+    _submit_intake("race@x.com")
     slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
     assert slots
     slot = slots[0]
@@ -190,6 +200,7 @@ def test_booking_no_zoom_call_and_email_has_no_raw_link(client, monkeypatch):
     monkeypatch.setattr("dashboard.zoom.create_meeting", _boom)
     tok = _mk_portal("nolink@x.com")
     client.post("/api/console/consult-ready", json={"email": "nolink@x.com", "ready": True}, headers=ADMIN)
+    _submit_intake("nolink@x.com")
     slots = client.get(f"/api/consult/availability?token={tok}&range=week").get_json()["slots"]
     r = client.post(f"/api/consult/book?token={tok}", json={"start_ts": slots[0]})
     assert r.status_code == 200 and r.get_json()["ok"] is True

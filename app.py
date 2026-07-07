@@ -16107,6 +16107,32 @@ def api_console_consult_ready():
     return jsonify({"ok": True, "email": email, "ready": new_state})
 
 
+@app.route("/api/console/intake/<path:email>")
+def console_intake(email):
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        row = _intake.get_response(cx, email)
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(row)
+
+
+@app.route("/api/console/intake-submissions")
+def console_intake_submissions():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        subs = _intake.list_submitted(cx)
+    return jsonify({"submissions": subs})
+
+
 def _get_consult_booked(cx):
     try:
         rows = cx.execute("SELECT lower(email) FROM evox_bookings "
@@ -17428,6 +17454,64 @@ def onboarding_book():
     return jsonify({"ok": True, "start_ts": start_ts})
 
 
+@app.route("/api/intake/form")
+def intake_form():
+    from dashboard import intake as _intake
+    return jsonify(_intake.INTAKE_FORM)
+
+
+@app.route("/api/intake/state")
+def intake_state():
+    from dashboard import intake as _intake
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        row = _intake.get_response(cx, ident.email)
+    return jsonify({
+        "submitted": bool(row) and row["status"] == "submitted",
+        "status": row["status"] if row else "none",
+        "answers": row["answers"] if row else {},
+    })
+
+
+@app.route("/api/intake/save-draft", methods=["POST"])
+def intake_save_draft():
+    from dashboard import intake as _intake
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        if _intake.is_submitted(cx, ident.email):
+            return jsonify({"ok": True})
+        answers = (request.get_json(silent=True) or {}).get("answers") or {}
+        _intake.save_draft(cx, ident.email, answers, _hst_now().isoformat())
+    return jsonify({"ok": True})
+
+
+@app.route("/api/intake/submit", methods=["POST"])
+def intake_submit():
+    from dashboard import intake as _intake
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        ident = _evox_ident(cx, request.args.get("token", ""))
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        answers = (request.get_json(silent=True) or {}).get("answers") or {}
+        if _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "already_submitted"}), 409
+        errors = _intake.validate_response(answers)
+        if errors:
+            return jsonify({"error": "invalid", "errors": errors}), 400
+        _intake.submit(cx, ident.email, answers, _hst_now().isoformat())
+    return jsonify({"ok": True})
+
+
 @app.route("/api/consult/state")
 def consult_state():
     from dashboard import consult as _consult
@@ -17442,7 +17526,11 @@ def consult_state():
         stages = {"member": _is_paid_member(ident.email),
                   "test_paid": _consult.has_paid_purchase(cx, ident.email, _consult.CONSULT["test_slug"]),
                   "ready": ready}
-        return jsonify({"ready": ready, "booked": booked, "stages": stages})
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        intake_done = _intake.is_submitted(cx, ident.email)
+        return jsonify({"ready": ready, "booked": booked, "stages": stages,
+                        "intake_submitted": intake_done})
 
 
 @app.route("/api/consult/availability")
@@ -17457,6 +17545,10 @@ def consult_availability():
             return jsonify({"error": "not_found"}), 404
         if not _consult.consult_is_ready(cx, ident.email):
             return jsonify({"error": "not_ready"}), 403
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        if not _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "intake_required"}), 409
         days = _evox_days(request.args.get("range", "week"))
         lo, hi = days[0].isoformat(), days[-1].isoformat()
         busy = _ev.rae_busy_intervals(cx, lo, hi, practitioner="glen")
@@ -17480,6 +17572,10 @@ def consult_book():
             return jsonify({"error": "not_found"}), 404
         if not _consult.consult_is_ready(cx, ident.email):
             return jsonify({"error": "not_ready"}), 403
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        if not _intake.is_submitted(cx, ident.email):
+            return jsonify({"error": "intake_required"}), 409
         try:
             d = _evox_date.fromisoformat(start_ts[:10])
         except ValueError:
