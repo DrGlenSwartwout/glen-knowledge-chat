@@ -15098,6 +15098,8 @@ def api_client_portal(token):
         "report_pdf": (bf_content.get("report_pdf") or {}) if bf_show else {},
         "layers": bf_layers,
         "findings": client_findings,
+        # Time-of-day remedy schedule — gated with the dosing (only when unblurred).
+        "schedule": (bf_content.get("schedule") or {}) if bf_show else {},
         "pricing_note": bf_content.get("pricing_note", "") if bf_show else "",
         "reorder_items": display,
         "notify_on": notify_on,
