@@ -21,7 +21,7 @@ import datetime
 import os
 import sqlite3
 
-from flask import Flask, Response, redirect, request, send_from_directory
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory
 
 from dashboard import biofield_fee, biofield_invoice
 from dashboard.biofield_report import causal_chain_report, list_tests
@@ -167,6 +167,321 @@ def _default_fetch_recent_comms(email):
 
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
+
+# --- Task 5: Practice Better intake paste / parse / review / import page.
+# Static body + script for GET /intake-import. Kept as plain (non f-string) module
+# constants so the JS's own {}/`` characters never collide with Python formatting;
+# the one dynamic value (the INTAKE_FORM schema) is concatenated in as a JSON blob
+# by the route, not interpolated into these strings.
+_INTAKE_IMPORT_BODY = """
+<p><a href="/">&larr; All tests</a></p>
+<h1>Import a Practice Better intake</h1>
+<p class=sub>Paste a client's Practice Better intake export below, parse it, review and
+edit every field, then import it to the client's portal record.</p>
+
+<style>
+ .ii-row{display:flex;gap:16px;flex-wrap:wrap;margin:0 0 16px}
+ .ii-col{flex:1 1 320px;min-width:280px}
+ .ii-col>label{display:block;margin:0 0 6px;color:var(--muted);font-size:13px}
+ #pb-text{min-height:260px;width:100%}
+ #pb-email{width:100%}
+ .intake-sec{margin:0 0 22px}
+ .intake-sec h2{margin:0 0 10px;text-transform:none;letter-spacing:0;color:var(--fg);font-size:16px}
+ .intake-field{margin:0 0 14px}
+ .intake-field>label{display:block;font-weight:600;margin:0 0 5px;color:var(--fg);font-size:14px}
+ .intake-help{color:var(--muted);font-size:12px;margin:2px 0 6px}
+ .intake-input{width:100%;background:#0c0e12;color:var(--fg);border:1px solid var(--line);
+   border-radius:8px;padding:8px 10px;font:inherit;box-sizing:border-box}
+ textarea.intake-input{resize:vertical;min-height:70px}
+ .intake-scale{display:flex;flex-direction:column;gap:4px}
+ .intake-scale-opt{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:2px 0;font-weight:400}
+ .intake-scale-opt input{margin-top:3px}
+ .intake-table-wrap{border:1px solid var(--line);border-radius:8px;padding:10px;background:#13161c}
+ .intake-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:8px 0;
+   border-bottom:1px dashed var(--line)}
+ .intake-row:last-of-type{border-bottom:0}
+ .intake-col{flex:1 1 120px;min-width:100px}
+ .intake-col>label{display:block;font-size:11px;color:var(--muted);margin:0 0 3px;font-weight:600}
+ #parse-status,#import-status{margin-top:8px;font-size:13px}
+ #parse-status.ok,#import-status.ok{color:var(--ok)}
+ #parse-status.err,#import-status.err{color:#e0546a}
+</style>
+
+<div class=ii-row>
+ <div class=ii-col>
+  <label for=pb-text>Paste the Practice Better intake export</label>
+  <textarea id=pb-text class=intake-input placeholder="Paste the full intake text here&hellip;"></textarea>
+ </div>
+ <div class=ii-col>
+  <label for=pb-email>Client email</label>
+  <input id=pb-email class=intake-input type=email placeholder="client@example.com">
+  <div class=btnrow><button id=parse-btn class=btn type=button>Parse</button></div>
+  <p id=parse-status class=food></p>
+ </div>
+</div>
+
+<div id=intake-form-host></div>
+<p id=import-status></p>
+"""
+
+_INTAKE_IMPORT_JS = """
+function iiEl(tag, cls, text){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(text !== undefined && text !== null) e.textContent = text;
+  return e;
+}
+
+async function iiPost(path, body){
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)});
+  const d = await r.json().catch(()=>({}));
+  return {ok: r.ok, status: r.status, data: d};
+}
+
+let iiGetters = {};
+
+async function iiParse(){
+  const text = document.getElementById("pb-text").value.trim();
+  const status = document.getElementById("parse-status");
+  const host = document.getElementById("intake-form-host");
+  status.className = "food";
+  status.textContent = "";
+  if(!text){
+    status.className = "err";
+    status.textContent = "Paste some intake text first.";
+    return;
+  }
+  const btn = document.getElementById("parse-btn");
+  btn.disabled = true;
+  status.textContent = "Parsing\\u2026";
+  try{
+    const r = await iiPost("/intake-import/parse", {text: text});
+    if(r.data && r.data.error){
+      status.className = "err";
+      status.textContent = "Parse failed: " + r.data.error;
+      return;
+    }
+    const answers = (r.data && r.data.answers) || {};
+    const emailInput = document.getElementById("pb-email");
+    if(!emailInput.value.trim() && answers.email){
+      emailInput.value = answers.email;
+    }
+    iiBuildForm(host, answers);
+    status.className = "ok";
+    status.textContent = "Parsed. Review and edit the fields below, then import.";
+  }catch(e){
+    status.className = "err";
+    status.textContent = "Parse failed: " + e;
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function iiBuildForm(host, answers){
+  host.innerHTML = "";
+  iiGetters = {};
+  const getters = iiGetters;
+  INTAKE_FORM.sections.forEach(function(sec){
+    const fields = (sec.fields || []).filter(function(f){ return f.type !== "consent"; });
+    if(!fields.length) return;
+    const secWrap = iiEl("div", "intake-sec");
+    secWrap.appendChild(iiEl("h2", null, sec.title || ""));
+    fields.forEach(function(f){
+      secWrap.appendChild(iiRenderField(f, answers[f.id], getters));
+    });
+    host.appendChild(secWrap);
+  });
+  const importBtn = iiEl("button", "btn", "Import to portal");
+  importBtn.type = "button";
+  importBtn.addEventListener("click", iiImport);
+  host.appendChild(importBtn);
+}
+
+function iiCollectAnswers(){
+  const out = {};
+  Object.keys(iiGetters).forEach(function(fid){ out[fid] = iiGetters[fid](); });
+  return out;
+}
+
+async function iiImport(){
+  const status = document.getElementById("import-status");
+  const email = document.getElementById("pb-email").value.trim();
+  status.className = "food";
+  status.textContent = "";
+  if(!email){
+    status.className = "err";
+    status.textContent = "Client email is required to import.";
+    return;
+  }
+  const answers = iiCollectAnswers();
+  status.textContent = "Importing\\u2026";
+  try{
+    const r = await iiPost("/intake-import/submit", {email: email, answers: answers});
+    if(r.ok && r.data && r.data.ok){
+      status.className = "ok";
+      status.textContent = "Imported to the portal record for " + email + ".";
+    } else {
+      status.className = "err";
+      status.textContent = "Import failed: " + ((r.data && r.data.error) || ("status " + r.status));
+    }
+  }catch(e){
+    status.className = "err";
+    status.textContent = "Import failed: " + e;
+  }
+}
+
+// Builds one field's element for any INTAKE_FORM field type (mirrors the portal
+// intake card renderer in static/client-portal.html: renderIntakeField), wiring
+// its getter into `getters`. Built entirely via createElement/textContent --
+// never innerHTML -- since the values come from LLM-parsed pasted text.
+function iiRenderField(f, val, getters){
+  const ftype = f.type;
+  const wrap = iiEl("div", "intake-field");
+  wrap.appendChild(iiEl("label", null, f.label + (f.required ? " *" : "")));
+  if(f.help) wrap.appendChild(iiEl("p", "intake-help", f.help));
+
+  if(ftype === "table"){
+    const tableWrap = iiEl("div", "intake-table-wrap");
+    const rowsBox = iiEl("div");
+    tableWrap.appendChild(rowsBox);
+    const rows = [];
+    const columns = f.columns || [];
+
+    const addRow = function(rowVal){
+      const row = iiEl("div", "intake-row");
+      const colGetters = {};
+      columns.forEach(function(col){
+        const colWrap = iiEl("div", "intake-col");
+        colWrap.appendChild(iiEl("label", null, col.label || ""));
+        let input;
+        if(col.type === "single_choice"){
+          input = document.createElement("select");
+          input.className = "intake-input";
+          const blank = document.createElement("option");
+          blank.value = ""; blank.textContent = "Select\\u2026";
+          input.appendChild(blank);
+          (col.options || []).forEach(function(opt){
+            const o = document.createElement("option");
+            o.value = opt; o.textContent = opt;
+            input.appendChild(o);
+          });
+          input.value = (rowVal && rowVal[col.id]) || "";
+          colGetters[col.id] = function(){ return input.value || ""; };
+        } else if(col.type === "number"){
+          input = document.createElement("input");
+          input.type = "number";
+          input.className = "intake-input";
+          input.value = (rowVal && rowVal[col.id] != null) ? rowVal[col.id] : "";
+          colGetters[col.id] = function(){ return input.value === "" ? null : Number(input.value); };
+        } else {
+          input = document.createElement("input");
+          input.type = "text";
+          input.className = "intake-input";
+          input.value = (rowVal && rowVal[col.id]) || "";
+          colGetters[col.id] = function(){ return input.value; };
+        }
+        colWrap.appendChild(input);
+        row.appendChild(colWrap);
+      });
+      const rowEntry = {getters: colGetters};
+      const removeBtn = iiEl("button", "btn ghost", "Remove");
+      removeBtn.type = "button";
+      removeBtn.style.cssText = "padding:6px 12px;font-size:.82rem;flex:0 0 auto;align-self:center";
+      removeBtn.addEventListener("click", function(){
+        const idx = rows.indexOf(rowEntry);
+        if(idx > -1) rows.splice(idx, 1);
+        row.remove();
+      });
+      row.appendChild(removeBtn);
+      rows.push(rowEntry);
+      rowsBox.appendChild(row);
+    };
+
+    const addBtn = iiEl("button", "btn ghost", "Add row");
+    addBtn.type = "button";
+    addBtn.style.cssText = "margin-top:8px;padding:7px 14px;font-size:.85rem";
+    addBtn.addEventListener("click", function(){ addRow(null); });
+    tableWrap.appendChild(addBtn);
+    (Array.isArray(val) ? val : []).forEach(function(rv){ addRow(rv); });
+
+    wrap.appendChild(tableWrap);
+    getters[f.id] = function(){
+      return rows.map(function(re){
+        const obj = {};
+        Object.keys(re.getters).forEach(function(cid){ obj[cid] = re.getters[cid](); });
+        return obj;
+      });
+    };
+    return wrap;
+  }
+
+  if(ftype === "scale"){
+    const group = iiEl("div", "intake-scale");
+    (f.options || []).forEach(function(opt){
+      const optLabel = iiEl("label", "intake-scale-opt");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "intake-scale-" + f.id;
+      radio.value = String(opt.value);
+      if(val === opt.value) radio.checked = true;
+      optLabel.appendChild(radio);
+      optLabel.appendChild(iiEl("span", null, opt.value + ": " + opt.label));
+      group.appendChild(optLabel);
+    });
+    wrap.appendChild(group);
+    getters[f.id] = function(){
+      const checked = group.querySelector("input[type=radio]:checked");
+      return checked ? Number(checked.value) : null;
+    };
+    return wrap;
+  }
+
+  if(ftype === "single_choice"){
+    const select = document.createElement("select");
+    select.className = "intake-input";
+    const blank = document.createElement("option");
+    blank.value = ""; blank.textContent = "Select\\u2026";
+    select.appendChild(blank);
+    (f.options || []).forEach(function(opt){
+      const o = document.createElement("option");
+      o.value = opt; o.textContent = opt;
+      select.appendChild(o);
+    });
+    select.value = (typeof val === "string") ? val : "";
+    wrap.appendChild(select);
+    getters[f.id] = function(){ return select.value || ""; };
+    return wrap;
+  }
+
+  if(ftype === "textarea"){
+    const ta = document.createElement("textarea");
+    ta.className = "intake-input";
+    ta.rows = 3;
+    ta.value = (typeof val === "string") ? val : "";
+    wrap.appendChild(ta);
+    getters[f.id] = function(){ return ta.value; };
+    return wrap;
+  }
+
+  const input = document.createElement("input");
+  input.className = "intake-input";
+  let inputType = "text";
+  if(ftype === "email" || ftype === "tel" || ftype === "date" || ftype === "number") inputType = ftype;
+  input.type = inputType;
+  if(ftype === "number"){
+    input.value = (val != null) ? val : "";
+    getters[f.id] = function(){ return input.value === "" ? null : Number(input.value); };
+  } else {
+    input.value = (typeof val === "string") ? val : "";
+    getters[f.id] = function(){ return input.value; };
+  }
+  wrap.appendChild(input);
+  return wrap;
+}
+
+document.getElementById("parse-btn").addEventListener("click", iiParse);
+"""
 
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
@@ -332,8 +647,15 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def index():
         q = request.args.get("q", "")
         with sqlite3.connect(db_path) as cx:
-            return Response(render_list_html(list_tests(cx, q), q, list_authored(cx)),
-                            mimetype="text/html")
+            html = render_list_html(list_tests(cx, q), q, list_authored(cx))
+        # Reachable link to the Practice Better intake importer (Task 5). Injected here
+        # rather than in dashboard/biofield_report_html.py so this task stays confined to
+        # this file, per the task brief.
+        html = html.replace(
+            "<p><a href='/clinical-tags'>&rarr; Clinical Tags review queue</a></p>",
+            "<p><a href='/clinical-tags'>&rarr; Clinical Tags review queue</a> &nbsp;&middot;&nbsp; "
+            "<a href='/intake-import'>&rarr; Import a Practice Better intake</a></p>")
+        return Response(html, mimetype="text/html")
 
     @app.route("/clinical-tags")
     def clinical_tags_queue():
@@ -991,6 +1313,44 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         return {"ok": True, "url": res.get("url", ""),
                 "updated": bool(res.get("updated")), "note": res.get("note", ""),
                 "emailed": bool(res.get("emailed")), "unresolved": []}
+
+    # --- Task 5: Practice Better intake paste / parse / review / import ---
+    @app.route("/intake-import/parse", methods=["POST"])
+    def intake_import_parse():
+        from dashboard import intake as _intake, intake_parse as _ip
+        body = request.get_json(force=True) or {}
+        text = (body.get("text") or "").strip()
+        if not text:
+            return jsonify({"answers": {}, "error": "empty"})
+        answers = _ip.parse(_intake.INTAKE_FORM, text, openai_json)
+        return jsonify({"answers": answers})
+
+    @app.route("/intake-import/submit", methods=["POST"])
+    def intake_import_submit():
+        import urllib.request, urllib.parse, json as _json
+        body = request.get_json(force=True) or {}
+        key = os.environ.get("CONSOLE_SECRET", "")
+        base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+        data = _json.dumps({"email": body.get("email"), "answers": body.get("answers")}).encode()
+        req = urllib.request.Request(f"{base}/api/console/intake-import",
+                                     data=data, method="POST",
+                                     headers={"X-Console-Key": key, "Content-Type": "application/json"})
+        try:
+            resp = _json.load(urllib.request.urlopen(req, timeout=30))
+            return jsonify(resp)
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 502
+
+    @app.route("/intake-import")
+    def intake_import_page():
+        from dashboard import intake as _intake
+        from dashboard.biofield_report_html import _page
+        import json as _json
+        form_json = _json.dumps(_intake.INTAKE_FORM).replace("</", "<\\/")
+        return Response(_page("Import a Practice Better intake",
+                              _INTAKE_IMPORT_BODY + "<script>\nconst INTAKE_FORM = "
+                              + form_json + ";\n" + _INTAKE_IMPORT_JS + "\n</script>"),
+                        mimetype="text/html")
 
     return app
 
