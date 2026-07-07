@@ -493,11 +493,19 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
         link = invoice_link(created.get("order_id"))
         total = created.get("total_cents")
+        accepted = created.get("accepted_slugs") or []
+        added_count = len(accepted) if accepted else len(built["lines"])
+        warning = ""
+        if accepted and biofield_invoice.BIOFIELD_SLUG not in accepted:
+            warning = "The Biofield Analysis line was not accepted by the console; open the order in Orders to check."
+        elif accepted and len(accepted) < len(built["lines"]):
+            warning = f"{len(built['lines']) - len(accepted)} line(s) were not accepted by the console."
         return {"ok": True,
                 "print_url": link.get("print_url") if link.get("ok") else "",
                 "external_ref": created.get("external_ref"),
-                "added": len(built["lines"]),
+                "added": added_count,
                 "skipped": built["skipped"],
+                "warning": warning,
                 "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
 
     @app.route("/author/<test_id>/e4l")

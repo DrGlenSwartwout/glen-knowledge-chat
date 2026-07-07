@@ -24,7 +24,8 @@ def client(tmp_path):
 
     def fake_create(customer, lines):
         calls["lines"] = lines
-        return {"ok": True, "order_id": 7, "external_ref": "INH-Z", "total_cents": 10000, "error": None}
+        return {"ok": True, "order_id": 7, "external_ref": "INH-Z", "total_cents": 10000, "error": None,
+                "accepted_slugs": ["biofield-analysis", "liver-support"]}
 
     def fake_link(oid):
         return {"ok": True, "print_url": "https://x/invoice/tok?print=1", "error": None}
@@ -73,3 +74,19 @@ def test_invoice_create_failure_is_502(tmp_path):
     app.testing = True
     r = app.test_client().post(f"/author/{tid}/invoice")
     assert r.status_code == 502 and "console" in r.get_json()["error"].lower()
+
+
+def test_invoice_warns_when_biofield_line_dropped(tmp_path):
+    db = str(tmp_path / "w.db")
+    with sqlite3.connect(db) as cx:
+        init_auth_tables(cx)
+        tid = create_test(cx, name="D", email="d@x.com", date="2026-07-06")
+        add_chain_row(cx, tid, layer=1, head="", most_affected="", remedy="Liver Support")
+    app = create_app(db_path=db, invoice_fetch_catalog=lambda: [{"slug": "liver-support", "name": "Liver Support"}],
+                     invoice_create=lambda c, l: {"ok": True, "order_id": 9, "external_ref": "INH-W",
+                                                  "total_cents": 5000, "accepted_slugs": ["liver-support"]},
+                     invoice_link=lambda oid: {"ok": True, "print_url": "https://x/invoice/t?print=1"})
+    app.testing = True
+    r = app.test_client().post(f"/author/{tid}/invoice")
+    j = r.get_json()
+    assert j["ok"] and "Biofield Analysis line was not accepted" in j["warning"]

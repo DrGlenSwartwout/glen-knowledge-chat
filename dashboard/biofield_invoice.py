@@ -2,7 +2,6 @@
 on prod (Orders board). Pure line-assembly + injected prod calls; mirrors
 biofield_fee.py. Prod is the pricing authority — this module sends [{slug,qty}] only.
 """
-import difflib
 import json as _json
 import os
 import urllib.parse
@@ -12,20 +11,17 @@ BIOFIELD_SLUG = "biofield-analysis"
 
 
 def resolve_line_slug(name, catalog):
-    """A remedy NAME -> a sellable catalog slug. Exact (case-insensitive) first,
-    then a difflib close match (cutoff 0.82). None when nothing matches."""
+    """A remedy NAME -> a sellable catalog slug by EXACT (case-insensitive) match.
+    No fuzzy matching: on an invoice a near-name substitution could bill the wrong
+    SKU (ES1 vs ES13, Vitamin A vs Vitamin D). A non-exact name returns None and the
+    caller lists it as skipped for manual add against the real catalog."""
     name = (name or "").strip().lower()
     if not name:
         return None
-    by_name = {}
     for it in catalog or []:
-        n = (it.get("name") or "").strip().lower()
-        if n and n not in by_name:
-            by_name[n] = it.get("slug")
-    if name in by_name:
-        return by_name[name] or None
-    match = difflib.get_close_matches(name, list(by_name.keys()), n=1, cutoff=0.82)
-    return (by_name[match[0]] or None) if match else None
+        if (it.get("name") or "").strip().lower() == name:
+            return it.get("slug") or None
+    return None
 
 
 def build_invoice_lines(client, remedies, catalog):
@@ -70,7 +66,7 @@ def default_fetch_catalog():
 def default_create_order(customer, lines):
     base, key = _console()
     if not base:
-        return {"ok": False, "error": "No console configured (CONSOLE_SECRET missing)."}
+        return {"ok": False, "error": "The console connection is not configured."}
     try:
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "pickup": True,
@@ -83,9 +79,11 @@ def default_create_order(customer, lines):
         if not resp.get("ok"):
             return {"ok": False, "error": resp.get("error") or "Order creation failed."}
         totals = resp.get("totals") or {}
+        accepted = [ (l or {}).get("slug") for l in (resp.get("lines") or []) if (l or {}).get("slug") ]
         return {"ok": True, "order_id": resp.get("order_id"),
                 "external_ref": resp.get("external_ref"),
-                "total_cents": totals.get("total_cents"), "error": None}
+                "total_cents": totals.get("total_cents"),
+                "accepted_slugs": accepted, "error": None}
     except Exception:
         return {"ok": False, "error": "Couldn't reach the console to create the order."}
 

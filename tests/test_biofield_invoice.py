@@ -10,9 +10,16 @@ def test_resolve_exact_case_insensitive():
     assert resolve_line_slug("GASTROZYME", CATALOG) == "gastrozyme"
 
 
-def test_resolve_fuzzy_close_match():
-    # minor spelling drift still resolves (difflib cutoff 0.82)
-    assert resolve_line_slug("Gastrozime", CATALOG) == "gastrozyme"
+def test_no_fuzzy_substitution():
+    # a near miss must NOT silently resolve to a different SKU
+    assert resolve_line_slug("Gastrozime", CATALOG) is None
+
+
+def test_exact_wins_no_near_duplicate_jump():
+    cat = [{"slug": "es1-lymph", "name": "ES1 Lymph"},
+           {"slug": "es13-x", "name": "ES13 Something"}]
+    assert resolve_line_slug("ES1 Lymph", cat) == "es1-lymph"     # exact wins
+    assert resolve_line_slug("ES1", cat) is None                  # partial does NOT jump to ES13
 
 
 def test_resolve_none_when_no_match():
