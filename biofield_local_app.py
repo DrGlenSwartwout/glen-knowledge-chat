@@ -28,8 +28,8 @@ from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_list_html, render_report_html,
     render_stress_panel, render_suggest_panel)
 from dashboard.biofield_e4l import (
-    fetch_live as _fetch_live, scan_context as _scan_context,
-    search_clients as _search_clients)
+    _db_path as _e4l_db_path, fetch_live as _fetch_live,
+    scan_context as _scan_context, search_clients as _search_clients)
 from dashboard.biofield_narrative import (
     generate_narrative, generate_video_script, get_narrative, get_notes,
     get_video_script, save_narrative, save_notes, save_video_script)
@@ -170,8 +170,11 @@ DEFAULT_DB = os.environ.get(
 
 def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
-               fetch_runner=None, fetch_profile=None, fetch_recent_comms=None):
+               fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
+               e4l_db=None):
     app = Flask(__name__)
+    # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
+    e4l_db = e4l_db or _e4l_db_path()
     complete = complete or openai_complete
     tts = tts or elevenlabs_tts
     deepgram_token = deepgram_token or deepgram_browser_token
@@ -327,13 +330,13 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     @app.route("/clinical-tags")
     def clinical_tags_queue():
         from dashboard import clinical_tags_console as _ctc
-        with sqlite3.connect(db_path) as cx:
+        with sqlite3.connect(e4l_db) as cx:
             return Response(_ctc.render_queue_html(_ctc.review_queue(cx)), mimetype="text/html")
 
     @app.route("/clinical-tags/<int:client_id>", methods=["GET", "POST"])
     def clinical_tags_client(client_id):
         from dashboard import clinical_tags_console as _ctc
-        with sqlite3.connect(db_path) as cx:
+        with sqlite3.connect(e4l_db) as cx:
             if request.method == "POST":
                 tags = request.form.getlist("tags")
                 action = request.form.get("action")
