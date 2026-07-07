@@ -324,6 +324,27 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             return Response(render_list_html(list_tests(cx, q), q, list_authored(cx)),
                             mimetype="text/html")
 
+    @app.route("/clinical-tags")
+    def clinical_tags_queue():
+        from dashboard import clinical_tags_console as _ctc
+        with sqlite3.connect(db_path) as cx:
+            return Response(_ctc.render_queue_html(_ctc.review_queue(cx)), mimetype="text/html")
+
+    @app.route("/clinical-tags/<int:client_id>", methods=["GET", "POST"])
+    def clinical_tags_client(client_id):
+        from dashboard import clinical_tags_console as _ctc
+        with sqlite3.connect(db_path) as cx:
+            if request.method == "POST":
+                tags = request.form.getlist("tags")
+                action = request.form.get("action")
+                if tags and action == "confirm":
+                    _ctc.confirm(cx, client_id, tags)
+                elif tags and action == "reject":
+                    _ctc.reject(cx, client_id, tags)
+                return redirect(f"/clinical-tags/{client_id}")
+            return Response(_ctc.render_client_html(_ctc.client_tags(cx, client_id)),
+                            mimetype="text/html")
+
     @app.route("/test/<test_id>")
     def report(test_id):
         from dashboard import biofield_stress as _st

@@ -923,6 +923,7 @@ def render_list_html(tests, q="", authored=None):
     body = (
         "<h1>Biofield Analysis</h1>"
         "<p class=sub>Causal Chain Reports — local, from your FileMaker data and your own authored tests.</p>"
+        "<p><a href='/clinical-tags'>&rarr; Clinical Tags review queue</a></p>"
         "<form method=post action='/author/new'><button class=btn type=submit>+ New test</button></form>"
         + asection +
         "<form method=get><input type=search name=q placeholder='Search FileMaker tests' "
