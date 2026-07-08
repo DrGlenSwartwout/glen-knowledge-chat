@@ -32120,25 +32120,25 @@ def _published_invoices_for(cx, email):
 
 
 def _past_invoices_for(cx, email):
-    """Portal-published invoices for an email that are DONE — paid or delivered/done —
-    for the portal's History tab (receipts). Read-only, best-effort."""
+    """EVERY paid order for an email — receipts for the portal's History tab, whether or
+    not the invoice was ever portal-published (e.g. a payment taken outside the portal).
+    A `link` is provided only when the order carries an invoice_token (a viewable
+    receipt page); tokenless paid orders still list as a dated receipt. Read-only."""
     email = (email or "").strip().lower()
     if not email:
         return []
     try:
         rows = cx.execute(
-            "SELECT total_cents, invoice_token, COALESCE(pay_status,''), COALESCE(status,''), "
+            "SELECT total_cents, COALESCE(invoice_token,''), "
             "COALESCE(paid_at, updated_at, created_at, '') FROM orders "
-            "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
-            "AND coalesce(invoice_token,'')<>'' "
-            "AND (coalesce(pay_status,'')='paid' OR coalesce(status,'') IN ('delivered','done')) "
-            "ORDER BY id DESC", (email,)).fetchall()
+            "WHERE lower(coalesce(email,''))=? AND coalesce(pay_status,'')='paid' "
+            "AND coalesce(status,'')<>'cancelled' ORDER BY id DESC", (email,)).fetchall()
     except Exception:
         return []
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(tc or 0) / 100:.2f}",
-             "paid": pay == "paid", "when": (when or "")[:10],
-             "link": f"{base}/invoice/{tok}"} for tc, tok, pay, status, when in rows]
+             "paid": True, "when": (when or "")[:10],
+             "link": (f"{base}/invoice/{tok}" if tok else "")} for tc, tok, when in rows]
 
 
 @app.route("/api/console/order/<int:oid>/publish-to-portal", methods=["POST"])

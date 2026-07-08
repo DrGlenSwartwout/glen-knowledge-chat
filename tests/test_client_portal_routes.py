@@ -174,12 +174,21 @@ def test_portal_past_invoices_in_history(client):
                "items_json,address_json,created_at,portal_published,invoice_token) "
                "VALUES ('t','OPEN','H',?,'proposed','unpaid',5000,'[]','{}','2026-07-05',1,'tok-open')",
                (email,))
+    # Paid OUTSIDE the portal: not portal-published, no token — must STILL show in history.
+    cx.execute("INSERT INTO orders (source,external_ref,name,email,status,pay_status,total_cents,"
+               "items_json,address_json,created_at,portal_published) "
+               "VALUES ('t','EXT','H',?,'done','paid',30000,'[]','{}','2026-06-20',0)",
+               (email,))
     cx.commit(); cx.close()
     tok = _seed_portal(appmod, email=email, name="H", content={"biofield_status": "confirmed", "layers": []})
     j = c.get(f"/api/portal/{tok}").get_json()
     past = {i["token"]: i for i in (j.get("past_invoices") or [])}
     live = {i["token"] for i in (j.get("invoices") or [])}
-    assert "tok-paid" in past and past["tok-paid"]["paid"] is True and past["tok-paid"]["amount_dollars"] == "99.00"
+    amounts = {i["amount_dollars"] for i in (j.get("past_invoices") or [])}
+    assert "tok-paid" in past and past["tok-paid"]["amount_dollars"] == "99.00" and past["tok-paid"]["link"]
+    assert "300.00" in amounts                                 # paid-outside-portal order (no token) is listed
+    ext = [i for i in j["past_invoices"] if i["amount_dollars"] == "300.00"][0]
+    assert ext["link"] == "" and ext["paid"] is True           # tokenless -> no link, still a receipt
     assert "tok-open" in live and "tok-open" not in past       # unpaid stays a live pay card
 
 

@@ -794,7 +794,12 @@ function render(d, v){
     }
     if(pastInv.length){
       hist += `<p class="muted" style="margin:.7rem 0 .3rem">Past invoices</p>`
-        + pastInv.map(inv => `<p style="margin:.25rem 0"><a href="${esc(inv.link)}" target="_blank" rel="noopener">$${esc(inv.amount_dollars)}${inv.paid?" — paid":" — completed"}${inv.when?" · "+esc(inv.when):""} ↗</a></p>`).join("");
+        + pastInv.map(inv => {
+            const label = `$${esc(inv.amount_dollars)} — paid${inv.when?" · "+esc(inv.when):""}`;
+            return inv.link
+              ? `<p style="margin:.25rem 0"><a href="${esc(inv.link)}" target="_blank" rel="noopener">${label} ↗</a></p>`
+              : `<p class="muted" style="margin:.25rem 0">${label}</p>`;
+          }).join("");
     }
     hist += `</div>`;
     html += hist;
