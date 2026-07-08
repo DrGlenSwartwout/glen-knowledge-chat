@@ -229,26 +229,31 @@ def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
     assert "Acid" in html.split("Stresses balanced")[1]
 
 
-def test_add_one_from_remedy_set_populates_head_and_tail(tmp_path):
-    # Adding a remedy from the Minimal Remedy Set as a new layer must fill BOTH the
-    # head and the tail (most_affected) with the stresses that remedy covers, so the
-    # appended layer reads like a hand-authored one and its stresses balance under it.
+def test_add_one_from_remedy_set_populates_head_tail_name_and_dosing(tmp_path):
+    # Adding a remedy from the Minimal Remedy Set as a new layer must:
+    #  - fill BOTH head and tail (most_affected) with the stresses it covers,
+    #  - store the CANONICAL catalog name (the set/coverage map holds a lowercased
+    #    synthesis name like 'heart health' -> must become 'Heart Health'), and
+    #  - auto-fill dosing from the FF, like scan-imported layers.
     from dashboard.biofield_authoring import init_auth_tables, create_test
     from dashboard import biofield_stress as st
     db = str(tmp_path / "chat_log.db")
     cx = sqlite3.connect(db)
     init_auth_tables(cx)
+    cx.execute("CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.execute("INSERT INTO fmp_snap_products VALUES('1','Heart Health','1 capsule','daily','between meals')")
     tid = create_test(cx, "Test Pt", "t@x.com", "2026-07-08")   # -> "a1"
     tnum = tid.lstrip("a")
     st.seed_from_scan(cx, tnum, [{"code": "ED1", "name": "Membrane"}],
-                      {"Neuro Magnesium": ["ED1"]})
-    st.save_remedy_set(cx, tnum, ["Neuro Magnesium"])
+                      {"heart health": ["ED1"]})               # coverage keyed by the lowercased name
+    st.save_remedy_set(cx, tnum, ["heart health"])
     cx.commit()
     client = create_app(db).test_client()
-    r = client.post("/author/%s/remedy-set/add-one" % tid, json={"remedy": "Neuro Magnesium"})
+    r = client.post("/author/%s/remedy-set/add-one" % tid, json={"remedy": "heart health"})
     assert r.status_code == 200 and r.get_json()["added"] == 1
     row = cx.execute(
-        "SELECT head, most_affected FROM biofield_auth_chain WHERE test_id=? AND remedy=?",
-        (int(tnum), "Neuro Magnesium")).fetchone()
+        "SELECT head, most_affected, remedy, dosage, frequency, timing "
+        "FROM biofield_auth_chain WHERE test_id=? AND layer=1", (int(tnum),)).fetchone()
     cx.close()
-    assert row == ("Membrane", "Membrane")   # head AND tail both set to the covered stress
+    # head+tail = covered stress; name canonicalized; dosing auto-filled from the FF
+    assert row == ("Membrane", "Membrane", "Heart Health", "1 capsule", "daily", "between meals")

@@ -985,7 +985,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         layers untouched). Head AND tail (most_affected) are both set to the stresses
         that remedy covers — so the layer reads like the hand-authored ones (which
         carry a matching head/tail) and its covered stresses associate/balance under
-        it. Returns count."""
+        it. The remedy name is resolved to its canonical catalog name (the set/coverage
+        map stores a lowercased synthesis name like 'heart health') and dosing is
+        auto-filled from the FF, mirroring scan-imported layers. Returns count."""
         from dashboard import biofield_stress as _st
         rems = [(r or "").strip() for r in (rems or []) if (r or "").strip()]
         if not rems:
@@ -1000,7 +1002,11 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         for r in rems:
             nxt += 1
             covered = ", ".join(cover_by.get(r, []))[:200]
-            add_chain_row(cx, test_id, nxt, covered, covered, r, "", "", "", confirmed=1, origin="live")
+            name = resolve_remedy_name(cx, r)     # 'heart health' -> 'Heart Health'
+            d = remedy_dosing(cx, name)           # auto-fill dosage/frequency/timing from the FF
+            add_chain_row(cx, test_id, nxt, covered, covered, name,
+                          d.get("dosage", ""), d.get("frequency", ""), d.get("timing", ""),
+                          confirmed=1, origin="live")
             added += 1
         return added
 
