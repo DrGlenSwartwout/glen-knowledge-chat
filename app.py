@@ -32017,6 +32017,39 @@ def console_order_publish_to_portal(oid):
                     "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}"})
 
 
+def _biofield_paid_order(cx, email):
+    """The latest paid, non-cancelled order carrying a Biofield Analysis line for an
+    email, or None. Used to skip re-charging an already-paid analysis and to label it."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        r = cx.execute(
+            "SELECT id, COALESCE(paid_at,'') FROM orders "
+            "WHERE lower(COALESCE(email,''))=? AND COALESCE(pay_status,'')='paid' "
+            "AND COALESCE(status,'')<>'cancelled' AND COALESCE(items_json,'') LIKE ? "
+            "ORDER BY id DESC LIMIT 1",
+            (email, "%biofield-analysis%")).fetchone()
+    except Exception:
+        return None
+    return {"order_id": r[0], "paid_at": r[1]} if r else None
+
+
+@app.route("/api/console/biofield-analysis-paid", methods=["GET"])
+def console_biofield_analysis_paid():
+    """Has this client already paid for a Biofield Analysis? Drives the raise-guard
+    (drop the fee line) and the composer's 'already paid' note. Read-only."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        paid = _biofield_paid_order(cx, request.args.get("email") or "")
+    if paid:
+        return jsonify({"ok": True, "paid": True, "order_id": paid["order_id"],
+                        "paid_at": paid["paid_at"]})
+    return jsonify({"ok": True, "paid": False})
+
+
 @app.route("/api/console/client-invoice", methods=["GET"])
 def console_client_invoice():
     """The composer's Invoice panel: the latest non-cancelled order for a client email,
@@ -32035,8 +32068,11 @@ def console_client_invoice():
             "COALESCE(items_json,'[]') items FROM orders "
             "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
             "ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+        paid = _biofield_paid_order(cx, email)
+    biofield_paid = {"biofield_paid": bool(paid),
+                     "paid_order_id": paid["order_id"] if paid else None}
     if not r:
-        return jsonify({"ok": True, "order": None})
+        return jsonify({"ok": True, "order": None, **biofield_paid})
     lines = []
     try:
         for it in (json.loads(r["items"]) or []):
@@ -32052,7 +32088,7 @@ def console_client_invoice():
     return jsonify({"ok": True, "order": {
         "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
-        "edit_url": edit_url, "lines": lines}})
+        "edit_url": edit_url, "lines": lines}, **biofield_paid})
 
 
 @app.route("/api/console/shipments/suggestions", methods=["GET"])

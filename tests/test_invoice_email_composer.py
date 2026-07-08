@@ -77,6 +77,29 @@ def test_client_invoice_endpoint(monkeypatch, tmp_path):
     assert r2["ok"] and r2["order"] is None
 
 
+def _mark_paid(db, oid):
+    cx = sqlite3.connect(db)
+    cx.execute("UPDATE orders SET pay_status='paid', status='done', paid_at=? WHERE id=?",
+               ("2026-07-03T00:00:00+00:00", oid))
+    cx.commit(); cx.close()
+
+
+def test_biofield_analysis_paid_endpoint(monkeypatch, tmp_path):
+    db = _auth(monkeypatch, tmp_path)
+    oid = _seed_order(db, "steve@x.com", "Steve Fox")
+    c = app.app.test_client()
+    # unpaid -> paid False
+    r = c.get("/api/console/biofield-analysis-paid?email=steve@x.com&key=sek").get_json()
+    assert r["ok"] and r["paid"] is False
+    # after payment -> paid True with the order id
+    _mark_paid(db, oid)
+    r2 = c.get("/api/console/biofield-analysis-paid?email=steve@x.com&key=sek").get_json()
+    assert r2["ok"] and r2["paid"] is True and r2["order_id"] == oid
+    # the composer's client-invoice also surfaces it
+    r3 = c.get("/api/console/client-invoice?email=steve@x.com&key=sek").get_json()
+    assert r3["biofield_paid"] is True and r3["paid_order_id"] == oid
+
+
 def test_publish_invoice_with_email(monkeypatch, tmp_path):
     db = _auth(monkeypatch, tmp_path)
     oid = _seed_order(db)
