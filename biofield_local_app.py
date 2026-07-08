@@ -982,7 +982,10 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
 
     def _append_layers(cx, test_id, rems):
         """Append each remedy as a new causal-chain layer at the bottom (existing
-        layers untouched); head = the stresses that remedy covers. Returns count."""
+        layers untouched). Head AND tail (most_affected) are both set to the stresses
+        that remedy covers — so the layer reads like the hand-authored ones (which
+        carry a matching head/tail) and its covered stresses associate/balance under
+        it. Returns count."""
         from dashboard import biofield_stress as _st
         rems = [(r or "").strip() for r in (rems or []) if (r or "").strip()]
         if not rems:
@@ -996,8 +999,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         added = 0
         for r in rems:
             nxt += 1
-            head = ", ".join(cover_by.get(r, []))[:200]
-            add_chain_row(cx, test_id, nxt, head, "", r, "", "", "", confirmed=1, origin="live")
+            covered = ", ".join(cover_by.get(r, []))[:200]
+            add_chain_row(cx, test_id, nxt, covered, covered, r, "", "", "", confirmed=1, origin="live")
             added += 1
         return added
 
