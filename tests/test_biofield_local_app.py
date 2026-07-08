@@ -227,3 +227,28 @@ def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
     html = client.get("/test/" + tid).data.decode()
     assert "Stresses balanced" in html
     assert "Acid" in html.split("Stresses balanced")[1]
+
+
+def test_add_one_from_remedy_set_populates_head_and_tail(tmp_path):
+    # Adding a remedy from the Minimal Remedy Set as a new layer must fill BOTH the
+    # head and the tail (most_affected) with the stresses that remedy covers, so the
+    # appended layer reads like a hand-authored one and its stresses balance under it.
+    from dashboard.biofield_authoring import init_auth_tables, create_test
+    from dashboard import biofield_stress as st
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Test Pt", "t@x.com", "2026-07-08")   # -> "a1"
+    tnum = tid.lstrip("a")
+    st.seed_from_scan(cx, tnum, [{"code": "ED1", "name": "Membrane"}],
+                      {"Neuro Magnesium": ["ED1"]})
+    st.save_remedy_set(cx, tnum, ["Neuro Magnesium"])
+    cx.commit()
+    client = create_app(db).test_client()
+    r = client.post("/author/%s/remedy-set/add-one" % tid, json={"remedy": "Neuro Magnesium"})
+    assert r.status_code == 200 and r.get_json()["added"] == 1
+    row = cx.execute(
+        "SELECT head, most_affected FROM biofield_auth_chain WHERE test_id=? AND remedy=?",
+        (int(tnum), "Neuro Magnesium")).fetchone()
+    cx.close()
+    assert row == ("Membrane", "Membrane")   # head AND tail both set to the covered stress
