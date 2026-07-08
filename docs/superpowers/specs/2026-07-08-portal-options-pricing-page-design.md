@@ -27,12 +27,12 @@ The whole live picture is three items (this session confirmed the `$1` biofield 
 - **Gate**: a flag (e.g. `PORTAL_OPTIONS_CARD_ENABLED`) so it can ship dark then flip on, like the other portal features.
 - Memory gotcha: a field only reaches the page if it's in BOTH the payload dict AND rendered ([[feedback_portal_content_payload_surface]]).
 
-## Open decisions (resolve at build)
+## Decisions (RESOLVED with Glen 2026-07-08 — build to these)
 
-1. **Static copy vs live prices** — recommend LIVE prices (data-sourced) for the two dollar figures, static copy for the rest. Confirm with Glen.
-2. **Show the client's courtesy price** if they have one (e.g. Karin's $100)? Recommend yes — it personalizes and matches the fee panel. Confirm.
-3. **Also surface it on the Intake `/author/<id>/invoice-view` page** for the operator's reference? Optional; low cost since the tab bar exists.
-4. **CTA for #2** — "Reply to this email/portal" vs a real book-a-consult link. Recommend "reply" for v1 (the $300 tier is `cta_label: "Book your consultation"` in `begin_funnel.TIER_CATALOG`).
+1. **LIVE prices** — the two dollar figures are data-sourced (catalog + `client_prices`), not hardcoded; static copy for the rest.
+2. **Show the client's courtesy price** when they have one (`client_prices` by email+slug; e.g. Karin's $100) — it personalizes and matches the fee panel.
+3. **Also render on the Intake `/author/<id>/invoice-view` page** (light yes) — same shared card component, mounted **visually secondary / below the invoice actions** so it's a quiet operator reference, not clutter. Two mount points, one component.
+4. **CTA for #2 = "reply to arrange"** for v1 (no real book-a-consult link yet). The $300 tier's `cta_label: "Book your consultation"` in `begin_funnel.TIER_CATALOG` is a later upgrade.
 
 ## Testing
 
