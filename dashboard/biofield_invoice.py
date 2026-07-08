@@ -145,3 +145,12 @@ def default_invoice_link(order_id):
         return {"ok": False, "error": "link unavailable"}
     except Exception:
         return {"ok": False, "error": "link unavailable"}
+
+
+def default_orders_link(order_id):
+    """The prod Orders-board deep link for an order (Edit action), key-carried the
+    same way the local console tools bounce to prod. '' when unconfigured."""
+    base, key = _console()
+    if not base or not order_id:
+        return ""
+    return f"{base}/console/orders?order={int(order_id)}&key={urllib.parse.quote(key)}"

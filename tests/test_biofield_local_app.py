@@ -261,3 +261,55 @@ def test_add_one_from_remedy_set_sets_driver_head_full_tail_name_and_dosing(tmp_
     assert head == "Circulation Driver"                        # single root driver stressor
     assert set(tail.split(", ")) == {"Circulation Driver", "Heart – Lung Integrator"}  # full list
     assert (remedy, dosage, freq, timing) == ("Heart Health", "1 capsule", "daily", "between meals")
+
+
+def test_invoice_route_returns_order_id_and_links(tmp_path):
+    # Slice 1 of the invoice-access panel: /author/<id>/invoice returns order_id +
+    # print_url (the /invoice/<token> view/print/PDF link) so the panel can offer
+    # Open-invoice and Edit-in-Orders actions.
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Pt", "pt@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support", "1 cap", "daily", "with food")
+    cx.commit()
+
+    def fake_catalog():
+        return [{"name": "Liver Support", "slug": "liver-support"}]
+
+    def fake_create(customer, lines):
+        return {"ok": True, "order_id": 42, "external_ref": "ER42", "total_cents": 30000,
+                "accepted_slugs": [l["slug"] for l in lines]}
+
+    def fake_link(order_id):
+        return {"ok": True, "print_url": "https://illtowell.com/invoice/tok123?print=1"}
+
+    client = create_app(db, invoice_fetch_catalog=fake_catalog,
+                        invoice_create=fake_create, invoice_link=fake_link).test_client()
+    j = client.post("/author/%s/invoice" % tid, json={}).get_json()
+    assert j["ok"] is True
+    assert j["order_id"] == 42
+    assert j["print_url"] == "https://illtowell.com/invoice/tok123?print=1"
+    assert "orders_url" in j                              # present (empty without CONSOLE_SECRET)
+
+
+def test_default_orders_link():
+    import importlib
+    from dashboard import biofield_invoice as bi
+    import os
+    old = {k: os.environ.get(k) for k in ("CONSOLE_SECRET", "PUBLIC_BASE_URL")}
+    try:
+        os.environ["CONSOLE_SECRET"] = "sekret key"
+        os.environ["PUBLIC_BASE_URL"] = "https://illtowell.com/"
+        url = bi.default_orders_link(42)
+        assert url == "https://illtowell.com/console/orders?order=42&key=sekret%20key"
+        assert bi.default_orders_link(None) == ""
+        os.environ.pop("CONSOLE_SECRET")
+        assert bi.default_orders_link(42) == ""           # unconfigured -> empty
+    finally:
+        for k, v in old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
