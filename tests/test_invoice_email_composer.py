@@ -100,6 +100,35 @@ def test_biofield_analysis_paid_endpoint(monkeypatch, tmp_path):
     assert r3["biofield_paid"] is True and r3["paid_order_id"] == oid
 
 
+def test_cancel_open_handoff_orders(tmp_path):
+    # Idempotent hand-off helper: cancel OPEN proposed unpublished drafts, leave
+    # published or paid orders alone.
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    _orders.init_orders_table(cx)
+    for col, ddl in (("portal_published", "INTEGER NOT NULL DEFAULT 0"), ("invoice_token", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+    def mk(ref, status, pay, pub):
+        cx.execute("INSERT INTO orders (source,external_ref,name,email,status,pay_status,total_cents,"
+                   "items_json,address_json,created_at,portal_published) VALUES (?,?,?,?,?,?,?,'[]','{}',?,?)",
+                   ("test", ref, "P", "p@x.com", status, pay, 1000, "2026-07-08T00:00:00+00:00", pub))
+        return cx.execute("SELECT id FROM orders WHERE external_ref=?", (ref,)).fetchone()[0]
+    a = mk("A", "proposed", "unpaid", 0)      # open draft -> cancel
+    b = mk("B", "proposed", "unpaid", 0)      # open draft -> cancel
+    pub = mk("C", "proposed", "unpaid", 1)    # published -> keep
+    paid = mk("D", "proposed", "paid", 0)     # paid -> keep
+    cx.commit()
+    cancelled = app._cancel_open_handoff_orders(cx, "p@x.com")
+    assert set(cancelled) == {a, b}
+    st = dict(cx.execute("SELECT id,status FROM orders WHERE id IN (?,?,?,?)", (a, b, pub, paid)).fetchall())
+    cx.close()
+    assert st[a] == "cancelled" and st[b] == "cancelled"
+    assert st[pub] == "proposed" and st[paid] == "proposed"
+
+
 def test_publish_invoice_with_email(monkeypatch, tmp_path):
     db = _auth(monkeypatch, tmp_path)
     oid = _seed_order(db)

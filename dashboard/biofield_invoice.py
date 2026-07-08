@@ -107,13 +107,17 @@ def default_fetch_catalog():
         return []
 
 
-def default_create_order(customer, lines):
+def default_create_order(customer, lines, replace_open=False):
+    """Create the hand-off invoice on prod. With replace_open=True (a re-hand-off),
+    prod first cancels the client's prior OPEN hand-off drafts (proposed, unpaid, not
+    yet published) so a repeated hand-off UPDATES rather than piling up duplicates;
+    published/paid orders are never touched."""
     base, key = _console()
     if not base:
         return {"ok": False, "error": "The console connection is not configured."}
     try:
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
-                "lines": lines, "pickup": True,
+                "lines": lines, "pickup": True, "replace_open": bool(replace_open),
                 "invoice_note": "Biofield Analysis and remedies. Payable by check."}
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
@@ -127,6 +131,7 @@ def default_create_order(customer, lines):
         return {"ok": True, "order_id": resp.get("order_id"),
                 "external_ref": resp.get("external_ref"),
                 "total_cents": totals.get("total_cents"),
+                "cancelled": resp.get("cancelled") or [],
                 "accepted_slugs": accepted, "error": None}
     except Exception:
         return {"ok": False, "error": "Couldn't reach the console to create the order."}
@@ -203,6 +208,10 @@ def default_handoff_push(email, name, content, scan_date=""):
         return {"ok": False, "error": "handoff unavailable (no console config / email)"}
     payload = dict(content or {})
     payload["biofield_status"] = "ai_draft"
+    # Stamp this hand-off's report as the client's CURRENT one so it wins over a stale
+    # AI reveal (which owns its own per-scan report row) regardless of scan date.
+    if (scan_date or "").strip():
+        payload["current_scan_date"] = scan_date.strip()
     body = _json.dumps({"email": email, "name": name or "", "content": payload,
                         "scan_date": scan_date or "", "scan_id": ""}).encode("utf-8")
     try:
