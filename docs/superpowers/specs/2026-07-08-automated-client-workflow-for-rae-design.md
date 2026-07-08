@@ -51,7 +51,17 @@ The To-Do board (#708) on `:8011`, made **actionable**: each client card shows t
 1. **Source precedence for the portal** — authored chain > approved reveal > drafted reveal. Confirm the order.
 2. **How much auto vs confirm** — recommend every *client-facing send* (reveal email, portal publish+email, invoice) is behind a one-click **confirm**, everything upstream (pull, synth, draft) auto-runs. Confirm.
 3. **Who can run it** — Rae's scoped console access (already exists) vs owner-only. Recommend Rae-scoped (that's the whole point).
-4. **Board home** — `:8011/todo` (operator Mac) is fine for Glen but Rae may work elsewhere; may need a prod-hosted version. Flag: if Rae isn't on the Mac, the localhost-only pieces (#707 wrinkle) block her — decide whether the board + actions must be **prod-hosted** so Rae can use them from anywhere.
+4. **Board home — RESOLVED 2026-07-08: Rae is on her OWN Mac**, so the board + all its actions are **PROD-HOSTED** (`illtowell.com/console/...`), not the local `:8011` app. No localhost links anywhere in Rae's flow. This forces the architecture below.
+
+## Architecture — local authoring + prod handoff (from decision #4)
+
+The PHI + causal-chain authoring lives in Glen's **local** Intake (`:8011`, `chat_log.db` on his Mac). Rae runs the **business** steps from **prod**. So the two connect via a **handoff push**, not a shared app:
+
+- **Glen (local `:8011`):** authors the causal chain, then clicks **"Hand off to Rae"** — pushes the authored analysis to prod as a portal `ai_draft` **in the correct server-built flat format** (reuse `/admin/portal/upsert`; this is exactly the seed-build we did by hand for Bobbi, made a one-click server action so there's never a stale reveal or "[object Object]"). This is the ONLY thing that must cross local→prod.
+- **Rae (prod console board):** sees the client is "ready for you," and runs (each one button, review-then-confirm, all prod): **publish + email portal** (from the pushed draft), **raise invoice**, **email/follow-up**. Her scoped console access already exists.
+- Steps that are inherently local + clinical (pull scan, synth, approve reveal) stay on Glen's side; the board just SHOWS their status to Rae (read-only), it doesn't ask her to run them.
+
+So Slice 2 splits: (2a) Glen's local **"Hand off to Rae"** push button; (2b) Rae's prod **publish+invoice+email** buttons acting on the pushed draft.
 
 ## Out of scope (v1)
 
