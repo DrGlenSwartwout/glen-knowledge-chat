@@ -256,11 +256,28 @@ def render_invoice_page(report, fee_state):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     tid = _e(str(report.get("test_id") or ""))
+    handoff = (
+        "<div class=card style='margin-top:14px'>"
+        "<h2 style='font-size:15px'>Hand off to Rae</h2>"
+        "<p class=food>Push this authored analysis to the client's portal as a draft, "
+        "correctly formatted, for Rae to review and publish from the console. Uses the "
+        "remedies you authored here &mdash; never stale reveal content.</p>"
+        "<button class=btn id=handoffbtn onclick=handoffToRae()>Hand off to Rae &rarr;</button>"
+        " <span id=handoffstat class=food></span></div>"
+        "<script>function handoffToRae(){var b=document.getElementById('handoffbtn');"
+        "var s=document.getElementById('handoffstat');b.disabled=true;s.textContent=' pushing...';"
+        "fetch(location.pathname.replace(/\\/$/,'').replace(/\\/invoice-view$/,'')+'/handoff',"
+        "{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
+        ".then(r=>r.json()).then(function(j){b.disabled=false;"
+        "if(j.ok){b.textContent='Handed off \\u2713';s.textContent=' '+j.layers+' layers pushed \\u2014 Rae can publish it now.';}"
+        "else{s.textContent=' '+(j.error||'Handoff failed.');}})"
+        ".catch(function(){b.disabled=false;s.textContent=' Could not reach the app.';});}</script>")
     body = (_client_tabs("invoice", report.get("test_id") or "", c.get("email") or "")
             + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
             f"<a href='/author/{tid}'>&larr; Edit</a></p>"
             + f"<h1>Invoice &mdash; {name}</h1>"
             + render_fee_panel(fee_state)
+            + handoff
             + _invoice_options_ref(fee_state))
     return _page(f"Invoice — {c.get('name') or ''}", body)
 

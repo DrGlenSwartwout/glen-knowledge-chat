@@ -23,7 +23,7 @@ import sqlite3
 
 from flask import Flask, Response, jsonify, redirect, request, send_from_directory
 
-from dashboard import biofield_fee, biofield_invoice
+from dashboard import biofield_fee, biofield_handoff, biofield_invoice
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_fee_panel, render_invoice_page,
@@ -864,6 +864,28 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         if not oid:
             return {"ok": False, "error": "no order_id"}, 400
         return biofield_invoice.default_publish_invoice(oid)
+
+    @app.route("/author/<test_id>/handoff", methods=["POST"])
+    def author_handoff(test_id):
+        """Hand off to Rae: build a portal-seed from THIS authored chain (correct
+        flat format) and push it to prod as an ai_draft for Rae to publish."""
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+            client = rep.get("client") or {}
+            email = (client.get("email") or "").strip()
+            if not email:
+                return {"ok": False, "error": "Add a client email in the header first."}, 400
+            catalog = invoice_fetch_catalog()
+            content = biofield_handoff.build_portal_seed(
+                cx, test_id, lambda nm: biofield_invoice.resolve_line_slug(nm, catalog),
+                name=client.get("name"))
+        if not content["layers"]:
+            return {"ok": False, "error": "No authored layers to hand off yet."}, 400
+        r = biofield_invoice.default_handoff_push(email, client.get("name") or "", content)
+        if not r.get("ok"):
+            return {"ok": False, "error": r.get("error") or "Handoff failed."}, 502
+        return {"ok": True, "layers": len(content["layers"]),
+                "remedies": len(content["reorder_items"]), "email": email}
 
     @app.route("/author/<test_id>/e4l")
     def author_e4l(test_id):

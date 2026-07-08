@@ -172,3 +172,24 @@ def default_publish_invoice(order_id):
         return resp if isinstance(resp, dict) else {"ok": False, "error": "bad response"}
     except Exception:
         return {"ok": False, "error": "publish failed"}
+
+
+def default_handoff_push(email, name, content, scan_date=""):
+    """Hand off to Rae: push a portal-seed `content` (built from the authored chain)
+    to prod as a portal ai_draft (staged for Rae to review + publish from the console).
+    Reuses /admin/portal/upsert. Returns {ok, ...} or {ok:False, error}."""
+    base, key = _console()
+    if not base or not (email or "").strip():
+        return {"ok": False, "error": "handoff unavailable (no console config / email)"}
+    payload = dict(content or {})
+    payload["biofield_status"] = "ai_draft"
+    body = _json.dumps({"email": email, "name": name or "", "content": payload,
+                        "scan_date": scan_date or "", "scan_id": ""}).encode("utf-8")
+    try:
+        req = urllib.request.Request(f"{base}/admin/portal/upsert", data=body, method="POST",
+                                     headers={"Content-Type": "application/json", "X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        return resp if isinstance(resp, dict) else {"ok": True}
+    except Exception:
+        return {"ok": False, "error": "handoff push failed"}
