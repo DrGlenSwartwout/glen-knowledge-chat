@@ -778,6 +778,28 @@ function render(d, v){
       </div>`;
   }
 
+  // History & receipts: earlier analyses (other scan dates) + paid/completed invoices,
+  // filed here for reference so the current analysis and invoice stay uncluttered above.
+  const histDates = Array.isArray(d.scan_dates) ? d.scan_dates : [];
+  const histCur = d.scan_date || (histDates.length ? histDates[0] : null);
+  const pastDates = histDates.filter(dt => dt !== histCur);
+  const pastInv = Array.isArray(d.past_invoices) ? d.past_invoices : [];
+  if(pastDates.length || pastInv.length){
+    let hist = `<div class="card history-card"><h2>History &amp; receipts</h2>
+      <p class="muted" style="margin:0 0 .6rem">Your earlier analyses and invoices, for reference.</p>`;
+    if(pastDates.length){
+      hist += `<p class="muted" style="margin:.2rem 0 .3rem">Past analyses</p><div class="scantabs">`
+        + pastDates.map(dt => `<button type="button" class="scantab" data-scan="${esc(dt)}">${esc(fmtDate(dt))}</button>`).join("")
+        + `</div>`;
+    }
+    if(pastInv.length){
+      hist += `<p class="muted" style="margin:.7rem 0 .3rem">Past invoices</p>`
+        + pastInv.map(inv => `<p style="margin:.25rem 0"><a href="${esc(inv.link)}" target="_blank" rel="noopener">$${esc(inv.amount_dollars)}${inv.paid?" — paid":" — completed"}${inv.when?" · "+esc(inv.when):""} ↗</a></p>`).join("");
+    }
+    hist += `</div>`;
+    html += hist;
+  }
+
   // Cold portal: a freshly-created link arrives with biofield_status === "pending"
   // and no analysis. Show a "Preparing your analysis…" card, post ONE
   // process-request (a local watcher synthesizes + publishes the ai_draft), and

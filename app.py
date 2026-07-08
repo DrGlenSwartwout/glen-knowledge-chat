@@ -15405,8 +15405,11 @@ def api_client_portal(token):
     try:
         with sqlite3.connect(LOG_DB) as _cxi:
             _invs = _published_invoices_for(_cxi, email_for_reports)
+            _past = _past_invoices_for(_cxi, email_for_reports)
         if _invs:
             payload["invoices"] = _invs
+        if _past:
+            payload["past_invoices"] = _past          # History tab: paid/done receipts
     except Exception as _e:
         print(f"[portal-invoices] {_e!r}", flush=True)
     # Options & Pricing card (flag-gated, best-effort): the client-facing trio with
@@ -32094,6 +32097,28 @@ def _published_invoices_for(cx, email):
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(total_cents or 0) / 100:.2f}",
              "link": f"{base}/invoice/{tok}"} for total_cents, tok in rows]
+
+
+def _past_invoices_for(cx, email):
+    """Portal-published invoices for an email that are DONE — paid or delivered/done —
+    for the portal's History tab (receipts). Read-only, best-effort."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    try:
+        rows = cx.execute(
+            "SELECT total_cents, invoice_token, COALESCE(pay_status,''), COALESCE(status,''), "
+            "COALESCE(paid_at, updated_at, created_at, '') FROM orders "
+            "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
+            "AND coalesce(invoice_token,'')<>'' "
+            "AND (coalesce(pay_status,'')='paid' OR coalesce(status,'') IN ('delivered','done')) "
+            "ORDER BY id DESC", (email,)).fetchall()
+    except Exception:
+        return []
+    base = PUBLIC_BASE_URL.rstrip("/")
+    return [{"token": tok, "amount_dollars": f"{(tc or 0) / 100:.2f}",
+             "paid": pay == "paid", "when": (when or "")[:10],
+             "link": f"{base}/invoice/{tok}"} for tc, tok, pay, status, when in rows]
 
 
 @app.route("/api/console/order/<int:oid>/publish-to-portal", methods=["POST"])
