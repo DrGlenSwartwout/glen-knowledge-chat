@@ -153,6 +153,36 @@ def test_portal_current_scan_date_wins_over_later(client):
     assert "ManualLayer" in [L.get("title") for L in j["layers"]]
 
 
+def test_portal_past_invoices_in_history(client):
+    # History tab: portal-published PAID/done invoices surface under past_invoices;
+    # an unpaid published one stays under the live `invoices` card, not history.
+    c, appmod = client
+    from dashboard import orders as _orders
+    email = "hist@example.com"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    _orders.init_orders_table(cx)
+    for col, ddl in (("portal_published", "INTEGER NOT NULL DEFAULT 0"), ("invoice_token", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+    cx.execute("INSERT INTO orders (source,external_ref,name,email,status,pay_status,total_cents,"
+               "items_json,address_json,created_at,portal_published,invoice_token,paid_at) "
+               "VALUES ('t','PAID','H',?,'done','paid',9900,'[]','{}','2026-07-01',1,'tok-paid','2026-07-02')",
+               (email,))
+    cx.execute("INSERT INTO orders (source,external_ref,name,email,status,pay_status,total_cents,"
+               "items_json,address_json,created_at,portal_published,invoice_token) "
+               "VALUES ('t','OPEN','H',?,'proposed','unpaid',5000,'[]','{}','2026-07-05',1,'tok-open')",
+               (email,))
+    cx.commit(); cx.close()
+    tok = _seed_portal(appmod, email=email, name="H", content={"biofield_status": "confirmed", "layers": []})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    past = {i["token"]: i for i in (j.get("past_invoices") or [])}
+    live = {i["token"] for i in (j.get("invoices") or [])}
+    assert "tok-paid" in past and past["tok-paid"]["paid"] is True and past["tok-paid"]["amount_dollars"] == "99.00"
+    assert "tok-open" in live and "tok-open" not in past       # unpaid stays a live pay card
+
+
 def test_api_portal_bad_token_404(client):
     c, _ = client
     r = c.get("/api/portal/not-a-real-token")
