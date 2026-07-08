@@ -31982,16 +31982,77 @@ def console_order_publish_to_portal(oid):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard.practitioner_portal import create_order_invoice_token
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        row = cx.execute("SELECT invoice_token FROM orders WHERE id=?", (oid,)).fetchone()
+        row = cx.execute("SELECT invoice_token, email, name FROM orders WHERE id=?", (oid,)).fetchone()
         if not row:
             return jsonify({"ok": False, "error": "order not found"}), 404
         tok = (row[0] or "").strip()
+        cli_email = (row[1] or "").strip()
+        cli_name = (row[2] or "").strip()
     if not tok:                                 # mint outside the held connection
         tok = create_order_invoice_token(oid)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.execute("UPDATE orders SET portal_published=1, invoice_token=? WHERE id=?", (tok, oid))
         cx.commit()
-    return jsonify({"ok": True, "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}"})
+    # Optional: notify the client their invoice is ready. Links to their PORTAL (which
+    # shows the analysis + the invoice pay card), matching the analysis email — one
+    # destination. Best-effort: a send failure never fails the publish.
+    body = request.get_json(silent=True) or {}
+    emailed = False
+    if body.get("email") and cli_email:
+        try:
+            from dashboard import client_portal as _cp
+            with _db_lock, sqlite3.connect(LOG_DB) as _tcx:
+                _cp.init_client_portal_table(_tcx)
+                ptok = _cp.ensure_token(_tcx, cli_email, cli_name)
+            purl = portal_link(ptok)
+            _send_full_report_email(
+                cli_email, cli_name, "Your invoice is ready 🌺",
+                f"Aloha {cli_name or ''},\n\nYour invoice is ready. You can view it and "
+                f"pay right on your healing home page:\n\n{purl}\n\nWith aloha,\n"
+                f"Dr. Glen & Rae")
+            emailed = True
+        except Exception as e:
+            print(f"[order-publish] invoice email failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "emailed": emailed,
+                    "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}"})
+
+
+@app.route("/api/console/client-invoice", methods=["GET"])
+def console_client_invoice():
+    """The composer's Invoice panel: the latest non-cancelled order for a client email,
+    so Rae can review / edit / publish it beside the analysis. Read-only."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": True, "order": None})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        r = cx.execute(
+            "SELECT id, COALESCE(status,'') status, COALESCE(portal_published,0) pub, "
+            "COALESCE(pay_status,'') pay, COALESCE(total_cents,0) total, "
+            "COALESCE(items_json,'[]') items FROM orders "
+            "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
+            "ORDER BY id DESC LIMIT 1", (email,)).fetchone()
+    if not r:
+        return jsonify({"ok": True, "order": None})
+    lines = []
+    try:
+        for it in (json.loads(r["items"]) or []):
+            cents = it.get("line_cents")
+            lines.append({"name": it.get("name") or it.get("slug") or "",
+                          "qty": it.get("qty") or 1,
+                          "amount_dollars": f"{(cents or 0) / 100:.2f}" if cents is not None else ""})
+    except Exception:
+        lines = []
+    import urllib.parse as _up
+    key = request.args.get("key") or ""
+    edit_url = f"/orders/new?edit_order={r['id']}" + (f"&key={_up.quote(key)}" if key else "")
+    return jsonify({"ok": True, "order": {
+        "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
+        "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
+        "edit_url": edit_url, "lines": lines}})
 
 
 @app.route("/api/console/shipments/suggestions", methods=["GET"])

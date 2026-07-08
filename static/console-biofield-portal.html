@@ -32,6 +32,7 @@
   .btn.notify{background:#ffd21e;color:#1a1a1a}
   .btn.notify:hover{background:#ffdd47}
   .btn.sm{padding:5px 10px;font-size:.82rem}
+  .line-sm{font-size:13px;padding:2px 0;color:var(--cream)}
   .btn:disabled{opacity:.5;cursor:default}
   .layer,.reitem{border:1px solid var(--border);border-radius:10px;padding:10px;margin:8px 0;background:var(--surface2)}
   .layer .top,.reitem .top{display:flex;gap:10px;align-items:center;margin-bottom:6px}
@@ -147,6 +148,11 @@
       <button class="btn ghost pubaction" onclick="publish(false)">Publish to portal (no email)</button>
       <a id="previewLink" class="preview" target="_blank" rel="noopener" style="display:none">Preview portal ↗</a>
     </p>
+
+    <div id="invoicePanel" class="card" style="display:none">
+      <h2>Invoice</h2>
+      <div id="invoiceBody" class="small muted"></div>
+    </div>
 
     <div style="margin-top:10px">
       <button class="btn ghost sm" onclick="markConsultReady(true)">Mark consult ready</button>
@@ -578,6 +584,7 @@ async function loadExisting(scanDate){
   setStatus(curScanDate
     ? `Loaded scan ${curScanDate}${stat} — edit and Publish to confirm this report.`
     : 'Loaded existing portal — edit and republish (the link stays the same).', true);
+  loadInvoicePanel(email);
 }
 
 async function importFmp(){
@@ -639,6 +646,7 @@ async function publish(send){
   }
   if(r.json.url) msg += '  ' + r.json.url;
   setStatus(msg, ok);
+  loadInvoicePanel(email);   // surface the raised invoice once the analysis is out
   // Scroll the outcome into view so the "Email sent" / "Email NOT sent" result is
   // never missed — the buttons sit far below the status line on a long form.
   try { $('status').scrollIntoView({behavior:'smooth', block:'center'}); } catch(e){}
@@ -646,6 +654,50 @@ async function publish(send){
 
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ── Invoice panel: review / edit / publish the client's raised invoice here ──
+async function loadInvoicePanel(email){
+  const panel = $('invoicePanel');
+  email = (email || val('email') || '').trim();
+  if(!email){ panel.style.display='none'; return; }
+  let r;
+  try { r = await api('GET', `/api/console/client-invoice?email=${encodeURIComponent(email)}`); }
+  catch(e){ panel.style.display='none'; return; }
+  const o = r.ok && r.json && r.json.order;
+  if(!o){ panel.style.display='none'; return; }   // no raised invoice -> hide entirely
+  panel.style.display='';
+  const chip = o.pay_status==='paid' ? '<span style="color:var(--green)">paid</span>'
+    : (o.portal_published ? '<span style="color:var(--green)">published</span>'
+       : '<span style="color:#ffd21e">to publish</span>');
+  const lines = (o.lines||[]).map(l=>
+    '<div class="line-sm">'+esc(l.name)+' &times;'+esc(l.qty)
+    +(l.amount_dollars?' <span class="muted">$'+esc(l.amount_dollars)+'</span>':'')+'</div>').join('');
+  const editHref = o.edit_url + (o.edit_url.indexOf('key=')<0 ? (o.edit_url.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(key()) : '');
+  $('invoiceBody').innerHTML =
+    '<p style="margin:0 0 .5rem">Invoice #'+o.id+' &middot; total <b>$'+esc(o.total_dollars)+'</b> &middot; '+chip+'</p>'
+    +'<div style="margin:.3rem 0 .7rem">'+lines+'</div>'
+    +'<a class="btn ghost sm" href="'+editHref+'" target="_blank" rel="noopener">Edit invoice ↗</a> '
+    +'<button class="btn notify sm invpub" onclick="publishInvoice('+o.id+',true)">Publish invoice &amp; email client</button> '
+    +'<button class="btn ghost sm invpub" onclick="publishInvoice('+o.id+',false)">Publish invoice (no email)</button>'
+    +' <span id="invStat" class="muted"></span>';
+}
+
+async function publishInvoice(id, email){
+  const st = $('invStat');
+  document.querySelectorAll('.invpub').forEach(b=>b.disabled=true);
+  if(st){ st.textContent = ' publishing…'; }
+  let r;
+  try { r = await api('POST', `/api/console/order/${id}/publish-to-portal`, {email: !!email}); }
+  catch(e){ document.querySelectorAll('.invpub').forEach(b=>b.disabled=false); if(st) st.textContent=' could not reach the server.'; return; }
+  if(!(r.ok && r.json && r.json.ok)){
+    document.querySelectorAll('.invpub').forEach(b=>b.disabled=false);
+    if(st) st.textContent = ' ' + ((r.json&&r.json.error)||'publish failed'); return;
+  }
+  let msg = ' Published to portal.';
+  if(email){ msg += r.json.emailed ? ' Email sent to the client.' : ' ⚠ Email not sent — send the link manually.'; }
+  setStatus('Invoice #'+id+':'+msg, !(email && !r.json.emailed));
+  await loadInvoicePanel(val('email'));   // refresh the chip + buttons
+}
 
 // ── Triage: client messages the assistant flagged for Dr. Glen ──
 async function loadTriage(){
