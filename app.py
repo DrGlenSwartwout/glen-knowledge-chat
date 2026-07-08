@@ -12510,6 +12510,37 @@ def console_portal_links_page():
     return resp
 
 
+@app.route("/console/handoffs")
+def console_handoffs_page():
+    resp = send_from_directory(STATIC, "console-handoffs.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/handoffs", methods=["GET"])
+def api_console_handoffs():
+    """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
+    review + publish. Console-secret gated. Newest handoff first."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_portal as _cp
+    out = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        cx.row_factory = sqlite3.Row
+        for r in cx.execute("SELECT email, name, updated_at, content_json FROM client_portals "
+                            "WHERE TRIM(COALESCE(email,''))<>'' ORDER BY updated_at DESC").fetchall():
+            try:
+                st = (json.loads(r["content_json"] or "{}") or {}).get("biofield_status")
+            except Exception:
+                st = None
+            if st == "ai_draft":
+                out.append({"email": r["email"], "name": r["name"] or "",
+                            "handed_off_at": r["updated_at"] or ""})
+    return jsonify({"ok": True, "handoffs": out})
+
+
 @app.route("/console/household")
 def console_household_page():
     resp = send_from_directory(STATIC, "console-household.html")
