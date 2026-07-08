@@ -313,3 +313,31 @@ def test_default_orders_link():
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+
+def test_per_client_tabs_and_invoice_view_page(tmp_path):
+    # The per-client tab strip (Edit / Report / Invoice / Portal) appears on the
+    # editor and report pages, and the Invoice tab has its own page hosting the
+    # fee/invoice panel.
+    from dashboard.biofield_authoring import init_auth_tables, create_test
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Bob", "bob@x.com", "2026-07-08")
+    cx.commit()
+    client = create_app(db).test_client()
+
+    ed = client.get("/author/" + tid).data.decode()
+    assert ("/author/" + tid + "/invoice-view") in ed       # Invoice tab target
+    for lbl in (">Edit<", ">Report<", ">Invoice<", ">Portal<"):
+        assert lbl in ed
+
+    rep = client.get("/test/" + tid).data.decode()
+    assert ("/author/" + tid + "/invoice-view") in rep      # tabs on the report page too
+
+    inv = client.get("/author/" + tid + "/invoice-view")
+    assert inv.status_code == 200
+    body = inv.data.decode()
+    assert "wfnav" in body                                   # per-client tab strip present
+    assert ("Invoice &mdash; Bob" in body or "Invoice — Bob" in body)  # invoice page heading
+    assert "feepanel" in body                                # hosts the fee/invoice panel
