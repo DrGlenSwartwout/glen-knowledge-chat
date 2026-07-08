@@ -142,6 +142,9 @@
     font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
   .layer h3{margin:0 0 .15rem;font-size:1rem}
   .layer .mean{color:var(--muted);margin:.1rem 0 .4rem}
+  .lstress{margin:.15rem 0 .4rem}
+  .lstress-chip{display:inline-block;margin:2px 5px 2px 0;padding:2px 9px;border-radius:12px;
+    background:var(--brand-soft);color:var(--ink);font-size:.78rem;line-height:1.5}
   .rx{font-size:.92rem;background:var(--brand-soft);border-radius:8px;padding:8px 10px}
   .rx b{color:var(--brand)}
   .dose{display:block;color:var(--muted);font-size:.86rem;margin-top:2px}
@@ -881,6 +884,7 @@ function render(d, v){
             <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
             <h3>${esc(L.title||"")}</h3>
             ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
+            ${(L.stresses&&L.stresses.length)?`<div class="lstress">${L.stresses.map(s=>`<span class="lstress-chip">${esc(s.label||s.code||"")}</span>`).join("")}</div>`:""}
             ${L.remedy?`<div class="rx"><b>${esc(L.remedy)}</b>${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
           </div>`;
       });
