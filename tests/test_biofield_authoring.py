@@ -5,7 +5,7 @@ from dashboard.biofield_authoring import (
     init_auth_tables, create_test, add_chain_row, update_chain_row,
     delete_chain_row, update_header, list_authored, authored_report,
     delete_test, confirm_row, resolve_remedy_name, resolve_stress_name,
-    _title_case_name)
+    remedy_catalog, remedy_dosing, _title_case_name)
 
 
 def _cx(tmp_path):
@@ -129,6 +129,30 @@ def test_resolve_remedy_name_matches_distinctive_token_in_longer_name(tmp_path):
     assert resolve_remedy_name(cx, "Sobopla in Terrain Restore") == full
     # a common token shared by several products is ambiguous -> no token match
     assert resolve_remedy_name(cx, "essence") == "Essence"
+
+
+def test_discontinue_asterisk_stripped_but_still_listed(tmp_path):
+    # A trailing '*' on an FMP product name is Glen's "intending to discontinue"
+    # marker; the product is still active and sellable. The picker must list it
+    # under the CLEAN name (so it matches the sellable catalog + the stress
+    # coverage map, both of which store the clean name) while surfacing the intent
+    # as a flag. Regression: "Vitamin P Polyphenols*" was dropped from invoices and
+    # from the balancing panel because its name never matched "Vitamin P Polyphenols".
+    cx = _cx(tmp_path)
+    cx.executescript(
+        "CREATE TABLE fmp_snap_products(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT);"
+        "CREATE TABLE fmp_snap_products_phases(id_fk_product TEXT,text TEXT);"
+        "CREATE TABLE fmp_snap_products_systems(id_fk_product TEXT,text TEXT);")
+    cx.execute("INSERT INTO fmp_snap_products VALUES('1','Vitamin P Polyphenols*','1 capsule','daily','with food')")
+    cx.commit()
+    picks = remedy_catalog(cx, "Vitamin P")
+    assert [p["name"] for p in picks] == ["Vitamin P Polyphenols"]     # clean name, listed
+    assert picks[0]["discontinue_intent"] is True                      # intent surfaced, not hidden
+    # dosing resolves despite the stored asterisk, keyed on the clean name
+    assert remedy_dosing(cx, "Vitamin P Polyphenols") == {
+        "dosage": "1 capsule", "frequency": "daily", "timing": "with food"}
+    # fuzzy resolve of an ASR-mangled spoken name returns the clean canonical name
+    assert resolve_remedy_name(cx, "vitamin p polyphenals") == "Vitamin P Polyphenols"
 
 
 def test_resolve_remedy_name_title_cases_when_unmatched(tmp_path):
