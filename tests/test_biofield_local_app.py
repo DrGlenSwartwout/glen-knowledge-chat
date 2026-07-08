@@ -385,3 +385,45 @@ def test_invoice_view_shows_client_options_reference(tmp_path):
     assert "Client options &amp; pricing" in body
     assert "$300" in body and "$997" in body          # data-sourced standard + value
     assert "No subscription" in body
+
+
+def test_build_portal_seed_from_authored_flat_format():
+    # Slice 1 (Hand off to Rae): build a portal-seed from the authored chain in the
+    # composer's FLAT format (remedy=name string, title=head) — the automation of the
+    # by-hand seed-build, so no nested-remedy "[object Object]" and no stale content.
+    import sqlite3
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    from dashboard import biofield_handoff
+    cx = sqlite3.connect(":memory:")
+    init_auth_tables(cx)
+    tid = create_test(cx, "Bob Ross", "bob@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Liver Meridian", "Liver", "Liver Support", "1 capsule", "daily", "with food")
+    add_chain_row(cx, tid, 2, "Mercury", "Brain", "Glutathione Syntropy", "1 capsule", "", "")
+    cx.commit()
+    slugs = {"Liver Support": "liver-support", "Glutathione Syntropy": "glutathione-syntropy"}
+    content = biofield_handoff.build_portal_seed(cx, tid, lambda nm: slugs.get(nm), name="Bob Ross")
+    assert content["greeting"].startswith("Aloha Bob")
+    L = content["layers"]
+    assert [x["remedy"] for x in L] == ["Liver Support", "Glutathione Syntropy"]
+    assert L[0]["title"] == "Liver Meridian" and isinstance(L[0]["remedy"], str)   # flat, not object
+    assert L[0]["dosing"] == "1 capsule daily with food"
+    assert content["reorder_items"] == [
+        {"slug": "liver-support", "name": "Liver Support"},
+        {"slug": "glutathione-syntropy", "name": "Glutathione Syntropy"}]
+
+
+def test_handoff_route_graceful(tmp_path):
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Pt", "pt@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support", "1 cap", "daily", "")
+    cx.commit()
+    client = create_app(db, invoice_fetch_catalog=lambda: [{"name": "Liver Support", "slug": "liver-support"}]).test_client()
+    j = client.post("/author/%s/handoff" % tid, json={}).get_json()
+    assert j["ok"] is False        # no CONSOLE_SECRET in test -> push reports failure, no crash
+    # a test with no authored layers -> 400 before any push
+    tid2 = create_test(cx, "Empty", "empty@x.com", "2026-07-08"); cx.commit()
+    r2 = client.post("/author/%s/handoff" % tid2, json={})
+    assert r2.status_code == 400
