@@ -31879,6 +31879,7 @@ def _published_invoices_for(cx, email):
             "SELECT total_cents, invoice_token FROM orders "
             "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
             "AND coalesce(pay_status,'')<>'paid' AND coalesce(invoice_token,'')<>'' "
+            "AND coalesce(status,'') NOT IN ('cancelled','delivered','done') "
             "ORDER BY id DESC", (email,)).fetchall()
     except Exception:
         return []
