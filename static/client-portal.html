@@ -411,6 +411,9 @@ function scheduleHtml(sched){
 // escape first, then **bold** -> <strong>, blank lines -> separate <p>, and
 // single newlines -> <br>. Empty input yields "" so callers' default-string
 // fallback still applies. Returns <p>...</p> blocks, so wrap in a <div>, not a <p>.
+// Drop a leading "Aloha <name>," salutation — the hero header already greets by name,
+// so the greeting body below it shouldn't repeat it. Empty result -> caller's default.
+const stripSalutation = (s)=>String(s==null?"":s).replace(/^\s*aloha\b[^,.\n]*[,.]?\s*/i,"");
 const escGreeting = (s)=>{
   let e = esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
   // Linkify bare http(s) URLs (scheme required, so plain "foo.com" is left alone);
@@ -628,7 +631,7 @@ function render(d, v){
   let html = `
     <div class="hero">
       <div class="hello">Aloha ${esc(first)}</div>
-      <div class="sub">${escGreeting(d.greeting || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</div>
+      <div class="sub">${escGreeting(stripSalutation(d.greeting) || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</div>
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
