@@ -158,6 +158,9 @@
     // reprint. Appended last so it survives the grouped-shipment acts rebuild
     // above and reads as the trailing action on the card.
     if (o.status!=='cancelled') acts += (acts ? ' ' : '') + printInvBtn(o.id);
+    // Paid receipt on the portal (auto for new payments; a manual publish for older ones).
+    var rcpt = portalReceiptBtn(o);
+    if (rcpt) acts += (acts ? ' ' : '') + rcpt;
     var bo = Number(o.backorder_units||0);
     // Backorder only applies once an order is paid + in fulfillment (new/packed/
     // shipped) — never on an unpaid proposed/confirmed invoice (all-unfulfilled).
@@ -243,6 +246,20 @@
   function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }
   function payBtn(id){ return '<button onclick="recordPay('+Number(id)+')">Record payment</button>'; }
   function printInvBtn(id){ return '<button onclick="printInvoice('+Number(id)+')">Print invoice</button>'; }
+  // A paid order becomes a clickable receipt in the client's portal History
+  // automatically on payment; this shows that state (and a manual publish for older
+  // paid orders that predate the auto-publish).
+  function portalReceiptBtn(o){
+    if (o.pay_status !== 'paid') return '';
+    if (o.portal_published) return '<span class="meta">✓ On portal</span>';
+    return '<button onclick="publishPortal('+Number(o.id)+')" title="Show this paid receipt on the client\'s portal">Publish to portal</button>';
+  }
+  async function publishPortal(id){
+    var r = await fetch('/api/console/order/'+Number(id)+'/publish-to-portal', {method:'POST', headers:hdr(), body:'{}'});
+    var res = await r.json().catch(function(){ return {}; });
+    if (!(res && res.ok)) alert((res && res.error) || 'Could not publish to portal.');
+    load();
+  }
   function editBtn(id){ return '<button onclick="editInvoice('+Number(id)+')">Edit</button>'; }
   // Open the data-entry form in edit mode (prefilled with this order's lines/prices).
   function editInvoice(id){ location.href = '/orders/new?edit_order='+Number(id)+'&key='+encodeURIComponent(key()); }
@@ -465,10 +482,16 @@
   // turns green and reads "Invoice Sent M/D/YY", and re-clicking re-sends.
   function invSentStr(iso){ try { return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); } catch(e){ return ''; } }
   function sendInvBtn(o){
+    var t = 'title="Emails the pay link and shows the invoice on the client\'s portal"';
     if (o.invoice_sent_at){
-      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" title="Emails the pay link and shows the invoice on the client\'s portal">Sent &amp; Published '+esc(invSentStr(o.invoice_sent_at))+' (re-send)</button>';
+      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" '+t+'>Invoice Sent &amp; Published '+esc(invSentStr(o.invoice_sent_at))+' (re-send)</button>';
     }
-    return '<button onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" title="Emails the pay link and shows the invoice on the client\'s portal">Send &amp; Publish Invoice</button>';
+    // Already on the portal (e.g. published from the composer) but no Orders-side send
+    // yet — reflect that; the button still emails the pay link.
+    if (o.portal_published){
+      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" '+t+'>On portal &middot; Send invoice</button>';
+    }
+    return '<button onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" '+t+'>Send &amp; Publish Invoice</button>';
   }
   async function act(id, key, params){
     params = params || {}; params.order_id = id;

@@ -156,6 +156,27 @@ def test_send_invoice_unpaid_cart_sends_pay_link(monkeypatch):
     assert res["message"].startswith("Invoice ")
 
 
+def test_paid_order_auto_publishes_portal_receipt():
+    # A paid order auto-gets a token + portal_published so it's a clickable receipt
+    # in the client's portal History — via BOTH paid-setters, no operator click.
+    O, cx = _orders_db()
+    for col, ddl in (("portal_published", "INTEGER NOT NULL DEFAULT 0"), ("invoice_token", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+    a = O.upsert_order(cx, source="in-house", external_ref="AUTO-1",
+                       status="proposed", total_cents=5000, email="a@b.com")
+    O.set_order_payment(cx, a, method="Zelle", amount_cents=5000)
+    ra = cx.execute("SELECT portal_published, invoice_token FROM orders WHERE id=?", (a,)).fetchone()
+    assert ra[0] == 1 and ra[1]
+    b = O.upsert_order(cx, source="in-house", external_ref="AUTO-2",
+                       status="done", total_cents=100, email="a@b.com")
+    O.mark_order_paid_keep_status(cx, b, method="card", amount_cents=100)
+    rb = cx.execute("SELECT portal_published, invoice_token FROM orders WHERE id=?", (b,)).fetchone()
+    assert rb[0] == 1 and rb[1]
+
+
 def test_send_invoice_also_publishes_to_portal(monkeypatch):
     # Send & Publish: send_invoice now also surfaces the invoice on the client's portal.
     O, cx = _orders_db()

@@ -522,6 +522,24 @@ action(key="orders.cancel", module="orders", title="Cancel order",
        permission=(OWNER, OPS, VA))(_status_action("cancelled", "cancelled"))
 
 
+def _ensure_portal_receipt(cx, order_id):
+    """Best-effort: give a paid order a stable invoice_token + portal_published so it
+    shows as a CLICKABLE receipt in the client's portal History automatically (no
+    operator click). Never raises — a receipt hiccup must never affect a payment."""
+    try:
+        row = cx.execute("SELECT COALESCE(invoice_token,'') FROM orders WHERE id=?",
+                         (order_id,)).fetchone()
+        tok = (row[0] if row else "") or ""
+        if not tok:
+            from dashboard.practitioner_portal import create_order_invoice_token
+            tok = create_order_invoice_token(order_id)
+        cx.execute("UPDATE orders SET portal_published=1, invoice_token=? WHERE id=?",
+                   (tok, order_id))
+        cx.commit()
+    except Exception:
+        pass
+
+
 def set_order_payment(cx, order_id, *, method, amount_cents):
     """Record payment on an order: mark paid + capture method/amount/time, and
     drop it into the fulfillment board as 'new'. No money is moved (Phase 1)."""
@@ -530,6 +548,8 @@ def set_order_payment(cx, order_id, *, method, amount_cents):
         "paid_cents=?, paid_at=?, updated_at=? WHERE id=?",
         (str(method or ""), int(amount_cents or 0), _now(), _now(), order_id))
     cx.commit()
+    if cur.rowcount:
+        _ensure_portal_receipt(cx, order_id)
     return cur.rowcount > 0
 
 
@@ -543,6 +563,8 @@ def mark_order_paid_keep_status(cx, order_id, *, method, amount_cents):
         "paid_at=COALESCE(paid_at,?), updated_at=? WHERE id=?",
         (str(method or ""), int(amount_cents or 0), _now(), _now(), order_id))
     cx.commit()
+    if cur.rowcount:
+        _ensure_portal_receipt(cx, order_id)
     return cur.rowcount > 0
 
 
