@@ -884,8 +884,29 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         r = biofield_invoice.default_handoff_push(email, client.get("name") or "", content)
         if not r.get("ok"):
             return {"ok": False, "error": r.get("error") or "Handoff failed."}, 502
+        # Also RAISE the invoice (proposed order from the authored remedies + fee) so
+        # Rae reviews + publishes both. Best-effort: a failed invoice never fails the
+        # handoff (the analysis is already pushed). Rae still publishes the portal.
+        invoice = {"ok": False}
+        try:
+            remedies = biofield_handoff.report_remedies_for_invoice(
+                db_path, rep, biofield_invoice.bottles_needed)
+            if remedies:
+                built = biofield_invoice.build_invoice_lines(client, remedies, catalog)
+                created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
+                if created.get("ok"):
+                    total = created.get("total_cents")
+                    invoice = {"ok": True, "order_id": created.get("order_id"),
+                               "external_ref": created.get("external_ref"),
+                               "lines": len(built["lines"]),
+                               "skipped": built.get("skipped") or [],
+                               "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
+                else:
+                    invoice = {"ok": False, "error": created.get("error") or "invoice not created"}
+        except Exception as e:
+            invoice = {"ok": False, "error": "invoice raise failed"}
         return {"ok": True, "layers": len(content["layers"]),
-                "remedies": len(content["reorder_items"]), "email": email}
+                "remedies": len(content["reorder_items"]), "email": email, "invoice": invoice}
 
     @app.route("/author/<test_id>/e4l")
     def author_e4l(test_id):

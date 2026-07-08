@@ -427,3 +427,59 @@ def test_handoff_route_graceful(tmp_path):
     tid2 = create_test(cx, "Empty", "empty@x.com", "2026-07-08"); cx.commit()
     r2 = client.post("/author/%s/handoff" % tid2, json={})
     assert r2.status_code == 400
+
+
+def test_report_remedies_for_invoice_qty():
+    # qty = bottles for a 30-day program from the authored frequency + FMP doses/bottle.
+    from dashboard import biofield_handoff, biofield_invoice
+    cx = sqlite3.connect(":memory:")
+    cx.execute("CREATE TABLE fmp_snap_products (product_name TEXT, doses_per_bottle INTEGER)")
+    cx.execute("INSERT INTO fmp_snap_products VALUES ('Liver Support', 30)")  # 2/day*30/30 = 2
+    cx.commit()
+    # sqlite in-memory can't be reopened by path; use a temp file instead
+    import tempfile, os
+    fd, path = tempfile.mkstemp(suffix=".db"); os.close(fd)
+    dcx = sqlite3.connect(path)
+    dcx.execute("CREATE TABLE fmp_snap_products (product_name TEXT, doses_per_bottle INTEGER)")
+    dcx.execute("INSERT INTO fmp_snap_products VALUES ('Liver Support', 30)")
+    dcx.commit(); dcx.close()
+    rep = {"layers": [
+        {"remedy": "Liver Support", "frequency": "twice a day"},   # 2*30/30 = 2 bottles
+        {"remedy": "Infoceutical X", "frequency": "daily"},        # no FMP row -> qty 1
+        {"remedy": "", "frequency": "daily"},                      # skipped (no name)
+    ]}
+    out = biofield_handoff.report_remedies_for_invoice(path, rep, biofield_invoice.bottles_needed)
+    os.unlink(path)
+    assert out == [{"name": "Liver Support", "qty": 2}, {"name": "Infoceutical X", "qty": 1}]
+
+
+def test_handoff_route_raises_invoice(tmp_path, monkeypatch):
+    # With the portal push succeeding, the handoff ALSO raises the invoice (proposed
+    # order) from the authored remedies + the Biofield Analysis fee.
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    from dashboard import biofield_invoice
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    cx.execute("CREATE TABLE fmp_snap_products (product_name TEXT, doses_per_bottle INTEGER)")
+    cx.execute("INSERT INTO fmp_snap_products VALUES ('Liver Support', 30)")
+    tid = create_test(cx, "Pt", "pt@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support", "1 cap", "twice a day", "")
+    cx.commit()
+    # portal push succeeds (bypass prod); capture the order lines the raise sends
+    monkeypatch.setattr(biofield_invoice, "default_handoff_push", lambda *a, **k: {"ok": True})
+    captured = {}
+    def fake_create(cust, lines):
+        captured["lines"] = lines
+        return {"ok": True, "order_id": 77, "total_cents": 130000, "external_ref": "INH-x"}
+    client = create_app(
+        db,
+        invoice_fetch_catalog=lambda: [{"name": "Liver Support", "slug": "liver-support"}],
+        invoice_create=fake_create,
+    ).test_client()
+    j = client.post("/author/%s/handoff" % tid, json={}).get_json()
+    assert j["ok"] is True
+    assert j["invoice"]["ok"] is True and j["invoice"]["order_id"] == 77
+    slugs = [l["slug"] for l in captured["lines"]]
+    assert slugs[0] == "biofield-analysis"           # fee always first
+    assert {"slug": "liver-support", "qty": 2} in captured["lines"]   # 2 bottles for twice-daily

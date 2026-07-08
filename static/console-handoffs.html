@@ -15,6 +15,8 @@
   th{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
   tr:hover td{ background:rgba(255,255,255,.02); }
   .email{ color:#9db4ff; font-size:13px; }
+  .what{ font-size:13px; color:#c8d0e0; }
+  .what .pub{ color:#7fd6a0; } .what .draft{ color:#e0b96b; }
   a.gobtn{ padding:7px 12px; border-radius:8px; border:1px solid var(--gold); background:var(--gold);
            color:#0a150d; font-weight:600; text-decoration:none; white-space:nowrap; }
   a.gobtn:hover{ filter:brightness(1.08); }
@@ -46,11 +48,17 @@
     if(!list.length){ document.getElementById('content').innerHTML='<p class="empty">Nothing waiting — you’re all caught up. 🌺</p>'; return; }
     var rows = list.map(function(h){
       var url = '/console/biofield-portal?email='+encodeURIComponent(h.email)+'&key='+encodeURIComponent(key());
-      return '<tr><td>'+esc(h.name||'(unnamed)')+'</td><td class="email">'+esc(h.email)+'</td><td>'
+      var iv = h.invoice;
+      var waiting;
+      if(iv){ waiting = 'analysis &middot; invoice #'+iv.order_id
+        +(iv.published ? ' <span class="pub">published</span>' : ' <span class="draft">to publish</span>'); }
+      else { waiting = 'analysis <span class="draft">only</span>'; }
+      return '<tr><td>'+esc(h.name||'(unnamed)')+'</td><td class="email">'+esc(h.email)+'</td><td class="what">'
+        +waiting+'</td><td>'
         +esc((h.handed_off_at||'').slice(0,10))+'</td><td><a class="gobtn" href="'+url+'">Review &amp; publish &rarr;</a></td></tr>';
     }).join('');
     document.getElementById('content').innerHTML='<div class="wrap"><table><tr><th>Client</th><th>Email</th>'
-      +'<th>Handed off</th><th></th></tr>'+rows+'</table></div>';
+      +'<th>Waiting</th><th>Handed off</th><th></th></tr>'+rows+'</table></div>';
   }
   boot();
 </script>

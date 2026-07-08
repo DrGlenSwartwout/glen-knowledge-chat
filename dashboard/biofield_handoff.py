@@ -37,3 +37,25 @@ def build_portal_seed(cx, test_id, resolve_slug, name=None):
         "layers": layers,
         "reorder_items": reorder,
     }
+
+
+def report_remedies_for_invoice(db_path, rep, bottles_needed):
+    """[{name, qty}] for each authored remedy for the invoice — qty = bottles for a
+    30-day program (doses/day from the authored frequency, doses_per_bottle from FMP;
+    falls back to 1). `bottles_needed(freq, doses_per_bottle)` is passed in to avoid a
+    circular import on biofield_invoice."""
+    import sqlite3
+    out = []
+    with sqlite3.connect(db_path) as cx:
+        def _dpb(nm):
+            try:
+                r = cx.execute("SELECT doses_per_bottle FROM fmp_snap_products "
+                               "WHERE lower(product_name)=lower(?) LIMIT 1", (nm,)).fetchone()
+                return r[0] if r else None
+            except Exception:
+                return None
+        for L in (rep.get("layers") or []):
+            nm = (L.get("remedy") or "").strip()
+            if nm:
+                out.append({"name": nm, "qty": bottles_needed(L.get("frequency"), _dpb(nm))})
+    return out
