@@ -633,6 +633,14 @@ def _send_invoice_exec(params, ctx):
     base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
     tok = create_order_invoice_token(oid)
     link = f"{base}/invoice/{tok}"
+    # Send & Publish in one action: also surface the invoice as a pay card on the
+    # client's portal (mirrors the composer's Publish-to-portal). Best-effort — a
+    # publish hiccup never blocks the email send below.
+    try:
+        cx.execute("UPDATE orders SET portal_published=1, invoice_token=? WHERE id=?", (tok, oid))
+        cx.commit()
+    except Exception:
+        pass
     name = order.get("name") or "there"
     ref = order.get("external_ref") or f"#{oid}"
     total = f"${(int(order.get('total_cents') or 0))/100:,.2f}"
@@ -751,7 +759,7 @@ action(key="orders.record_payment", module="orders", title="Record payment",
        description="Record payment on a proposed/confirmed invoice or an unpaid Cart "
                    "order (e.g. in-person check/cash) and move it into fulfillment.",
        risk_tier=LOW_WRITE, permission=(OWNER,))(_record_payment_exec)
-action(key="orders.send_invoice", module="orders", title="Send invoice to customer",
+action(key="orders.send_invoice", module="orders", title="Send & publish invoice",
        description="Email the customer a pay-link for a proposed/confirmed invoice.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS))(_send_invoice_exec)
 

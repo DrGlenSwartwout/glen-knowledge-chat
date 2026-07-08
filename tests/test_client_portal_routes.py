@@ -590,6 +590,42 @@ def test_admin_upsert_with_scan_date_writes_report(client):
     assert rep is not None and rep["status"] == "ai_draft" and rep["scan_id"] == "s9"
 
 
+def test_admin_upsert_never_downgrades_confirmed(client):
+    # A re-hand-off pushes biofield_status='ai_draft'. If the report at this scan_date
+    # is already confirmed (published), it must STAY confirmed — never re-blurred.
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R, client_portal as cp
+    email, sd = "keep@y.com", "2026-07-07"
+    # 1) publish/confirm at this scan_date
+    c.post("/admin/portal/upsert?key=test-secret", json={
+        "email": email, "name": "K", "scan_date": sd,
+        "content": {"biofield_status": "confirmed", "layers": [{"n": 1, "title": "T", "remedy": "R"}]}})
+    # 2) a later re-hand-off with ai_draft must NOT downgrade it
+    c.post("/admin/portal/upsert?key=test-secret", json={
+        "email": email, "name": "K", "scan_date": sd,
+        "content": {"biofield_status": "ai_draft", "layers": [{"n": 1, "title": "T2", "remedy": "R2"}]}})
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx); cp.init_client_portal_table(cx)
+    rep = R.get_report(cx, email, sd)
+    status = cp.get_biofield_status(cx, email)
+    cx.close()
+    assert rep["status"] == "confirmed"          # per-scan report stays published
+    assert status == "confirmed"                 # content_json stays confirmed
+    # and the newer content DID land (re-sync still updates the report body)
+    assert rep["content"]["layers"][0]["title"] == "T2"
+
+
+def test_admin_upsert_new_client_still_ai_draft(client):
+    # The guard must not over-preserve: a brand-new client's first hand-off stays draft.
+    c, appmod = client
+    from dashboard import portal_biofield_reports as R
+    c.post("/admin/portal/upsert?key=test-secret", json={
+        "email": "fresh@y.com", "name": "F", "scan_date": "2026-07-07",
+        "content": {"biofield_status": "ai_draft", "layers": [{"n": 1, "title": "T", "remedy": "R"}]}})
+    cx = sqlite3.connect(appmod.LOG_DB); R.init_table(cx)
+    rep = R.get_report(cx, "fresh@y.com", "2026-07-07"); cx.close()
+    assert rep["status"] == "ai_draft"
+
+
 def test_admin_delete_portal_removes_all_traces(client):
     c, appmod = client
     from dashboard import client_portal as cp, portal_biofield_reports as R

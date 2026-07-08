@@ -156,6 +156,23 @@ def test_send_invoice_unpaid_cart_sends_pay_link(monkeypatch):
     assert res["message"].startswith("Invoice ")
 
 
+def test_send_invoice_also_publishes_to_portal(monkeypatch):
+    # Send & Publish: send_invoice now also surfaces the invoice on the client's portal.
+    O, cx = _orders_db()
+    monkeypatch.setenv("INVOICE_PAYLINK_ENABLED", "1")
+    _capture_send_email(monkeypatch)
+    for col, ddl in (("portal_published", "INTEGER NOT NULL DEFAULT 0"), ("invoice_token", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+    oid = O.upsert_order(cx, source="in-house", external_ref="INH-PUB",
+                         status="proposed", total_cents=5000, email="a@b.com")
+    O._send_invoice_exec({"order_id": oid}, {"cx": cx})
+    r = cx.execute("SELECT portal_published, invoice_token FROM orders WHERE id=?", (oid,)).fetchone()
+    assert r[0] == 1 and r[1]                     # published to portal with a pay token
+
+
 # ── HTML email extension ─────────────────────────────────────────────────────
 
 def test_send_email_html_is_multipart_and_plain_still_works(monkeypatch):

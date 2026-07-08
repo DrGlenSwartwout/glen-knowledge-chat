@@ -18605,13 +18605,33 @@ def admin_client_portal_upsert():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
+    scan_date = (body.get("scan_date") or "").strip()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        # Never un-publish: a re-hand-off pushes biofield_status='ai_draft', but if this
+        # client's analysis (or the report at this scan_date) is ALREADY confirmed, keep
+        # it confirmed so a re-sync can't re-blur a published analysis. Only an EXPLICIT
+        # stored 'confirmed' preserves — a brand-new client still starts as ai_draft.
+        if (content.get("biofield_status") or "").strip() == "ai_draft":
+            keep = False
+            try:
+                if scan_date:
+                    rep0 = _pbr.get_report(cx, email, scan_date) or {}
+                    keep = rep0.get("status") == "confirmed"
+                if not keep:
+                    row0 = cx.execute("SELECT content_json FROM client_portals WHERE email=?",
+                                      (email,)).fetchone()
+                    if row0:
+                        keep = (json.loads(row0[0] or "{}") or {}).get("biofield_status") == "confirmed"
+            except Exception:
+                keep = False
+            if keep:
+                content = dict(content)
+                content["biofield_status"] = "confirmed"
         token, pid = _cp.upsert_portal(cx, email, name, content)
-        scan_date = (body.get("scan_date") or "").strip()
         if scan_date:
-            from dashboard import portal_biofield_reports as _pbr
-            _pbr.init_table(cx)
             _pbr.upsert_report(cx, email, scan_date, (body.get("scan_id") or ""),
                                content, content.get("biofield_status") or "ai_draft")
     # Persistent portal: a returning client keeps their existing link (token is None on

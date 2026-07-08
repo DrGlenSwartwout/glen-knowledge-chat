@@ -466,9 +466,9 @@
   function invSentStr(iso){ try { return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); } catch(e){ return ''; } }
   function sendInvBtn(o){
     if (o.invoice_sent_at){
-      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})">Invoice Sent '+esc(invSentStr(o.invoice_sent_at))+' (re-send)</button>';
+      return '<button class="inv-sent" onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" title="Emails the pay link and shows the invoice on the client\'s portal">Sent &amp; Published '+esc(invSentStr(o.invoice_sent_at))+' (re-send)</button>';
     }
-    return '<button onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})">Send invoice</button>';
+    return '<button onclick="act('+Number(o.id)+',\'orders.send_invoice\',{})" title="Emails the pay link and shows the invoice on the client\'s portal">Send &amp; Publish Invoice</button>';
   }
   async function act(id, key, params){
     params = params || {}; params.order_id = id;
