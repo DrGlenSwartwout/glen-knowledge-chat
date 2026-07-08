@@ -12193,10 +12193,11 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "inactive": true
     },
     "clear-lens-eye-drops-aces-cat-eye-drops": {
-      "name": "Clear Lens Eye Drops ACES+CAT Eye Drops",
+      "name": "Clear Lens Eye Drops",
       "price_cents": 6997,
       "pinecone_title": "Clear Lens Eye Drops ACES+CAT Eye Drops",
       "qty_pricing": true,
@@ -12206,7 +12207,7 @@
       "description": "1 drop in each eye 2 times a day or as needed"
     },
     "neuro-eye-drops-aces-gl-lite-eye-drops": {
-      "name": "Neuro Eye Drops ACES+GL Lite Eye Drops",
+      "name": "Neuro Eye Drops",
       "price_cents": 6997,
       "pinecone_title": "Neuro Eye Drops\nACES+GL Lite Eye Drops",
       "qty_pricing": true,
@@ -12247,7 +12248,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "inactive": true
     },
     "moisture-eyes-night-drops": {
       "name": "Moisture Eyes Night Drops",
