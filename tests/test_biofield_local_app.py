@@ -341,3 +341,32 @@ def test_per_client_tabs_and_invoice_view_page(tmp_path):
     assert "wfnav" in body                                   # per-client tab strip present
     assert ("Invoice &mdash; Bob" in body or "Invoice — Bob" in body)  # invoice page heading
     assert "feepanel" in body                                # hosts the fee/invoice panel
+
+
+def test_invoice_publish_route_requires_order_id(tmp_path):
+    # The local Publish button posts {order_id}; the route validates + delegates to
+    # the prod publish endpoint. Without an order_id it 400s; with no console config
+    # the delegated call reports unavailable (never crashes).
+    from dashboard.biofield_authoring import init_auth_tables, create_test
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Pt", "pt@x.com", "2026-07-08")
+    cx.commit()
+    client = create_app(db).test_client()
+    r = client.post("/author/%s/invoice/publish" % tid, json={})
+    assert r.status_code == 400 and r.get_json()["ok"] is False
+    r2 = client.post("/author/%s/invoice/publish" % tid, json={"order_id": 42})
+    assert r2.get_json()["ok"] is False        # no CONSOLE_SECRET -> unavailable, not a crash
+
+
+def test_default_publish_invoice_unconfigured():
+    import os
+    from dashboard import biofield_invoice as bi
+    old = os.environ.pop("CONSOLE_SECRET", None)
+    try:
+        assert bi.default_publish_invoice(42)["ok"] is False
+        assert bi.default_publish_invoice(None)["ok"] is False
+    finally:
+        if old is not None:
+            os.environ["CONSOLE_SECRET"] = old

@@ -294,6 +294,20 @@ def _migrate_auth_tokens_extra():
 _migrate_auth_tokens_extra()
 
 
+def _migrate_orders_portal_published():
+    """Additive: `portal_published` marks an invoice/order visible on the client's
+    portal (Slice B1 — operator publishes it; the portal renders a pay card)."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        try:
+            cx.execute("ALTER TABLE orders ADD COLUMN portal_published INTEGER NOT NULL DEFAULT 0")
+            cx.commit()
+        except sqlite3.OperationalError:
+            pass  # already exists
+
+
+_migrate_orders_portal_published()
+
+
 def _hash_token(t: str) -> str:
     return hashlib.sha256(t.encode("utf-8")).hexdigest()
 
@@ -15191,6 +15205,15 @@ def api_client_portal(token):
             payload["scan_request_enabled"] = _scan_request_enabled()
         except Exception as _e:
             print(f"[scan-list] {_e!r}", flush=True)
+    # Slice B1: operator-published, still-unpaid invoices show as a pay card on the
+    # portal. Best-effort — never breaks the portal load.
+    try:
+        with sqlite3.connect(LOG_DB) as _cxi:
+            _invs = _published_invoices_for(_cxi, email_for_reports)
+        if _invs:
+            payload["invoices"] = _invs
+    except Exception as _e:
+        print(f"[portal-invoices] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -31842,6 +31865,48 @@ def console_order_invoice_link(oid):
     tok = create_order_invoice_token(oid)
     return jsonify({"ok": True,
                     "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}?print=1"})
+
+
+def _published_invoices_for(cx, email):
+    """Portal-published, still-unpaid invoices for an email -> [{token, amount_dollars,
+    link}]. Read-only: the publish endpoint already stored the invoice_token on the
+    order. Best-effort (returns [] on any error, e.g. a pre-migration DB)."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    try:
+        rows = cx.execute(
+            "SELECT total_cents, invoice_token FROM orders "
+            "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
+            "AND coalesce(pay_status,'')<>'paid' AND coalesce(invoice_token,'')<>'' "
+            "ORDER BY id DESC", (email,)).fetchall()
+    except Exception:
+        return []
+    base = PUBLIC_BASE_URL.rstrip("/")
+    return [{"token": tok, "amount_dollars": f"{(total_cents or 0) / 100:.2f}",
+             "link": f"{base}/invoice/{tok}"} for total_cents, tok in rows]
+
+
+@app.route("/api/console/order/<int:oid>/publish-to-portal", methods=["POST"])
+def console_order_publish_to_portal(oid):
+    """Owner: mark an order visible on the client's portal (a pay card) and ensure it
+    carries a stable invoice_token for the /invoice/<token> page. Slice B1 — view+link
+    only; charging stays gated by INVOICE_PAYLINK_ENABLED (B2)."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard.practitioner_portal import create_order_invoice_token
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        row = cx.execute("SELECT invoice_token FROM orders WHERE id=?", (oid,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        tok = (row[0] or "").strip()
+    if not tok:                                 # mint outside the held connection
+        tok = create_order_invoice_token(oid)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.execute("UPDATE orders SET portal_published=1, invoice_token=? WHERE id=?", (tok, oid))
+        cx.commit()
+    return jsonify({"ok": True, "link": f"{PUBLIC_BASE_URL.rstrip('/')}/invoice/{tok}"})
 
 
 @app.route("/api/console/shipments/suggestions", methods=["GET"])

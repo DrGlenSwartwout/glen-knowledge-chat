@@ -858,6 +858,13 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 "warning": warning,
                 "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
 
+    @app.route("/author/<test_id>/invoice/publish", methods=["POST"])
+    def author_invoice_publish(test_id):
+        oid = (request.get_json(silent=True) or {}).get("order_id")
+        if not oid:
+            return {"ok": False, "error": "no order_id"}, 400
+        return biofield_invoice.default_publish_invoice(oid)
+
     @app.route("/author/<test_id>/e4l")
     def author_e4l(test_id):
         with sqlite3.connect(db_path) as cx:
