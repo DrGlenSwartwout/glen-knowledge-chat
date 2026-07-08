@@ -694,13 +694,20 @@ function collectLayers(card){
   return out;
 }
 
-async function saveEdit(card, id){
+// Collect the card's current field values and POST the edit. Returns the api
+// result WITHOUT reloading the list, so callers (Save on its own vs. Approve's
+// save-first) decide what to do next. Shared so Approve can never drop edits.
+async function persistEdit(card, id){
   var greeting = card.querySelector('.greeting-field').value;
   var body = card.querySelector('.body-field').value;
   var layers = collectLayers(card);
+  return api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, layers: layers });
+}
+
+async function saveEdit(card, id){
   var statusEl = card.querySelector('.status');
   statusEl.textContent = 'Saving...';
-  var r = await api('POST', '/api/action/biofield_reveal.edit', { id: id, greeting: greeting, body: body, layers: layers });
+  var r = await persistEdit(card, id);
   if(r.ok && r.json.status === 'done'){
     // Reload so any server-resolved slug + filled-in meaning (from a typed-only
     // remedy name) show up in the editor.
@@ -762,11 +769,20 @@ async function doDelete(card, id, btn){
 }
 
 async function doApprove(card, id, btn){
-  // One click: approve (un-blur the top remedy) AND email the client their reveal
-  // link. Approve is the gate; the send runs only after it succeeds.
+  // One click: SAVE the open edits, then approve (un-blur the top remedy) AND
+  // email the client their reveal link. The approve payload carries no field
+  // data, so without this save-first step any unsaved edits in the card would be
+  // dropped. Save is the gate before approve; approve is the gate before send.
   var statusEl = card.querySelector('.status');
-  statusEl.textContent = 'Approving...';
   btn.disabled = true;
+  statusEl.textContent = 'Saving edits…';
+  var e = await persistEdit(card, id);
+  if(!(e.ok && e.json.status === 'done')){
+    btn.disabled = false;
+    statusEl.textContent = 'Save failed — not approved. Fix your edits and retry.';
+    return;
+  }
+  statusEl.textContent = 'Approving...';
   var r = await api('POST', '/api/action/biofield_reveal.approve', { id: id });
   if(!(r.ok && r.json.status === 'done')){
     btn.disabled = false;
