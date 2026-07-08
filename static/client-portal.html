@@ -754,6 +754,16 @@ function render(d, v){
         <a class="btn" href="${esc(d.report_pdf.url)}" target="_blank" rel="noopener" download>Download your report (PDF)</a>
       </div>`;
   }
+  if(Array.isArray(d.invoices) && d.invoices.length){
+    d.invoices.forEach(function(inv){
+      html += `
+        <div class="card invoice-card">
+          <h2>Your invoice</h2>
+          <p>Amount due: <strong>$${esc(inv.amount_dollars)}</strong></p>
+          <a class="btn" href="${esc(inv.link)}" target="_blank" rel="noopener">View &amp; pay invoice</a>
+        </div>`;
+    });
+  }
 
   // Cold portal: a freshly-created link arrives with biofield_status === "pending"
   // and no analysis. Show a "Preparing your analysis…" card, post ONE

@@ -154,3 +154,21 @@ def default_orders_link(order_id):
     if not base or not order_id:
         return ""
     return f"{base}/console/orders?order={int(order_id)}&key={urllib.parse.quote(key)}"
+
+
+def default_publish_invoice(order_id):
+    """POST the prod publish-to-portal endpoint for an order, so it shows as a pay
+    card on the client's portal. Returns {ok, link} or {ok:False, error}."""
+    base, key = _console()
+    if not base or not order_id:
+        return {"ok": False, "error": "publish unavailable (no console config)"}
+    try:
+        url = (f"{base}/api/console/order/{int(order_id)}/publish-to-portal?key="
+               + urllib.parse.quote(key))
+        req = urllib.request.Request(url, data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json", "X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        return resp if isinstance(resp, dict) else {"ok": False, "error": "bad response"}
+    except Exception:
+        return {"ok": False, "error": "publish failed"}
