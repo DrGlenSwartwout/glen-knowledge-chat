@@ -26,8 +26,8 @@ from flask import Flask, Response, jsonify, redirect, request, send_from_directo
 from dashboard import biofield_fee, biofield_invoice
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
-    render_author_html, render_e4l_panel, render_fee_panel, render_list_html,
-    render_report_html, render_stress_panel, render_suggest_panel)
+    render_author_html, render_e4l_panel, render_fee_panel, render_invoice_page,
+    render_list_html, render_report_html, render_stress_panel, render_suggest_panel)
 from dashboard.biofield_e4l import (
     _db_path as _e4l_db_path, fetch_live as _fetch_live,
     scan_context as _scan_context, search_clients as _search_clients)
@@ -750,6 +750,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         return Response(render_author_html(rep, dv, transcript, covered_by_layer=covered,
                                            narrative=narrative, fee_state=fstate),
                         mimetype="text/html")
+
+    @app.route("/author/<test_id>/invoice-view")
+    def author_invoice_view(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+            c_email = ((rep.get("client") or {}).get("email") or "").strip()
+        fstate = biofield_fee.build_fee_state(c_email, fee_get)
+        return Response(render_invoice_page(rep, fstate), mimetype="text/html")
 
     @app.route("/author/<test_id>/depth", methods=["POST"])
     def author_depth(test_id):

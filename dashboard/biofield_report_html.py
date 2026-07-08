@@ -209,12 +209,50 @@ def _workflow_nav(active, client_email=""):
     return strip + action
 
 
+def _client_tabs(active, tid, email=""):
+    """Per-client sub-nav connecting THIS client's local pages (Edit / Report /
+    Invoice / Portal) so you never dead-end back at the test list. `active` is one
+    of edit|report|invoice|portal. Portal opens the operator biofield-portal view
+    for the client, key-carried like the other local->prod links."""
+    tid_s = _e(str(tid or ""))
+    base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+    secret = os.environ.get("CONSOLE_SECRET", "")
+    email = (email or "").strip()
+    portal = base + "/console/biofield-portal"
+    q = ([("email=" + _q(email))] if email else []) + ([("key=" + _q(secret))] if secret else [])
+    if q:
+        portal += "?" + "&".join(q)
+    items = (("edit", "Edit", "/author/" + tid_s),
+             ("report", "Report", "/test/" + tid_s),
+             ("invoice", "Invoice", "/author/" + tid_s + "/invoice-view"),
+             ("portal", "Portal", portal))
+    tabs = "".join(
+        f"<a class=\"{'active' if k == active else ''}\" href=\"{_e(url)}\">{lbl}</a>"
+        for k, lbl, url in items)
+    return f"<nav class=wfnav>{tabs}</nav>"
+
+
+def render_invoice_page(report, fee_state):
+    """Standalone Invoice page (its own client tab): the fee/invoice panel with
+    create/view/edit/print, under the per-client tab strip."""
+    c = report.get("client") or {}
+    name = _e(c.get("name") or "(unknown)")
+    tid = _e(str(report.get("test_id") or ""))
+    body = (_client_tabs("invoice", report.get("test_id") or "", c.get("email") or "")
+            + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
+            f"<a href='/author/{tid}'>&larr; Edit</a></p>"
+            + f"<h1>Invoice &mdash; {name}</h1>"
+            + render_fee_panel(fee_state))
+    return _page(f"Invoice — {c.get('name') or ''}", body)
+
+
 def render_report_html(report, notes="", narrative="", video_script="", stresses=None):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
     date = _e(report.get("date") or "")
-    head = (f"<p><a href='/'>&larr; All tests</a></p>"
+    head = (_client_tabs("report", report.get("test_id") or "", c.get("email") or "")
+            + f"<p><a href='/'>&larr; All tests</a></p>"
             f"<h1>{name}</h1>"
             f"<p class=sub>{email} &nbsp;&middot;&nbsp; {date} "
             f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
@@ -945,6 +983,7 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (_workflow_nav("intake", c.get("email") or "")
+            + _client_tabs("edit", tid, c.get("email") or "")
             + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
             f"<a href='/test/{tid}'>View report &rarr;</a> &nbsp;&middot;&nbsp; "
             f"<a href='/test/{tid}/report.pdf' target='_blank'>&#128424; Print report (PDF) &rarr;</a>"
