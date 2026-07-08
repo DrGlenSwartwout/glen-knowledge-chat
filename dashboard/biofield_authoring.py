@@ -25,6 +25,19 @@ def _num(tid):
     return int(str(tid).lstrip("a") or 0)
 
 
+def _clean_product_name(name):
+    """FMP product names carry a trailing '*' as Glen's internal 'intending to
+    discontinue' marker — the product is still active and sellable. Drop it so the
+    picker name matches the sellable catalog and the stress-coverage map, which
+    both store the clean name. Mirrors scripts/fmp_catalog_import.clean_name."""
+    return (name or "").strip().rstrip("*").strip()
+
+
+def _is_discontinue_intent(name):
+    """True when a product carries the trailing-'*' discontinue-intent marker."""
+    return (name or "").strip().endswith("*")
+
+
 def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_tests(
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT,
@@ -180,6 +193,7 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
         # whole-string fuzzy first, then a distinctive-token match for long names.
         match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
         if match:
+            match = _clean_product_name(match)   # drop discontinue-intent '*'
             # Don't double the suffix when the matched name already carries it.
             if suffix and match.lower().endswith("in terrain restore"):
                 return match
@@ -261,8 +275,15 @@ def remedy_catalog(cx, q="", limit=20):
         "FROM fmp_snap_products p "
         "WHERE TRIM(COALESCE(p.product_name,''))<>'' AND p.product_name LIKE ? "
         "ORDER BY p.product_name LIMIT ?", (like, limit)).fetchall()
-    return [{k: (r[k] or "") for k in ("name", "dosage", "frequency", "timing", "phase", "system")}
-            for r in rows]
+    out = []
+    for r in rows:
+        d = {k: (r[k] or "") for k in ("name", "dosage", "frequency", "timing", "phase", "system")}
+        # Surface the discontinue-intent marker as a flag, but hand the UI (and,
+        # once picked, the chain + invoice + coverage) the clean name.
+        d["discontinue_intent"] = _is_discontinue_intent(d["name"])
+        d["name"] = _clean_product_name(d["name"])
+        out.append(d)
+    return out
 
 
 def remedy_dosing(cx, name):
@@ -273,8 +294,9 @@ def remedy_dosing(cx, name):
     cx.row_factory = sqlite3.Row
     r = cx.execute(
         "SELECT dosage, dosage_freq AS frequency, dosage_timing AS timing "
-        "FROM fmp_snap_products WHERE LOWER(TRIM(product_name))=LOWER(TRIM(?)) LIMIT 1",
-        (name or "",)).fetchone()
+        "FROM fmp_snap_products "
+        "WHERE LOWER(TRIM(RTRIM(product_name,'* ')))=LOWER(TRIM(?)) LIMIT 1",
+        (_clean_product_name(name),)).fetchone()
     return {k: (r[k] or "") for k in blank} if r else blank
 
 
