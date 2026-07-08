@@ -110,6 +110,19 @@ def test_find_people_matches_name_email_phone():
     assert C.find_people(cx, "") == []
 
 
+def test_find_people_synthesizes_name_from_first_last_when_blank():
+    """A contact with an empty `name` column but populated first/last (common for
+    imported records) still matches a name search — and must come back with a
+    usable `name` so the order-entry picker fills the Name field, not just email."""
+    C, O, cx = _people_db()
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES (?,?,?,?)",
+               ("miriam@x.com", "Miriam Lynn", "Nelson", ""))
+    cx.commit()
+    hit = C.find_people(cx, "miriam")[0]
+    assert hit["email"] == "miriam@x.com"
+    assert hit["name"] == "Miriam Lynn Nelson"
+
+
 def test_upsert_person_address_saves_and_normalizes_street():
     C, O, cx = _people_db()
     pid = C.find_or_create_by_email(cx, email="bob@x.com", name="Bob")

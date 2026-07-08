@@ -59,7 +59,15 @@ def find_people(cx, query, limit=10):
     out = []
     for r in rows:
         d = dict(r)
-        out.append({k: d.get(k, "") for k in PICKER_COLS})
+        rec = {k: d.get(k, "") for k in PICKER_COLS}
+        # A record can match a name search via first_name/last_name while the
+        # `name` column is blank (common for imported contacts). Synthesize an
+        # effective name so the order-entry picker fills the Name field, not just
+        # email. (See test_find_people_synthesizes_name_from_first_last_when_blank.)
+        if not (rec.get("name") or "").strip():
+            rec["name"] = (str(rec.get("first_name") or "") + " "
+                           + str(rec.get("last_name") or "")).strip()
+        out.append(rec)
     return out
 
 
