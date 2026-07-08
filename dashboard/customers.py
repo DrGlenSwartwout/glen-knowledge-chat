@@ -61,12 +61,19 @@ def find_people(cx, query, limit=10):
         d = dict(r)
         rec = {k: d.get(k, "") for k in PICKER_COLS}
         # A record can match a name search via first_name/last_name while the
-        # `name` column is blank (common for imported contacts). Synthesize an
-        # effective name so the order-entry picker fills the Name field, not just
-        # email. (See test_find_people_synthesizes_name_from_first_last_when_blank.)
-        if not (rec.get("name") or "").strip():
-            rec["name"] = (str(rec.get("first_name") or "") + " "
-                           + str(rec.get("last_name") or "")).strip()
+        # `name` column is blank OR holds a placeholder email (imported contacts
+        # sometimes have the email copied into `name`, e.g. Miriam Lynn Nelson =
+        # "heritagecms@aol.com"). In both cases synthesize a real name from
+        # first/last so the order-entry picker fills the Name field with a name,
+        # not the email. Only substitute when we actually have a first/last to use
+        # — never blank out a name we can't replace.
+        # (See test_find_people_synthesizes_name_from_first_last_when_blank
+        #  and test_find_people_replaces_email_in_name_column.)
+        nm = (rec.get("name") or "").strip()
+        first_last = (str(rec.get("first_name") or "") + " "
+                      + str(rec.get("last_name") or "")).strip()
+        if first_last and (not nm or "@" in nm):
+            rec["name"] = first_last
         out.append(rec)
     return out
 

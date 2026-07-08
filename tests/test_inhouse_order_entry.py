@@ -123,6 +123,29 @@ def test_find_people_synthesizes_name_from_first_last_when_blank():
     assert hit["name"] == "Miriam Lynn Nelson"
 
 
+def test_find_people_replaces_email_in_name_column():
+    """Some imported records have the EMAIL copied into the `name` column while
+    first/last hold the real name (repro: Miriam Lynn Nelson = "heritagecms@aol.com").
+    The picker must show the real name, not the email, so an email-shaped name is
+    replaced by first+last."""
+    C, O, cx = _people_db()
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES (?,?,?,?)",
+               ("heritagecms@aol.com", "Miriam Lynn", "Nelson", "heritagecms@aol.com"))
+    cx.commit()
+    hit = C.find_people(cx, "miriam")[0]
+    assert hit["email"] == "heritagecms@aol.com"
+    assert hit["name"] == "Miriam Lynn Nelson"
+
+
+def test_find_people_keeps_real_name_untouched():
+    """A genuine name must never be overwritten by first/last."""
+    C, O, cx = _people_db()
+    cx.execute("INSERT INTO people (email, first_name, last_name, name) VALUES (?,?,?,?)",
+               ("jo@x.com", "Josephine", "Public", "Jo Public"))
+    cx.commit()
+    assert C.find_people(cx, "jo@x")[0]["name"] == "Jo Public"
+
+
 def test_upsert_person_address_saves_and_normalizes_street():
     C, O, cx = _people_db()
     pid = C.find_or_create_by_email(cx, email="bob@x.com", name="Bob")
