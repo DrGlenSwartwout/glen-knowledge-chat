@@ -12536,8 +12536,22 @@ def api_console_handoffs():
             except Exception:
                 st = None
             if st == "ai_draft":
+                # Does this client already have a raised invoice (order)? The handoff
+                # raises one; surface it so Rae reviews + publishes both.
+                inv = None
+                try:
+                    o = cx.execute(
+                        "SELECT id, COALESCE(pay_status,'') pay, COALESCE(portal_published,0) pub "
+                        "FROM orders WHERE lower(COALESCE(email,''))=lower(?) "
+                        "AND COALESCE(status,'')<>'cancelled' ORDER BY id DESC LIMIT 1",
+                        (r["email"],)).fetchone()
+                    if o:
+                        inv = {"order_id": o["id"], "pay_status": o["pay"],
+                               "published": bool(o["pub"])}
+                except Exception:
+                    inv = None
                 out.append({"email": r["email"], "name": r["name"] or "",
-                            "handed_off_at": r["updated_at"] or ""})
+                            "handed_off_at": r["updated_at"] or "", "invoice": inv})
     return jsonify({"ok": True, "handoffs": out})
 
 
