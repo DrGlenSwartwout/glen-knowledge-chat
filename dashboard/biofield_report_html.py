@@ -588,8 +588,8 @@ async function recStart(){
   function(m){if(!mime&&window.MediaRecorder&&MediaRecorder.isTypeSupported(m))mime=m});
  if(!mime){rstat('No supported audio recording format in this browser. Use Chrome.');return}
  rstat('Mic OK ('+mime+'). Connecting to Deepgram...');
- try{_dg=new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true'+
-  '&punctuate=true&interim_results=true',['token',t.key])}
+ try{_dg=new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&smart_format=true'+
+  '&punctuate=true&interim_results=true'+(t.keyterms||''),['token',t.key])}
  catch(e){rstat('WebSocket create failed: '+e);return}
  _dg.onopen=function(){
   try{_mr=new MediaRecorder(stream,{mimeType:mime})}catch(e){rstat('Recorder error: '+e);return}
