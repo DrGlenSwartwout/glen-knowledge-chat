@@ -12555,6 +12555,94 @@ def api_console_handoffs():
     return jsonify({"ok": True, "handoffs": out})
 
 
+# ── Biofield pipeline: the sequential per-client checklist (request → paid → intake
+# → analysis → invoice → fulfilled) that Glen and Rae both track from one page. ──
+_PIPELINE_STEP_KEYS = ("paid", "handed_off", "analysis_published",
+                       "invoice_published", "invoice_paid", "fulfilled")
+
+
+def _biofield_pipeline_for(cx, email, name):
+    """Compute one client's pipeline status from prod data (client_portals + orders).
+    Prod can't see the local intake authoring, so 'handed_off' (the portal draft) is
+    the first intake-side signal."""
+    el = (email or "").strip().lower()
+    prow = cx.execute("SELECT content_json, name, updated_at FROM client_portals "
+                      "WHERE lower(email)=? ORDER BY updated_at DESC LIMIT 1", (el,)).fetchone()
+    st, updated = None, ""
+    if prow:
+        try:
+            st = (json.loads(prow[0] or "{}") or {}).get("biofield_status")
+        except Exception:
+            st = None
+        name = name or (prow[1] or "")
+        updated = prow[2] or ""
+    handed_off = prow is not None
+    analysis_published = handed_off and ((st or "confirmed") == "confirmed")
+    awaiting_publish = handed_off and st == "ai_draft"
+    paid = _biofield_paid_order(cx, el)
+    o = cx.execute(
+        "SELECT id, COALESCE(status,''), COALESCE(pay_status,''), COALESCE(portal_published,0), "
+        "COALESCE(total_cents,0) FROM orders WHERE lower(COALESCE(email,''))=? "
+        "AND COALESCE(status,'')<>'cancelled' ORDER BY id DESC LIMIT 1", (el,)).fetchone()
+    inv_id = o[0] if o else None
+    inv_paid = bool(o and o[2] == "paid")
+    fulfilled = bool(o and o[1] in ("shipped", "delivered", "done", "fulfilled"))
+    steps = {
+        "paid": {"done": paid is not None, "order_id": (paid or {}).get("order_id")},
+        "handed_off": {"done": handed_off, "awaiting_publish": awaiting_publish},
+        "analysis_published": {"done": bool(analysis_published)},
+        "invoice_published": {"done": bool(o and o[3]), "order_id": inv_id,
+                              "total_dollars": f"{(o[4] or 0) / 100:.2f}" if o else ""},
+        "invoice_paid": {"done": inv_paid},
+        "fulfilled": {"done": fulfilled},
+    }
+    done_count = sum(1 for k in _PIPELINE_STEP_KEYS if steps[k]["done"])
+    # "Complete" ignores invoice_published (a pre-paid, analysis-only client never
+    # publishes a remedy invoice): analysis out + paid + fulfilled = done.
+    complete = (steps["analysis_published"]["done"] and steps["invoice_paid"]["done"]
+                and steps["fulfilled"]["done"])
+    return {"email": email, "name": name or "", "updated_at": updated,
+            "steps": steps, "done_count": done_count, "complete": complete}
+
+
+def _biofield_pipeline_clients(cx, include_complete=False):
+    """Every client in the Biofield pipeline: anyone with a biofield portal OR a
+    non-cancelled biofield-analysis order. Complete ones are hidden unless asked."""
+    cand = {}
+    for r in cx.execute("SELECT email, name FROM client_portals "
+                        "WHERE content_json LIKE '%biofield_status%' "
+                        "AND TRIM(COALESCE(email,''))<>''"):
+        cand.setdefault(r[0].lower(), r[1] or "")
+    for r in cx.execute("SELECT email, name FROM orders "
+                        "WHERE COALESCE(items_json,'') LIKE '%biofield-analysis%' "
+                        "AND COALESCE(status,'')<>'cancelled' AND TRIM(COALESCE(email,''))<>''"):
+        e = r[0].lower()
+        if not cand.get(e):
+            cand[e] = r[1] or ""
+    out = []
+    for email, name in cand.items():
+        p = _biofield_pipeline_for(cx, email, name)
+        if p["complete"] and not include_complete:
+            continue
+        out.append(p)
+    out.sort(key=lambda x: x["updated_at"] or "", reverse=True)
+    return out
+
+
+@app.route("/api/console/biofield-pipeline", methods=["GET"])
+def api_console_biofield_pipeline():
+    """The per-client Biofield pipeline checklist. Console-gated. `?all=1` includes
+    completed clients too."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    include = (request.args.get("all") or "").strip().lower() in ("1", "true", "yes")
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        clients = _biofield_pipeline_clients(cx, include_complete=include)
+    return jsonify({"ok": True, "clients": clients})
+
+
 @app.route("/console/household")
 def console_household_page():
     resp = send_from_directory(STATIC, "console-household.html")
