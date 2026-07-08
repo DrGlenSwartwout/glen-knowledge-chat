@@ -81,7 +81,10 @@ def upsert(cx, email, scan_date, interpretation, remedies, source, layers=None):
         "VALUES (?,?,?,?,?,?,?)",
         (email, scan_date, json.dumps(interpretation or {}), json.dumps(remedies or []), lj, now, now))
     cx.commit()
-    return cur.lastrowid, True
+    new_id = cur.lastrowid
+    # A free member who spent >= $100 since their last reveal earns this one fully un-blurred.
+    maybe_unlock_for_spend(cx, email, new_id)
+    return new_id, True
 
 
 def set_token(cx, rid, token_hash):
@@ -183,3 +186,65 @@ def record_free_unlock(cx, email, reveal_id):
         ((email or "").strip().lower(), reveal_id, _now()))
     cx.commit()
     return cur.rowcount == 1
+
+
+# ---------------------------------------------------------------------------
+# Spend-earned full reveal unlock — distinct from the one-time top-remedy
+# free_unlock above. A free member who places a paid order >= $100 since their
+# last reveal earns their NEXT reveal fully un-blurred. Keyed per reveal_id
+# (repeatable per period, non-stacking), consumed via the existing `paid` gate.
+# ---------------------------------------------------------------------------
+SPEND_UNLOCK_CENTS = 10000   # $100
+
+
+def init_spend_unlocks(cx):
+    cx.execute("CREATE TABLE IF NOT EXISTS biofield_reveal_spend_unlocks "
+               "(reveal_id INTEGER PRIMARY KEY, email TEXT, granted_at TEXT)")
+    cx.commit()
+
+
+def record_spend_unlock(cx, reveal_id, email):
+    """Grant a full-reveal unlock for one reveal. Idempotent."""
+    init_spend_unlocks(cx)
+    cur = cx.execute(
+        "INSERT OR IGNORE INTO biofield_reveal_spend_unlocks (reveal_id, email, granted_at) VALUES (?,?,?)",
+        (reveal_id, (email or "").strip().lower(), _now()))
+    cx.commit()
+    return cur.rowcount == 1
+
+
+def is_spend_unlocked(cx, reveal_id):
+    """True when this reveal was earned by qualifying spend (full un-blur)."""
+    if reveal_id is None:
+        return False
+    try:
+        init_spend_unlocks(cx)
+        r = cx.execute("SELECT 1 FROM biofield_reveal_spend_unlocks WHERE reveal_id=?",
+                       (reveal_id,)).fetchone()
+        return r is not None
+    except Exception:
+        return False
+
+
+def maybe_unlock_for_spend(cx, email, reveal_id):
+    """Grant a full-reveal unlock for `reveal_id` when the email placed a paid
+    order >= $100 AFTER their previous reveal. Best-effort — never raises into the
+    reveal-creation path. Returns True when a new unlock was granted."""
+    try:
+        email = (email or "").strip().lower()
+        if not email or reveal_id is None:
+            return False
+        prev = cx.execute(
+            "SELECT created_at FROM biofield_reveals WHERE email=? AND id<? ORDER BY id DESC LIMIT 1",
+            (email, reveal_id)).fetchone()
+        since_ts = (prev[0] if prev else "") or ""
+        qualifying = cx.execute(
+            "SELECT 1 FROM orders WHERE lower(email)=? AND total_cents>=? "
+            "AND (lower(coalesce(pay_status,''))='paid' OR paid_cents>=?) "
+            "AND created_at > ? LIMIT 1",
+            (email, SPEND_UNLOCK_CENTS, SPEND_UNLOCK_CENTS, since_ts)).fetchone()
+        if qualifying is None:
+            return False
+        return record_spend_unlock(cx, reveal_id, email)
+    except Exception:
+        return False
