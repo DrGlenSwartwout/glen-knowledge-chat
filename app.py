@@ -15005,14 +15005,19 @@ def api_client_portal(token):
                 _req_member = (request.args.get("member") or "").strip().lower()
                 if _req_member and _hh.can_view(_cxh, primary_email, _req_member):
                     email_for_reports = _req_member  # re-point the whole portal at the member
-                    # …and re-point the DISPLAYED name to the member (else the page keeps
-                    # the account-holder's name while showing the member's report).
+                    # …and re-point the DISPLAYED name AND the biofield content to the
+                    # member's OWN portal. A member with no report of their own shows an
+                    # empty ("no analysis yet") state — NEVER a fallback to the
+                    # account-holder's report (which used to leak Karin's report onto
+                    # Robin's / a report-less member's page).
                     try:
                         from dashboard import client_portal as _cp_m
                         _mrec = _cp_m.get_portal_content_by_email(_cxh, _req_member)
                         _member_name = (_mrec or {}).get("name") or None
+                        content = dict((_mrec or {}).get("content") or {})
                     except Exception:
                         _member_name = None
+                        content = {}
         except Exception as _e:
             print(f"[household] {_e!r}", flush=True)
             household = []
