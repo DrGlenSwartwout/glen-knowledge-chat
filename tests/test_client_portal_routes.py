@@ -132,6 +132,27 @@ def test_portal_reorder_no_client_price_uses_regular(client, monkeypatch):
     assert it["price_cents"] == 6997 and it["is_special"] is False
 
 
+def test_portal_current_scan_date_wins_over_later(client):
+    # A manual hand-off stamps content.current_scan_date. The display must show THAT
+    # report even when a reveal owns a LATER-dated per-scan report (which would win
+    # under plain latest-by-date). This is the stale-reveal fix.
+    c, appmod = client
+    from dashboard import portal_biofield_reports as pbr
+    email = "cur@example.com"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    pbr.init_table(cx)
+    pbr.upsert_report(cx, email, "2026-07-09", "",
+                      {"layers": [{"n": 1, "title": "RevealLayer", "remedy": "x"}], "reorder_items": []}, "confirmed")
+    pbr.upsert_report(cx, email, "2026-07-07", "",
+                      {"layers": [{"n": 1, "title": "ManualLayer", "remedy": "y"}], "reorder_items": []}, "confirmed")
+    cx.commit(); cx.close()
+    tok = _seed_portal(appmod, email=email, name="Cur", content={
+        "biofield_status": "confirmed", "current_scan_date": "2026-07-07", "layers": []})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    assert j["scan_date"] == "2026-07-07"                       # current pointer wins over 07-09
+    assert "ManualLayer" in [L.get("title") for L in j["layers"]]
+
+
 def test_api_portal_bad_token_404(client):
     c, _ = client
     r = c.get("/api/portal/not-a-real-token")

@@ -15121,7 +15121,16 @@ def api_client_portal(token):
     dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
     req_date = (request.args.get("scan_date") or "").strip()
     if dates:
-        picked = req_date if req_date in dates else dates[0]
+        # Which report is "current": an explicit ?scan_date= wins; else the report the
+        # authoring/hand-off stamped as current (content.current_scan_date) so a manual
+        # Biofield beats a stale AI reveal regardless of date; else newest by date.
+        cur_ptr = (content or {}).get("current_scan_date")
+        if req_date and req_date in dates:
+            picked = req_date
+        elif cur_ptr and cur_ptr in dates:
+            picked = cur_ptr
+        else:
+            picked = dates[0]
         rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
         bf_content = rep.get("content") or {}
         bf_status = rep.get("status") or "confirmed"
@@ -16193,6 +16202,10 @@ def api_console_biofield_publish():
     if not has:
         return jsonify({"error": "Add some content — at least one layer, a video, or a greeting."}), 400
     from dashboard import client_portal as _cp
+    # Publishing a report makes it the client's CURRENT one (wins over any older
+    # reveal report regardless of date), and keeps the pointer the hand-off set.
+    if scan_date:
+        content["current_scan_date"] = scan_date
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
@@ -32697,6 +32710,25 @@ def api_orders_edit(oid):
                     "lines": priced["items_rec"]})
 
 
+def _cancel_open_handoff_orders(cx, email):
+    """Cancel a client's OPEN hand-off drafts (proposed, unpaid, NOT portal-published)
+    so a re-hand-off replaces rather than piles up duplicate invoices. Published/paid
+    orders are left alone. Returns the cancelled order ids."""
+    em = (email or "").strip().lower()
+    if not em:
+        return []
+    import datetime as _dtc
+    now = _dtc.datetime.now(_dtc.timezone.utc).isoformat()
+    ids = [r[0] for r in cx.execute(
+        "SELECT id FROM orders WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')='proposed' "
+        "AND COALESCE(pay_status,'')<>'paid' AND COALESCE(portal_published,0)=0", (em,)).fetchall()]
+    for oid in ids:
+        cx.execute("UPDATE orders SET status='cancelled', updated_at=? WHERE id=?", (now, oid))
+    if ids:
+        cx.commit()
+    return ids
+
+
 @app.route("/api/orders/manual", methods=["POST"])
 def api_orders_manual():
     """Create a proposed invoice (in-house order entry). Computes rule-based
@@ -32713,6 +32745,13 @@ def api_orders_manual():
     pickup = bool(body.get("pickup"))
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
+    # Idempotent hand-off: a re-hand-off replaces the client's prior OPEN drafts
+    # (proposed, unpaid, NOT yet published to the portal) so invoices never pile up.
+    # Published/paid/confirmed orders are left alone (those are Rae's, deliberately out).
+    cancelled_ids = []
+    if body.get("replace_open") and (customer.get("email") or "").strip():
+        with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+            cancelled_ids = _cancel_open_handoff_orders(_ccx, customer["email"])
     addr_in = customer.get("address") or {}
     ship = {
         "name": customer.get("name") or "",
@@ -32794,6 +32833,7 @@ def api_orders_manual():
                                "shipping_cents": shipping_cents, "get_cents": get_cents,
                                "points_redeemed_cents": points_redeemed_cents,
                                "total_cents": total_cents},
+                    "cancelled": cancelled_ids,
                     "lines": items_rec})
 
 

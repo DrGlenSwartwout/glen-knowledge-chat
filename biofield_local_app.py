@@ -895,9 +895,16 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             content = biofield_handoff.build_portal_seed(
                 cx, test_id, lambda nm: biofield_invoice.resolve_line_slug(nm, catalog),
                 name=client.get("name"))
+            # The scan date keys the portal's per-scan report AND marks this hand-off's
+            # report CURRENT, so the manual Biofield wins over a stale reveal. Fall back
+            # to today when the test carries no date.
+            trow = cx.execute("SELECT date_test FROM biofield_auth_tests WHERE id=?",
+                              (int(str(test_id).lstrip("a") or 0),)).fetchone()
+            scan_date = ((trow[0] if trow else "") or "").strip() or datetime.date.today().isoformat()
         if not content["layers"]:
             return {"ok": False, "error": "No authored layers to hand off yet."}, 400
-        r = biofield_invoice.default_handoff_push(email, client.get("name") or "", content)
+        r = biofield_invoice.default_handoff_push(email, client.get("name") or "", content,
+                                                  scan_date=scan_date)
         if not r.get("ok"):
             return {"ok": False, "error": r.get("error") or "Handoff failed."}, 502
         # Also RAISE the invoice (proposed order from the authored remedies + fee) so
@@ -917,7 +924,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 invoice = {"ok": False, "already_paid": True, "order_id": paid.get("order_id"),
                            "note": f"Biofield Analysis already paid (order #{paid.get('order_id')}); no new invoice raised."}
             else:
-                created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
+                # replace_open: a re-hand-off cancels prior open drafts, so no pileup.
+                created = invoice_create({"name": client.get("name"), "email": email},
+                                         built["lines"], replace_open=True)
                 if created.get("ok"):
                     total = created.get("total_cents")
                     invoice = {"ok": True, "order_id": created.get("order_id"),
@@ -925,6 +934,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                                "already_paid": not include_fee,
                                "lines": len(built["lines"]),
                                "skipped": built.get("skipped") or [],
+                               "replaced": len(created.get("cancelled") or []),
                                "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
                 else:
                     invoice = {"ok": False, "error": created.get("error") or "invoice not created"}
