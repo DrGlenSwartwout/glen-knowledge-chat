@@ -2915,6 +2915,10 @@ def _biofield_unlock_flags(row, email):
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             _br.init_free_unlocks(cx)
             fu_rid = _br.free_unlock_reveal_id(cx, email)
+            # A reveal earned by >= $100 spend is fully un-blurred, same as paid,
+            # for this reveal only (does not grant real membership).
+            if _br.is_spend_unlocked(cx, row.get("id")):
+                paid = True
     except Exception:
         fu_rid = None
     top_unlocked = bool(first_approved and fu_rid == row.get("id"))
