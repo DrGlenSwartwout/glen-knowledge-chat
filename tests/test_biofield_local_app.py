@@ -229,9 +229,10 @@ def test_report_view_shows_voice_stress_balanced_via_head_match(tmp_path):
     assert "Acid" in html.split("Stresses balanced")[1]
 
 
-def test_add_one_from_remedy_set_populates_head_tail_name_and_dosing(tmp_path):
+def test_add_one_from_remedy_set_sets_driver_head_full_tail_name_and_dosing(tmp_path):
     # Adding a remedy from the Minimal Remedy Set as a new layer must:
-    #  - fill BOTH head and tail (most_affected) with the stresses it covers,
+    #  - set the HEAD to a single functional term (the root 'Driver'-level stressor
+    #    among those covered), while the TAIL keeps the full covered-stressor list,
     #  - store the CANONICAL catalog name (the set/coverage map holds a lowercased
     #    synthesis name like 'heart health' -> must become 'Heart Health'), and
     #  - auto-fill dosing from the FF, like scan-imported layers.
@@ -244,16 +245,19 @@ def test_add_one_from_remedy_set_populates_head_tail_name_and_dosing(tmp_path):
     cx.execute("INSERT INTO fmp_snap_products VALUES('1','Heart Health','1 capsule','daily','between meals')")
     tid = create_test(cx, "Test Pt", "t@x.com", "2026-07-08")   # -> "a1"
     tnum = tid.lstrip("a")
-    st.seed_from_scan(cx, tnum, [{"code": "ED1", "name": "Membrane"}],
-                      {"heart health": ["ED1"]})               # coverage keyed by the lowercased name
+    st.seed_from_scan(cx, tnum,
+                      [{"code": "ED5", "name": "Circulation Driver"},
+                       {"code": "EI2", "name": "Heart – Lung Integrator"}],
+                      {"heart health": ["ED5", "EI2"]})         # coverage keyed by the lowercased name
     st.save_remedy_set(cx, tnum, ["heart health"])
     cx.commit()
     client = create_app(db).test_client()
     r = client.post("/author/%s/remedy-set/add-one" % tid, json={"remedy": "heart health"})
     assert r.status_code == 200 and r.get_json()["added"] == 1
-    row = cx.execute(
+    head, tail, remedy, dosage, freq, timing = cx.execute(
         "SELECT head, most_affected, remedy, dosage, frequency, timing "
         "FROM biofield_auth_chain WHERE test_id=? AND layer=1", (int(tnum),)).fetchone()
     cx.close()
-    # head+tail = covered stress; name canonicalized; dosing auto-filled from the FF
-    assert row == ("Membrane", "Membrane", "Heart Health", "1 capsule", "daily", "between meals")
+    assert head == "Circulation Driver"                        # single root driver stressor
+    assert set(tail.split(", ")) == {"Circulation Driver", "Heart – Lung Integrator"}  # full list
+    assert (remedy, dosage, freq, timing) == ("Heart Health", "1 capsule", "daily", "between meals")
