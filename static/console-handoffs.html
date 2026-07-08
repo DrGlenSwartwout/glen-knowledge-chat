@@ -1,25 +1,33 @@
 <link rel="icon" type="image/png" href="/static/favicon.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Handoffs waiting</title>
+<title>Biofield pipeline</title>
 <style>
-  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594; --gold:#d4a843; }
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594;
+         --gold:#d4a843; --green:#7fd6a0; --amber:#e0b96b; }
   *{ box-sizing:border-box; }
   body{ margin:0; background:var(--bg); color:var(--cream);
         font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
   h1{ margin:18px 24px 2px; font-size:22px; }
-  .sub{ margin:0 24px 16px; color:var(--muted); font-size:13px; }
-  .wrap{ margin:0 24px 40px; overflow-x:auto; }
-  table{ border-collapse:collapse; width:100%; min-width:600px; }
-  th,td{ text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); font-size:14px; vertical-align:middle; }
-  th{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-  tr:hover td{ background:rgba(255,255,255,.02); }
-  .email{ color:#9db4ff; font-size:13px; }
-  .what{ font-size:13px; color:#c8d0e0; }
-  .what .pub{ color:#7fd6a0; } .what .draft{ color:#e0b96b; }
-  a.gobtn{ padding:7px 12px; border-radius:8px; border:1px solid var(--gold); background:var(--gold);
-           color:#0a150d; font-weight:600; text-decoration:none; white-space:nowrap; }
-  a.gobtn:hover{ filter:brightness(1.08); }
+  .sub{ margin:0 24px 14px; color:var(--muted); font-size:13px; }
+  .bar{ margin:0 24px 16px; font-size:13px; }
+  .bar a{ color:#9db4ff; cursor:pointer; text-decoration:none; }
+  .grid{ margin:0 24px 48px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); }
+  .pcard{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .phead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .phead b{ font-size:15px; } .email{ color:#9db4ff; font-size:12px; margin-left:6px; }
+  .prog{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  ol.steps{ list-style:none; margin:0; padding:0; }
+  ol.steps li{ display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13.5px; }
+  .dot{ width:12px; height:12px; border-radius:50%; flex:0 0 auto; border:2px solid var(--amber); }
+  li.done .dot{ background:var(--green); border-color:var(--green); }
+  li.done{ color:var(--cream); } li.todo{ color:var(--muted); }
+  li.next{ color:var(--cream); } li.next .dot{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(212,168,67,.18); }
+  .slabel{ flex:1; } .snote{ color:var(--muted); font-size:12px; }
+  a.act{ color:#0a150d; background:var(--gold); padding:3px 9px; border-radius:7px;
+         text-decoration:none; font-weight:600; font-size:12px; white-space:nowrap; }
+  a.act:hover{ filter:brightness(1.08); }
+  a.lnk{ color:#9db4ff; font-size:12px; text-decoration:none; white-space:nowrap; }
   .empty{ margin:24px; color:var(--muted); font-size:16px; }
   #keybox{ margin:24px; }
   #keybox input{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
@@ -28,37 +36,66 @@
                   background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
 </style>
 <script src="/static/op-nav.js" data-active="communication" data-sub="handoffs"></script>
-<h1>Handoffs waiting</h1>
-<p class="sub">Client analyses Dr. Glen handed off for you to review &amp; publish. Open each one, check it looks right, then Publish &amp; email the client.</p>
+<h1>Biofield pipeline</h1>
+<p class="sub">Every manual Biofield from request to fulfillment, one client per card. Filled dots are done; the highlighted step is what's next. Click the action on each step to do it.</p>
+<div class="bar"><a id="toggle" onclick="toggleAll()"></a></div>
 <div id="content"><p class="sub">Loading…</p></div>
 <div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
 <script>
+  var showAll = false;
   function key(){ return localStorage.getItem('console_key') || ''; }
   (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; boot(); }
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function toggleAll(){ showAll = !showAll; boot(); }
+
+  function composer(email){ return '/console/biofield-portal?email='+encodeURIComponent(email)+'&key='+encodeURIComponent(key()); }
+  function ordersLink(id){ return '/console/orders'+(id?('?order='+id):'?')+'&key='+encodeURIComponent(key()); }
+
+  // Step definitions in sequence: label + how to render the action for a client `c`.
+  var STEPS = [
+    { k:'paid', label:'Paid — $300 Biofield Analysis',
+      act:function(c,s){ return s.done && s.order_id ? '<a class="lnk" href="'+ordersLink(s.order_id)+'">Orders &rarr;</a>' : ''; } },
+    { k:'handed_off', label:'Intake authored &amp; handed off',
+      act:function(c,s){ return s.done ? '' : '<span class="snote">awaiting Dr. Glen&rsquo;s intake app</span>'; } },
+    { k:'analysis_published', label:'Analysis published &amp; emailed',
+      act:function(c,s){ return s.done ? '' : '<a class="act" href="'+composer(c.email)+'">Publish &amp; email &rarr;</a>'; } },
+    { k:'invoice_published', label:'Invoice published',
+      act:function(c,s){ return s.done ? '' : '<a class="act" href="'+composer(c.email)+'">Invoice panel &rarr;</a>'; } },
+    { k:'invoice_paid', label:'Invoice paid',
+      act:function(c,s){ return s.done ? '' : (s.order_id ? '<a class="lnk" href="'+ordersLink(s.order_id)+'">Orders &rarr;</a>' : ''); } },
+    { k:'fulfilled', label:'Fulfilled — remedies shipped',
+      act:function(c,s){ return s.done ? '' : '<a class="lnk" href="'+ordersLink(c.steps.invoice_published.order_id)+'">Orders &rarr;</a>'; } }
+  ];
+
+  function card(c){
+    // the "next" step = first not-done step
+    var nextIdx = -1;
+    for(var i=0;i<STEPS.length;i++){ if(!c.steps[STEPS[i].k].done){ nextIdx=i; break; } }
+    var lis = STEPS.map(function(step, i){
+      var s = c.steps[step.k]; s.order_id = s.order_id || (step.k==='invoice_paid' ? c.steps.invoice_published.order_id : s.order_id);
+      var cls = s.done ? 'done' : (i===nextIdx ? 'next' : 'todo');
+      return '<li class="'+cls+'"><span class="dot"></span><span class="slabel">'+step.label+'</span>'+step.act(c,s)+'</li>';
+    }).join('');
+    var done = c.done_count!=null ? c.done_count : 0;
+    return '<div class="pcard"><div class="phead"><div><b>'+esc(c.name||'(unnamed)')+'</b>'
+      +'<span class="email">'+esc(c.email)+'</span></div>'
+      +'<div class="prog">'+(c.complete?'complete':done+'/6')+'</div></div>'
+      +'<ol class="steps">'+lis+'</ol></div>';
+  }
+
   async function boot(){
+    document.getElementById('toggle').textContent = showAll ? 'Hide completed' : 'Show completed';
     var r;
-    try { r = await fetch('/api/console/handoffs', { headers: hdr() }); }
+    try { r = await fetch('/api/console/biofield-pipeline'+(showAll?'?all=1':''), { headers: hdr() }); }
     catch(e){ document.getElementById('content').innerHTML='<p class="empty">Could not reach the server.</p>'; return; }
     if(r.status===401){ document.getElementById('content').innerHTML=''; document.getElementById('keybox').style.display='block'; return; }
     var j = await r.json();
-    var list = j.handoffs || [];
-    if(!list.length){ document.getElementById('content').innerHTML='<p class="empty">Nothing waiting — you’re all caught up. 🌺</p>'; return; }
-    var rows = list.map(function(h){
-      var url = '/console/biofield-portal?email='+encodeURIComponent(h.email)+'&key='+encodeURIComponent(key());
-      var iv = h.invoice;
-      var waiting;
-      if(iv){ waiting = 'analysis &middot; invoice #'+iv.order_id
-        +(iv.published ? ' <span class="pub">published</span>' : ' <span class="draft">to publish</span>'); }
-      else { waiting = 'analysis <span class="draft">only</span>'; }
-      return '<tr><td>'+esc(h.name||'(unnamed)')+'</td><td class="email">'+esc(h.email)+'</td><td class="what">'
-        +waiting+'</td><td>'
-        +esc((h.handed_off_at||'').slice(0,10))+'</td><td><a class="gobtn" href="'+url+'">Review &amp; publish &rarr;</a></td></tr>';
-    }).join('');
-    document.getElementById('content').innerHTML='<div class="wrap"><table><tr><th>Client</th><th>Email</th>'
-      +'<th>Waiting</th><th>Handed off</th><th></th></tr>'+rows+'</table></div>';
+    var list = j.clients || [];
+    if(!list.length){ document.getElementById('content').innerHTML='<p class="empty">'
+      +(showAll?'No Biofield clients yet.':'Nothing in flight — everyone&rsquo;s caught up. 🌺')+'</p>'; return; }
+    document.getElementById('content').innerHTML = '<div class="grid">'+list.map(card).join('')+'</div>';
   }
   boot();
 </script>
