@@ -842,6 +842,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             warning = f"{len(built['lines']) - len(accepted)} line(s) were not accepted by the console."
         return {"ok": True,
                 "print_url": link.get("print_url") if link.get("ok") else "",
+                "order_id": created.get("order_id"),
+                "orders_url": biofield_invoice.default_orders_link(created.get("order_id")),
                 "external_ref": created.get("external_ref"),
                 "added": added_count,
                 "skipped": built["skipped"],
