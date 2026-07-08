@@ -924,6 +924,53 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             data = _st.list_stresses(cx, test_id, chain_rows)
         return {"data": data, "html": render_stress_panel(data)}
 
+    def _do_stress_assign(test_id, stress_ids):
+        """LLM-assign unassigned stress(es) each to their best-fit layer, then
+        cover_stress. stress_ids=None -> all unassigned. Returns the refreshed panel."""
+        import json
+        from dashboard import biofield_stress as _st
+        with sqlite3.connect(db_path) as cx:
+            rep = _report_for(cx, test_id)
+            layers_full = rep.get("layers") or []
+            chain_rows = [{"layer": l.get("layer"), "head": l.get("head"),
+                           "remedy": l.get("remedy")} for l in layers_full]
+            data = _st.list_stresses(cx, test_id, chain_rows)
+            unassigned = data.get("unassigned") or []
+            if stress_ids is None:
+                targets = unassigned
+            else:
+                want = {int(x) for x in stress_ids}
+                targets = [s for s in unassigned if int(s.get("id")) in want]
+            if not targets:
+                return {"ok": True, "assigned": 0, "html": render_stress_panel(data)}
+            layer_opts = data.get("by_layer") or []
+            valid = [L["layer"] for L in layer_opts if L.get("layer") is not None]
+            prompt = _st.build_assign_prompt(targets, layer_opts)
+            try:
+                raw = interpret_complete(prompt["system"], prompt["user"])
+                resp = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                picks = _st.parse_assignments(resp, valid)
+            except Exception as e:
+                return {"ok": False, "error": f"Auto-assign failed: {e}"[:200]}, 502
+            assigned = 0
+            for s in targets:
+                ln = picks.get(int(s.get("id")))
+                if ln is None:
+                    continue
+                rids = _st.layer_rids(layers_full, ln)
+                if rids and _st.cover_stress(cx, test_id, int(s.get("id")), rids):
+                    assigned += 1
+            data = _st.list_stresses(cx, test_id, chain_rows)
+        return {"ok": True, "assigned": assigned, "html": render_stress_panel(data)}
+
+    @app.route("/author/<test_id>/stress/<int:sid>/assign", methods=["POST"])
+    def author_stress_assign(test_id, sid):
+        return _do_stress_assign(test_id, [sid])
+
+    @app.route("/author/<test_id>/stresses/assign-all", methods=["POST"])
+    def author_stresses_assign_all(test_id):
+        return _do_stress_assign(test_id, None)
+
     def _chain_rows_for(rep):
         return [{"layer": l.get("layer"), "head": l.get("head"), "remedy": l.get("remedy")}
                 for l in (rep.get("layers") or [])]

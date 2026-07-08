@@ -285,6 +285,51 @@ def cover_stress(cx, tid, stress_id, rids):
     return code
 
 
+def layer_rids(chain_layers, layer_num):
+    """Chain-row ids for a layer number (a layer may have several remedy rows)."""
+    out = []
+    for l in chain_layers or []:
+        try:
+            if int(l.get("layer")) == int(layer_num):
+                rid = l.get("rid") if l.get("rid") is not None else l.get("id")
+                if rid is not None:
+                    out.append(int(rid))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def build_assign_prompt(stresses, layers):
+    """Prompt for an LLM to assign each stress to its single best-fit causal-chain
+    layer. stresses=[{id,code,label}]; layers=[{layer,head,remedy}]."""
+    lyr = "\n".join(f"  Layer {L.get('layer')}: {(L.get('head') or '').strip()}"
+                    f" (remedy: {(L.get('remedy') or '').strip()})" for L in (layers or []))
+    strs = "\n".join(f"  id={s.get('id')}: {(s.get('code') or '').strip()} "
+                     f"{(s.get('label') or '').strip()}" for s in (stresses or []))
+    system = ("You assign biofield stress patterns to the most appropriate causal-chain "
+              "layer for a clinical report. Match by body region / organ system / function: "
+              "a Heart stress goes to a Cardiovascular layer; a Cervical Spine stress to a "
+              "Cervical/Spine layer; a driver code like ED9 to the layer whose remedy carries "
+              "that same code. Every stress gets exactly one layer — the single best fit. "
+              'Return JSON only: {"assignments": [{"id": <stress id>, "layer": <layer number>}]}.')
+    user = f"LAYERS:\n{lyr}\n\nSTRESSES:\n{strs}\n\nAssign each stress id to one layer number."
+    return {"system": system, "user": user}
+
+
+def parse_assignments(resp, valid_layers):
+    """LLM JSON -> {stress_id: layer_num}, keeping only real layer numbers."""
+    valid = {int(v) for v in valid_layers}
+    out = {}
+    for a in (resp or {}).get("assignments") or []:
+        try:
+            sid, ln = int(a.get("id")), int(a.get("layer"))
+        except (TypeError, ValueError):
+            continue
+        if ln in valid:
+            out[sid] = ln
+    return out
+
+
 def add_stress(cx, tid, label, *, source="voice", balance="required"):
     """Add a stress unless its normalized label already exists for this test (any
     source) -> merge. Stored with code=_norm(label) so UNIQUE(test_id,source,code)
