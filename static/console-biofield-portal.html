@@ -134,12 +134,8 @@
           <label>Pricing note (optional)</label>
           <input id="pricingNote" type="text" placeholder="Your certified-practitioner price.">
         </div>
-        <div style="flex:0 0 220px">
-          <label>FF special price ($/bottle)</label>
-          <input id="ffSpecial" type="number" min="0" step="0.01" placeholder="e.g. 50">
-        </div>
       </div>
-      <p class="muted small" style="margin-top:.4rem">This account's special price for Functional Formulations — sets the price for every remedy above that doesn't have its own ¢ override.</p>
+      <p class="muted small" style="margin-top:.4rem">Set this client's special Functional-Formulation price on the Invoice panel below — it applies to both their invoices and their portal reorder prices.</p>
     </div>
 
     <div id="status" class="status"></div>
@@ -151,6 +147,7 @@
 
     <div id="invoicePanel" class="card" style="display:none">
       <h2>Invoice</h2>
+      <div id="ffControl" style="margin-bottom:.8rem"></div>
       <div id="invoiceBody" class="small muted"></div>
     </div>
 
@@ -229,6 +226,7 @@ const $ = id => document.getElementById(id);
 const val = id => ($(id).value || "").trim();
 let CAT_BY_NAME = {};
 let FINDINGS = {}; let FINDINGS_LIST = [];
+let _legacyFfCents = null;   // special_price_cents from an older portal, for the FF-price bridge
 
 function boot(){
   if(!key()){ $('gate').style.display='flex'; return; }
@@ -550,11 +548,12 @@ function populate(d){
   $('videoUrl').value = (d.video&&d.video.url)||'';
   $('videoLabel').value = (d.video&&d.video.label)||'';
   $('pricingNote').value = d.pricing_note||'';
-  const sp = (typeof d.special_price_cents === 'number') ? d.special_price_cents : null;
-  $('ffSpecial').value = sp != null ? (sp/100) : '';
+  // Legacy bridge: an older portal may carry special_price_cents. Remember it so the
+  // Invoice panel can offer it as the client's FF price if none is set in client_prices.
+  _legacyFfCents = (typeof d.special_price_cents === 'number') ? d.special_price_cents : null;
   $('layers').innerHTML=''; (d.layers||[]).forEach(addLayer);
   if($('layers').children.length===0) addLayer();
-  $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(it => addItem(it, sp));
+  $('reitems').innerHTML=''; (d.reorder_items||[]).forEach(it => addItem(it, _legacyFfCents));
   FINDINGS_LIST = d.findings || []; FINDINGS = {};
   FINDINGS_LIST.forEach(f=>{ FINDINGS[f.code]=f; });
   renderFindings();
@@ -599,23 +598,15 @@ async function importFmp(){
   setStatus('Imported from FMP — review the layers and the drafted greeting/meanings, then Publish.', true);
 }
 
-function ffSpecialCents(){
-  const v = val('ffSpecial');
-  if(v === '') return null;
-  const n = Math.round(parseFloat(v) * 100);
-  return (isFinite(n) && n >= 0) ? n : null;
-}
-
 function buildContent(){
   const c = { greeting: val('greeting'), layers: collectLayers() };
   const vu = val('videoUrl');
   if(vu) c.video = { url: vu, label: val('videoLabel') || 'Watch your Biofield walkthrough' };
   const items = collectItems();
-  // FF special price sets the order price for any remedy without its own override.
-  const special = ffSpecialCents();
-  if(special != null) items.forEach(it => { if(it.price_cents == null) it.price_cents = special; });
+  // The client's FF price now lives in client_prices (set on the Invoice panel) and is
+  // applied at render, so we no longer bake special_price_cents into reorder_items —
+  // one source of truth. Per-item ¢ overrides still publish as before.
   if(items.length) c.reorder_items = items;
-  if(special != null) c.special_price_cents = special;
   const pn = val('pricingNote'); if(pn) c.pricing_note = pn;
   if(FINDINGS_LIST.length) c.findings = FINDINGS_LIST;
   return c;
@@ -655,25 +646,25 @@ async function publish(send){
 function setStatus(msg, ok){ const s=$('status'); s.textContent=msg; s.className='status '+(ok?'ok':'bad'); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-// ── Invoice panel: review / edit / publish the client's raised invoice here ──
+// ── Invoice panel: FF price for this client + review/edit/publish the invoice ──
 async function loadInvoicePanel(email){
   const panel = $('invoicePanel');
   email = (email || val('email') || '').trim();
   if(!email){ panel.style.display='none'; return; }
+  panel.style.display='';
+  await renderFfControl(email);
   let r;
   try { r = await api('GET', `/api/console/client-invoice?email=${encodeURIComponent(email)}`); }
-  catch(e){ panel.style.display='none'; return; }
+  catch(e){ $('invoiceBody').innerHTML=''; return; }
   const o = r.ok && r.json && r.json.order;
   const paidNote = (r.ok && r.json && r.json.biofield_paid)
     ? '<p class="small" style="color:var(--green);margin:0 0 .5rem">✓ Biofield Analysis already paid (order #'+r.json.paid_order_id+') — remedy invoices exclude the fee.</p>'
     : '';
   if(!o){
-    if(paidNote){ panel.style.display=''; $('invoiceBody').innerHTML = paidNote
-      + '<p class="small muted">No remedy invoice raised for this client.</p>'; }
-    else { panel.style.display='none'; }
+    $('invoiceBody').innerHTML = paidNote
+      + '<p class="small muted">No remedy invoice raised for this client.</p>';
     return;
   }
-  panel.style.display='';
   const chip = o.pay_status==='paid' ? '<span style="color:var(--green)">paid</span>'
     : (o.portal_published ? '<span style="color:var(--green)">published</span>'
        : '<span style="color:#ffd21e">to publish</span>');
@@ -705,6 +696,48 @@ async function publishInvoice(id, email){
   if(email){ msg += r.json.emailed ? ' Email sent to the client.' : ' ⚠ Email not sent — send the link manually.'; }
   setStatus('Invoice #'+id+':'+msg, !(email && !r.json.emailed));
   await loadInvoicePanel(val('email'));   // refresh the chip + buttons
+}
+
+// ── FF price for this client (client_prices.__all_ff__) — one number that drives
+// both the invoice and the portal reorder prices. ──
+async function renderFfControl(email){
+  let cents = null;
+  try {
+    const r = await api('GET', `/api/console/client-prices?email=${encodeURIComponent(email)}`);
+    if(r.ok && r.json && typeof r.json.ff_flat_cents === 'number') cents = r.json.ff_flat_cents;
+  } catch(e){}
+  let hint = '';
+  if(cents == null && _legacyFfCents != null){
+    cents = _legacyFfCents;   // bridge an older portal's baked FF price for confirmation
+    hint = ' <span class="muted">(from this client\'s prior portal setting — Save to apply)</span>';
+  }
+  $('ffControl').innerHTML =
+    '<label style="display:block;margin-bottom:.2rem">FF price for this client ($/bottle)'+hint+'</label>'
+    +'<input id="ffFlat" type="number" min="0" step="0.01" placeholder="e.g. 50" '
+      +'value="'+(cents!=null ? (cents/100) : '')+'" style="width:140px;display:inline-block">'
+    +' <button class="btn notify sm" onclick="saveFfPrice()">Save FF price</button>'
+    +' <button class="btn ghost sm" onclick="clearFfPrice()">Clear</button>'
+    +' <span id="ffStat" class="muted"></span>'
+    +'<p class="muted small" style="margin:.35rem 0 0">Applies to remedy lines on this client\'s invoices and to their portal reorder prices. '
+      +'Raise or Edit an existing invoice to reprice it.</p>';
+}
+
+async function saveFfPrice(){
+  const email = val('email'); if(!email){ setStatus('Enter a client email first.', false); return; }
+  const v = val('ffFlat'), st = $('ffStat');
+  if(v === ''){ if(st) st.textContent = ' enter a price, or use Clear'; return; }
+  const cents = Math.round(parseFloat(v) * 100);
+  if(!isFinite(cents) || cents < 0){ if(st) st.textContent = ' invalid price'; return; }
+  if(st) st.textContent = ' saving…';
+  const r = await api('POST', '/api/console/client-prices', {email, ff_flat_cents: cents});
+  if(r.ok && r.json && r.json.ok){ _legacyFfCents = null; setStatus('FF price saved for '+email+' — invoices and portal use it.', true); await loadInvoicePanel(email); }
+  else if(st) st.textContent = ' ' + ((r.json&&r.json.error)||'save failed');
+}
+
+async function clearFfPrice(){
+  const email = val('email'); if(!email) return;
+  const r = await api('DELETE', '/api/console/client-prices', {email, slug: '__all_ff__'});
+  if(r.ok && r.json && r.json.ok){ _legacyFfCents = null; setStatus('FF price cleared for '+email+'.', true); await loadInvoicePanel(email); }
 }
 
 // ── Triage: client messages the assistant flagged for Dr. Glen ──
