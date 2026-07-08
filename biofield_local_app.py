@@ -806,8 +806,26 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         email = (client.get("email") or "").strip()
         if not email:
             return {"ok": False, "error": "Add a client email in the header first."}, 400
-        remedies = [(l.get("remedy") or "").strip()
-                    for l in (rep.get("layers") or []) if (l.get("remedy") or "").strip()]
+        # Per-remedy quantity = bottles for a 30-day program:
+        # ceil(doses/day * 30 / doses_per_bottle). doses/day comes from the authored
+        # frequency (per-client); doses_per_bottle from FMP (fmp_snap_products) by name.
+        # Falls back to qty 1 when frequency is unparseable or FMP has no doses_per_bottle
+        # (e.g. infoceuticals).
+        with sqlite3.connect(db_path) as _cxq:
+            def _doses_per_bottle(nm):
+                try:
+                    r = _cxq.execute("SELECT doses_per_bottle FROM fmp_snap_products "
+                                     "WHERE lower(product_name)=lower(?) LIMIT 1", (nm,)).fetchone()
+                    return r[0] if r else None
+                except Exception:
+                    return None
+            remedies = []
+            for l in (rep.get("layers") or []):
+                nm = (l.get("remedy") or "").strip()
+                if not nm:
+                    continue
+                qty = biofield_invoice.bottles_needed(l.get("frequency"), _doses_per_bottle(nm))
+                remedies.append({"name": nm, "qty": qty})
         catalog = invoice_fetch_catalog()
         built = biofield_invoice.build_invoice_lines(client, remedies, catalog)
         created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])

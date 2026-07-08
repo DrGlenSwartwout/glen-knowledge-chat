@@ -24,20 +24,62 @@ def resolve_line_slug(name, catalog):
     return None
 
 
+def doses_per_day(freq_text):
+    """A per-client frequency phrase -> doses/day, or None if unrecognized.
+    Handles 'daily', 'a day', 'twice a day', 'two times a day', '3 times a day', '2x'."""
+    import re
+    t = (freq_text or "").strip().lower()
+    if not t:
+        return None
+    m = re.search(r"(\d+)\s*(?:x|times?)\b", t)          # "3 times a day", "2x"
+    if m:
+        return int(m.group(1))
+    words = {"once": 1, "one": 1, "twice": 2, "two": 2, "thrice": 3, "three": 3, "four": 4}
+    for w, n in words.items():
+        if re.search(rf"\b{w}\b", t) and re.search(r"\b(times?|x|a day|per day|daily|day)\b", t):
+            return n
+    if re.search(r"\b(daily|a day|per day|each day|every day)\b", t):
+        return 1
+    return None
+
+
+def bottles_needed(freq_text, doses_per_bottle, program_days=30):
+    """Bottles for the program = ceil(doses/day * days / doses_per_bottle), >= 1.
+    Falls back to 1 when the frequency is unparseable OR doses_per_bottle is missing
+    (e.g. infoceuticals carry no doses_per_bottle -> qty 1)."""
+    import math
+    try:
+        dpb = int(doses_per_bottle)
+    except (TypeError, ValueError):
+        dpb = 0
+    dpd = doses_per_day(freq_text)
+    if not dpd or dpb <= 0:
+        return 1
+    return max(1, math.ceil(dpd * program_days / dpb))
+
+
 def build_invoice_lines(client, remedies, catalog):
-    """Biofield Analysis is always lines[0]; then one qty-1 line per resolvable
-    remedy (order preserved). Unresolvable names go to 'skipped', never mispriced."""
+    """Biofield Analysis is always lines[0]; then one line per resolvable remedy
+    (order preserved). A remedy is a name string (qty 1) or a {"name","qty"} dict
+    (qty = bottles needed). Unresolvable names go to 'skipped', never mispriced."""
     lines = [{"slug": BIOFIELD_SLUG, "qty": 1}]
     skipped = []
-    for rname in remedies or []:
-        rname = (rname or "").strip()
-        if not rname:
-            continue
-        slug = resolve_line_slug(rname, catalog)
-        if slug:
-            lines.append({"slug": slug, "qty": 1})
+    for r in remedies or []:
+        if isinstance(r, dict):
+            name, qty = (r.get("name") or "").strip(), r.get("qty")
         else:
-            skipped.append(rname)
+            name, qty = (r or "").strip(), 1
+        if not name:
+            continue
+        try:
+            qty = max(1, int(qty))
+        except (TypeError, ValueError):
+            qty = 1
+        slug = resolve_line_slug(name, catalog)
+        if slug:
+            lines.append({"slug": slug, "qty": qty})
+        else:
+            skipped.append(name)
     return {"lines": lines, "skipped": skipped}
 
 

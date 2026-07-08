@@ -39,3 +39,32 @@ def test_resolvable_remedies_become_lines_unresolvable_skipped():
     assert slugs == [BIOFIELD_SLUG, "liver-support", "vitality"]   # order preserved, biofield first
     assert out["skipped"] == ["Green Jasper Gem Elixir"]
     assert all(l["qty"] == 1 for l in out["lines"])
+
+
+def test_doses_per_day_parsing():
+    from dashboard.biofield_invoice import doses_per_day
+    assert doses_per_day("daily") == 1
+    assert doses_per_day("a day") == 1
+    assert doses_per_day("two times a day") == 2
+    assert doses_per_day("twice a day") == 2
+    assert doses_per_day("3 times a day") == 3
+    assert doses_per_day("") is None and doses_per_day("as needed") is None
+
+
+def test_bottles_needed():
+    from dashboard.biofield_invoice import bottles_needed
+    assert bottles_needed("two times a day", 30) == 2      # B17: ceil(2*30/30)
+    assert bottles_needed("3 times a day", 100) == 1       # Green Jasper: ceil(90/100)
+    assert bottles_needed("daily", 30) == 1
+    assert bottles_needed("daily", "") == 1                # no doses_per_bottle (infoceutical) -> 1
+    assert bottles_needed("gibberish", 30) == 1            # unparseable -> 1
+
+
+def test_build_invoice_lines_honors_per_remedy_qty():
+    cat = [{"slug": "b17-syntropy", "name": "B17 Syntropy"}]
+    out = build_invoice_lines({}, [{"name": "B17 Syntropy", "qty": 2}], cat)
+    b17 = [l for l in out["lines"] if l["slug"] == "b17-syntropy"][0]
+    assert b17["qty"] == 2
+    # backward-compat: a bare string still means qty 1
+    out2 = build_invoice_lines({}, ["B17 Syntropy"], cat)
+    assert [l for l in out2["lines"] if l["slug"] == "b17-syntropy"][0]["qty"] == 1
