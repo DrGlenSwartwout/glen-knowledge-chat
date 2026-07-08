@@ -29,6 +29,8 @@
   .btn{background:var(--gold);color:var(--bg);border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
   .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--cream);font-weight:600}
   .btn.ghost:hover{border-color:var(--gold);color:var(--gold)}
+  .btn.notify{background:#ffd21e;color:#1a1a1a}
+  .btn.notify:hover{background:#ffdd47}
   .btn.sm{padding:5px 10px;font-size:.82rem}
   .btn:disabled{opacity:.5;cursor:default}
   .layer,.reitem{border:1px solid var(--border);border-radius:10px;padding:10px;margin:8px 0;background:var(--surface2)}
@@ -141,8 +143,8 @@
 
     <div id="status" class="status"></div>
     <p>
-      <button class="btn" id="pubBtn" onclick="publish(false)">Publish to portal</button>
-      <button class="btn ghost" onclick="publish(true)">Publish &amp; email client</button>
+      <button class="btn notify pubaction" onclick="publish(true)">Publish &amp; email client</button>
+      <button class="btn ghost pubaction" onclick="publish(false)">Publish to portal (no email)</button>
       <a id="previewLink" class="preview" target="_blank" rel="noopener" style="display:none">Preview portal ↗</a>
     </p>
 
@@ -621,11 +623,11 @@ async function publish(send){
   const content = buildContent();
   if(!(content.layers.length || (content.video&&content.video.url) || content.greeting)){
     setStatus('Add at least one layer, a video, or a greeting.', false); return; }
-  $('pubBtn').disabled = true;
+  document.querySelectorAll('.pubaction').forEach(b=>b.disabled=true);
   const body = {email, name: val('name'), content, send};
   if(curScanDate) body.scan_date = curScanDate;
   const r = await api('POST', '/api/console/biofield-portal', body);
-  $('pubBtn').disabled = false;
+  document.querySelectorAll('.pubaction').forEach(b=>b.disabled=false);
   if(!r.ok){ setStatus(r.json.error || 'Publish failed.', false); return; }
   const link = $('previewLink');
   if(r.json.url){ link.href = r.json.url; link.style.display='inline-block'; }
