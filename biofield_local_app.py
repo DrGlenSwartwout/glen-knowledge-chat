@@ -1271,9 +1271,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         # Best-effort: a catalog-lookup failure must never block recording.
         keyterms = ""
         try:
-            from dashboard.biofield_catalog_terms import build_terms, keyterm_query
+            from dashboard.biofield_catalog_terms import build_keyterms, keyterm_query
             with sqlite3.connect(db_path) as cx:
-                keyterms = keyterm_query(build_terms(cx))
+                keyterms = keyterm_query(build_keyterms(cx))
         except Exception:
             keyterms = ""
         return {"key": key, "keyterms": keyterms}
