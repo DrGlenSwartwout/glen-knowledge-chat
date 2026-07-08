@@ -15,9 +15,29 @@ def test_build_entry_ff_gets_volume_pricing_and_regular_anchor():
            "sold_price": "70", "retail_sug_price": "80", "id_pk": "75"}
     slug, e = build_entry(row)
     assert slug == "digestzymes-homeoenergetic-drops"
-    assert e["price_cents"] == 7000 and e["regular_cents"] == 8000
+    # FMP's round '70' is shorthand for the $69.97 FF base; app derives the $80 Value
+    # anchor from price == 6997 exactly, so importing at 7000 would kill the anchor.
+    assert e["price_cents"] == 6997 and e["regular_cents"] == 8000
     assert e["qty_pricing"] is True          # FF -> volume rate
     assert e["no_groovekart"] is True and e["fmp_id"] == "75"
+
+
+def test_build_entry_ff_off_base_price_passes_through():
+    """Only the round-$70 shorthand is normalized. Genuinely different FF price points
+    (CDS $35, WholOmega 120-count $190) import at their real price."""
+    _slug, cds = build_entry({"product_name": "CDS", "type": "Functional Formulation",
+                              "sold_price": "35", "retail_sug_price": "40", "id_pk": "887"})
+    assert cds["price_cents"] == 3500
+    _slug, wo = build_entry({"product_name": "WholOmega 120 gelcaps", "type": "Functional Formulation",
+                             "sold_price": "$190", "retail_sug_price": "230", "id_pk": "448"})
+    assert wo["price_cents"] == 19000
+
+
+def test_build_entry_non_ff_at_70_is_not_normalized():
+    """The 6997 normalization is FF-only — an Essence at $70 stays $70."""
+    _slug, e = build_entry({"product_name": "Green Jasper Gem Elixir", "type": "Essence",
+                            "sold_price": "70", "retail_sug_price": "80", "id_pk": "626"})
+    assert e["price_cents"] == 7000
 
 
 def test_build_entry_essence_no_volume_pricing():
