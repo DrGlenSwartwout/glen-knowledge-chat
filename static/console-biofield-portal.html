@@ -664,7 +664,15 @@ async function loadInvoicePanel(email){
   try { r = await api('GET', `/api/console/client-invoice?email=${encodeURIComponent(email)}`); }
   catch(e){ panel.style.display='none'; return; }
   const o = r.ok && r.json && r.json.order;
-  if(!o){ panel.style.display='none'; return; }   // no raised invoice -> hide entirely
+  const paidNote = (r.ok && r.json && r.json.biofield_paid)
+    ? '<p class="small" style="color:var(--green);margin:0 0 .5rem">✓ Biofield Analysis already paid (order #'+r.json.paid_order_id+') — remedy invoices exclude the fee.</p>'
+    : '';
+  if(!o){
+    if(paidNote){ panel.style.display=''; $('invoiceBody').innerHTML = paidNote
+      + '<p class="small muted">No remedy invoice raised for this client.</p>'; }
+    else { panel.style.display='none'; }
+    return;
+  }
   panel.style.display='';
   const chip = o.pay_status==='paid' ? '<span style="color:var(--green)">paid</span>'
     : (o.portal_published ? '<span style="color:var(--green)">published</span>'
@@ -673,7 +681,7 @@ async function loadInvoicePanel(email){
     '<div class="line-sm">'+esc(l.name)+' &times;'+esc(l.qty)
     +(l.amount_dollars?' <span class="muted">$'+esc(l.amount_dollars)+'</span>':'')+'</div>').join('');
   const editHref = o.edit_url + (o.edit_url.indexOf('key=')<0 ? (o.edit_url.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(key()) : '');
-  $('invoiceBody').innerHTML =
+  $('invoiceBody').innerHTML = paidNote +
     '<p style="margin:0 0 .5rem">Invoice #'+o.id+' &middot; total <b>$'+esc(o.total_dollars)+'</b> &middot; '+chip+'</p>'
     +'<div style="margin:.3rem 0 .7rem">'+lines+'</div>'
     +'<a class="btn ghost sm" href="'+editHref+'" target="_blank" rel="noopener">Edit invoice ↗</a> '

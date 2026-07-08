@@ -453,6 +453,68 @@ def test_report_remedies_for_invoice_qty():
     assert out == [{"name": "Liver Support", "qty": 2}, {"name": "Infoceutical X", "qty": 1}]
 
 
+def test_build_invoice_lines_include_fee_false():
+    # A client who already PAID the analysis: invoice remedies only (no fee line).
+    from dashboard import biofield_invoice
+    cat = [{"name": "Liver Support", "slug": "liver-support"}]
+    built = biofield_invoice.build_invoice_lines(
+        {"email": "x@x.com"}, [{"name": "Liver Support", "qty": 2}], cat, include_fee=False)
+    assert built["lines"] == [{"slug": "liver-support", "qty": 2}]     # no biofield-analysis
+    # no remedies + no fee -> empty (caller skips the raise)
+    assert biofield_invoice.build_invoice_lines({}, [], cat, include_fee=False)["lines"] == []
+
+
+def test_handoff_skips_raise_when_analysis_paid(tmp_path, monkeypatch):
+    # Pre-paid analysis, no remedies (like Steve Fox): handoff pushes the analysis but
+    # raises NO invoice, reporting already_paid + the paid order id.
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    from dashboard import biofield_invoice
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Steve Fox", "sf@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support", "1 cap", "daily", "")
+    cx.commit()
+    monkeypatch.setattr(biofield_invoice, "default_handoff_push", lambda *a, **k: {"ok": True})
+    created_calls = []
+    client = create_app(
+        db,
+        invoice_fetch_catalog=lambda: [],   # remedy doesn't resolve -> skipped, like Steve's $300-only
+        invoice_create=lambda c, lines: created_calls.append(lines) or {"ok": True, "order_id": 9},
+        invoice_paid_check=lambda email: {"paid": True, "order_id": 37},
+    ).test_client()
+    j = client.post("/author/%s/handoff" % tid, json={}).get_json()
+    assert j["ok"] is True
+    assert j["invoice"]["ok"] is False and j["invoice"]["already_paid"] is True
+    assert j["invoice"]["order_id"] == 37
+    assert created_calls == []        # no order raised for a paid analysis-only intake
+
+
+def test_handoff_raises_remedies_only_when_paid(tmp_path, monkeypatch):
+    # Pre-paid analysis WITH remedies: raise a remedy-only invoice (fee line dropped).
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    from dashboard import biofield_invoice
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    cx.execute("CREATE TABLE fmp_snap_products (product_name TEXT, doses_per_bottle INTEGER)")
+    tid = create_test(cx, "Paid Pat", "pp@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support", "1 cap", "daily", "")
+    cx.commit()
+    monkeypatch.setattr(biofield_invoice, "default_handoff_push", lambda *a, **k: {"ok": True})
+    captured = {}
+    client = create_app(
+        db,
+        invoice_fetch_catalog=lambda: [{"name": "Liver Support", "slug": "liver-support"}],
+        invoice_create=lambda c, lines: captured.update(lines=lines) or {"ok": True, "order_id": 5, "total_cents": 3000},
+        invoice_paid_check=lambda email: {"paid": True, "order_id": 37},
+    ).test_client()
+    j = client.post("/author/%s/handoff" % tid, json={}).get_json()
+    assert j["invoice"]["ok"] is True and j["invoice"]["already_paid"] is True
+    slugs = [l["slug"] for l in captured["lines"]]
+    assert "biofield-analysis" not in slugs and "liver-support" in slugs   # fee dropped
+
+
 def test_handoff_route_raises_invoice(tmp_path, monkeypatch):
     # With the portal push succeeding, the handoff ALSO raises the invoice (proposed
     # order) from the authored remedies + the Biofield Analysis fee.

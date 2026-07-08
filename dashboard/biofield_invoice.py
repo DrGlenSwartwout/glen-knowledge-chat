@@ -58,11 +58,13 @@ def bottles_needed(freq_text, doses_per_bottle, program_days=30):
     return max(1, math.ceil(dpd * program_days / dpb))
 
 
-def build_invoice_lines(client, remedies, catalog):
-    """Biofield Analysis is always lines[0]; then one line per resolvable remedy
-    (order preserved). A remedy is a name string (qty 1) or a {"name","qty"} dict
-    (qty = bottles needed). Unresolvable names go to 'skipped', never mispriced."""
-    lines = [{"slug": BIOFIELD_SLUG, "qty": 1}]
+def build_invoice_lines(client, remedies, catalog, include_fee=True):
+    """Biofield Analysis is lines[0] (unless include_fee is False — e.g. the client
+    already PAID for the analysis, so we invoice remedies only); then one line per
+    resolvable remedy (order preserved). A remedy is a name string (qty 1) or a
+    {"name","qty"} dict (qty = bottles needed). Unresolvable names go to 'skipped',
+    never mispriced."""
+    lines = [{"slug": BIOFIELD_SLUG, "qty": 1}] if include_fee else []
     skipped = []
     for r in remedies or []:
         if isinstance(r, dict):
@@ -172,6 +174,24 @@ def default_publish_invoice(order_id):
         return resp if isinstance(resp, dict) else {"ok": False, "error": "bad response"}
     except Exception:
         return {"ok": False, "error": "publish failed"}
+
+
+def default_biofield_paid(email):
+    """Has this client already PAID for a Biofield Analysis? Asks prod for a paid,
+    non-cancelled order carrying the biofield-analysis line. Returns {paid, order_id,
+    paid_at} (paid False when none / unreachable) so the raise can drop the fee line."""
+    base, key = _console()
+    if not base or not (email or "").strip():
+        return {"paid": False}
+    try:
+        url = (f"{base}/api/console/biofield-analysis-paid?email="
+               + urllib.parse.quote(email) + "&key=" + urllib.parse.quote(key))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            resp = _json.loads(r.read().decode() or "{}")
+        return resp if isinstance(resp, dict) else {"paid": False}
+    except Exception:
+        return {"paid": False}
 
 
 def default_handoff_push(email, name, content, scan_date=""):

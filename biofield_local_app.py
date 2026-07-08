@@ -488,7 +488,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                interpret_complete=None, scan_lookup=None, client_search=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
                e4l_db=None, fee_get=None, fee_set=None, fee_clear=None,
-               invoice_fetch_catalog=None, invoice_create=None, invoice_link=None):
+               invoice_fetch_catalog=None, invoice_create=None, invoice_link=None,
+               invoice_paid_check=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -513,6 +514,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     invoice_fetch_catalog = invoice_fetch_catalog or biofield_invoice.default_fetch_catalog
     invoice_create = invoice_create or biofield_invoice.default_create_order
     invoice_link = invoice_link or biofield_invoice.default_invoice_link
+    invoice_paid_check = invoice_paid_check or biofield_invoice.default_biofield_paid
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -835,7 +837,18 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 qty = biofield_invoice.bottles_needed(l.get("frequency"), _doses_per_bottle(nm))
                 remedies.append({"name": nm, "qty": qty})
         catalog = invoice_fetch_catalog()
-        built = biofield_invoice.build_invoice_lines(client, remedies, catalog)
+        # Never re-charge a Biofield Analysis the client already paid for: drop the fee
+        # line when a paid analysis order exists, invoicing remedies only. If that leaves
+        # nothing (no remedies, like a pre-paid analysis-only intake), skip the raise.
+        paid = invoice_paid_check(email) or {}
+        include_fee = not paid.get("paid")
+        built = biofield_invoice.build_invoice_lines(client, remedies, catalog, include_fee=include_fee)
+        if not built["lines"]:
+            return {"ok": True, "already_paid": True, "order_id": paid.get("order_id"),
+                    "added": 0, "skipped": built["skipped"], "warning": "",
+                    "note": (f"Biofield Analysis already paid (order #{paid.get('order_id')}) — "
+                             "no remedies to invoice, so no new invoice was raised."),
+                    "print_url": "", "orders_url": "", "external_ref": "", "total_dollars": ""}
         created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
         if not created.get("ok"):
             return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
@@ -844,11 +857,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         accepted = created.get("accepted_slugs") or []
         added_count = len(accepted) if accepted else len(built["lines"])
         warning = ""
-        if accepted and biofield_invoice.BIOFIELD_SLUG not in accepted:
+        if not include_fee:
+            warning = (f"Biofield Analysis already paid (order #{paid.get('order_id')}) — "
+                       "this invoice is for remedies only.")
+        elif accepted and biofield_invoice.BIOFIELD_SLUG not in accepted:
             warning = "The Biofield Analysis line was not accepted by the console; open the order in Orders to check."
         elif accepted and len(accepted) < len(built["lines"]):
             warning = f"{len(built['lines']) - len(accepted)} line(s) were not accepted by the console."
-        return {"ok": True,
+        return {"ok": True, "already_paid": not include_fee,
                 "print_url": link.get("print_url") if link.get("ok") else "",
                 "order_id": created.get("order_id"),
                 "orders_url": biofield_invoice.default_orders_link(created.get("order_id")),
@@ -891,13 +907,22 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         try:
             remedies = biofield_handoff.report_remedies_for_invoice(
                 db_path, rep, biofield_invoice.bottles_needed)
-            if remedies:
-                built = biofield_invoice.build_invoice_lines(client, remedies, catalog)
+            # Skip re-charging a paid Biofield Analysis: drop the fee line when already
+            # paid (invoice remedies only), and skip the raise entirely if that empties
+            # the invoice (pre-paid analysis with no remedies, e.g. Steve Fox).
+            paid = invoice_paid_check(email) or {}
+            include_fee = not paid.get("paid")
+            built = biofield_invoice.build_invoice_lines(client, remedies, catalog, include_fee=include_fee)
+            if not built["lines"]:
+                invoice = {"ok": False, "already_paid": True, "order_id": paid.get("order_id"),
+                           "note": f"Biofield Analysis already paid (order #{paid.get('order_id')}); no new invoice raised."}
+            else:
                 created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
                 if created.get("ok"):
                     total = created.get("total_cents")
                     invoice = {"ok": True, "order_id": created.get("order_id"),
                                "external_ref": created.get("external_ref"),
+                               "already_paid": not include_fee,
                                "lines": len(built["lines"]),
                                "skipped": built.get("skipped") or [],
                                "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
