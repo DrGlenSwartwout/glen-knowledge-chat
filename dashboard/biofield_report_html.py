@@ -325,6 +325,8 @@ async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).j
 function setStress(j){if(j&&j.html!==undefined)document.getElementById('stresspanel').innerHTML=j.html}
 async function loadStress(){try{setStress(await (await fetch('/author/__TID__/stresses')).json())}catch(e){}}
 async function balanceStress(sid,val){await post('/author/__TID__/stress/'+sid+'/balance',{value:val});loadStress()}
+async function assignStress(sid){astat('Assigning…');const j=await post('/author/__TID__/stress/'+sid+'/assign',{});astat(j&&j.ok?('Assigned to its layer.'):((j&&j.error)||'Assign failed.'));setStress(j)}
+async function assignAllStresses(){astat('Assigning all…');const j=await post('/author/__TID__/stresses/assign-all',{});astat(j&&j.ok?('Assigned '+(j.assigned||0)+' stress(es).'):((j&&j.error)||'Assign failed.'));setStress(j)}
 async function saveHeader(){const j=await post('/author/__TID__/header',
  {name:val('h_name'),email:val('h_email'),date:val('h_date')});astat('Header saved.');setE4L(j)}
 // --- E4L client picker: name autocomplete -> email (dropdown if duplicates) -> date
@@ -1115,12 +1117,15 @@ def render_stress_panel(data):
         btn = (f"<button class='btn ghost' style='font-size:11px' "
                f"onclick=\"balanceStress({sid},{'true' if active else 'false'})\">"
                f"{'Balance' if active else 'Reactivate'}</button>")
-        # Unassigned stresses are draggable onto a layer card to mark them covered.
+        # Unassigned stresses: an Assign button auto-picks the best-fit layer (LLM).
+        assign_btn = (f" <button class='btn ghost' style='font-size:11px' "
+                      f"onclick=\"assignStress({sid})\">Assign</button>" if drag else "")
+        # …and are still draggable onto a layer card as a manual override.
         drag_attr = (f" class=sdrag draggable=true ondragstart=\"stressDragStart(event,{sid})\" "
                      "ondragend=stressDragEnd(event) title='Drag onto a layer to cover it'"
                      if drag else "")
         return (f"<li{drag_attr}><b>{_e(s.get('code') or '')}</b> {_e(s.get('label') or '')} "
-                f"<span class=pill>{tag}</span>{bytxt} {btn}</li>")
+                f"<span class=pill>{tag}</span>{bytxt} {btn}{assign_btn}</li>")
     if "by_layer" in data:
         # Per-layer grouping: every AI-created stress under each causal-chain layer
         # (covered-by-remedy or head match), a stress may appear under several layers.
@@ -1140,7 +1145,10 @@ def render_stress_panel(data):
         un = _list(data.get("unassigned"), drag=True)
         if un:
             parts.append("<div class=food style='font-weight:600;margin-top:6px'>"
-                         "Unassigned &mdash; drag onto a layer to cover it</div>"
+                         "Unassigned "
+                         "<button class='btn ghost' style='font-size:11px' "
+                         "onclick='assignAllStresses()'>Assign all</button>"
+                         " <span style='font-weight:400'>&mdash; or drag one onto a layer</span></div>"
                          f"<ul style='margin:4px 0;padding-left:18px'>{un}</ul>")
         inner = "".join(parts) or "<div class=food style='margin-top:6px'>No stresses yet.</div>"
         return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
