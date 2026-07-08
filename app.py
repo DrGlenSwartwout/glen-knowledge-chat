@@ -15161,18 +15161,41 @@ def api_client_portal(token):
                 _rcx, email_for_reports, reorder_src)
     except Exception:
         pass  # a recommendation-merge failure must never break the portal render
+    # Unified client FF pricing: for a reorder item with no per-item baked override,
+    # the display price follows the same precedence the invoice pricer uses —
+    # per-SKU client special, then the client's FF flat (client_prices.__all_ff__)
+    # for FF-eligible products. One number (set on the composer's Invoice panel)
+    # drives both the invoice and the portal. Best-effort: a lookup failure just
+    # falls back to override-or-regular. Baked overrides on live portals still win.
+    _cp_ff_flat, _cp_by_slug = None, {}
+    if email_for_reports:
+        try:
+            from dashboard import client_prices as _cpx
+            with sqlite3.connect(LOG_DB) as _cpcx:
+                _cpx.init_table(_cpcx)
+                _cp_ff_flat = _cpx.get_ff_flat(_cpcx, email_for_reports)
+                _cp_by_slug = {r["slug"]: r["price_cents"] for r in (_cpx.list_for(_cpcx, email_for_reports) or [])}
+        except Exception:
+            _cp_ff_flat, _cp_by_slug = None, {}
     display = []
     for it in (reorder_src or []):
         slug = (it.get("slug") or "").strip()
         p = _get_product(slug) if slug else None
         regular = (p or {}).get("price_cents")
         override = it.get("price_cents")
-        special = int(override) if override is not None else regular
+        if override is not None:
+            special = int(override)
+        elif slug in _cp_by_slug:
+            special = int(_cp_by_slug[slug])
+        elif _cp_ff_flat is not None and p and _qty_eligible(p):
+            special = int(_cp_ff_flat)
+        else:
+            special = regular
         display.append({
             "slug": slug, "qty": int(it.get("qty", 1) or 1),
             "name": (p or {}).get("name", slug), "price_cents": special,
             "regular_price_cents": regular,
-            "is_special": bool(override is not None and regular is not None and int(override) < int(regular)),
+            "is_special": bool(special is not None and regular is not None and int(special) < int(regular)),
             "available": bool(p)})
     client_findings = [{"code": f.get("code", ""), "name": f.get("name", ""),
                         "description": f.get("description", ""), "rank": f.get("rank")}

@@ -86,6 +86,52 @@ def test_api_portal_returns_enriched_content(client):
     assert j["reorder_items"][0].get("name")  # enriched from the catalog
 
 
+def test_portal_reorder_uses_client_ff_price(client, monkeypatch):
+    # Unified FF pricing: the client's FF flat (client_prices.__all_ff__) drives the
+    # portal reorder prices, with the same precedence as the invoice — baked per-item
+    # override > per-SKU client special > FF flat (FF-eligible only) > regular.
+    c, appmod = client
+    prods = {
+        "ff-prod": {"name": "FF Prod", "price_cents": 6997, "qty_pricing": True},
+        "non-ff":  {"name": "Non FF",  "price_cents": 7000, "qty_pricing": False},
+        "ff-ov":   {"name": "FF Ov",   "price_cents": 6000, "qty_pricing": True},
+        "ff-sku":  {"name": "FF Sku",  "price_cents": 8000, "qty_pricing": True},
+    }
+    monkeypatch.setattr(appmod, "_get_product", lambda s: prods.get(s))
+    email = "ffclient@example.com"
+    from dashboard import client_prices as cp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cp.init_table(cx)
+    cp.set_ff_flat(cx, email, 5000)          # $50 flat for all FFs
+    cp.set_price(cx, email, "ff-sku", 4000)  # per-SKU special beats the flat
+    cx.commit(); cx.close()
+    tok = _seed_portal(appmod, email=email, name="FF Client", content={
+        "greeting": "hi", "layers": [],
+        "reorder_items": [
+            {"slug": "ff-prod", "qty": 1},                      # FF, no override -> flat 5000
+            {"slug": "non-ff", "qty": 1},                       # not FF -> regular 7000
+            {"slug": "ff-ov", "qty": 1, "price_cents": 3000},   # baked override wins -> 3000
+            {"slug": "ff-sku", "qty": 1},                       # per-SKU special -> 4000
+        ]})
+    j = c.get(f"/api/portal/{tok}").get_json()
+    items = {it["slug"]: it for it in j["reorder_items"]}
+    assert items["ff-prod"]["price_cents"] == 5000 and items["ff-prod"]["is_special"] is True
+    assert items["non-ff"]["price_cents"] == 7000 and items["non-ff"]["is_special"] is False
+    assert items["ff-ov"]["price_cents"] == 3000    # per-item baked override wins
+    assert items["ff-sku"]["price_cents"] == 4000   # per-SKU client special wins over the flat
+
+
+def test_portal_reorder_no_client_price_uses_regular(client, monkeypatch):
+    # No client FF price set -> FF item shows the regular catalog price (not special).
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_get_product",
+                        lambda s: {"name": "FF", "price_cents": 6997, "qty_pricing": True} if s == "ff-prod" else None)
+    tok = _seed_portal(appmod, email="plain@example.com", name="Plain", content={
+        "greeting": "hi", "layers": [], "reorder_items": [{"slug": "ff-prod", "qty": 1}]})
+    it = c.get(f"/api/portal/{tok}").get_json()["reorder_items"][0]
+    assert it["price_cents"] == 6997 and it["is_special"] is False
+
+
 def test_api_portal_bad_token_404(client):
     c, _ = client
     r = c.get("/api/portal/not-a-real-token")
