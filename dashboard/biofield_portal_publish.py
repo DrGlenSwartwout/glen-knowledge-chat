@@ -137,6 +137,23 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
         seen.add(slug)
         reorder.append({"slug": slug, "qty": 1, "price_cents": int(special_price_cents)})
 
+    # Bake the ASSIGNED stresses under each layer (from list_stresses' by_layer grouping)
+    # so the portal can show, per layer, which stress patterns that layer addresses.
+    # Best-effort; a stress lookup failure must never break a publish.
+    try:
+        from dashboard import biofield_stress as _bstr
+        _chain = [{"layer": L.get("layer"), "head": L.get("head"), "remedy": L.get("remedy")}
+                  for L in raw_layers]
+        _sbl = {}
+        for _grp in (_bstr.list_stresses(cx, test_id, _chain).get("by_layer") or []):
+            _sbl[_grp.get("layer")] = [{"code": (s.get("code") or ""), "label": (s.get("label") or "")}
+                                       for s in (_grp.get("stresses") or [])]
+        for _cl in layers:
+            _cl["stresses"] = _sbl.get(_cl["n"], [])
+    except Exception:
+        for _cl in layers:
+            _cl.setdefault("stresses", [])
+
     # Bake the scan's findings (name + e4l_description) into the portal content so
     # the client-portal stress-pattern chips render. findings_for_scan_date reads the
     # local e4l.db and returns the findings for the EXACT scan_date being published

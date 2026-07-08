@@ -116,3 +116,10 @@ def test_build_includes_time_of_day_schedule():
     assert sched.get("slots") and sched.get("entries")          # time-of-day schedule present
     names = {e.get("name") for e in sched["entries"]}
     assert "Vitality" in names                                   # a dosed remedy is scheduled
+
+
+def test_build_layers_carry_a_stresses_list():
+    cx = sqlite3.connect(":memory:")
+    aid = _seed_karin(cx)
+    c = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)["content"]
+    assert all(isinstance(L.get("stresses"), list) for L in c["layers"])   # per-layer stresses field present

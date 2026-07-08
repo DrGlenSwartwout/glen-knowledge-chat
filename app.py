@@ -15051,6 +15051,7 @@ def api_client_portal(token):
         if bf_show:
             item["remedy"] = L.get("remedy", "")
             item["dosing"] = L.get("dosing", "")
+            item["stresses"] = L.get("stresses") or []   # assigned stress patterns for this layer
         bf_layers.append(item)
     reorder_src = bf_content.get("reorder_items") if dates else content.get("reorder_items")
     # Task 2 (fast-follow off #572): merge an ACCEPTED practitioner recommendation's
