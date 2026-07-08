@@ -18,7 +18,14 @@ deduped case-insensitively, highest priority first, then truncated to the cap.
 import re
 from urllib.parse import quote
 
-# Deepgram nova-3 keyterm practical ceiling.
+# Deepgram caps keyterm prompting at 500 TOKENS across all keyterms (not a count,
+# not a URL length) -- exceeding it fails the socket with a bare 400 Bad Request:
+#   "Keyterm limit exceeded. The maximum number of tokens across all keyterms is 500."
+# Glen's terms are rare medical/botanical words, so they tokenize densely: 100 of
+# them blew past 500. We budget tokens with headroom, and Deepgram's own guidance is
+# to "focus on the most important 20-50 terms".
+KEYTERM_TOKEN_BUDGET = 400
+# Belt-and-braces count cap; the token budget is what actually binds.
 KEYTERM_CAP = 100
 # The LLM has no such limit; give it a wider glossary for normalization.
 GLOSSARY_CAP = 300
@@ -33,12 +40,18 @@ CLINICAL_VOCAB = [
     "epigenetic", "most affected", "head and tail", "muscle testing",
 ]
 
-# A name is equipment/packaging (skip it) if it starts with a digit
+# A name is equipment/packaging/merch (skip it) if it starts with a digit
 # ("100 mL ...", "172 Hz ...", "23 Piece ...") or contains one of these tokens.
+# Boost budget is scarce -- it must not be spent on t-shirts and tuning forks.
 _EQUIPMENT_TOKENS = (
+    # equipment & packaging
     "machine", "tuning fork", "quartz bowl", "quartz frosted", "tea ball",
     "cookware", "mesh", "cable", "hammer", "wide mouth bottle", "bottle for",
     "spooky scalar", "capsule filling", "cm ", " ml ",
+    # devices & materials
+    "oscillator", "shielding", "millimeter wave", "ribbon", "vinyl", "oilcloth",
+    # apparel / merch
+    "shirt", "boxer", "underwear", "briefs", "sleeve", "sock",
 )
 
 _TERRAIN_RE = re.compile(r"\s+in\s+terrain\s+restore\s*$", re.I)
@@ -65,21 +78,44 @@ def _is_equipment(name):
     return any(tok in n for tok in _EQUIPMENT_TOKENS)
 
 
-def build_terms(cx, cap=KEYTERM_CAP):
-    """Curated, deduped, priority-ordered term list (<= cap). cx is a sqlite conn.
+def estimate_tokens(term):
+    """Conservative upper bound on how many tokens a keyterm costs Deepgram.
+
+    Deepgram does not publish its tokenizer, so we over-estimate rather than risk a
+    400. Glen's vocabulary is rare words ('gemmotherapy', 'Perelandra') that split
+    into many subword tokens; ~3 chars/token matched the observed 500-token cutoff.
+    Each term also carries at least one token per whitespace-separated word."""
+    term = (term or "").strip()
+    if not term:
+        return 0
+    words = len(term.split())
+    return max(words, -(-len(term) // 3))  # ceil(len/3), never fewer than word count
+
+
+def build_terms(cx, cap=KEYTERM_CAP, token_budget=None):
+    """Curated, deduped, priority-ordered term list. cx is a sqlite conn.
 
     Priority: clinical vocab -> prescribed remedies (by usage) -> filtered
-    formulation names. Clinical vocab and prescribed remedies are added first so
-    they always survive the cap."""
+    formulation names, so the most valuable terms survive truncation.
+
+    Bounded by `cap` (count) and, when `token_budget` is given, by the estimated
+    total token cost -- Deepgram's real limit. A term that would overflow the
+    budget is skipped, but cheaper later terms may still fit."""
     seen, out = set(), []
+    spent = [0]
 
     def add(term):
         term = (term or "").strip()
-        if not term:
+        if not term or len(out) >= cap:
             return
         key = term.lower()
         if key in seen:
             return
+        if token_budget is not None:
+            cost = estimate_tokens(term)
+            if spent[0] + cost > token_budget:
+                return  # skip this one; a shorter later term may still fit
+            spent[0] += cost
         seen.add(key)
         out.append(term)
 
@@ -95,7 +131,7 @@ def build_terms(cx, cap=KEYTERM_CAP):
         for (remedy, _c) in rows:
             add(_strip_terrain(remedy))
 
-    if _has(cx, "fmp_snap_products") and len(out) < cap:
+    if _has(cx, "fmp_snap_products"):
         rows = cx.execute(
             "SELECT DISTINCT product_name FROM fmp_snap_products "
             "WHERE TRIM(COALESCE(product_name,''))<>''"
@@ -107,7 +143,12 @@ def build_terms(cx, cap=KEYTERM_CAP):
                 continue
             add(_strip_terrain(name))
 
-    return out[:cap]
+    return out
+
+
+def build_keyterms(cx):
+    """The list actually sent to Deepgram: count-capped AND token-budgeted."""
+    return build_terms(cx, cap=KEYTERM_CAP, token_budget=KEYTERM_TOKEN_BUDGET)
 
 
 def keyterm_query(terms):
