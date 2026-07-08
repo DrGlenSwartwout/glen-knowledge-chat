@@ -10271,6 +10271,7 @@
     },
     "dental-regen-powder": {
       "name": "Dental Regen Powder",
+      "inactive": true,
       "price_cents": 6997,
       "pinecone_title": "Dental Regen Powder",
       "url": "https://remedymatch.com/remedies/syntropy/317-dental-regen-powder",
