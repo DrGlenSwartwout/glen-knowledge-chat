@@ -3808,6 +3808,7 @@
     },
     "comfort": {
       "name": "Comfort",
+      "inactive": true,
       "price_cents": 6997,
       "pinecone_title": "Comfort",
       "url": "https://remedymatch.com/remedies/syntropy/428-comfort",
@@ -4077,6 +4078,7 @@
     },
     "endocrine-restore": {
       "name": "Endocrine Restore",
+      "inactive": true,
       "price_cents": 6997,
       "pinecone_title": "Endocrine Restore",
       "url": "https://remedymatch.com/remedies/syntropy/34-endocrine-restore",
