@@ -47,8 +47,19 @@ _SYSTEM = (
 )
 
 
-def build_interpret_prompt(transcript):
-    return {"system": _SYSTEM, "user": "TRANSCRIPT:\n" + (transcript or "")}
+_GLOSSARY_NOTE = (
+    "\n\nKNOWN CATALOG TERMS (Glen's products, remedies, and clinical terms). When a "
+    "spoken remedy is CLEARLY a transcription mangle of one of these, use the catalog "
+    "spelling. If a spoken remedy does not clearly match any of these, keep it EXACTLY "
+    "as spoken -- never force a match:\n"
+)
+
+
+def build_interpret_prompt(transcript, glossary=""):
+    system = _SYSTEM
+    if (glossary or "").strip():
+        system = _SYSTEM + _GLOSSARY_NOTE + glossary.strip()
+    return {"system": system, "user": "TRANSCRIPT:\n" + (transcript or "")}
 
 
 def _parse_json(text):
@@ -69,11 +80,13 @@ def _parse_json(text):
     return {}
 
 
-def interpret_transcript(transcript, complete):
-    """transcript + complete(system,user) -> {header, layers:[{layer,head,most_affected,remedy}]}."""
+def interpret_transcript(transcript, complete, glossary=""):
+    """transcript + complete(system,user) -> {header, layers:[{layer,head,most_affected,remedy}]}.
+    Optional `glossary` (comma-joined catalog terms) lets the model normalize a clearly
+    misheard remedy to its catalog spelling; unmatched remedies are kept as spoken."""
     if not (transcript or "").strip():
         return {"header": "", "layers": []}
-    p = build_interpret_prompt(transcript)
+    p = build_interpret_prompt(transcript, glossary)
     data = _parse_json(complete(p["system"], p["user"]))
     layers = []
     for l in (data.get("layers") or []):

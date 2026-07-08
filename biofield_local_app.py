@@ -1264,9 +1264,19 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     @app.route("/api/deepgram-token")
     def api_deepgram_token():
         try:
-            return {"key": deepgram_token()}
+            key = deepgram_token()
         except Exception as e:  # no key / network / Deepgram error
             return {"error": str(e)[:200]}
+        # Bias the ASR toward Glen's coined remedy / formulation / clinical terms.
+        # Best-effort: a catalog-lookup failure must never block recording.
+        keyterms = ""
+        try:
+            from dashboard.biofield_catalog_terms import build_terms, keyterm_query
+            with sqlite3.connect(db_path) as cx:
+                keyterms = keyterm_query(build_terms(cx))
+        except Exception:
+            keyterms = ""
+        return {"key": key, "keyterms": keyterms}
 
     @app.route("/author/<test_id>/session", methods=["POST"])
     def author_session(test_id):
@@ -1308,8 +1318,15 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             transcript = get_notes(cx, test_id)
             if not transcript.strip():
                 return {"added": 0, "error": "no transcript yet -- record a session first"}
+            glossary = ""
             try:
-                result = interpret_transcript(transcript, interpret_complete)
+                from dashboard.biofield_catalog_terms import (
+                    build_terms, glossary_text, GLOSSARY_CAP)
+                glossary = glossary_text(build_terms(cx, cap=GLOSSARY_CAP))
+            except Exception:
+                glossary = ""
+            try:
+                result = interpret_transcript(transcript, interpret_complete, glossary)
             except Exception as e:
                 return {"error": str(e)[:200]}
             added = 0
