@@ -370,3 +370,18 @@ def test_default_publish_invoice_unconfigured():
     finally:
         if old is not None:
             os.environ["CONSOLE_SECRET"] = old
+
+
+def test_invoice_view_shows_client_options_reference(tmp_path):
+    # Decision #3: the Invoice page also shows a secondary "Client options & pricing"
+    # reference card (analysis price data-sourced from fee_state; $300 standard here).
+    from dashboard.biofield_authoring import init_auth_tables, create_test
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Ref Pt", "ref@x.com", "2026-07-08")
+    cx.commit()
+    body = create_app(db).test_client().get("/author/%s/invoice-view" % tid).data.decode()
+    assert "Client options &amp; pricing" in body
+    assert "$300" in body and "$997" in body          # data-sourced standard + value
+    assert "No subscription" in body

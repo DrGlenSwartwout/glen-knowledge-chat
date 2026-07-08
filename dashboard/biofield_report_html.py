@@ -232,9 +232,27 @@ def _client_tabs(active, tid, email=""):
     return f"<nav class=wfnav>{tabs}</nav>"
 
 
+def _invoice_options_ref(fee_state):
+    """Secondary reference card on the Invoice page: the client-facing options &
+    pricing trio (analysis price data-sourced from fee_state — courtesy if set),
+    so the operator sees what the client sees. Decision #3 (light yes, secondary)."""
+    from dashboard.biofield_fee import cents_to_dollars
+    courtesy = fee_state.get("courtesy_cents")
+    analysis = cents_to_dollars((courtesy if courtesy is not None else fee_state.get("standard_cents")) or 0)
+    value = cents_to_dollars(fee_state.get("value_cents") or 0)
+    tag = " (this client's courtesy)" if courtesy is not None else ""
+    return (
+        "<div class=card style='margin-top:14px;opacity:.92'>"
+        "<h2 style='font-size:15px'>Client options &amp; pricing <span class=food>(what the client sees)</span></h2>"
+        "<p class=food>1. Biofield Analysis &amp; remedies — included with their scan; remedies from about $70 (30-day supply).</p>"
+        "<p class=food>2. Personal Causal Biofield Analysis with Dr. Glen — <b>$" + analysis + "</b> (a $" + value + " value)" + tag + ". Reply to arrange.</p>"
+        "<p class=food>3. No subscription.</p></div>")
+
+
 def render_invoice_page(report, fee_state):
     """Standalone Invoice page (its own client tab): the fee/invoice panel with
-    create/view/edit/print, under the per-client tab strip."""
+    create/view/edit/print, under the per-client tab strip, plus a secondary
+    client-options reference card."""
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     tid = _e(str(report.get("test_id") or ""))
@@ -242,7 +260,8 @@ def render_invoice_page(report, fee_state):
             + f"<p><a href='/'>&larr; All tests</a> &nbsp;&middot;&nbsp; "
             f"<a href='/author/{tid}'>&larr; Edit</a></p>"
             + f"<h1>Invoice &mdash; {name}</h1>"
-            + render_fee_panel(fee_state))
+            + render_fee_panel(fee_state)
+            + _invoice_options_ref(fee_state))
     return _page(f"Invoice — {c.get('name') or ''}", body)
 
 
