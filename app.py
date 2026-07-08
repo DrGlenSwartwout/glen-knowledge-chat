@@ -14399,6 +14399,36 @@ def _read_receipts_enabled():
         "1", "true", "yes")
 
 
+def _portal_options_enabled():
+    """Portal 'Options & Pricing' card. Default OFF — when off the portal payload
+    never gains the 'options' key, so responses stay byte-identical."""
+    return (os.environ.get("PORTAL_OPTIONS_CARD_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _portal_options_for(email):
+    """The client-facing options+pricing trio for the portal card. Prices are
+    DATA-SOURCED (biofield-analysis catalog price + this client's courtesy override
+    + FF base), never hardcoded. Best-effort — returns None on any error."""
+    try:
+        p = _get_product("biofield-analysis") or {}
+        std = int(p.get("price_cents") or 0)
+        value = int(p.get("service_value_cents") or 0)
+        courtesy = None
+        try:
+            from dashboard import client_prices as _cp
+            with sqlite3.connect(LOG_DB) as cx:
+                courtesy = _cp.get_price(cx, email, "biofield-analysis")
+        except Exception:
+            courtesy = None
+        analysis = courtesy if courtesy is not None else std
+        return {"analysis_cents": analysis, "analysis_standard_cents": std,
+                "analysis_value_cents": value, "ff_from_cents": _FF_BASE_CENTS,
+                "is_courtesy": courtesy is not None and courtesy != std}
+    except Exception:
+        return None
+
+
 def _scan_list_enabled():
     """Available-scan list feature (Task 2). Default OFF — when off, the portal
     payload never gains the 'available_scans' key, so responses stay byte-identical
@@ -15214,6 +15244,15 @@ def api_client_portal(token):
             payload["invoices"] = _invs
     except Exception as _e:
         print(f"[portal-invoices] {_e!r}", flush=True)
+    # Options & Pricing card (flag-gated, best-effort): the client-facing trio with
+    # data-sourced prices + this client's courtesy.
+    if _portal_options_enabled():
+        try:
+            _opt = _portal_options_for(email_for_reports)
+            if _opt:
+                payload["options"] = _opt
+        except Exception as _e:
+            print(f"[portal-options] {_e!r}", flush=True)
     return jsonify(payload)
 
 
