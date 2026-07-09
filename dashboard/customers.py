@@ -18,7 +18,8 @@ _PEOPLE_COLS = (
 
 # Columns the order-entry customer picker reads back.
 PICKER_COLS = ("id", "name", "first_name", "last_name", "email", "phone",
-               "address1", "address2", "city", "state", "zip", "country")
+               "address1", "address2", "city", "state", "zip", "country",
+               "pickup_default")
 
 
 def _now():
@@ -33,6 +34,34 @@ def add_people_columns(cx):
         except Exception:
             pass  # already present
     cx.commit()
+
+
+def set_pickup_default(cx, person_id, on):
+    """Mark/unmark a client as collecting in person (no shipping on their orders).
+    `updated_at` is best-effort: some test/legacy `people` schemas don't carry it."""
+    val = 1 if on else 0
+    try:
+        cx.execute("UPDATE people SET pickup_default=?, updated_at=? WHERE id=?",
+                   (val, _now(), int(person_id)))
+    except Exception:
+        cx.execute("UPDATE people SET pickup_default=? WHERE id=?",
+                   (val, int(person_id)))
+    cx.commit()
+
+
+def pickup_default_for_email(cx, email):
+    """True when this client collects in person. Unknown email, blank email, or a
+    pre-migration table (no such column) -> False. Never raises: the safe direction
+    is to CHARGE shipping, because guessing True ships goods for free."""
+    e = (email or "").strip().lower()
+    if not e:
+        return False
+    try:
+        row = cx.execute(
+            "SELECT pickup_default FROM people WHERE lower(email)=?", (e,)).fetchone()
+    except Exception:
+        return False          # column/table absent
+    return bool(row and row[0])
 
 
 def _person_row(cx, person_id):
