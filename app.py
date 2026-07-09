@@ -32915,9 +32915,24 @@ def api_orders_manual():
     body = request.get_json(silent=True) or {}
     customer = body.get("customer") or {}
     lines_in = body.get("lines") or []
-    pickup = bool(body.get("pickup"))
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
+    # An explicit `pickup` ALWAYS wins — order entry always posts the checkbox, so the
+    # operator keeps the last word. Only an ABSENT key falls back to the client's saved
+    # preference (#738): that is the Biofield hand-off, which posts no `pickup` at all
+    # and otherwise ignored the preference entirely. Unknown client / blank email /
+    # client_prefs not yet created -> False -> shipping is charged.
+    # The EDIT route must NEVER do this: re-resolving on save would rebuild the #734
+    # latch (unticking pickup on a flagged client's order would snap back).
+    if "pickup" in body:
+        pickup = bool(body.get("pickup"))
+    else:
+        _pcx = _sqlite3.connect(LOG_DB)
+        try:
+            from dashboard import client_prefs as _cpf
+            pickup = _cpf.get_pickup_default(_pcx, customer.get("email"))
+        finally:
+            _pcx.close()
     # Idempotent hand-off: a re-hand-off replaces the client's prior OPEN drafts
     # (proposed, unpaid, NOT yet published to the portal) so invoices never pile up.
     # Published/paid/confirmed orders are left alone (those are Rae's, deliberately out).

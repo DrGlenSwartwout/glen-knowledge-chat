@@ -90,3 +90,21 @@ def test_the_route_rejects_a_body_missing_pickup_default_before_writing():
     guard_pos = route_src.index('"pickup_default" not in body')
     write_pos = route_src.index("set_pickup_default")
     assert guard_pos < write_pos, "the missing-key guard must run before the write"
+
+
+def test_get_pickup_default_missing_table_returns_false():
+    """`client_prefs` is created lazily by the console panel. The ORDER path reads this
+    on every hand-off, so an operator who never opened that panel must not hit an
+    OperationalError mid-checkout. Unknown -> False -> shipping is charged."""
+    from dashboard import client_prefs as C
+    cx = sqlite3.connect(":memory:")          # no client_prefs table at all
+    assert C.get_pickup_default(cx, "nobody@x.com") is False
+
+
+def test_get_pickup_default_missing_table_does_not_create_it():
+    """Reading must never CREATE the table — a read on the money path stays a read."""
+    from dashboard import client_prefs as C
+    cx = sqlite3.connect(":memory:")
+    C.get_pickup_default(cx, "nobody@x.com")
+    n = cx.execute("SELECT count(*) FROM sqlite_master WHERE name='client_prefs'").fetchone()[0]
+    assert n == 0
