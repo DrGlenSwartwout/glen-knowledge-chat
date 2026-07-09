@@ -5382,8 +5382,6 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
             print(f"[repertoire] lookup failed for {email!r}: {e!r}", flush=True)
             rep_slugs = None
     country = (ship.get("country") or "US").strip().upper()
-    if country not in ("US", "USA", ""):
-        raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
     settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
     for c in (cart or []):
@@ -5410,6 +5408,10 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
             bt = _shipping.resolve_bottle_type(slug, p)
             box_counts[bt] = box_counts.get(bt, 0) + qty
             total_bottles += qty
+    # US-only shipping — but only a cart with something to ship has an opinion
+    # about the address. An overseas client buying a service prices fine.
+    if box_counts and country not in ("US", "USA", ""):
+        raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),

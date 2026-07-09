@@ -90,3 +90,19 @@ def test_bottles_still_ship_when_not_pickup():
         [{"slug": "neuro-magnesium", "qty": 1}],
         email="", pickup=False, ship=US)
     assert res["shipping_cents"] > 0
+
+
+def test_overseas_services_only_cart_prices_without_error():
+    """A service has no shipment, so a non-US address is irrelevant to it."""
+    res = app._price_inhouse_invoice(
+        [{"slug": "biofield-analysis", "qty": 1}],
+        email="", pickup=False, ship={"name": "T", "country": "AU"})
+    assert res is not None
+    assert res["shipping_cents"] == 0
+
+
+def test_overseas_cart_with_a_bottle_still_raises():
+    """Guard: the US-only rule still holds for anything we actually mail."""
+    with pytest.raises(app.CheckoutError):
+        app._price_cart([{"slug": "neuro-magnesium", "qty": 1}],
+                        ship={"name": "T", "country": "AU"}, channel="retail")
