@@ -45,6 +45,23 @@ def test_invoice_token_expires(tmp_path):
     assert PP.order_id_from_invoice_token(t, now=later, db_path=db) is None
 
 
+def test_invoice_token_default_ttl_survives_a_slow_payer(tmp_path):
+    """A customer who pays months after the invoice email must still land on a
+    live pay-link. Guards against the default silently shrinking back to 30d.
+
+    `now` must be naive: _valid_token_row compares it against a naive stored
+    expires_at, and an aware value raises inside its bare except -> None.
+    """
+    from dashboard import practitioner_portal as PP
+    db = str(tmp_path / "tok.db")
+    t = PP.create_order_invoice_token(11, db_path=db)
+    ninety_days = datetime.utcnow() + timedelta(days=90)
+    assert PP.order_id_from_invoice_token(t, now=ninety_days, db_path=db) == "11"
+    # still bounded: it does not live forever
+    past_window = datetime.utcnow() + timedelta(days=PP.INVOICE_TTL_DAYS + 1)
+    assert PP.order_id_from_invoice_token(t, now=past_window, db_path=db) is None
+
+
 # ── payment helpers ──────────────────────────────────────────────────────────
 
 def test_claimed_payment_does_not_mark_paid_or_fulfill():

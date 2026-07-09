@@ -913,3 +913,61 @@ def test_renewal_cron_skips_already_reminded_within_24h(app_client_mem, fake_smt
     assert r.get_json().get("reminded") == 0
     sends_all = [s for inst in fake_smtp.instances for s in inst.sent]
     assert not any("already@example.com" in to for (_, to, _) in sends_all)
+
+
+# ── magic-link lifetimes ─────────────────────────────────────────────────────
+# A membership magic link arrives by email. The window it stays valid for has to
+# match how the recipient got it: a link they just asked for vs. one we pushed at
+# them unprompted. These pin both, because the old shared 15-minute default made
+# every grant email dead on arrival.
+
+def _token_window(app_module, db, plain):
+    """Return (expires_at - created_at) for a minted token."""
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT created_at, expires_at FROM auth_tokens WHERE token_hash=?",
+        (app_module._hash_token(plain),)
+    ).fetchone()
+    cx.close()
+    assert row is not None
+    parse = lambda s: datetime.fromisoformat(s.rstrip("Z"))
+    return parse(row[1]) - parse(row[0])
+
+
+def test_requested_signin_link_survives_a_delayed_inbox_check(app_module_with_db):
+    """15 minutes was shorter than the gap between sending mail and reading it."""
+    app_module, db = app_module_with_db
+    plain = app_module._mint_membership_magic_link("slowreader@example.com")
+    window = _token_window(app_module, db, plain)
+    assert window >= timedelta(hours=1)
+    # the mint reads the clock twice, so allow a hair of drift
+    assert abs(window - timedelta(minutes=app_module.AUTH_TOKEN_TTL_MIN)) < timedelta(seconds=1)
+
+
+def test_unprompted_grant_email_link_lives_for_weeks(app_module_with_db, monkeypatch):
+    """The studio-credit grant email is not a response to any action the member
+    took, so it must still work when they get round to it. Asserts the call site
+    overrides the interactive default -- that override is the whole fix."""
+    app_module, db = app_module_with_db
+    seen = {}
+
+    def _spy_mint(email, ttl_min=app_module.MEMBERSHIP_MAGIC_TTL_MIN):
+        seen["email"], seen["ttl_min"] = email, ttl_min
+        return "fake-token"
+
+    monkeypatch.setattr(app_module, "_mint_membership_magic_link", _spy_mint)
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda **kw: True)
+    monkeypatch.setattr(app_module, "_grant_membership", lambda cx, e, d, s: "mid-1")
+    cx = sqlite3.connect(db)
+    app_module._studio_credit_grant_and_notify(cx, "gifted@example.com", 30)
+    cx.close()
+    assert seen["email"] == "gifted@example.com"
+    assert timedelta(minutes=seen["ttl_min"]) >= timedelta(days=29), (
+        "an unprompted grant email must not carry the interactive sign-in TTL")
+
+
+def test_signin_email_copy_states_the_real_window(app_module_with_db):
+    """The body used to promise '15 minutes'. Copy and constant must not drift."""
+    app_module, _ = app_module_with_db
+    assert app_module.AUTH_TOKEN_TTL_LABEL == "24 hours"
+    assert timedelta(minutes=app_module.AUTH_TOKEN_TTL_MIN) == timedelta(hours=24)
