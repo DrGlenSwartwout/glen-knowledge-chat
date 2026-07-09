@@ -5288,7 +5288,24 @@ _MEMBERSHIP_TIERS = {
 }
 
 
+def _catalog_products():
+    """Every catalog product as a dict carrying its own slug. Used to resolve a
+    bundle's component NAMES to products for packing. Includes inactive records on
+    purpose: a bundle's contents must stay packable after a component is retired
+    from the storefront."""
+    return [dict(p, slug=s) for s, p in (_PRODUCTS.get("products") or {}).items()]
+
+
 def _get_product(slug):
+    """The sellable product for a slug, following a retired duplicate to its live twin.
+
+    Duplicate FMP records are retired with `inactive: true` rather than deleted, because
+    order history, storefront links and Atlas ids still reference their slugs. Routing
+    through `_superseded` here means EVERY consumer — product page, checkout, cart,
+    images — keeps mapping a stale slug to the surviving record, and carries the
+    survivor's slug forward. A record that is inactive with no `superseded_by` still
+    resolves to None: retired means retired."""
+    slug = _superseded(slug)
     p = (_PRODUCTS.get("products") or {}).get(slug)
     if not p or p.get("inactive"):
         return None  # inactive products are not sellable/visible on the funnel
@@ -5480,7 +5497,9 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        slug = (c.get("slug") or "").strip()
+        # Use the RESOLVED slug: a retired duplicate redirects to its live twin, and the
+        # stored order line + bottle lookup must both name the survivor, not the dead slug.
+        slug = p["slug"]
         # Persist per-line LIST pricing on the stored order (cart-level discounts ride
         # the order's discount_cents, which the invoice renders separately, so
         # subtotal − discount still reconciles to the total).
@@ -5490,9 +5509,26 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # "default" placeholder into quote(), which raises UnknownBottleType and
         # drops the whole cart to the coarse qty rule — charging a phantom bottle.
         if _shipping.is_shippable(p):
-            bt = _shipping.resolve_bottle_type(slug, p)
-            box_counts[bt] = box_counts.get(bt, 0) + qty
-            total_bottles += qty
+            if p.get("bundle"):
+                # A bundle is ONE line holding several bottles and has no bottle_type
+                # of its own. Pack its CONTENTS, or it counts as one bottle: undersized
+                # box, undercharged shipping. Price is untouched — the bundle's own
+                # price_cents already priced the line above.
+                try:
+                    _comps = _shipping.bundle_component_products(p, _catalog_products())
+                except _shipping.UnknownBundleComponent as e:
+                    # Loud: a bundle whose contents can't be identified can't be packed
+                    # correctly by a human either. Never fall back to the one-bottle
+                    # undercharge. CheckoutError surfaces as a 400, not a 500.
+                    raise CheckoutError(str(e))
+                for _comp in _comps:
+                    _bt = _shipping.resolve_bottle_type(_comp["slug"], _comp)
+                    box_counts[_bt] = box_counts.get(_bt, 0) + qty
+                    total_bottles += qty
+            else:
+                bt = _shipping.resolve_bottle_type(slug, p)
+                box_counts[bt] = box_counts.get(bt, 0) + qty
+                total_bottles += qty
     # US-only shipping — but only a cart with something to ship has an opinion
     # about the address. An overseas client buying a service prices fine.
     if box_counts and country not in ("US", "USA", ""):
