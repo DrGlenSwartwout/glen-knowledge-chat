@@ -116,6 +116,12 @@ def default_create_order(customer, lines, replace_open=False):
     if not base:
         return {"ok": False, "error": "The console connection is not configured."}
     try:
+        # pickup=True is a deliberate shipping COURTESY, absorbed into the analysis
+        # fee: the hand-off invoice carries real remedy bottles that Rae mails, and
+        # we choose not to bill USPS on top of the $300. It is NOT a workaround for
+        # the old bug where a service line inflated the box count — that is fixed in
+        # shipping.is_shippable. Removing this flag starts charging these clients
+        # shipping. Don't, without asking Glen.
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "pickup": True, "replace_open": bool(replace_open),
                 "invoice_note": "Biofield Analysis and remedies. Payable by check."}
