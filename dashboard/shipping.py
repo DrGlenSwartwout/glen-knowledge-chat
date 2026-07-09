@@ -566,6 +566,18 @@ def resolve_bottle_type(slug, product, db_path=None):
     return (product or {}).get("bottle_type") or "default"
 
 
+def is_shippable(product) -> bool:
+    """False when a product has no physical thing to put in a box.
+
+    The ONE place this question is asked. Services (Biofield Analysis, EVOX) and
+    info-only SKUs (EMF, an affiliate link) carry no bottle and must not inflate
+    a box count — four bottles plus a Biofield Analysis is still four bottles.
+    A future digital SKU is taught here and nowhere else.
+    """
+    p = product or {}
+    return not (p.get("service") or p.get("info_only"))
+
+
 def get_packing_settings(db_path: Optional[str] = None) -> Dict[str, int]:
     with _connect(db_path) as cx:
         rows = cx.execute("SELECT key, value FROM packing_settings").fetchall()

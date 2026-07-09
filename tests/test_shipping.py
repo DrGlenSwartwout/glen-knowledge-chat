@@ -521,3 +521,27 @@ def test_check_usps_rates_flags_implausible_jump(tmp_path, monkeypatch):
     assert "S" in [f["box_size"] for f in summary["flagged"]]     # flagged, not proposed
     assert not any(p["box_size"] == "S" for p in summary["proposed"])
     assert "M" in summary["unchanged"] and "L" in summary["unchanged"]
+
+
+# ── Shippability ──────────────────────────────────────────────────────────────
+
+def test_is_shippable_false_for_services_and_info_only():
+    """A service or info-only SKU has nothing to put in a box."""
+    from dashboard.shipping import is_shippable
+    assert is_shippable({"name": "Biofield Analysis", "service": True, "info_only": True}) is False
+    assert is_shippable({"name": "EVOX Session", "service": True, "info_only": True}) is False
+    assert is_shippable({"name": "EMF", "info_only": True}) is False
+
+
+def test_is_shippable_true_for_a_normal_product():
+    from dashboard.shipping import is_shippable
+    assert is_shippable({"name": "Neuro Magnesium", "price_cents": 6997}) is True
+    assert is_shippable({"name": "Hand Cradle", "bottle_type": "default"}) is True
+
+
+def test_is_shippable_handles_missing_product():
+    from dashboard.shipping import is_shippable
+    # No caller passes None — _price_cart skips falsy products at app.py:5356 —
+    # but the predicate must not raise on one. It treats it as an empty product.
+    assert is_shippable(None) is True
+    assert is_shippable({}) is True
