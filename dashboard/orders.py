@@ -979,3 +979,14 @@ def effective_shipping_cents(pickup, computed_cents):
         return int(computed_cents or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def channel_on_edit(pickup, existing_channel):
+    """Channel for an edited order. The pickup checkbox is authoritative, so
+    unchecking it returns a pickup order to 'retail' and shipping is charged
+    again. Any other channel (e.g. wholesale) is preserved untouched."""
+    if pickup:
+        return "pickup"
+    if (existing_channel or "") == "pickup":
+        return "retail"
+    return existing_channel or "retail"
