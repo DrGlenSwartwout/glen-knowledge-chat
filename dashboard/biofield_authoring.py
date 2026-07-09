@@ -350,6 +350,20 @@ def remedy_dosing(cx, name):
     return {k: (r[k] or "") for k in blank} if r else blank
 
 
+def merge_dosing(dosage, frequency, timing, defaults):
+    """Fill each EMPTY dose field from the catalog default, INDEPENDENTLY.
+
+    An all-or-nothing fill (`if not (dosage or frequency or timing)`) meant a single
+    spoken field suppressed the catalog for the other two, leaving whatever the LLM
+    guessed. Real case: "Fiber Cleanse, one a day" -> the model supplied timing
+    "with food" while the catalog says "with extra water, away from beneficial oils".
+    A spoken value always wins; a blank one always comes from the catalog."""
+    d = defaults or {}
+    return {"dosage": (dosage or "").strip() or (d.get("dosage") or ""),
+            "frequency": (frequency or "").strip() or (d.get("frequency") or ""),
+            "timing": (timing or "").strip() or (d.get("timing") or "")}
+
+
 def stress_vocab(cx, q="", limit=20):
     """Distinct stress-factor terms Glen has actually used (autocomplete)."""
     if not _has(cx, "fmp_snap_client_active_main_stress"):
