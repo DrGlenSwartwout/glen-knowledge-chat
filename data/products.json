@@ -102,7 +102,9 @@
       "description": "ACES Eyedrops . Price: $69.97.",
       "bottle_type": "5ml",
       "fmp_id": "158",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "inactive": true,
+      "superseded_by": "aces-eye-drops"
     },
     "aller-free-aid": {
       "name": "Aller-Free Aid for Inhalant Allergies",

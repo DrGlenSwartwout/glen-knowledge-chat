@@ -5215,6 +5215,15 @@ def _catalog_products():
 
 
 def _get_product(slug):
+    """The sellable product for a slug, following a retired duplicate to its live twin.
+
+    Duplicate FMP records are retired with `inactive: true` rather than deleted, because
+    order history, storefront links and Atlas ids still reference their slugs. Routing
+    through `_superseded` here means EVERY consumer — product page, checkout, cart,
+    images — keeps mapping a stale slug to the surviving record, and carries the
+    survivor's slug forward. A record that is inactive with no `superseded_by` still
+    resolves to None: retired means retired."""
+    slug = _superseded(slug)
     p = (_PRODUCTS.get("products") or {}).get(slug)
     if not p or p.get("inactive"):
         return None  # inactive products are not sellable/visible on the funnel
@@ -5406,7 +5415,9 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        slug = (c.get("slug") or "").strip()
+        # Use the RESOLVED slug: a retired duplicate redirects to its live twin, and the
+        # stored order line + bottle lookup must both name the survivor, not the dead slug.
+        slug = p["slug"]
         # Persist per-line LIST pricing on the stored order (cart-level discounts ride
         # the order's discount_cents, which the invoice renders separately, so
         # subtotal − discount still reconciles to the total).
