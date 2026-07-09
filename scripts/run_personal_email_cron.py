@@ -159,10 +159,28 @@ def run_daily_piggybacks():
         print("[usps-rate-check] not Monday (UTC) — skip", flush=True)
 
 
+def check_public_surfaces():
+    """Piggyback: probe the public surfaces and email Glen if any is dead.
+
+    Unlike every other piggyback here, this does NOT post into the web container —
+    it hits the public URLs directly from this cron container, so it still fires and
+    still alerts when the web service itself is down or failing to boot. Best-effort:
+    never raises, never affects the personal-email send."""
+    try:
+        try:
+            from surface_check import run as _surface_run      # run as a script (prod cron)
+        except ImportError:
+            from scripts.surface_check import run as _surface_run   # imported as a package
+        _surface_run()
+    except Exception as e:  # noqa: BLE001
+        print(f"[surface-check] failed: {e!r}", flush=True)
+
+
 if __name__ == "__main__":
     # `finally` guarantees the piggybacked jobs fire even if the personal-email send sys.exit()s.
     try:
         main()
     finally:
+        check_public_surfaces()
         invite_pif_gift_notes()
         run_daily_piggybacks()
