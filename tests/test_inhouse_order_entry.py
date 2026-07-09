@@ -29,7 +29,7 @@ def _people_db():
         country TEXT DEFAULT '', source TEXT DEFAULT '', order_count INTEGER DEFAULT 0,
         last_order_date TEXT DEFAULT '', created_at TEXT DEFAULT '', updated_at TEXT DEFAULT '')""")
     cx.commit()
-    C.add_people_address_columns(cx)
+    C.add_people_columns(cx)
     O.init_orders_table(cx)
     return C, O, cx
 

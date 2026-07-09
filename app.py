@@ -23947,13 +23947,10 @@ def _init_people_table():
                 synced_at        TEXT DEFAULT ''
             )
         """)
-        # In-house customer records (order-entry Phase 1): full shipping address.
-        for _col in ("address1", "address2", "zip"):
-            try:
-                cx.execute(f"ALTER TABLE people ADD COLUMN {_col} TEXT DEFAULT ''")
-            except Exception:
-                pass  # already present
-        cx.commit()
+        # Additive columns (address + pickup_default) live in ONE place so prod and
+        # tests run the same migration. See dashboard/customers.py:_PEOPLE_COLS.
+        from dashboard import customers as _cust_mig
+        _cust_mig.add_people_columns(cx)
 
 _init_people_table()
 

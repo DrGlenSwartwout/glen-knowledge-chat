@@ -7,8 +7,14 @@ the same LOG_DB."""
 import json
 from datetime import datetime, timezone
 
-# Address columns added to `people` (city/state/country/phone already exist).
-_ADDR_COLS = ("address1", "address2", "zip")
+# Columns additively migrated onto `people`. THE migration — app.py calls this too,
+# so tests and prod exercise one code path (they used to have divergent copies).
+_PEOPLE_COLS = (
+    ("address1", "TEXT DEFAULT ''"),
+    ("address2", "TEXT DEFAULT ''"),
+    ("zip", "TEXT DEFAULT ''"),
+    ("pickup_default", "INTEGER DEFAULT 0"),
+)
 
 # Columns the order-entry customer picker reads back.
 PICKER_COLS = ("id", "name", "first_name", "last_name", "email", "phone",
@@ -19,11 +25,11 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def add_people_address_columns(cx):
-    """Additively migrate `people` to carry a full shipping address. Idempotent."""
-    for col in _ADDR_COLS:
+def add_people_columns(cx):
+    """Additively migrate `people` (shipping address + pickup default). Idempotent."""
+    for col, decl in _PEOPLE_COLS:
         try:
-            cx.execute(f"ALTER TABLE people ADD COLUMN {col} TEXT DEFAULT ''")
+            cx.execute(f"ALTER TABLE people ADD COLUMN {col} {decl}")
         except Exception:
             pass  # already present
     cx.commit()
