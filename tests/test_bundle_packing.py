@@ -75,3 +75,41 @@ def test_real_catalog_bundles_all_resolve():
     for b in bundles:
         comps = bundle_component_products(b, catalog)
         assert len(comps) == len(b["bundle_components"]), b["slug"]
+
+
+# ── bottle types for WholOmega (Glen: "2 common sizes: 30 caps and 120 caps") ──
+def _catalog():
+    import json
+    P = json.load(open("data/products.json"))["products"]
+    return P, [dict(p, slug=s) for s, p in P.items()]
+
+
+def test_wholomega_variants_have_bottle_types():
+    """A component with no bottle_type resolves to the "default" placeholder, which
+    poisons quote() and drops the WHOLE cart to the coarse qty rule."""
+    P, _ = _catalog()
+    assert P["wholomega"]["bottle_type"] == "30cap"
+    assert P["wholomega-30-gelcaps"]["bottle_type"] == "30cap"
+    assert P["wholomega-120-gelcaps"]["bottle_type"] == "120cap"
+    assert P["wholomega-120-capsules"]["bottle_type"] == "120cap"
+
+
+def test_macular_bundle_gets_a_real_box_fit_quote():
+    """All five Macular components map to a known bottle type, so the packer can
+    actually fit a box instead of falling back to the qty rule."""
+    import os, sqlite3, tempfile
+    from dashboard import shipping as S
+    P, catalog = _catalog()
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        S.init_shipping_schema(cx)
+    b = dict(P["macular-wellness-program"], slug="macular-wellness-program")
+    counts = {}
+    for c in bundle_component_products(b, catalog):
+        bt = S.resolve_bottle_type(c["slug"], c, db_path=db)
+        assert bt != "default", f"{c['name']} has no bottle type"
+        counts[bt] = counts.get(bt, 0) + 1
+    q = S.quote(counts, db_path=db)
+    assert q.get("shipping_cents"), f"no box-fit quote: {q}"
+    assert q.get("box_size")

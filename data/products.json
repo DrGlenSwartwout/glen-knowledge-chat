@@ -10033,7 +10033,8 @@
         }
       ],
       "ingredients_source": "gk",
-      "description": "NeurOmega . NeurOmega WholOmega 120 capsules NeurOmega delivers DHA to your cells, including the Retina, which has the highest level of DHA in the body. DHA is also the main fatty acid in the brain. It also supports the crystalline lens... Here's an example of the findings of a study on Saffron and cataract published in Molecular Vision: Results: Saffron demonstrated significant protection against selenite-induced cataractogenesis in vivo. The mean activities of superoxide dismutase, glutathione peroxidase, catalase, and glutathione levels were significantly increased in group III compared to..."
+      "description": "NeurOmega . NeurOmega WholOmega 120 capsules NeurOmega delivers DHA to your cells, including the Retina, which has the highest level of DHA in the body. DHA is also the main fatty acid in the brain. It also supports the crystalline lens... Here's an example of the findings of a study on Saffron and cataract published in Molecular Vision: Results: Saffron demonstrated significant protection against selenite-induced cataractogenesis in vivo. The mean activities of superoxide dismutase, glutathione peroxidase, catalase, and glutathione levels were significantly increased in group III compared to...",
+      "bottle_type": "30cap"
     },
     "ei5-lymphaticsbladder-meridian": {
       "name": "EI5 Lymphatics/Bladder Meridian",
@@ -10966,7 +10967,8 @@
         }
       ],
       "ingredients_source": "gk",
-      "description": "NeurOmega . NeurOmega WholOmega 120 capsules NeurOmega delivers DHA to your cells, including the Retina, which has the highest level of DHA in the body. DHA is also the main fatty acid in the brain. It also supports the crystalline lens... Here's an example of the findings of a study on Saffron and cataract published in Molecular Vision: Results: Saffron demonstrated significant protection against selenite-induced cataractogenesis in vivo. The mean activities of superoxide dismutase, glutathione peroxidase, catalase, and glutathione levels were significantly increased in group III compared to..."
+      "description": "NeurOmega . NeurOmega WholOmega 120 capsules NeurOmega delivers DHA to your cells, including the Retina, which has the highest level of DHA in the body. DHA is also the main fatty acid in the brain. It also supports the crystalline lens... Here's an example of the findings of a study on Saffron and cataract published in Molecular Vision: Results: Saffron demonstrated significant protection against selenite-induced cataractogenesis in vivo. The mean activities of superoxide dismutase, glutathione peroxidase, catalase, and glutathione levels were significantly increased in group III compared to...",
+      "bottle_type": "120cap"
     },
     "ed9-muscle-driver": {
       "name": "ED9 Muscle Driver",
@@ -17026,7 +17028,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 capsule daily with food"
+      "description": "1 capsule daily with food",
+      "bottle_type": "30cap"
     },
     "drainage-complex-homeopathic-in-terrain-restore": {
       "name": "Drainage Complex Homeopathic in Terrain Restore",
@@ -18922,7 +18925,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 23000,
-      "description": "4 capsules daily with heavier meal"
+      "description": "4 capsules daily with heavier meal",
+      "bottle_type": "120cap"
     },
     "bone-broth-powder": {
       "name": "Bone Broth powder",
