@@ -1,6 +1,12 @@
-"""Assemble a client's pickup invoice from the authored Biofield intake and raise it
+"""Assemble a client's hand-off invoice from the authored Biofield intake and raise it
 on prod (Orders board). Pure line-assembly + injected prod calls; mirrors
 biofield_fee.py. Prod is the pricing authority — this module sends [{slug,qty}] only.
+
+"Hand-off" is the workflow step where Glen hands an authored analysis to Rae to
+publish and invoice. It says nothing about delivery: the invoice carries the
+Biofield Analysis fee (a service, no bottle, so it books no box) plus the physical
+remedy lines, which prod quotes for shipping. Whether the client collects in person
+is a separate, per-client choice made on the console — never assumed here.
 """
 import json as _json
 import os
