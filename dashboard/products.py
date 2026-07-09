@@ -6,6 +6,7 @@ import os
 from dashboard.signals import signal as _signal, AMBER, GREEN, GRAY
 from dashboard.actions import action, LOW_WRITE
 from dashboard.rbac import OWNER, OPS, VA
+from dashboard.shipping import is_shippable
 
 _REPO_DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -63,6 +64,9 @@ def catalog(with_ingredients_only=True, include_inactive=False):
                     # Service-fee lines (e.g. Biofield Analysis): the invoice sorts these to the
                     # top and shows the Value/Regular anchors above the per-client Special price.
                     "service": bool(p.get("service")),
+                    # The browser needs the same shippability answer the pricer uses,
+                    # so the order builder can disable Pickup when nothing ships.
+                    "shippable": is_shippable(p),
                     "service_value_cents": p.get("service_value_cents"),
                     "service_regular_cents": p.get("service_regular_cents")})
     out.sort(key=lambda x: (x["name"] or "").lower())
