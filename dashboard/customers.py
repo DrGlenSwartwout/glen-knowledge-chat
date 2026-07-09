@@ -37,15 +37,9 @@ def add_people_columns(cx):
 
 
 def set_pickup_default(cx, person_id, on):
-    """Mark/unmark a client as collecting in person (no shipping on their orders).
-    `updated_at` is best-effort: some test/legacy `people` schemas don't carry it."""
-    val = 1 if on else 0
-    try:
-        cx.execute("UPDATE people SET pickup_default=?, updated_at=? WHERE id=?",
-                   (val, _now(), int(person_id)))
-    except Exception:
-        cx.execute("UPDATE people SET pickup_default=? WHERE id=?",
-                   (val, int(person_id)))
+    """Mark/unmark a client as collecting in person (no shipping on their orders)."""
+    cx.execute("UPDATE people SET pickup_default=?, updated_at=? WHERE id=?",
+               (1 if on else 0, _now(), int(person_id)))
     cx.commit()
 
 

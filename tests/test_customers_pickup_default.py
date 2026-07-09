@@ -10,7 +10,7 @@ def _db():
         name TEXT DEFAULT '', first_name TEXT DEFAULT '', last_name TEXT DEFAULT '',
         phone TEXT DEFAULT '', city TEXT DEFAULT '', state TEXT DEFAULT '',
         country TEXT DEFAULT '', order_count INTEGER DEFAULT 0,
-        last_order_date TEXT DEFAULT '')""")
+        last_order_date TEXT DEFAULT '', updated_at TEXT DEFAULT '')""")
     cx.commit()
     C.add_people_columns(cx)
     return cx
