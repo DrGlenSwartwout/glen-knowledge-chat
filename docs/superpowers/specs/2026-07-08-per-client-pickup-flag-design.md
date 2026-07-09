@@ -112,10 +112,10 @@ pickup = bool(body["pickup"]) if "pickup" in body else customers.pickup_default_
 ### 6. New endpoint
 
 ```
-POST /api/console/customers/pickup   {email | person_id, pickup: bool}
+POST /api/console/customers/pickup   {email, pickup: bool}
 ```
 
-Console-key gated, mirroring the existing `POST /api/console/customers/rename` (`app.py:33085`). Owner role only.
+Keyed by **email only** (not person_id), exactly mirroring the existing `POST /api/console/customers/rename` (`app.py:33085`), which is also email-keyed. Owner role only. A blank/unknown email is a 400, never a silent no-op.
 
 ---
 
