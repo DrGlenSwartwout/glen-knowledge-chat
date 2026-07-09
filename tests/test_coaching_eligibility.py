@@ -84,3 +84,28 @@ def test_find_qualifying_order_picks_recent_eligible_unactivated():
     cx.commit()
     newest = cx.execute("SELECT id FROM orders WHERE external_ref='new'").fetchone()[0]
     assert appmod._find_qualifying_order_for_coaching(cx, "p@x.com") == newest
+
+
+def test_membership_active_at_survives_mixed_timestamp_shapes():
+    """memberships rows and the `when` argument can each carry any of the three
+    stored shapes. Comparing a naive granted_at against an aware `when` used to
+    raise inside a bare except, silently denying an active member their access.
+    """
+    from datetime import timezone
+    cx = _seed()
+    base = datetime.utcnow()
+    aware = lambda d: d.replace(tzinfo=timezone.utc).isoformat()
+    z_naive = lambda d: d.isoformat() + "Z"
+    bare = lambda d: d.isoformat()
+
+    # granted_at bare-naive, expires_at Z-suffixed: a real mix from the table
+    cx.execute("INSERT INTO memberships (id,email,granted_at,expires_at,source) VALUES (?,?,?,?,?)",
+               ("m1", "mix@x.com", bare(base - timedelta(days=40)),
+                z_naive(base + timedelta(days=20)), "membership"))
+    cx.commit()
+
+    for label, fmt in (("aware", aware), ("z_naive", z_naive), ("bare", bare)):
+        inside = fmt(base - timedelta(days=10))
+        before = fmt(base - timedelta(days=50))
+        assert appmod._membership_active_at(cx, "mix@x.com", inside) is True, label
+        assert appmod._membership_active_at(cx, "mix@x.com", before) is False, label

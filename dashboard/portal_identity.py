@@ -19,6 +19,7 @@ import secrets
 
 from dashboard import client_portal as _cp
 from dashboard.practitioner_portal import _ensure_auth_tokens
+from dashboard.timeutil import is_expired as _is_expired
 
 CLIENT_SESSION_TTL_DAYS = 30
 _SESSION_PURPOSE = "client_session"
@@ -163,10 +164,7 @@ def _live_magic_row(cx, token):
     extra, expires_at, consumed_at = row
     if consumed_at:
         return None
-    try:
-        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.now(timezone.utc):
-            return None
-    except Exception:
+    if _is_expired(expires_at):
         return None
     return extra
 
@@ -215,10 +213,7 @@ def identity_from_session(cx, session_token) -> "Identity | None":
     extra, expires_at, consumed_at = row
     if consumed_at:
         return None
-    try:
-        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.now(timezone.utc):
-            return None
-    except Exception:
+    if _is_expired(expires_at):
         return None
     try:
         person_id = (json.loads(extra) or {}).get("person_id")
