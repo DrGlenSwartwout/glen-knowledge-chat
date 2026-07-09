@@ -111,7 +111,8 @@
       <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
       <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
     </div>
-    <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>
+    <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-left:16px;text-transform:none;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="pickup-default"> Always picks up (save to client)</label></div>
     <div style="margin-top:10px"><label>Invoice notes (optional — shown to the customer on the invoice)</label>
       <textarea id="o-note" rows="2" style="width:100%" placeholder="e.g. Take with food. Follow-up scan in 30 days."></textarea></div>
     <div class="totals">
@@ -185,10 +186,27 @@ async function doSearch(q){
     Array.from(box.children).forEach(el=>el.onclick=()=>pickPerson(people[+el.dataset.i]));
   }catch(e){ /* ignore */ }
 }
+$("pickup-default").addEventListener("change", async function(){
+  const email = $("c-email").value.trim();
+  if (!email){ toast("Pick a client first","error"); this.checked = !this.checked; return; }
+  try{
+    const r = await fetch("/api/console/customers/pickup", {method:"POST", headers:HEADERS,
+      body: JSON.stringify({email: email, pickup: this.checked})});
+    const j = await r.json();
+    if (!j.ok){ toast(j.error||"failed","error"); this.checked = !this.checked; return; }
+    if (!EDIT_OID) $("pickup").checked = j.pickup;
+    toast(j.pickup ? "Client marked as pickup" : "Client no longer pickup");
+  }catch(e){ toast(e.message,"error"); this.checked = !this.checked; }
+});
 function pickPerson(p){
   $("person_id").value=p.id||""; $("c-name").value=p.name||""; $("c-email").value=p.email||"";
   $("c-phone").value=p.phone||""; $("a-addr1").value=p.address1||""; $("a-addr2").value=p.address2||"";
   $("a-city").value=p.city||""; $("a-state").value=p.state||""; $("a-zip").value=p.zip||""; $("a-country").value=p.country||"US";
+  // Create mode only: a client marked "always picks up" pre-checks the box. Set it
+  // BOTH ways so choosing a normal client afterwards clears it. Edit mode prefills
+  // from the order's own channel — re-resolving there would re-latch the channel.
+  if (!EDIT_OID) $("pickup").checked = !!p.pickup_default;
+  $("pickup-default").checked = !!p.pickup_default;
   $("cust-results").style.display="none"; $("cust-search").value=p.name||p.email||"";
   refreshPreview();  // re-price: the picked customer's membership gates volume pricing
   // Auto-pull the customer's redeemable points balance and apply it (capped on recalc).
