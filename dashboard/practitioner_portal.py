@@ -23,6 +23,7 @@ _LOG_DB = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.pa
 
 MAGIC_TTL_MIN = 15
 SESSION_TTL_DAYS = 30
+INVOICE_TTL_DAYS = 365  # a customer who pays late must still reach a live pay-link
 
 
 def _db_path() -> str:
@@ -432,9 +433,11 @@ def practitioner_id_from_session(token, *, now=None, db_path=None) -> Optional[s
 
 # ── customer invoice tokens (public pay-link; one token ⇄ one order) ───────────
 
-def create_order_invoice_token(order_id, *, ttl_days=30, now=None, db_path=None) -> str:
+def create_order_invoice_token(order_id, *, ttl_days=INVOICE_TTL_DAYS, now=None, db_path=None) -> str:
     """Mint a single-order, non-consuming token for the public /invoice/<token>
-    pay page. Reuses the shared auth_tokens table (purpose 'order_invoice')."""
+    pay page. Reuses the shared auth_tokens table (purpose 'order_invoice').
+    An expired pay-link costs a payment, so the window outlives any realistic
+    slow-payer rather than being tuned as a security boundary."""
     tok = secrets.token_urlsafe(32)
     _insert_token(tok, "order_invoice", {"order_id": str(order_id)},
                   int(ttl_days) * 86400, now, db_path)

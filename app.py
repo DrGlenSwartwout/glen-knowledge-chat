@@ -194,6 +194,9 @@ import hashlib, hmac, secrets
 
 AUTH_TOKEN_TTL_MIN  = 1440         # magic-link token validity window (24 hours, so a delayed email check still works)
 AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN for email/UI copy
+MEMBERSHIP_MAGIC_TTL_MIN = AUTH_TOKEN_TTL_MIN   # sign-in link the member asked for, seconds ago
+MEMBERSHIP_GRANT_TTL_MIN = 60 * 24 * 30         # 30 days: grant emails are UNPROMPTED, so the
+                                                # recipient may not open them for weeks
 MEMBERSHIP_CANCEL_TTL_DAYS = 1095  # ~3 years: the emailed one-click cancel link must outlive the recurring membership
 SESSION_TTL_DAYS    = 30           # session cookie validity
 PUBLIC_BASE_URL     = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
@@ -10099,9 +10102,11 @@ def _init_membership_tables():
 _init_membership_tables()
 
 
-def _mint_membership_magic_link(email, ttl_min=15):
+def _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_MAGIC_TTL_MIN):
     """Mint a single-use magic-link token for a membership grant or return-flow.
-    Returns the plaintext token; caller is responsible for emailing it."""
+    Returns the plaintext token; caller is responsible for emailing it.
+    Unprompted grant emails must pass MEMBERSHIP_GRANT_TTL_MIN — the default
+    only suits a link the member requested moments ago."""
     import secrets, json
     plain = secrets.token_urlsafe(32)
     th = _hash_token(plain)
@@ -10349,7 +10354,7 @@ def _studio_credit_grant_and_notify(cx, email, days):
     import json as _json
     email = (email or "").strip().lower()
     mid = _grant_membership(cx, email, days, "studio_credit")
-    plain = _mint_membership_magic_link(email)
+    plain = _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_GRANT_TTL_MIN)
     try:
         base = request.host_url.rstrip("/")
     except Exception:
@@ -30859,7 +30864,7 @@ def admin_membership_grant():
              truly_vip_ref, notes)
         )
 
-    plain = _mint_membership_magic_link(email)
+    plain = _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_GRANT_TTL_MIN)
     base = request.host_url.rstrip("/")
     magic_link_url = f"{base}/coaching/auth/{plain}"
 
@@ -31449,7 +31454,7 @@ def coaching_login_request():
     body = (
         f"Hi,\n\n"
         f"Use this link to sign in to your Remedy Match coaching dashboard:\n{magic_link_url}\n\n"
-        f"The link is good for 15 minutes. If you don't have an active membership, "
+        f"The link is good for {AUTH_TOKEN_TTL_LABEL}. If you don't have an active membership, "
         f"recording a fresh 3-5 minute video at https://truly.vip/Results will earn you "
         f"30 days of access.\n\n"
         f"---\n"
