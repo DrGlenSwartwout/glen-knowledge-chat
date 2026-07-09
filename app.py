@@ -319,6 +319,14 @@ def _now_utc():
     return datetime.now(timezone.utc)
 
 
+# auth_tokens.expires_at holds three different timestamp shapes (offset-aware,
+# 'Z'-suffixed naive, bare naive) depending on which minter wrote the row.
+# _parse_utc reads all of them and always returns aware UTC, so a comparison
+# against _now_utc() can never raise TypeError. Before this, a naive-vs-aware
+# TypeError fell into a bare `except` and reported a live token as expired.
+from dashboard.timeutil import parse_utc as _parse_utc  # noqa: E402
+
+
 # Module-level SMTP config + smtplib handle so tests can monkeypatch
 # app.SMTP_HOST / app.SMTP_USER / app.SMTP_PASS / app.smtplib.SMTP directly.
 # (send_magic_link_email / send_portal_welcome_email read os.environ locally
@@ -813,7 +821,7 @@ def get_authenticated_user(request_obj):
     if not row:
         return None
     try:
-        expires = datetime.fromisoformat(row["expires_at"])
+        expires = _parse_utc(row["expires_at"])
         if expires < _now_utc():
             return None
     except Exception:
@@ -2637,7 +2645,7 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
         email = None
         if row and not row["consumed_at"]:
             try:
-                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                if _parse_utc(row["expires_at"]) >= _now_utc():
                     email = row["email"]
             except Exception:
                 email = None
@@ -2977,11 +2985,7 @@ def _biofield_verify_token(th):
             valid = False
             if at is not None:
                 try:
-                    exp_str = at["expires_at"]
-                    exp_dt = datetime.fromisoformat(exp_str)
-                    if exp_dt.tzinfo is None:
-                        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-                    valid = exp_dt >= datetime.now(timezone.utc)
+                    valid = _parse_utc(at["expires_at"]) >= _now_utc()
                 except Exception:
                     valid = False
             if not valid:
@@ -3438,7 +3442,7 @@ def membership_cancel(token):
         email = None
         if row:
             try:
-                exp = datetime.fromisoformat((row[1] or "").replace("Z", "+00:00"))
+                exp = _parse_utc(row[1])
                 if exp >= datetime.now(timezone.utc):
                     email = row[0]
             except Exception:
@@ -3479,7 +3483,7 @@ def membership_pause(token):
         email = None
         if row:
             try:
-                exp = datetime.fromisoformat((row["expires_at"] or "").replace("Z", "+00:00"))
+                exp = _parse_utc(row["expires_at"])
                 if exp >= datetime.now(timezone.utc):
                     email = row["email"]
             except Exception:
@@ -5284,7 +5288,24 @@ _MEMBERSHIP_TIERS = {
 }
 
 
+def _catalog_products():
+    """Every catalog product as a dict carrying its own slug. Used to resolve a
+    bundle's component NAMES to products for packing. Includes inactive records on
+    purpose: a bundle's contents must stay packable after a component is retired
+    from the storefront."""
+    return [dict(p, slug=s) for s, p in (_PRODUCTS.get("products") or {}).items()]
+
+
 def _get_product(slug):
+    """The sellable product for a slug, following a retired duplicate to its live twin.
+
+    Duplicate FMP records are retired with `inactive: true` rather than deleted, because
+    order history, storefront links and Atlas ids still reference their slugs. Routing
+    through `_superseded` here means EVERY consumer — product page, checkout, cart,
+    images — keeps mapping a stale slug to the surviving record, and carries the
+    survivor's slug forward. A record that is inactive with no `superseded_by` still
+    resolves to None: retired means retired."""
+    slug = _superseded(slug)
     p = (_PRODUCTS.get("products") or {}).get(slug)
     if not p or p.get("inactive"):
         return None  # inactive products are not sellable/visible on the funnel
@@ -5476,7 +5497,9 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
-        slug = (c.get("slug") or "").strip()
+        # Use the RESOLVED slug: a retired duplicate redirects to its live twin, and the
+        # stored order line + bottle lookup must both name the survivor, not the dead slug.
+        slug = p["slug"]
         # Persist per-line LIST pricing on the stored order (cart-level discounts ride
         # the order's discount_cents, which the invoice renders separately, so
         # subtotal − discount still reconciles to the total).
@@ -5486,9 +5509,26 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # "default" placeholder into quote(), which raises UnknownBottleType and
         # drops the whole cart to the coarse qty rule — charging a phantom bottle.
         if _shipping.is_shippable(p):
-            bt = _shipping.resolve_bottle_type(slug, p)
-            box_counts[bt] = box_counts.get(bt, 0) + qty
-            total_bottles += qty
+            if p.get("bundle"):
+                # A bundle is ONE line holding several bottles and has no bottle_type
+                # of its own. Pack its CONTENTS, or it counts as one bottle: undersized
+                # box, undercharged shipping. Price is untouched — the bundle's own
+                # price_cents already priced the line above.
+                try:
+                    _comps = _shipping.bundle_component_products(p, _catalog_products())
+                except _shipping.UnknownBundleComponent as e:
+                    # Loud: a bundle whose contents can't be identified can't be packed
+                    # correctly by a human either. Never fall back to the one-bottle
+                    # undercharge. CheckoutError surfaces as a 400, not a 500.
+                    raise CheckoutError(str(e))
+                for _comp in _comps:
+                    _bt = _shipping.resolve_bottle_type(_comp["slug"], _comp)
+                    box_counts[_bt] = box_counts.get(_bt, 0) + qty
+                    total_bottles += qty
+            else:
+                bt = _shipping.resolve_bottle_type(slug, p)
+                box_counts[bt] = box_counts.get(bt, 0) + qty
+                total_bottles += qty
     # US-only shipping — but only a cart with something to ship has an opinion
     # about the address. An overseas client buying a service prices fine.
     if box_counts and country not in ("US", "USA", ""):
@@ -9281,7 +9321,7 @@ def auth_magic_link_verify():
         if row["consumed_at"]:
             return jsonify({"error": "Token already used"}), 400
         try:
-            expires = datetime.fromisoformat(row["expires_at"])
+            expires = _parse_utc(row["expires_at"])
             if expires < _now_utc():
                 return jsonify({"error": "Token expired"}), 400
         except Exception:
@@ -10247,8 +10287,8 @@ def _validate_membership_magic_link(token):
     if consumed_at:
         return None
     try:
-        exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
-        if exp_dt < datetime.utcnow():
+        exp_dt = _parse_utc(expires_at)
+        if exp_dt < _now_utc():
             return None
     except Exception:
         return None
@@ -10290,7 +10330,7 @@ def _validate_gift_note_link(token):
     if consumed_at:
         return None
     try:
-        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
+        if _parse_utc(expires_at) < _now_utc():
             return None
     except Exception:
         return None
@@ -10344,7 +10384,7 @@ def _validate_lead_magnet_guide_link(token):
     if consumed_at:
         return None
     try:
-        if datetime.fromisoformat(expires_at.rstrip("Z")) < datetime.utcnow():
+        if _parse_utc(expires_at) < _now_utc():
             return None
     except Exception:
         return None
@@ -10495,8 +10535,8 @@ def _active_membership_for_email(email):
         return None
     d = dict(row)
     try:
-        exp_dt = datetime.fromisoformat(d["expires_at"].rstrip("Z"))
-        d["days_remaining"] = max(0, (exp_dt - datetime.utcnow()).days)
+        exp_dt = _parse_utc(d["expires_at"])
+        d["days_remaining"] = max(0, (exp_dt - _now_utc()).days)
     except Exception:
         d["days_remaining"] = 0
     return d
@@ -10858,13 +10898,13 @@ def _membership_active_at(cx, email, when_iso):
     if not (email and when_iso):
         return False
     try:
-        when = datetime.fromisoformat(when_iso.rstrip("Z"))
+        when = _parse_utc(when_iso)
     except Exception:
         return False
     for granted_at, expires_at in cx.execute(
             "SELECT granted_at, expires_at FROM memberships WHERE email=?", (email,)).fetchall():
         try:
-            g = datetime.fromisoformat((granted_at or "").rstrip("Z"))
+            g = _parse_utc(granted_at)
         except Exception:
             continue
         if g > when:
@@ -10872,7 +10912,7 @@ def _membership_active_at(cx, email, when_iso):
         if not expires_at:
             return True
         try:
-            if datetime.fromisoformat(expires_at.rstrip("Z")) >= when:
+            if _parse_utc(expires_at) >= when:
                 return True
         except Exception:
             continue
@@ -30495,9 +30535,8 @@ def _validate_auth_token(cx, token_plain, purpose):
             "practitioner-claim.html" if purpose == "practitioner_claim" else "practitioner-optout.html",
             status="error"), 410)
     try:
-        exp_dt = datetime.fromisoformat(expires_at.rstrip("Z"))
-        # make naive comparison consistent
-        now_cmp = datetime.utcnow()
+        exp_dt = _parse_utc(expires_at)
+        now_cmp = _now_utc()
         if exp_dt < now_cmp:
             return None, (_render_static_template(
                 "practitioner-claim.html" if purpose == "practitioner_claim" else "practitioner-optout.html",
@@ -30625,8 +30664,8 @@ def inquiry_reply_get(inquiry_id, practitioner_id):
             html = _render_static_template("inquiry-reply.html", status="error")
             return html, 404, {"Content-Type": "text/html; charset=utf-8"}
         try:
-            exp_dt = datetime.fromisoformat(tok_row[1].rstrip("Z"))
-            if exp_dt < datetime.utcnow():
+            exp_dt = _parse_utc(tok_row[1])
+            if exp_dt < _now_utc():
                 html = _render_static_template("inquiry-reply.html", status="error")
                 return html, 410, {"Content-Type": "text/html; charset=utf-8"}
         except Exception:
@@ -30695,8 +30734,8 @@ def inquiry_reply_post(inquiry_id, practitioner_id):
             html = _render_static_template("inquiry-reply.html", status="error")
             return html, 404, {"Content-Type": "text/html; charset=utf-8"}
         try:
-            exp_dt = datetime.fromisoformat(tok_row[1].rstrip("Z"))
-            if exp_dt < datetime.utcnow():
+            exp_dt = _parse_utc(tok_row[1])
+            if exp_dt < _now_utc():
                 html = _render_static_template("inquiry-reply.html", status="error")
                 return html, 410, {"Content-Type": "text/html; charset=utf-8"}
         except Exception:
@@ -30785,8 +30824,8 @@ def _validate_share_token(token):
     if row["consumed_at"]:
         return None, None
     try:
-        exp_dt = datetime.fromisoformat(row["expires_at"].rstrip("Z"))
-        if exp_dt < datetime.utcnow():
+        exp_dt = _parse_utc(row["expires_at"])
+        if exp_dt < _now_utc():
             return None, None
     except Exception:
         return None, None
@@ -31396,7 +31435,7 @@ def coaching_activate(token):
         order_id = None
         if row and not row["consumed_at"]:
             try:
-                exp = datetime.fromisoformat((row["expires_at"] or "").replace("Z", "+00:00"))
+                exp = _parse_utc(row["expires_at"])
                 if exp >= datetime.now(timezone.utc):
                     email = row["email"]
                     order_id = (json.loads(row["extra"] or "{}")).get("order_id")
@@ -31495,8 +31534,8 @@ def cron_membership_renewals():
             except Exception:
                 pass
         try:
-            exp_dt = datetime.fromisoformat(r["expires_at"].rstrip("Z"))
-            days_left = max(0, (exp_dt - datetime.utcnow()).days)
+            exp_dt = _parse_utc(r["expires_at"])
+            days_left = max(0, (exp_dt - _now_utc()).days)
         except Exception:
             days_left = 0
         s_days = "s" if days_left != 1 else ""
