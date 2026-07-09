@@ -12,12 +12,19 @@ def test_pick_person_sets_checkbox_both_ways():
 
 
 def test_pick_person_guards_edit_mode():
-    """Edit mode prefills from the ORDER's channel, never the client's flag."""
-    m = re.search(r"function pickPerson\(p\)\{(.*?)\n\}", HTML, re.S)
-    assert m, "pickPerson not found"
-    body = m.group(1)
-    assert "pickup_default" in body
-    assert "EDIT_OID" in body, "pickPerson must not touch pickup in edit mode"
+    """Edit mode prefills from the ORDER's channel, never the client's flag.
+
+    The guard `if (!EDIT_OID)` must directly prefix the assignment
+    $("pickup").checked = !!p.pickup_default; without it, edit mode
+    would re-latch the channel (PR #734) by re-resolving the client flag.
+    """
+    # Require the exact structural relationship: if (!EDIT_OID) directly
+    # guards the assignment to $("pickup").checked. Tolerates whitespace.
+    pattern = r'if\s*\(\s*!EDIT_OID\s*\)\s*\$\("pickup"\)\.checked\s*=\s*!!p\.pickup_default'
+    assert re.search(pattern, HTML), (
+        "pickPerson must guard $('pickup').checked = !!p.pickup_default "
+        "with if (!EDIT_OID) — edit mode never re-checks the client flag"
+    )
 
 
 def test_always_picks_up_toggle_exists_and_posts():
