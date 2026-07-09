@@ -32910,7 +32910,18 @@ def api_orders_manual():
     body = request.get_json(silent=True) or {}
     customer = body.get("customer") or {}
     lines_in = body.get("lines") or []
-    pickup = bool(body.get("pickup"))
+    # An explicit `pickup` always wins (order entry always posts the checkbox).
+    # Only when the key is ABSENT — the Biofield hand-off — does the client's
+    # saved default decide. Unknown client -> False -> shipping is charged.
+    # The EDIT route must never do this: re-resolving would re-latch the channel.
+    if "pickup" in body:
+        pickup = bool(body.get("pickup"))
+    else:
+        _pcx = _sqlite3.connect(LOG_DB)
+        try:
+            pickup = _cust.pickup_default_for_email(_pcx, customer.get("email"))
+        finally:
+            _pcx.close()
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
     # Idempotent hand-off: a re-hand-off replaces the client's prior OPEN drafts
