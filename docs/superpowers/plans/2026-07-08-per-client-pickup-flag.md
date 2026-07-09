@@ -202,12 +202,20 @@ def test_init_people_table_is_idempotent(appmod):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-First stash Task 1's `app.py` change to watch it fail for the right reason:
+Task 1 **committed** `app.py`, so `git stash` would be a no-op here. Temporarily restore the pre-Task-1 `app.py` from its parent commit to watch the test fail for the right reason:
 
-Run: `git stash push app.py && doppler run -p remedy-match -c prd -- env DATA_DIR=$(mktemp -d) python3 -m pytest tests/test_init_people_table_pickup.py -q; git stash pop`
+```bash
+git checkout HEAD~1 -- app.py                       # pre-migration app.py (inline ALTER loop)
+doppler run -p remedy-match -c prd -- env DATA_DIR=$(mktemp -d) \
+  python3 -m pytest tests/test_init_people_table_pickup.py -q
+git checkout HEAD -- app.py                         # restore Task 1's change
+```
+
 Expected: FAIL — `AssertionError: prod boot path missing pickup_default: [...]`
 
-(This proves the test catches the divergence, not merely that the column exists.)
+This proves the test catches the two-migrations divergence, not merely that the column exists somewhere. **Confirm `git status` is clean after the restore** before continuing.
+
+If `HEAD~1` is not Task 1's commit (e.g. the task was split), use `git log --oneline -3` to find the commit before `refactor(customers): one people migration` and check out `app.py` from its parent.
 
 - [ ] **Step 3: No implementation needed**
 
