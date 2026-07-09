@@ -5213,30 +5213,64 @@ def _get_product(slug):
     return out
 
 
+def _superseded(slug):
+    """Follow a deprecated product's `superseded_by` pointer to its live twin.
+
+    Duplicate FMP records are retired with `inactive: true` rather than deleted (order
+    history references their slugs), so an old name can still resolve onto a slug that
+    is no longer sellable. `superseded_by` redirects it to the surviving record.
+    Returns `slug` unchanged when it is live, unknown, or has no successor. Loop-safe."""
+    seen = set()
+    while slug and slug not in seen:
+        seen.add(slug)
+        p = (_PRODUCTS.get("products") or {}).get(slug)
+        if not p or not p.get("inactive"):
+            return slug
+        nxt = (p.get("superseded_by") or "").strip()
+        if not nxt:
+            return slug
+        slug = nxt
+    return slug
+
+
+def _live_slug(slug):
+    """A slug the caller can actually sell: redirected past any deprecated record.
+    None when it resolves to nothing sellable, so callers report it rather than
+    carrying an unsellable slug forward."""
+    slug = _superseded(slug)
+    return slug if slug and _get_product(slug) else None
+
+
 def _resolve_remedy_slug(r):
-    """Resolve a pushed/typed remedy to a catalog slug: its slug if valid, else its
-    name via _TITLE_TO_SLUG (exact then case-insensitive), else the name/title index
-    (matches by catalog `name` too, HTML-unescaped), else the code fallback. None if
-    genuinely not in the catalog. Never raises."""
+    """Resolve a pushed/typed remedy to a SELLABLE catalog slug: its slug if valid,
+    else its name via _TITLE_TO_SLUG (exact then case-insensitive), else the name/title
+    index (matches by catalog `name` too, HTML-unescaped), else the code fallback.
+
+    Every hit is routed through _live_slug, so a name that lands on a deprecated
+    duplicate redirects to its surviving twin (`superseded_by`) instead of returning an
+    unsellable slug. None when nothing sellable matches -- callers list those as
+    dropped rather than carrying a dead end. Never raises."""
     try:
         s = (r.get("slug") or "").strip()
-        if s and _get_product(s):
-            return s
+        if s:
+            live = _live_slug(s)
+            if live:
+                return live
         name = (r.get("name") or "").strip()
         if not name:
             return None
         if name in _TITLE_TO_SLUG:
-            return _TITLE_TO_SLUG[name]
+            return _live_slug(_TITLE_TO_SLUG[name])
         low = name.lower()
         for title, slug in _TITLE_TO_SLUG.items():
             if (title or "").strip().lower() == low:
-                return slug
+                return _live_slug(slug)
         # In-catalog rescue: match by catalog `name` OR pinecone_title, HTML-unescaped.
         # Fixes drops where name != pinecone_title (e.g. 'Brain Boost' vs title
         # 'Brain Boost Nootropic') or the title carried entities ('Free &amp; Easy').
         hit = _RESOLVE_NAME_INDEX.get(_ihtml.unescape(name).strip().lower())
         if hit:
-            return hit
+            return _live_slug(hit)
         # Infoceutical code fallback: the matcher pushes the bare code ("EI8") while
         # the catalog name is "EI8 Microbes-Liver Integrator". Match by code prefix so
         # infoceuticals resolve (and so are recommended, not dropped).
@@ -5244,7 +5278,7 @@ def _resolve_remedy_slug(r):
             for title, slug in _TITLE_TO_SLUG.items():
                 t = (title or "").strip().lower()
                 if t == low or t.split(" ")[0] == low:
-                    return slug
+                    return _live_slug(slug)
         return None
     except Exception:
         return None
