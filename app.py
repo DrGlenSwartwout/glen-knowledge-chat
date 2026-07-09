@@ -33107,6 +33107,38 @@ def api_console_customer_rename():
     return jsonify({"ok": True, **res})
 
 
+@app.route("/api/console/client-prefs", methods=["GET", "POST"])
+def api_console_client_prefs():
+    """Owner: read/set a client's fulfillment defaults (today: pickup_default).
+    GET ?email= -> {pickup_default}; POST {email, pickup_default} sets it.
+
+    This is the ONLY writer. An order's Pickup tick is a per-order override and
+    never lands here — a client's default changes when the owner says so, not as
+    a side effect of one order being collected or mailed."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import client_prefs as _cpf
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _cpf.init_table(cx)
+        if request.method == "GET":
+            email = (request.args.get("email") or "").strip().lower()
+            if not email:
+                return jsonify({"ok": False, "error": "email required"}), 400
+            return jsonify({"ok": True, "email": email,
+                            "pickup_default": _cpf.get_pickup_default(cx, email)})
+        body = request.get_json(silent=True) or {}
+        email = (body.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": False, "error": "email required"}), 400
+        _cpf.set_pickup_default(cx, email, bool(body.get("pickup_default")))
+        return jsonify({"ok": True, "email": email,
+                        "pickup_default": _cpf.get_pickup_default(cx, email)})
+    finally:
+        cx.close()
+
+
 @app.route("/api/console/client-prices", methods=["GET", "POST", "DELETE"])
 def api_console_client_prices():
     """Owner: view/set/remove a client's persistent special prices (email+slug ->
