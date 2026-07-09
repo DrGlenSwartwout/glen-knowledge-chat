@@ -113,3 +113,35 @@ def test_macular_bundle_gets_a_real_box_fit_quote():
     q = S.quote(counts, db_path=db)
     assert q.get("shipping_cents"), f"no box-fit quote: {q}"
     assert q.get("box_size")
+
+
+def test_aces_and_reverse_age_have_bottle_types():
+    """Glen: ACES = 5 ml dropper; Reverse AGE = 30 caps. Note `aces-eye-drops` (the
+    slug the Dry Eye bundle names) is a DIFFERENT record from the already-mapped
+    `aces-eyedrops` — a duplicate pair."""
+    P, _ = _catalog()
+    assert P["aces-eye-drops"]["bottle_type"] == "5ml"
+    assert P["reverse-age"]["bottle_type"] == "30cap"
+
+
+def test_every_bundle_gets_a_real_box_fit_quote():
+    """No bundle may fall back to the coarse qty rule: every component must map to a
+    known bottle type, or the whole cart bypasses the box-fit catalog."""
+    import os, sqlite3, tempfile
+    from dashboard import shipping as S
+    P, catalog = _catalog()
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    with sqlite3.connect(db) as cx:
+        cx.row_factory = sqlite3.Row
+        S.init_shipping_schema(cx)
+    for slug, p in P.items():
+        if not p.get("bundle"):
+            continue
+        b = dict(p, slug=slug)
+        counts = {}
+        for c in bundle_component_products(b, catalog):
+            bt = S.resolve_bottle_type(c["slug"], c, db_path=db)
+            assert bt != "default", f"{slug}: component {c['name']!r} has no bottle type"
+            counts[bt] = counts.get(bt, 0) + 1
+        q = S.quote(counts, db_path=db)
+        assert q.get("shipping_cents"), f"{slug}: no box-fit quote ({counts}) -> {q}"

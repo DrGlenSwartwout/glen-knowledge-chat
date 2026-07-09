@@ -10160,7 +10160,8 @@
       ],
       "ingredients_source": "gk",
       "description": "Reverse AGE. AGE stands for Advanced Glycation Endproducts. They are responsible for about 1/3 of intracellular damage related to aging. AGEs form when sugars react with our body's proteins, fatty acids, and nucleic acids (RNA and DNA). AGE formation is one of the primary ways that degenerative changes and negative effects associated with aging occur in the body. By preventing AGE formation, we allow our body to repair and rejuvenate as it is constantly replacing itself on a molecular level... Reverse AGE can be taken 1 to 2 capsules daily with food. Reverse AGE is...",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "bottle_type": "30cap"
     },
     "methylselenocysteine": {
       "name": "Methylselenocysteine",
@@ -12032,7 +12033,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "bottle_type": "5ml"
     },
     "bloodroot-cream": {
       "name": "Bloodroot Cream",
