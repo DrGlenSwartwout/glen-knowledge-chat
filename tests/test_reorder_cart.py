@@ -81,7 +81,8 @@ def _authed_client(app, db, email):
                    (app._hash_token(tok), email, "reorder", now.isoformat(),
                     (now + timedelta(minutes=15)).isoformat()))
         cx.commit()
-    r = c.get(f"/reorder/auth/{tok}")
+    # GET only confirms (mail scanners prefetch it); the POST signs in.
+    r = c.post(f"/reorder/auth/{tok}")
     assert r.status_code == 302
     return c
 

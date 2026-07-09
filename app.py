@@ -2586,6 +2586,84 @@ def begin_quiz_result_data():
     })
 
 
+def _confirm_post_page(action_url, *, title, heading, blurb, button,
+                       hidden=None, status=200):
+    """One-button interstitial that turns a state-changing GET into a POST.
+
+    Corporate mail scanners, link checkers and browser prefetch all issue GET
+    on every URL in an email. A single-use token consumed by a GET is therefore
+    burned before the human clicks -- they land on 'link already used'. Rendering
+    this page on GET and doing the work on POST fixes that, because none of those
+    agents submit forms.
+
+    Deliberately contains NO javascript: an auto-submitting form would restore
+    the exact behaviour this exists to prevent.
+    """
+    import html as _html
+    fields = "".join(
+        f"<input type='hidden' name='{_html.escape(str(k))}' "
+        f"value='{_html.escape(str(v))}'>"
+        for k, v in (hidden or {}).items())
+    return (
+        "<!doctype html><meta charset=utf-8>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<meta name='robots' content='noindex,nofollow'>"
+        f"<title>{_html.escape(title)}</title>"
+        "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;"
+        "padding:0 20px;color:#1f2a37'>"
+        f"<h1>{_html.escape(heading)}</h1>"
+        f"<p>{_html.escape(blurb)}</p>"
+        f"<form method='post' action='{_html.escape(action_url)}'>{fields}"
+        "<button type='submit' style='font-family:Georgia,serif;font-size:1.05rem;"
+        "background:#2f6f5e;color:#fff;border:0;border-radius:6px;"
+        "padding:12px 28px;cursor:pointer;margin-top:8px'>"
+        f"{_html.escape(button)}</button></form></div>"
+    ), status, {"Content-Type": "text/html; charset=utf-8"}
+
+
+def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
+                           heading, blurb, button, title="Sign in",
+                           cookie_max_age=60 * 60 * 24 * 30):
+    """Shared body for the emailed sign-in links (reorder / cert / biofield /
+    coaching). GET validates and renders the confirm page; POST consumes the
+    token and sets the cookie. See _confirm_post_page for why."""
+    from flask import redirect as _redirect
+    th = _hash_token((token or "").strip())
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        row = cx.execute(
+            "SELECT email, expires_at, consumed_at FROM auth_tokens "
+            "WHERE token_hash=? AND purpose=?", (th, purpose)).fetchone()
+        email = None
+        if row and not row["consumed_at"]:
+            try:
+                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
+                    email = row["email"]
+            except Exception:
+                email = None
+        if not email:
+            return invalid_html, 400
+        if request.method == "POST":
+            # consumed_at IS NULL makes the burn atomic: a double submit loses
+            # the race and falls through to the invalid page rather than
+            # signing a second visitor in.
+            cur = cx.execute(
+                "UPDATE auth_tokens SET consumed_at=? "
+                "WHERE token_hash=? AND consumed_at IS NULL",
+                (_now_utc().isoformat(), th))
+            if cur.rowcount != 1:
+                return invalid_html, 400
+            cx.commit()
+
+    if request.method == "GET":
+        return _confirm_post_page(request.path, title=title, heading=heading,
+                                  blurb=blurb, button=button)
+    resp = _redirect(dest, code=302)
+    resp.set_cookie(cookie, email, max_age=cookie_max_age, httponly=True,
+                    samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 _GUIDE_PENDING_HTML = (
     "<!doctype html><meta charset=utf-8><title>Your guide</title>"
     "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
@@ -9180,12 +9258,14 @@ def auth_magic_link_request():
     })
 
 
-@app.route("/auth/magic-link/verify", methods=["GET"])
+@app.route("/auth/magic-link/verify", methods=["GET", "POST"])
 def auth_magic_link_verify():
-    """Click target for the magic link. Validates token, creates user (if
-    new) + session, sets HttpOnly auth cookie, redirects to /.
+    """Click target for the magic link. GET renders a one-button confirm page;
+    POST validates the token, creates user (if new) + session, sets the HttpOnly
+    auth cookie and redirects to /. The GET must not consume: mail scanners
+    prefetch every link and would burn the token first (see _confirm_post_page).
     """
-    token = (request.args.get("token") or "").strip()
+    token = (request.args.get("token") or request.form.get("token") or "").strip()
     if not token:
         return jsonify({"error": "Missing token"}), 400
     th = _hash_token(token)
@@ -9207,10 +9287,22 @@ def auth_magic_link_verify():
         except Exception:
             return jsonify({"error": "Token corrupted"}), 400
 
+        if request.method == "GET":
+            return _confirm_post_page(
+                "/auth/magic-link/verify", title="Sign in",
+                heading="Welcome back",
+                blurb="Continue to sign in to your account.",
+                button="Continue", hidden={"token": token})
+
         email = row["email"]
-        # Mark the token consumed
-        cx.execute("UPDATE auth_tokens SET consumed_at = ? WHERE token_hash = ?",
-                   (_now_utc().isoformat(), th))
+        # Mark the token consumed. consumed_at IS NULL makes a double submit
+        # lose the race rather than sign a second visitor in.
+        cur = cx.execute(
+            "UPDATE auth_tokens SET consumed_at = ? "
+            "WHERE token_hash = ? AND consumed_at IS NULL",
+            (_now_utc().isoformat(), th))
+        if cur.rowcount != 1:
+            return jsonify({"error": "Token already used"}), 400
 
         # Find or create user
         u = cx.execute("SELECT id, name, ghl_contact_id FROM users WHERE email = ?",
@@ -12076,10 +12168,20 @@ def practitioner_login_request():
                     "message": "If that email has a portal account, a sign-in link is on its way."})
 
 
-@app.route("/practitioner/login-verify", methods=["GET"])
+@app.route("/practitioner/login-verify", methods=["GET", "POST"])
 def practitioner_login_verify():
+    """GET confirms, POST consumes -- a mail scanner's prefetch must not burn
+    the practitioner's sign-in link. See _confirm_post_page."""
     from flask import redirect as _redir
-    token = (request.args.get("token") or "").strip()
+    token = (request.args.get("token") or request.form.get("token") or "").strip()
+    if request.method == "GET":
+        if not token or not _pp.validate_magic_link(token):
+            return _redir("/practitioner/register?error=link")
+        return _confirm_post_page(
+            "/practitioner/login-verify", title="Sign in",
+            heading="Welcome back",
+            blurb="Continue to open your practitioner portal.",
+            button="Continue", hidden={"token": token})
     pid = _pp.consume_magic_link(token) if token else None
     if not pid:
         return _redir("/practitioner/register?error=link")
@@ -14465,29 +14567,17 @@ def reorder_request():
     return jsonify({"ok": True})
 
 
-@app.route("/reorder/auth/<token>", methods=["GET"])
+@app.route("/reorder/auth/<token>", methods=["GET", "POST"])
 def reorder_auth(token):
     """Validate the reorder magic link, set the rm_reorder_email cookie, → /reorder."""
-    from flask import redirect as _redirect
-    th = _hash_token((token or "").strip())
-    email = None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.row_factory = sqlite3.Row
-        row = cx.execute(
-            "SELECT email, expires_at, consumed_at FROM auth_tokens "
-            "WHERE token_hash=? AND purpose='reorder'", (th,)).fetchone()
-        if row and not row["consumed_at"]:
-            try:
-                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
-                    email = row["email"]
-            except Exception:
-                email = None
-        if email:
-            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                       (_now_utc().isoformat(), th))
-            cx.commit()
-    if not email:
-        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+    return _magic_link_login_view(
+        token, purpose="reorder", cookie="rm_reorder_email", dest="/reorder",
+        title="Sign in to reorder",
+        heading="Welcome back",
+        blurb="Continue to open your reorder page.",
+        button="Continue",
+        invalid_html=(
+                "<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
                 "This reorder link is invalid or has expired. Please request a new one.</p>"
                 "<button id='resend-link-btn' style='font-family:sans-serif;margin-top:12px;'>Request a fresh link</button>"
                 "<script>(function(){"
@@ -14501,11 +14591,7 @@ def reorder_auth(token):
                 "body:JSON.stringify({token:token})})"
                 ".then(function(){b.textContent='Check your email for a fresh link.';})"
                 ".catch(function(){b.disabled=false;});};"
-                "})();</script>"), 400
-    resp = _redirect("/reorder", code=302)
-    resp.set_cookie("rm_reorder_email", email, max_age=60 * 60 * 24 * 30,
-                    httponly=True, samesite="Lax", secure=request.is_secure)
-    return resp
+                "})();</script>"))
 
 
 # ── Tokenized per-client portal ("Create Your Own Healing Adventure") ────────
@@ -18538,13 +18624,25 @@ def client_login_request():
                     "message": "If that email has a portal, a sign-in link is on its way."})
 
 
-@app.route("/portal/login-verify", methods=["GET"])
+@app.route("/portal/login-verify", methods=["GET", "POST"])
 def client_login_verify():
+    """GET confirms, POST consumes -- a mail scanner's prefetch must not burn
+    the client's sign-in link. See _confirm_post_page."""
     from flask import redirect as _redir, make_response as _mkresp
     if not _client_login_enabled():
         return ("Not found", 404)
     from dashboard import portal_identity as _pi
-    token = (request.args.get("token") or "").strip()
+    token = (request.args.get("token") or request.form.get("token") or "").strip()
+    if request.method == "GET":
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            live = _pi.validate_client_magic_link(cx, token) if token else None
+        if not live:
+            return _redir("/portal/login?error=link")
+        return _confirm_post_page(
+            "/portal/login-verify", title="Sign in",
+            heading="Welcome back",
+            blurb="Continue to open your healing home.",
+            button="Continue", hidden={"token": token})
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         pid = _pi.consume_client_magic_link(cx, token) if token else None
         if not pid:
@@ -19089,37 +19187,21 @@ def cert_login():
     return jsonify({"ok": True})
 
 
-@app.route("/cert/auth/<token>", methods=["GET"])
+@app.route("/cert/auth/<token>", methods=["GET", "POST"])
 def cert_auth(token):
     """Validate the cert magic link, set rm_cert_email cookie, -> /cert."""
-    from flask import redirect as _redirect
     if not _cert_portal_enabled():
         return ("Not found", 404)
-    th = _hash_token((token or "").strip())
-    email = None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.row_factory = sqlite3.Row
-        row = cx.execute(
-            "SELECT email, expires_at, consumed_at FROM auth_tokens "
-            "WHERE token_hash=? AND purpose='cert_portal'", (th,)).fetchone()
-        if row and not row["consumed_at"]:
-            try:
-                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
-                    email = row["email"]
-            except Exception:
-                email = None
-        if email:
-            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                       (_now_utc().isoformat(), th))
-            cx.commit()
-    if not email:
-        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+    return _magic_link_login_view(
+        token, purpose="cert_portal", cookie="rm_cert_email", dest="/cert",
+        title="Sign in to your certification portal",
+        heading="Welcome back",
+        blurb="Continue to open your certification portal.",
+        button="Continue",
+        invalid_html=(
+                "<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
                 "This certification portal link is invalid or has expired. "
-                "Please request a new one.</p>"), 400
-    resp = _redirect("/cert", code=302)
-    resp.set_cookie("rm_cert_email", email, max_age=60 * 60 * 24 * 30,
-                    httponly=True, samesite="Lax", secure=request.is_secure)
-    return resp
+                "Please request a new one.</p>"))
 
 
 @app.route("/api/cert/submit", methods=["POST"])
@@ -19774,30 +19856,19 @@ def biofield_request():
     return jsonify({"ok": True})
 
 
-@app.route("/biofield/auth/<token>", methods=["GET"])
+@app.route("/biofield/auth/<token>", methods=["GET", "POST"])
 def biofield_auth(token):
     """Validate the biofield magic link, set the rm_biofield_email cookie,
     redirect to /biofield/ready. Mirrors /reorder/auth/<token>."""
-    from flask import redirect as _redirect
-    th = _hash_token((token or "").strip())
-    email = None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.row_factory = sqlite3.Row
-        row = cx.execute(
-            "SELECT email, expires_at, consumed_at FROM auth_tokens "
-            "WHERE token_hash=? AND purpose='biofield'", (th,)).fetchone()
-        if row and not row["consumed_at"]:
-            try:
-                if datetime.fromisoformat(row["expires_at"]) >= _now_utc():
-                    email = row["email"]
-            except Exception:
-                email = None
-        if email:
-            cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                       (_now_utc().isoformat(), th))
-            cx.commit()
-    if not email:
-        return ("<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
+    return _magic_link_login_view(
+        token, purpose="biofield", cookie="rm_biofield_email",
+        dest="/biofield/ready",
+        title="Sign in",
+        heading="Welcome back",
+        blurb="Continue to open your biofield page.",
+        button="Continue",
+        invalid_html=(
+                "<p style='font-family:sans-serif;max-width:32rem;margin:3rem auto'>"
                 "This sign-in link is invalid or has expired. Please request a new one.</p>"
                 "<button id='resend-link-btn' style='font-family:sans-serif;margin-top:12px;'>Request a fresh link</button>"
                 "<script>(function(){"
@@ -19811,11 +19882,7 @@ def biofield_auth(token):
                 "body:JSON.stringify({token:token})})"
                 ".then(function(){b.textContent='Check your email for a fresh link.';})"
                 ".catch(function(){b.disabled=false;});};"
-                "})();</script>"), 400
-    resp = _redirect("/biofield/ready", code=302)
-    resp.set_cookie("rm_biofield_email", email, max_age=60 * 60 * 24 * 30,
-                    httponly=True, samesite="Lax", secure=request.is_secure)
-    return resp
+                "})();</script>"))
 
 
 @app.route("/api/biofield/ready", methods=["GET"])
@@ -30392,10 +30459,26 @@ def practitioner_claim_post(token):
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
-@app.route("/practitioner-optout/<token>", methods=["GET"])
+@app.route("/practitioner-optout/<token>", methods=["GET", "POST"])
 def practitioner_optout(token):
-    """Record opt-out and flip accepts_inquiries=False in Supabase."""
+    """Record opt-out and flip accepts_inquiries=False in Supabase.
+
+    GET only confirms. Opting out is a mutation, and a mail scanner that
+    prefetches the link would otherwise silently opt the practitioner out of
+    inquiries without them ever clicking."""
     token = token.strip()
+    if request.method == "GET":
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _row, err = _validate_auth_token(cx, token, "practitioner_optout")
+        if err:
+            html, code = err
+            return html, code, {"Content-Type": "text/html; charset=utf-8"}
+        return _confirm_post_page(
+            request.path, title="Stop receiving inquiries",
+            heading="Stop receiving client inquiries?",
+            blurb="Confirm and we'll stop sending you new client inquiries. "
+                  "You can ask us to turn them back on at any time.",
+            button="Confirm opt-out")
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         row, err = _validate_auth_token(cx, token, "practitioner_optout")
         if err:
@@ -31163,20 +31246,31 @@ def admin_escalation_reply(eid):
 
 # ── Slice 3: member auth + coaching dashboard ─────────────────────────────────
 
-@app.route("/coaching/auth/<token>", methods=["GET"])
+@app.route("/coaching/auth/<token>", methods=["GET", "POST"])
 def coaching_auth_token(token):
     email = _validate_membership_magic_link(token)
     if not email:
         html = _render_static_template("coaching.html", status="error")
         return html, 410, {"Content-Type": "text/html; charset=utf-8"}
+    if request.method == "GET":
+        # Don't consume on GET -- a mail scanner's prefetch would burn the
+        # token before the member ever clicks. See _confirm_post_page.
+        return _confirm_post_page(
+            request.path, title="Sign in to Remedy Match coaching",
+            heading="Welcome back",
+            blurb="Continue to open your coaching dashboard.",
+            button="Continue")
     # Consume the token
     th = _hash_token(token)
     now_iso = datetime.utcnow().isoformat() + "Z"
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.execute(
+        cur = cx.execute(
             "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
             (now_iso, th)
         )
+        if cur.rowcount != 1:
+            html = _render_static_template("coaching.html", status="error")
+            return html, 410, {"Content-Type": "text/html; charset=utf-8"}
     # Mint amg_session if absent, then set rm_member_email cookie
     session_id = request.cookies.get("amg_session", "")
     minted = not session_id

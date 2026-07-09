@@ -416,7 +416,9 @@ def test_client_login_verify_sets_session_when_enabled(client, monkeypatch):
     cx.commit()
     cx.close()
 
-    r = c.get(f"/portal/login-verify?token={magic}", follow_redirects=False)
+    # GET only confirms (mail scanners prefetch it); the POST signs in.
+    assert c.get(f"/portal/login-verify?token={magic}").status_code == 200
+    r = c.post(f"/portal/login-verify?token={magic}", follow_redirects=False)
     assert r.status_code in (302, 303)
     assert "rm_portal_session=" in r.headers.get("Set-Cookie", "")
 

@@ -405,19 +405,35 @@ def _valid_token_row(token, purpose, *, now=None, db_path=None):
     return extra
 
 
-def consume_magic_link(token, *, now=None, db_path=None) -> Optional[str]:
-    """Validate a one-time magic-link token, mark it consumed, return practitioner_id."""
-    extra = _valid_token_row(token, "practitioner_magic_link", now=now, db_path=db_path)
-    if extra is None:
-        return None
-    with sqlite3.connect(db_path or _db_path()) as cx:
-        cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-                   (_utcnow(now).isoformat(), _hash(token)))
-        cx.commit()
+def _pid_from_extra(extra) -> Optional[str]:
     try:
         return (json.loads(extra) or {}).get("practitioner_id")
     except Exception:
         return None
+
+
+def validate_magic_link(token, *, now=None, db_path=None) -> Optional[str]:
+    """Non-consuming check: practitioner_id for a live token, else None.
+    Use on GET so a mail scanner's prefetch cannot burn the link."""
+    extra = _valid_token_row(token, "practitioner_magic_link", now=now, db_path=db_path)
+    return None if extra is None else _pid_from_extra(extra)
+
+
+def consume_magic_link(token, *, now=None, db_path=None) -> Optional[str]:
+    """Validate a one-time magic-link token, mark it consumed, return practitioner_id.
+    Call only from a POST -- see validate_magic_link."""
+    extra = _valid_token_row(token, "practitioner_magic_link", now=now, db_path=db_path)
+    if extra is None:
+        return None
+    with sqlite3.connect(db_path or _db_path()) as cx:
+        cur = cx.execute(
+            "UPDATE auth_tokens SET consumed_at=? "
+            "WHERE token_hash=? AND consumed_at IS NULL",
+            (_utcnow(now).isoformat(), _hash(token)))
+        cx.commit()
+        if cur.rowcount != 1:   # lost the race to a concurrent submit
+            return None
+    return _pid_from_extra(extra)
 
 
 def practitioner_id_from_session(token, *, now=None, db_path=None) -> Optional[str]:

@@ -517,7 +517,9 @@ def test_practitioner_optout_records_and_flips(app_client, monkeypatch, supabase
     monkeypatch.setattr(app_module, "_set_practitioner_accepts_inquiries", fake)
     plain = _mint_auth_token(app_module, db, "practitioner_optout", "a@e.com",
                              {"practitioner_id": "p1"}, ttl_seconds=365*86400)
-    r = client.get(f"/practitioner-optout/{plain}")
+    # GET only confirms -- a scanner prefetch must not opt them out.
+    assert client.get(f"/practitioner-optout/{plain}").status_code == 200
+    r = client.post(f"/practitioner-optout/{plain}")
     assert r.status_code == 200
     import sqlite3
     with sqlite3.connect(db) as cx:

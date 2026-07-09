@@ -44,7 +44,9 @@ def test_login_always_200(client):
 def test_auth_sets_cookie_and_redirects(client):
     c, appmod = client
     tok = _mint_cert_token(appmod, "doc@x.com")
-    r = c.get(f"/cert/auth/{tok}")
+    # GET only confirms (mail scanners prefetch it); the POST signs in.
+    assert c.get(f"/cert/auth/{tok}").status_code == 200
+    r = c.post(f"/cert/auth/{tok}")
     assert r.status_code == 302
     assert "rm_cert_email" in r.headers.get("Set-Cookie", "")
 
@@ -73,7 +75,7 @@ def _auth_client(client):
     """Return a test client that already holds the rm_cert_email cookie."""
     c, appmod = client
     tok = _mint_cert_token(appmod, "doc@x.com")
-    c.get(f"/cert/auth/{tok}")
+    c.post(f"/cert/auth/{tok}")
     return c, appmod
 
 

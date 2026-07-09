@@ -147,8 +147,9 @@ def create_client_magic_link(cx, person_id, email="", *, ttl_min=CLIENT_MAGIC_TT
     return tok
 
 
-def consume_client_magic_link(cx, token) -> "int | None":
-    """Validate a one-time magic-link, mark it consumed, return the person_id."""
+def _live_magic_row(cx, token):
+    """Return the token's `extra` if it is live (right purpose, unconsumed,
+    unexpired), else None. Does not mutate."""
     if not token:
         return None
     _ensure_auth_tokens(cx)
@@ -167,13 +168,37 @@ def consume_client_magic_link(cx, token) -> "int | None":
             return None
     except Exception:
         return None
-    cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=?",
-               (datetime.now(timezone.utc).isoformat(), _hash(token)))
-    cx.commit()
+    return extra
+
+
+def _person_id_from_extra(extra) -> "int | None":
     try:
         return (json.loads(extra) or {}).get("person_id")
     except Exception:
         return None
+
+
+def validate_client_magic_link(cx, token) -> "int | None":
+    """Non-consuming check: person_id for a live token, else None.
+    Use on GET so a mail scanner's prefetch cannot burn the link."""
+    extra = _live_magic_row(cx, token)
+    return None if extra is None else _person_id_from_extra(extra)
+
+
+def consume_client_magic_link(cx, token) -> "int | None":
+    """Validate a one-time magic-link, mark it consumed, return the person_id.
+    Call only from a POST -- see validate_client_magic_link."""
+    extra = _live_magic_row(cx, token)
+    if extra is None:
+        return None
+    cur = cx.execute(
+        "UPDATE auth_tokens SET consumed_at=? "
+        "WHERE token_hash=? AND consumed_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(), _hash(token)))
+    cx.commit()
+    if cur.rowcount != 1:   # lost the race to a concurrent submit
+        return None
+    return _person_id_from_extra(extra)
 
 
 def identity_from_session(cx, session_token) -> "Identity | None":
