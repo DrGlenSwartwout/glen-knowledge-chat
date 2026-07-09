@@ -57,3 +57,21 @@ def test_init_table_is_idempotent():
     C.init_table(cx)  # second call must not raise
     C.set_pickup_default(cx, "a@x.com", True)
     assert C.get_pickup_default(cx, "a@x.com") is True
+
+
+def test_only_the_console_endpoint_writes_the_pickup_default():
+    """The design's load-bearing promise: creating or saving an order never
+    writes a client's pickup default. Exactly one call site in app.py may write
+    it — the explicit console endpoint. If this count changes, an order path has
+    almost certainly started persisting a per-order override as a preference."""
+    src = (repo_root / "app.py").read_text()
+    assert src.count("set_pickup_default") == 1
+
+
+def test_the_order_builder_never_posts_a_pickup_default_with_an_order():
+    """The order payloads carry `pickup` (per-order) and never `pickup_default`."""
+    src = (repo_root / "static" / "order-new.html").read_text()
+    for fn in ("async function createInvoice()", "async function editInvoice()"):
+        start = src.index(fn)
+        body = src[start:src.index("\n}", start)]
+        assert "pickup_default" not in body, f"{fn} must not send pickup_default"
