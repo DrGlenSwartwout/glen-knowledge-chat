@@ -5403,9 +5403,13 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # subtotal − discount still reconciles to the total).
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
-        bt = _shipping.resolve_bottle_type(slug, p)
-        box_counts[bt] = box_counts.get(bt, 0) + qty
-        total_bottles += qty
+        # Services / digital goods carry no bottle: counting them would push the
+        # "default" placeholder into quote(), which raises UnknownBottleType and
+        # drops the whole cart to the coarse qty rule — charging a phantom bottle.
+        if _shipping.is_shippable(p):
+            bt = _shipping.resolve_bottle_type(slug, p)
+            box_counts[bt] = box_counts.get(bt, 0) + qty
+            total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
