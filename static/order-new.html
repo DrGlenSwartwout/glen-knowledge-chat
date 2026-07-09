@@ -72,7 +72,7 @@
     <input type="hidden" id="person_id">
     <div class="grid2" style="margin-top:10px">
       <div><label>Name</label><input id="c-name"></div>
-      <div><label>Email</label><input id="c-email" type="email"></div>
+      <div><label>Email</label><input id="c-email" type="email" onchange="loadClientPrices()" onblur="loadClientPrices()"></div>
     </div>
     <div class="grid2">
       <div><label>Phone</label><input id="c-phone"></div>
@@ -410,6 +410,32 @@ async function lifecycle(key, params){
 function invSentStr(iso){ try{ return new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'}); }catch(e){ return ''; } }
 function _cpEmail(){ return ($("c-email").value||"").trim().toLowerCase(); }
 function _cpDollars(inputId){ const v=($(inputId).value||"").trim(); return (v==="" || isNaN(parseFloat(v))) ? null : Math.round(parseFloat(v)*100); }
+
+// ── Read this client's saved prices back into the panel. Without this the fields are
+// write-only: a saved price never reappears, so it reads as "it didn't persist".
+// NOTE: 0 is a real price (a comp) — compare against null, never truthiness. ──
+async function loadClientPrices(){
+  const email=_cpEmail(), note=$("cprices-note"), ffIn=$("ff-flat-in");
+  if(!email){ ffIn.value=""; note.textContent=""; return; }
+  let j;
+  try{
+    const r=await fetch("/api/console/client-prices?email="+encodeURIComponent(email),{headers:HEADERS});
+    j=await r.json();
+    if(!j || !j.ok) throw new Error((j&&j.error)||"lookup failed");
+  }catch(e){ note.textContent="Couldn't load this client's saved prices ("+e.message+")."; return; }
+
+  const ff=j.ff_flat_cents;
+  ffIn.value = (ff===null||ff===undefined) ? "" : (ff/100);
+  const per=(j.prices||[]).filter(p=>p.slug!=="__all_ff__");
+  const bits=[];
+  if(ff!==null&&ff!==undefined) bits.push("FF flat $"+(ff/100).toFixed(2)+" for ALL their FFs");
+  if(per.length) bits.push(per.length+" per-SKU price"+(per.length===1?"":"s")+": "
+    +per.slice(0,4).map(p=>p.slug+" $"+(p.price_cents/100).toFixed(2)).join(", ")
+    +(per.length>4?", …":""));
+  note.textContent = bits.length
+    ? "On file for "+email+" — "+bits.join(" · ")
+    : "No saved prices for "+email+" yet.";
+}
 async function saveFFFlat(){
   const email=_cpEmail(); if(!email){ toast("Enter the client's email first","error"); return; }
   const cents=_cpDollars("ff-flat-in"); if(cents===null){ toast("Enter a $ amount","error"); return; }
@@ -417,8 +443,8 @@ async function saveFFFlat(){
   const r=await fetch("/api/console/client-prices",{method:"POST",headers:HEADERS,body:JSON.stringify({email, ff_flat_cents:cents})});
   const j=await r.json();
   if(!j.ok){ toast(j.error||"Could not save","error"); return; }
-  $("cprices-note").textContent="Saved $"+(cents/100).toFixed(2)+" as "+email+"'s flat rate for ALL FFs.";
   toast("FF flat rate saved");
+  await loadClientPrices();   // read it back so the field shows what actually persisted
   refreshPreview();   // re-price the open invoice so the just-saved rate shows now
 }
 async function saveTheseFFs(){
@@ -430,8 +456,21 @@ async function saveTheseFFs(){
   const r=await fetch("/api/console/client-prices",{method:"POST",headers:HEADERS,body:JSON.stringify({email, these_ff_cents:cents, slugs})});
   const j=await r.json();
   if(!j.ok){ toast(j.error||"Could not save","error"); return; }
-  $("cprices-note").textContent="Applied $"+(cents/100).toFixed(2)+" to "+j.saved+" FF(s) on this invoice for "+email+".";
-  toast("Saved for "+j.saved+" FF(s)");
+  // Only Functional Formulations take this price. Say which lines were NOT priced —
+  // most of the catalog (infoceuticals, services) is not FF-eligible, and skipping
+  // them silently looked identical to success.
+  const sk=j.skipped||[];
+  if(sk.length){
+    toast("Priced "+j.saved+" FF(s). NOT priced ("+sk.length+"): "+sk.map(s=>s.slug).join(", "),"error");
+    alert("$"+(cents/100).toFixed(2)+" was applied to "+j.saved+" Functional Formulation(s).\n\n"
+      +"These lines were NOT priced:\n"
+      +sk.map(s=>"  • "+s.slug+" — "+s.reason).join("\n")
+      +"\n\nOnly Functional Formulations take this price. Use \"Save line prices as this "
+      +"client's standard\" to set a price on the other lines.");
+  } else {
+    toast("Saved for "+j.saved+" FF(s)");
+  }
+  await loadClientPrices();   // read back what actually persisted
   refreshPreview();   // re-price the open invoice so the just-saved price shows now
 }
 async function saveClientPrices(){
@@ -445,8 +484,8 @@ async function saveClientPrices(){
     const r=await fetch("/api/console/client-prices",{method:"POST",headers:HEADERS,body:JSON.stringify({email, prices})});
     const j=await r.json();
     if(!j.ok){ toast(j.error||"Could not save","error"); btn.disabled=false; return; }
-    $("cprices-note").textContent="Saved "+j.saved+" special price(s) for "+email+" — they'll auto-apply next time.";
     toast("Client prices saved");
+    await loadClientPrices();   // read back so the panel reflects what persisted
   }catch(e){ toast(e.message,"error"); }
   btn.disabled=false;
 }

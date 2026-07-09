@@ -33139,21 +33139,31 @@ def api_console_client_prices():
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": "invalid ff_flat_cents"}), 400
         # (b) One $ applied to the FF products on this order (server picks the FFs).
+        # A slug that is not FF-eligible (or is missing/inactive) is NOT priced. Report
+        # those as `skipped`: dropping them silently still returned ok/saved, so the
+        # price simply never persisted. Most of the catalog is not FF-eligible, so this
+        # is the common case, not an edge one.
         if body.get("these_ff_cents") not in (None, ""):
             try:
                 pc = int(body["these_ff_cents"])
             except (ValueError, TypeError):
                 return jsonify({"ok": False, "error": "invalid these_ff_cents"}), 400
-            saved, applied = 0, []
+            saved, applied, skipped = 0, [], []
             for s in (body.get("slugs") or []):
                 s = (s or "").strip()
-                pr = _get_product(s) if s else None
-                if pr and _qty_eligible(pr):
+                if not s:
+                    continue
+                pr = _get_product(s)          # None when missing OR inactive
+                if pr is None:
+                    skipped.append({"slug": s, "reason": "not in the catalog"})
+                elif not _qty_eligible(pr):
+                    skipped.append({"slug": s, "reason": "not a Functional Formulation"})
+                else:
                     _cp.set_price(cx, email, s, pc, note="FFs-on-invoice")
                     saved += 1
                     applied.append(s)
             return jsonify({"ok": True, "saved": saved, "applied": applied,
-                            "prices": _cp.list_for(cx, email)})
+                            "skipped": skipped, "prices": _cp.list_for(cx, email)})
         # (c) Explicit per-SKU list (the "save line prices" button).
         items = body.get("prices")
         if items is None and body.get("slug"):
