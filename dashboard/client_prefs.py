@@ -9,6 +9,7 @@ override for that order alone. That is why a Biofield hand-off invoice, which
 sends pickup=True as a deliberate shipping courtesy, cannot silently teach the
 system that every biofield client picks up.
 """
+import sqlite3
 from datetime import datetime, timezone
 
 
@@ -47,10 +48,19 @@ def set_pickup_default(cx, email, value):
 
 
 def get_pickup_default(cx, email):
-    """True when this client collects in person by default. Unknown -> False."""
+    """True when this client collects in person by default. Unknown -> False.
+
+    "Unknown" includes a `client_prefs` table that does not exist yet: the table is
+    created lazily by the console panel, so an operator who has never opened it must
+    still be able to take an order. Reading is on the order path — it must never raise
+    and must never CREATE the table. False is the safe direction: it charges shipping,
+    whereas a wrong True ships physical goods for free."""
     email = _norm(email)
     if not email:
         return False
-    row = cx.execute("SELECT pickup_default FROM client_prefs WHERE email=?",
-                     (email,)).fetchone()
+    try:
+        row = cx.execute("SELECT pickup_default FROM client_prefs WHERE email=?",
+                         (email,)).fetchone()
+    except sqlite3.OperationalError:
+        return False          # table absent — nobody has set a preference yet
     return bool(row[0]) if row else False
