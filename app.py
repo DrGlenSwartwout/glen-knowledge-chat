@@ -33113,6 +33113,32 @@ def api_console_customer_rename():
     return jsonify({"ok": True, **res})
 
 
+@app.route("/api/console/customers/pickup", methods=["POST"])
+def api_console_customer_pickup():
+    """Owner: mark a client as collecting in person. Orders Glen creates for them
+    default to pickup (no shipping); the client's own portal/funnel checkout is
+    unaffected. Body: {email, pickup: bool}. Email-keyed, like /rename."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    on = bool(body.get("pickup"))
+    from dashboard import customers as _cust
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        row = cx.execute("SELECT id FROM people WHERE lower(email)=?",
+                         (email.lower(),)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": f"no client with email {email}"}), 400
+        _cust.set_pickup_default(cx, row[0], on)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "email": email, "pickup": on})
+
+
 @app.route("/api/console/client-prices", methods=["GET", "POST", "DELETE"])
 def api_console_client_prices():
     """Owner: view/set/remove a client's persistent special prices (email+slug ->
