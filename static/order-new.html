@@ -111,7 +111,10 @@
       <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
       <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
     </div>
-    <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> Pickup (no shipping)</label></div>
+    <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> <span id="pickup-label">Pickup (no shipping)</span></label></div>
+    <div id="pickup-default-wrap" style="display:none;margin-top:6px;margin-left:22px">
+      <label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:13px;color:var(--muted);cursor:pointer"><input type="checkbox" id="pickup-default" onchange="savePickupDefault()"> Pickup by default for this client</label>
+    </div>
     <div style="margin-top:10px"><label>Invoice notes (optional — shown to the customer on the invoice)</label>
       <textarea id="o-note" rows="2" style="width:100%" placeholder="e.g. Take with food. Follow-up scan in 30 days."></textarea></div>
     <div class="totals">
@@ -197,6 +200,7 @@ function pickPerson(p){
   $("o-points").max = (POINTS_BAL/100).toFixed(2);
   if (POINTS_BAL>0){ const sub=LINES.reduce((s,l)=>s+l.qty*l.unit_cents,0); const disc=($("o-discount").value.trim()!=="")?Math.round(parseFloat($("o-discount").value)*100):0; $("o-points").value=(Math.min(POINTS_BAL,Math.max(0,sub-disc))/100).toFixed(2); }
   recalc();
+  loadPickupDefault(p.email||"");
 }
 
 // ── line items ──
@@ -210,6 +214,50 @@ function addLine(){
   $("prod-qty").value=1; $("prod-unit").value="";
   renderLines();
 }
+// ── shipping visibility ──
+// "Nothing to ship" is derived from the cart, never stored: a services-only order
+// has no shipping because it has no boxes, not because anyone ticked a box.
+function hasShippableLine(){
+  return LINES.some(l => { const p = CATALOG.find(x => x.slug===l.slug); return p ? p.shippable !== false : true; });
+}
+function syncShippingUI(){
+  const phys = hasShippableLine(), pk = $("pickup");
+  if (!phys){
+    pk.checked = false; pk.disabled = true;
+    $("pickup-label").textContent = "No shipping — nothing physical in this order";
+    $("t-ship").textContent = dollars(0);
+  } else {
+    pk.disabled = false;
+    $("pickup-label").textContent = "Pickup (no shipping)";
+  }
+  // An order with nothing to ship represents no fulfillment decision, so it
+  // cannot teach us one — hide the client default entirely.
+  $("pickup-default-wrap").style.display = (phys && $("c-email").value.trim()) ? "block" : "none";
+}
+async function loadPickupDefault(email){
+  email = (email||"").trim();
+  if (!email){ $("pickup-default").checked = false; syncShippingUI(); return; }
+  try{
+    const r = await fetch("/api/console/client-prefs?email="+encodeURIComponent(email), {headers:HEADERS});
+    const j = await r.json(); if (!j.ok) return;
+    $("pickup-default").checked = !!j.pickup_default;
+    // On a NEW order the client's default pre-checks Pickup (still overridable).
+    // On an EDIT the stored order's own channel already won — don't fight it.
+    if (!EDIT_OID && j.pickup_default && hasShippableLine()) $("pickup").checked = true;
+  }catch(e){ /* a missing preference is just "no default" */ }
+  syncShippingUI();
+}
+async function savePickupDefault(){
+  const email = $("c-email").value.trim();
+  if (!email){ toast("Pick a customer first","error"); return; }
+  try{
+    const r = await fetch("/api/console/client-prefs", {method:"POST", headers:HEADERS,
+      body: JSON.stringify({email, pickup_default: $("pickup-default").checked})});
+    const j = await r.json();
+    if (!j.ok){ toast(j.error||"failed","error"); return; }
+    toast(j.pickup_default ? "Pickup is now this client's default" : "Pickup default cleared");
+  }catch(e){ toast(e.message,"error"); }
+}
 function renderLines(){
   const tb=$("lines");
   tb.innerHTML = LINES.map((l,i)=>`<tr>
@@ -221,6 +269,7 @@ function renderLines(){
     <td><button class="mini" onclick="rmLine(${i})">✕</button></td></tr>`).join("");
   refreshPreview();
   recalc();
+  syncShippingUI();
 }
 function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } renderLines(); }
 function rmLine(i){ LINES.splice(i,1); renderLines(); }
@@ -327,6 +376,7 @@ async function loadOrderForEdit(oid){
   if (o.channel==="pickup") $("pickup").checked = true;
   if (o.invoice_note) $("o-note").value = o.invoice_note;
   renderLines();
+  loadPickupDefault(o.email||"");   // shows the client's default; EDIT_OID keeps it from overriding this order
 }
 async function editInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
@@ -513,6 +563,7 @@ async function init(){
   if (!KEY){ $("auth-warn").style.display="block"; return; }
   try{ await loadCatalog(); }catch(e){ if(e.message!=="unauthorized") toast(e.message,"error"); return; }
   if (EDIT_OID){ try{ await loadOrderForEdit(EDIT_OID); }catch(e){ toast(e.message,"error"); } }
+  syncShippingUI();
 }
 init();
 </script>
