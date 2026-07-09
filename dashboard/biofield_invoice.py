@@ -116,8 +116,12 @@ def default_create_order(customer, lines, replace_open=False):
     if not base:
         return {"ok": False, "error": "The console connection is not configured."}
     try:
+        # No `pickup` flag: a hand-off is not a pickup. Shipping is computed from the
+        # physical remedy lines; the analysis fee is a service and contributes no
+        # bottle, so an analysis-only invoice still ships $0. Mark the order pickup
+        # from the console when the client actually collects in person.
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
-                "lines": lines, "pickup": True, "replace_open": bool(replace_open),
+                "lines": lines, "replace_open": bool(replace_open),
                 "invoice_note": "Biofield Analysis and remedies. Payable by check."}
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",

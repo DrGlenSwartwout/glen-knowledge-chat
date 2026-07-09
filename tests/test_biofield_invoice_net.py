@@ -35,6 +35,44 @@ def test_create_order_ok(monkeypatch):
     assert out["total_cents"] == 12345
 
 
+def _capturing_urlopen(payload, sink):
+    def _open(req, timeout=0):
+        sink.append(json.loads(req.data.decode()))
+        return _Resp(json.dumps(payload).encode())
+    return _open
+
+
+def test_create_order_does_not_force_pickup(monkeypatch):
+    """A Biofield hand-off is NOT a pickup. It used to post pickup=True, which
+    zeroed shipping on the physical remedy bottles riding on the same invoice.
+    Shipping is now computed normally; the analysis fee contributes no bottle
+    because it is a service (see dashboard.shipping.is_shippable), so an
+    analysis-only invoice still ships for $0 without the flag."""
+    _env(monkeypatch)
+    sent = []
+    monkeypatch.setattr(bi.urllib.request, "urlopen",
+                        _capturing_urlopen({"ok": True, "order_id": 1, "external_ref": "INH-A",
+                                            "totals": {}}, sent))
+    bi.default_create_order({"name": "D", "email": "d@x.com"},
+                            [{"slug": "biofield-analysis", "qty": 1}, {"slug": "vitality", "qty": 2}])
+    assert not sent[0].get("pickup"), f"hand-off must not force pickup: {sent[0]!r}"
+
+
+def test_create_order_still_sends_lines_and_replace_open(monkeypatch):
+    """Guard the rest of the hand-off contract while removing the pickup key."""
+    _env(monkeypatch)
+    sent = []
+    monkeypatch.setattr(bi.urllib.request, "urlopen",
+                        _capturing_urlopen({"ok": True, "order_id": 1, "external_ref": "INH-A",
+                                            "totals": {}}, sent))
+    bi.default_create_order({"name": "D", "email": "d@x.com"},
+                            [{"slug": "biofield-analysis", "qty": 1}], replace_open=True)
+    body = sent[0]
+    assert body["replace_open"] is True
+    assert body["lines"] == [{"slug": "biofield-analysis", "qty": 1}]
+    assert "Payable by check" in body["invoice_note"]
+
+
 def test_create_order_server_not_ok_is_explicit(monkeypatch):
     _env(monkeypatch)
     monkeypatch.setattr(bi.urllib.request, "urlopen",
