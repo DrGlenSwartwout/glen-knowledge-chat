@@ -5403,9 +5403,14 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # subtotal − discount still reconciles to the total).
         items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
-        bt = _shipping.resolve_bottle_type(slug, p)
-        box_counts[bt] = box_counts.get(bt, 0) + qty
-        total_bottles += qty
+        # A service / info-only line has nothing to put in a box, so it must not
+        # inflate the box count: 4 bottles + a Biofield Analysis is still a Small.
+        # A cart of ONLY such lines leaves box_counts empty, and _shipping_for_cart
+        # already returns 0 for that — no flag, no stored state.
+        if _shipping.is_shippable(p):
+            bt = _shipping.resolve_bottle_type(slug, p)
+            box_counts[bt] = box_counts.get(bt, 0) + qty
+            total_bottles += qty
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
