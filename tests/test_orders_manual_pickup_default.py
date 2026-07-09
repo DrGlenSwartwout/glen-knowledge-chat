@@ -32,6 +32,16 @@ def env(monkeypatch, tmp_path):
     cx = sqlite3.connect(db)
     O.init_orders_table(cx)
     cx.close()
+    monkeypatch.setattr(appmod, "_bos_actor",
+                        lambda: type("A", (), {"role": appmod._bos_rbac.OWNER})())
+    # dashboard.shipping resolves its own db path straight off os.environ["DATA_DIR"]
+    # (independent of appmod.LOG_DB above) — a neighbouring test file that reloads
+    # `app` under a different DATA_DIR can leave that ambient path uninitialized by
+    # the time this file runs. Pin shipping to OUR db and seed its schema so this
+    # file never depends on another test's environment setup.
+    monkeypatch.setattr(appmod._shipping, "_default_db_path", lambda: db)
+    with sqlite3.connect(db) as scx:
+        appmod._shipping.init_shipping_schema(scx)
     return appmod, db
 
 
@@ -45,14 +55,12 @@ def _flag(db, email, on):
 
 
 def _post(appmod, body):
-    key = appmod.dashboard.CONSOLE_SECRET or ""
     base = {"customer": {"name": "T", "email": body.pop("email", ""),
                          "address": {"address1": "1", "city": "Hilo", "state": "HI",
                                      "zip": "96720", "country": "US"}},
             "lines": [{"slug": "mix", "qty": 2}], "method": "Zelle"}
     base.update(body)
-    r = appmod.app.test_client().post("/api/orders/manual", json=base,
-                                      headers={"X-Console-Key": key})
+    r = appmod.app.test_client().post("/api/orders/manual", json=base)
     assert r.status_code == 200, r.get_data(as_text=True)
     return r.get_json()
 
@@ -121,11 +129,9 @@ def test_edit_never_resurrects_the_flag(env):
     _flag(db, "pick@x.com", True)
     j = _post(appmod, {"email": "pick@x.com"})          # created as pickup via flag
     assert _stored(db, j["order_id"])["channel"] == "pickup"
-    key = appmod.dashboard.CONSOLE_SECRET or ""
     r = appmod.app.test_client().post(
         f"/api/orders/{j['order_id']}/edit",
-        json={"lines": [{"slug": "mix", "qty": 2}], "pickup": False},
-        headers={"X-Console-Key": key})
+        json={"lines": [{"slug": "mix", "qty": 2}], "pickup": False})
     assert r.status_code == 200, r.get_data(as_text=True)
     o = _stored(db, j["order_id"])
     assert o["channel"] == "retail", "edit route re-resolved the client flag — latch rebuilt"
