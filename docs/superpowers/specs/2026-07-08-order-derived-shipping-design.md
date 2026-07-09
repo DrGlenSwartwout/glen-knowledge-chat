@@ -23,9 +23,18 @@ order built in the console picks a Small Flat Rate box and charges for it.
 
 Two consequences follow from this, and both are live today:
 
-1. **Mixed orders are overcharged.** Four bottles plus a Biofield Analysis counts
-   as five items and selects a **Medium** flat-rate box where a **Small** would
-   do. This is not a service-only bug.
+1. **Mixed orders bypass the box-fit catalog entirely.** A service resolves to
+   bottle type `"default"`, which is not a real type in the capacity matrix, so
+   `_shipping.quote()` returns `Unknown bottle type: default` for any cart that
+   mixes a service with bottles. `_shipping_for_cart` (`app.py:5310-5323`)
+   swallows that error and falls through to `_fallback_shipping_cents`, the crude
+   quantity rule. Mixed orders have not been priced by the flat-rate catalog at
+   all — they've been priced by the fail-safe.
+
+   (Measured 2026-07-08: for four bottles plus an analysis, both paths happen to
+   return $23.00 today, so no historical overcharge is demonstrable on that cart.
+   The coincidence is not the design. A rate or capacity change moves the two
+   paths apart without warning.)
 2. **`pickup` is being used as a workaround.** `dashboard/biofield_invoice.py:119`
    hardcodes `"pickup": True` on the hand-off invoice purely to suppress the
    phantom shipping on the fee line. Those invoices then appear as pickups on the
@@ -152,10 +161,13 @@ change and is not part of this work.
 **The predicate.** `is_shippable` is false for `biofield-analysis`,
 `evox-session`, and `emf`; true for an ordinary Functional Formulation.
 
-**The pricing bug, pinned.** A cart of four bottles plus a Biofield Analysis
-selects a **Small** flat-rate box, not the **Medium** it selects today. This is
-the regression test that would have caught the original defect, and it fails
-against the current code.
+**The pricing bug, pinned.** A cart of four bottles plus a Biofield Analysis must
+be priced through the box-fit catalog on the bottle alone. Comparing invoice
+totals is NOT sufficient: at today's rates the buggy path (qty fallback, 5 items
+→ M) and the correct path (box-fit, 4 bottles → M) both return $23.00. The test
+therefore spies on the `box_counts` handed to `dashboard.shipping.quote()` and
+asserts the service does not appear in it. Verified 2026-07-08 by removing the
+`is_shippable` gate and watching this test go red.
 
 **Derived zero.** A services-only cart prices to `shipping_cents == 0` with Pickup
 unticked and no flag set.
