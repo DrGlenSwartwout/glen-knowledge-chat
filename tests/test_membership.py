@@ -953,8 +953,8 @@ def test_unprompted_grant_email_link_lives_for_weeks(app_module_with_db, monkeyp
     app_module, db = app_module_with_db
     seen = {}
 
-    def _spy_mint(email, ttl_min=app_module.MEMBERSHIP_MAGIC_TTL_MIN):
-        seen["email"], seen["ttl_min"] = email, ttl_min
+    def _spy_mint(email, ttl_min=app_module.MEMBERSHIP_MAGIC_TTL_MIN, *, cx=None):
+        seen["email"], seen["ttl_min"], seen["cx"] = email, ttl_min, cx
         return "fake-token"
 
     monkeypatch.setattr(app_module, "_mint_membership_magic_link", _spy_mint)
@@ -966,6 +966,9 @@ def test_unprompted_grant_email_link_lives_for_weeks(app_module_with_db, monkeyp
     assert seen["email"] == "gifted@example.com"
     assert timedelta(minutes=seen["ttl_min"]) >= timedelta(days=29), (
         "an unprompted grant email must not carry the interactive sign-in TTL")
+    assert seen["cx"] is cx, (
+        "the mint must reuse the caller's connection -- a second connection "
+        "against its open write transaction is 'database is locked'")
 
 
 def test_signin_email_copy_states_the_real_window(app_module_with_db):

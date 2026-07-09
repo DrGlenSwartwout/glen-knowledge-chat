@@ -10234,22 +10234,30 @@ def _init_membership_tables():
 _init_membership_tables()
 
 
-def _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_MAGIC_TTL_MIN):
+def _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_MAGIC_TTL_MIN, *, cx=None):
     """Mint a single-use magic-link token for a membership grant or return-flow.
     Returns the plaintext token; caller is responsible for emailing it.
     Unprompted grant emails must pass MEMBERSHIP_GRANT_TTL_MIN — the default
-    only suits a link the member requested moments ago."""
+    only suits a link the member requested moments ago.
+
+    Pass `cx` when you already hold a connection that has written to LOG_DB.
+    Opening a second connection against an open write transaction is an
+    instant `database is locked`, and joining the caller's transaction also
+    means the token and whatever the caller is granting commit together.
+    """
     import secrets, json
     plain = secrets.token_urlsafe(32)
     th = _hash_token(plain)
     now_iso = datetime.utcnow().isoformat() + "Z"
     exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.execute(
-            "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (th, email, "membership_magic_link", json.dumps({}), now_iso, exp_iso)
-        )
+    row = (th, email, "membership_magic_link", json.dumps({}), now_iso, exp_iso)
+    sql = ("INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
+           "VALUES (?,?,?,?,?,?)")
+    if cx is not None:
+        cx.execute(sql, row)          # caller's transaction; caller commits
+        return plain
+    with _db_lock, sqlite3.connect(LOG_DB) as own_cx:
+        own_cx.execute(sql, row)
     return plain
 
 
@@ -10486,7 +10494,8 @@ def _studio_credit_grant_and_notify(cx, email, days):
     import json as _json
     email = (email or "").strip().lower()
     mid = _grant_membership(cx, email, days, "studio_credit")
-    plain = _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_GRANT_TTL_MIN)
+    # Same connection: _grant_membership just opened a write transaction on it.
+    plain = _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_GRANT_TTL_MIN, cx=cx)
     try:
         base = request.host_url.rstrip("/")
     except Exception:
