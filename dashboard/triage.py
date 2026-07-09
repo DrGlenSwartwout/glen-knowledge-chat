@@ -3,6 +3,8 @@ Stdlib-only; import without importing app."""
 import sqlite3, secrets, hashlib
 from datetime import datetime, timezone, timedelta
 
+from dashboard.timeutil import parse_utc as _parse_utc
+
 def _hash(token: str) -> str:
     return hashlib.sha256((token or "").encode()).hexdigest()
 
@@ -35,10 +37,13 @@ def resolve_invite(cx, token, *, _now=None):
     if d.get("status") == "cancelled":
         return None
     try:
-        if datetime.fromisoformat(d["expires_at"][:19]) < now.replace(tzinfo=None):
-            return None
-    except Exception:
-        pass
+        expired = _parse_utc(d["expires_at"]) < _parse_utc(now)
+    except (ValueError, TypeError):
+        # Unchanged from before: a row with a missing or garbled expiry has
+        # never counted as expired here. Only the parsing got more tolerant.
+        expired = False
+    if expired:
+        return None
     return {"email": d["email"], "name": d["name"], "practitioner": d["practitioner"],
             "status": d["status"], "booked_start": d.get("booked_start")}
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from dashboard import wholesale_pricing as pricing
+from dashboard.timeutil import is_expired as _is_expired
 
 _LOG_DB = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))) / "chat_log.db"
 
@@ -397,10 +398,7 @@ def _valid_token_row(token, purpose, *, now=None, db_path=None):
     extra, expires_at, consumed_at = row
     if consumed_at:
         return None
-    try:
-        if datetime.fromisoformat(expires_at.rstrip("Z")) < _utcnow(now):
-            return None
-    except Exception:
+    if _is_expired(expires_at, now=now):
         return None
     return extra
 
