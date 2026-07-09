@@ -12194,7 +12194,8 @@
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 drop in each eye 2 times a day or as needed",
-      "inactive": true
+      "inactive": true,
+      "superseded_by": "neuro-eye-drops-aces-gl-lite-eye-drops"
     },
     "clear-lens-eye-drops-aces-cat-eye-drops": {
       "name": "Clear Lens Eye Drops",
@@ -12249,7 +12250,8 @@
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 drop in each eye 2 times a day or as needed",
-      "inactive": true
+      "inactive": true,
+      "superseded_by": "clear-lens-eye-drops-aces-cat-eye-drops"
     },
     "moisture-eyes-night-drops": {
       "name": "Moisture Eyes Night Drops",

@@ -10,11 +10,17 @@ from the numeric FMP-snapshot ids. Local + writable; PHI stays on the Mac.
 """
 import datetime
 import difflib
+import functools
+import json
+import os
 import re
 import sqlite3
 
 from dashboard.biofield_schedule import build_schedule
 from dashboard.biofield_dimensions import DEPTH_KEY, depth_label, depth_match, get_tag
+
+_PRODUCTS_JSON = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "products.json")
 
 
 def _now():
@@ -145,6 +151,46 @@ def _title_case_name(s):
     return " ".join(out)
 
 
+def _norm_name(s):
+    """Compare FMP names and catalog titles on the same footing: no trailing
+    discontinue-'*', no case, whitespace (incl. FMP's embedded newlines) collapsed."""
+    return re.sub(r"\s+", " ", _clean_product_name(s or "")).strip().lower()
+
+
+@functools.lru_cache(maxsize=1)
+def _deprecated_catalog_names():
+    """FMP product names whose catalog record is `inactive` (a deprecated duplicate).
+
+    Never auto-correct a spoken remedy onto one of these: its slug is unsellable, so
+    the remedy would be carried into the chain as a dead end. products.json keeps the
+    ORIGINAL FMP name in `pinecone_title` even after the display `name` is renamed,
+    which is what lets us match an FMP row to its catalog record here.
+
+    Concretely: FMP holds both 'Neuro+ Eye Drops' (retired) and 'Neuro Eye Drops\\n
+    ACES+GL Lite Eye Drops' (live). Saying "neuro eye drops" fuzzy-matches the short
+    retired name. Excluding it makes the live record win."""
+    try:
+        with open(_PRODUCTS_JSON) as f:
+            products = (json.load(f).get("products") or {})
+    except Exception:
+        return frozenset()                       # no catalog -> filter nothing
+    out = set()
+    for p in products.values():
+        if not p.get("inactive"):
+            continue
+        for key in ("pinecone_title", "name"):
+            v = _norm_name(p.get(key))
+            if v:
+                out.add(v)
+    return frozenset(out)
+
+
+def _sellable_names(names):
+    """Drop catalog-deprecated duplicates from the fuzzy-match candidate pool."""
+    dep = _deprecated_catalog_names()
+    return [n for n in names if _norm_name(n) not in dep]
+
+
 def _best_match(spoken, names, cutoff):
     """Case-insensitive closest match: ASR lowercases, so we compare on lowercase and
     map back to the canonical-cased name. Returns None when nothing is close enough."""
@@ -176,7 +222,11 @@ def _token_match(spoken, names, cutoff):
 def resolve_remedy_name(cx, spoken, cutoff=0.82):
     """Best-effort auto-correct a (possibly ASR-mangled) remedy name to the closest
     catalog product (case-insensitive). Preserves an ' in Terrain Restore' suffix.
-    Falls back to Title Case of the spoken name when there's no close catalog match."""
+    Falls back to Title Case of the spoken name when there's no close catalog match.
+
+    Deprecated duplicates (catalog `inactive`) are excluded from the candidate pool:
+    FMP still marks them active, and their slugs are unsellable, so matching one would
+    put a dead-end remedy on the chain."""
     spoken = (spoken or "").strip()
     if not spoken:
         return spoken
@@ -187,9 +237,9 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
         core = spoken[: low.rfind("in terrain restore")].strip()
         suffix = " in Terrain Restore"
     if _has(cx, "fmp_snap_products"):
-        names = [r[0] for r in cx.execute(
+        names = _sellable_names([r[0] for r in cx.execute(
             "SELECT DISTINCT product_name FROM fmp_snap_products "
-            "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()]
+            "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()])
         # whole-string fuzzy first, then a distinctive-token match for long names.
         match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
         if match:
