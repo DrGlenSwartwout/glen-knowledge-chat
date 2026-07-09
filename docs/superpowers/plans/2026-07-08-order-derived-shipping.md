@@ -73,11 +73,11 @@ def test_is_shippable_true_for_a_normal_product():
 
 def test_is_shippable_handles_missing_product():
     from dashboard.shipping import is_shippable
-    assert is_shippable(None) is False or is_shippable(None) is True  # must not raise
+    # No caller passes None — _price_cart skips falsy products at app.py:5356 —
+    # but the predicate must not raise on one. It treats it as an empty product.
+    assert is_shippable(None) is True
     assert is_shippable({}) is True
 ```
-
-Note the middle assertion: `None` must not raise. With the implementation below it returns `True`; the test only pins "does not raise", because no caller passes `None` (`_price_cart` skips falsy products at `app.py:5356`).
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -900,16 +900,19 @@ SRC = (repo_root / "dashboard" / "biofield_invoice.py").read_text()
 
 def test_hand_off_invoice_still_sends_pickup_true():
     assert '"pickup": True' in SRC
-
-
-def test_the_courtesy_is_explained_not_assumed():
-    assert "courtesy" in SRC.lower()
 ```
+
+We test the behavior (the flag is sent), not the comment. The comment is still
+required by Step 3 — it is what stops a future reader from deleting the flag —
+but prose is not a test subject.
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `python3 -m pytest tests/test_biofield_invoice_courtesy.py -v`
-Expected: `test_hand_off_invoice_still_sends_pickup_true` PASSES; `test_the_courtesy_is_explained_not_assumed` FAILS.
+Expected: PASS already. This task's test is a **characterization test**: it pins
+behavior that must not change while Tasks 1-3 remove the bug that made the flag
+look accidental. It has no red phase, and that is correct — write it, watch it
+pass, and it will fail the day someone deletes the flag.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -930,7 +933,7 @@ In `dashboard/biofield_invoice.py`, inside `default_create_order`, above the `bo
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python3 -m pytest tests/test_biofield_invoice_courtesy.py -v`
-Expected: PASS (2 tests)
+Expected: PASS (1 test)
 
 - [ ] **Step 5: Full suite, then commit**
 
