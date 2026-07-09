@@ -773,8 +773,20 @@ function render(d, v){
       <div class="card options-card">
         <h2>Your options &amp; pricing</h2>
         <p><strong>Your Biofield Analysis &amp; remedies</strong> — your voice-scan reading and your personally matched remedies, right here in your private space. Order remedies whenever you like (from ${ff} each, a 30-day supply).</p>
-        <p><strong>Personal Causal Biofield Analysis with Dr. Glen</strong> — the hands-on, deeper analysis, plus a Functional Formulations program designed for you and a consultation. <strong>${analysis}</strong>${value}${o.is_courtesy?" — your courtesy price":""}. Just reply to arrange it.</p>
-        <p class="muted">No monthly subscription, and nothing you need to sign up for.</p>
+        <p><strong>Personal Causal Biofield Analysis with Dr. Glen</strong> — the hands-on, deeper analysis, plus a Functional Formulations program designed for you and a consultation. <strong>${analysis}</strong>${value}${o.is_courtesy?" — your courtesy price":""}. Just reply to arrange it.</p>`;
+    // Family Plan: only when the flag put it in the payload. Prices come from the
+    // payload (dashboard/family_plan.PLAN), never hardcoded here.
+    const fpl = o.family_plan;
+    if(fpl && fpl.active){
+      html += `<p><strong>${esc(fpl.label)}</strong> — you're on it. Everyone in your household has full scan results, member pricing, your monthly family shipment, and group coaching with Dr. Glen.</p>`;
+    } else if(fpl){
+      const fpPrice = "$" + Math.round(fpl.price_cents/100);
+      const fpValue = "$" + Math.round(fpl.value_cents/100);
+      html += `<p><strong>${esc(fpl.label)}</strong> — full scan results for everyone in your household, one monthly family shipment, member pricing on every remedy, and group coaching with Dr. Glen. <strong>${fpPrice}/month</strong> (a ${fpValue}/month value). Just reply to arrange it.</p>`;
+    } else {
+      html += `<p class="muted">No monthly subscription, and nothing you need to sign up for.</p>`;
+    }
+    html += `
       </div>`;
   }
 

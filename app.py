@@ -10550,13 +10550,26 @@ def _portal_paid_gate_enabled():
     return os.environ.get("PORTAL_PAID_GATE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _family_plan_enabled():
+    """Flag: a caregiver's Family Plan entitles their whole consented household.
+    Default OFF — when off, the paywall asks only whether THIS email paid, which
+    is byte-identical to pre-plan behavior."""
+    return (os.environ.get("FAMILY_PLAN_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _portal_biofield_unlocked(email):
     """True when a portal biofield report's remedies/audio/PDF may un-blur: the
     client has PAID for it — a paid Biofield Analysis on record, OR an active
-    membership (the $1 lifetime-access unlock). A free E4L reveal published to the
-    portal stays blurred until they pay — same gate as the /begin reveal funnel.
+    membership (the $1 lifetime-access unlock), OR a caregiver's Family Plan
+    covers them. A free E4L reveal published to the portal stays blurred until
+    they pay — same gate as the /begin reveal funnel.
     Fail-closed (blurred) on any error. When the gate flag is off, everyone is
-    treated as unlocked (pre-gate behavior)."""
+    treated as unlocked (pre-gate behavior).
+
+    The Family Plan branch is what lets a household member with no payment of
+    their own — a pet, a child — un-blur under the caregiver who bought the plan.
+    Asking only about `email` blurred Sasha's report on Karin's own screen."""
     if not _portal_paid_gate_enabled():
         return True
     email = (email or "").strip().lower()
@@ -10565,7 +10578,15 @@ def _portal_biofield_unlocked(email):
     try:
         if _has_paid_biofield(email):
             return True
-        return bool(_active_membership_for_email(email))
+        if _active_membership_for_email(email):
+            return True
+        if _family_plan_enabled():
+            from dashboard import family_plan as _fp
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                _fp.init_family_plan_table(cx)
+                return bool(_fp.covers(cx, email))
+        return False
     except Exception:
         return False
 
@@ -14726,9 +14747,26 @@ def _portal_options_for(email):
         except Exception:
             courtesy = None
         analysis = courtesy if courtesy is not None else std
-        return {"analysis_cents": analysis, "analysis_standard_cents": std,
+        opts = {"analysis_cents": analysis, "analysis_standard_cents": std,
                 "analysis_value_cents": value, "ff_from_cents": _FF_BASE_CENTS,
                 "is_courtesy": courtesy is not None and courtesy != std}
+        # Family Plan (flag-gated). `active` is true for anyone the plan already
+        # covers — a covered member must not be sold a plan they are on.
+        if _family_plan_enabled():
+            try:
+                from dashboard import family_plan as _fp
+                with sqlite3.connect(LOG_DB) as cx:
+                    cx.row_factory = sqlite3.Row
+                    _fp.init_family_plan_table(cx)
+                    opts["family_plan"] = {
+                        "price_cents": _fp.PLAN["amount_cents"],
+                        "value_cents": _fp.PLAN["value_cents"],
+                        "label": _fp.PLAN["label"],
+                        "active": bool(_fp.covers(cx, email)),
+                    }
+            except Exception as _e:
+                print(f"[portal-options/family] {_e!r}", flush=True)
+        return opts
     except Exception:
         return None
 
@@ -18362,6 +18400,64 @@ def api_console_portal_backfill_findings():
             patched_portal = True
     return jsonify({"ok": True, "found": True,
                     "patched_portal": patched_portal, "patched_reports": patched_reports})
+
+
+@app.route("/api/console/family-plan", methods=["GET", "POST"])
+def api_console_family_plan():
+    """Owner: enrol a caregiver on the Family Plan, or read who it covers.
+
+    v1 enrollment is operator-driven (Glen takes payment, then enrols), mirroring
+    the $300 tier's "just reply to arrange it". `source='comp'` grants the same
+    entitlement with no card and no charge date, for a client made whole.
+    POST is idempotent — family_subscriptions is keyed on caregiver_email, so a
+    double-click re-activates rather than stacking a second plan.
+    """
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import family_plan as _fp
+    from dashboard import household as _hh
+    if request.method == "GET":
+        email = (request.args.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"error": "email required"}), 400
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fp.init_family_plan_table(cx)
+            _hh.init_household_tables(cx)
+            active = _fp.is_active(cx, email)
+            covered = [m["email"] for m in _hh.members_for(cx, email)
+                       if m["share_consent"]] if active else []
+            return jsonify({"ok": True, "email": email, "active": active,
+                            "plan": _fp.get(cx, email), "covered_members": covered})
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    source = (body.get("source") or "stripe").strip().lower()
+    next_charge_at = (body.get("next_charge_at") or "").strip() or None
+    with _db_lock:
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fp.init_family_plan_table(cx)
+            _fp.activate(cx, email, next_charge_at=next_charge_at, source=source)
+    return jsonify({"ok": True, "email": email, "source": source})
+
+
+@app.route("/api/console/family-plan/cancel", methods=["POST"])
+def api_console_family_plan_cancel():
+    """Owner: cancel a caregiver's plan. Cover stops for the whole household."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import family_plan as _fp
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock:
+        with sqlite3.connect(LOG_DB) as cx:
+            _fp.init_family_plan_table(cx)
+            _fp.set_status(cx, email, "cancelled")
+    return jsonify({"ok": True, "email": email, "status": "cancelled"})
 
 
 @app.route("/api/console/household", methods=["GET", "POST", "DELETE"])
