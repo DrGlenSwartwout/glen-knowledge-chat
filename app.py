@@ -33112,6 +33112,8 @@ def api_console_customer_rename():
 def api_console_client_prefs():
     """Owner: read/set a client's fulfillment defaults (today: pickup_default).
     GET ?email= -> {pickup_default}; POST {email, pickup_default} sets it.
+    pickup_default must be present in the POST body (explicit true/false) —
+    an omitted key is rejected rather than treated as false.
 
     This is the ONLY writer. An order's Pickup tick is a per-order override and
     never lands here — a client's default changes when the owner says so, not as
@@ -33133,6 +33135,12 @@ def api_console_client_prefs():
         email = (body.get("email") or "").strip().lower()
         if not email:
             return jsonify({"ok": False, "error": "email required"}), 400
+        # A partial or retried request must not silently un-set a client
+        # preference — require the caller to state pickup_default explicitly,
+        # even when turning it off, so absence can never masquerade as "false".
+        if "pickup_default" not in body:
+            return jsonify({"ok": False,
+                            "error": "pickup_default required (explicit true/false)"}), 400
         _cpf.set_pickup_default(cx, email, bool(body.get("pickup_default")))
         return jsonify({"ok": True, "email": email,
                         "pickup_default": _cpf.get_pickup_default(cx, email)})

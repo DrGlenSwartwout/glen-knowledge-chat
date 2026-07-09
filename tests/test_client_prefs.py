@@ -75,3 +75,28 @@ def test_the_order_builder_never_posts_a_pickup_default_with_an_order():
         start = src.index(fn)
         body = src[start:src.index("\n}", start)]
         assert "pickup_default" not in body, f"{fn} must not send pickup_default"
+
+
+def test_the_route_rejects_a_body_missing_pickup_default_before_writing():
+    """A POST that omits the key entirely must be rejected, not silently
+    coerced to False by bool(None) — otherwise a partial/retried request
+    clears the client's preference with no trace. The guard must run before
+    the write call."""
+    src = (repo_root / "app.py").read_text()
+    start = src.index('@app.route("/api/console/client-prefs"')
+    end = src.index('@app.route("/api/console/client-prices"')
+    route_src = src[start:end]
+    assert '"pickup_default" not in body' in route_src
+    guard_pos = route_src.index('"pickup_default" not in body')
+    write_pos = route_src.index("set_pickup_default")
+    assert guard_pos < write_pos, "the missing-key guard must run before the write"
+
+
+def test_the_route_still_accepts_an_explicit_false():
+    """An explicit {"pickup_default": false} is a legitimate, intended flip-off
+    and must still work — the guard only blocks an ABSENT key, not a falsy one."""
+    src = (repo_root / "app.py").read_text()
+    start = src.index('@app.route("/api/console/client-prefs"')
+    end = src.index('@app.route("/api/console/client-prices"')
+    route_src = src[start:end]
+    assert "bool(body.get(\"pickup_default\"))" in route_src
