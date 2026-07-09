@@ -556,6 +556,18 @@ def clear_product_bottle_override(slug, db_path=None):
         cx.commit()
 
 
+def is_shippable(product) -> bool:
+    """True when a catalog product is a physical good the packer should count.
+
+    Services (`service`) and digital/info-only listings (`info_only`) have no
+    bottle, so counting them would push the "default" placeholder type into
+    quote() and charge for a phantom bottle. Anything else stays shippable —
+    a physical product with a missing bottle mapping must still fail loudly
+    rather than silently ship for free."""
+    p = product or {}
+    return not (p.get("service") or p.get("info_only"))
+
+
 def resolve_bottle_type(slug, product, db_path=None):
     with _connect(db_path) as cx:
         row = cx.execute(
