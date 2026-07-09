@@ -556,6 +556,47 @@ def clear_product_bottle_override(slug, db_path=None):
         cx.commit()
 
 
+class UnknownBundleComponent(Exception):
+    """A bundle lists a component name that matches no catalog product."""
+
+
+def bundle_component_products(product, catalog):
+    """A bundle's `bundle_components` names -> the catalog product dicts they name.
+
+    A bundle is ONE catalog line holding several physical bottles, and carries no
+    `bottle_type` of its own. Packing it as a single item counts one bottle instead
+    of N: the box is undersized and the shipping undercharged. Callers expand a
+    bundle through this and pack the components.
+
+    Matching is EXACT and case-insensitive, never fuzzy — on a money path a near-name
+    could pack and bill the wrong SKU (ES1 vs ES13). An unresolvable component raises:
+    a bundle whose contents cannot be identified cannot be packed correctly by a human
+    either, so this must surface, not fall back to the one-bottle undercharge.
+
+    Non-bundle products have no components and return []."""
+    p = product or {}
+    if not p.get("bundle"):
+        return []
+    names = p.get("bundle_components") or []
+    if not names:
+        raise UnknownBundleComponent(
+            f"bundle {p.get('slug') or p.get('name')!r} lists no components")
+    by_name = {}
+    for item in catalog or []:
+        key = (item.get("name") or "").strip().lower()
+        if key:
+            by_name.setdefault(key, item)
+    out = []
+    for name in names:
+        hit = by_name.get((name or "").strip().lower())
+        if hit is None:
+            raise UnknownBundleComponent(
+                f"bundle {p.get('slug') or p.get('name')!r} names an unknown "
+                f"component: {name!r}")
+        out.append(hit)
+    return out
+
+
 def is_shippable(product) -> bool:
     """True when a catalog product is a physical good the packer should count.
 
