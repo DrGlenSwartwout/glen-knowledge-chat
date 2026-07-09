@@ -51,8 +51,8 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
-        timing TEXT, sort_seq INTEGER, created_at TEXT, confirmed INTEGER DEFAULT 1,
-        origin TEXT NOT NULL DEFAULT 'live')""")
+        timing TEXT, sort_seq INTEGER, created_at TEXT, updated_at TEXT,
+        confirmed INTEGER DEFAULT 1, origin TEXT NOT NULL DEFAULT 'live')""")
     try:
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN confirmed INTEGER DEFAULT 1")
     except Exception:
@@ -61,6 +61,14 @@ def init_auth_tables(cx):
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN origin TEXT NOT NULL DEFAULT 'live'")
     except Exception:
         pass
+    try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN updated_at TEXT")
+    except Exception:
+        pass
+    # Backfill: a pre-existing row was never edited, so updated_at == created_at.
+    # Seeding it with _now() instead would mark every historical row as "edited".
+    cx.execute("UPDATE biofield_auth_chain SET updated_at=created_at "
+               "WHERE updated_at IS NULL OR updated_at=''")
     cx.commit()
 
 
@@ -95,12 +103,13 @@ def update_header(cx, tid, name=None, email=None, date=None):
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
                   dosage="", frequency="", timing="", confirmed=1, origin="live"):
     init_auth_tables(cx)
+    now = _now()   # born unedited: updated_at == created_at
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at,confirmed,origin) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,updated_at,confirmed,origin) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
-         (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, _now(),
+         (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, now, now,
          1 if confirmed else 0, (origin or "live")))
     cx.commit()
     return cur.lastrowid
@@ -269,6 +278,9 @@ def resolve_stress_name(cx, spoken, cutoff=0.82):
 
 
 def update_chain_row(cx, rid, **fields):
+    """Edit a row's VALUES. Bumps `updated_at` so an audit can tell a human edit from
+    what the interpreter originally wrote (see was_edited). Confirming or re-ordering
+    a row is not a value edit and deliberately leaves `updated_at` alone."""
     cols = ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing")
     sets, vals = [], []
     for k in cols:
@@ -276,9 +288,34 @@ def update_chain_row(cx, rid, **fields):
             sets.append(f"{k}=?"); vals.append(fields[k])
     if not sets:
         return
+    sets.append("updated_at=?"); vals.append(_now())
     vals.append(rid)
     cx.execute(f"UPDATE biofield_auth_chain SET {','.join(sets)} WHERE id=?", vals)
     cx.commit()
+
+
+def was_edited(cx, rid):
+    """True when a human has changed this row's VALUES since the interpreter wrote it.
+
+    The dose audit needs exactly this: `updated_at > created_at` means the stored value
+    is Glen's, not the model's.
+
+    Deliberately excluded (they leave updated_at alone): confirm_row / confirm_all —
+    reviewing is not editing, and bumping there would mark every confirmed row edited;
+    and reorder_chain / arrange-cards, which move `layer` for positioning.
+
+    Two limits, both erring toward UNDER-claiming edits (an audit must never excuse a
+    fabrication by calling it a human edit):
+      * rows predating the column were backfilled updated_at = created_at, so they read
+        as unedited even if Glen had edited them;
+      * `_now()` is second-resolution, so an edit within the same second as the insert
+        is not detectable."""
+    r = cx.execute("SELECT created_at, updated_at FROM biofield_auth_chain WHERE id=?",
+                   (rid,)).fetchone()
+    if not r:
+        return False
+    created, updated = (r[0] or ""), (r[1] or "")
+    return bool(updated and created and updated > created)
 
 
 def delete_chain_row(cx, rid):
