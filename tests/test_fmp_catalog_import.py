@@ -40,6 +40,17 @@ def test_build_entry_non_ff_at_70_is_not_normalized():
     assert e["price_cents"] == 7000
 
 
+def test_build_entry_drops_srp_at_or_below_price():
+    """FMP has rows where retail_sug_price <= sold_price. An SRP anchor below the charge
+    price is incoherent — omit the field rather than emit a nonsense Value."""
+    _slug, below = build_entry({"product_name": "Protogen", "type": "Homeopathic",
+                                "sold_price": "70", "retail_sug_price": "40", "id_pk": "976"})
+    assert "regular_cents" not in below
+    _slug, equal = build_entry({"product_name": "Equal", "type": "Essence",
+                                "sold_price": "70", "retail_sug_price": "70", "id_pk": "9"})
+    assert "regular_cents" not in equal
+
+
 def test_build_entry_essence_no_volume_pricing():
     row = {"product_name": "Green Jasper Gem Elixir in Terrain Restore", "type": "Essence",
            "sold_price": "70", "retail_sug_price": "80", "id_pk": "626"}
