@@ -372,7 +372,9 @@ def test_active_membership_for_email_returns_none_when_expired(app_client_member
 def test_auth_token_consumes_and_sets_cookie_redirects_to_coaching(app_client_member):
     client, app_module, db = app_client_member
     plain = app_module._mint_membership_magic_link("jane@example.com")
-    r = client.get(f"/coaching/auth/{plain}", follow_redirects=False)
+    # GET only confirms (mail scanners prefetch it); the POST signs in.
+    assert client.get(f"/coaching/auth/{plain}").status_code == 200
+    r = client.post(f"/coaching/auth/{plain}", follow_redirects=False)
     assert r.status_code in (302, 303)
     assert r.headers.get("Location", "").endswith("/coaching")
     set_cookie = r.headers.get("Set-Cookie", "")
