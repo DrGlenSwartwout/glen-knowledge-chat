@@ -33378,9 +33378,20 @@ def _invoice_line_view(l):
         else:
             base = p.get("price_cents")
             out["regular_cents"] = base
-            # FF ($69.97 functional-formulation capsules) carry an $80 SRP/Value above
-            # the $69.97 Regular; other products have no distinct SRP (Value == Regular).
-            out["srp_cents"] = _FF_SRP_CENTS if (base == _FF_BASE_CENTS and not p.get("info_only")) else base
+            # Value (SRP) anchor shown struck-through above the Regular price, in order:
+            #   1. the product's own regular_cents — FMP's retail_sug_price — when it is
+            #      genuinely above the charge price (essences $80/$70, infoceuticals
+            #      $40/$39.97, CDS $40/$35, WholOmega 120ct $230/$190).
+            #   2. the flat $80 FF anchor, for a $69.97 FF carrying no explicit SRP.
+            #   3. otherwise none: Value == Regular and the invoice prints no anchor.
+            # info_only lines never anchor. A regular_cents <= price is incoherent data
+            # and is ignored here rather than at render time.
+            srp = p.get("regular_cents")
+            if p.get("info_only"):
+                srp = base
+            elif not (isinstance(srp, int) and srp > base):
+                srp = _FF_SRP_CENTS if base == _FF_BASE_CENTS else base
+            out["srp_cents"] = srp
     return out
 
 

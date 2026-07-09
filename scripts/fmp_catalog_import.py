@@ -87,8 +87,11 @@ def build_entry(row):
         "no_groovekart": True,
     }
     reg = _cents(row.get("retail_sug_price"))
-    if reg and reg != price_cents:
-        entry["regular_cents"] = reg   # crossed-out "regular / suggested" anchor
+    if reg and reg > price_cents:
+        # The struck-through Value/SRP anchor the invoice prints above Regular
+        # (app._invoice_line_view). Only meaningful ABOVE the charge price — FMP has a
+        # few rows where retail_sug_price is below sold_price, which would be incoherent.
+        entry["regular_cents"] = reg
     desc = _description(row)
     if desc:
         entry["description"] = desc
