@@ -240,6 +240,10 @@ async function loadPickupDefault(email){
   try{
     const r = await fetch("/api/console/client-prefs?email="+encodeURIComponent(email), {headers:HEADERS});
     const j = await r.json(); if (!j.ok) return;
+    // Fired for two different customers in quick succession, requests can resolve
+    // out of order — if the live field has moved on since we asked, this response
+    // belongs to a customer that isn't showing anymore, so drop it silently.
+    if ($("c-email").value.trim().toLowerCase() !== email.toLowerCase()) return;
     $("pickup-default").checked = !!j.pickup_default;
     // On a NEW order the client's default pre-checks Pickup (still overridable).
     // On an EDIT the stored order's own channel already won — don't fight it.
@@ -339,7 +343,16 @@ $("o-points").addEventListener("input", recalc);
 $("o-adjust").addEventListener("input", recalc);
 $("o-total").addEventListener("input", onTotalInput);
 // Membership gates volume pricing, so re-price when the customer email changes.
-$("c-email").addEventListener("input", refreshPreview);
+// Typing/pasting an email directly (bypassing cust-search → pickPerson) must still
+// surface that client's pickup default — debounced like cust-search, since an
+// email is typed one character at a time and most in-progress values aren't real.
+let emailPrefTimer = null;
+function onEmailInput(){
+  refreshPreview();
+  clearTimeout(emailPrefTimer);
+  emailPrefTimer = setTimeout(()=>loadPickupDefault($("c-email").value.trim()), 300);
+}
+$("c-email").addEventListener("input", onEmailInput);
 
 // ── create vs edit dispatch ──
 function submitOrder(){ return EDIT_OID ? editInvoice() : createInvoice(); }
