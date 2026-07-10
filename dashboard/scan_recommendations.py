@@ -7,8 +7,19 @@ these rows to a console-gated endpoint. Pure sqlite: no Flask, no network.
 own "INFOCEUTICALS" / "MIHEALTH FUNCTIONS" headings. It is NOT re-derived from
 protocol_days, which only correlates. "The five infoceuticals" is therefore a query.
 
-Keyed on (email, scan_id, item_code): a re-push UPDATEs. The pusher is idempotent and
-runs daily, so duplicate rows would compound silently.
+Keyed on (email, scan_id, priority_rank) — rank is unique per scan in the source
+data, but item_code is NOT: a two-column PDF layout can flatten to the same
+item_code printed twice at two different ranks in one scan (e.g. scan 542814's
+ER1/ER10/ER36 each appear at two ranks), and both rows are real and must both be
+stored. A scan's rows are therefore replaced atomically via `replace_scan` — delete
+this (email, scan_id)'s rows and insert the full incoming set in one transaction —
+rather than upserted per item, which would let the second of a duplicated pair
+silently overwrite the first.
+
+An empty or all-invalid item list must never delete a client's stored
+recommendations — that hazard (an empty extraction wiping real data) was found and
+fixed in the sibling local script; `replace_scan` returns 0 and touches nothing
+when there is nothing valid to write.
 """
 import sqlite3
 from datetime import datetime, timezone
@@ -38,7 +49,7 @@ def init_table(cx):
             category      TEXT,
             label         TEXT,
             synced_at     TEXT,
-            UNIQUE(email, scan_id, item_code)
+            UNIQUE(email, scan_id, priority_rank)
         )
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_sr_email ON scan_recommendations(email)")
@@ -46,34 +57,49 @@ def init_table(cx):
     cx.commit()
 
 
-def upsert_recommendations(cx, email, scan_id, scan_date, items):
-    """Write one scan's items. Returns rows written. An item with no item_code is
-    skipped rather than stored blank — a blank code would join to no e4l_item and
-    render as an empty remedy on the portal."""
+def replace_scan(cx, email, scan_id, scan_date, items):
+    """Atomically replace one scan's rows. Returns rows actually inserted.
+
+    An item with no item_code is skipped rather than stored blank — a blank code
+    would join to no e4l_item and render as an empty remedy on the portal.
+
+    If, after skipping invalid items, there is nothing left to write — including
+    the case where `items` was empty to begin with — this deletes NOTHING and
+    returns 0. A client's stored recommendations must never be erased by an empty
+    or malformed extraction. Otherwise the existing (email, scan_id) rows are
+    deleted and the full incoming set is inserted, committed once as a single
+    transaction so a reader never observes the scan mid-replace.
+    """
     e, sid = _norm(email), str(scan_id or "").strip()
     if not e or not sid:
         return 0
-    written = 0
+
+    valid = []
     for it in items or []:
         if not isinstance(it, dict):
             continue
         code = (it.get("item_code") or "").strip()
         if not code:
             continue
+        valid.append((it, code))
+
+    if not valid:
+        return 0
+
+    now = _now()
+    date = (scan_date or "").strip()
+    cx.execute(
+        "DELETE FROM scan_recommendations WHERE email=? AND scan_id=?", (e, sid))
+    for it, code in valid:
         cx.execute(
             "INSERT INTO scan_recommendations "
             "(email, scan_id, scan_date, item_code, priority_rank, protocol_days, "
-            " section, category, label, synced_at) VALUES (?,?,?,?,?,?,?,?,?,?) "
-            "ON CONFLICT(email, scan_id, item_code) DO UPDATE SET "
-            "scan_date=excluded.scan_date, priority_rank=excluded.priority_rank, "
-            "protocol_days=excluded.protocol_days, section=excluded.section, "
-            "category=excluded.category, label=excluded.label, synced_at=excluded.synced_at",
-            (e, sid, (scan_date or "").strip(), code, it.get("priority_rank"),
+            " section, category, label, synced_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (e, sid, date, code, it.get("priority_rank"),
              it.get("protocol_days"), it.get("section"), it.get("category"),
-             it.get("label"), _now()))
-        written += 1
+             it.get("label"), now))
     cx.commit()
-    return written
+    return len(valid)
 
 
 def for_scan(cx, email, scan_id):
