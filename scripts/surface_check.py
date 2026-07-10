@@ -38,11 +38,39 @@ OWNER_EMAIL = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
 
 CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", "")
 
-# Flags that must ALWAYS be true. Named by Glen 2026-07-09 after three vanished from the
-# prod service. The other 59 *_ENABLED flags are deliberately unwatched — several are
-# experiments where OFF is correct, and a watchdog that cries wolf gets ignored.
-REQUIRED_ON = ("FIRESIDE_ENABLED", "REPERTOIRE_ENABLED",
-               "INVOICE_PAYLINK_ENABLED", "SCAN_REQUEST_ENABLED")
+# Flags that must ALWAYS be true, read from a COMMITTED baseline rather than hardcoded.
+#
+# A hardcoded tuple rots on the first PR that adds a flag, and it makes deliberately
+# turning a flag off look identical to a deletion. With a committed baseline, disabling a
+# flag is a PULL REQUEST — git records who intended it. Render sells no audit log on this
+# plan (`audit logs not available for this plan`) and its events API never records env
+# changes, so git is the only attribution we can get. That is the point; the alerting is
+# secondary.
+#
+# A flag absent from the baseline is SILENT: new flags default off, and a watchdog that
+# cries wolf gets ignored — which is how the 2026-07-09 deletion stayed invisible.
+_BASELINE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "flags_expected.json")
+BASELINE_ERROR = ""
+
+
+def _load_baseline(path=_BASELINE_PATH):
+    """(flags, error). Never raises — a broken baseline must be REPORTED, not silently
+    treated as 'nothing is expected to be on'."""
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+        flags = data.get("expected_on")
+        if not isinstance(flags, list) or not flags:
+            return (), f"expected_on is {type(flags).__name__}, expected a non-empty list"
+        if not all(isinstance(f, str) and f for f in flags):
+            return (), "expected_on contains a non-string entry"
+        return tuple(flags), ""
+    except Exception as e:  # noqa: BLE001
+        return (), f"{type(e).__name__}: {e}"
+
+
+REQUIRED_ON, BASELINE_ERROR = _load_baseline()
 
 
 def _fetch_json(url, key, timeout=20):
@@ -54,7 +82,7 @@ def _fetch_json(url, key, timeout=20):
         return json.loads(r.read().decode() or "{}")
 
 
-def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
+def check_flags(base_url, console_key, required=None, fetch=_fetch_json):
     """One dict per flag that must be on and is not: {"flag", "reason"}.
 
     A deleted var, a deliberate false, and "set true but never redeployed" all reach the
@@ -65,8 +93,18 @@ def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
     An unreachable or unauthorized endpoint is NOT drift: the surfaces list already
     alarms when the app is down, and one outage must not tell two contradictory stories.
     No console key -> skip entirely (the caller prints a notice)."""
+    # Resolve at CALL time, not def time: a default of `required=REQUIRED_ON` would bind
+    # once at import, so patching the module attribute (in tests, or after a baseline
+    # reload) would silently have no effect.
+    if required is None:
+        required = REQUIRED_ON
     if not console_key:
         return []
+    if not required:
+        # The baseline failed to load. Expecting nothing and passing silently is the one
+        # outcome a watchdog must never have.
+        return [{"flag": "*",
+                 "reason": f"could not load baseline: {BASELINE_ERROR or 'empty'}"}]
     url = f"{base_url.rstrip('/')}/api/console/flags"
     try:
         payload = fetch(url, console_key)
