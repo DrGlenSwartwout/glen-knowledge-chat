@@ -23,6 +23,7 @@ throttle — at most one alert per day while a surface is down.
 
 Stdlib only (the cron's buildCommand is `true`).
 """
+import json
 import os
 import sys
 import urllib.error
@@ -34,6 +35,71 @@ PUBLIC_SURFACES = ("/", "/begin", "/begin/fireside", "/prepay", "/results")
 
 BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 OWNER_EMAIL = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
+
+CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", "")
+
+# Flags that must ALWAYS be true. Named by Glen 2026-07-09 after three vanished from the
+# prod service. The other 59 *_ENABLED flags are deliberately unwatched — several are
+# experiments where OFF is correct, and a watchdog that cries wolf gets ignored.
+REQUIRED_ON = ("FIRESIDE_ENABLED", "REPERTOIRE_ENABLED",
+               "INVOICE_PAYLINK_ENABLED", "SCAN_REQUEST_ENABLED")
+
+
+def _fetch_json(url, key, timeout=20):
+    """GET a console-gated JSON endpoint. Raises on any non-200."""
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"X-Console-Key": key,
+                                          "User-Agent": "surface-check/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode() or "{}")
+
+
+def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
+    """One dict per flag that must be on and is not: {"flag", "reason"}.
+
+    A deleted var, a deliberate false, and "set true but never redeployed" all reach the
+    customer the same way, so all three alarm — but each names its own cause, because
+    the fix differs. A CALL-TIME flag that was deleted has neither a module global nor an
+    env key, so it vanishes from the report; the absent-from-response branch catches it.
+
+    An unreachable or unauthorized endpoint is NOT drift: the surfaces list already
+    alarms when the app is down, and one outage must not tell two contradictory stories.
+    No console key -> skip entirely (the caller prints a notice)."""
+    if not console_key:
+        return []
+    url = f"{base_url.rstrip('/')}/api/console/flags"
+    try:
+        payload = fetch(url, console_key)
+        flags = ((payload or {}).get("data") or {}).get("flags") or {}
+        if not isinstance(flags, dict):
+            raise TypeError(f"flags is {type(flags).__name__}, expected dict")
+    except Exception as e:  # noqa: BLE001 — a check failure is never drift
+        return [{"flag": "*", "reason": f"could not check flags: {e}"}]
+    if not flags:
+        return [{"flag": "*", "reason": "could not check flags: unexpected response"}]
+    out = []
+    for name in required:
+        info = flags.get(name)
+        if info is None:
+            out.append({"flag": name,
+                        "reason": "absent from /api/console/flags "
+                                  "(env var deleted, or the constant was removed)"})
+            continue
+        if not isinstance(info, dict):
+            out.append({"flag": name,
+                        "reason": f"could not check flags: malformed entry "
+                                  f"({type(info).__name__}, expected object)"})
+            continue
+        if info.get("value"):
+            continue
+        if info.get("env_present"):
+            reason = "set to false"
+            if info.get("source") == "import":
+                reason += " (or set true but never redeployed — flags read at import)"
+        else:
+            reason = "env var is MISSING (deleted)"
+        out.append({"flag": name, "reason": reason})
+    return out
 
 
 def _fetch(url, timeout=20):
@@ -66,20 +132,35 @@ def check_surfaces(base_url, paths=PUBLIC_SURFACES, fetch=_fetch):
     return failures
 
 
-def format_alert(base_url, failures):
-    """(subject, body) naming each dead path and why. Plain text; no HTML."""
-    n = len(failures)
+def format_alert(base_url, failures, flag_failures=()):
+    """(subject, body) naming each dead path and each flag that must be on and is not.
+    Plain text; no HTML. `flag_failures` defaults to empty so existing callers are
+    unchanged."""
+    n = len(failures) + len(flag_failures)
     host = base_url.split("//", 1)[-1].rstrip("/")
-    subject = f"[surface-check] {n} dead surface{'s' if n != 1 else ''} on {host}"
-    lines = [f"{n} public surface{'s' if n != 1 else ''} failing on {base_url}:", ""]
-    for f in failures:
-        why = f["error"] or f"HTTP {f['status']}"
-        lines.append(f"  {f['path']}  ->  {why}")
+    subject = f"[surface-check] {n} problem{'s' if n != 1 else ''} on {host}"
+    lines = []
+    if failures:
+        lines += [f"{len(failures)} public surface"
+                  f"{'s' if len(failures) != 1 else ''} failing on {base_url}:", ""]
+        for f in failures:
+            why = f["error"] or f"HTTP {f['status']}"
+            lines.append(f"  {f['path']}  ->  {why}")
+        lines.append("")
+    if flag_failures:
+        lines += [f"{len(flag_failures)} feature flag"
+                  f"{'s' if len(flag_failures) != 1 else ''} not on:", ""]
+        for f in flag_failures:
+            lines.append(f"  {f['flag']}  ->  {f['reason']}")
+        lines.append("")
     lines += [
-        "",
         "A 404 on a flag-gated surface usually means its *_ENABLED env var drifted",
         "off on the Render web service. Flags absent from render.yaml have nothing",
         "pinning them on. Re-flip with a single-key PUT + an explicit POST /deploys.",
+        "",
+        "REPERTOIRE_ENABLED off silently charges paid members MORE (they lose",
+        "repertoire reorder pricing). INVOICE_PAYLINK_ENABLED off means clients",
+        "cannot pay an invoice online. Neither has a page that 404s.",
     ]
     return subject, "\n".join(lines)
 
@@ -113,19 +194,29 @@ def send_alert(subject, body, to_email=None):
 
 
 def run():
-    """Probe, alert on failure, and always return the failure list. Best-effort by
-    contract: the caller is the personal-email cron, which must never fail because
-    a surface check did."""
+    """Probe surfaces + flags, alert on failure, and always return the failure list.
+    Best-effort by contract: the caller is the personal-email cron, which must never
+    fail because a check did."""
     failures = check_surfaces(BASE_URL)
-    if not failures:
-        print(f"[surface-check] {len(PUBLIC_SURFACES)} surfaces OK on {BASE_URL}", flush=True)
-        return failures
-    subject, body = format_alert(BASE_URL, failures)
+    if CONSOLE_SECRET:
+        flag_failures = check_flags(BASE_URL, CONSOLE_SECRET)
+    else:
+        print("[surface-check] CONSOLE_SECRET not set — skipping flag check", flush=True)
+        flag_failures = []
+    if not failures and not flag_failures:
+        _flags_note = (f"{len(REQUIRED_ON)} flags on" if CONSOLE_SECRET
+                       else "flags NOT checked (no CONSOLE_SECRET)")
+        print(f"[surface-check] {len(PUBLIC_SURFACES)} surfaces OK, "
+              f"{_flags_note}, at {BASE_URL}", flush=True)
+        return []
+    subject, body = format_alert(BASE_URL, failures, flag_failures)
     print(f"[surface-check] {subject}", flush=True)
     for f in failures:
         print(f"[surface-check]   {f['path']} -> {f['error'] or f['status']}", flush=True)
+    for f in flag_failures:
+        print(f"[surface-check]   {f['flag']} -> {f['reason']}", flush=True)
     send_alert(subject, body)
-    return failures
+    return failures + flag_failures
 
 
 if __name__ == "__main__":

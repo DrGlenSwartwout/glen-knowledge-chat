@@ -33402,6 +33402,57 @@ def api_console_customer_rename():
     return jsonify({"ok": True, **res})
 
 
+# ── Feature-flag report ───────────────────────────────────────────────────────
+_FLAG_NAME_RE = re.compile(r"^_?[A-Z][A-Z0-9_]*_ENABLED$")
+_FLAG_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _flag_report():
+    """Every *_ENABLED flag this process knows about.
+
+    TWO kinds exist and they differ in a way that matters:
+      - import-time constants (module globals, fixed when the process started). These
+        can go STALE: set the env var, skip the deploy, and the app still behaves as if
+        the flag were off. `value` therefore reads the GLOBAL, not os.environ.
+      - call-time reads (no global at all; os.environ is read inside a function on each
+        request, e.g. SCAN_REQUEST_ENABLED at app.py:14808). Never stale. A globals scan
+        would never find them, so discovery is the UNION of globals and env keys.
+
+    A deleted var and a deliberate false make the app behave identically but mean
+    different things, so `env_present` is reported separately. A deleted CALL-TIME flag
+    has neither a global nor an env key and so vanishes from this report entirely — the
+    checker's absent-from-response rule is what catches that case.
+
+    Only booleans, only *_ENABLED keys: no other env var can leak through here."""
+    out = {}
+    for name, val in list(globals().items()):
+        if isinstance(val, bool) and _FLAG_NAME_RE.match(name):
+            out[name] = {"value": bool(val),
+                         "env_present": name in os.environ,
+                         "source": "import"}
+    for name in os.environ:
+        if name in out or not _FLAG_NAME_RE.match(name):
+            continue
+        raw = (os.environ.get(name) or "").strip().lower()
+        out[name] = {"value": raw in _FLAG_TRUTHY,
+                     "env_present": True,
+                     "source": "runtime"}
+    return out
+
+
+@app.route("/api/console/flags", methods=["GET"])
+@require_console_key
+def api_console_flags():
+    """Owner: every feature flag as the RUNNING PROCESS sees it, plus whether each env
+    var exists at all. Read-only. Consumed by scripts/surface_check.py's daily drift
+    check — a flag with no HTTP surface (REPERTOIRE_ENABLED, INVOICE_PAYLINK_ENABLED)
+    cannot be watched any other way."""
+    try:
+        return ok({"flags": _flag_report()})
+    except Exception as e:
+        return fail(e)
+
+
 @app.route("/api/console/client-prefs", methods=["GET", "POST"])
 def api_console_client_prefs():
     """Owner: read/set a client's fulfillment defaults (today: pickup_default).
