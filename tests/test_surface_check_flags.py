@@ -2,6 +2,8 @@
 but never redeployed. REPERTOIRE_ENABLED and INVOICE_PAYLINK_ENABLED have no page that
 404s, so the HTTP surface check from #736 structurally cannot see them.
 """
+import urllib.error
+
 import scripts.surface_check as S
 
 
@@ -93,9 +95,20 @@ def test_unreachable_endpoint_is_not_reported_as_drift():
 
 
 def test_unauthorized_is_not_reported_as_drift():
-    out = S.check_flags("https://x.test", "bad", fetch=_fetch_raises(OSError("HTTP 401")))
-    assert len(out) == 1 and out[0]["flag"] == "*"
+    """A real urllib HTTPError (what _fetch_json raises on 401) must report 'could not
+    check', never four drift failures. The surfaces list already alarms when the app is
+    down; one outage must not tell two contradictory stories."""
+    err = urllib.error.HTTPError("https://x.test/api/console/flags", 401,
+                                 "Unauthorized", {}, None)
+    out = S.check_flags("https://x.test", "bad", fetch=_fetch_raises(err))
+    assert len(out) == 1
+    assert out[0]["flag"] == "*"
+    assert "could not check" in out[0]["reason"].lower()
 
 
-def test_missing_console_secret_skips_rather_than_alarms():
-    assert S.check_flags("https://x.test", "", fetch=_fetch_ok(ALL_ON)) == []
+def test_missing_console_secret_skips_without_calling_fetch():
+    """No key -> skip entirely, and prove it never reaches the network. With the early
+    return removed, this fetch would raise and the test would fail."""
+    def _explode(url, key, timeout=0):
+        raise AssertionError("fetch must not be called without a console key")
+    assert S.check_flags("https://x.test", "", fetch=_explode) == []
