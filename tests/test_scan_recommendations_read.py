@@ -8,10 +8,13 @@ touching `pinecone_title`, which would orphan the product's Pinecone vector.
 """
 import importlib
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
 import pytest
+
+from dashboard import scan_recommendations as sr
 
 ROOT = Path(__file__).resolve().parent.parent
 BFA_SLUG = "bfa-big-field-aligner-infoceutical"
@@ -82,3 +85,94 @@ def test_an_alias_never_shadows_a_real_product_name():
     for slug, rec in p.items():
         for a in rec.get("aliases") or []:
             assert a.strip().lower() not in names, f"{slug} alias {a!r} collides with a product title"
+
+
+# tests/test_scan_recommendations_read.py  (part 2 of 2 — store read helpers + console
+# read path land in Task 3)
+
+EMAIL = "caregiver@example.com"
+HDRS = {"X-Console-Key": "testkey"}
+ITEMS = [
+    {"item_code": "BFA", "priority_rank": 1, "protocol_days": 15,
+     "section": "Infoceuticals", "category": "BFA", "label": "Big Field Aligner"},
+    {"item_code": "ED6", "priority_rank": 2, "protocol_days": 15,
+     "section": "Infoceuticals", "category": "ED", "label": "Heart"},
+    {"item_code": "ER2", "priority_rank": 3, "protocol_days": 2,
+     "section": "miHealth Functions", "category": "ER", "label": "Large Intestine"},
+]
+
+
+@pytest.fixture()
+def cx():
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    sr.init_table(con)
+    sr.replace_scan(con, EMAIL, "10", "2026-07-02", ITEMS)
+    sr.replace_scan(con, EMAIL, "20", "2026-06-13", ITEMS[:1])
+    yield con
+    con.close()
+
+
+def test_scan_dates_are_newest_first(cx):
+    assert sr.scan_dates_for(cx, EMAIL) == ["2026-07-02", "2026-06-13"]
+
+
+def test_for_scan_date_returns_that_scan_in_rank_order(cx):
+    got = [r["item_code"] for r in sr.for_scan_date(cx, EMAIL, "2026-07-02")]
+    assert got == ["BFA", "ED6", "ER2"]
+
+
+def test_for_an_unknown_date_returns_nothing(cx):
+    assert sr.for_scan_date(cx, EMAIL, "1999-01-01") == []
+
+
+def test_for_an_unknown_email_returns_nothing(cx):
+    assert sr.scan_dates_for(cx, "stranger@example.com") == []
+
+
+def test_split_by_section_preserves_rank_order(cx):
+    info, mih = sr.split_by_section(sr.for_scan_date(cx, EMAIL, "2026-07-02"))
+    assert [r["item_code"] for r in info] == ["BFA", "ED6"]
+    assert [r["item_code"] for r in mih] == ["ER2"]
+
+
+def test_split_by_section_on_an_empty_list(cx):
+    assert sr.split_by_section([]) == ([], [])
+
+
+def _app_for_client():
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    return importlib.import_module("app")
+
+
+@pytest.fixture()
+def client(tmp_db, monkeypatch):
+    app_mod = _app_for_client()
+    monkeypatch.setattr(app_mod, "LOG_DB", tmp_db)
+    monkeypatch.setattr(app_mod, "CONSOLE_SECRET", "testkey")
+    batch = [{"email": EMAIL, "scans": [
+        {"scan_id": "10", "scan_date": "2026-07-02", "items": ITEMS},
+        {"scan_id": "20", "scan_date": "2026-06-13", "items": ITEMS[:1]},
+    ]}]
+    test_client = app_mod.app.test_client()
+    test_client.post("/api/console/scan-recommendations/sync", headers=HDRS, json={"batch": batch})
+    return test_client
+
+
+def test_console_read_requires_the_key(client):
+    assert client.get("/api/console/scan-recommendations").status_code == 401
+
+
+def test_console_read_without_an_email_returns_corpus_totals(client, tmp_db):
+    body = client.get("/api/console/scan-recommendations", headers=HDRS).get_json()
+    assert body["ok"] is True
+    assert set(body) == {"ok", "total_rows", "clients", "scans"}   # no client data leaked
+    assert body["total_rows"] == 4 and body["clients"] == 1 and body["scans"] == 2
+
+
+def test_console_read_with_an_email_adds_that_clients_scan(client):
+    body = client.get(f"/api/console/scan-recommendations?email={EMAIL}", headers=HDRS).get_json()
+    assert body["scan_date"] == "2026-07-02"
+    assert [i["item_code"] for i in body["infoceuticals"]] == ["BFA", "ED6"]
+    assert [m["item_code"] for m in body["mihealth"]] == ["ER2"]

@@ -10833,6 +10833,32 @@ def api_console_scan_recommendations_sync():
     return jsonify({"ok": True, "clients": len(client_emails), "scans": scans, "rows": rows})
 
 
+@app.route("/api/console/scan-recommendations", methods=["GET"])
+def api_console_scan_recommendations_read():
+    """Owner: read back what the pusher stored. Slice 1 shipped write-only, so this is
+    the first way to confirm production's row count and spot-check a scan. Read-only."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_recommendations as _sr
+    email = (request.args.get("email") or "").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _sr.init_table(cx)
+        out = {"ok": True,
+               "total_rows": cx.execute("SELECT COUNT(*) FROM scan_recommendations").fetchone()[0],
+               "clients": cx.execute("SELECT COUNT(DISTINCT email) FROM scan_recommendations").fetchone()[0],
+               "scans": cx.execute("SELECT COUNT(DISTINCT email || '|' || scan_id) FROM scan_recommendations").fetchone()[0]}
+        # No email -> corpus totals only. The backfill check needs no client data.
+        if not email:
+            return jsonify(out)
+        dates = _sr.scan_dates_for(cx, email)
+        picked = (request.args.get("scan_date") or "").strip() or (dates[0] if dates else "")
+        info, mih = _sr.split_by_section(_sr.for_scan_date(cx, email, picked) if picked else [])
+    out.update({"email": email, "scan_dates": dates, "scan_date": picked,
+                "infoceuticals": info, "mihealth": mih})
+    return jsonify(out)
+
+
 @app.route("/api/console/analysis-requests", methods=["GET"])
 def api_console_analysis_requests():
     """Owner tool: list pending analysis requests for the local fulfillment worker."""

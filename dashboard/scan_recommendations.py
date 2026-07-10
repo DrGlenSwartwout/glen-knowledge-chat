@@ -115,3 +115,28 @@ def infoceuticals_for_scan(cx, email, scan_id):
         "ORDER BY priority_rank",
         (_norm(email), str(scan_id or "").strip(), SECTION_INFOCEUTICAL)).fetchall()
     return [dict(r) for r in rows]
+
+
+def scan_dates_for(cx, email):
+    """This client's E4L scan dates, newest first. NOTE: these are SCAN dates, not
+    published-report dates — a report can be filed under a date on which the client has
+    no scan, so the card must key off these."""
+    rows = cx.execute(
+        "SELECT DISTINCT scan_date FROM scan_recommendations WHERE email=? AND scan_date<>'' "
+        "ORDER BY scan_date DESC", (_norm(email),)).fetchall()
+    return [r[0] for r in rows]
+
+
+def for_scan_date(cx, email, scan_date):
+    rows = cx.execute(
+        "SELECT * FROM scan_recommendations WHERE email=? AND scan_date=? ORDER BY priority_rank",
+        (_norm(email), (scan_date or "").strip())).fetchall()
+    return [dict(r) for r in rows]
+
+
+def split_by_section(rows):
+    """(infoceuticals, mihealth), rank order preserved. ER/MR are miHealth device cycles,
+    not products — they are shown but never carry an order button."""
+    info = [r for r in rows if r.get("section") == SECTION_INFOCEUTICAL]
+    mih = [r for r in rows if r.get("section") != SECTION_INFOCEUTICAL]
+    return info, mih
