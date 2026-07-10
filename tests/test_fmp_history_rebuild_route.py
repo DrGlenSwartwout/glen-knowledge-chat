@@ -67,6 +67,38 @@ def test_rebuild_populates_purchase_history_and_returns_counts(client, monkeypat
     assert rows == [("jo@x.com", "terrain-restore", "2026-04-01", "fmp", "it1")]
 
 
+def test_rebuild_does_not_wipe_when_projection_tables_are_empty(monkeypatch, tmp_path):
+    """An empty FMP extraction (projection tables not loaded) must NOT clear the existing
+    slice. It returns rows:0 — a visible 'found nothing' — while leaving the slice intact,
+    rather than the old behavior of deleting it with nothing to put back."""
+    import app as appmod
+    import dashboard as _dashboard
+    from dashboard import fmp_orders as _fo
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "test-secret")
+    monkeypatch.setattr(_dashboard, "CONSOLE_SECRET", "test-secret")
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        _fo.ensure_tables(cx)  # empty fmp_* projection tables
+        import dashboard.purchase_history as _ph
+        _ph.init_purchase_history_table(cx)
+        cx.execute("INSERT INTO purchase_history(email, slug, purchased_at, source, source_ref) "
+                   "VALUES ('keep@x.com','terrain-restore','2026-01-01','fmp','it1')")
+        cx.commit()
+
+    appmod.app.config["TESTING"] = True
+    c = appmod.app.test_client()
+    r = c.post("/api/console/fmp-history-rebuild", headers={"X-Console-Key": "test-secret"})
+    assert r.status_code == 200
+    assert r.get_json()["data"]["rows"] == 0
+
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        kept = cx.execute("SELECT slug FROM purchase_history WHERE source='fmp'").fetchall()
+    assert kept == [("terrain-restore",)], "the existing slice was wiped by an empty rebuild"
+
+
 def test_rebuild_fails_cleanly_on_missing_slug_map(client, monkeypatch):
     """If data/fmp_slug_map.json is missing/malformed, the route fails clean
     (400 + ok:false) instead of 500ing or swallowing the error — this is an
