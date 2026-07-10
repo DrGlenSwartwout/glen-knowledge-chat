@@ -23,6 +23,7 @@ throttle — at most one alert per day while a surface is down.
 
 Stdlib only (the cron's buildCommand is `true`).
 """
+import json
 import os
 import sys
 import urllib.error
@@ -34,6 +35,64 @@ PUBLIC_SURFACES = ("/", "/begin", "/begin/fireside", "/prepay", "/results")
 
 BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
 OWNER_EMAIL = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
+
+CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", "")
+
+# Flags that must ALWAYS be true. Named by Glen 2026-07-09 after three vanished from the
+# prod service. The other 59 *_ENABLED flags are deliberately unwatched — several are
+# experiments where OFF is correct, and a watchdog that cries wolf gets ignored.
+REQUIRED_ON = ("FIRESIDE_ENABLED", "REPERTOIRE_ENABLED",
+               "INVOICE_PAYLINK_ENABLED", "SCAN_REQUEST_ENABLED")
+
+
+def _fetch_json(url, key, timeout=20):
+    """GET a console-gated JSON endpoint. Raises on any non-200."""
+    req = urllib.request.Request(url, method="GET",
+                                 headers={"X-Console-Key": key,
+                                          "User-Agent": "surface-check/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode() or "{}")
+
+
+def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
+    """One dict per flag that must be on and is not: {"flag", "reason"}.
+
+    A deleted var, a deliberate false, and "set true but never redeployed" all reach the
+    customer the same way, so all three alarm — but each names its own cause, because
+    the fix differs. A CALL-TIME flag that was deleted has neither a module global nor an
+    env key, so it vanishes from the report; the absent-from-response branch catches it.
+
+    An unreachable or unauthorized endpoint is NOT drift: the surfaces list already
+    alarms when the app is down, and one outage must not tell two contradictory stories.
+    No console key -> skip entirely (the caller prints a notice)."""
+    if not console_key:
+        return []
+    url = f"{base_url.rstrip('/')}/api/console/flags"
+    try:
+        payload = fetch(url, console_key)
+    except Exception as e:  # noqa: BLE001 — a check failure is never drift
+        return [{"flag": "*", "reason": f"could not check flags: {e}"}]
+    flags = ((payload or {}).get("data") or {}).get("flags") or {}
+    if not flags:
+        return [{"flag": "*", "reason": "could not check flags: unexpected response"}]
+    out = []
+    for name in required:
+        info = flags.get(name)
+        if info is None:
+            out.append({"flag": name,
+                        "reason": "absent from /api/console/flags "
+                                  "(env var deleted, or the constant was removed)"})
+            continue
+        if info.get("value"):
+            continue
+        if info.get("env_present"):
+            reason = "set to false"
+            if info.get("source") == "import":
+                reason += " (or set true but never redeployed — flags read at import)"
+        else:
+            reason = "env var is MISSING (deleted)"
+        out.append({"flag": name, "reason": reason})
+    return out
 
 
 def _fetch(url, timeout=20):
