@@ -45,6 +45,23 @@ def test_household_payload_and_member_switch(tmp_path, monkeypatch):
     assert "2026-06-20" in (js.get("bf_scan_dates") or js.get("scan_dates") or [])
 
 
+def test_member_tab_tos_gate_follows_the_token_holder(tmp_path, monkeypatch):
+    """A pet never agreed to Terms. Evaluating tos_agreed against the MEMBER put a
+    Terms-of-Service gate over the member's report instead of showing it — the
+    caregiver holding the token is who agreed, and who is reading the page."""
+    appmod = _app(tmp_path, monkeypatch)
+    token = _seed(appmod, "karin@x.com", "mochi@x.com")
+    if not token: pytest.skip("no portal upsert helper")
+    # Only the caregiver has agreed. The pet is not a member and never will be.
+    monkeypatch.setattr(appmod, "is_member",
+                        lambda email=None, **kw: (email or "") == "karin@x.com")
+    c = appmod.app.test_client()
+    own = c.get(f"/api/portal/{token}").get_json()
+    mem = c.get(f"/api/portal/{token}?member=mochi@x.com").get_json()
+    assert own["tos_agreed"] is True, "precondition: the caregiver has agreed"
+    assert mem["tos_agreed"] is True, "member tab must not re-gate the caregiver on Terms"
+
+
 def test_flag_off_no_household(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch, flag="0")
     token = _seed(appmod, "karin@x.com", "mochi@x.com")

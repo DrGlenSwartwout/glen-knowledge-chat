@@ -15540,7 +15540,11 @@ def api_client_portal(token):
         "pricing_note": bf_content.get("pricing_note", "") if bf_show else "",
         "reorder_items": display,
         "notify_on": notify_on,
-        "tos_agreed": is_member(email=email_for_reports) if email_for_reports else True,
+        # Terms belong to the TOKEN HOLDER, not to whoever's tab is open. Evaluated
+        # against email_for_reports this put a Terms gate over a member's report — a
+        # pet never agreed to anything, so the caregiver got re-gated on their own
+        # portal instead of seeing the report they came for.
+        "tos_agreed": is_member(email=primary_email) if primary_email else True,
         "messages": _portal_chat_thread(email_for_reports),
         "element_state": element_state,
         "element_backdrop_enabled": ELEMENT_BACKDROP_ENABLED,
