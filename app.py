@@ -10772,6 +10772,47 @@ def api_console_client_scans_sync():
     return jsonify({"ok": True, "upserted": total})
 
 
+@app.route("/api/console/scan-recommendations/sync", methods=["POST"])
+def api_console_scan_recommendations_sync():
+    """Owner sync: upsert each client's per-scan E4L recommendations into
+    scan_recommendations (populated by the local e4l-scan-recommendations-push, since
+    prod can't read e4l.db). Sibling of /api/console/client-scans/sync.
+
+    Sends NOTHING. Slice 1 stores; a later slice renders. A bad client or a bad item is
+    skipped rather than aborting a 162-client batch."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_recommendations as _sr
+    data = request.get_json(silent=True) or {}
+    batch = data.get("batch")
+    if not isinstance(batch, list):
+        return jsonify({"error": "batch (list) required"}), 400
+    clients = scans = rows = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        for it in batch:
+            if not isinstance(it, dict):
+                continue
+            email = it.get("email")
+            wrote_for_client = False
+            for sc in (it.get("scans") or []):
+                if not isinstance(sc, dict):
+                    continue
+                try:
+                    n = _sr.replace_scan(
+                        cx, email, sc.get("scan_id"), sc.get("scan_date"), sc.get("items") or [])
+                except Exception as _e:
+                    print(f"[scan-recs-sync] skipped bad scan: {_e!r}", flush=True)
+                    continue
+                if n:
+                    rows += n
+                    scans += 1
+                    wrote_for_client = True
+            if wrote_for_client:
+                clients += 1
+    return jsonify({"ok": True, "clients": clients, "scans": scans, "rows": rows})
+
+
 @app.route("/api/console/analysis-requests", methods=["GET"])
 def api_console_analysis_requests():
     """Owner tool: list pending analysis requests for the local fulfillment worker."""
