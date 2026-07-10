@@ -647,7 +647,9 @@ function render(d, v){
   const badges = (v && v.account && v.account.role_badges) || [];
   let html = `
     <div class="hero">
-      <div class="hello">Aloha ${esc(first)}</div>
+      <div class="hello">${d.is_animal
+          ? 'Give our Aloha to ' + esc(d.animal_name || first)
+          : 'Aloha ' + esc(first)}</div>
       <div class="sub">${escGreeting(stripSalutation(d.greeting) || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</div>
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
