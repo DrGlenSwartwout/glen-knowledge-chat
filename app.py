@@ -10892,6 +10892,69 @@ def api_console_scan_recommendations_read():
     return jsonify(out)
 
 
+@app.route("/api/console/client-species/sync", methods=["POST"])
+def api_console_client_species_sync():
+    """Owner sync: upsert each client's species + animal name (from the local E4L scrape,
+    since prod can't read e4l.db). Sibling of client-scans/sync. Sends nothing."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_species as _cs
+    batch = (request.get_json(silent=True) or {}).get("batch")
+    if not isinstance(batch, list):
+        return jsonify({"error": "batch (list) required"}), 400
+    count = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cs.init_table(cx)
+        for it in batch:
+            if not isinstance(it, dict) or not (it.get("email") or "").strip():
+                continue
+            try:
+                _cs.upsert(cx, it.get("email"), it.get("species"), it.get("animal_name"))
+                count += 1
+            except Exception as _e:
+                print(f"[client-species-sync] skipped: {_e!r}", flush=True)
+    return jsonify({"ok": True, "count": count})
+
+
+@app.route("/api/console/client-species", methods=["GET"])
+def api_console_client_species_read():
+    """Owner: confirm what the scrape stored. No email → corpus counts (no client data)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_species as _cs
+    email = (request.args.get("email") or "").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cs.init_table(cx)
+        total = cx.execute("SELECT COUNT(*) FROM client_species").fetchone()[0]
+        animals = cx.execute("SELECT COUNT(*) FROM client_species "
+                             "WHERE species IS NOT NULL AND lower(trim(species))<>'' "
+                             "AND lower(trim(species))<>'human'").fetchone()[0]
+        out = {"ok": True, "total": total, "animals": animals}
+        if not email:
+            return jsonify(out)
+        rec = _cs.get(cx, email) or {"species": "", "animal_name": "", "is_animal": False}
+    out.update({"email": email, **rec})
+    return jsonify(out)
+
+
+@app.route("/api/console/client-species", methods=["POST"])
+def api_console_client_species_override():
+    """Owner override — the 'Other' path. Set species (free text) + animal name for one
+    client, for a mammal E4L cannot represent, or to correct a scrape."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_species as _cs
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cs.init_table(cx)
+        _cs.upsert(cx, email, body.get("species"), body.get("animal_name"))
+    return jsonify({"ok": True, "email": email, "is_animal": _cs.is_animal(body.get("species"))})
+
+
 @app.route("/api/console/analysis-requests", methods=["GET"])
 def api_console_analysis_requests():
     """Owner tool: list pending analysis requests for the local fulfillment worker."""
