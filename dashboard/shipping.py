@@ -83,6 +83,8 @@ PROD_BOTTLE_NAMES = frozenset({
     # Created in prod 2026-07-09. Before that the catalog named bottles prod did not
     # have, so `neem-oil-rollon` and `hand-cradle` silently fell back to the qty rule.
     "100ml", "15ml", "30roll", "handcradle",
+    # Created in prod 2026-07-10 (id 17) for the wicking toothbrush (Ø30 x H160).
+    "toothbrush",
 })
 
 # Types the catalog needs that prod's library lacks. Empty: the last four were created.
@@ -123,6 +125,9 @@ _STANDARD_BOTTLES = [
     # (M, $22.95) — the default for a $297 device shipped with its protective packaging.
     # Rae can manually drop to Small at pack time when shipping the cradle bare.
     ("handcradle", "ZYTO Hand Cradle — ships USPS Medium Flat Rate", 80, 100),
+    # Shipping proxy: a wicking toothbrush is a flat item, not a cylinder. Glen's dims
+    # (16 x 3 cm) as a bounding cylinder (Ø30 x H160). Created in prod 2026-07-10 (id 17).
+    ("toothbrush", "Wicking toothbrush — 16 x 3 cm (cylinder bounding)", 30, 160),
 ]
 # Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
 # 10mm, which no deployment uses — and it silently changed the geometry of every
