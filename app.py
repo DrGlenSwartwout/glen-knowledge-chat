@@ -10787,15 +10787,21 @@ def api_console_scan_recommendations_sync():
     batch = data.get("batch")
     if not isinstance(batch, list):
         return jsonify({"error": "batch (list) required"}), 400
-    clients = scans = rows = 0
+    scans = rows = 0
+    client_emails = set()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _sr.init_table(cx)
         for it in batch:
             if not isinstance(it, dict):
                 continue
             email = it.get("email")
+            scans_val = it.get("scans")
+            if not isinstance(scans_val, list):
+                # malformed "scans" (e.g. a bare string) — skip this client, not
+                # a char-by-char iteration of the string.
+                continue
             wrote_for_client = False
-            for sc in (it.get("scans") or []):
+            for sc in scans_val:
                 if not isinstance(sc, dict):
                     continue
                 try:
@@ -10809,8 +10815,11 @@ def api_console_scan_recommendations_sync():
                     scans += 1
                     wrote_for_client = True
             if wrote_for_client:
-                clients += 1
-    return jsonify({"ok": True, "clients": clients, "scans": scans, "rows": rows})
+                # distinct clients, not batch entries — two entries for the same
+                # email (however unlikely from the real pusher, which groups by
+                # email) must count once.
+                client_emails.add((email or "").strip().lower())
+    return jsonify({"ok": True, "clients": len(client_emails), "scans": scans, "rows": rows})
 
 
 @app.route("/api/console/analysis-requests", methods=["GET"])
