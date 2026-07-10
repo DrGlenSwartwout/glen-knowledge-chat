@@ -14963,6 +14963,31 @@ def _scan_recommendations_enabled():
         "1", "true", "yes", "on")
 
 
+def _animal_greeting_enabled():
+    """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
+    never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
+    DEPENDENT_TOS_ENABLED."""
+    return (os.environ.get("ANIMAL_GREETING_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _client_species_for(email):
+    """{"is_animal": True, "animal_name": ...} when the flag is on AND this client is an
+    animal; None otherwise (flag off, human, unknown, or any error)."""
+    if not _animal_greeting_enabled() or not email:
+        return None
+    try:
+        from dashboard import client_species as _cs
+        with sqlite3.connect(LOG_DB) as cx:
+            _cs.init_table(cx)
+            rec = _cs.get(cx, email)
+        if rec and rec["is_animal"]:
+            return {"is_animal": True, "animal_name": rec["animal_name"]}
+    except Exception as _e:
+        print(f"[client-species] {_e!r}", flush=True)
+    return None
+
+
 def _dependent_tos_enabled():
     """Flag: a caregiver's Terms acceptance covers the dependents in their care. Default
     OFF. When off, tos_agreed is is_member(primary_email) exactly — byte-identical to today.
@@ -15964,6 +15989,15 @@ def api_client_portal(token):
             payload["scan_recommendations"] = _sr_block
     except Exception as _e:
         print(f"[scan-recs/payload] {_e!r}", flush=True)
+    # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
+    # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
+    try:
+        _sp = _client_species_for(email_for_reports)
+        if _sp:
+            payload["is_animal"] = _sp["is_animal"]
+            payload["animal_name"] = _sp["animal_name"]
+    except Exception as _e:
+        print(f"[client-species/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
