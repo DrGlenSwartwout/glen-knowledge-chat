@@ -393,13 +393,20 @@ def _pattern_key(active_tokens):
 
 
 def _covers_for(remedies, active_tokens, token_label, coverage):
-    """Per-remedy covered LABELS + overall uncovered LABELS for an ordered name list."""
+    """Per-remedy covered LABELS + overall uncovered LABELS for an ordered name list.
+
+    Both lists are emitted in the order the stresses appear on the chain. `codes` is a
+    set intersection and `active_tokens` is a set, so iterating either directly made
+    the label order depend on the process hash seed: the same input produced
+    ['Membrane', 'Lymph'] or ['Lymph', 'Membrane'] run to run. `token_label` is a dict
+    filled while walking the active stresses, so its insertion order IS chain order."""
     covered_tokens, picks = set(), []
     for r in remedies:
         codes = coverage.get((r or "").strip().lower(), set()) & active_tokens
         covered_tokens |= codes
-        picks.append({"remedy": r, "covers": [token_label.get(c, c) for c in codes]})
-    uncovered = [token_label.get(c, c) for c in active_tokens if c not in covered_tokens]
+        picks.append({"remedy": r,
+                      "covers": [token_label[c] for c in token_label if c in codes]})
+    uncovered = [token_label[c] for c in token_label if c not in covered_tokens]
     return picks, uncovered
 
 
