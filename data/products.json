@@ -12211,7 +12211,8 @@
       "fmp_id": "372",
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "bottle_type": "Dropper 5 mL"
     },
     "neuro-eye-drops-aces-gl-lite-eye-drops": {
       "name": "Neuro Eye Drops",
@@ -12222,7 +12223,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "bottle_type": "Dropper 5 mL"
     },
     "pterygium-eye-drops": {
       "name": "Pterygium Eye Drops",
@@ -12233,7 +12235,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "bottle_type": "Dropper 5 mL"
     },
     "focus-neuro-magnesium-powder": {
       "name": "Focus Neuro-Magnesium Powder",
@@ -12355,7 +12358,8 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "1 drop in each eye 2 times a day or as needed"
+      "description": "1 drop in each eye 2 times a day or as needed",
+      "bottle_type": "Dropper 5 mL"
     },
     "mold-spray-mould-spray": {
       "name": "Mold Spray Mould Spray",
@@ -17033,7 +17037,9 @@
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "inactive": true,
+      "superseded_by": "wholomega"
     },
     "drainage-complex-homeopathic-in-terrain-restore": {
       "name": "Drainage Complex Homeopathic in Terrain Restore",
