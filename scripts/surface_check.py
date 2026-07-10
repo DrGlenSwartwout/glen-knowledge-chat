@@ -85,6 +85,11 @@ def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
                         "reason": "absent from /api/console/flags "
                                   "(env var deleted, or the constant was removed)"})
             continue
+        if not isinstance(info, dict):
+            out.append({"flag": name,
+                        "reason": f"could not check flags: malformed entry "
+                                  f"({type(info).__name__}, expected object)"})
+            continue
         if info.get("value"):
             continue
         if info.get("env_present"):

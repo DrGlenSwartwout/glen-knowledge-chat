@@ -196,3 +196,32 @@ def test_run_never_raises_on_a_malformed_flags_payload(monkeypatch):
     out = S.run()          # must not raise
     assert out and out[0]["flag"] == "*"
     assert "could not check" in out[0]["reason"].lower()
+
+
+def test_malformed_per_flag_entry_does_not_crash():
+    """The top-level isinstance(flags, dict) guard is one level too shallow: a non-dict
+    VALUE would blow up info.get(...) straight out of run(). check_flags() promises it
+    never raises."""
+    p = _payload(**{n: _on() for n in S.REQUIRED_ON})
+    p["data"]["flags"]["FIRESIDE_ENABLED"] = "true"          # a string, not an object
+    out = S.check_flags("https://x.test", "k", fetch=_fetch_ok(p))
+    assert [f["flag"] for f in out] == ["FIRESIDE_ENABLED"]
+    assert "malformed" in out[0]["reason"].lower()
+
+
+def test_run_never_raises_on_a_malformed_per_flag_entry(monkeypatch):
+    """run() is called by the personal-email cron and must never fail because a check
+    did. NOTE: check_flags' `fetch=_fetch_json` default binds at DEF time, so patching
+    S._fetch_json is invisible to run() (which calls check_flags with no fetch kwarg) —
+    it would silently make a REAL network request and pass vacuously. Wrap check_flags
+    itself instead."""
+    real = S.check_flags
+    bad = {"ok": True, "data": {"flags": {n: "true" for n in S.REQUIRED_ON}}}
+    monkeypatch.setattr(S, "check_surfaces", lambda *a, **k: [])
+    monkeypatch.setattr(S, "CONSOLE_SECRET", "k")
+    monkeypatch.setattr(S, "check_flags",
+                        lambda b, k, **kw: real(b, k, fetch=lambda u, key, timeout=0: bad))
+    monkeypatch.setattr(S, "send_alert", lambda *a, **k: True)
+    out = S.run()          # must not raise
+    assert len(out) == len(S.REQUIRED_ON)
+    assert all("malformed" in f["reason"].lower() for f in out)
