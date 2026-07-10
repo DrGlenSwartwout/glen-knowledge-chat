@@ -155,3 +155,71 @@ def test_fuzzy_unclassifiable_fmp_row_goes_to_review():
         "Should be in review because FMP row has unclassifiable packaging (30ml)"
     )
     assert any(r["slug"] == "zinc-synrgy" for r in m["review"])
+
+
+# ── Glen 2026-07-09: anything "in Terrain Restore" is a 50 ml dropper ──
+def test_terrain_restore_family_rule():
+    """The whole 'in Terrain Restore' line ships in a 50 ml dropper, whatever FMP's
+    packaging column happens to say."""
+    from scripts.populate_bottle_types import family_rule
+    assert family_rule("x-in-terrain-restore",
+                       {"name": "Sedativa Homeopathic in Terrain Restore"}) == "Dropper 50 mL"
+    assert family_rule("y", {"name": "HRMNY Flower Essence in Terrain Restore"}) == "Dropper 50 mL"
+    # case/spacing tolerant
+    assert family_rule("z", {"name": "Foo IN TERRAIN RESTORE"}) == "Dropper 50 mL"
+    # and it does not capture unrelated products
+    assert family_rule("w", {"name": "Terrain Restore"}) != "Dropper 50 mL"
+
+
+def test_mg_is_not_grams():
+    """`zc_sold_display='50mg'` ends with 'g', but milligrams are not a 30 g powder jar.
+    The naive endswith('g') sent HRMNY Flower Essence to a cosmetic jar."""
+    from scripts.populate_bottle_types import classify_from_fmp
+    # NB: type='Essence' now short-circuits to a 50 ml dropper (a FileMaker typo put '50mg'
+    # on one essence row), so the mg guard is exercised with a NON-essence type here.
+    assert classify_from_fmp({"zc_sold_display": "50mg", "sold_measurement": "mg",
+                              "type": "Tincture"}) is None
+    assert classify_from_fmp({"zc_sold_display": "500 mg", "sold_measurement": "mg",
+                              "type": ""}) is None
+    # real grams still classify
+    assert classify_from_fmp({"zc_sold_display": "30g", "sold_measurement": "g",
+                              "type": "Functional Formulation"}) == "30 g"
+    assert classify_from_fmp({"zc_sold_display": "30g", "sold_measurement": "g",
+                              "type": "Pure Powders"}) == "120 caps"
+
+
+def test_all_infoceuticals_are_30ml():
+    """Glen 2026-07-09: all Infoceuticals are a 30 ml dropper. The old rule only caught
+    code-prefixed names (EI-8, ES3); the named ones (Youth Infoceutical, Sleep
+    Infoceutical) fell through to the review pile."""
+    from scripts.populate_bottle_types import family_rule
+    assert family_rule("youth", {"name": "Youth Infoceutical"}) == "30ml"
+    assert family_rule("sleep-infoceutical", {"name": "Sleep Infoceutical"}) == "30ml"
+    assert family_rule("emf-infoceutical", {"name": "EMF Infoceutical"}) == "30ml"
+    # the existing code-prefix rule still works (real catalog form: "EI8 ...", no hyphen)
+    assert family_rule("ei8", {"name": "EI8 Microbes-Liver Integrator"}) == "30ml"
+    assert family_rule("mb1", {"name": "MB1 Brain Stem Hologram"}) == "30ml"
+    # ...and the code may sit in parentheses instead of leading the name
+    assert family_rule("esr", {"name": "Emotional Stress Release (MB5)"}) == "30ml"
+    assert family_rule("mlm", {"name": "Microbes/Liver Meridian (EI-8)"}) == "30ml"
+    # and a mere mention in a DESCRIPTION must not capture an unrelated product
+    assert family_rule("x", {"name": "Vitamin C Powder",
+                             "description": "pairs well with any infoceutical"}) != "30ml"
+
+
+def test_an_essence_is_a_50ml_dropper_whatever_the_packaging_column_says():
+    """Glen 2026-07-09: a flower essence is 50 ml, not mg. FMP has exactly one row typed
+    'Essence' whose zc_sold_display reads '50mg' (HRMNY Flower Essence) against 395 that
+    read '50ml' — a FileMaker typo. The product TYPE is authoritative, so a bad packaging
+    cell cannot misclassify an essence."""
+    from scripts.populate_bottle_types import classify_from_fmp
+    assert classify_from_fmp({"zc_sold_display": "50mg", "sold_measurement": "mg",
+                              "type": "Essence"}) == "Dropper 50 mL"
+    assert classify_from_fmp({"zc_sold_display": "50ml", "sold_measurement": "ml",
+                              "type": "Essence"}) == "Dropper 50 mL"
+    # an empty packaging cell still resolves from the type alone
+    assert classify_from_fmp({"zc_sold_display": "", "sold_measurement": "",
+                              "type": "Essence"}) == "Dropper 50 mL"
+    # and a non-essence with an mg dose still declines rather than guessing a jar
+    assert classify_from_fmp({"zc_sold_display": "500mg", "sold_measurement": "mg",
+                              "type": "Functional Formulation"}) is None

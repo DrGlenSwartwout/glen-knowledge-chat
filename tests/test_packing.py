@@ -60,3 +60,23 @@ def test_split_into_multiple_boxes_when_oversized():
 def test_split_returns_none_when_bottle_too_big():
     # A bottle wider than every box cross-section.
     assert split_into_boxes([(200, 200)]) is None
+
+
+def test_a_50ml_dropper_fits_the_small_box_at_prods_margin():
+    """Glen 2026-07-09: "50 ml bottles do fit in the small box."
+
+    They do — in PRODUCTION, where box_margin_mm is 5. The repo's default was 10, which
+    seeds fresh databases (and every local sanity check) with a geometry prod does not
+    use: a 35x135mm bottle plus 6mm wrap is 41x141, and Small's 50x150x230 interior less
+    a 10mm margin leaves 40x140 — it misses by 1mm on each axis. Same class of bug as the
+    bottle-name universes: local config that silently disagrees with prod.
+    """
+    from dashboard.packing import BOXES_MM, fits_all, pack_count
+    from dashboard.shipping import _PACKING_DEFAULTS
+    assert _PACKING_DEFAULTS["box_margin_mm"] == 5, "repo default must match prod"
+    prod = {"wrap_mm": _PACKING_DEFAULTS["wrap_mm"],
+            "box_margin_mm": _PACKING_DEFAULTS["box_margin_mm"]}
+    assert fits_all([(35, 135)], BOXES_MM["S"], **prod), "a 50 ml dropper fits Small"
+    assert pack_count([(35, 135)] * 20, BOXES_MM["S"], **prod) == 5
+    # ...and a 30 ml infoceutical (40x110) still does NOT — Glen did not claim it does.
+    assert not fits_all([(40, 110)], BOXES_MM["S"], **prod)

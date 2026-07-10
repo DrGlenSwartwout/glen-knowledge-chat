@@ -124,7 +124,11 @@ _STANDARD_BOTTLES = [
     # Rae can manually drop to Small at pack time when shipping the cradle bare.
     ("handcradle", "ZYTO Hand Cradle — ships USPS Medium Flat Rate", 80, 100),
 ]
-_PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 10}
+# Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
+# 10mm, which no deployment uses — and it silently changed the geometry of every
+# LOCAL check: a 50 ml dropper (35x135 +6 wrap = 41x141) misses Small's 50x150x230
+# interior by 1mm on each axis at margin 10, but fits comfortably at 5 (5 per box).
+_PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 5}
 _PACKING_KEYS = ("wrap_mm", "box_margin_mm")
 
 

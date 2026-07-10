@@ -363,7 +363,7 @@ def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
     assert dims["15ml"] == (30, 100)
     assert dims["120 caps"] == (72, 100)
     assert len(dims) == 14   # 10 prod names + 4 PENDING_BOTTLE_NAMES
-    assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
+    assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 5}   # prod's live values
 
 def test_set_packing_setting_updates_value(tmp_path):
     import sqlite3
