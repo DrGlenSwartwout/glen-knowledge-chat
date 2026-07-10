@@ -21,13 +21,18 @@ def _default_resolve(slug):
     return superseded_slug(slug)
 
 
-def replace_source(cx, source, rows, *, resolve=None):
+def replace_source(cx, source, rows, *, resolve=None, allow_empty=False):
     """`resolve` defaults to the REAL catalog redirect, never a no-op — the 'groovekart'
     slice scrapes slugs out of storefront URLs and happily yields retired ones, and a
-    dead slug stored here silently costs a member their repertoire reorder discount."""
+    dead slug stored here silently costs a member their repertoire reorder discount.
+
+    Builds the storable set BEFORE touching the table. If it is empty and allow_empty is
+    False, the DELETE is SKIPPED and 0 returned: an empty extraction almost always means
+    the SOURCE failed (FMP projection tables not loaded, Gmail fetch errored, every slug
+    filtered out), and wiping a whole slice on a source hiccup is unrecoverable. A caller
+    that means to clear a slice passes allow_empty=True."""
     resolve = resolve or _default_resolve
-    cx.execute("DELETE FROM purchase_history WHERE source=?", (source,))
-    n = 0
+    valid = []
     for email, slug, purchased_at, source_ref in rows:
         e, s = _norm(email), _norm(slug)
         if not (e and s):
@@ -35,9 +40,15 @@ def replace_source(cx, source, rows, *, resolve=None):
         s = _norm(resolve(s))
         if not s:
             continue
+        valid.append((e, s, purchased_at, source, str(source_ref)))
+    if not valid and not allow_empty:
+        return 0
+    cx.execute("DELETE FROM purchase_history WHERE source=?", (source,))
+    n = 0
+    for row in valid:
         if cx.execute("INSERT OR IGNORE INTO purchase_history"
                       "(email, slug, purchased_at, source, source_ref) VALUES (?,?,?,?,?)",
-                      (e, s, purchased_at, source, str(source_ref))).rowcount == 1:
+                      row).rowcount == 1:
             n += 1
     cx.commit()
     return n
