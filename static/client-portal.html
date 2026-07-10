@@ -610,6 +610,11 @@ function render(d, v){
     var g = '<div class="card"><h2>Welcome to your healing home</h2>'
       + '<p>Before we continue, please review and agree to our Terms of Service. '
       + 'These cover both Remedy Match and the Energy For Life (E4L) biofield scan.</p>'
+      + (d.tos_covers_dependents
+          ? '<p>By agreeing, you accept these Terms on your own behalf and on behalf of those '
+            + 'in your care whose accounts you manage — including your minor children, '
+            + 'dependents, and animals.</p>'
+          : '')
       + '<p><a href="' + esc((window.TOS_URL || "https://illtowell.com/terms")) + '" target="_blank" rel="noopener">Read the Remedy Match Terms</a>'
       + ' &nbsp;·&nbsp; '
       + '<a href="' + esc((window.E4L_TOS_URL || "https://e4l.com/terms-and-conditions")) + '" target="_blank" rel="noopener">Read the E4L Terms</a></p>'
