@@ -16272,6 +16272,16 @@ def portal_analyze_page(token):
     return resp
 
 
+@app.route("/portal/<token>/program")
+def portal_program_page(token):
+    """Membership program page. Dark until PORTAL_PROGRAM_PAGE_ENABLED."""
+    if not _portal_program_page_enabled():
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "portal-program.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/invoice/<token>/open", methods=["POST"])
 def api_invoice_open(token):
     """Record a real 'client opened this invoice' event (fired by the expand-click)."""

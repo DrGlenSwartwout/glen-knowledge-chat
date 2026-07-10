@@ -51,3 +51,18 @@ def test_api_program_returns_tiers_for_free_client(client, monkeypatch):
     assert body["current_tier"] == "free"
     assert body["ambassador"]["status"] == "none"
     assert {g["key"] for g in body["grow"]} == {"practitioner", "coach", "cert"}
+
+
+def test_program_page_404_when_flag_off(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.delenv("PORTAL_PROGRAM_PAGE_ENABLED", raising=False)
+    r = c.get("/portal/tok/program")
+    assert r.status_code == 404
+
+
+def test_program_page_served_when_flag_on(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("PORTAL_PROGRAM_PAGE_ENABLED", "1")
+    r = c.get("/portal/tok/program")
+    assert r.status_code == 200
+    assert b'id="program-root"' in r.data
