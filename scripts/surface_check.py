@@ -70,9 +70,11 @@ def check_flags(base_url, console_key, required=REQUIRED_ON, fetch=_fetch_json):
     url = f"{base_url.rstrip('/')}/api/console/flags"
     try:
         payload = fetch(url, console_key)
+        flags = ((payload or {}).get("data") or {}).get("flags") or {}
+        if not isinstance(flags, dict):
+            raise TypeError(f"flags is {type(flags).__name__}, expected dict")
     except Exception as e:  # noqa: BLE001 — a check failure is never drift
         return [{"flag": "*", "reason": f"could not check flags: {e}"}]
-    flags = ((payload or {}).get("data") or {}).get("flags") or {}
     if not flags:
         return [{"flag": "*", "reason": "could not check flags: unexpected response"}]
     out = []
@@ -197,8 +199,10 @@ def run():
         print("[surface-check] CONSOLE_SECRET not set — skipping flag check", flush=True)
         flag_failures = []
     if not failures and not flag_failures:
+        _flags_note = (f"{len(REQUIRED_ON)} flags on" if CONSOLE_SECRET
+                       else "flags NOT checked (no CONSOLE_SECRET)")
         print(f"[surface-check] {len(PUBLIC_SURFACES)} surfaces OK, "
-              f"{len(REQUIRED_ON)} flags on, at {BASE_URL}", flush=True)
+              f"{_flags_note}, at {BASE_URL}", flush=True)
         return []
     subject, body = format_alert(BASE_URL, failures, flag_failures)
     print(f"[surface-check] {subject}", flush=True)

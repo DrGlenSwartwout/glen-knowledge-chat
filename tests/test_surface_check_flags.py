@@ -162,3 +162,37 @@ def test_run_is_quiet_when_everything_is_healthy(monkeypatch):
     monkeypatch.setattr(S, "send_alert", lambda *a, **k: called.append(True) or True)
     assert S.run() == []
     assert called == [], "no alert may be sent when nothing is wrong"
+
+
+def test_malformed_payload_is_could_not_check_not_a_crash():
+    """The checker must survive an app behaving unexpectedly — that is why it exists."""
+    for bad in ([1, 2, 3], {"data": "nope"}, {"data": {"flags": ["a"]}}, None):
+        out = S.check_flags("https://x.test", "k", fetch=lambda u, k, timeout=0, b=bad: b)
+        assert len(out) == 1, bad
+        assert out[0]["flag"] == "*", bad
+        assert "could not check" in out[0]["reason"].lower(), bad
+
+
+def test_run_never_raises_on_a_malformed_flags_payload(monkeypatch):
+    """run() is called by the personal-email cron and must never fail because a check did.
+
+    check_flags's `fetch=_fetch_json` default is bound once, at def-time (Python
+    evaluates default arg values at function definition, not at call time), and run()
+    calls `check_flags(BASE_URL, CONSOLE_SECRET)` with no fetch kwarg — so patching
+    `S._fetch_json` alone is invisible to that call; it would silently fall through to
+    a real network request instead of exercising the malformed-payload path. So this
+    test captures the real check_flags, then replaces S.check_flags with a wrapper that
+    forwards to the real implementation with a bad fetch forced in — genuinely driving
+    run() -> check_flags -> malformed payload end to end.
+    """
+    real_check_flags = S.check_flags
+    bad_fetch = lambda url, key, timeout=0: [1, 2, 3]
+    monkeypatch.setattr(S, "check_surfaces", lambda *a, **k: [])
+    monkeypatch.setattr(S, "CONSOLE_SECRET", "k")
+    monkeypatch.setattr(
+        S, "check_flags",
+        lambda base_url, console_key, **k: real_check_flags(base_url, console_key, fetch=bad_fetch))
+    monkeypatch.setattr(S, "send_alert", lambda *a, **k: True)
+    out = S.run()          # must not raise
+    assert out and out[0]["flag"] == "*"
+    assert "could not check" in out[0]["reason"].lower()
