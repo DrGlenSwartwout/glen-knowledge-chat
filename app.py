@@ -10488,9 +10488,17 @@ def _maybe_extend_founding_membership(cx, sub, updated):
 
 
 def _studio_credit_grant_and_notify(cx, email, days):
-    """Grant a studio-credit comp membership, log the journey event, and email the
-    magic link. Returns {membership_id, magic_link_url}. Shared by the console
-    approve action."""
+    """Grant a studio-credit comp membership and log the journey event, all on
+    the caller's transaction. Returns {membership_id, magic_link_url, notify}.
+
+    `notify` is a zero-arg callable that sends the grant email. It is NOT called
+    here. The email carries a magic link, so sending it before the caller
+    commits means a later failure rolls the link away while the member is
+    already holding the URL. The caller invokes notify() after its commit.
+
+    Nothing here commits, for the same reason: the grant, the token, the journey
+    event and the caller's own writes must land in one transaction or none.
+    """
     import json as _json
     email = (email or "").strip().lower()
     mid = _grant_membership(cx, email, days, "studio_credit")
@@ -10511,11 +10519,16 @@ def _studio_credit_grant_and_notify(cx, email, days):
         f"---\n"
         f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
     )
-    try:
-        _send_inquiry_email(to_email=email, subject=subject, body=body,
-                            reply_to=RM_COACHING_REPLY_EMAIL)
-    except Exception as e:
-        print(f"[studio-credit] email send failed: {e!r}", flush=True)
+    def _notify():
+        """Called by the caller once its transaction has committed. A bounced
+        send must not undo a granted membership -- the member can always ask for
+        a fresh link -- so failures are logged, not raised."""
+        try:
+            _send_inquiry_email(to_email=email, subject=subject, body=body,
+                                reply_to=RM_COACHING_REPLY_EMAIL)
+        except Exception as e:
+            print(f"[studio-credit] email send failed for {email}: {e!r}", flush=True)
+
     try:
         cx.execute(
             "INSERT INTO journey_events "
@@ -10523,10 +10536,9 @@ def _studio_credit_grant_and_notify(cx, email, days):
             "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
             (datetime.utcnow().isoformat() + "Z", "", email,
              _json.dumps({"source": "studio_credit", "days": days, "membership_id": mid})))
-        cx.commit()
     except Exception as e:
         print(f"[studio-credit] journey_events insert failed: {e!r}", flush=True)
-    return {"membership_id": mid, "magic_link_url": magic_link_url}
+    return {"membership_id": mid, "magic_link_url": magic_link_url, "notify": _notify}
 
 
 def _active_membership_for_email(email):

@@ -109,3 +109,118 @@ def test_mint_still_works_without_a_caller_connection(approve_env):
     appmod, _sc, cx, _sent = approve_env
     tok = appmod._mint_membership_magic_link("solo@example.com")
     assert appmod._validate_membership_magic_link(tok) == "solo@example.com"
+
+
+def test_email_is_sent_only_after_the_approval_commits(approve_env):
+    """The grant email carries a magic link. If it goes out before the
+    transaction commits, a later failure rolls the link away and the member is
+    holding a URL to a membership that never existed. Assert the ordering from
+    a SEPARATE connection at the moment the send happens."""
+    appmod, sc, cx, _sent = approve_env
+    observed = {}
+
+    def _spy_send(**kw):
+        other = sqlite3.connect(appmod.LOG_DB)
+        try:
+            observed["status"] = other.execute(
+                "SELECT status FROM studio_credit_claims WHERE email=?",
+                ("studio@example.com",)).fetchone()[0]
+            observed["tokens"] = other.execute(
+                "SELECT COUNT(*) FROM auth_tokens WHERE purpose='membership_magic_link'"
+            ).fetchone()[0]
+        finally:
+            other.close()
+        return True
+
+    import pytest as _pytest
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setattr(appmod, "_send_inquiry_email", _spy_send)
+    try:
+        claim = sc.add_claim(cx, email="studio@example.com", invoice_ref="inv-1",
+                             proof_note="", source="console", created_by="glen")
+        cx.commit()
+        sc.approve_claim(cx, claim["id"], decided_by="glen",
+                         grant_fn=appmod._studio_credit_grant_and_notify)
+    finally:
+        monkeypatch.undo()
+
+    assert observed.get("status") == "approved", (
+        "email went out before the approval committed")
+    assert observed.get("tokens") == 1, (
+        "email went out before the magic link was durable")
+
+
+def test_a_failing_email_does_not_roll_back_the_approval(approve_env):
+    """Once committed, the grant stands. A bounced send must not undo it --
+    the member can always request a fresh link."""
+    appmod, sc, cx, _sent = approve_env
+
+    import pytest as _pytest
+    monkeypatch = _pytest.MonkeyPatch()
+
+    def _boom(**kw):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr(appmod, "_send_inquiry_email", _boom)
+    try:
+        claim = sc.add_claim(cx, email="studio@example.com", invoice_ref="inv-1",
+                             proof_note="", source="console", created_by="glen")
+        cx.commit()
+        res = sc.approve_claim(cx, claim["id"], decided_by="glen",
+                               grant_fn=appmod._studio_credit_grant_and_notify)
+    finally:
+        monkeypatch.undo()
+
+    assert res["ok"] is True
+    other = sqlite3.connect(appmod.LOG_DB)
+    try:
+        status = other.execute("SELECT status FROM studio_credit_claims WHERE email=?",
+                               ("studio@example.com",)).fetchone()[0]
+    finally:
+        other.close()
+    assert status == "approved"
+
+
+def test_a_failure_before_commit_sends_no_email_and_leaves_no_token(approve_env):
+    """The dangerous artifact is the emailed magic link. If approve_claim fails
+    before committing, no email may have gone out and no token may survive.
+
+    NOT asserted: that the memberships row is gone. _grant_membership calls
+    customers.find_or_create_by_email and portal_welcome.mark_welcome_sent,
+    both of which commit on the shared connection, so the grant row can outlive
+    a rollback. That is pre-existing and out of scope here -- it is harmless on
+    its own, because without a token and without an email nobody can act on it.
+    """
+    appmod, sc, cx, _sent = approve_env
+    sends = []
+
+    claim = sc.add_claim(cx, email="studio@example.com", invoice_ref="inv-1",
+                         proof_note="", source="console", created_by="glen")
+    cx.commit()
+
+    import pytest as _pytest
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setattr(appmod, "_send_inquiry_email", lambda **kw: sends.append(kw) or True)
+    # Blow up after grant_fn has written, before approve_claim's commit.
+    # Patched only now: add_claim above calls _now() too.
+    monkeypatch.setattr(sc, "_now", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    try:
+        with _pytest.raises(RuntimeError):
+            sc.approve_claim(cx, claim["id"], decided_by="glen",
+                             grant_fn=appmod._studio_credit_grant_and_notify)
+        cx.rollback()
+    finally:
+        monkeypatch.undo()
+
+    assert sends == [], "email went out for an approval that never committed"
+    other = sqlite3.connect(appmod.LOG_DB)
+    try:
+        toks = other.execute(
+            "SELECT COUNT(*) FROM auth_tokens WHERE purpose='membership_magic_link'"
+        ).fetchone()[0]
+        status = other.execute("SELECT status FROM studio_credit_claims WHERE email=?",
+                               ("studio@example.com",)).fetchone()[0]
+    finally:
+        other.close()
+    assert toks == 0, "a magic link survived an approval that never committed"
+    assert status == "pending"

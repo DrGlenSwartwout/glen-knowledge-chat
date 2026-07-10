@@ -108,6 +108,12 @@ def approve_claim(cx, claim_id, *, decided_by, grant_fn, force=False):
         "membership_id=? WHERE id=?",
         (_now(), decided_by or "", granted["membership_id"], claim_id))
     cx.commit()
+    # Only now. grant_fn's email carries a magic link, so it must not go out
+    # until the token and the approval are durable. A grant_fn that does its own
+    # notifying (or none) simply returns no 'notify'.
+    notify = granted.get("notify")
+    if callable(notify):
+        notify()
     return {"ok": True, "membership_id": granted["membership_id"],
             "magic_link_url": granted.get("magic_link_url", "")}
 
