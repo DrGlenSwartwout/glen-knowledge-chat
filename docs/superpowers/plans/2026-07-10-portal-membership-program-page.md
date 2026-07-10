@@ -14,6 +14,7 @@
 - **`dashboard/program_tiers.py` is pure** — it never imports `app`; it may import `dashboard.family_plan` and `dashboard.portal_offers` only. It performs no DB or env access (ownership/enabled come in as parameters). This keeps it bare-pytest testable.
 - **Flag presence-checked, ships dark.** `PORTAL_PROGRAM_PAGE_ENABLED` defaults off; check presence via a truthy tuple, never print its value.
 - **No dead buy buttons.** A tier whose commerce flag is off (`SUBSCRIPTIONS_ENABLED` for Paid, `FAMILY_PLAN_ENABLED` for Family) renders `state == "coming_soon"`, not an `available` buy CTA.
+- **Checkout mechanics (existing — reuse, no new routes).** Discovered during Task 1 wiring: Paid checkout is the existing POST endpoint `/portal/offer/live-group/checkout`, which returns `{"stripe_url": ...}` for the page to redirect to (a JS button, NOT a GET link). Family has **no** self-serve checkout — it is operator-provisioned via `/api/console/family-plan`; its client CTA is a "reply to arrange" affordance (matches today's portal card copy), with **no** checkout route. Each tier therefore carries `cta_kind ∈ {"none","checkout_post","arrange"}` telling the page how to render its CTA. There is no `/portal/offer/family-plan/checkout` route; do not invent one.
 - **A field reaches the page only if it is in BOTH the payload dict AND rendered.**
 - **Copy rules (Glen):** no em dashes, no ALL CAPS words, no "Hook:" label. Benefit copy below is first-draft; Glen tunes it.
 - **Test commands:** pure `dashboard/*` tests run bare: `python3 -m pytest tests/<file> -q`. Tests that `import app` run under doppler: `doppler run -p remedy-match -c dev -- python3 -m pytest tests/<file> -q`.
@@ -41,7 +42,7 @@
 **Interfaces:**
 - Consumes: `dashboard.family_plan.PLAN` (`{"amount_cents":14700,"value_cents":19700,"label":"Family Plan"}`), `dashboard.portal_offers.MEMBERSHIP_PRICE_CENTS` (int, currently 9900).
 - Produces:
-  - `program_blocks(*, paid_owned: bool, family_owned: bool, paid_enabled: bool, family_enabled: bool) -> list[dict]` — ordered `[free, paid, family]`, each `{"key","name","benefits":list[str],"price_cents":int|None,"value_cents":int|None,"period":str,"cta_label":str|None,"checkout_path":str|None,"state":"owned"|"available"|"coming_soon"}`.
+  - `program_blocks(*, paid_owned: bool, family_owned: bool, paid_enabled: bool, family_enabled: bool) -> list[dict]` — ordered `[free, paid, family]`, each `{"key","name","benefits":list[str],"price_cents":int|None,"value_cents":int|None,"period":str,"cta_label":str|None,"checkout_path":str|None,"cta_kind":"none"|"checkout_post"|"arrange","state":"owned"|"available"|"coming_soon"}`. `cta_kind`: free=`none`, paid=`checkout_post` (POST `checkout_path`, follow `stripe_url`), family=`arrange` (`checkout_path` is `None`).
   - `current_tier_key(tiers: list[dict]) -> str` — highest owned key among `family` > `paid` > `free`.
   - `GROW_PATHS: list[dict]` — `[{"key","name","blurb","url"}]` for practitioner/coach/cert.
 
@@ -73,6 +74,16 @@ def test_paid_available_when_enabled_and_not_owned():
     assert t["paid"]["state"] == "available"
     assert t["paid"]["price_cents"] == po.MEMBERSHIP_PRICE_CENTS
     assert t["paid"]["checkout_path"] == "/portal/offer/live-group/checkout"
+    assert t["paid"]["cta_kind"] == "checkout_post"
+
+
+def test_cta_kinds_and_family_has_no_checkout_route():
+    t = _by_key(pt.program_blocks(
+        paid_owned=False, family_owned=False,
+        paid_enabled=True, family_enabled=True))
+    assert t["free"]["cta_kind"] == "none"
+    assert t["family"]["cta_kind"] == "arrange"
+    assert t["family"]["checkout_path"] is None
 
 
 def test_paid_coming_soon_when_flag_off():
@@ -155,6 +166,7 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "period": "",
         "cta_label": None,
         "checkout_path": None,
+        "cta_kind": "none",
         "state": "owned",
     }
     paid = {
@@ -170,6 +182,7 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "period": "/mo",
         "cta_label": "Join",
         "checkout_path": "/portal/offer/live-group/checkout",
+        "cta_kind": "checkout_post",
         "state": _state(paid_owned, paid_enabled),
     }
     family = {
@@ -183,8 +196,9 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "price_cents": _fp.PLAN["amount_cents"],
         "value_cents": _fp.PLAN["value_cents"],
         "period": "/mo",
-        "cta_label": "Add your family",
-        "checkout_path": "/portal/offer/family-plan/checkout",
+        "cta_label": "Reply to arrange",
+        "checkout_path": None,
+        "cta_kind": "arrange",
         "state": _state(family_owned, family_enabled),
     }
     return [free, paid, family]
@@ -212,7 +226,7 @@ GROW_PATHS = [
 ]
 ```
 
-Note: `checkout_path` for family is `/portal/offer/family-plan/checkout`. Verify this route exists during Task 2 wiring; if the live family checkout path differs, update this constant (the design mandates reusing the existing family-plan checkout, not inventing one). Grep: `grep -n "family-plan/checkout\|family_plan.*checkout" app.py`.
+Note: Family has no self-serve checkout route (`checkout_path` is `None`, `cta_kind` is `"arrange"`); it is operator-provisioned via `/api/console/family-plan`, so the client CTA is "reply to arrange" — matching the existing portal Family Plan card. Paid's `checkout_path` is the real POST endpoint `/portal/offer/live-group/checkout` (verified present at `app.py:19175`).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -442,8 +456,10 @@ def portal_program_page(token):
     .owned { border-left: 4px solid #2f6f5e; }
     .cta { display: inline-block; background: #d4a843; color: #1F5A4D;
            text-decoration: none; border-radius: 10px; padding: 10px 18px;
-           font-weight: 600; margin-top: 10px; }
+           font-weight: 600; margin-top: 10px; border: none; cursor: pointer;
+           font: inherit; font-weight: 600; }
     .soon { color: #6b7a72; font-size: 13px; }
+    .err { color: #b23; font-size: 13px; margin-top: 6px; }
     h1 { font-size: 22px; } h2 { font-size: 18px; margin: 0 0 6px; }
     ul { padding-left: 18px; } li { margin: 4px 0; }
     a.link { color: #2f6f5e; }
@@ -475,15 +491,49 @@ def portal_program_page(token):
       let action = "";
       if (owned) {
         action = '<div class="badge">You have this</div>';
-      } else if (t.state === "available" && t.checkout_path) {
+      } else if (t.state === "available") {
         const price = money(t.price_cents) + (t.period || "");
-        action = '<a class="cta" href="' + t.checkout_path + '">' +
-                 (t.cta_label || "Choose") + " " + price + "</a>";
+        if (t.cta_kind === "checkout_post") {
+          // Paid: reuse the existing live-group POST checkout (returns stripe_url).
+          action = '<button class="cta" data-checkout="' + t.checkout_path + '">' +
+                   (t.cta_label || "Choose") + " " + price + "</button>" +
+                   '<div class="soon err" hidden></div>';
+        } else if (t.cta_kind === "arrange") {
+          // Family: operator-provisioned, no self-serve checkout.
+          action = '<p class="soon">' + price + ". Reply to your welcome email and we will set up your family plan.</p>";
+        } else {
+          action = '<div class="soon">Coming soon</div>';
+        }
       } else {
         action = '<div class="soon">Coming soon</div>';
       }
       return '<div class="card ' + (owned ? "owned" : "") + '">' +
              "<h2>" + t.name + "</h2><ul>" + bullets + "</ul>" + action + "</div>";
+    }
+
+    // Paid checkout: POST the existing endpoint with our token, follow stripe_url.
+    // Mirrors static/client-portal.html startOffer().
+    async function startCheckout(btn) {
+      const path = btn.getAttribute("data-checkout");
+      const err = btn.parentElement.querySelector(".err");
+      if (err) err.hidden = true;
+      const label = btn.textContent;
+      btn.disabled = true; btn.textContent = "One moment...";
+      try {
+        const url = path + (path.includes("?") ? "&" : "?") +
+                    "token=" + encodeURIComponent(token);
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const j = await r.json();
+        if (j.stripe_url) { location.href = j.stripe_url; return; }
+        throw new Error(j.error || "This is not available right now.");
+      } catch (e) {
+        if (err) { err.textContent = e.message; err.hidden = false; }
+        btn.disabled = false; btn.textContent = label;
+      }
     }
 
     function ambassadorCard(a) {
@@ -515,8 +565,10 @@ def portal_program_page(token):
       .then(d => {
         document.getElementById("hero").textContent =
           "Your membership program";
-        document.getElementById("tiers").innerHTML =
-          (d.tiers || []).map(tierCard).join("");
+        const tiersEl = document.getElementById("tiers");
+        tiersEl.innerHTML = (d.tiers || []).map(tierCard).join("");
+        tiersEl.querySelectorAll("[data-checkout]").forEach(b =>
+          b.addEventListener("click", () => startCheckout(b)));
         document.getElementById("ambassador").innerHTML =
           ambassadorCard(d.ambassador || { status: "none", signup_url: "#" });
         document.getElementById("grow").innerHTML = growCard(d.grow);
