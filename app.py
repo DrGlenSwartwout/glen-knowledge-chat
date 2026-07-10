@@ -16012,6 +16012,7 @@ def api_portal_program(token):
     """Personalized membership program blocks for the program page."""
     if not _portal_program_page_enabled():
         return jsonify({"error": "not found"}), 404
+    from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
     from dashboard import family_plan as _fp
     from dashboard import portal_view as _pv
@@ -16019,6 +16020,7 @@ def api_portal_program(token):
     sess_cookie = request.cookies.get("rm_portal_session", "")
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
         ident = _pi.resolve_identity(
             cx, token=token, session_token=sess_cookie,
