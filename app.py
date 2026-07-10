@@ -14900,6 +14900,42 @@ def _scan_recommendations_enabled():
         "1", "true", "yes", "on")
 
 
+def _dependent_tos_enabled():
+    """Flag: a caregiver's Terms acceptance covers the dependents in their care. Default
+    OFF. When off, tos_agreed is is_member(primary_email) exactly — byte-identical to today.
+    Flip only AFTER the gate copy says the caregiver agrees on behalf of those in their care
+    (a counsel-approved wording)."""
+    return (os.environ.get("DEPENDENT_TOS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _portal_tos_agreed(primary_email):
+    """Has the Terms gate been satisfied for this token holder?
+
+    The token holder's own agreement, OR (flag on) a linked, consented caregiver has agreed.
+    A dependent — pet, infant, minor — has its own token but can never click 'I agree'; the
+    caregiver agrees for it. Derived live from the household graph: caregivers_for() returns
+    [] for any standalone adult, so this is byte-identical for non-dependents. It does NOT
+    stamp the dependent's own tos_agreed_at, so compliance and funnel readers correctly still
+    exclude a dependent who did not personally agree. Fail-closed to the token holder's own
+    agreement on any error."""
+    if is_member(email=primary_email):
+        return True
+    if not _dependent_tos_enabled() or not primary_email:
+        return False
+    try:
+        from dashboard import household as _hh
+        with sqlite3.connect(LOG_DB) as cx:
+            caregivers = _hh.caregivers_for(cx, primary_email)   # a read; fetch then release
+        for cg in caregivers:
+            # is_member opens its own _db_lock connection, so do not nest it inside cx.
+            if cg["share_consent"] and is_member(email=cg["primary_email"]):
+                return True
+    except Exception as _e:
+        print(f"[dependent-tos] {_e!r}", flush=True)
+    return False
+
+
 def _scan_rec_label(code, label):
     """Glen's rule for BFA: the label says BFA, and "aligner" both expands the acronym
     and describes the benefit. Every other code reads "<CODE> <label>"."""
@@ -15763,8 +15799,11 @@ def api_client_portal(token):
         # Terms belong to the TOKEN HOLDER, not to whoever's tab is open. Evaluated
         # against email_for_reports this put a Terms gate over a member's report — a
         # pet never agreed to anything, so the caregiver got re-gated on their own
-        # portal instead of seeing the report they came for.
-        "tos_agreed": is_member(email=primary_email) if primary_email else True,
+        # portal instead of seeing the report they came for. AND a dependent's own
+        # token is covered by its caregiver's agreement when DEPENDENT_TOS is on — a
+        # pet/infant can't click "I agree". See _portal_tos_agreed.
+        "tos_agreed": _portal_tos_agreed(primary_email) if primary_email else True,
+        "tos_covers_dependents": _dependent_tos_enabled(),
         "messages": _portal_chat_thread(email_for_reports),
         "element_state": element_state,
         "element_backdrop_enabled": ELEMENT_BACKDROP_ENABLED,
