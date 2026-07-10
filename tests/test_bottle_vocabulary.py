@@ -22,10 +22,13 @@ def _baselines():
 
 
 def test_prod_library_is_recorded_verbatim():
-    """The ten names live in prod's bottle_types table (GET /api/shipping/bottles)."""
+    """The fourteen names live in prod's bottle_types table (GET /api/shipping/bottles).
+    The last four were created 2026-07-09; before that the catalog referenced bottles
+    prod did not have, and their products silently fell back to the qty rule."""
     assert PROD_BOTTLE_NAMES == frozenset({
         "30 Caps", "120 caps", "180 caps", "360 caps", "30 g", "120 g",
-        "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL"})
+        "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL",
+        "100ml", "15ml", "30roll", "handcradle"})
 
 
 def test_every_catalog_baseline_speaks_a_name_prod_knows():
@@ -35,16 +38,18 @@ def test_every_catalog_baseline_speaks_a_name_prod_knows():
     assert unknown == {}, f"bottle types prod has never heard of: {unknown}"
 
 
-def test_pending_set_is_exactly_the_known_gap():
-    """Four types the CATALOG needs that prod's library lacks. Creating them in prod is
-    a separate, authorized step; until then these products still fall back. Pinning the
-    set means a fifth cannot be added silently."""
-    assert PENDING_BOTTLE_NAMES == frozenset({"100ml", "15ml", "30roll", "handcradle"})
+def test_nothing_is_pending_anymore():
+    """The four missing types were created in prod on 2026-07-09, so the catalog and the
+    live library now speak the same fourteen names. A non-empty set here means someone
+    introduced a bottle the packer cannot resolve."""
+    assert PENDING_BOTTLE_NAMES == frozenset()
 
 
-def test_only_the_two_known_orphans_use_a_pending_type():
-    orphans = {s: bt for s, bt in _baselines().items() if bt in PENDING_BOTTLE_NAMES}
-    assert orphans == {"neem-oil-rollon": "30roll", "hand-cradle": "handcradle"}
+def test_the_two_former_orphans_now_resolve_against_prod():
+    b = _baselines()
+    assert b["neem-oil-rollon"] == "30roll"
+    assert b["hand-cradle"] == "handcradle"
+    assert {"30roll", "handcradle"} <= PROD_BOTTLE_NAMES
 
 
 def test_standard_bottles_seed_prods_vocabulary():

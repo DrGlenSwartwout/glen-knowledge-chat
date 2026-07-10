@@ -80,12 +80,15 @@ _DEFAULT_RATES_2026_04_26 = [
 PROD_BOTTLE_NAMES = frozenset({
     "30 Caps", "120 caps", "180 caps", "360 caps", "30 g", "120 g",
     "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL",
+    # Created in prod 2026-07-09. Before that the catalog named bottles prod did not
+    # have, so `neem-oil-rollon` and `hand-cradle` silently fell back to the qty rule.
+    "100ml", "15ml", "30roll", "handcradle",
 })
 
-# Types the CATALOG needs that prod's library does NOT have yet. Their products still
-# fall back to the qty rule until these are created in prod via /admin/shipping (the
-# measured dims below are ready to use). Pinned by a test so a fifth cannot creep in.
-PENDING_BOTTLE_NAMES = frozenset({"100ml", "15ml", "30roll", "handcradle"})
+# Types the catalog needs that prod's library lacks. Empty: the last four were created.
+# A non-empty set means someone introduced a bottle the packer cannot resolve — create
+# it in prod (POST /api/shipping/bottles) before shipping the baseline.
+PENDING_BOTTLE_NAMES = frozenset()
 
 # Old repo-private names -> prod's. Applied by init_shipping_schema to any pre-existing
 # catalog so a dev DB stops speaking a vocabulary prod never had. `100cos` predates both.
@@ -111,7 +114,7 @@ _STANDARD_BOTTLES = [
     ("Dropper 5 mL", "5 ml dropper (eye drops)", 23, 75),
     ("Dropper 30 mL", "30 ml dropper", 32, 100),
     ("Dropper 50 mL", "50 ml dropper", 35, 135),
-    # ── PENDING: not in prod's library yet (see PENDING_BOTTLE_NAMES) ──
+    # Created in prod 2026-07-09 (dims below are what was created there).
     ("100ml", "100 ml dropper", 50, 160),
     ("15ml", "15 ml dropper", 30, 100),
     ("30roll", "30 ml roll-on", 40, 100),
