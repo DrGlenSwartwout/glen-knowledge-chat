@@ -219,6 +219,14 @@ def test_mihealth_codes_still_resolve_to_nothing():
         assert not app._resolve_remedy_slug({"name": code})
 
 
+def test_the_two_duplicate_title_keys_still_resolve_as_before():
+    """`_TITLE_TO_SLUG` is a dict comprehension: on a duplicate key the LAST product wins.
+    Two duplicate title keys exist. Rebuilding that dict with setdefault would flip them."""
+    app = _app()
+    assert app._resolve_remedy_slug({"name": "Brain Boost Nootropic"})
+    assert app._resolve_remedy_slug({"name": "Forgiveness Flower Essence in Terrain Restore"})
+
+
 def test_an_alias_never_shadows_a_real_product_name():
     """A collision would silently hand one product's code to another."""
     p = _products()
@@ -241,22 +249,36 @@ On `bfa-big-field-aligner-infoceutical`, add one key. Change nothing else:
       "aliases": ["BFA"]
 ```
 
-- [ ] **Step 4: Index aliases in `_TITLE_TO_SLUG`**
+- [ ] **Step 4: Index aliases in `_RESOLVE_NAME_INDEX` — NOT in `_TITLE_TO_SLUG`**
 
-`app.py`, replacing the dict comprehension near `_TITLE_TO_SLUG`:
+**Do not touch `_TITLE_TO_SLUG`.** It is a dict comprehension, so on a duplicate key the LAST
+product wins, and two duplicate title keys exist today (`Brain Boost Nootropic`,
+`Forgiveness Flower Essence in Terrain Restore`). Rebuilding it with `setdefault` would flip
+which slug those two resolve to — a silent regression unrelated to this task.
+
+`_RESOLVE_NAME_INDEX` is the right home: `_resolve_remedy_slug` consults it *before* the code
+fallback, it already uses `setdefault` (first-wins), and it already skips `inactive` records.
+
+Why an alias rather than relaxing the existing regex: `_resolve_remedy_slug` has an
+infoceutical code fallback, `re.match(r"^(ei|es|ed|et|mb|mr|sk|bfa)\d+$", low)`, which demands
+a **digit** — the same defect as the scan parser's `[A-Z]{2,3}\d+`, which is why `BFA` is
+invisible to it. Relaxing the regex would not be enough: its loop takes the first title whose
+first token is `bfa`, and that is whichever twin appears first in `products.json` — the one
+**without** `bottle_type`. The alias is deterministic; the regex is not.
+
+In `app.py`, immediately after the `_RESOLVE_NAME_INDEX` build loop, append:
 
 ```python
-# pinecone_title -> catalog slug (deterministic in-catalog resolution; avoids the
-# "Stress Release" vs "Emotional Stress Release" false match).
-# `aliases` adds the spellings a record answers to but is not named after — an E4L scan
-# says "BFA", the catalog says "BFA Big Field Aligner Infoceutical". Aliases are indexed
-# LAST with setdefault, so they can never shadow a real product's title or name.
-_TITLE_TO_SLUG = {}
+# `aliases` are the spellings a record answers to but is not named after: an E4L scan says
+# "BFA"; the catalog says "BFA Big Field Aligner Infoceutical". Indexed LAST with setdefault,
+# so an alias can never shadow a real product's name or pinecone_title. Inactive records are
+# skipped, exactly as above.
 for _s, _p in (_PRODUCTS.get("products") or {}).items():
-    _TITLE_TO_SLUG.setdefault((_p.get("pinecone_title") or _p.get("name")), _s)
-for _s, _p in (_PRODUCTS.get("products") or {}).items():
+    if _p.get("inactive"):
+        continue
     for _a in (_p.get("aliases") or []):
-        _TITLE_TO_SLUG.setdefault(_a, _s)
+        if _a:
+            _RESOLVE_NAME_INDEX.setdefault(_ihtml.unescape(_a).strip().lower(), _s)
 ```
 
 - [ ] **Step 5: Green + the whole-catalog check**
@@ -264,7 +286,7 @@ for _s, _p in (_PRODUCTS.get("products") or {}).items():
 ```bash
 doppler run -p remedy-match -c prd -- env DATA_DIR=$HOME/deploy-chat ~/.venvs/deploy-chat311/bin/python -m pytest tests/test_scan_recommendations_read.py -q -p no:cacheprovider
 ```
-Expected `7 passed`. Then prove no other code's resolution changed:
+Expected `8 passed`. Then prove no other code's resolution changed:
 
 ```bash
 doppler run -p remedy-match -c prd -- env DATA_DIR=$HOME/deploy-chat ~/.venvs/deploy-chat311/bin/python - <<'PY'
