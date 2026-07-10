@@ -88,10 +88,10 @@ def test_wholomega_variants_have_bottle_types():
     """A component with no bottle_type resolves to the "default" placeholder, which
     poisons quote() and drops the WHOLE cart to the coarse qty rule."""
     P, _ = _catalog()
-    assert P["wholomega"]["bottle_type"] == "30cap"
-    assert P["wholomega-30-gelcaps"]["bottle_type"] == "30cap"
-    assert P["wholomega-120-gelcaps"]["bottle_type"] == "120cap"
-    assert P["wholomega-120-capsules"]["bottle_type"] == "120cap"
+    assert P["wholomega"]["bottle_type"] == "30 Caps"
+    assert P["wholomega-30-gelcaps"]["bottle_type"] == "30 Caps"
+    assert P["wholomega-120-gelcaps"]["bottle_type"] == "120 caps"
+    assert P["wholomega-120-capsules"]["bottle_type"] == "120 caps"
 
 
 def test_macular_bundle_gets_a_real_box_fit_quote():
@@ -120,8 +120,8 @@ def test_aces_and_reverse_age_have_bottle_types():
     slug the Dry Eye bundle names) is a DIFFERENT record from the already-mapped
     `aces-eyedrops` — a duplicate pair."""
     P, _ = _catalog()
-    assert P["aces-eye-drops"]["bottle_type"] == "5ml"
-    assert P["reverse-age"]["bottle_type"] == "30cap"
+    assert P["aces-eye-drops"]["bottle_type"] == "Dropper 5 mL"
+    assert P["reverse-age"]["bottle_type"] == "30 Caps"
 
 
 def test_every_bundle_gets_a_real_box_fit_quote():

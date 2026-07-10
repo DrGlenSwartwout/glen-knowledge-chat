@@ -34,7 +34,7 @@ def family_rule(slug, product):
         return "30ml"
     text = f"{name} {product.get('description','')}".lower()
     if "eye drop" in text or "eyedrop" in text:
-        return "5ml"
+        return "Dropper 5 mL"
     # Roll-on family rule: any of the common spelling variants → 30roll
     if "roll-on" in text or "rollon" in text or "roll on" in text:
         return "30roll"
@@ -48,7 +48,7 @@ def classify_from_fmp(row):
     mml = re.match(r'^(\d+(?:\.\d+)?)ml$', disp)
     if mml or meas == "ml":
         ml = float(mml.group(1)) if mml else None
-        return {5.0: "5ml", 15.0: "15ml", 50.0: "50ml", 100.0: "100ml"}.get(ml)  # 30/bulk -> None
+        return {5.0: "Dropper 5 mL", 15.0: "15ml", 50.0: "Dropper 50 mL", 100.0: "100ml"}.get(ml)  # 30/bulk -> None
     if any(x in disp for x in ("pullulan", "enteric", "vegicap", "gelcap", "capsule")) \
        or meas in ("pullulan", "enteric", "vegicaps", "gelcaps", "00 capsules"):
         mc = re.match(r'^(\d+)', disp)
@@ -56,12 +56,12 @@ def classify_from_fmp(row):
         if n is None:
             return None
         if n <= 40:
-            return "30cap"
+            return "30 Caps"
         if n <= 140:
-            return "120cap"
+            return "120 caps"
         return None
     if disp.endswith("g") or meas == "g":
-        return "120cap" if ftype == "Pure Powders" else "30g"
+        return "120 caps" if ftype == "Pure Powders" else "30 g"
     return None
 
 

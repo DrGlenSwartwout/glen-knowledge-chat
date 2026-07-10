@@ -194,6 +194,7 @@ import hashlib, hmac, secrets
 
 AUTH_TOKEN_TTL_MIN  = 1440         # magic-link token validity window (24 hours, so a delayed email check still works)
 AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN for email/UI copy
+LEAD_MAGNET_GUIDE_TTL_DAYS = 30    # free-guide download link; the pending page quotes this
 MEMBERSHIP_MAGIC_TTL_MIN = AUTH_TOKEN_TTL_MIN   # sign-in link the member asked for, seconds ago
 MEMBERSHIP_GRANT_TTL_MIN = 60 * 24 * 30         # 30 days: grant emails are UNPROMPTED, so the
                                                 # recipient may not open them for weeks
@@ -2672,12 +2673,19 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
     return resp
 
 
+# The old copy promised "We'll email it to you as soon as it's ready." Nothing
+# sends that email: LEAD_MAGNET_PDF_KEY is read in exactly one place, the guide
+# route below, and there is no sender or cron anywhere. Until the guide exists
+# and something delivers it, the page must not promise a message we never send.
+# The window is interpolated from the constant so the copy cannot drift from
+# the token's real lifetime.
 _GUIDE_PENDING_HTML = (
     "<!doctype html><meta charset=utf-8><title>Your guide</title>"
     "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
-    "<h1>Your free guide is on its way</h1>"
-    "<p>Thank you. Your guide is being finalized and is coming shortly. "
-    "We'll email it to you as soon as it's ready.</p>"
+    "<h1>Your guide is almost ready</h1>"
+    "<p>Thank you. Dr. Glen is putting the finishing touches on it.</p>"
+    f"<p>Your link stays live for {LEAD_MAGNET_GUIDE_TTL_DAYS} days. Bookmark this page "
+    "and come back anytime to download it.</p>"
     "<p><a href='/begin/quiz/result' style='color:#4b6b57'>Back to your result</a></p></div>")
 
 _GUIDE_EXPIRED_HTML = (
@@ -10360,9 +10368,11 @@ def _consume_gift_note_token(token):
                    (now_iso, th))
 
 
-def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
-    """Single-use token (purpose lead_magnet_guide, 30-day TTL) for the free-guide
-    download. Returns plaintext token; caller emails/returns it."""
+def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * LEAD_MAGNET_GUIDE_TTL_DAYS):
+    """Token (purpose lead_magnet_guide) for the free-guide download. Returns the
+    plaintext token; the caller hands it to the result page. Re-downloadable, so
+    it is never consumed. The pending page quotes LEAD_MAGNET_GUIDE_TTL_DAYS, so
+    change the lifetime there, not here."""
     import secrets, json as _json
     plain = secrets.token_urlsafe(32)
     th = _hash_token(plain)
@@ -10400,21 +10410,32 @@ def _validate_lead_magnet_guide_link(token):
 
 
 def _grant_membership(cx, email, days, source):
-    """Insert a memberships access grant row and return its id."""
+    """Insert a memberships access grant row and return its id.
+
+    Ordering matters. `customers.find_or_create_by_email` calls cx.commit(), so
+    anything already written on this connection becomes durable the moment it
+    runs. Do the people upsert FIRST: a commit cannot make the grant durable
+    ahead of the caller if the grant row does not exist yet.
+
+    Otherwise a caller that fails before its own commit leaves an orphaned
+    memberships row behind -- and membership access is read straight off this
+    table by email, with no token involved, so an orphan is a free membership.
+    """
     import uuid as _uuid
     mid = str(_uuid.uuid4())
     now = datetime.utcnow()
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)   # commits
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    # Last write, and nothing below commits: the grant rolls back with the caller.
     cx.execute(
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
         "VALUES (?,?,?,?,?,?,?,?)",
         (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
          source, source, "", ""))
-    try:
-        from dashboard import customers as _customers
-        _customers.find_or_create_by_email(cx, email=email)
-    except Exception as _e:
-        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
-    _member_join_welcome(cx, email, source)
+    _member_join_welcome(cx, email, source)   # does not commit (guard rolls back too)
     return mid
 
 
@@ -10488,9 +10509,17 @@ def _maybe_extend_founding_membership(cx, sub, updated):
 
 
 def _studio_credit_grant_and_notify(cx, email, days):
-    """Grant a studio-credit comp membership, log the journey event, and email the
-    magic link. Returns {membership_id, magic_link_url}. Shared by the console
-    approve action."""
+    """Grant a studio-credit comp membership and log the journey event, all on
+    the caller's transaction. Returns {membership_id, magic_link_url, notify}.
+
+    `notify` is a zero-arg callable that sends the grant email. It is NOT called
+    here. The email carries a magic link, so sending it before the caller
+    commits means a later failure rolls the link away while the member is
+    already holding the URL. The caller invokes notify() after its commit.
+
+    Nothing here commits, for the same reason: the grant, the token, the journey
+    event and the caller's own writes must land in one transaction or none.
+    """
     import json as _json
     email = (email or "").strip().lower()
     mid = _grant_membership(cx, email, days, "studio_credit")
@@ -10511,11 +10540,16 @@ def _studio_credit_grant_and_notify(cx, email, days):
         f"---\n"
         f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
     )
-    try:
-        _send_inquiry_email(to_email=email, subject=subject, body=body,
-                            reply_to=RM_COACHING_REPLY_EMAIL)
-    except Exception as e:
-        print(f"[studio-credit] email send failed: {e!r}", flush=True)
+    def _notify():
+        """Called by the caller once its transaction has committed. A bounced
+        send must not undo a granted membership -- the member can always ask for
+        a fresh link -- so failures are logged, not raised."""
+        try:
+            _send_inquiry_email(to_email=email, subject=subject, body=body,
+                                reply_to=RM_COACHING_REPLY_EMAIL)
+        except Exception as e:
+            print(f"[studio-credit] email send failed for {email}: {e!r}", flush=True)
+
     try:
         cx.execute(
             "INSERT INTO journey_events "
@@ -10523,10 +10557,9 @@ def _studio_credit_grant_and_notify(cx, email, days):
             "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
             (datetime.utcnow().isoformat() + "Z", "", email,
              _json.dumps({"source": "studio_credit", "days": days, "membership_id": mid})))
-        cx.commit()
     except Exception as e:
         print(f"[studio-credit] journey_events insert failed: {e!r}", flush=True)
-    return {"membership_id": mid, "magic_link_url": magic_link_url}
+    return {"membership_id": mid, "magic_link_url": magic_link_url, "notify": _notify}
 
 
 def _active_membership_for_email(email):
@@ -10737,6 +10770,56 @@ def api_console_client_scans_sync():
         except Exception as _e:
             print(f"[new-scan-email] {_e!r}", flush=True)
     return jsonify({"ok": True, "upserted": total})
+
+
+@app.route("/api/console/scan-recommendations/sync", methods=["POST"])
+def api_console_scan_recommendations_sync():
+    """Owner sync: upsert each client's per-scan E4L recommendations into
+    scan_recommendations (populated by the local e4l-scan-recommendations-push, since
+    prod can't read e4l.db). Sibling of /api/console/client-scans/sync.
+
+    Sends NOTHING. Slice 1 stores; a later slice renders. A bad client or a bad item is
+    skipped rather than aborting a 162-client batch."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import scan_recommendations as _sr
+    data = request.get_json(silent=True) or {}
+    batch = data.get("batch")
+    if not isinstance(batch, list):
+        return jsonify({"error": "batch (list) required"}), 400
+    scans = rows = 0
+    client_emails = set()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        for it in batch:
+            if not isinstance(it, dict):
+                continue
+            email = it.get("email")
+            scans_val = it.get("scans")
+            if not isinstance(scans_val, list):
+                # malformed "scans" (e.g. a bare string) — skip this client, not
+                # a char-by-char iteration of the string.
+                continue
+            wrote_for_client = False
+            for sc in scans_val:
+                if not isinstance(sc, dict):
+                    continue
+                try:
+                    n = _sr.replace_scan(
+                        cx, email, sc.get("scan_id"), sc.get("scan_date"), sc.get("items") or [])
+                except Exception as _e:
+                    print(f"[scan-recs-sync] skipped bad scan: {_e!r}", flush=True)
+                    continue
+                if n:
+                    rows += n
+                    scans += 1
+                    wrote_for_client = True
+            if wrote_for_client:
+                # distinct clients, not batch entries — two entries for the same
+                # email (however unlikely from the real pusher, which groups by
+                # email) must count once.
+                client_emails.add((email or "").strip().lower())
+    return jsonify({"ok": True, "clients": len(client_emails), "scans": scans, "rows": rows})
 
 
 @app.route("/api/console/analysis-requests", methods=["GET"])
@@ -33367,6 +33450,57 @@ def api_console_customer_rename():
     finally:
         cx.close()
     return jsonify({"ok": True, **res})
+
+
+# ── Feature-flag report ───────────────────────────────────────────────────────
+_FLAG_NAME_RE = re.compile(r"^_?[A-Z][A-Z0-9_]*_ENABLED$")
+_FLAG_TRUTHY = ("1", "true", "yes", "on")
+
+
+def _flag_report():
+    """Every *_ENABLED flag this process knows about.
+
+    TWO kinds exist and they differ in a way that matters:
+      - import-time constants (module globals, fixed when the process started). These
+        can go STALE: set the env var, skip the deploy, and the app still behaves as if
+        the flag were off. `value` therefore reads the GLOBAL, not os.environ.
+      - call-time reads (no global at all; os.environ is read inside a function on each
+        request, e.g. SCAN_REQUEST_ENABLED at app.py:14808). Never stale. A globals scan
+        would never find them, so discovery is the UNION of globals and env keys.
+
+    A deleted var and a deliberate false make the app behave identically but mean
+    different things, so `env_present` is reported separately. A deleted CALL-TIME flag
+    has neither a global nor an env key and so vanishes from this report entirely — the
+    checker's absent-from-response rule is what catches that case.
+
+    Only booleans, only *_ENABLED keys: no other env var can leak through here."""
+    out = {}
+    for name, val in list(globals().items()):
+        if isinstance(val, bool) and _FLAG_NAME_RE.match(name):
+            out[name] = {"value": bool(val),
+                         "env_present": name in os.environ,
+                         "source": "import"}
+    for name in os.environ:
+        if name in out or not _FLAG_NAME_RE.match(name):
+            continue
+        raw = (os.environ.get(name) or "").strip().lower()
+        out[name] = {"value": raw in _FLAG_TRUTHY,
+                     "env_present": True,
+                     "source": "runtime"}
+    return out
+
+
+@app.route("/api/console/flags", methods=["GET"])
+@require_console_key
+def api_console_flags():
+    """Owner: every feature flag as the RUNNING PROCESS sees it, plus whether each env
+    var exists at all. Read-only. Consumed by scripts/surface_check.py's daily drift
+    check — a flag with no HTTP surface (REPERTOIRE_ENABLED, INVOICE_PAYLINK_ENABLED)
+    cannot be watched any other way."""
+    try:
+        return ok({"flags": _flag_report()})
+    except Exception as e:
+        return fail(e)
 
 
 @app.route("/api/console/client-prefs", methods=["GET", "POST"])

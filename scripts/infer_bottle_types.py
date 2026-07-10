@@ -8,7 +8,7 @@ import json
 import os
 import sys
 
-TYPES = ("120cap", "100ml", "30roll", "50ml", "15ml", "5ml", "30g", "30cap")
+TYPES = ("120 caps", "100ml", "30roll", "Dropper 50 mL", "15ml", "Dropper 5 mL", "30 g", "30 Caps")
 _REVIEW_THRESHOLD = 0.6
 
 
@@ -22,22 +22,22 @@ def infer_bottle_type(product: dict):
     if has("roll-on", "rollon", "roll on"):
         return ("30roll", 0.9 if has("30 ml", "30ml") else 0.7)
     if has("powder", "cosmetic", "30 g", "30g"):
-        return ("30g", 0.9 if has("powder", "cosmetic") else 0.7)
+        return ("30 g", 0.9 if has("powder", "cosmetic") else 0.7)
     if has("dropper"):
         form = True
         if has("100 ml", "100ml"):
             return ("100ml", 0.9)
         if has("50 ml", "50ml"):
-            return ("50ml", 0.9)
+            return ("Dropper 50 mL", 0.9)
         if has("15 ml", "15ml"):
             return ("15ml", 0.9)
         if has("5 ml", "5ml"):
-            return ("5ml", 0.9)
+            return ("Dropper 5 mL", 0.9)
         return ("default", 0.3)  # dropper but no recognizable size
     if has("capsule", "caps", "vcaps", "60 ct", "60ct", "30 capsules"):
-        return ("30cap", 0.9 if has("100 ml", "100ml") else 0.7)
+        return ("30 Caps", 0.9 if has("100 ml", "100ml") else 0.7)
     if has("250 ml", "250ml", "wide-mouth", "wide mouth"):
-        return ("120cap", 0.9 if has("250 ml", "250ml") else 0.5)
+        return ("120 caps", 0.9 if has("250 ml", "250ml") else 0.5)
     return ("default", 0.3)
 
 
