@@ -14,12 +14,26 @@ def init_purchase_history_table(cx):
     cx.execute("CREATE INDEX IF NOT EXISTS ix_ph_email ON purchase_history(email)")
     cx.commit()
 
-def replace_source(cx, source, rows):
+def _default_resolve(slug):
+    """Redirect a retired slug onto its live twin. Imported lazily: this module is
+    otherwise pure (caller passes cx) and used in tests without the catalog."""
+    from dashboard.products import superseded_slug
+    return superseded_slug(slug)
+
+
+def replace_source(cx, source, rows, *, resolve=None):
+    """`resolve` defaults to the REAL catalog redirect, never a no-op — the 'groovekart'
+    slice scrapes slugs out of storefront URLs and happily yields retired ones, and a
+    dead slug stored here silently costs a member their repertoire reorder discount."""
+    resolve = resolve or _default_resolve
     cx.execute("DELETE FROM purchase_history WHERE source=?", (source,))
     n = 0
     for email, slug, purchased_at, source_ref in rows:
         e, s = _norm(email), _norm(slug)
         if not (e and s):
+            continue
+        s = _norm(resolve(s))
+        if not s:
             continue
         if cx.execute("INSERT OR IGNORE INTO purchase_history"
                       "(email, slug, purchased_at, source, source_ref) VALUES (?,?,?,?,?)",

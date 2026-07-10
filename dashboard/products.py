@@ -36,6 +36,52 @@ def load_products():
         return {}
 
 
+_CATALOG_CACHE = {"key": None, "products": {}}
+
+
+def _cached_products():
+    """`load_products()` re-reads a ~900KB file on every call. `superseded_slug` runs on
+    the checkout path (once per repertoire read), so key a cache on (path, mtime, size):
+    the catalog is a read-only repo file in prod, and a redeploy changes the mtime."""
+    p = _products_path()
+    if not p:
+        return {}
+    try:
+        st = os.stat(p)
+        key = (p, st.st_mtime_ns, st.st_size)
+    except OSError:
+        return {}
+    if _CATALOG_CACHE["key"] != key:
+        _CATALOG_CACHE["products"] = load_products()
+        _CATALOG_CACHE["key"] = key
+    return _CATALOG_CACHE["products"]
+
+
+def superseded_slug(slug, products=None):
+    """Follow a retired product's `superseded_by` pointer to its live twin.
+
+    Duplicate records are retired with `inactive: true` rather than deleted (order history
+    references their slugs), so a stored slug can name a record that is no longer sellable.
+    Returns `slug` unchanged when it is live, unknown, or has no successor. Loop-safe.
+
+    THE one implementation: `app._superseded` delegates here (passing its own in-memory
+    catalog), and the purchase_history / repertoire boundaries call it with the default.
+    A second copy of this walk would drift."""
+    if products is None:
+        products = _cached_products()
+    seen = set()
+    while slug and slug not in seen:
+        seen.add(slug)
+        p = products.get(slug)
+        if not p or not p.get("inactive"):
+            return slug
+        nxt = (p.get("superseded_by") or "").strip()
+        if not nxt:
+            return slug
+        slug = nxt
+    return slug
+
+
 def _fixed_set():
     try:
         return set(json.load(open(_fixed_path())))

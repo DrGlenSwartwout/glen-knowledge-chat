@@ -25,12 +25,23 @@ def init_repertoire_table(cx):
     cx.commit()
 
 
-def add_skus(cx, email, slugs, *, at=None):
+def _default_resolve(slug):
+    """Redirect a retired slug onto its live twin. Imported lazily to keep this module
+    pure (caller passes cx) for tests that never touch the catalog."""
+    from dashboard.products import superseded_slug
+    return superseded_slug(slug)
+
+
+def add_skus(cx, email, slugs, *, at=None, resolve=None):
+    resolve = resolve or _default_resolve
     email = _norm(email)
     at = at or _now_iso()
     seen, added = set(), 0
     for s in slugs:
         s = (s or "").strip().lower()
+        if not s:
+            continue
+        s = (resolve(s) or "").strip().lower()
         if not s or s in seen:
             continue
         seen.add(s)
@@ -43,14 +54,20 @@ def add_skus(cx, email, slugs, *, at=None):
     return added
 
 
-def repertoire_slugs(cx, email):
+def repertoire_slugs(cx, email, *, resolve=None):
+    """Resolved on READ as well as on write. `add_skus` is additive — it never removes a
+    slug seeded before that product was retired — so rows already stored would otherwise
+    keep a dead slug forever. Pricing tests `slug in repertoire_slugs` against the
+    RESOLVED cart slug, so an unresolved row silently never matches. Resolving here heals
+    those rows with no migration."""
+    resolve = resolve or _default_resolve
     email = _norm(email)
     return {
-        r[0]
+        resolve(r[0])
         for r in cx.execute("SELECT slug FROM repertoire WHERE email=?", (email,))
     }
 
 
-def seed_from_history(cx, email, window_days, *, order_slugs_fn):
+def seed_from_history(cx, email, window_days, *, order_slugs_fn, resolve=None):
     slugs = order_slugs_fn(cx, _norm(email), window_days) or []
-    return add_skus(cx, email, slugs)
+    return add_skus(cx, email, slugs, resolve=resolve)

@@ -5326,21 +5326,12 @@ def _get_product(slug):
 def _superseded(slug):
     """Follow a deprecated product's `superseded_by` pointer to its live twin.
 
-    Duplicate FMP records are retired with `inactive: true` rather than deleted (order
-    history references their slugs), so an old name can still resolve onto a slug that
-    is no longer sellable. `superseded_by` redirects it to the surviving record.
-    Returns `slug` unchanged when it is live, unknown, or has no successor. Loop-safe."""
-    seen = set()
-    while slug and slug not in seen:
-        seen.add(slug)
-        p = (_PRODUCTS.get("products") or {}).get(slug)
-        if not p or not p.get("inactive"):
-            return slug
-        nxt = (p.get("superseded_by") or "").strip()
-        if not nxt:
-            return slug
-        slug = nxt
-    return slug
+    Delegates to dashboard.products.superseded_slug — the one implementation — but hands
+    it app's already-in-memory catalog rather than letting it re-read the file. Two copies
+    of this walk would drift, and the purchase_history / repertoire write boundaries call
+    the same resolver."""
+    from dashboard import products as _products_mod  # module cached; attr read at CALL time
+    return _products_mod.superseded_slug(slug, (_PRODUCTS.get("products") or {}))
 
 
 def _live_slug(slug):
