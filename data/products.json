@@ -10978,7 +10978,9 @@
       ],
       "ingredients_source": "gk",
       "description": "NeurOmega . NeurOmega WholOmega 120 capsules NeurOmega delivers DHA to your cells, including the Retina, which has the highest level of DHA in the body. DHA is also the main fatty acid in the brain. It also supports the crystalline lens... Here's an example of the findings of a study on Saffron and cataract published in Molecular Vision: Results: Saffron demonstrated significant protection against selenite-induced cataractogenesis in vivo. The mean activities of superoxide dismutase, glutathione peroxidase, catalase, and glutathione levels were significantly increased in group III compared to...",
-      "bottle_type": "120 caps"
+      "bottle_type": "120 caps",
+      "inactive": true,
+      "superseded_by": "wholomega-120-gelcaps"
     },
     "ed9-muscle-driver": {
       "name": "ED9 Muscle Driver",
@@ -12047,11 +12049,41 @@
       "pinecone_title": "ACES Eye Drops",
       "qty_pricing": true,
       "fmp_id": "158",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "store-recovery-2026-06-08",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 drop in each eye 2 times a day or as needed",
-      "bottle_type": "Dropper 5 mL"
+      "bottle_type": "Dropper 5 mL",
+      "ingredients": [
+        {
+          "name": "Vitamin A",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin E",
+          "dose": ""
+        },
+        {
+          "name": "Colloidal Silver ions",
+          "dose": ""
+        },
+        {
+          "name": "Organic Sulfur as MSM (Methylsulfonylmethane)",
+          "dose": ""
+        },
+        {
+          "name": "N-Acetyl L-Carnosine",
+          "dose": ""
+        },
+        {
+          "name": "Quintessential Bioterrain Restore base",
+          "dose": ""
+        }
+      ]
     },
     "bloodroot-cream": {
       "name": "Bloodroot Cream",
@@ -19562,11 +19594,49 @@
       "pinecone_title": "WholOmega 120 gelcaps",
       "qty_pricing": true,
       "fmp_id": "448",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "gk",
       "no_groovekart": true,
       "regular_cents": 23000,
       "description": "4 capsules daily with heavier meal",
-      "bottle_type": "120 caps"
+      "bottle_type": "120 caps",
+      "ingredients": [
+        {
+          "name": "DHA (Docosahexaenoic Acid from Whole Algae Oil)",
+          "dose": ""
+        },
+        {
+          "name": "Safranal 3% (Crocus sativa)",
+          "dose": ""
+        },
+        {
+          "name": "Cyanidin-3-Glucosides (C3G) (Oryza sativa)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin C (Ascorbyl Palmitate)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin E (mixed Tocopherols)",
+          "dose": ""
+        },
+        {
+          "name": "Lemon Oil (Citrus spp.) (organic cold pressed)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin A (Retinyl Acetate)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin D3 (Cholecalciferol)",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin K2 (MK-7)",
+          "dose": ""
+        }
+      ]
     },
     "bone-broth-powder": {
       "name": "Bone Broth powder",

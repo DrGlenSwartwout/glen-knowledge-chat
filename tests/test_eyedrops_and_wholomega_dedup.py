@@ -79,9 +79,9 @@ def test_retired_twin_keeps_its_fmp_id_so_fmp_lookups_still_resolve():
     assert P["wholomega-30-gelcaps"]["fmp_id"] == "1085"
 
 
-def test_120_variants_untouched():
-    """Only the 30-count pair was declared duplicate. The 120s stay live and distinct."""
+def test_120_variants_share_the_120_cap_bottle():
+    """This PR declared the 120 pair duplicate too (see test_wholomega_120_dedup.py);
+    only the shared bottle type still binds both records here."""
     P = _catalog()
     for slug in ("wholomega-120-gelcaps", "wholomega-120-capsules"):
-        assert not P[slug].get("inactive"), slug
         assert P[slug]["bottle_type"] == "120 caps"
