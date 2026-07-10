@@ -361,8 +361,8 @@ def test_schema_adds_dims_and_seeds_standard_bottles(tmp_path):
     assert {"diameter_mm", "height_mm"} <= cols
     dims = get_bottle_dims(db_path=db)
     assert dims["15ml"] == (30, 100)
-    assert dims["120cap"] == (80, 100)
-    assert len(dims) == 10
+    assert dims["120 caps"] == (72, 100)
+    assert len(dims) == 14   # 10 prod names + 4 PENDING_BOTTLE_NAMES
     assert get_packing_settings(db_path=db) == {"wrap_mm": 6, "box_margin_mm": 10}
 
 def test_set_packing_setting_updates_value(tmp_path):
@@ -403,7 +403,7 @@ def test_quote_geometric_multibox_sums_rates(geo_db):
 def test_pick_box_geometric_with_padding(geo_db):
     from dashboard.shipping import pick_box
     # 5ml in S with default padding still fits at least 1 -> S
-    assert pick_box({"5ml": 4}, db_path=geo_db) == "S"
+    assert pick_box({"Dropper 5 mL": 4}, db_path=geo_db) == "S"
 
 def test_override_cap_forces_larger_box(geo_db):
     import sqlite3
@@ -434,7 +434,7 @@ def test_migration_renames_100cos_and_adds_30ml(tmp_path):
         init_shipping_schema(cx)
     dims = get_bottle_dims(db_path=db)
     assert "100cos" not in dims
-    assert dims["30g"] == (70, 70)
+    assert dims["30 g"] == (70, 70)   # renamed row KEEPS its own measured dims
     assert dims["30ml"] == (40, 110)
 
 def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
@@ -444,10 +444,10 @@ def test_fresh_seed_has_30g_and_30ml_not_100cos(tmp_path):
     with sqlite3.connect(db) as cx:
         init_shipping_schema(cx)
     dims = get_bottle_dims(db_path=db)
-    assert dims["30g"] == (70, 70)
+    assert dims["30 g"] == (65, 75)   # prod's measured dims
     assert dims["30ml"] == (40, 110)
     assert "100cos" not in dims
-    assert len(dims) == 10
+    assert len(dims) == 14   # 10 prod names + 4 PENDING_BOTTLE_NAMES
 
 
 # ── Dimension-aware bottle CRUD ───────────────────────────────────────────────
