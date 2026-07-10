@@ -66,3 +66,16 @@ def test_program_page_served_when_flag_on(client, monkeypatch):
     r = c.get("/portal/tok/program")
     assert r.status_code == 200
     assert b'id="program-root"' in r.data
+
+
+def test_client_portal_payload_exposes_program_page(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("PORTAL_PROGRAM_PAGE_ENABLED", "1")
+    # _seed_portal's token is minted by upsert_portal (secrets.token_urlsafe), not
+    # settable by the caller, so we capture the real token rather than assume one.
+    tok = _seed_portal(appmod, "pp@x.com")
+    r = c.get(f"/api/portal/{tok}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["program_page"]["enabled"] is True
+    assert body["program_page"]["url"] == f"/portal/{tok}/program"

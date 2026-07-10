@@ -16004,6 +16004,15 @@ def api_client_portal(token):
             payload["animal_name"] = _sp["animal_name"]
     except Exception as _e:
         print(f"[client-species/payload] {_e!r}", flush=True)
+    # Program-page entry card (flag-gated, best-effort): the portal shell reads this
+    # to decide whether to render the "Explore your program" card and where it links.
+    try:
+        payload["program_page"] = {
+            "enabled": _portal_program_page_enabled(),
+            "url": f"/portal/{token}/program",
+        }
+    except Exception:
+        pass
     return jsonify(payload)
 
 
