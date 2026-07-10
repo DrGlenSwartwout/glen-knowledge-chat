@@ -8767,6 +8767,17 @@ for _ckey in ("pinecone_title", "name"):
         if _v:
             _RESOLVE_NAME_INDEX.setdefault(_ihtml.unescape(_v).strip().lower(), _s)
 
+# `aliases` are the spellings a record answers to but is not named after: an E4L scan says
+# "BFA"; the catalog says "BFA Big Field Aligner Infoceutical". Indexed LAST with setdefault,
+# so an alias can never shadow a real product's name or pinecone_title. Inactive records are
+# skipped, exactly as above.
+for _s, _p in (_PRODUCTS.get("products") or {}).items():
+    if _p.get("inactive"):
+        continue
+    for _a in (_p.get("aliases") or []):
+        if _a:
+            _RESOLVE_NAME_INDEX.setdefault(_ihtml.unescape(_a).strip().lower(), _s)
+
 
 def _resolve_complement(name):
     """Resolve a complement product NAME to {name, title, url, price, slug, in_catalog}.

@@ -18594,7 +18594,8 @@
       "no_groovekart": true,
       "regular_cents": 4000,
       "description": "build up 1 drop a day to 15 drops stirred into a little water without touching metal daily on rising",
-      "bottle_type": "30ml"
+      "bottle_type": "30ml",
+      "aliases": ["BFA"]
     },
     "pl-polarity-infoceutical": {
       "name": "PL Polarity Infoceutical",
