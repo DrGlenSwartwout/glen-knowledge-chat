@@ -125,20 +125,35 @@ def check_surfaces(base_url, paths=PUBLIC_SURFACES, fetch=_fetch):
     return failures
 
 
-def format_alert(base_url, failures):
-    """(subject, body) naming each dead path and why. Plain text; no HTML."""
-    n = len(failures)
+def format_alert(base_url, failures, flag_failures=()):
+    """(subject, body) naming each dead path and each flag that must be on and is not.
+    Plain text; no HTML. `flag_failures` defaults to empty so existing callers are
+    unchanged."""
+    n = len(failures) + len(flag_failures)
     host = base_url.split("//", 1)[-1].rstrip("/")
-    subject = f"[surface-check] {n} dead surface{'s' if n != 1 else ''} on {host}"
-    lines = [f"{n} public surface{'s' if n != 1 else ''} failing on {base_url}:", ""]
-    for f in failures:
-        why = f["error"] or f"HTTP {f['status']}"
-        lines.append(f"  {f['path']}  ->  {why}")
+    subject = f"[surface-check] {n} problem{'s' if n != 1 else ''} on {host}"
+    lines = []
+    if failures:
+        lines += [f"{len(failures)} public surface"
+                  f"{'s' if len(failures) != 1 else ''} failing on {base_url}:", ""]
+        for f in failures:
+            why = f["error"] or f"HTTP {f['status']}"
+            lines.append(f"  {f['path']}  ->  {why}")
+        lines.append("")
+    if flag_failures:
+        lines += [f"{len(flag_failures)} feature flag"
+                  f"{'s' if len(flag_failures) != 1 else ''} not on:", ""]
+        for f in flag_failures:
+            lines.append(f"  {f['flag']}  ->  {f['reason']}")
+        lines.append("")
     lines += [
-        "",
         "A 404 on a flag-gated surface usually means its *_ENABLED env var drifted",
         "off on the Render web service. Flags absent from render.yaml have nothing",
         "pinning them on. Re-flip with a single-key PUT + an explicit POST /deploys.",
+        "",
+        "REPERTOIRE_ENABLED off silently charges paid members MORE (they lose",
+        "repertoire reorder pricing). INVOICE_PAYLINK_ENABLED off means clients",
+        "cannot pay an invoice online. Neither has a page that 404s.",
     ]
     return subject, "\n".join(lines)
 
@@ -172,19 +187,27 @@ def send_alert(subject, body, to_email=None):
 
 
 def run():
-    """Probe, alert on failure, and always return the failure list. Best-effort by
-    contract: the caller is the personal-email cron, which must never fail because
-    a surface check did."""
+    """Probe surfaces + flags, alert on failure, and always return the failure list.
+    Best-effort by contract: the caller is the personal-email cron, which must never
+    fail because a check did."""
     failures = check_surfaces(BASE_URL)
-    if not failures:
-        print(f"[surface-check] {len(PUBLIC_SURFACES)} surfaces OK on {BASE_URL}", flush=True)
-        return failures
-    subject, body = format_alert(BASE_URL, failures)
+    if CONSOLE_SECRET:
+        flag_failures = check_flags(BASE_URL, CONSOLE_SECRET)
+    else:
+        print("[surface-check] CONSOLE_SECRET not set — skipping flag check", flush=True)
+        flag_failures = []
+    if not failures and not flag_failures:
+        print(f"[surface-check] {len(PUBLIC_SURFACES)} surfaces OK, "
+              f"{len(REQUIRED_ON)} flags on, at {BASE_URL}", flush=True)
+        return []
+    subject, body = format_alert(BASE_URL, failures, flag_failures)
     print(f"[surface-check] {subject}", flush=True)
     for f in failures:
         print(f"[surface-check]   {f['path']} -> {f['error'] or f['status']}", flush=True)
+    for f in flag_failures:
+        print(f"[surface-check]   {f['flag']} -> {f['reason']}", flush=True)
     send_alert(subject, body)
-    return failures
+    return failures + flag_failures
 
 
 if __name__ == "__main__":

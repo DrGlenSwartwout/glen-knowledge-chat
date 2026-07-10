@@ -112,3 +112,53 @@ def test_missing_console_secret_skips_without_calling_fetch():
     def _explode(url, key, timeout=0):
         raise AssertionError("fetch must not be called without a console key")
     assert S.check_flags("https://x.test", "", fetch=_explode) == []
+
+
+# ── wiring: the checker must actually run, and reach the alert ──
+def test_format_alert_includes_flag_failures():
+    _subject, body = S.format_alert("https://illtowell.com", [],
+                                    [{"flag": "REPERTOIRE_ENABLED",
+                                      "reason": "env var is MISSING (deleted)"}])
+    assert "REPERTOIRE_ENABLED" in body
+    assert "MISSING" in body
+
+
+def test_format_alert_subject_counts_both_kinds():
+    """One dead surface + one dead flag = 2 problems, not 1 of each in two emails."""
+    subject, body = S.format_alert(
+        "https://illtowell.com",
+        [{"path": "/begin/fireside", "status": 404, "error": ""}],
+        [{"flag": "REPERTOIRE_ENABLED", "reason": "env var is MISSING (deleted)"}])
+    assert "2 problems" in subject
+    assert "illtowell.com" in subject
+    assert "/begin/fireside" in body and "REPERTOIRE_ENABLED" in body
+
+
+def test_format_alert_singular_when_one_problem():
+    subject, _ = S.format_alert("https://illtowell.com", [],
+                                [{"flag": "FIRESIDE_ENABLED", "reason": "x"}])
+    assert "1 problem on" in subject
+
+
+def test_run_calls_check_flags_and_alerts(monkeypatch):
+    """Guards against check_flags() existing while nothing invokes it."""
+    sent = {}
+    monkeypatch.setattr(S, "check_surfaces", lambda *a, **k: [])
+    monkeypatch.setattr(S, "check_flags", lambda *a, **k: [
+        {"flag": "REPERTOIRE_ENABLED", "reason": "env var is MISSING (deleted)"}])
+    monkeypatch.setattr(S, "CONSOLE_SECRET", "k")
+    monkeypatch.setattr(S, "send_alert", lambda subj, body, **k: sent.update(
+        subject=subj, body=body) or True)
+    out = S.run()
+    assert [f["flag"] for f in out] == ["REPERTOIRE_ENABLED"]
+    assert "REPERTOIRE_ENABLED" in sent["body"], "flag failure never reached the alert"
+
+
+def test_run_is_quiet_when_everything_is_healthy(monkeypatch):
+    called = []
+    monkeypatch.setattr(S, "check_surfaces", lambda *a, **k: [])
+    monkeypatch.setattr(S, "check_flags", lambda *a, **k: [])
+    monkeypatch.setattr(S, "CONSOLE_SECRET", "k")
+    monkeypatch.setattr(S, "send_alert", lambda *a, **k: called.append(True) or True)
+    assert S.run() == []
+    assert called == [], "no alert may be sent when nothing is wrong"
