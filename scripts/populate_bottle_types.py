@@ -13,6 +13,9 @@ import argparse, csv, difflib, json, os, re, sys
 
 FMP_EXPORT = os.environ.get("FMP_PRODUCTS_CSV", "/tmp/fmp-export/newapp/products.csv")
 _INFO_RE = re.compile(r'^(ei|ed|es|et|mb)\s*\d', re.I)  # MR not sold as infoceuticals
+# The same code can sit in parentheses instead of leading the name:
+# "Microbes/Liver Meridian (EI-8)", "Emotional Stress Release (MB5)".
+_INFO_PAREN_RE = re.compile(r'\((ei|ed|es|et|mb)\s*-?\s*\d+\)', re.I)
 # Trailing packaging words to strip from FMP keys (and storefront names) for the suffix-strip step.
 # "oil", "spray", "lotion", "drops" are intentionally excluded (part of product identity).
 _SUFFIX_WORDS = re.compile(r'\s+(powder|powders|tablets|capsules)$')
@@ -30,8 +33,18 @@ def _norm(s):
 def family_rule(slug, product):
     name = product.get("name", "")
     src = product.get("source", "")
-    if src == "infoceutical-catalog" or _INFO_RE.match(name.strip()):
+    # Glen 2026-07-09: ALL Infoceuticals are a 30 ml dropper. The code-prefix regex only
+    # caught EI-8 / ES3 style names; the named ones (Youth, Sleep, EMF Infoceutical) fell
+    # through. Match the NAME only — a description merely mentioning "infoceutical" must
+    # not capture an unrelated product.
+    if (src == "infoceutical-catalog" or _INFO_RE.match(name.strip())
+            or _INFO_PAREN_RE.search(name) or "infoceutical" in name.lower()):
         return "30ml"
+    # Glen 2026-07-09: the whole "... in Terrain Restore" line ships in a 50 ml dropper,
+    # whatever FMP's packaging column says. Matched on the NAME (a description could merely
+    # mention the line) and requires the leading "in " so the base product is not captured.
+    if "in terrain restore" in name.lower():
+        return "Dropper 50 mL"
     text = f"{name} {product.get('description','')}".lower()
     if "eye drop" in text or "eyedrop" in text:
         return "Dropper 5 mL"
@@ -45,6 +58,13 @@ def classify_from_fmp(row):
     disp = (row.get("zc_sold_display") or "").lower().replace(" ", "")
     meas = (row.get("sold_measurement") or "").lower().strip()
     ftype = (row.get("type") or "").strip()
+    # Glen 2026-07-09: an Essence is a 50 ml dropper, full stop. The TYPE is authoritative,
+    # so a bad packaging cell cannot misclassify one: FMP has exactly one Essence row whose
+    # zc_sold_display reads '50mg' (HRMNY Flower Essence) against 395 reading '50ml' — a
+    # FileMaker typo. Without this, the mg guard below would simply decline, sending the
+    # product to the review pile.
+    if ftype.lower() == "essence":
+        return "Dropper 50 mL"
     mml = re.match(r'^(\d+(?:\.\d+)?)ml$', disp)
     if mml or meas == "ml":
         ml = float(mml.group(1)) if mml else None
@@ -60,7 +80,9 @@ def classify_from_fmp(row):
         if n <= 140:
             return "120 caps"
         return None
-    if disp.endswith("g") or meas == "g":
+    # `disp` has had spaces stripped, so "500 mg" -> "500mg". Milligrams are a DOSE, not a
+    # container size: a naive endswith("g") sent a 50mg flower essence to a 30 g jar.
+    if (disp.endswith("g") and not disp.endswith("mg")) or meas == "g":
         return "120 caps" if ftype == "Pure Powders" else "30 g"
     return None
 
