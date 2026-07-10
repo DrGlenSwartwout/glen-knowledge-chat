@@ -2242,6 +2242,12 @@ def begin_quiz_optin():
             quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id,
                                        answers=existing["answers"], email=email)
 
+    # Mint the guide token BEFORE the onboarding thread starts, so the thread can
+    # hand GHL a working download URL. The nurture sequence's first email has
+    # nothing to deliver without it.
+    guide_token = _mint_lead_magnet_guide_link(email)
+    guide_url = f"{PUBLIC_BASE_URL}/begin/quiz/guide?token={guide_token}"
+
     # GHL onboarding + lead-magnet/segment tags, non-blocking (same pattern as /begin/unlock)
     import threading as _threading
 
@@ -2253,13 +2259,12 @@ def begin_quiz_optin():
             if ref_slug:
                 tags.append(f"ref:{ref_slug}")
                 _capture_concierge_referral(email, first_name, "", ref_slug)
-            ghl_onboard_contact(email, first_name, "", source_tag="lead-magnet", extra_tags=tags)
+            ghl_onboard_contact(email, first_name, "", source_tag="lead-magnet",
+                                extra_tags=tags, custom_fields={"guide_url": guide_url})
         except Exception as e:
             print(f"[quiz-optin] {e!r}", flush=True)
 
     _threading.Thread(target=_onboard, daemon=True).start()
-
-    guide_token = _mint_lead_magnet_guide_link(email)
     resp = jsonify({"ok": True, "current_rung": state["current_rung"],
                     "guide_token": guide_token, "redirect": "/begin/quiz/result"})
     if not request.cookies.get("amg_session"):
@@ -8730,6 +8735,10 @@ def begin_checkout_return():
                         _ingest_order(source="founding", external_ref=seti or "",
                                       email=f_email, items=items_list, total_cents=0,
                                       address=ship_dict, channel="retail")
+                        # Only now is the reservation real. The nurture sequence
+                        # exits on this tag; tagging at POST time would tag people
+                        # who merely opened the Stripe page.
+                        _tag_founding_reserved(f_email, f_slug)
                         print(f"[founding-return] reservation created for {f_email}", flush=True)
                 except Exception as _fe:
                     print(f"[founding-return] reservation failed: {_fe!r}", flush=True)
@@ -9823,11 +9832,18 @@ def ghl_enroll_workflow(contact_id):
     return data, err
 
 
-def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag="", extra_tags=None):
-    """Full onboarding: upsert contact → pipeline → workflow. Returns result dict."""
+def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag="",
+                        extra_tags=None, custom_fields=None):
+    """Full onboarding: upsert contact → pipeline → workflow. Returns result dict.
+
+    custom_fields is forwarded to ghl_upsert_contact. Without it a caller cannot
+    hand GHL anything a workflow email needs in order to render, such as the
+    lead-magnet guide URL."""
     result = {"email": email, "source_tag": source_tag}
 
-    contact_id, created, err = ghl_upsert_contact(email, first_name, last_name, phone, source_tag, extra_tags)
+    contact_id, created, err = ghl_upsert_contact(email, first_name, last_name, phone,
+                                                  source_tag, extra_tags,
+                                                  custom_fields=custom_fields)
     result["contact_id"] = contact_id
     result["contact_created"] = created
     if err:
@@ -9846,6 +9862,32 @@ def ghl_onboard_contact(email, first_name="", last_name="", phone="", source_tag
         result["workflow_enrolled"] = True
 
     return result
+
+
+def _tag_founding_reserved(email, slug):
+    """Tag a contact `reserved:<slug>` once their founding reservation is real.
+
+    The C2 nurture sequence exits on this tag. Without it the workflow keeps
+    asking a paying customer to reserve a bottle they already reserved.
+
+    Fire-and-forget on a daemon thread, and never raises: this runs inside the
+    Stripe checkout-return path, after the reservation is already written and
+    paid for. A GHL outage must not surface as a failed reservation."""
+    em = (email or "").strip().lower()
+    if not em or not slug:
+        return
+
+    def _run():
+        try:
+            ghl_upsert_contact(em, extra_tags=[f"reserved:{slug}"])
+        except Exception as e:
+            print(f"[founding-return] ghl reserve-tag failed for {em}: {e!r}", flush=True)
+
+    try:
+        import threading as _t
+        _t.Thread(target=_run, daemon=True).start()
+    except Exception as e:      # thread creation itself failed; still never raise
+        print(f"[founding-return] ghl reserve-tag thread failed: {e!r}", flush=True)
 
 
 def _resolve_channel_tags(personal: bool = False,
