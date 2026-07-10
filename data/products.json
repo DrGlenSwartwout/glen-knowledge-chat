@@ -3207,11 +3207,12 @@
       "bottle_type": "30ml"
     },
     "es1-lymph": {
-      "name": "ES1",
+      "name": "ES1 Lymph Energetic Star Infoceutical",
       "price_cents": 3997,
       "pinecone_title": "ES1",
       "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/192-es1-lymph",
-      "bottle_type": "30ml"
+      "bottle_type": "30ml",
+      "description": "build up 1 drop a day to 15 drops stirred into a little water without touching metal daily on rising"
     },
     "lipid-zyme": {
       "name": "Lipid Zyme",
@@ -18556,7 +18557,9 @@
       "ingredients_source": "fmp_snap",
       "no_groovekart": true,
       "regular_cents": 4000,
-      "description": "build up 1 drop a day to 15 drops stirred into a little water without touching metal daily on rising"
+      "description": "build up 1 drop a day to 15 drops stirred into a little water without touching metal daily on rising",
+      "inactive": true,
+      "superseded_by": "es1-lymph"
     },
     "es2-memory-imprinter-energetic-star-infoceutical": {
       "name": "ES2 Memory Imprinter Energetic Star Infoceutical",

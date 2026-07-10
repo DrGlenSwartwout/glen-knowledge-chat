@@ -200,6 +200,97 @@ def _sellable_names(names):
     return [n for n in names if _norm_name(n) not in dep]
 
 
+@functools.lru_cache(maxsize=1)
+def _active_catalog_names():
+    """Normalized display names of every LIVE catalog product.
+
+    The candidate pool used to be FMP's product names alone. A survivor that exists
+    only in the catalog — `es1-lymph` has the storefront URL and no `fmp_id` — was
+    therefore unmatchable, so retiring its misnamed FMP twin stranded the remedy and
+    the matcher drifted to a neighbour (ES1 -> ES5 Auto-Immune). Carrying live catalog
+    names alongside FMP's makes the survivor reachable."""
+    try:
+        with open(_PRODUCTS_JSON) as f:
+            products = (json.load(f).get("products") or {})
+    except Exception:
+        return frozenset()                       # no catalog -> add nothing
+    return frozenset(
+        v for p in products.values() if not p.get("inactive")
+        for v in (_norm_name(p.get("name")),) if v)
+
+
+@functools.lru_cache(maxsize=1)
+def _superseded_name_map():
+    """Retired display name -> its survivor's canonical name.
+
+    Excluding a retired name from the pool stops it resolving to a DEAD END, but the
+    matcher then picks the nearest live stranger. When the clinician says a retired
+    name exactly, we know precisely what they meant: redirect to the survivor."""
+    try:
+        with open(_PRODUCTS_JSON) as f:
+            products = (json.load(f).get("products") or {})
+    except Exception:
+        return {}
+    out = {}
+    for p in products.values():
+        if not p.get("inactive"):
+            continue
+        tgt = products.get((p.get("superseded_by") or "").strip())
+        if not tgt or tgt.get("inactive"):
+            continue                             # no survivor, or a dead one: no redirect
+        for key in ("pinecone_title", "name"):
+            v = _norm_name(p.get(key))
+            if v:
+                out[v] = tgt.get("name")
+    return out
+
+
+@functools.lru_cache(maxsize=1)
+def _catalog_alias_map():
+    """Every spellable alias of a live catalog product -> its canonical display name.
+
+    A product answers to BOTH its `name` and its `pinecone_title`. They diverge when a
+    record is renamed but its vector title is pinned: `es1-lymph` is now named
+    "ES1 Lymph Energetic Star Infoceutical" while its title stays "ES1". Without the
+    title as an alias, saying the bare code "ES1" fuzzy-matched **ES15** (Heavy Metals).
+    Matching an alias resolves to the canonical name, never to the alias."""
+    try:
+        with open(_PRODUCTS_JSON) as f:
+            products = (json.load(f).get("products") or {})
+    except Exception:
+        return {}
+    out = {}
+    for p in products.values():
+        if p.get("inactive"):
+            continue
+        canon = (p.get("name") or "").strip()
+        if not canon:
+            continue
+        for key in ("name", "pinecone_title"):
+            v = _norm_name(p.get(key))
+            if v:
+                out.setdefault(v, canon)
+    return out
+
+
+def _catalog_names_for_pool():
+    """Live catalog aliases as displayable strings (the pool matches case-insensitively)."""
+    try:
+        with open(_PRODUCTS_JSON) as f:
+            products = (json.load(f).get("products") or {})
+    except Exception:
+        return []
+    out = []
+    for p in products.values():
+        if p.get("inactive"):
+            continue
+        for key in ("name", "pinecone_title"):
+            v = (p.get(key) or "").strip()
+            if v:
+                out.append(v)
+    return out
+
+
 def _best_match(spoken, names, cutoff):
     """Case-insensitive closest match: ASR lowercases, so we compare on lowercase and
     map back to the canonical-cased name. Returns None when nothing is close enough."""
@@ -245,13 +336,22 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
     if low.endswith("in terrain restore"):
         core = spoken[: low.rfind("in terrain restore")].strip()
         suffix = " in Terrain Restore"
+    # An EXACT retired name is unambiguous: redirect to its survivor before any fuzzy
+    # matching, or the excluded name drifts onto the nearest live stranger.
+    redirect = _superseded_name_map().get(_norm_name(core))
+    if redirect:
+        return redirect + suffix
     if _has(cx, "fmp_snap_products"):
         names = _sellable_names([r[0] for r in cx.execute(
             "SELECT DISTINCT product_name FROM fmp_snap_products "
             "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()])
+        # Live catalog names join FMP's, so a catalog-only survivor is reachable.
+        names = _sellable_names(list(dict.fromkeys(names + _catalog_names_for_pool())))
         # whole-string fuzzy first, then a distinctive-token match for long names.
         match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
         if match:
+            # An alias (e.g. the bare code "ES1") resolves to its canonical name.
+            match = _catalog_alias_map().get(_norm_name(match), match)
             match = _clean_product_name(match)   # drop discontinue-intent '*'
             # Don't double the suffix when the matched name already carries it.
             if suffix and match.lower().endswith("in terrain restore"):
