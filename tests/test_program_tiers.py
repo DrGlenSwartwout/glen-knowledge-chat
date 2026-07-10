@@ -22,6 +22,16 @@ def test_paid_available_when_enabled_and_not_owned():
     assert t["paid"]["state"] == "available"
     assert t["paid"]["price_cents"] == po.MEMBERSHIP_PRICE_CENTS
     assert t["paid"]["checkout_path"] == "/portal/offer/live-group/checkout"
+    assert t["paid"]["cta_kind"] == "checkout_post"
+
+
+def test_cta_kinds_and_family_has_no_checkout_route():
+    t = _by_key(pt.program_blocks(
+        paid_owned=False, family_owned=False,
+        paid_enabled=True, family_enabled=True))
+    assert t["free"]["cta_kind"] == "none"
+    assert t["family"]["cta_kind"] == "arrange"
+    assert t["family"]["checkout_path"] is None
 
 
 def test_paid_coming_soon_when_flag_off():

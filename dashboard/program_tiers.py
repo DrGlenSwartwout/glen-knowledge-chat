@@ -29,6 +29,7 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "period": "",
         "cta_label": None,
         "checkout_path": None,
+        "cta_kind": "none",
         "state": "owned",
     }
     paid = {
@@ -44,6 +45,7 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "period": "/mo",
         "cta_label": "Join",
         "checkout_path": "/portal/offer/live-group/checkout",
+        "cta_kind": "checkout_post",
         "state": _state(paid_owned, paid_enabled),
     }
     family = {
@@ -57,8 +59,9 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
         "price_cents": _fp.PLAN["amount_cents"],
         "value_cents": _fp.PLAN["value_cents"],
         "period": "/mo",
-        "cta_label": "Add your family",
-        "checkout_path": "/portal/offer/family-plan/checkout",
+        "cta_label": "Reply to arrange",
+        "checkout_path": None,
+        "cta_kind": "arrange",
         "state": _state(family_owned, family_enabled),
     }
     return [free, paid, family]
