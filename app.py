@@ -194,6 +194,7 @@ import hashlib, hmac, secrets
 
 AUTH_TOKEN_TTL_MIN  = 1440         # magic-link token validity window (24 hours, so a delayed email check still works)
 AUTH_TOKEN_TTL_LABEL = "24 hours"  # human-readable form of AUTH_TOKEN_TTL_MIN for email/UI copy
+LEAD_MAGNET_GUIDE_TTL_DAYS = 30    # free-guide download link; the pending page quotes this
 MEMBERSHIP_MAGIC_TTL_MIN = AUTH_TOKEN_TTL_MIN   # sign-in link the member asked for, seconds ago
 MEMBERSHIP_GRANT_TTL_MIN = 60 * 24 * 30         # 30 days: grant emails are UNPROMPTED, so the
                                                 # recipient may not open them for weeks
@@ -2672,12 +2673,19 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
     return resp
 
 
+# The old copy promised "We'll email it to you as soon as it's ready." Nothing
+# sends that email: LEAD_MAGNET_PDF_KEY is read in exactly one place, the guide
+# route below, and there is no sender or cron anywhere. Until the guide exists
+# and something delivers it, the page must not promise a message we never send.
+# The window is interpolated from the constant so the copy cannot drift from
+# the token's real lifetime.
 _GUIDE_PENDING_HTML = (
     "<!doctype html><meta charset=utf-8><title>Your guide</title>"
     "<div style='font-family:Georgia,serif;max-width:560px;margin:60px auto;padding:0 20px;color:#1f2a37'>"
-    "<h1>Your free guide is on its way</h1>"
-    "<p>Thank you. Your guide is being finalized and is coming shortly. "
-    "We'll email it to you as soon as it's ready.</p>"
+    "<h1>Your guide is almost ready</h1>"
+    "<p>Thank you. Dr. Glen is putting the finishing touches on it.</p>"
+    f"<p>Your link stays live for {LEAD_MAGNET_GUIDE_TTL_DAYS} days. Bookmark this page "
+    "and come back anytime to download it.</p>"
     "<p><a href='/begin/quiz/result' style='color:#4b6b57'>Back to your result</a></p></div>")
 
 _GUIDE_EXPIRED_HTML = (
@@ -10360,9 +10368,11 @@ def _consume_gift_note_token(token):
                    (now_iso, th))
 
 
-def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * 30):
-    """Single-use token (purpose lead_magnet_guide, 30-day TTL) for the free-guide
-    download. Returns plaintext token; caller emails/returns it."""
+def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * LEAD_MAGNET_GUIDE_TTL_DAYS):
+    """Token (purpose lead_magnet_guide) for the free-guide download. Returns the
+    plaintext token; the caller hands it to the result page. Re-downloadable, so
+    it is never consumed. The pending page quotes LEAD_MAGNET_GUIDE_TTL_DAYS, so
+    change the lifetime there, not here."""
     import secrets, json as _json
     plain = secrets.token_urlsafe(32)
     th = _hash_token(plain)
