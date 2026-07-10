@@ -12,7 +12,11 @@
 
 - `section` values are exactly the strings `"Infoceuticals"` and `"miHealth Functions"`. They come from `e4l_scan_results.section_context`, which Slice 0 populated from the scan PDF's own headings. Never re-derive them from `protocol_days`.
 - `priority_rank` is one document-order sequence per scan, starting at 1. `BFA`, when present, is always rank 1. Never renumber per section.
-- Rows are keyed on `(email, scan_id, item_code)`. A re-push must UPDATE, never duplicate.
+- **A scan's rows are replaced ATOMICALLY** (delete + insert, one transaction), keyed on `(email, scan_id, priority_rank)`.
+  An empty or all-invalid item list DELETES NOTHING and returns 0.
+  *(Supersedes the original `(email, scan_id, item_code)` key: scan 542814 legitimately lists `ER1`, `ER10`, `ER36`,
+  `ER62`, `MR3`, `MR4` twice each — the source PDF prints them twice — and that key silently dropped 6 rows while
+  reporting the full count. `(scan_id, priority_rank)` has zero collisions across all 5,925 source rows.)*
 - **This slice sends no email and renders nothing.** No notification code, no portal payload key, no feature flag. A later slice reads the table.
 - Emails are stored lowercased and trimmed, matching `client_scans`.
 - Scans whose client has no email are skipped, matching `e4l-scan-manifest-push.py`. There are currently 11 such rows.
@@ -53,9 +57,10 @@ Tasks 1–3 land in `deploy-chat` and must be merged and deployed before Task 4'
 - Consumes: nothing.
 - Produces:
   - `init_table(cx) -> None`
-  - `upsert_recommendations(cx, email: str, scan_id: str, scan_date: str, items: list[dict]) -> int`
+  - `replace_scan(cx, email: str, scan_id: str, scan_date: str, items: list[dict]) -> int`
     where each item is `{"item_code", "priority_rank", "protocol_days", "section", "category", "label"}`.
-    Returns the number of rows written (inserted + updated).
+    Replaces the scan's rows atomically. Returns rows inserted; equals `len(for_scan(...))` afterwards.
+    An empty/all-invalid `items` returns 0 and deletes nothing.
   - `for_scan(cx, email: str, scan_id: str) -> list[dict]` — all rows, ordered by `priority_rank`.
   - `infoceuticals_for_scan(cx, email: str, scan_id: str) -> list[dict]` — only `section='Infoceuticals'`, ordered by `priority_rank`.
 
@@ -284,7 +289,7 @@ git commit -m "feat(e4l): scan_recommendations store, keyed on (email, scan_id, 
 - Test: `tests/test_scan_recommendations_api.py`
 
 **Interfaces:**
-- Consumes: `scan_recommendations.init_table`, `.upsert_recommendations`, `.for_scan` from Task 1.
+- Consumes: `scan_recommendations.init_table`, `.replace_scan`, `.for_scan` from Task 1.
 - Produces: `POST /api/console/scan-recommendations/sync`.
   Body: `{"batch": [{"email": str, "scans": [{"scan_id": str, "scan_date": str, "items": [ ... ]}]}]}`
   Response: `{"ok": true, "clients": int, "scans": int, "rows": int}`.
@@ -434,7 +439,7 @@ def api_console_scan_recommendations_sync():
                 if not isinstance(sc, dict):
                     continue
                 try:
-                    n = _sr.upsert_recommendations(
+                    n = _sr.replace_scan(
                         cx, email, sc.get("scan_id"), sc.get("scan_date"), sc.get("items") or [])
                 except Exception as _e:
                     print(f"[scan-recs-sync] skipped bad scan: {_e!r}", flush=True)
@@ -771,6 +776,9 @@ curl -s -H "X-Console-Key: $KEY" -X POST -H "Content-Type: application/json" \
 An empty batch returns `{"ok":true,"clients":0,"scans":0,"rows":0}` and proves the route is live without writing anything. Then confirm the real counts by re-running Step 3 — a second push must report the same `rows` (upsert), and must not multiply them.
 
 Acceptance: the second push reports `rows=5914` again, not `11828`. That is the idempotency proof, run against production.
+
+Note the stored total will be **5,914**, matching the reported rows exactly, because `replace_scan` preserves the 6
+duplicate-`item_code` rows in scan 542814 rather than collapsing them.
 
 ---
 
