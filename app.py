@@ -3894,6 +3894,20 @@ def embed_page():
     return resp
 
 
+@app.route("/terms")
+def terms_page():
+    resp = send_from_directory(STATIC, "terms.html")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+@app.route("/privacy")
+def privacy_page():
+    resp = send_from_directory(STATIC, "privacy.html")
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
 @app.route("/widget.js")
 def widget_js():
     resp = send_from_directory(STATIC, "widget.js")
