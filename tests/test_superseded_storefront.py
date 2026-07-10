@@ -39,7 +39,7 @@ def test_canonical_slug_is_unchanged():
     appmod = _app()
     p = appmod._get_product("aces-eye-drops")
     assert p and p["slug"] == "aces-eye-drops"
-    assert p["bottle_type"] == "5ml"
+    assert p["bottle_type"] == "Dropper 5 mL"
 
 
 def test_retired_without_successor_still_resolves_to_none():
@@ -82,4 +82,4 @@ def test_cart_line_on_the_retired_slug_prices_and_packs_the_survivor():
     from dashboard import shipping as S
     p = appmod._get_product("aces-eyedrops")
     assert p["price_cents"] == 6997
-    assert S.resolve_bottle_type(p["slug"], p) == "5ml"
+    assert S.resolve_bottle_type(p["slug"], p) == "Dropper 5 mL"

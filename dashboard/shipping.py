@@ -69,22 +69,57 @@ _DEFAULT_RATES_2026_04_26 = [
     ("L", 3150, "https://www.usps.com/business/prices.htm", "2026-04-26"),
 ]
 
-# Standard bottle types with measured dims (Ø_mm, H_mm) = cm x 10.
+# ── Bottle vocabulary ────────────────────────────────────────────────────────
+# THE NAMES BELOW ARE PROD'S. Prod's `bottle_types` table was hand-built through
+# /admin/shipping; `_STANDARD_BOTTLES` only ever seeds a FRESH catalog, so prod never
+# received the repo's old private names ('30cap', '5ml', ...). A bottle_type prod does
+# not recognise is exactly as broken as none: pick_boxes raises UnknownBottleType,
+# quote() returns no rate, and _shipping_for_cart silently drops the WHOLE cart to the
+# coarse qty rule. Never introduce a name outside PROD_BOTTLE_NAMES without creating it
+# in prod first. Verified against GET /api/shipping/bottles on 2026-07-09.
+PROD_BOTTLE_NAMES = frozenset({
+    "30 Caps", "120 caps", "180 caps", "360 caps", "30 g", "120 g",
+    "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL",
+})
+
+# Types the CATALOG needs that prod's library does NOT have yet. Their products still
+# fall back to the qty rule until these are created in prod via /admin/shipping (the
+# measured dims below are ready to use). Pinned by a test so a fifth cannot creep in.
+PENDING_BOTTLE_NAMES = frozenset({"100ml", "15ml", "30roll", "handcradle"})
+
+# Old repo-private names -> prod's. Applied by init_shipping_schema to any pre-existing
+# catalog so a dev DB stops speaking a vocabulary prod never had. `100cos` predates both.
+_LEGACY_BOTTLE_RENAMES = {
+    "100cos": "30 g",
+    "30g": "30 g",
+    "30cap": "30 Caps",
+    "120cap": "120 caps",
+    "5ml": "Dropper 5 mL",
+    "50ml": "Dropper 50 mL",
+}
+
+# Bottle types with measured dims (Ø_mm, H_mm) = cm x 10. Dims for the ten prod names
+# are prod's own measurements, read from its bottle_types table.
 _STANDARD_BOTTLES = [
+    ("30 Caps", "100 ml wide-mouth (30 caps)", 51, 90),
+    ("120 caps", "250 ml wide-mouth (120 caps / pure powder)", 72, 100),
+    ("180 caps", "180 caps", 80, 155),
+    ("360 caps", "360 caps", 93, 200),
+    ("30 g", "100 ml cosmetic jar (30 g powder)", 65, 75),
+    ("120 g", "120 g jar", 72, 100),
+    ("30ml", "30 ml dropper (infoceutical)", 40, 110),
+    ("Dropper 5 mL", "5 ml dropper (eye drops)", 23, 75),
+    ("Dropper 30 mL", "30 ml dropper", 32, 100),
+    ("Dropper 50 mL", "50 ml dropper", 35, 135),
+    # ── PENDING: not in prod's library yet (see PENDING_BOTTLE_NAMES) ──
+    ("100ml", "100 ml dropper", 50, 160),
+    ("15ml", "15 ml dropper", 30, 100),
+    ("30roll", "30 ml roll-on", 40, 100),
     # Shipping proxy: the hand cradle is a flat device, not a bottle, but the packer
     # models cylinders. These dims resolve one cradle to the USPS Medium Flat Rate box
     # (M, $22.95) — the default for a $297 device shipped with its protective packaging.
     # Rae can manually drop to Small at pack time when shipping the cradle bare.
     ("handcradle", "ZYTO Hand Cradle — ships USPS Medium Flat Rate", 80, 100),
-    ("120cap", "250 ml wide-mouth (120 caps / pure powder)", 80, 100),
-    ("100ml", "100 ml dropper", 50, 160),
-    ("30roll", "30 ml roll-on", 40, 100),
-    ("50ml", "50 ml dropper", 40, 140),
-    ("30ml", "30 ml dropper (infoceutical)", 40, 110),
-    ("15ml", "15 ml dropper", 30, 100),
-    ("5ml", "5 ml dropper (eye drops)", 30, 80),
-    ("30g", "100 ml cosmetic jar (30 g powder)", 70, 70),
-    ("30cap", "100 ml wide-mouth (30 caps)", 50, 90),
 ]
 _PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 10}
 _PACKING_KEYS = ("wrap_mm", "box_margin_mm")
@@ -139,11 +174,14 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
     if "height_mm" not in cols:
         cx.execute("ALTER TABLE bottle_types ADD COLUMN height_mm INTEGER")
 
-    # Rename legacy 100cos -> 30g if present and 30g not already there
+    # Migrate legacy names onto PROD's vocabulary (see PROD_BOTTLE_NAMES). Prod itself is
+    # already on these names; this repairs dev/older catalogs so one vocabulary exists
+    # everywhere. Never clobber a target that already exists.
     have = {r[0] for r in cx.execute("SELECT name FROM bottle_types")}
-    if "100cos" in have and "30g" not in have:
-        cx.execute("UPDATE bottle_types SET name='30g' WHERE name='100cos'")
-        have.discard("100cos"); have.add("30g")
+    for _old, _new in _LEGACY_BOTTLE_RENAMES.items():
+        if _old in have and _new not in have:
+            cx.execute("UPDATE bottle_types SET name=? WHERE name=?", (_new, _old))
+            have.discard(_old); have.add(_new)
     # Ensure 30ml exists with dims (insert if missing) — only on existing (non-empty) catalogs;
     # fresh DBs get it via the seed block below.
     if have and "30ml" not in have:
