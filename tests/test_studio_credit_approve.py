@@ -181,15 +181,15 @@ def test_a_failing_email_does_not_roll_back_the_approval(approve_env):
     assert status == "approved"
 
 
-def test_a_failure_before_commit_sends_no_email_and_leaves_no_token(approve_env):
-    """The dangerous artifact is the emailed magic link. If approve_claim fails
-    before committing, no email may have gone out and no token may survive.
+def test_a_failure_before_commit_leaves_no_grant_no_token_no_email(approve_env):
+    """One transaction or none.
 
-    NOT asserted: that the memberships row is gone. _grant_membership calls
-    customers.find_or_create_by_email and portal_welcome.mark_welcome_sent,
-    both of which commit on the shared connection, so the grant row can outlive
-    a rollback. That is pre-existing and out of scope here -- it is harmless on
-    its own, because without a token and without an email nobody can act on it.
+    An orphaned memberships row is NOT cosmetic: membership access is read
+    straight off that table by email (`SELECT * FROM memberships WHERE email=?
+    AND expires_at > ?`), and /coaching/login-request mints a sign-in link for
+    any address. So a grant row that outlives a failed approval is a free
+    membership -- the person never needs the emailed token. It also makes
+    studio_credit_granted_within_year block a legitimate re-grant for a year.
     """
     appmod, sc, cx, _sent = approve_env
     sends = []
@@ -215,6 +215,8 @@ def test_a_failure_before_commit_sends_no_email_and_leaves_no_token(approve_env)
     assert sends == [], "email went out for an approval that never committed"
     other = sqlite3.connect(appmod.LOG_DB)
     try:
+        grants = other.execute("SELECT COUNT(*) FROM memberships WHERE email=?",
+                               ("studio@example.com",)).fetchone()[0]
         toks = other.execute(
             "SELECT COUNT(*) FROM auth_tokens WHERE purpose='membership_magic_link'"
         ).fetchone()[0]
@@ -222,5 +224,32 @@ def test_a_failure_before_commit_sends_no_email_and_leaves_no_token(approve_env)
                                ("studio@example.com",)).fetchone()[0]
     finally:
         other.close()
+    assert grants == 0, "an orphaned membership survived -- that is a free membership"
     assert toks == 0, "a magic link survived an approval that never committed"
     assert status == "pending"
+
+
+def test_a_failed_approval_leaves_no_usable_membership(approve_env):
+    """The exploit the orphan row enabled: /coaching/login-request mints a
+    sign-in link for ANY email, so the person never needed the grant email.
+    After a failed approval, the app must not see them as an active member."""
+    appmod, sc, cx, _sent = approve_env
+    email = "studio@example.com"
+
+    import pytest as _pytest
+    monkeypatch = _pytest.MonkeyPatch()
+    monkeypatch.setattr(appmod, "_send_inquiry_email", lambda **kw: True)
+    claim = sc.add_claim(cx, email=email, invoice_ref="inv-1", proof_note="",
+                         source="console", created_by="glen")
+    cx.commit()
+    monkeypatch.setattr(sc, "_now", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    try:
+        with _pytest.raises(RuntimeError):
+            sc.approve_claim(cx, claim["id"], decided_by="glen",
+                             grant_fn=appmod._studio_credit_grant_and_notify)
+        cx.rollback()
+    finally:
+        monkeypatch.undo()
+
+    assert appmod._active_membership_for_email(email) is None, (
+        "a failed approval left the person with a usable coaching membership")

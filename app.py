@@ -10400,21 +10400,32 @@ def _validate_lead_magnet_guide_link(token):
 
 
 def _grant_membership(cx, email, days, source):
-    """Insert a memberships access grant row and return its id."""
+    """Insert a memberships access grant row and return its id.
+
+    Ordering matters. `customers.find_or_create_by_email` calls cx.commit(), so
+    anything already written on this connection becomes durable the moment it
+    runs. Do the people upsert FIRST: a commit cannot make the grant durable
+    ahead of the caller if the grant row does not exist yet.
+
+    Otherwise a caller that fails before its own commit leaves an orphaned
+    memberships row behind -- and membership access is read straight off this
+    table by email, with no token involved, so an orphan is a free membership.
+    """
     import uuid as _uuid
     mid = str(_uuid.uuid4())
     now = datetime.utcnow()
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)   # commits
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    # Last write, and nothing below commits: the grant rolls back with the caller.
     cx.execute(
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
         "VALUES (?,?,?,?,?,?,?,?)",
         (mid, email, now.isoformat() + "Z", (now + timedelta(days=days)).isoformat() + "Z",
          source, source, "", ""))
-    try:
-        from dashboard import customers as _customers
-        _customers.find_or_create_by_email(cx, email=email)
-    except Exception as _e:
-        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
-    _member_join_welcome(cx, email, source)
+    _member_join_welcome(cx, email, source)   # does not commit (guard rolls back too)
     return mid
 
 
