@@ -14860,6 +14860,64 @@ def _portal_options_enabled():
         "1", "true", "yes", "on")
 
 
+def _scan_recommendations_enabled():
+    """The scan-recommendations card. Default OFF — when off the portal payload never
+    gains the key, so responses are byte-identical to pre-card behavior."""
+    return (os.environ.get("SCAN_RECOMMENDATIONS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _scan_rec_label(code, label):
+    """Glen's rule for BFA: the label says BFA, and "aligner" both expands the acronym
+    and describes the benefit. Every other code reads "<CODE> <label>"."""
+    code, label = (code or "").strip(), (label or "").strip()
+    if code == "BFA":
+        return "Big Field Aligner (BFA)"
+    return f"{code} {label}".strip()
+
+
+def _scan_recommendations_for(email, scan_date=None):
+    """The client's own E4L scan recommendations. None when off, unknown, or broken.
+
+    Keyed on the E4L SCAN date, never the published-report date: a report can be filed
+    under a date on which the client has no scan, and keying on that shows them nothing.
+    An unknown scan_date falls back to the latest.
+
+    miHealth rows (ER/MR) carry NO order_url — they are device cycles your practitioner
+    runs, not products. Zero of them resolve to a slug, which is correct.
+    """
+    if not _scan_recommendations_enabled() or not email:
+        return None
+    try:
+        from dashboard import scan_recommendations as _sr
+        from dashboard.order_destination import destination_for
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _sr.init_table(cx)
+            dates = _sr.scan_dates_for(cx, email)
+            if not dates:
+                return None
+            picked = scan_date if (scan_date and scan_date in dates) else dates[0]
+            info, mih = _sr.split_by_section(_sr.for_scan_date(cx, email, picked))
+        out_info = []
+        for r in info:
+            slug = _resolve_remedy_slug({"name": r["item_code"]}) or ""
+            if slug and not _get_product(slug):
+                slug = ""
+            out_info.append({"code": r["item_code"],
+                             "label": _scan_rec_label(r["item_code"], r["label"]),
+                             "rank": r["priority_rank"], "protocol_days": r["protocol_days"],
+                             "order_url": destination_for(slug)})
+        out_mih = [{"code": r["item_code"], "label": (r["label"] or r["item_code"]),
+                    "rank": r["priority_rank"], "protocol_days": r["protocol_days"]}
+                   for r in mih]
+        return {"scan_date": picked, "scan_dates": dates,
+                "infoceuticals": out_info, "mihealth": out_mih}
+    except Exception as _e:
+        print(f"[scan-recs] {_e!r}", flush=True)
+        return None
+
+
 def _portal_options_for(email):
     """The client-facing options+pricing trio for the portal card. Prices are
     DATA-SOURCED (biofield-analysis catalog price + this client's courtesy override
@@ -15763,6 +15821,14 @@ def api_client_portal(token):
                 payload["options"] = _opt
         except Exception as _e:
             print(f"[portal-options] {_e!r}", flush=True)
+    # Scan-recommendations card (flag-gated, best-effort). email_for_reports is already
+    # re-pointed by ?member=, so a member's card shows THEIR scan, not the caregiver's.
+    try:
+        _sr_block = _scan_recommendations_for(email_for_reports, req_date or None)
+        if _sr_block:
+            payload["scan_recommendations"] = _sr_block
+    except Exception as _e:
+        print(f"[scan-recs/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
