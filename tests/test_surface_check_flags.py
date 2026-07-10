@@ -30,9 +30,11 @@ def _fetch_raises(exc):
 ALL_ON = _payload(**{name: _on() for name in S.REQUIRED_ON})
 
 
-def test_required_on_is_the_four_flags_glen_named():
-    assert set(S.REQUIRED_ON) == {"FIRESIDE_ENABLED", "REPERTOIRE_ENABLED",
-                                  "INVOICE_PAYLINK_ENABLED", "SCAN_REQUEST_ENABLED"}
+def test_required_on_still_covers_the_four_flags_glen_first_named():
+    """REQUIRED_ON is now the committed baseline (38 flags), not a hardcoded tuple —
+    but the original four must never drop out of coverage."""
+    assert {"FIRESIDE_ENABLED", "REPERTOIRE_ENABLED",
+            "INVOICE_PAYLINK_ENABLED", "SCAN_REQUEST_ENABLED"} <= set(S.REQUIRED_ON)
 
 
 def test_all_on_reports_nothing():
@@ -80,8 +82,9 @@ def test_unwatched_flag_being_off_is_not_a_failure():
     """59 flags are deliberately unwatched; several are meant to be off. A watchdog that
     cries wolf gets ignored — which is how this incident stayed invisible."""
     p = _payload(**{n: _on() for n in S.REQUIRED_ON})
-    p["data"]["flags"]["TWO_DOOR_ENABLED"] = {"value": False, "env_present": True,
-                                              "source": "import"}
+    # JOURNEY_QUEST_ENABLED is genuinely outside the baseline (TWO_DOOR_ENABLED is now IN it).
+    p["data"]["flags"]["JOURNEY_QUEST_ENABLED"] = {"value": False, "env_present": True,
+                                                   "source": "import"}
     assert S.check_flags("https://x.test", "k", fetch=_fetch_ok(p)) == []
 
 
