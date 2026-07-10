@@ -1026,6 +1026,32 @@ function render(d, v){
     }
   }
 
+  // Your scan's own matches, straight from E4L. Free, and orderable.
+  // Infoceuticals get an order link to the new-style product page. miHealth cycles
+  // (ER/MR) are what your practitioner runs on the device — shown, never a button.
+  if (d.scan_recommendations) {
+    const sr = d.scan_recommendations;
+    let s = `<div class="card scanrec-card">
+      <h2>What your scan matched</h2>
+      <p class="muted" style="margin:0 0 .7rem">From your voice scan on ${esc(fmtDate(sr.scan_date))}.</p>`;
+    if (sr.infoceuticals.length) {
+      s += `<p style="margin:.2rem 0 .4rem"><strong>Your infoceuticals</strong></p>`;
+      s += sr.infoceuticals.map(i => {
+        const name = esc(i.label);
+        const days = i.protocol_days ? ` <span class="muted">· ${i.protocol_days}-day protocol</span>` : "";
+        return i.order_url
+          ? `<p style="margin:.25rem 0">${name}${days} — <a href="${esc(i.order_url)}">order</a></p>`
+          : `<p style="margin:.25rem 0">${name}${days}</p>`;
+      }).join("");
+    }
+    if (sr.mihealth.length) {
+      s += `<p class="muted" style="margin:.9rem 0 .3rem">miHealth cycles — these are run on the device by your practitioner, not taken as drops.</p>`;
+      s += sr.mihealth.map(m => `<p class="muted" style="margin:.2rem 0;font-size:.9em">${esc(m.code)} ${esc(m.label)}</p>`).join("");
+    }
+    s += `</div>`;
+    html += s;
+  }
+
   // Scan history — every E4L scan date (A: read-only; B: request-analysis button + states).
   if (d.available_scans && d.available_scans.length) {
     let rows = "";
