@@ -520,9 +520,18 @@ async function load(){
   // /me home lives on its session (the view), and biofield content is optional.
   const fetchJson = async (u)=>{ try{ const r=await fetch(u); return r.ok?await r.json():null; }catch(e){ return null; } };
   // When a specific scan is selected, both endpoints take ?scan_date=<YYYY-MM-DD>.
+  // The content endpoint ALSO takes ?member= — without it the caregiver's switcher
+  // reloads the page, highlights the member's tab, and re-fetches the PRIMARY's
+  // report. /view stays primary-scoped on purpose: account + orders belong to the
+  // token holder, only the biofield follows the member.
+  const q = new URLSearchParams();
+  if (selectedScanDate) q.set("scan_date", selectedScanDate);
+  const memberParam = new URLSearchParams(location.search).get("member");
   const sd = selectedScanDate ? `?scan_date=${encodeURIComponent(selectedScanDate)}` : "";
+  if (memberParam) q.set("member", memberParam);
+  const dq = q.toString() ? `?${q.toString()}` : "";
   const [data, view] = await Promise.all([
-    fetchJson(`/api/portal/${encodeURIComponent(seg)}${sd}`),
+    fetchJson(`/api/portal/${encodeURIComponent(seg)}${dq}`),
     fetchJson(`/api/portal/${encodeURIComponent(seg)}/view${sd}`),
   ]);
   const ok = isMe ? !!view : !!data;
@@ -853,10 +862,16 @@ function render(d, v){
   // states reveal the patterns and a two-click path to request the matches.
   // Prefer the status-aware view block; fall back to the legacy flat content
   // (treated as confirmed) so older token links keep rendering fully.
+  // EXCEPT when viewing a household member: /view is keyed on the token holder's
+  // person_id and knows nothing about ?member=, so preferring v.biofield here
+  // rendered the CAREGIVER's report under the member's name. The content payload
+  // (d) is the member-aware one; on a member tab it wins, and its own blur governs.
+  const viewingMember = !!new URLSearchParams(location.search).get("member");
   const bf = isPending ? null
-    : (v && v.biofield && v.biofield.visible) ? v.biofield
+    : (!viewingMember && v && v.biofield && v.biofield.visible) ? v.biofield
     : (Array.isArray(d.layers) && d.layers.length
-        ? {visible:true, status:"confirmed", blurred:false, layers:d.layers, pricing_note:d.pricing_note||""}
+        ? {visible:true, status:d.biofield_status||"confirmed", blurred:!!d.blurred,
+           layers:d.layers, pricing_note:d.pricing_note||""}
         : null);
   if(bf){
     const status = bf.status || "confirmed";
