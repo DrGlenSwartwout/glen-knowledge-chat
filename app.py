@@ -15162,9 +15162,27 @@ def _current_scan_date_for(email):
 
 def _ff_covered(cx, email):
     """Whether this client's FF matches are already paid/covered (Slice 3c gates
-    dosing visibility on this). Stub for Slice 3b — always False, so every draft
-    stays dosing-stripped until 3c wires the real entitlement check."""
-    return False
+    dosing visibility on this). Real entitlement check: a paid Biofield Analysis
+    on record, OR an active membership, OR (when FAMILY_PLAN_ENABLED) a
+    caregiver's Family Plan covering this email. Mirrors
+    _portal_biofield_unlocked's inner test, minus the paid-gate flag itself —
+    coverage is about entitlement, not whether the blur flag is on. Fail-closed
+    (False) on any error."""
+    try:
+        email = (email or "").strip().lower()
+        if not email:
+            return False
+        if _has_paid_biofield(email):
+            return True
+        if _active_membership_for_email(email):
+            return True
+        if _family_plan_enabled():
+            from dashboard import family_plan as _fp
+            _fp.init_family_plan_table(cx)
+            return bool(_fp.covers(cx, email))
+        return False
+    except Exception:
+        return False
 
 
 def _portal_options_for(email):
@@ -16444,6 +16462,41 @@ def api_portal_ff_matches(token):
             items = [{k: v for k, v in it.items() if k != "dosing"} for it in items]
         return jsonify({"ff_matches": {"kind": "ff", "items": items, "reviewed": reviewed,
                                         "covered": covered, "scan_date": scan_date}})
+
+
+@app.route("/api/console/ff-match-drafts", methods=["GET"])
+def api_console_ff_match_drafts_list():
+    """Owner console: list FF-match drafts for review (Slice 3c). Optional
+    ?status= filter (e.g. 'draft' or 'published')."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ff_match_drafts.init_table(cx)
+        drafts = ff_match_drafts.list_by_status(cx, request.args.get("status"))
+    return jsonify({"drafts": drafts})
+
+
+@app.route("/api/console/ff-match-drafts/publish", methods=["POST"])
+def api_console_ff_match_drafts_publish():
+    """Owner console: publish an FF-match draft, optionally editing its items
+    first (Glen's review pass — e.g. adding a `dosing` field per item). If
+    `items` is present in the body, it is stored via set_items BEFORE
+    publishing, so the published draft reflects the edit."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    scan_date = body.get("scan_date") or ""
+    if not email or not scan_date:
+        return jsonify({"error": "email and scan_date required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ff_match_drafts.init_table(cx)
+        if "items" in body:
+            ff_match_drafts.set_items(cx, email, scan_date, body.get("items"))
+        published = ff_match_drafts.publish(cx, email, scan_date)
+    return jsonify({"published": bool(published)})
 
 
 @app.route("/portal/<token>/analyze")
