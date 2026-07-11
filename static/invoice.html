@@ -101,7 +101,7 @@
     <h2>Items</h2>
     <div id="lines"></div>
     <div class="row-add" id="add-row" style="display:none">
-      <select id="add-sel"><option value="">+ add a product…</option></select>
+      <input id="add-search" type="text" placeholder="type to filter…" autocomplete="off" style="margin-right:6px"><select id="add-sel"><option value="">+ add a product…</option></select>
       <button class="ghost" onclick="addProduct()">Add</button>
     </div>
   </div>
@@ -256,7 +256,9 @@ async function load() {
     }
   }
 
-  try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd(); } catch(e){}
+  try { const cr = await fetch('/api/products?all=1'); CATALOG = (await cr.json()).products||[]; fillAdd();
+    if($('add-search')) $('add-search').addEventListener('input', fillAdd);
+  } catch(e){}
 }
 
 // ── Print / Save-as-PDF: a self-contained invoice (logo header + line items +
@@ -404,8 +406,11 @@ async function applyPlan(forever, btn){
   }catch(e){ $('savings-msg').textContent='Network error — please try again.'; if(btn) btn.disabled=false; }
 }
 function row(label, v, raw){ return '<div class="row"><span>'+label+'</span><span>'+(raw?v:money(v))+'</span></div>'; }
-function fillAdd(){ $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +
-  CATALOG.map(p=>'<option value="'+p.slug+'">'+esc(p.name)+' — '+money(p.price_cents||0)+'</option>').join(''); }
+function fillAdd(){
+  var q=(($('add-search')&&$('add-search').value)||'').trim().toLowerCase();
+  var list=q?CATALOG.filter(function(p){return ((p.name||'')+' '+(p.slug||'')).toLowerCase().indexOf(q)>=0;}):CATALOG;
+  $('add-sel').innerHTML = '<option value="">+ add a product…</option>' +
+    list.map(function(p){return '<option value="'+p.slug+'">'+esc(p.name)+' — '+money(p.price_cents||0)+'</option>';}).join(''); }
 function bump(i,d){ LINES[i].qty=Math.max(0,LINES[i].qty+d); pushUpdate(); }
 function setQty(i,v){ LINES[i].qty=Math.max(0,parseInt(v)||0); pushUpdate(); }
 function addProduct(){ const s=$('add-sel').value; if(!s)return; const p=CATALOG.find(x=>x.slug===s);
