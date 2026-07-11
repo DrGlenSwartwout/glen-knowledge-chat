@@ -5941,6 +5941,20 @@
       "description": "Near-infrared intranasal photobiomodulation clip.",
       "source": "manual-add-2026-07-10"
     },
+    "therapeutic-nightlight": {
+      "name": "Therapeutic Nightlight",
+      "price_cents": 20000,
+      "bottle_type": "nightlight",
+      "description": "Therapeutic nightlight — biocompatible, low-blue-light spectrum for restful sleep.",
+      "source": "manual-add-2026-07-11"
+    },
+    "biocompatible-nightlight": {
+      "name": "Biocompatible Nightlight",
+      "price_cents": 5000,
+      "bottle_type": "nightlight",
+      "description": "Biocompatible nightlight — low-blue-light spectrum that does not disrupt melatonin.",
+      "source": "manual-add-2026-07-11"
+    },
     "book-refreshing-vision": {
       "name": "Refreshing Vision (book)",
       "price_cents": 1997,
