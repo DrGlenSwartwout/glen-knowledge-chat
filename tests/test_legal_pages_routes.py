@@ -46,6 +46,14 @@ def test_terms_contains_dependent_coverage_clause():
     assert "those in your care" in body
 
 
+def test_terms_age_section_harmonizes_with_dependent_coverage():
+    # The flat "18+ only" age language must not contradict the managed-account path:
+    # an adult may manage a dependent's account, with the adult as the bound party.
+    app_module = _load_app()
+    body = app_module.app.test_client().get("/terms").get_data(as_text=True)
+    assert "the adult is the party who agrees to and is bound by these Terms" in body
+
+
 def test_privacy_page_served_200():
     app_module = _load_app()
     r = app_module.app.test_client().get("/privacy")
