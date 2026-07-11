@@ -22938,6 +22938,32 @@ def _log_inbound_lead(source, email, first_name, last_name, phone, raw, ghl_resu
         cx.commit()
 
 
+def _record_webhook_debug(source, raw, headers=None):
+    """Best-effort: persist a raw inbound webhook body for diagnosis, captured on
+    EVERY hit — including ones the handler later rejects (e.g. GrooveKart order
+    webhooks that 400 on 'No email in payload' because the field names don't match).
+    Lets us see the real payload and fix the mapping. Self-creating table; never
+    raises into the webhook path."""
+    try:
+        ts = datetime.now(timezone.utc).isoformat()
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("""
+                CREATE TABLE IF NOT EXISTS webhook_debug (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    received_at TEXT NOT NULL,
+                    source      TEXT NOT NULL,
+                    headers     TEXT,
+                    raw         TEXT
+                )
+            """)
+            cx.execute(
+                "INSERT INTO webhook_debug (received_at, source, headers, raw) VALUES (?,?,?,?)",
+                (ts, source, (headers or "")[:4000], (raw or "")[:40000]))
+            cx.commit()
+    except Exception as e:
+        print(f"[webhook-debug] record failed: {e!r}", flush=True)
+
+
 # ── GHL sync endpoint (for local-machine sync when Cloudflare blocks Render→GHL) ──
 @app.route("/leads/pending-ghl", methods=["GET"])
 def leads_pending_ghl():
@@ -24041,7 +24067,11 @@ def scoreapp_webhook():
 @app.route("/webhook/groovekart", methods=["POST"])
 def groovekart_webhook():
     """GrooveKart order → GHL E4L pipeline with purchase tag."""
-    data  = request.get_json(force=True) or {}
+    # Capture the raw body FIRST (best-effort), so a payload we can't parse still
+    # gets recorded for diagnosis instead of vanishing behind the 400 below.
+    _record_webhook_debug("groovekart", request.get_data(as_text=True),
+                          headers=str(dict(request.headers)))
+    data  = request.get_json(force=True, silent=True) or {}
 
     # Support multiple GrooveKart webhook payload formats
     customer = data.get("customer") or data.get("billing_address") or data
@@ -29251,6 +29281,29 @@ from dashboard import sourcing as _sourcing
 @app.route("/dashboard")
 def dashboard_page():
     return send_from_directory(STATIC, "dashboard.html")
+
+
+@app.route("/api/console/webhook-debug")
+@require_console_key
+def api_webhook_debug():
+    """Recent raw inbound webhook bodies (see _record_webhook_debug). Read-only
+    diagnostic: ?source=groovekart&limit=10 -> the actual payloads GrooveKart POSTs,
+    so we can map its field names. Self-creates the table so a fresh DB is fine."""
+    try:
+        source = (request.args.get("source") or "").strip()
+        limit = max(1, min(int(request.args.get("limit") or 10), 50))
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            cx.execute("""CREATE TABLE IF NOT EXISTS webhook_debug (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT NOT NULL,
+                source TEXT NOT NULL, headers TEXT, raw TEXT)""")
+            q = ("SELECT id, received_at, source, headers, raw FROM webhook_debug "
+                 + ("WHERE source=? " if source else "")
+                 + "ORDER BY id DESC LIMIT ?")
+            args = ((source, limit) if source else (limit,))
+            rows = cx.execute(q, args).fetchall()
+        return ok([dict(r) for r in rows])
+    except Exception as e: return fail(e)
 
 
 @app.route("/api/money/today")
