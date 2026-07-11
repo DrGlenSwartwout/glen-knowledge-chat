@@ -555,12 +555,88 @@ def _build_reply_message(thread: dict, body: str, override_to: Optional[str] = N
     return {"raw": raw, "threadId": thread.get("id")}
 
 
+# ── Send throttle + rate-limit backoff + undeliverable-recipient guard ─────────
+# drglenswartwout@gmail.com is a CONSUMER Gmail account (~500 sends/day). A burst — or
+# a backfill sweeping seed/test records — trips the per-user "Mail sending" limit and
+# starves real mail (e.g. a client invoice). Every send goes through _execute_send: a
+# process-wide min-interval throttle smooths bursts, and a bounded backoff retries a
+# short transient 429 while failing fast on the daily-cap 429 (retry-after minutes out)
+# so an interactive send never hangs for minutes.
+import time as _time
+import threading as _threading
+
+_send_lock = _threading.Lock()
+_last_send_ts = [0.0]
+_MIN_SEND_INTERVAL = 1.1  # seconds between sends, process-wide → ≤ ~54/min
+
+# RFC 2606 reserved domains + never-deliverable TLDs: guaranteed to bounce.
+_RESERVED_EMAIL_DOMAINS = {"example.com", "example.org", "example.net"}
+_RESERVED_EMAIL_TLDS = (".test", ".invalid", ".localhost", ".example")
+# Seed/demo rows that leaked into prod and get swept up by backfills (verified as
+# non-clients 2026-07-10). The real fix is removing/suppressing those rows; skipping
+# here stops them burning the daily send quota in the meantime.
+_SEED_SKIP_ADDRESSES = {
+    "a@b.com", "c@b.com", "t@x.com", "p@x.com", "pat@x.com", "pat2@x.com",
+    "solo@x.com", "buyer@x.com", "studio@example.com",
+}
+
+
+def _is_undeliverable(email: str) -> bool:
+    e = (email or "").strip().lower()
+    if "@" not in e or " " in e:
+        return True
+    if e in _SEED_SKIP_ADDRESSES:
+        return True
+    dom = e.rsplit("@", 1)[-1]
+    return dom in _RESERVED_EMAIL_DOMAINS or dom.endswith(_RESERVED_EMAIL_TLDS)
+
+
+def _retry_after_secs(msg: str) -> float:
+    m = _re.search(r"Retry after (\d{4}-\d\d-\d\dT[\d:.]+Z)", msg or "")
+    if not m:
+        return 0.0
+    try:
+        t = datetime.fromisoformat(m.group(1).replace("Z", "+00:00"))
+        return max(0.0, (t - datetime.now(timezone.utc)).total_seconds())
+    except Exception:
+        return 0.0
+
+
+def _throttle() -> None:
+    with _send_lock:
+        wait = _MIN_SEND_INTERVAL - (_time.monotonic() - _last_send_ts[0])
+        if wait > 0:
+            _time.sleep(wait)
+        _last_send_ts[0] = _time.monotonic()
+
+
+def _execute_send(svc, body: dict) -> dict:
+    """messages().send with a process-wide throttle + bounded 429 backoff. Retries a
+    short transient rate limit; on the daily-cap 429 (retry-after >60s out) or once the
+    retries are spent, re-raises so the caller surfaces it — never hang for minutes."""
+    from googleapiclient.errors import HttpError
+    delays = (2, 5, 10)
+    attempt = 0
+    while True:
+        _throttle()
+        try:
+            return svc.users().messages().send(userId="me", body=body).execute()
+        except HttpError as e:
+            status = getattr(getattr(e, "resp", None), "status", None)
+            txt = str(e)
+            rate = status == 429 or "rateLimitExceeded" in txt or "rate limit" in txt.lower()
+            if not rate or _retry_after_secs(txt) > 60 or attempt >= len(delays):
+                raise
+            _time.sleep(delays[attempt])
+            attempt += 1
+
+
 def send_reply(thread_id: str, body: str, override_to: Optional[str] = None) -> dict:
     """Send a plain-text reply on `thread_id`. Returns the sent message metadata."""
     svc = _get_gmail_service()
     thread = svc.users().threads().get(userId="me", id=thread_id, format="full").execute()
     payload = _build_reply_message(thread, body, override_to=override_to)
-    sent = svc.users().messages().send(userId="me", body=payload).execute()
+    sent = _execute_send(svc, payload)
     return {"id": sent.get("id"), "threadId": sent.get("threadId"), "labels": sent.get("labelIds", [])}
 
 
@@ -586,6 +662,9 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
                 return {"skipped": "suppressed"}
     except Exception as _e:  # noqa: BLE001 — never block a send on a check failure
         print(f"[suppress-check] skipped: {_e!r}", flush=True)
+    if _is_undeliverable(to_email):
+        print(f"[undeliverable] skip send to {to_email!r}", flush=True)
+        return {"skipped": "undeliverable"}
     svc = _get_gmail_service()
     if html:
         from email.mime.multipart import MIMEMultipart
@@ -600,7 +679,7 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
         # Optional display name; the From address is whatever the OAuth account is
         mime["From"] = f'"{from_name}"'
     raw = base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii")
-    sent = svc.users().messages().send(userId="me", body={"raw": raw}).execute()
+    sent = _execute_send(svc, {"raw": raw})
     return {"id": sent.get("id"), "threadId": sent.get("threadId")}
 
 
