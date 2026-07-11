@@ -5528,6 +5528,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     country = (ship.get("country") or "US").strip().upper()
     settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
+    flat_ship_cents = 0   # sum of per-product fixed shipping overrides (own-parcel items)
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
         if not p:
@@ -5551,7 +5552,15 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # "default" placeholder into quote(), which raises UnknownBottleType and
         # drops the whole cart to the coarse qty rule — charging a phantom bottle.
         if _shipping.is_shippable(p):
-            if p.get("bundle"):
+            _flat = int(p.get("flat_shipping_cents") or 0)
+            if _flat > 0 and not p.get("bundle"):
+                # Own-parcel item with a FIXED shipping charge (e.g. the water ionizers,
+                # which each ship in their own box). Bill the flat rate per unit and keep
+                # it OUT of the box packer: its bottle_type is own-box, which quote()
+                # can't fit → the qty fallback would otherwise undercharge a heavy device
+                # at the Small-box rate. Still counts as a shipment for the US-only guard.
+                flat_ship_cents += _flat * qty
+            elif p.get("bundle"):
                 # A bundle is ONE line holding several bottles and has no bottle_type
                 # of its own. Pack its CONTENTS, or it counts as one bottle: undersized
                 # box, undercharged shipping. Price is untouched — the bundle's own
@@ -5573,7 +5582,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                 total_bottles += qty
     # US-only shipping — but only a cart with something to ship has an opinion
     # about the address. An overseas client buying a service prices fine.
-    if box_counts and country not in ("US", "USA", ""):
+    if (box_counts or flat_ship_cents) and country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
                               subscriber_tier_pct=subscriber_tier_pct, channel=channel,
@@ -5582,7 +5591,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               tax_fn=_tax.compute_get_cents,
                               program_member=bool(program_member),
                               repertoire_slugs=rep_slugs)
-    shipping_cents = _shipping_for_cart(box_counts, total_bottles)
+    shipping_cents = flat_ship_cents + _shipping_for_cart(box_counts, total_bottles)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
         "subtotal_list_cents": subtotal_list,

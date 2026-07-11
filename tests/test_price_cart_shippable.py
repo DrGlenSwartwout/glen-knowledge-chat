@@ -106,3 +106,61 @@ def test_overseas_cart_with_a_bottle_still_raises():
     with pytest.raises(app.CheckoutError):
         app._price_cart([{"slug": "neuro-magnesium", "qty": 1}],
                         ship={"name": "T", "country": "AU"}, channel="retail")
+
+
+_IONIZER = "water-ionizer-5plate"
+
+
+def test_flat_shipping_bills_fixed_rate_and_skips_the_packer(monkeypatch):
+    """A water ionizer carries flat_shipping_cents=10000 and ships in its own box.
+    It must bill exactly $100 and NEVER reach the box packer: its bottle_type is
+    own-box, which quote() can't fit, so the qty fallback would otherwise
+    undercharge this ~$2,600 device at the Small-box rate (~$13)."""
+    assert int(app._get_product(_IONIZER).get("flat_shipping_cents") or 0) == 10000
+
+    seen = []
+    real_quote = app._shipping.quote
+    def _spy(box_counts, *a, **kw):
+        seen.append(dict(box_counts))
+        return real_quote(box_counts, *a, **kw)
+    monkeypatch.setattr(app._shipping, "quote", _spy)
+
+    pc = app._price_cart([{"slug": _IONIZER, "qty": 1}], ship=US, channel="retail")
+    assert pc["shipping_cents"] == 10000
+    # own-box must never have been packed (the packer either wasn't called, or was
+    # called only with a box_counts that excludes the ionizer's own-box type).
+    assert all("own-box" not in bc for bc in seen)
+
+
+def test_flat_shipping_is_per_unit():
+    """Each ionizer ships its own box, so two bill $200."""
+    pc = app._price_cart([{"slug": _IONIZER, "qty": 2}], ship=US, channel="retail")
+    assert pc["shipping_cents"] == 20000
+
+
+def test_flat_shipping_adds_on_top_of_box_rate():
+    """A mixed cart bills the flat ionizer rate PLUS the real box rate for the
+    bottles — derived from quote() on the bottle line alone, never hardcoded."""
+    bottle, bqty = "neuro-magnesium", 3
+    bt = app._shipping.resolve_bottle_type(bottle, app._get_product(bottle))
+    box = app._shipping.quote({bt: bqty})
+    assert not box.get("error") and box["shipping_cents"] > 0
+    pc = app._price_cart(
+        [{"slug": _IONIZER, "qty": 1}, {"slug": bottle, "qty": bqty}],
+        ship=US, channel="retail")
+    assert pc["shipping_cents"] == 10000 + box["shipping_cents"]
+
+
+def test_flat_shipping_item_is_still_us_only():
+    """A flat-rate physical good is still a shipment: the US-only guard holds even
+    though it never enters box_counts."""
+    with pytest.raises(app.CheckoutError):
+        app._price_cart([{"slug": _IONIZER, "qty": 1}],
+                        ship={"name": "T", "country": "AU"}, channel="retail")
+
+
+def test_flat_shipping_zeroed_on_pickup():
+    """Pickup has no shipment, so effective_shipping_cents zeroes the flat rate too."""
+    res = app._price_inhouse_invoice(
+        [{"slug": _IONIZER, "qty": 1}], email="", pickup=True, ship=US)
+    assert res["shipping_cents"] == 0
