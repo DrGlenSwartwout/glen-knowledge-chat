@@ -1,0 +1,47 @@
+"""Pure logic for the product-page related-products section. No I/O here so it is
+unit-testable without importing app.py (which needs pinecone)."""
+
+DO_NOT_RECOMMEND = frozenset({
+    "electrolyte-mineral-manna",
+    "water-ionizer-5plate", "water-ionizer-9plate", "water-ionizer-15plate",
+    "fungifuge",
+})
+
+
+def guardrail_ok(slug, base_slug, products):
+    """Auto-list gate: real, sellable, not the product itself, not blocked."""
+    if not slug or slug == base_slug:
+        return False
+    p = products.get(slug)
+    if p is None or p.get("inactive"):
+        return False
+    if slug in DO_NOT_RECOMMEND:
+        return False
+    return True
+
+
+def resolve_related(base_slug, *, manual, harvested, semantic, products, cap=12):
+    """Merge the three sources into {featured, more}. Manual picks bypass the
+    guardrail (Glen's explicit choice) and lead; auto = harvested then semantic,
+    guardrail-filtered, deduped, capped at `cap`."""
+    seen = set()
+    featured_manual = []
+    for s in manual:
+        if s and s != base_slug and s not in seen and s in products:
+            seen.add(s)
+            featured_manual.append(s)
+
+    auto = []
+    for s in list(harvested) + list(semantic):
+        if s in seen or not guardrail_ok(s, base_slug, products):
+            continue
+        seen.add(s)
+        auto.append(s)
+        if len(auto) >= cap:
+            break
+
+    if not featured_manual and not auto:
+        return {"featured": [], "more": []}
+    featured = featured_manual + auto[:1]
+    more = auto[1:]
+    return {"featured": featured, "more": more}
