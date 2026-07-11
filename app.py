@@ -18181,6 +18181,33 @@ def api_console_portal_set_current():
     return jsonify({"ok": True})
 
 
+@app.route("/api/console/portal/notify-scan", methods=["POST"])
+def api_console_portal_notify_scan():
+    """Operator confirm-to-send: email the client that a new analysis is ready.
+    Sends via inbox.send_bulk (GHL-v2/Mailgun domain), never the Gmail-first
+    _send_full_report_email path — keeps the consumer-Gmail daily quota for
+    transactional mail. Gated by PORTAL_SCAN_NOTIFY_ENABLED and the client's
+    notify_state opt status (never sends when opted out)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    if not _portal_scan_notify_enabled():
+        return jsonify({"ok": True, "sent": False, "reason": "flag off"})
+    from dashboard import client_portal as _cp, notify_state as _ns, inbox as _inbox
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if _ns.get_state(cx, email).get("opt_status") == "out":
+            return jsonify({"ok": True, "sent": False, "reason": "opted out"})
+        link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+    subject = "Your new analysis is ready"
+    body = ("Aloha,\n\nYour newest analysis is ready in your portal.\n\n"
+            f"{link}\n\nIn wellness,\nDr. Glen & Rae")
+    _inbox.send_bulk(email, subject, body, from_name="Dr. Glen & Rae")
+    return jsonify({"ok": True, "sent": True})
+
+
 @app.route("/api/console/consult-ready", methods=["POST"])
 def api_console_consult_ready():
     if not _portal_console_ok():
