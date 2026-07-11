@@ -1,0 +1,146 @@
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FF Match Review</title>
+<style>
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594;
+         --gold:#d4a843; --green:#7fd6a0; --amber:#e0b96b; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--cream);
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1{ margin:18px 24px 2px; font-size:22px; }
+  .sub{ margin:0 24px 14px; color:var(--muted); font-size:13px; }
+  .grid{ margin:0 24px 48px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(380px,1fr)); }
+  .dcard{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .dhead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .dhead b{ font-size:15px; } .email{ color:#9db4ff; font-size:12px; margin-left:6px; }
+  .scandate{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .item{ border-top:1px solid var(--border); padding:10px 0; }
+  .item:first-of-type{ border-top:none; }
+  .iname{ font-weight:600; font-size:14px; }
+  .imeaning{ color:var(--muted); font-size:12.5px; margin:4px 0; }
+  label.flabel{ display:block; color:var(--muted); font-size:11.5px; margin-top:6px; }
+  .item input, .item textarea{ width:100%; padding:6px 8px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; font-family:inherit; }
+  .actions{ margin-top:12px; display:flex; align-items:center; gap:10px; }
+  button.publish{ padding:8px 14px; border-radius:8px; border:1px solid var(--gold);
+         background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; font-size:13px; }
+  button.publish:hover{ filter:brightness(1.08); }
+  button.publish:disabled{ opacity:0.6; cursor:default; }
+  .status{ font-size:12px; color:var(--muted); }
+  .status.err{ color:#e08a8a; }
+  .status.ok{ color:var(--green); }
+  .empty{ margin:24px; color:var(--muted); font-size:16px; }
+  #keybox{ margin:24px; }
+  #keybox input{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+                 background:var(--surface); color:var(--cream); min-width:260px; }
+  #keybox button{ padding:9px 13px; border-radius:8px; border:1px solid var(--gold);
+                  background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
+</style>
+<script src="/static/op-nav.js" data-active="clinical"></script>
+<h1>FF Match Review</h1>
+<p class="sub">Functional Formulation matches generated per scan, awaiting Dr. Glen's review. Edit meaning/dosing per item, then publish — the draft drops off this list once published.</p>
+<div id="content"><p class="sub">Loading…</p></div>
+<div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; boot(); }
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function itemBlock(di, ii, it){
+    var title = it.name || it.label || '(unnamed)';
+    return '<div class="item" data-di="'+di+'" data-ii="'+ii+'">'
+      + '<div class="iname">'+esc(title)+'</div>'
+      + '<label class="flabel">Meaning</label>'
+      + '<textarea rows="2" class="f-meaning">'+esc(it.meaning||'')+'</textarea>'
+      + '<label class="flabel">Dosing</label>'
+      + '<input type="text" class="f-dosing" placeholder="e.g. 2 caps twice daily" value="'+esc(it.dosing||'')+'">'
+      + '</div>';
+  }
+
+  function card(d, di){
+    var items = d.items || [];
+    var itemsHtml = items.map(function(it, ii){ return itemBlock(di, ii, it); }).join('');
+    return '<div class="dcard" data-di="'+di+'">'
+      + '<div class="dhead"><div><b>FF matches</b><span class="email">'+esc(d.email)+'</span></div>'
+      + '<div class="scandate">scan '+esc(d.scan_date)+'</div></div>'
+      + itemsHtml
+      + '<div class="actions"><button class="publish" data-di="'+di+'">Publish</button>'
+      + '<span class="status" data-di-status="'+di+'"></span></div>'
+      + '</div>';
+  }
+
+  var DRAFTS = [];
+
+  function collectItems(di){
+    var card = document.querySelector('.dcard[data-di="'+di+'"]');
+    var items = DRAFTS[di].items || [];
+    var nodes = card.querySelectorAll('.item');
+    var out = [];
+    nodes.forEach(function(node, ii){
+      var base = items[ii] || {};
+      var copy = {};
+      for (var k in base) { if (Object.prototype.hasOwnProperty.call(base, k)) copy[k] = base[k]; }
+      copy.meaning = node.querySelector('.f-meaning').value;
+      copy.dosing = node.querySelector('.f-dosing').value;
+      out.push(copy);
+    });
+    return out;
+  }
+
+  async function publish(di){
+    var d = DRAFTS[di];
+    var statusEl = document.querySelector('[data-di-status="'+di+'"]');
+    var btn = document.querySelector('button.publish[data-di="'+di+'"]');
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = 'Publishing…';
+    var items = collectItems(di);
+    var r;
+    try {
+      r = await fetch('/api/console/ff-match-drafts/publish', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ email: d.email, scan_date: d.scan_date, items: items })
+      });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; btn.disabled = false; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      statusEl.className = 'status err'; statusEl.textContent = ''; btn.disabled = false; return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j.published) {
+      statusEl.className = 'status ok'; statusEl.textContent = 'Published.';
+      var cardEl = document.querySelector('.dcard[data-di="'+di+'"]');
+      if (cardEl) cardEl.remove();
+      DRAFTS[di] = null;
+      if (!document.querySelector('.dcard')) {
+        document.getElementById('content').innerHTML = '<p class="empty">Nothing left to review — all drafts published. 🌺</p>';
+      }
+    } else {
+      statusEl.className = 'status err'; statusEl.textContent = 'Publish failed.'; btn.disabled = false;
+    }
+  }
+
+  function wireButtons(){
+    document.querySelectorAll('button.publish').forEach(function(btn){
+      btn.addEventListener('click', function(){ publish(Number(btn.getAttribute('data-di'))); });
+    });
+  }
+
+  async function boot(){
+    var r;
+    try { r = await fetch('/api/console/ff-match-drafts?status=draft', { headers: hdr() }); }
+    catch(e){ document.getElementById('content').innerHTML = '<p class="empty">Could not reach the server.</p>'; return; }
+    if (r.status === 401) { document.getElementById('content').innerHTML = ''; document.getElementById('keybox').style.display = 'block'; return; }
+    var j = await r.json();
+    DRAFTS = j.drafts || [];
+    if (!DRAFTS.length) { document.getElementById('content').innerHTML = '<p class="empty">No drafts awaiting review.</p>'; return; }
+    document.getElementById('content').innerHTML = '<div class="grid">' + DRAFTS.map(card).join('') + '</div>';
+    wireButtons();
+  }
+  boot();
+</script>

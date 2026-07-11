@@ -12966,6 +12966,14 @@ def console_handoffs_page():
     return resp
 
 
+@app.route("/console/ff-drafts")
+def console_ff_drafts_page():
+    resp = send_from_directory(STATIC, "console-ff-drafts.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
