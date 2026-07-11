@@ -18350,6 +18350,18 @@ def api_console_portal_set_current():
     return jsonify({"ok": True})
 
 
+@app.route("/api/console/portal/backfill-scan-history", methods=["POST"])
+def api_console_portal_backfill_scan_history():
+    """Operator one-off: materialize current_scan_date (newest) + auto_advance defaults
+    across all portals. Idempotent, preserves pins/opt-outs. Console-guarded."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import portal_scan_backfill as _bf
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        result = _bf.backfill(cx)
+    return jsonify({"ok": True, **result})
+
+
 @app.route("/api/console/portal/notify-scan", methods=["POST"])
 def api_console_portal_notify_scan():
     """Operator confirm-to-send: email the client that a new analysis is ready.
