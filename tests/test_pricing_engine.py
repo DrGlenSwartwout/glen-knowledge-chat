@@ -308,3 +308,61 @@ def test_curve_lands_target_cents_on_6997_list():
         pct = pricing.volume_pct(m, s)
         assert int(round(L * (1 - pct / 100.0))) == cents
     assert pricing.unit_floor_cents({"slug": "ff", "price_cents": L}, L, s, "discount") == 3988
+
+
+# ── FF minimum unit price ($50 floor) ────────────────────────────────────────
+# Glen 2026-07-11: a volume-eligible FF (qty_pricing) never discounts below $50.
+# The 29% ramp lands at $49.68 on $69.97; ff_min_unit_cents clamps it up to $50.
+
+_FF = {"slug": "ff", "price_cents": 6997, "qty_pricing": True}
+
+
+def test_default_has_fifty_dollar_ff_floor():
+    assert pricing.load_settings({})["ff_min_unit_cents"] == 5000
+
+
+def test_ff_discount_floor_is_fifty_dollars():
+    s = pricing.load_settings({})
+    # A volume-eligible FF ($69.97) floors at $50 for DISCOUNTS (not the wholesale $39.88)...
+    assert pricing.unit_floor_cents(_FF, 6997, s, "discount") == 5000
+    # ...but the POINTS floor is untouched (points can redeem below $50).
+    assert pricing.unit_floor_cents(_FF, 6997, s, "points") == 3009  # round(6997*0.43)
+
+
+def test_ff_floor_leaves_non_ff_and_cheap_ff_alone():
+    s = pricing.load_settings({})
+    # non-FF (no qty_pricing): normal wholesale floor
+    assert pricing.unit_floor_cents({"slug": "x", "price_cents": 6997}, 6997, s, "discount") == 3988
+    # a cheap FF listed below $50 keeps its own lower floor + full volume discount
+    cheap = {"slug": "pow", "price_cents": 3498, "qty_pricing": True}
+    assert pricing.unit_floor_cents(cheap, 3498, s, "discount") == round(3498 * 0.57)
+
+
+def test_ff_floor_respects_absolute_wholesale_but_never_below_fifty():
+    s = pricing.load_settings({})
+    # explicit wholesale below $50 is lifted to the $50 FF floor for the retail discount
+    ff_lowwhole = {**_FF, "wholesale_cents": 4200}
+    assert pricing.unit_floor_cents(ff_lowwhole, 6997, s, "discount") == 5000
+    # explicit wholesale above $50 wins (already >= the FF floor)
+    ff_highwhole = {**_FF, "wholesale_cents": 5200}
+    assert pricing.unit_floor_cents(ff_highwhole, 6997, s, "discount") == 5200
+
+
+def _ff_item(qty):
+    return {"slug": "ff", "name": "FF", "qty": qty, "product": _FF,
+            "unit_cents": 6997, "months": qty, "volume_eligible": True}
+
+
+def test_compute_twelve_ff_units_bottom_at_fifty_not_4968():
+    s = pricing.load_settings({})
+    out = pricing.compute([_ff_item(12)], settings=s)
+    assert out["lines"][0]["line_total_cents"] == 5000 * 12   # $50/unit, not $49.68
+    # single unit is unaffected — well above the floor
+    assert pricing.compute([_ff_item(1)], settings=s)["lines"][0]["line_total_cents"] == 6997
+
+
+def test_compute_ff_repertoire_member_also_floors_at_fifty():
+    """The member reorder rate (repertoire_reorder_pct 29% ≈ $49.68) also clamps to $50."""
+    s = pricing.load_settings({})
+    out = pricing.compute([_ff_item(1)], settings=s, repertoire_slugs={"ff"})
+    assert out["lines"][0]["line_total_cents"] == 5000
