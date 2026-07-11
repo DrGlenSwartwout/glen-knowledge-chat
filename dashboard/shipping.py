@@ -85,6 +85,10 @@ PROD_BOTTLE_NAMES = frozenset({
     "100ml", "15ml", "30roll", "handcradle",
     # Created in prod 2026-07-10 (id 17) for the wicking toothbrush (Ø30 x H160).
     "toothbrush",
+    # Created in prod 2026-07-10 (ids 18-20) for device/accessory SKUs. `own-box` is a
+    # generic oversized type: too big for USPS flat rate, so the packer routes it to its
+    # own parcel (never mis-rated, never the "default" placeholder).
+    "harmony-laser", "dowsing-rods", "own-box",
 })
 
 # Types the catalog needs that prod's library lacks. Empty: the last four were created.
@@ -128,6 +132,12 @@ _STANDARD_BOTTLES = [
     # Shipping proxy: a wicking toothbrush is a flat item, not a cylinder. Glen's dims
     # (16 x 3 cm) as a bounding cylinder (Ø30 x H160). Created in prod 2026-07-10 (id 17).
     ("toothbrush", "Wicking toothbrush — 16 x 3 cm (cylinder bounding)", 30, 160),
+    # Device/accessory SKUs, created in prod 2026-07-10 (ids 18-20).
+    ("harmony-laser", "Harmony Laser — 6 x 6 x 20 cm (→ USPS Medium)", 60, 200),
+    ("dowsing-rods", "Dowsing rods — small flat item (assumed ~20 cm)", 35, 200),
+    # Oversized: bigger than the L box on every axis, so pick_box returns None and the
+    # item is quoted as its own parcel. Used for the water ionizer ("ships own box").
+    ("own-box", "Own-parcel oversized item (ships in its own box)", 250, 450),
 ]
 # Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
 # 10mm, which no deployment uses — and it silently changed the geometry of every
