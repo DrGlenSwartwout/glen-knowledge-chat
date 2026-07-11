@@ -33,6 +33,18 @@ def test_prompt_grounds_in_product_name_and_ingredients():
     assert "Longevity" in user
     assert "Resveratrol" in user and "200 mg" in user and "Quercetin" in user
 
+def test_prompt_grounds_device_in_description_without_inventing_ingredients():
+    # A device/tool has no ingredients: the prompt must carry the authored description and
+    # forbid inventing a formula or asking for a missing ingredient stack (that produced
+    # hallucinated nutritional-formula copy + LLM refusals on the nightlight pages).
+    prod = {"name": "Therapeutic Nightlight",
+            "description": "A 660 nm soft-laser red nightlight that supports melatonin.",
+            "ingredients": []}
+    system, user = sc.build_section_prompt("description", prod)
+    assert "devices" in system.lower() and "never invent" in system.lower()
+    assert "660 nm soft-laser red nightlight" in user
+    assert "no ingredient list" in user.lower()
+
 def test_narrative_sections_are_exactly_three():
     assert sc.NARRATIVE_SECTIONS == ("intro", "description", "research")
 
