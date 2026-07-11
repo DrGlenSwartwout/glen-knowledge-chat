@@ -116,7 +116,7 @@ def handle_confirmation(html, msg_id, cx, find_contact, draft_fn, dry_run=True):
         conf = match["confidence"] if match else "none"
         to = match["email"] if (match and conf in ("high", "medium")) else None
         status = "drafted" if to else "needs_review"
-        email = build_tracking_email(s["tracking"], s["recipient_name"])
+        email = build_tracking_email(s["tracking"], s["recipient_name"], resolved_email=to)
 
         draft_id = None
         if dry_run:
