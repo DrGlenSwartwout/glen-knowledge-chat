@@ -50,6 +50,23 @@ def _seed_order(appmod, *, source, email, slugs_qty, status="done", days_ago=1,
         cx.commit()
 
 
+def _seed_purchase_history(appmod, email, rows):
+    """Insert purchase_history slice rows directly. rows: list of
+    (slug, days_ago, source, source_ref) tuples — the consolidated cross-channel
+    record (fmp / groovekart slices) that _portal_reorder_module reads for the
+    storefront display + the 'has this client bought before' (is_reorder) oracle."""
+    from dashboard import purchase_history as ph
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        ph.init_purchase_history_table(cx)
+        for slug, days_ago, source, source_ref in rows:
+            at = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+            cx.execute(
+                "INSERT OR IGNORE INTO purchase_history"
+                "(email, slug, purchased_at, source, source_ref) VALUES (?,?,?,?,?)",
+                (email.strip().lower(), slug, at, source, str(source_ref)))
+        cx.commit()
+
+
 def _seed_active_membership(appmod, email, *, source="founding"):
     expires = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
     with sqlite3.connect(appmod.LOG_DB) as cx:
@@ -72,20 +89,107 @@ def test_reorder_list_has_distinct_skus_from_portal_history(client):
                 slugs_qty=[("nous-energy", 1)], days_ago=5)
     _seed_order(appmod, source="reorder", email=email,
                 slugs_qty=[("neuro-magnesium", 2)], days_ago=10)
-    # Other-channel purchase must NOT appear in the display list (portal-only).
+    # Storefront (GrooveKart) purchase now DOES appear (Glen 2026-07-11 reversal:
+    # clients see ALL their purchases — portal + storefront — not portal-only).
     _seed_order(appmod, source="groovekart", email=email,
                 slugs_qty=[("terrain-restore", 1)], days_ago=3)
-    # Cancelled portal order must be excluded too.
+    # Cancelled portal order must still be excluded.
     _seed_order(appmod, source="reorder", email=email,
                 slugs_qty=[("nous-energy", 9)], days_ago=1, status="cancelled")
 
     j = c.get(f"/api/portal/{tok}").get_json()
     slugs = {r["slug"] for r in j["reorder"]}
-    assert slugs == {"nous-energy", "neuro-magnesium"}
+    assert slugs == {"nous-energy", "neuro-magnesium", "terrain-restore"}
     row = next(r for r in j["reorder"] if r["slug"] == "neuro-magnesium")
     assert row["qty"] == 2
     assert row["name"]
     assert row["regular_cents"] == 6997
+    # provenance channel is carried on every row (frontend maps it to a label).
+    by_slug = {r["slug"]: r for r in j["reorder"]}
+    assert by_slug["nous-energy"]["channel"] == "portal"
+    assert by_slug["neuro-magnesium"]["channel"] == "portal"
+    assert by_slug["terrain-restore"]["channel"] == "storefront"
+
+
+def test_storefront_historical_purchase_from_purchase_history_appears(client):
+    """A pre-webhook GrooveKart order survives only in the purchase_history
+    'groovekart' slice (no orders-table row). It must still show in the portal,
+    labeled storefront, and count as a true reorder (it IS in purchase_history)."""
+    c, appmod = client
+    email = "gkhist@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_purchase_history(appmod, email,
+                           [("terrain-restore", 200, "groovekart", "gk-#1234")])
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    by_slug = {r["slug"]: r for r in j["reorder"]}
+    assert "terrain-restore" in by_slug
+    assert by_slug["terrain-restore"]["channel"] == "storefront"
+    assert by_slug["terrain-restore"]["is_reorder"] is True
+
+
+def test_is_reorder_reflects_purchase_history_membership(client):
+    """`is_reorder` (the 'Reorder' CTA gate) is true iff the SKU is in the
+    client's purchase_history — a portal purchase absent from purchase_history is
+    NOT framed as a reorder; one present in it (any slice, incl. fmp) is."""
+    c, appmod = client
+    email = "reorderflag@example.com"
+    tok = _seed_portal(appmod, email)
+    # nous-energy: portal purchase, and previously bought (fmp slice) -> reorder.
+    _seed_order(appmod, source="reorder", email=email,
+                slugs_qty=[("nous-energy", 1)], days_ago=5)
+    _seed_purchase_history(appmod, email, [("nous-energy", 400, "fmp", "inv-1")])
+    # neuro-magnesium: portal purchase only, never in purchase_history -> not a reorder.
+    _seed_order(appmod, source="portal-reorder", email=email,
+                slugs_qty=[("neuro-magnesium", 1)], days_ago=6)
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    by_slug = {r["slug"]: r for r in j["reorder"]}
+    assert by_slug["nous-energy"]["is_reorder"] is True
+    assert by_slug["neuro-magnesium"]["is_reorder"] is False
+
+
+def test_portal_wins_when_slug_bought_on_both_channels(client):
+    """A SKU bought both on the portal and the storefront shows exactly once,
+    labeled as the portal purchase (portal takes precedence in the dedupe)."""
+    c, appmod = client
+    email = "bothchannels@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_order(appmod, source="reorder", email=email,
+                slugs_qty=[("nous-energy", 2)], days_ago=5)
+    _seed_order(appmod, source="groovekart", email=email,
+                slugs_qty=[("nous-energy", 1)], days_ago=3)
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    rows = [r for r in j["reorder"] if r["slug"] == "nous-energy"]
+    assert len(rows) == 1
+    assert rows[0]["channel"] == "portal"
+    assert rows[0]["qty"] == 2  # from the portal order
+
+
+def test_storefront_display_equals_charge_for_member(client):
+    """display == charge invariant holds for a NEWLY-included storefront slug:
+    a member's your_cents in the payload matches what the real checkout engine
+    (_price_cart) bills for that same slug."""
+    c, appmod = client
+    email = "gkmember@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_active_membership(appmod, email)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        appmod.repertoire.init_repertoire_table(cx)
+        appmod.repertoire.add_skus(cx, email, ["terrain-restore"])
+    _seed_order(appmod, source="groovekart", email=email,
+                slugs_qty=[("terrain-restore", 1)], days_ago=4)
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    row = next(r for r in j["reorder"] if r["slug"] == "terrain-restore")
+    assert row["channel"] == "storefront"
+    assert row["is_member_price"] is True
+    checkout_price = appmod._price_cart(
+        [{"slug": "terrain-restore", "qty": 1}],
+        ship={"country": "US", "state": "TX"}, email=email,
+    )["priced"]["lines"][0]["line_total_cents"]
+    assert row["your_cents"] == checkout_price
 
 
 def test_reorder_dedupes_keeping_most_recent_qty(client):

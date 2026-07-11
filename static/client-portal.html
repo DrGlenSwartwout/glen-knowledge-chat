@@ -189,6 +189,8 @@
   .remitem{padding:9px 0;border-bottom:1px dashed var(--line)}
   .remitem:last-child{border-bottom:0}
   .remitem-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+  .nm-wrap{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .prov{color:var(--muted);font-size:.78rem;letter-spacing:.01em}
   .remitem-bot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:7px}
   .save{color:var(--brand);font-weight:600}
   .qty-ctl{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:2px 4px}
@@ -1349,8 +1351,15 @@ function render(d, v){
       const save = it.is_member_price
         ? `<span class="save small">You save ${esc(money(Math.max(0, regular - yours)))}</span>`
         : `<span></span>`;
+      // Relabel (Glen 2026-07-11 — labels only): provenance by channel, and the
+      // word "Reorder" reserved for a true reorder (a SKU already in the client's
+      // purchase history). A first-time purchase gets a neutral "Order" CTA.
+      const prov = it.channel === "storefront"
+        ? "Ordered on remedymatch.com"
+        : "Ordered on your portal";
+      const cta = it.is_reorder ? "Reorder" : "Order";
       rrows += `<div class="remitem" data-slug="${slug}" data-unit-cents="${yours}">
-        <div class="remitem-top"><span class="nm">${esc(it.name||it.slug||"")}</span><span class="pr">${price}</span></div>
+        <div class="remitem-top"><span class="nm-wrap"><span class="nm">${esc(it.name||it.slug||"")}</span><span class="prov">${esc(prov)}</span></span><span class="pr">${price}</span></div>
         <div class="remitem-bot">
           <span class="qty-ctl">
             <button type="button" class="qtybtn" data-dir="-1" aria-label="Decrease quantity">−</button>
@@ -1358,7 +1367,7 @@ function render(d, v){
             <button type="button" class="qtybtn" data-dir="1" aria-label="Increase quantity">+</button>
           </span>
           ${save}
-          <button class="btn remBtn" data-slug="${slug}">Reorder</button>
+          <button class="btn remBtn" data-slug="${slug}">${esc(cta)}</button>
         </div>
       </div>`;
     });

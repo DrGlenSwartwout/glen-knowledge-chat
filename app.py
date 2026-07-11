@@ -15718,6 +15718,12 @@ def _parse_iso_dt(ts):
 
 
 _PORTAL_CHANNEL_SOURCES = ("portal-reorder", "reorder")
+# Storefront (remedymatch.com / GrooveKart) order channel. Glen 2026-07-11 reversed
+# the old "portal-channel only" display rule: clients now see ALL their purchases in
+# the portal (portal + storefront), consolidated. This is a DISPLAY label boundary
+# only — the `source` data values are never renamed (they carry downstream semantics:
+# coaching.QUALIFYING_SOURCES, filters, pricing).
+_STOREFRONT_CHANNEL_SOURCES = ("groovekart",)
 
 
 def _portal_reorder_module(email):
@@ -15726,10 +15732,22 @@ def _portal_reorder_module(email):
     repertoire-aware pricing engine (dashboard.pricing.compute(), the same
     function _price_cart delegates to — Task 4), plus a personalized non-member
     upsell and forward-framed 'locked' rows for older history a longer
-    commitment would unlock. Display list is portal-channel ONLY (source in
-    'portal-reorder'/'reorder', non-cancelled) per Glen's explicit "bought here,
-    not other channels" — but repertoire PRICING/eligibility stays all-channel
-    (Task 4's design), so a SKU's discount doesn't depend on where it shows up.
+    commitment would unlock.
+
+    CONSOLIDATED DISPLAY (Glen 2026-07-11 — reverses the old "portal-channel only"
+    rule): the reorder list now shows the client's WHOLE purchase record — portal
+    purchases (orders-table 'portal-reorder'/'reorder') AND storefront purchases
+    (orders-table 'groovekart' post-webhook + the purchase_history 'groovekart'
+    slice for historical orders that predate it). Each row carries a `channel`
+    ('portal' | 'storefront') the frontend maps to a provenance label, and an
+    `is_reorder` flag (the SKU is in the client's purchase_history — a TRUE
+    reorder) the frontend uses to reserve the word "Reorder" for real reorders.
+    The `source` DATA values are never renamed — this is a label boundary only.
+    Repertoire PRICING/eligibility stays all-channel (Task 4's design), so a SKU's
+    discount doesn't depend on where it shows up, and storefront rows are priced
+    through the SAME engine as portal rows (display == charge holds for them too).
+    locked_rows + membership_upsell remain portal-channel (the pitch math is
+    unchanged and out of scope for the consolidation).
 
     RESOLVED (Task 5b): /api/portal/<token>/checkout — the ACTUAL checkout endpoint
     wired to the portal's Reorder button — now threads the portal's email through
@@ -15742,6 +15760,7 @@ def _portal_reorder_module(email):
 
     Never raises (caller wraps in try/except); returns {} for a blank email."""
     from dashboard import pricing as _pricing
+    from dashboard import purchase_history as _ph
     email = (email or "").strip().lower()
     if not email:
         return {}
@@ -15753,7 +15772,19 @@ def _portal_reorder_module(email):
         except Exception as e:
             print(f"[portal-reorder] repertoire read failed for {email!r}: {e!r}", flush=True)
             rep_slugs = set()
-        orders = _bos_orders.list_orders_by_email(cx, email, limit=200)
+        try:
+            orders = _bos_orders.list_orders_by_email(cx, email, limit=200)
+        except Exception as e:
+            print(f"[portal-reorder] orders read failed for {email!r}: {e!r}", flush=True)
+            orders = []
+        try:
+            _ph.init_purchase_history_table(cx)  # fresh-DB guard
+            ph_rows = cx.execute(
+                "SELECT slug, purchased_at, source FROM purchase_history WHERE email=?",
+                (email,)).fetchall()
+        except Exception as e:
+            print(f"[portal-reorder] purchase_history read failed for {email!r}: {e!r}", flush=True)
+            ph_rows = []
     # rep_slugs (full/unfiltered) drives the "in your repertoire" DISPLAY flag and
     # the locked_rows "already have it" check below — a non-FF product a member
     # bought IS still in their repertoire, it just isn't member-priced. rep_slugs_ff
@@ -15767,6 +15798,22 @@ def _portal_reorder_module(email):
     portal_orders = [o for o in orders
                      if (o.get("source") in _PORTAL_CHANNEL_SOURCES)
                      and (o.get("status") != "cancelled")]
+
+    # --- purchase_history: the consolidated cross-channel record. `ph_slugs` (all
+    # slices incl. fmp, resolved) is the "has this client bought before" oracle for
+    # the per-row is_reorder flag; `ph_storefront` is the historical GrooveKart
+    # slice (slug -> most-recent purchased_at) that predates the orders-table
+    # webhook and would otherwise never surface. ---
+    ph_slugs, ph_storefront = set(), {}
+    for r in ph_rows:
+        s = _superseded((r["slug"] or "").strip().lower()) or ""
+        if not s:
+            continue
+        ph_slugs.add(s)
+        if r["source"] in _STOREFRONT_CHANNEL_SOURCES:
+            at = r["purchased_at"] or ""
+            if at > ph_storefront.get(s, ""):
+                ph_storefront[s] = at
 
     # --- reorder: distinct SKUs from portal-channel history, most-recent qty
     # wins (orders come back most-recent-first already). ---
@@ -15799,6 +15846,8 @@ def _portal_reorder_module(email):
                 "regular_cents": regular_cents, "your_cents": your_cents,
                 "is_member_price": your_cents < regular_cents,
                 "in_repertoire": in_rep,
+                "channel": "portal",
+                "is_reorder": slug in ph_slugs,
             })
 
     # --- locked_rows: FF SKUs (_qty_eligible — Glen 2026-07: the repertoire
@@ -15864,6 +15913,57 @@ def _portal_reorder_module(email):
     else:
         savings_cents = max(0, spend_30d_cents - member_would_pay_cents)
     net_after_fee_cents = _prepay.MONTHLY_ANCHOR_CENTS - savings_cents
+
+    # --- storefront rows: fold the client's remedymatch.com/GrooveKart purchases
+    # into the same reorder list. Candidates = orders-table 'groovekart' orders
+    # (post-webhook, real qty) + the purchase_history 'groovekart' slice
+    # (historical, qty defaults to 1). Deduped against portal `seen` so a SKU
+    # bought on BOTH channels shows once, labeled portal (portal is processed
+    # first and wins). Priced through the SAME repertoire engine as the portal
+    # rows => display == charge. Appended AFTER locked_rows/upsell so those stay
+    # portal-channel. ---
+    storefront = {}  # slug -> (most_recent_purchased_at, qty)
+    def _consider_storefront(slug, at, qty):
+        cur = storefront.get(slug)
+        if cur is None or at > cur[0]:
+            storefront[slug] = (at, qty)
+    for o in orders:
+        if (o.get("source") not in _STOREFRONT_CHANNEL_SOURCES
+                or o.get("status") == "cancelled"):
+            continue
+        created = o.get("created_at") or ""
+        for it in (o.get("items") or []):
+            slug = _superseded((it.get("slug") or "").strip().lower()) or ""
+            if not slug:
+                continue
+            try:
+                qty = max(1, int(it.get("qty", 1) or 1))
+            except Exception:
+                qty = 1
+            _consider_storefront(slug, created, qty)
+    for slug, at in ph_storefront.items():
+        _consider_storefront(slug, at, 1)  # ph rows carry no qty
+
+    for slug, (_at, qty) in sorted(
+            storefront.items(), key=lambda kv: kv[1][0], reverse=True):
+        if slug in seen:
+            continue  # already shown as a portal purchase
+        p = _get_product(slug)
+        if not p:
+            continue  # dropped/inactive since purchase — not purchasable now
+        seen.add(slug)
+        regular_cents = int(p.get("price_cents") or 0)
+        your_cents = regular_cents
+        if member and slug in rep_slugs_ff:
+            your_cents = _rep_priced_unit_cents(p, repertoire_slugs=rep_slugs_ff, settings=settings)
+        reorder.append({
+            "slug": slug, "name": p.get("name", slug), "qty": qty,
+            "regular_cents": regular_cents, "your_cents": your_cents,
+            "is_member_price": your_cents < regular_cents,
+            "in_repertoire": slug in rep_slugs,
+            "channel": "storefront",
+            "is_reorder": slug in ph_slugs,
+        })
 
     return {
         "reorder": reorder,
