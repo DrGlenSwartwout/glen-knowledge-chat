@@ -15749,13 +15749,15 @@ def _portal_source_label(channel):
     website where it was placed (Glen 2026-07-11 — name the site for clarity,
     e.g. "Ordered on illtowell.com"). Migration-safe: the portal/funnel host is
     read from portal_base()/PUBLIC_BASE_URL at call time, so the myhealingoasis.com
-    portal flip needs no code change here. Clinic/in-office purchases have no
-    storefront URL, so they're named for the practice instead."""
+    portal flip needs no code change here. Clinic purchases (fmp / dispensary /
+    biofield / in-house / wholesale / ...) were placed directly by phone or email
+    with the practice, not a self-serve site, so they're attributed to Healing
+    Oasis rather than a URL (Glen 2026-07-11)."""
     from urllib.parse import urlparse
     if channel == "storefront":
         return "Ordered on remedymatch.com"
     if channel == "clinic":
-        return "Ordered with Dr. Glen"
+        return "Ordered with Healing Oasis"
     if channel == "funnel":
         return f"Ordered on {urlparse(PUBLIC_BASE_URL).hostname or 'illtowell.com'}"
     return f"Ordered on {urlparse(portal_base()).hostname or 'illtowell.com'}"  # portal

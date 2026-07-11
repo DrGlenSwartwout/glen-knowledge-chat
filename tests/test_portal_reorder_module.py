@@ -145,7 +145,7 @@ def test_clinical_fmp_purchase_appears_labeled_clinic(client):
     by_slug = {r["slug"]: r for r in j["reorder"]}
     assert "neuro-magnesium" in by_slug
     assert by_slug["neuro-magnesium"]["channel"] == "clinic"
-    assert by_slug["neuro-magnesium"]["source_label"] == "Ordered with Dr. Glen"
+    assert by_slug["neuro-magnesium"]["source_label"] == "Ordered with Healing Oasis"
     assert by_slug["neuro-magnesium"]["is_reorder"] is True
 
 

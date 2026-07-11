@@ -1354,12 +1354,12 @@ function render(d, v){
       // Relabel (Glen 2026-07-11 — labels only): provenance names the real
       // website the purchase came from (server-computed source_label, e.g.
       // "Ordered on illtowell.com" / "Ordered on remedymatch.com"; clinic
-      // purchases -> "Ordered with Dr. Glen"). The word "Reorder" is reserved for
+      // purchases -> "Ordered with Healing Oasis"). The word "Reorder" is reserved for
       // a true reorder (a SKU already in the client's purchase history); a
       // first-time purchase gets a neutral "Order" CTA.
       const prov = it.source_label
         || (it.channel === "storefront" ? "Ordered on remedymatch.com"
-          : it.channel === "clinic" ? "Ordered with Dr. Glen"
+          : it.channel === "clinic" ? "Ordered with Healing Oasis"
           : "Ordered on illtowell.com");
       const cta = it.is_reorder ? "Reorder" : "Order";
       rrows += `<div class="remitem" data-slug="${slug}" data-unit-cents="${yours}">
