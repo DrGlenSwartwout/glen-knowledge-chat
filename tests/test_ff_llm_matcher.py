@@ -148,9 +148,23 @@ RAW_MATCHES = [
 
 SLUGS = {"Adrenal Restore": "adrenal-restore", "Terrain Restore": "terrain-restore"}
 
+# Both resolve to real, sellable Functional Formulation supplements
+# (qty_pricing True, not info_only) -- i.e. they pass the qty_eligible /
+# distinct-FF gate that `_make_ff_items_for` now applies to every candidate.
+PRODUCTS = {
+    "adrenal-restore": {"slug": "adrenal-restore", "name": "Adrenal Restore",
+                        "qty_pricing": True, "info_only": False},
+    "terrain-restore": {"slug": "terrain-restore", "name": "Terrain Restore",
+                        "qty_pricing": True, "info_only": False},
+}
+
 
 def _resolve(name):
     return SLUGS.get(name)
+
+
+def _get_product(slug):
+    return PRODUCTS.get(slug)
 
 
 @pytest.fixture()
@@ -160,6 +174,7 @@ def make_env(monkeypatch):
     monkeypatch.setattr(app, "_ff_query_specific_formulations",
                          lambda text, top_k: RAW_MATCHES)
     monkeypatch.setattr(app, "_resolve_buy_slug", _resolve)
+    monkeypatch.setattr(app, "_get_product", _get_product)
     return app
 
 

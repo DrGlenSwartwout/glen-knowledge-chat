@@ -15223,14 +15223,29 @@ def _ff_llm_rank(scan_labels, candidates):
         if not findings_text or not candidates_text:
             return None
         prompt = (
-            "You are ranking Functional Formulation products for a client's "
-            "bioenergetic scan findings. Select and rank UP TO 5 of the "
-            "candidate products below that best support this scan's overall "
-            "pattern.\n\n"
+            "You are selecting Dr. Glen's Functional Formulation supplements "
+            "to COMPLEMENT a client's bioenergetic scan. The client already "
+            "sees their own E4L infoceuticals separately on their scan card "
+            "-- your job is to recommend DISTINCT Functional Formulation "
+            "products from the candidate list below, not to repeat what's "
+            "already shown to them. Select and rank UP TO 5 of the candidate "
+            "products that best support the client's PRIMARY terrain / "
+            "organ-system patterns from the scan findings.\n\n"
             "SCAN FINDINGS:\n" + findings_text + "\n\n"
             "CANDIDATE PRODUCTS (choose ONLY from this list, using each "
             "product's exact name as given -- never invent a product not "
             "listed here):\n" + candidates_text + "\n\n"
+            "Ranking guidance:\n"
+            "- Favor BROADLY-EFFECTIVE, foundational, widely-recommended "
+            "formulations that support the client's overall terrain, over "
+            "narrow single-purpose ones -- UNLESS a narrow finding is "
+            "clearly the primary driver of this scan.\n"
+            "- Rank by breadth of benefit combined with fit to the scan; a "
+            "formulation that supports multiple findings should generally "
+            "outrank one that supports only one.\n"
+            "- Prefer a DISTINCT, non-redundant set: avoid picking several "
+            "formulations that all target the exact same single system when "
+            "better breadth is available in the candidate list.\n\n"
             "Safety rules (defense-in-depth -- some of these may already be "
             "excluded from the candidate list above, but never select them "
             "regardless):\n"
@@ -15246,7 +15261,8 @@ def _ff_llm_rank(scan_labels, candidates):
             "Return STRICT JSON ONLY -- no prose, no markdown fence -- a "
             "JSON array of up to 5 objects, each shaped exactly "
             '{"name": "<exact candidate name>", "why": "<one concise '
-            'clinical rationale, no dosing>"}, ordered best-fit first.'
+            'clinical rationale tying the formulation to a scan finding, no '
+            'dosing>"}, ordered best-fit first.'
         )
         msg = _cl.messages.create(
             model="claude-sonnet-5",
@@ -15265,14 +15281,19 @@ def _ff_llm_rank(scan_labels, candidates):
 
 def _make_ff_items_for(email, scan_date=None):
     """Compose this client's scan recommendations into ranked FF product
-    matches: retrieve a broad candidate pool, filter it to a safe/sellable
-    candidate set (never-recommend products excluded via
-    `_ff_auto_excluded`, deduped by slug), then rank via the inline LLM
-    (`_ff_llm_rank`). Falls back to the pure vector path
-    (`ff_matcher.generate_ff_matches`, same exclusions) when the LLM ranking
-    is unavailable or empty. Returns [] when scan recs are off, unknown, or
-    the client has none for this scan. Item shape is always
-    {name, slug, url, meaning} -- NEVER a `dosing` key -- never raises."""
+    matches: retrieve a broad candidate pool, filter it to a DISTINCT,
+    qty-eligible Functional Formulation candidate set (never-recommend
+    products excluded via `_ff_auto_excluded`; the client's own E4L
+    infoceuticals excluded via the `_qty_eligible` gate AND by dropping any
+    slug already on their scan card (`scan_slugs`); deduped by slug), then
+    rank via the inline LLM (`_ff_llm_rank`), biased toward broadly-effective
+    formulations. Falls back to the pure vector path
+    (`ff_matcher.generate_ff_matches`, same exclusions + same qty_eligible/
+    non-scan-slug scoping) when the LLM ranking is unavailable or empty.
+    Returns [] when scan recs are off, unknown, the client has none for this
+    scan, or no distinct qty_eligible FF candidates survive filtering. Item
+    shape is always {name, slug, url, meaning} -- NEVER a `dosing` key --
+    never raises."""
     recs = _scan_recommendations_for(email, scan_date)
     if not recs:
         return []
@@ -15280,14 +15301,32 @@ def _make_ff_items_for(email, scan_date=None):
     if not labels:
         return []
 
-    raw = _ff_query_specific_formulations("; ".join(labels), 30)
+    # Slugs already shown to the client on the scan card (E4L infoceuticals) --
+    # never re-surface these as an FF "match": parse each infoceutical's
+    # order_url ("/begin/product/<slug>") down to its last path segment.
+    scan_slugs = set()
+    for i in (recs.get("infoceuticals") or []):
+        order_url = (i.get("order_url") or "").strip()
+        if not order_url:
+            continue
+        tail = order_url.rstrip("/").rsplit("/", 1)[-1].strip()
+        if tail:
+            scan_slugs.add(tail)
+
+    raw = _ff_query_specific_formulations("; ".join(labels), 80)
     candidates, seen = [], set()
     for r in raw:
         name = ((r.get("metadata") or {}).get("name") or "").strip()
         if not name or _ff_auto_excluded(name):
             continue
         slug = _resolve_buy_slug(name)
-        if not slug or slug in seen:
+        if not slug or slug in seen or slug in scan_slugs:
+            continue
+        p = _get_product(slug)
+        if not p or not _qty_eligible(p):
+            # Excludes the client's own E4L infoceuticals (info_only,
+            # qty_eligible False) -- candidates are scoped to Dr. Glen's
+            # distinct Functional Formulation supplements only.
             continue
         seen.add(slug)
         candidates.append({
@@ -15297,6 +15336,8 @@ def _make_ff_items_for(email, scan_date=None):
             "meaning": ((r.get("metadata") or {}).get("meaning") or "").strip(),
         })
     if not candidates:
+        # No distinct qty_eligible FF candidates survived -- graceful empty,
+        # never fall through to an unfiltered (e.g. E4L-echoing) pool.
         return []
 
     ranked = _ff_llm_rank(labels, candidates)
@@ -15314,13 +15355,26 @@ def _make_ff_items_for(email, scan_date=None):
         if out:
             return out
 
-    # Fallback: pure vector path, same never-recommend exclusions applied
-    # via resolve_slug (an excluded name resolves to None so it's dropped).
+    # Fallback: pure vector path, same never-recommend exclusions PLUS the
+    # same qty_eligible/non-scan-slug scoping applied via resolve_slug (a
+    # name that resolves to an excluded, non-FF, or scan-card slug returns
+    # None so ff_matcher drops it).
+    def _fallback_resolve_slug(n):
+        if _ff_auto_excluded(n):
+            return None
+        slug = _resolve_buy_slug(n)
+        if not slug or slug in scan_slugs:
+            return None
+        p = _get_product(slug)
+        if not p or not _qty_eligible(p):
+            return None
+        return slug
+
     scan_items = [{"label": l, "category": ""} for l in labels]
     return ff_matcher.generate_ff_matches(
         scan_items,
         query_matches=_ff_query_specific_formulations,
-        resolve_slug=lambda n: (None if _ff_auto_excluded(n) else _resolve_buy_slug(n)),
+        resolve_slug=_fallback_resolve_slug,
         destination=order_destination.destination_for,
         top_k=5,
     )
