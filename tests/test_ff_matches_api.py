@@ -94,3 +94,27 @@ def test_unknown_token_404(app_env):
         assert client.post("/api/portal/not-a-real-token/ff-matches").status_code == 404
     finally:
         del os.environ["FF_MATCHES_ENABLED"]
+
+
+def test_not_covered_published_draft_strips_dosing(app_env, monkeypatch):
+    """Critical regression: a not-covered viewer of an already-PUBLISHED draft
+    must still have dosing stripped. _ff_covered stays the default 3b stub
+    (always False) — coverage never enters into it here; the leak was in
+    treating "reviewed" alone as sufficient. Seeds the published draft directly
+    via ff_match_drafts so get_or_create finds the existing row and does NOT
+    regenerate it."""
+    app, client, token = app_env
+    monkeypatch.setenv("FF_MATCHES_ENABLED", "1")
+    from dashboard import ff_match_drafts as ffd
+    scan_date = app._current_scan_date_for(EMAIL)
+    with sqlite3.connect(app.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ffd.init_table(cx)
+        ffd.get_or_create(
+            cx, EMAIL, scan_date,
+            lambda: [{"name": "X", "slug": "x", "url": "/begin/product/x",
+                      "meaning": "m", "score": 0.9, "dosing": "2 caps daily"}])
+        ffd.publish(cx, EMAIL, scan_date)
+    out = client.post(f"/api/portal/{token}/ff-matches").get_json()["ff_matches"]
+    assert out["reviewed"] is True
+    assert all("dosing" not in it for it in out["items"])

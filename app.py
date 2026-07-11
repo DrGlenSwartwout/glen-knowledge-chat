@@ -16409,7 +16409,7 @@ def api_portal_ff_matches(token):
             cx, email, scan_date, lambda: _make_ff_items_for(email, scan_date))
         reviewed = draft["status"] == "published"
         items = draft["items"]
-        if not covered and not reviewed:   # in 3b nobody is covered: strip for everyone
+        if not (covered and reviewed):   # dosing shown only when covered AND reviewed
             items = [{k: v for k, v in it.items() if k != "dosing"} for it in items]
         return jsonify({"ff_matches": {"kind": "ff", "items": items, "reviewed": reviewed,
                                         "covered": covered, "scan_date": scan_date}})
