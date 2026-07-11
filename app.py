@@ -18086,9 +18086,31 @@ def api_console_biofield_publish():
         return jsonify({"error": "Add some content — at least one layer, a video, or a greeting."}), 400
     from dashboard import client_portal as _cp
     # Publishing a report makes it the client's CURRENT one (wins over any older
-    # reveal report regardless of date), and keeps the pointer the hand-off set.
+    # reveal report regardless of date), and keeps the pointer the hand-off set —
+    # UNLESS the client has opted out of auto-advance, in which case their existing
+    # pin must be preserved (upsert_portal REPLACES content_json wholesale, so the
+    # existing current_scan_date has to be carried forward explicitly or it's lost).
     if scan_date:
-        content["current_scan_date"] = scan_date
+        _aa_on = True
+        try:
+            with sqlite3.connect(LOG_DB) as _cx_aa:
+                from dashboard import client_portal as _cp_aa
+                _cp_aa.init_client_portal_table(_cx_aa)
+                _aa_on = _cp_aa.get_auto_advance(_cx_aa, email)
+        except Exception:
+            _aa_on = True
+        if _aa_on:
+            content["current_scan_date"] = scan_date
+        else:
+            _existing = None
+            try:
+                with sqlite3.connect(LOG_DB) as _cx_cur:
+                    from dashboard import client_portal as _cp_cur
+                    _existing = _cp_cur.get_current_scan(_cx_cur, email)
+            except Exception:
+                _existing = None
+            if _existing:
+                content["current_scan_date"] = _existing   # preserve the client's pin through the content replace
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
