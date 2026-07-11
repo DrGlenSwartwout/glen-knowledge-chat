@@ -15726,6 +15726,20 @@ _PORTAL_CHANNEL_SOURCES = ("portal-reorder", "reorder")
 _STOREFRONT_CHANNEL_SOURCES = ("groovekart",)
 
 
+def _portal_display_channel(source):
+    """Customer-facing provenance bucket for an order/purchase `source`. Glen
+    2026-07-11: clients see ALL their purchases in the portal, every channel.
+    Two named buckets carry their own label; everything else (fmp / dispensary /
+    biofield / funnel / wholesale / in-house / personal / dropship / ...) falls
+    to 'clinic' — a purchase made with Dr. Glen's practice. Labels-only boundary:
+    the `source` data value is never touched (it carries downstream semantics)."""
+    if source in _PORTAL_CHANNEL_SOURCES:
+        return "portal"
+    if source in _STOREFRONT_CHANNEL_SOURCES:
+        return "storefront"
+    return "clinic"
+
+
 def _portal_reorder_module(email):
     """REPERTOIRE_ENABLED-gated portal payload extension (Task 5): the client's
     real, portal-channel purchase history, re-priced through the actual
@@ -15801,19 +15815,23 @@ def _portal_reorder_module(email):
 
     # --- purchase_history: the consolidated cross-channel record. `ph_slugs` (all
     # slices incl. fmp, resolved) is the "has this client bought before" oracle for
-    # the per-row is_reorder flag; `ph_storefront` is the historical GrooveKart
-    # slice (slug -> most-recent purchased_at) that predates the orders-table
-    # webhook and would otherwise never surface. ---
-    ph_slugs, ph_storefront = set(), {}
+    # the per-row is_reorder flag; `ph_other` holds the NON-portal historical
+    # purchases (storefront GrooveKart slice + fmp/clinic slice) that survive only
+    # here (they predate the orders-table webhook / were never in the orders board)
+    # and would otherwise never surface: slug -> (most-recent purchased_at, channel). ---
+    ph_slugs, ph_other = set(), {}
     for r in ph_rows:
         s = _superseded((r["slug"] or "").strip().lower()) or ""
         if not s:
             continue
         ph_slugs.add(s)
-        if r["source"] in _STOREFRONT_CHANNEL_SOURCES:
-            at = r["purchased_at"] or ""
-            if at > ph_storefront.get(s, ""):
-                ph_storefront[s] = at
+        ch = _portal_display_channel(r["source"])
+        if ch == "portal":
+            continue  # portal purchases come from the orders table, not here
+        at = r["purchased_at"] or ""
+        cur = ph_other.get(s)
+        if cur is None or at > cur[0]:
+            ph_other[s] = (at, ch)
 
     # --- reorder: distinct SKUs from portal-channel history, most-recent qty
     # wins (orders come back most-recent-first already). ---
@@ -15914,23 +15932,29 @@ def _portal_reorder_module(email):
         savings_cents = max(0, spend_30d_cents - member_would_pay_cents)
     net_after_fee_cents = _prepay.MONTHLY_ANCHOR_CENTS - savings_cents
 
-    # --- storefront rows: fold the client's remedymatch.com/GrooveKart purchases
-    # into the same reorder list. Candidates = orders-table 'groovekart' orders
-    # (post-webhook, real qty) + the purchase_history 'groovekart' slice
-    # (historical, qty defaults to 1). Deduped against portal `seen` so a SKU
-    # bought on BOTH channels shows once, labeled portal (portal is processed
-    # first and wins). Priced through the SAME repertoire engine as the portal
-    # rows => display == charge. Appended AFTER locked_rows/upsell so those stay
-    # portal-channel. ---
-    storefront = {}  # slug -> (most_recent_purchased_at, qty)
-    def _consider_storefront(slug, at, qty):
-        cur = storefront.get(slug)
+    # --- all other channels: fold the client's WHOLE purchase record into the
+    # reorder list (Glen 2026-07-11 — clients see ALL their purchases in the
+    # portal, every channel). Candidates = every non-portal, non-cancelled
+    # orders-table order (storefront GrooveKart + clinic: fmp/dispensary/biofield/
+    # funnel/wholesale/in-house/personal/dropship/...) PLUS every non-portal
+    # purchase_history row (historical, qty defaults to 1). Each row keeps the
+    # channel of its most-recent purchase. Deduped against portal `seen` so a SKU
+    # bought on portal too shows once, labeled portal (portal is processed first
+    # and wins). Non-product line items (membership/coaching/service payments have
+    # no catalog slug) are dropped by _get_product. Priced through the SAME
+    # repertoire engine as the portal rows => display == charge. Appended AFTER
+    # locked_rows/upsell so those stay portal-channel. ---
+    other = {}  # slug -> (most_recent_purchased_at, qty, channel)
+    def _consider_other(slug, at, qty, channel):
+        cur = other.get(slug)
         if cur is None or at > cur[0]:
-            storefront[slug] = (at, qty)
+            other[slug] = (at, qty, channel)
     for o in orders:
-        if (o.get("source") not in _STOREFRONT_CHANNEL_SOURCES
-                or o.get("status") == "cancelled"):
+        if o.get("status") == "cancelled":
             continue
+        channel = _portal_display_channel(o.get("source"))
+        if channel == "portal":
+            continue  # portal purchases already handled above
         created = o.get("created_at") or ""
         for it in (o.get("items") or []):
             slug = _superseded((it.get("slug") or "").strip().lower()) or ""
@@ -15940,12 +15964,12 @@ def _portal_reorder_module(email):
                 qty = max(1, int(it.get("qty", 1) or 1))
             except Exception:
                 qty = 1
-            _consider_storefront(slug, created, qty)
-    for slug, at in ph_storefront.items():
-        _consider_storefront(slug, at, 1)  # ph rows carry no qty
+            _consider_other(slug, created, qty, channel)
+    for slug, (at, channel) in ph_other.items():
+        _consider_other(slug, at, 1, channel)  # ph rows carry no qty
 
-    for slug, (_at, qty) in sorted(
-            storefront.items(), key=lambda kv: kv[1][0], reverse=True):
+    for slug, (_at, qty, channel) in sorted(
+            other.items(), key=lambda kv: kv[1][0], reverse=True):
         if slug in seen:
             continue  # already shown as a portal purchase
         p = _get_product(slug)
@@ -15961,7 +15985,7 @@ def _portal_reorder_module(email):
             "regular_cents": regular_cents, "your_cents": your_cents,
             "is_member_price": your_cents < regular_cents,
             "in_repertoire": slug in rep_slugs,
-            "channel": "storefront",
+            "channel": channel,
             "is_reorder": slug in ph_slugs,
         })
 

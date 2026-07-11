@@ -58,6 +58,8 @@ def test_reorder_row_labels_provenance_and_reserves_reorder_word():
     assert "Ordered on your portal" in block
     # storefront provenance label present (its own label, not the portal one)
     assert "remedymatch.com" in block.lower()
+    # clinic/other channels (fmp, dispensary, ...) get their own label too
+    assert "Ordered with Dr. Glen" in block
     # 'Reorder' still offered for true reorders
     assert "Reorder" in block
 

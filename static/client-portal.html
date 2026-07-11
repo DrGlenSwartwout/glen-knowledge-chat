@@ -1354,8 +1354,8 @@ function render(d, v){
       // Relabel (Glen 2026-07-11 — labels only): provenance by channel, and the
       // word "Reorder" reserved for a true reorder (a SKU already in the client's
       // purchase history). A first-time purchase gets a neutral "Order" CTA.
-      const prov = it.channel === "storefront"
-        ? "Ordered on remedymatch.com"
+      const prov = it.channel === "storefront" ? "Ordered on remedymatch.com"
+        : it.channel === "clinic" ? "Ordered with Dr. Glen"
         : "Ordered on your portal";
       const cta = it.is_reorder ? "Reorder" : "Order";
       rrows += `<div class="remitem" data-slug="${slug}" data-unit-cents="${yours}">

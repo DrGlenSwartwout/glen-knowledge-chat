@@ -128,6 +128,37 @@ def test_storefront_historical_purchase_from_purchase_history_appears(client):
     assert by_slug["terrain-restore"]["is_reorder"] is True
 
 
+def test_clinical_fmp_purchase_appears_labeled_clinic(client):
+    """Glen 2026-07-11 (2nd pass): ALL purchases show in the portal, every
+    channel. A clinic/dispensary purchase surviving only in the purchase_history
+    'fmp' slice appears, labeled 'clinic', and is a true reorder (in history)."""
+    c, appmod = client
+    email = "fmpclient@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_purchase_history(appmod, email, [("neuro-magnesium", 150, "fmp", "inv-77")])
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    by_slug = {r["slug"]: r for r in j["reorder"]}
+    assert "neuro-magnesium" in by_slug
+    assert by_slug["neuro-magnesium"]["channel"] == "clinic"
+    assert by_slug["neuro-magnesium"]["is_reorder"] is True
+
+
+def test_dispensary_order_appears_labeled_clinic(client):
+    """A non-portal, non-storefront orders-table channel (dispensary) is folded
+    into the display too, labeled 'clinic', with its real quantity."""
+    c, appmod = client
+    email = "dispclient@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_order(appmod, source="dispensary", email=email,
+                slugs_qty=[("nous-energy", 3)], days_ago=8)
+
+    j = c.get(f"/api/portal/{tok}").get_json()
+    by_slug = {r["slug"]: r for r in j["reorder"]}
+    assert by_slug["nous-energy"]["channel"] == "clinic"
+    assert by_slug["nous-energy"]["qty"] == 3
+
+
 def test_is_reorder_reflects_purchase_history_membership(client):
     """`is_reorder` (the 'Reorder' CTA gate) is true iff the SKU is in the
     client's purchase_history — a portal purchase absent from purchase_history is
