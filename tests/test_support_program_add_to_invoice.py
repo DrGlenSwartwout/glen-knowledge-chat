@@ -68,7 +68,7 @@ def app_mod(tmp_db, monkeypatch):
     return app
 
 
-def _seed_program(tmp_db, key="wet-amd", label="Wet AMD", items=None, consult_recommended=True):
+def _seed_program(tmp_db, key="wet-amd", label="Wet AMD", items=None, consult_recommended=False):
     items = WET_AMD_ITEMS if items is None else items
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
@@ -280,3 +280,21 @@ def test_member_aware_uses_members_own_program(app_mod, tmp_db, monkeypatch):
     items = json.loads(rows[0]["items_json"])
     assert len(items) == 1
     assert items[0]["slug"] == FF_SLUG
+
+
+def test_consult_recommended_condition_rejects_add_to_invoice(app_mod, tmp_db, monkeypatch):
+    """Wet AMD (consult_recommended) is NOT one-click orderable — the endpoint
+    returns 409 and writes NO order; the client is directed to a consultation."""
+    monkeypatch.setenv("SUPPORT_PROGRAMS_ENABLED", "1")
+    email = "consultclient@example.com"
+    _seed_program(tmp_db, key="wet-amd", label="Wet AMD", consult_recommended=True)
+    _seed_condition(tmp_db, email, "wet-amd")
+    token = _seed_portal(tmp_db, email)
+    r = app_mod.app.test_client().post(f"/api/portal/{token}/support-program/add-to-invoice",
+                                       json={})
+    assert r.status_code == 409
+    assert "consult" in (r.get_json() or {}).get("error", "").lower()
+    import sqlite3
+    with sqlite3.connect(tmp_db) as cx:
+        rows = cx.execute("SELECT * FROM orders WHERE external_ref LIKE 'SPINV-%'").fetchall()
+    assert rows == [], "no order may be created for a consult-recommended condition"
