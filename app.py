@@ -9152,11 +9152,13 @@ def _generate_full_answer(query: str, level: str, is_logged_in: bool = False):
 
 def _send_full_report_email(to_email: str, name: str,
                             subject: str, body: str):
-    """Send the full report — tries Gmail API → SMTP → console log.
+    """Send the full report — tries Gmail API → SMTP → GHL/Mailgun → console log.
     Returns (sent_via, error_or_none).
 
     Gmail API path is preferred because it reuses the same OAuth token as
-    the inbox feature (no extra SMTP_USER/PASS to manage).
+    the inbox feature (no extra SMTP_USER/PASS to manage). The GHL/Mailgun
+    fallback matters when consumer Gmail hits its daily cap: without it a real
+    client report (invoice/portal link) silently console-logs and never arrives.
     """
     # Suppression guard: this is a proactive client report — skip suppressed
     # (hard-bounced) addresses on BOTH the Gmail and SMTP-fallback paths. Fail-open.
@@ -9200,7 +9202,19 @@ def _send_full_report_email(to_email: str, name: str,
         except Exception as e:
             print(f"[full-report] SMTP fallback also failed: {e}", flush=True)
 
-    # Path 3: console log (last resort — dev / nothing configured)
+    # Path 3: GHL v2 → Mailgun (fallback when Gmail is capped/unavailable). GHL refuses
+    # UNSUBSCRIBED contacts, so an unsubscribed client still falls through to console-log
+    # below — but for everyone else this beats silently console-logging a client report.
+    try:
+        from dashboard import ghl_email as _ghl
+        if _ghl.is_configured():
+            _html = "<p>" + body.replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+            _ghl.send_via_ghl(to_email, subject, html=_html, text=body)
+            return ("ghl", None)
+    except Exception as e:
+        print(f"[full-report] GHL/Mailgun fallback failed: {e}", flush=True)
+
+    # Path 4: console log (last resort — dev / nothing configured)
     print(f"\n[full-report] TO: {to_email}\nSUBJECT: {subject}\n\n{body}\n",
           flush=True)
     return ("console-log", "no email-send mechanism configured")
@@ -18045,7 +18059,7 @@ def api_console_biofield_publish():
                 f"With aloha,\nDr. Glen & Rae")
             email_status = sent_via
             # Only a real delivery counts. console-log / suppressed must NOT read as sent.
-            emailed = sent_via in ("gmail-api", "smtp")
+            emailed = sent_via in ("gmail-api", "smtp", "ghl")
             if not emailed:
                 print(f"[biofield-publish] email not delivered (via={sent_via}, err={err!r})", flush=True)
         except Exception as e:
