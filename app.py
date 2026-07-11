@@ -18137,6 +18137,29 @@ def api_console_biofield_publish():
                     "updated": token is None, "emailed": emailed, "email_status": email_status})
 
 
+@app.route("/api/console/portal/set-current", methods=["POST"])
+def api_console_portal_set_current():
+    """Operator: point a portal at an existing scan_date (authoritative, independent
+    of auto_advance). Guards against a dangling pointer — the scan_date must have a
+    real report row before the portal is pointed at it."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    scan_date = (body.get("scan_date") or "").strip()
+    if not email or not scan_date:
+        return jsonify({"error": "email and scan_date required"}), 400
+    from dashboard import client_portal as _cp, portal_biofield_reports as _pbr
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        if scan_date not in _pbr.list_report_dates(cx, email):
+            return jsonify({"error": "no report for that scan_date"}), 400
+        if not _cp.set_current_scan(cx, email, scan_date):
+            return jsonify({"error": "portal not found"}), 404
+    return jsonify({"ok": True})
+
+
 @app.route("/api/console/consult-ready", methods=["POST"])
 def api_console_consult_ready():
     if not _portal_console_ok():
