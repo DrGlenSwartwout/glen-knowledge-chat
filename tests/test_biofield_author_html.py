@@ -14,6 +14,18 @@ def _report():
     }
 
 
+def test_author_page_shows_transcript_saved_date():
+    html = render_author_html(_report(), transcript_updated="2026-07-10T22:14:03Z")
+    assert "Last saved: Jul 10, 2026 · 12:14 PM HST" in html
+    assert "id=sessSaved" in html
+
+
+def test_author_page_omits_saved_date_when_never_saved():
+    html = render_author_html(_report())
+    assert "id=sessSaved class=food></div>" in html   # empty placeholder, filled live after save
+    assert "HST</div>" not in html                     # no server-rendered date
+
+
 def test_author_page_has_header_rows_and_endpoints():
     html = render_author_html(_report())
     assert "Jane Doe" in html and "2026-06-23" in html       # header prefilled

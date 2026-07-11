@@ -13,6 +13,22 @@ def _now():
     return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
+def fmt_saved_hst(iso):
+    """Render a stored UTC timestamp (``2026-07-10T22:14:03Z``) as an HST label
+    for the notes boxes, e.g. ``Jul 10, 2026 · 12:14 PM HST``. Hawaii observes no
+    DST, so HST is a fixed UTC-10. Returns "" for an empty/unparseable value so
+    the caller can show nothing rather than a broken date."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.datetime.fromisoformat(iso.rstrip("Z")) - datetime.timedelta(hours=10)
+    except ValueError:
+        return ""
+    hour12 = dt.hour % 12 or 12
+    return (f"{dt.strftime('%b')} {dt.day}, {dt.year} · "
+            f"{hour12}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'} HST")
+
+
 def init_notes_tables(cx):
     cx.execute("CREATE TABLE IF NOT EXISTS biofield_notes "
                "(test_id TEXT PRIMARY KEY, notes TEXT, updated_at TEXT)")
@@ -29,13 +45,20 @@ def _get(cx, table, col, test_id):
     return (row[0] if row and row[0] else "")
 
 
+def get_notes_updated(cx, test_id):
+    """The raw UTC timestamp of the last notes save, or "" if never saved."""
+    return _get(cx, "biofield_notes", "updated_at", test_id)
+
+
 def _save(cx, table, col, test_id, val):
     init_notes_tables(cx)
+    ts = _now()
     cx.execute(
         f"INSERT INTO {table} (test_id, {col}, updated_at) VALUES (?,?,?) "
         f"ON CONFLICT(test_id) DO UPDATE SET {col}=excluded.{col}, updated_at=excluded.updated_at",
-        (str(test_id), val or "", _now()))
+        (str(test_id), val or "", ts))
     cx.commit()
+    return ts
 
 
 def get_notes(cx, test_id):
@@ -43,7 +66,7 @@ def get_notes(cx, test_id):
 
 
 def save_notes(cx, test_id, notes):
-    _save(cx, "biofield_notes", "notes", test_id, notes)
+    return _save(cx, "biofield_notes", "notes", test_id, notes)
 
 
 def get_narrative(cx, test_id):
@@ -51,7 +74,7 @@ def get_narrative(cx, test_id):
 
 
 def save_narrative(cx, test_id, narrative):
-    _save(cx, "biofield_narratives", "narrative", test_id, narrative)
+    return _save(cx, "biofield_narratives", "narrative", test_id, narrative)
 
 
 def get_video_script(cx, test_id):
@@ -59,7 +82,7 @@ def get_video_script(cx, test_id):
 
 
 def save_video_script(cx, test_id, script):
-    _save(cx, "biofield_video_scripts", "script", test_id, script)
+    return _save(cx, "biofield_video_scripts", "script", test_id, script)
 
 
 _SYSTEM = (

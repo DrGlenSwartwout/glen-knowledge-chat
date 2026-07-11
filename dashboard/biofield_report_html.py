@@ -8,6 +8,8 @@ import os
 from html import escape as _e
 from urllib.parse import quote as _q
 
+from dashboard.biofield_narrative import fmt_saved_hst
+
 # Where the deployed console lives (for the "Back to Console" link in the header bar).
 CONSOLE_BASE = os.environ.get("CONSOLE_BASE_URL", "https://illtowell.com").rstrip("/")
 
@@ -131,11 +133,14 @@ _NARR_JS = """
 function stat(t){document.getElementById('stat').textContent=t}
 async function post(p,b){const r=await fetch(p,{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()}
-async function saveNotes(){await post('/test/__TID__/notes',
- {notes:document.getElementById('notes').value});stat('Notes saved.')}
+function showSaved(label){const el=document.getElementById('notesSaved');
+ if(el&&label)el.textContent='Last saved: '+label}
+async function saveNotes(){const r=await post('/test/__TID__/notes',
+ {notes:document.getElementById('notes').value});showSaved(r.saved_label);stat('Notes saved.')}
 async function generate(){stat('Generating\\u2026');
  const r=await post('/test/__TID__/generate',{notes:document.getElementById('notes').value});
  document.getElementById('narr').value=r.narrative||('['+(r.error||'error')+']');
+ showSaved(r.saved_label);
  stat(r.error?('Error: '+r.error):'Generated \\u2014 review, edit, then Save.')}
 async function saveNarr(){await post('/test/__TID__/narrative',
  {narrative:document.getElementById('narr').value});stat('Narrative saved.')}
@@ -291,7 +296,8 @@ def render_invoice_page(report, fee_state):
     return _page(f"Invoice — {c.get('name') or ''}", body)
 
 
-def render_report_html(report, notes="", narrative="", video_script="", stresses=None):
+def render_report_html(report, notes="", narrative="", video_script="", stresses=None,
+                       notes_updated=""):
     c = report.get("client") or {}
     name = _e(c.get("name") or "(unknown)")
     email = _e(c.get("email") or "")
@@ -340,6 +346,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
         "(a draft for your review).</p>"
         "<label for=notes>Verbal notes</label>"
         f"<textarea id=notes rows=4>{_e(notes)}</textarea>"
+        f"<div id=notesSaved class=food>{('Last saved: ' + _e(fmt_saved_hst(notes_updated))) if notes_updated else ''}</div>"
         "<div class=btnrow>"
         "<button class=btn onclick=saveNotes()>Save notes</button>"
         "<button class=btn onclick=generate()>Generate narrative</button>"
@@ -612,7 +619,8 @@ async function recStop(){
  if(_mr&&_mr.stream)_mr.stream.getTracks().forEach(function(t){t.stop()});
  if(_dg&&_dg.readyState===1){_dg.send(JSON.stringify({type:'CloseStream'}));_dg.close()}
  rstat('Saving\\u2026');
- await post('/author/__TID__/session',{transcript:document.getElementById('sessText').value});
+ var sv=await post('/author/__TID__/session',{transcript:document.getElementById('sessText').value});
+ var ss=document.getElementById('sessSaved');if(ss&&sv&&sv.saved_label)ss.textContent='Last saved: '+sv.saved_label;
  rstat('Saved to notes; it feeds the narrative.')}
 async function interpret(){rstat('Interpreting transcript into chain rows\\u2026');
  var r=await post('/author/__TID__/interpret',{});
@@ -1033,7 +1041,7 @@ def render_fee_panel(state):
     return head + cur + controls + js + "</div>"
 
 
-def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative="", fee_state=None):
+def render_author_html(report, depth_values=None, transcript="", covered_by_layer=None, narrative="", fee_state=None, transcript_updated=""):
     tid = _e(report.get("test_id") or "")
     c = report.get("client") or {}
     head = (_workflow_nav("intake", c.get("email") or "")
@@ -1090,7 +1098,8 @@ def render_author_html(report, depth_values=None, transcript="", covered_by_laye
         "<span id=rstat class=food></span></div>"
         "<div class=food><em id=interim></em></div>"
         f"<textarea id=sessText rows=6 placeholder='Live transcript appears here as you speak..."
-        f"'>{_e(transcript)}</textarea>")
+        f"'>{_e(transcript)}</textarea>"
+        f"<div id=sessSaved class=food>{('Last saved: ' + _e(fmt_saved_hst(transcript_updated))) if transcript_updated else ''}</div>")
     narrative_section = (
         "<h2>Narrative</h2>"
         "<p class=sub>Generate a plain-language narrative from the transcript above and the "
