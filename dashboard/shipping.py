@@ -93,6 +93,8 @@ PROD_BOTTLE_NAMES = frozenset({
     # books, the NIR intranasal clip, and the DENAS PCM Pro. (miHealth + Kloud mats are
     # drop-shipped by the vendor, so they use `own-box`, not a dedicated type.)
     "book", "nasal-clip", "denas",
+    # Created in prod 2026-07-11 (id 24) for the two nightlight SKUs (5 x 5 x 6 cm each).
+    "nightlight",
 })
 
 # Types the catalog needs that prod's library lacks. Empty: the last four were created.
@@ -149,6 +151,10 @@ _STANDARD_BOTTLES = [
     ("book", "Paperback book — single/few → USPS Medium; Rae adjusts / Media Mail", 160, 40),
     ("nasal-clip", "NIR intranasal clip — small item", 30, 60),
     ("denas", "DENAS PCM Pro microcurrent — handheld boxed device", 60, 160),
+    # Nightlights: 5 x 5 x 6 cm each. The 50 mm width exceeds Small's usable interior
+    # (50 - 5 margin = 45 mm), so a single unit bounds to USPS Medium; 2-3 still fit one
+    # Medium. Created in prod 2026-07-11 (id 24). Shared by both nightlight SKUs.
+    ("nightlight", "Therapeutic / Biocompatible nightlight — 5 x 5 x 6 cm → USPS Medium", 50, 60),
 ]
 # Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
 # 10mm, which no deployment uses — and it silently changed the geometry of every
