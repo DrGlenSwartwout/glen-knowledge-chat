@@ -17198,6 +17198,76 @@ def _support_program_for(email):
         return None
 
 
+@app.route("/api/portal/<token>/support-program/add-to-invoice", methods=["POST"])
+def api_portal_support_program_add_to_invoice(token):
+    """The paid add-to-invoice action for the condition support-program card
+    (Slice 4b) — the MONEY-WRITE step. Creates ONE unpaid, unpublished invoice
+    draft (`orders` row), idempotently keyed on (email, condition_key) via a
+    deterministic external_ref, priced at the client's real FF price
+    (_ff_line_cents, same pricer as the FF add-to-invoice endpoint).
+
+    THE GATE IS DIFFERENT FROM FF: this is open to ANY client who resolves to a
+    support program (they've been tagged with an eye condition) — there is no
+    _ff_covered / entitlement check here, deliberately. A client with no
+    resolved condition is rejected (409); everyone else, covered or not, may
+    queue their program onto an invoice for Rae to finalize.
+
+    Only the program's PRIMARY items are priced/queued — `alts` are either/or
+    choices Rae finalizes in the composer, not auto-added."""
+    if not _support_programs_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_ff_matches (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[support-program/add-to-invoice] household {_e!r}", flush=True)
+        sp = _support_program_for(email)
+        if not sp or not sp.get("items"):
+            return jsonify({"error": "no support program"}), 409
+        key = sp["condition_key"]
+        _init_support_programs_tables(cx)
+        prog = condition_programs.get(cx, key)
+        raw_items = (prog or {}).get("items") or []
+        ext = f"SPINV-{email}-{key}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
+        # Insert-once: never rewrite an existing support-program-invoice order. A second
+        # click after Rae has priced/advanced or paid the order must not touch it.
+        existing = _bos_orders.find_order_by_external_ref(cx, ext)
+        if existing and existing.get("source") == "in-house":
+            return jsonify({"ok": True, "order_ref": ext, "already_added": True})
+        from dashboard import client_prices as _cp_init
+        _cp_init.init_table(cx)
+        items = []
+        for it in raw_items:  # PRIMARY items only -- alts are either/or, not auto-added
+            slug = (it.get("slug") or "").strip()
+            unit = _ff_line_cents(cx, email, slug)
+            items.append({"slug": slug, "name": it.get("name") or slug,
+                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+        total = sum(i["line_cents"] for i in items)
+        _bos_orders.upsert_order(
+            cx, source="in-house", external_ref=ext, status="proposed",
+            email=email, name=(portal.get("name") or ""),
+            items=items, total_cents=total, channel="support-program",
+            invoice_note=f"{sp['label']} support program — pending Rae invoicing")
+        cx.commit()
+        return jsonify({"ok": True, "order_ref": ext})
+
+
 @app.route("/api/console/client-condition", methods=["GET"])
 def api_console_client_condition_get():
     """Owner console: how a client's eye-condition support-program key
