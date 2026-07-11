@@ -5945,14 +5945,16 @@
       "name": "Therapeutic Nightlight",
       "price_cents": 20000,
       "bottle_type": "nightlight",
-      "description": "Therapeutic nightlight — biocompatible, low-blue-light spectrum for restful sleep.",
+      "intro": "A 660 nm soft-laser red nightlight that lets you navigate safely in the dark while supporting melatonin, night vision, and the mitochondria in your eyes.",
+      "description": "The Therapeutic Nightlight is a soft-laser red nightlight designed by Dr. Glen Swartwout. It uses a 660 nm wavelength soft-laser red light and turns itself on automatically in low light, so you can move through your home at night without switching on white light that suppresses night vision and the pineal gland's secretion of melatonin. Red light is the one part of the spectrum that preserves pineal function at night, and at 660 nm it also reaches the tissues of the eye even when your eyes are closed, supporting mitochondrial energy production while you sleep. Because melatonin is the main endocrine regulator of the day and night cycle, protecting it supports restful sleep, healthy night vision, and macular health. Just plug it into your bedroom, bathroom, or hallway. Built-in light-sensor control gives 100% automatic operation. Backed by a 3-year warranty and a 60-day money-back guarantee.",
       "source": "manual-add-2026-07-11"
     },
     "biocompatible-nightlight": {
       "name": "Biocompatible Nightlight",
       "price_cents": 5000,
       "bottle_type": "nightlight",
-      "description": "Biocompatible nightlight — low-blue-light spectrum that does not disrupt melatonin.",
+      "intro": "A red-filtered nightlight for hallways, bathrooms, and bedrooms that lets you see in the dark without the white light that disrupts sleep.",
+      "description": "The Biocompatible Nightlight filters white LED light through a red filter, so you can light hallways, bathrooms, and other spaces for nighttime navigation without turning on white light sources that disrupt sleep for the rest of the night. Only red light preserves the pineal gland's production of melatonin at night, the hormone that governs the day and night cycle and supports restful sleep. It is the biocompatible way to see in the dark while protecting your melatonin and your night vision. Just plug it in wherever you need safe nighttime navigation.",
       "source": "manual-add-2026-07-11"
     },
     "book-refreshing-vision": {
