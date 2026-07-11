@@ -22,16 +22,19 @@ def _baselines():
 
 
 def test_prod_library_is_recorded_verbatim():
-    """The eighteen names live in prod's bottle_types table (GET /api/shipping/bottles).
+    """The twenty-one names live in prod's bottle_types table (GET /api/shipping/bottles).
     '100ml','15ml','30roll','handcradle' were created 2026-07-09; 'toothbrush' (id 17)
     and the device/accessory types 'harmony-laser','dowsing-rods','own-box' (ids 18-20)
-    were created 2026-07-10. Before each was created the catalog referenced bottles prod
-    did not have, and those products silently fell back to the qty rule."""
+    were created 2026-07-10, as were 'book','nasal-clip','denas' (ids 21-23) for the
+    book/device batch add. Before each was created the catalog referenced bottles prod
+    did not have,
+    and those products silently fell back to the qty rule."""
     assert PROD_BOTTLE_NAMES == frozenset({
         "30 Caps", "120 caps", "180 caps", "360 caps", "30 g", "120 g",
         "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL",
         "100ml", "15ml", "30roll", "handcradle", "toothbrush",
-        "harmony-laser", "dowsing-rods", "own-box"})
+        "harmony-laser", "dowsing-rods", "own-box",
+        "book", "nasal-clip", "denas"})
 
 
 def test_every_catalog_baseline_speaks_a_name_prod_knows():

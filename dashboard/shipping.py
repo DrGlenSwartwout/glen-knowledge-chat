@@ -89,6 +89,10 @@ PROD_BOTTLE_NAMES = frozenset({
     # generic oversized type: too big for USPS flat rate, so the packer routes it to its
     # own parcel (never mis-rated, never the "default" placeholder).
     "harmony-laser", "dowsing-rods", "own-box",
+    # Created in prod 2026-07-10 (ids 21-23) for the book/device batch add: paperback
+    # books, the NIR intranasal clip, and the DENAS PCM Pro. (miHealth + Kloud mats are
+    # drop-shipped by the vendor, so they use `own-box`, not a dedicated type.)
+    "book", "nasal-clip", "denas",
 })
 
 # Types the catalog needs that prod's library lacks. Empty: the last four were created.
@@ -138,6 +142,13 @@ _STANDARD_BOTTLES = [
     # Oversized: bigger than the L box on every axis, so pick_box returns None and the
     # item is quoted as its own parcel. Used for the water ionizer ("ships own box").
     ("own-box", "Own-parcel oversized item (ships in its own box)", 250, 450),
+    # Book/device batch add 2026-07-10. Books are flat, not cylinders; a single paperback
+    # bounds to Ø160 x H40 so one/few resolve to USPS Medium (Rae ships Media Mail or
+    # adjusts at pack time for larger quantities). The nasal clip is a small item; the
+    # DENAS PCM Pro is a handheld device boxed like the Harmony laser.
+    ("book", "Paperback book — single/few → USPS Medium; Rae adjusts / Media Mail", 160, 40),
+    ("nasal-clip", "NIR intranasal clip — small item", 30, 60),
+    ("denas", "DENAS PCM Pro microcurrent — handheld boxed device", 60, 160),
 ]
 # Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
 # 10mm, which no deployment uses — and it silently changed the geometry of every
