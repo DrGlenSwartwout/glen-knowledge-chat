@@ -1351,12 +1351,16 @@ function render(d, v){
       const save = it.is_member_price
         ? `<span class="save small">You save ${esc(money(Math.max(0, regular - yours)))}</span>`
         : `<span></span>`;
-      // Relabel (Glen 2026-07-11 — labels only): provenance by channel, and the
-      // word "Reorder" reserved for a true reorder (a SKU already in the client's
-      // purchase history). A first-time purchase gets a neutral "Order" CTA.
-      const prov = it.channel === "storefront" ? "Ordered on remedymatch.com"
-        : it.channel === "clinic" ? "Ordered with Dr. Glen"
-        : "Ordered on your portal";
+      // Relabel (Glen 2026-07-11 — labels only): provenance names the real
+      // website the purchase came from (server-computed source_label, e.g.
+      // "Ordered on illtowell.com" / "Ordered on remedymatch.com"; clinic
+      // purchases -> "Ordered with Dr. Glen"). The word "Reorder" is reserved for
+      // a true reorder (a SKU already in the client's purchase history); a
+      // first-time purchase gets a neutral "Order" CTA.
+      const prov = it.source_label
+        || (it.channel === "storefront" ? "Ordered on remedymatch.com"
+          : it.channel === "clinic" ? "Ordered with Dr. Glen"
+          : "Ordered on illtowell.com");
       const cta = it.is_reorder ? "Reorder" : "Order";
       rrows += `<div class="remitem" data-slug="${slug}" data-unit-cents="${yours}">
         <div class="remitem-top"><span class="nm-wrap"><span class="nm">${esc(it.name||it.slug||"")}</span><span class="prov">${esc(prov)}</span></span><span class="pr">${price}</span></div>

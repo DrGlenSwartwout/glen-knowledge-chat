@@ -104,11 +104,15 @@ def test_reorder_list_has_distinct_skus_from_portal_history(client):
     assert row["qty"] == 2
     assert row["name"]
     assert row["regular_cents"] == 6997
-    # provenance channel is carried on every row (frontend maps it to a label).
+    # provenance channel + website-referencing source_label on every row.
+    from urllib.parse import urlparse
+    portal_host = urlparse(appmod.portal_base()).hostname
     by_slug = {r["slug"]: r for r in j["reorder"]}
     assert by_slug["nous-energy"]["channel"] == "portal"
+    assert by_slug["nous-energy"]["source_label"] == f"Ordered on {portal_host}"
     assert by_slug["neuro-magnesium"]["channel"] == "portal"
     assert by_slug["terrain-restore"]["channel"] == "storefront"
+    assert by_slug["terrain-restore"]["source_label"] == "Ordered on remedymatch.com"
 
 
 def test_storefront_historical_purchase_from_purchase_history_appears(client):
@@ -141,7 +145,25 @@ def test_clinical_fmp_purchase_appears_labeled_clinic(client):
     by_slug = {r["slug"]: r for r in j["reorder"]}
     assert "neuro-magnesium" in by_slug
     assert by_slug["neuro-magnesium"]["channel"] == "clinic"
+    assert by_slug["neuro-magnesium"]["source_label"] == "Ordered with Dr. Glen"
     assert by_slug["neuro-magnesium"]["is_reorder"] is True
+
+
+def test_funnel_order_labeled_with_the_funnel_website(client):
+    """A funnel (illtowell.com /begin) purchase names its website, distinct from
+    the in-office 'clinic' catch-all."""
+    c, appmod = client
+    email = "funnelclient@example.com"
+    tok = _seed_portal(appmod, email)
+    _seed_order(appmod, source="funnel", email=email,
+                slugs_qty=[("nous-energy", 1)], days_ago=9)
+
+    from urllib.parse import urlparse
+    funnel_host = urlparse(appmod.PUBLIC_BASE_URL).hostname
+    j = c.get(f"/api/portal/{tok}").get_json()
+    row = next(r for r in j["reorder"] if r["slug"] == "nous-energy")
+    assert row["channel"] == "funnel"
+    assert row["source_label"] == f"Ordered on {funnel_host}"
 
 
 def test_dispensary_order_appears_labeled_clinic(client):
