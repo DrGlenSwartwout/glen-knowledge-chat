@@ -17260,6 +17260,11 @@ def api_portal_support_program_add_to_invoice(token):
         sp = _support_program_for(email)
         if not sp or not sp.get("items"):
             return jsonify({"error": "no support program"}), 409
+        # Consult-recommended conditions (e.g. Wet AMD) are not one-click orderable:
+        # the client is directed to book a consultation for an individualized program.
+        # The group + product-page order links still show; only the add-to-invoice is withheld.
+        if sp.get("consult_recommended"):
+            return jsonify({"error": "consultation recommended"}), 409
         key = sp["condition_key"]
         _init_support_programs_tables(cx)
         prog = condition_programs.get(cx, key)

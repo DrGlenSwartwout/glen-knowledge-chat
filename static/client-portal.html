@@ -1161,8 +1161,8 @@ function render(d, v){
     html += `<div class="card support-program-card">
       <h2>Your ${esc(sp.label || "")} Support Program</h2>
       ${supportProgramBodyHtml(sp)}
-      <button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
-      <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>
+      ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
+      <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
     </div>`;
   }
 
