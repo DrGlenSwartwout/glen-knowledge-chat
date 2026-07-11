@@ -15156,6 +15156,12 @@ def _portal_offers_enabled() -> bool:
         "1", "true", "yes", "on")
 
 
+def _portal_program_page_enabled() -> bool:
+    """Master flag for the client-portal membership program page. Dark by default."""
+    return os.environ.get("PORTAL_PROGRAM_PAGE_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _enabled_offer_keys() -> set:
     """Which ladder rungs are purchasable right now (master + per-rung flags)."""
     if not _portal_offers_enabled():
@@ -16012,7 +16018,65 @@ def api_client_portal(token):
             payload["animal_name"] = _sp["animal_name"]
     except Exception as _e:
         print(f"[client-species/payload] {_e!r}", flush=True)
+    # Program-page entry card (flag-gated, best-effort): the portal shell reads this
+    # to decide whether to render the "Explore your program" card and where it links.
+    try:
+        payload["program_page"] = {
+            "enabled": _portal_program_page_enabled(),
+            "url": f"/portal/{token}/program",
+        }
+    except Exception:
+        pass
     return jsonify(payload)
+
+
+@app.route("/api/portal/<token>/program", methods=["GET"])
+def api_portal_program(token):
+    """Personalized membership program blocks for the program page."""
+    if not _portal_program_page_enabled():
+        return jsonify({"error": "not found"}), 404
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    from dashboard import family_plan as _fp
+    from dashboard import portal_view as _pv
+    from dashboard import program_tiers as _pt
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _pi._ensure_people_table(cx)
+        ident = _pi.resolve_identity(
+            cx, token=token, session_token=sess_cookie,
+            client_login_enabled=_client_login_enabled())
+        if not ident:
+            return jsonify({"error": "not found"}), 404
+        email = ident.email
+        family_owned = False
+        if _family_plan_enabled():
+            try:
+                _fp.init_family_plan_table(cx)
+                family_owned = bool(_fp.covers(cx, email))
+            except Exception:
+                family_owned = False
+        try:
+            amb = _pv._ambassador_block(cx, email, QUIZ_URL, PUBLIC_BASE_URL)
+        except Exception:
+            amb = {"status": "none",
+                   "signup_url": f"{PUBLIC_BASE_URL.rstrip('/')}/affiliate/apply-form"}
+    paid_owned = bool(_active_membership_for_email(email))
+    tiers = _pt.program_blocks(
+        paid_owned=paid_owned,
+        family_owned=family_owned,
+        paid_enabled=(_subscriptions_enabled() and _portal_offers_enabled()),
+        family_enabled=_family_plan_enabled(),
+    )
+    return jsonify({
+        "email": email,
+        "current_tier": _pt.current_tier_key(tiers),
+        "tiers": tiers,
+        "ambassador": amb,
+        "grow": _pt.GROW_PATHS,
+    })
 
 
 @app.route("/api/portal/<token>/share-consent", methods=["POST"])
@@ -16227,6 +16291,16 @@ def portal_analyze_page(token):
     # Landing page for the new-scan email's one-click link. The page's confirm button
     # POSTs /request-analysis — so an email-scanner GET-prefetch can't consume a slot.
     resp = send_from_directory(STATIC, "portal-analyze.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/portal/<token>/program")
+def portal_program_page(token):
+    """Membership program page. Dark until PORTAL_PROGRAM_PAGE_ENABLED."""
+    if not _portal_program_page_enabled():
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "portal-program.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 

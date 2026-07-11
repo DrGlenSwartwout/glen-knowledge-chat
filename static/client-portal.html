@@ -654,6 +654,17 @@ function render(d, v){
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
+  // Program-page entry card: links to the personalized membership program page.
+  // Flag-gated server-side (payload.program_page is only truthy-enabled when
+  // PORTAL_PROGRAM_PAGE_ENABLED is on), so no extra client-side flag check needed.
+  if (d.program_page && d.program_page.enabled) {
+    html += `<div class="card program-entry">
+      <h2>See everything your membership unlocks</h2>
+      <p class="muted small">Your program, family options, and ways to share and grow.</p>
+      <a class="btn full" href="${esc(d.program_page.url)}">Explore your program</a>
+    </div>`;
+  }
+
   // Household member switcher — the caregiver picks whose scans to view.
   if (d.household && d.household.length) {
     const params = new URLSearchParams(location.search);
