@@ -16,7 +16,7 @@ HTML = pathlib.Path("static/client-portal.html").read_text()
 # Fields Task 5's _portal_reorder_module() actually emits (app.py) — the
 # single source of truth this test pins the UI against.
 REORDER_FIELDS = {"slug", "name", "qty", "regular_cents", "your_cents",
-                   "is_member_price", "in_repertoire"}
+                   "is_member_price", "in_repertoire", "channel", "is_reorder"}
 LOCKED_FIELDS = {"slug", "name", "regular_cents", "tier"}
 UPSELL_FIELDS = {"reorders_30d", "spend_30d_cents", "member_would_pay_cents",
                   "savings_cents", "net_after_fee_cents", "already_member"}
@@ -43,6 +43,23 @@ def test_reorder_row_only_references_real_payload_fields():
     assert used <= REORDER_FIELDS, f"unknown reorder field(s) referenced: {used - REORDER_FIELDS}"
     # sanity: it should actually be exercising the fields that matter for pricing
     assert {"regular_cents", "your_cents", "is_member_price"} <= used
+
+
+def test_reorder_row_labels_provenance_and_reserves_reorder_word():
+    """Glen 2026-07-11 relabel (labels only): every purchase carries a provenance
+    label by channel ('Ordered on your portal' vs the storefront label), and the
+    word 'Reorder' is reserved for a true reorder (is_reorder) — a first-time
+    purchase gets a neutral CTA instead."""
+    src = _render_fn_source()
+    block = src[src.index('Array.isArray(d.reorder) && d.reorder.length'):
+                src.index('Array.isArray(d.locked_rows)')]
+    assert "it.channel" in block
+    assert "it.is_reorder" in block
+    assert "Ordered on your portal" in block
+    # storefront provenance label present (its own label, not the portal one)
+    assert "remedymatch.com" in block.lower()
+    # 'Reorder' still offered for true reorders
+    assert "Reorder" in block
 
 
 def test_locked_rows_only_references_real_fields_and_is_forward_framed():
