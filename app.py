@@ -15274,6 +15274,12 @@ def _portal_program_page_enabled() -> bool:
         "1", "true", "yes", "on")
 
 
+def _program_paid_live_enabled() -> bool:
+    """Whether the program page's Paid tier is a live, sellable Join. Dark by default."""
+    return os.environ.get("PROGRAM_PAID_LIVE_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _enabled_offer_keys() -> set:
     """Which ladder rungs are purchasable right now (master + per-rung flags)."""
     if not _portal_offers_enabled():
@@ -19597,6 +19603,31 @@ def portal_group_join_checkout():
             cancel_url=f"{portal_base()}/portal/me")
     except Exception:
         app.logger.exception("group-join setup session failed")
+        return jsonify({"error": "Could not start checkout. Please reach out and we'll help."}), 502
+    return jsonify({"ok": True, "stripe_url": sess.get("url", "")})
+
+
+@app.route("/portal/offer/continuous-care/checkout", methods=["POST"])
+def portal_continuous_care_checkout():
+    """Portal-token wrapper: start the continuous-care-monthly checkout for the
+    member resolved from their portal token. Dark until PROGRAM_PAID_LIVE_ENABLED."""
+    if not (_program_paid_live_enabled() and CONTINUOUS_CARE_MONTHLY_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"error": "not found"}), 404
+    token = request.args.get("token", "") or (request.get_json(silent=True) or {}).get("token", "")
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pi._ensure_people_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
+                                     client_login_enabled=_client_login_enabled())
+    if ident is None:
+        return jsonify({"error": "not found"}), 404
+    try:
+        sess = _continuous_care_checkout_session(ident.email, 12)
+    except Exception:
+        app.logger.exception("continuous-care portal checkout failed")
         return jsonify({"error": "Could not start checkout. Please reach out and we'll help."}), 502
     return jsonify({"ok": True, "stripe_url": sess.get("url", "")})
 
