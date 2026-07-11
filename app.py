@@ -15126,29 +15126,203 @@ def _ff_query_specific_formulations(text, top_k):
         return []
 
 
+_FF_EXCLUDED_SUBSTRINGS = (
+    "living water bottle",
+    "electrolyte mineral manna",
+    "dental regen powder",
+    "allerfree",
+    "fungifuge",
+    "bioavailability blend",
+)
+_FF_EXCLUDED_EXACT = ("endocrine restore", "comfort")
+
+
+def _ff_auto_excluded(name):
+    """True if `name` must NEVER be auto-recommended by the FF matcher.
+
+    Mirrors the DEPRECATED PRODUCTS never-recommend rules that live as prose
+    in the chat system prompt (app.py ~1638): discontinued products
+    (Living Water Bottle, Electrolyte Mineral Manna, Dental Regen Powder),
+    bare old names consolidated into a canonical replacement (bare
+    "Endocrine Restore", bare "Comfort" -- exact-match ONLY, so
+    "Endocrine Restore Powder" and "Comfort Synovial Syntropy" survive),
+    AllerFree (-> Immune Modulation instead), Fungifuge (only valid as a
+    Candida Cleanse follow-on, never a standalone auto-match), and
+    Bioavailability Blend / Bioavailability Blend Powder (adjunct-only,
+    never a standalone reveal recommendation). This is the hard candidate
+    filter applied in BOTH the LLM path and the vector fallback path -- the
+    single guarantee a never-recommend product cannot reach a client."""
+    nl = (name or "").strip().lower()
+    if not nl:
+        return False
+    if nl in _FF_EXCLUDED_EXACT:
+        return True
+    return any(s in nl for s in _FF_EXCLUDED_SUBSTRINGS)
+
+
+def _parse_ff_rank(text, allowed_names):
+    """Parse the LLM ranking response into [{"name", "meaning"}, ...].
+
+    Tolerant: extracts the first JSON array found anywhere in `text`
+    (survives ```json fences and surrounding prose). Keeps an entry ONLY if
+    its `name` matches (case-insensitively) a name in `allowed_names` --
+    the candidate set already filtered by `_ff_auto_excluded` and resolved
+    to a sellable slug -- so a hallucinated or never-recommend product name
+    can never survive this join. Maps back to the canonical (allowed-set)
+    spelling of the name. `why`/`reason`/`meaning` (first present, in that
+    order) becomes `meaning`. Returns [] on ANY parse failure, non-list
+    payload, or empty match. Never raises."""
+    if not text:
+        return []
+    try:
+        allowed_map = {a.strip().lower(): a for a in (allowed_names or []) if a}
+        m = re.search(r"\[.*\]", text, re.DOTALL)
+        if not m:
+            return []
+        data = json.loads(m.group(0))
+        if not isinstance(data, list):
+            return []
+        out = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            canon = allowed_map.get(name.lower())
+            if not canon:
+                continue
+            why = (item.get("why") or item.get("reason")
+                   or item.get("meaning") or "").strip()
+            out.append({"name": canon, "meaning": why})
+        return out
+    except Exception:
+        return []
+
+
+def _ff_llm_rank(scan_labels, candidates):
+    """Retrieval-augmented LLM ranking of FF product candidates for this
+    scan's findings. `candidates` is the already-filtered, already-resolved
+    list of {name, slug, url, meaning} (never-recommend products already
+    excluded). Returns a ranked [{"name", "meaning"}, ...] (up to 5, in
+    best-fit-first order) or None on ANY failure -- empty inputs, API
+    error, or a garbage/empty parse -- signalling the caller to fall back
+    to the vector path. Never raises."""
+    try:
+        if not scan_labels or not candidates:
+            return None
+        findings_text = "\n".join(f"- {l}" for l in scan_labels if l)
+        cand_lines = []
+        for c in candidates:
+            nm = (c.get("name") or "").strip()
+            if not nm:
+                continue
+            mn = (c.get("meaning") or "").strip()
+            cand_lines.append(f"- {nm}: {mn}" if mn else f"- {nm}")
+        candidates_text = "\n".join(cand_lines)
+        if not findings_text or not candidates_text:
+            return None
+        prompt = (
+            "You are ranking Functional Formulation products for a client's "
+            "bioenergetic scan findings. Select and rank UP TO 5 of the "
+            "candidate products below that best support this scan's overall "
+            "pattern.\n\n"
+            "SCAN FINDINGS:\n" + findings_text + "\n\n"
+            "CANDIDATE PRODUCTS (choose ONLY from this list, using each "
+            "product's exact name as given -- never invent a product not "
+            "listed here):\n" + candidates_text + "\n\n"
+            "Safety rules (defense-in-depth -- some of these may already be "
+            "excluded from the candidate list above, but never select them "
+            "regardless):\n"
+            "- Never select a discontinued product.\n"
+            "- \"Bioavailability Blend\" (or \"Bioavailability Blend "
+            "Powder\") is adjunct-only -- never select it as a standalone "
+            "recommendation.\n"
+            "- Never select \"AllerFree\" -- \"Immune Modulation\" is the "
+            "replacement.\n"
+            "- Only select \"Fungifuge\" as a follow-on to a Candida "
+            "Cleanse, never as a standalone recommendation.\n"
+            "- Do NOT include any dosing instructions or amounts.\n\n"
+            "Return STRICT JSON ONLY -- no prose, no markdown fence -- a "
+            "JSON array of up to 5 objects, each shaped exactly "
+            '{"name": "<exact candidate name>", "why": "<one concise '
+            'clinical rationale, no dosing>"}, ordered best-fit first.'
+        )
+        msg = _cl.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=700,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(getattr(block, "text", "") or ""
+                       for block in (msg.content or []))
+        allowed = {c.get("name") for c in candidates if c.get("name")}
+        parsed = _parse_ff_rank(text, allowed)
+        return parsed or None
+    except Exception as _e:
+        print(f"[ff-llm-rank] {_e!r}", flush=True)
+        return None
+
+
 def _make_ff_items_for(email, scan_date=None):
-    """Compose this client's scan recommendations into ranked FF product matches
-    via ff_matcher.generate_ff_matches. Returns [] when scan recs are off,
-    unknown, or the client has none for this scan — never raises."""
+    """Compose this client's scan recommendations into ranked FF product
+    matches: retrieve a broad candidate pool, filter it to a safe/sellable
+    candidate set (never-recommend products excluded via
+    `_ff_auto_excluded`, deduped by slug), then rank via the inline LLM
+    (`_ff_llm_rank`). Falls back to the pure vector path
+    (`ff_matcher.generate_ff_matches`, same exclusions) when the LLM ranking
+    is unavailable or empty. Returns [] when scan recs are off, unknown, or
+    the client has none for this scan. Item shape is always
+    {name, slug, url, meaning} -- NEVER a `dosing` key -- never raises."""
     recs = _scan_recommendations_for(email, scan_date)
     if not recs:
         return []
-    scan_items = []
-    for r in (recs.get("infoceuticals") or []):
-        label = (r.get("label") or "").strip()
-        if label:
-            scan_items.append({"label": label, "category": "Infoceuticals"})
-    for r in (recs.get("mihealth") or []):
-        label = (r.get("label") or "").strip()
-        if label:
-            scan_items.append({"label": label, "category": "miHealth"})
-    if not scan_items:
+    labels = [i["label"] for i in (recs.get("infoceuticals") or []) if i.get("label")]
+    if not labels:
         return []
+
+    raw = _ff_query_specific_formulations("; ".join(labels), 30)
+    candidates, seen = [], set()
+    for r in raw:
+        name = ((r.get("metadata") or {}).get("name") or "").strip()
+        if not name or _ff_auto_excluded(name):
+            continue
+        slug = _resolve_buy_slug(name)
+        if not slug or slug in seen:
+            continue
+        seen.add(slug)
+        candidates.append({
+            "name": name,
+            "slug": slug,
+            "url": order_destination.destination_for(slug),
+            "meaning": ((r.get("metadata") or {}).get("meaning") or "").strip(),
+        })
+    if not candidates:
+        return []
+
+    ranked = _ff_llm_rank(labels, candidates)
+    if ranked:
+        cmap = {c["name"]: c for c in candidates}
+        out = []
+        for it in ranked:
+            c = cmap.get(it["name"])
+            if not c:
+                continue
+            out.append({"name": c["name"], "slug": c["slug"], "url": c["url"],
+                        "meaning": it["meaning"]})
+            if len(out) >= 5:
+                break
+        if out:
+            return out
+
+    # Fallback: pure vector path, same never-recommend exclusions applied
+    # via resolve_slug (an excluded name resolves to None so it's dropped).
+    scan_items = [{"label": l, "category": ""} for l in labels]
     return ff_matcher.generate_ff_matches(
         scan_items,
         query_matches=_ff_query_specific_formulations,
-        resolve_slug=_resolve_buy_slug,
+        resolve_slug=lambda n: (None if _ff_auto_excluded(n) else _resolve_buy_slug(n)),
         destination=order_destination.destination_for,
+        top_k=5,
     )
 
 
