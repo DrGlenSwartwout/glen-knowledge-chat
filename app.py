@@ -15106,8 +15106,13 @@ def _ff_query_specific_formulations(text, top_k):
     try:
         res = _idx.query(vector=embed(text), top_k=top_k,
                          namespace="specific-formulations", include_metadata=True)
-        return [{"id": m.id, "score": float(m.score), "metadata": dict(m.metadata or {})}
-                for m in (res.matches or [])]
+        out = []
+        for m in (res.matches or []):
+            md = dict(m.metadata or {})
+            if not md.get("name"):
+                md["name"] = md.get("title")
+            out.append({"id": m.id, "score": float(m.score), "metadata": md})
+        return out
     except Exception as _e:
         print(f"[ff-match] query failed: {_e!r}", flush=True)
         return []
