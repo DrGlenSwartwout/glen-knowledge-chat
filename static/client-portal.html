@@ -435,6 +435,30 @@ function ffMatchesBodyHtml(block){
   if(!rows) rows = `<p class="muted">No matches yet.</p>`;
   return `${rows}<p class="muted small" style="margin-top:.6rem">${esc(disclose)}</p>`;
 }
+// Support-program card body (Slice 4a, read-only display; add-to-invoice is a later
+// slice). Unlike the FF-matches card, dosing is Glen's own authored dose and is ALWAYS
+// shown when present — these are his explicit clinical lists, not an AI draft pending
+// review. Either/or alternatives render inline as "or <Alt>", each linked.
+function supportProgramBodyHtml(sp){
+  sp = sp || {};
+  const items = Array.isArray(sp.items) ? sp.items : [];
+  const consult = sp.consult_recommended
+    ? `<p style="margin:.2rem 0 .8rem;padding:.6rem .8rem;border-radius:8px;background:#2f6f5e;color:#fff;font-weight:600">Please book a consultation for an individualized program.</p>`
+    : "";
+  let rows = items.map(it => {
+    const nm = esc(it.name || "");
+    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const dose = it.dose ? `<div class="dose">${esc(it.dose)}</div>` : "";
+    const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
+    const alts = Array.isArray(it.alts) && it.alts.length
+      ? `<div class="muted" style="font-size:.9em">or ${it.alts.map(a =>
+          a.url ? `<a href="${esc(a.url)}">${esc(a.name||"")}</a>` : esc(a.name||"")).join(", or ")}</div>`
+      : "";
+    return `<p style="margin:.5rem 0"><strong>${nameHtml}</strong>${dose}${note}${alts}</p>`;
+  }).join("");
+  if(!rows) rows = `<p class="muted">No program items yet.</p>`;
+  return `${consult}${rows}`;
+}
 // Render a free-text note (e.g. the biofield greeting) as safe rich HTML:
 // escape first, then **bold** -> <strong>, blank lines -> separate <p>, and
 // single newlines -> <br>. Empty input yields "" so callers' default-string
@@ -1116,6 +1140,20 @@ function render(d, v){
       <p class="small err" id="ffMatchesErr" hidden>Something went wrong — please try again.</p>
       <button type="button" class="btn" id="ffAddToInvoiceBtn" style="margin-top:.7rem" ${showAddToInvoice ? "" : "hidden"}>Add to my invoice</button>
       <p class="small" id="ffAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>
+    </div>`;
+  }
+
+  // Support-program card (Slice 4a, flag-gated, read-only display): with
+  // SUPPORT_PROGRAMS_ENABLED off, d.support_programs_enabled is falsy and no card
+  // renders. When on, the card renders ONLY when this client resolved to a condition
+  // (d.support_program present) — there's no button/generate-on-demand step here, the
+  // program is Glen's pre-authored list, not an AI draft. No add-to-invoice button in
+  // this slice — that's a later slice, reusing the FF money-path machinery.
+  if (d.support_programs_enabled && d.support_program) {
+    const sp = d.support_program;
+    html += `<div class="card support-program-card">
+      <h2>Your ${esc(sp.label || "")} Support Program</h2>
+      ${supportProgramBodyHtml(sp)}
     </div>`;
   }
 

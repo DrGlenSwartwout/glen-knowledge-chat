@@ -15025,6 +15025,15 @@ def _ff_matches_enabled():
         "1", "true", "yes", "on")
 
 
+def _support_programs_enabled():
+    """The condition support-program portal card (Slice 4a). Default OFF — mirrors
+    _ff_matches_enabled exactly: when off, the portal payload never gains the
+    `support_program` key, so responses stay byte-identical to pre-support-program
+    behavior."""
+    return (os.environ.get("SUPPORT_PROGRAMS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -16455,6 +16464,20 @@ def api_client_portal(token):
                     payload["ff_matches"] = {"items": _items, "reviewed": _reviewed, "covered": _cov}
         except Exception as _e:
             print(f"[ff-matches/payload] {_e!r}", flush=True)
+    # Support-programs flag (always present, like its sibling ff_matches_enabled): lets
+    # the frontend gate the card without a separate flag call.
+    payload["support_programs_enabled"] = _support_programs_enabled()
+    # Support-program card (flag-gated, best-effort, Slice 4a: read-only display; the
+    # add-to-invoice money path is a later slice). email_for_reports is already
+    # re-pointed by ?member=, so a member's card shows THEIR condition, not the
+    # caregiver's.
+    if _support_programs_enabled():
+        try:
+            _sp_block = _support_program_for(email_for_reports)
+            if _sp_block:
+                payload["support_program"] = _sp_block
+        except Exception as _e:
+            print(f"[support-program/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
@@ -17125,6 +17148,52 @@ def _client_condition_for(email):
                 if isinstance(v, list):
                     tags.extend(str(x) for x in v)
             return _condition_key_from_tags(tags)
+    except Exception:
+        return None
+
+
+def _support_program_item_view(it):
+    """One authored program item -> the portal-facing shape: {name, url,
+    dose?, note?, alts?}. Carries dose/note only when present; each alt ->
+    {name, url}. Does NOT apply _qty_eligible/never-recommend filtering --
+    these are Glen's explicit authored lists, rendered exactly as stored."""
+    slug = (it.get("slug") or "").strip()
+    view = {"name": it.get("name") or slug, "url": order_destination.destination_for(slug)}
+    if it.get("dose"):
+        view["dose"] = it["dose"]
+    if it.get("note"):
+        view["note"] = it["note"]
+    alts = it.get("alts") or []
+    if alts:
+        view["alts"] = [
+            {"name": a.get("name") or (a.get("slug") or "").strip(),
+             "url": order_destination.destination_for((a.get("slug") or "").strip())}
+            for a in alts
+        ]
+    return view
+
+
+def _support_program_for(email):
+    """The (member-aware) client's support-program portal card, or None when
+    the flag is off, the client has no resolved condition, or the resolved
+    program doesn't exist. Best-effort -- any error returns None, never
+    raises. Item order is preserved from the authored program."""
+    try:
+        key = _client_condition_for(email)
+        if not key:
+            return None
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _init_support_programs_tables(cx)
+            prog = condition_programs.get(cx, key)
+        if not prog:
+            return None
+        return {
+            "condition_key": prog["condition_key"],
+            "label": prog["label"],
+            "consult_recommended": bool(prog["consult_recommended"]),
+            "items": [_support_program_item_view(it) for it in (prog.get("items") or [])],
+        }
     except Exception:
         return None
 
