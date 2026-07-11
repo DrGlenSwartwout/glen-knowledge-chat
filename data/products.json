@@ -5879,6 +5879,22 @@
       "description": "A 5-plate water ionizer (Life Ionizer) producing alkaline, ionized water. Ships in its own box.",
       "source": "manual-add-2026-07-10"
     },
+    "water-ionizer-9plate": {
+      "name": "9-Plate Water Ionizer (Living Water)",
+      "price_cents": 269700,
+      "regular_cents": 309700,
+      "bottle_type": "own-box",
+      "description": "A 9-plate water ionizer producing alkaline, ionized water. Ships in its own box.",
+      "source": "manual-add-2026-07-10"
+    },
+    "water-ionizer-15plate": {
+      "name": "15-Plate Water Ionizer (Living Water)",
+      "price_cents": 419700,
+      "regular_cents": 499700,
+      "bottle_type": "own-box",
+      "description": "A 15-plate water ionizer producing alkaline, ionized water. Ships in its own box.",
+      "source": "manual-add-2026-07-10"
+    },
     "dowsing-rods": {
       "name": "Dowsing Rods",
       "price_cents": 5000,
