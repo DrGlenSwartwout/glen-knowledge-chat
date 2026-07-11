@@ -14,6 +14,11 @@ DEFAULTS = {
     # (not steep-early). Edit rows in the console to reshape.
     "volume_anchors": [[1, 0], [12, 29]],
     "repertoire_reorder_pct": 0.29,   # member flat reorder rate on repertoire SKUs (~$50 on $69.97)
+    # Absolute per-unit price floor for volume-eligible FF (qty_pricing, not info_only):
+    # the ramp's 29% off $69.97 lands at $49.68, but the FF minimum unit price is a clean
+    # $50. Applied only when list >= this floor, so cheaper FFs (e.g. 50%-off powders)
+    # keep their own lower wholesale floor + full volume discount. Glen 2026-07-11.
+    "ff_min_unit_cents": 5000,
     # discount TYPES (console-toggleable, non-additive; see pricing_settings.py):
     # same_sku = per-line SKU qty (open to everyone); program_total = order-total,
     # gated on paid membership; open_total = order-total, everyone (default OFF —
@@ -42,9 +47,19 @@ def unit_floor_cents(product, list_cents, settings, kind):
     whole = product.get("wholesale_cents")
     if kind == "discount":
         if whole is not None:
-            return int(whole)
-        pct = product.get("sku_discount_floor_pct", settings["discount_floor_pct"])
-        return int(round(list_cents * pct))
+            base_floor = int(whole)
+        else:
+            pct = product.get("sku_discount_floor_pct", settings["discount_floor_pct"])
+            base_floor = int(round(list_cents * pct))
+        # FF minimum unit price: a volume-eligible FF (qty_pricing, not info_only) never
+        # discounts below ff_min_unit_cents ($50) — but only when its list is at/above that
+        # floor, so a cheap FF keeps its own lower floor and full volume discount. Explicit
+        # per-client/override prices bypass this (callers return the override before the floor).
+        ff_min = int(settings.get("ff_min_unit_cents") or 0)
+        if (ff_min and list_cents >= ff_min
+                and product.get("qty_pricing") and not product.get("info_only")):
+            return max(base_floor, ff_min)
+        return base_floor
     if kind == "points":
         if whole is not None:
             allowance = int(round(list_cents * (settings["discount_floor_pct"]

@@ -5232,9 +5232,10 @@ def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
     # changing FF pricing flows through instead of breaking the discount.
     base = int(p.get("price_cents") or 0)
     pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
-    eff = int(round(base * (1 - (pct or 0) / 100.0)))
-    floor = int(round(base * float(settings.get("discount_floor_pct", 0.57))))
-    return max(eff, floor)
+    # Clamp to the canonical discount floor (unit_floor_cents), which also enforces the
+    # FF minimum unit price ($50) — keeping the in-house builder identical to compute().
+    floor = _pricing.unit_floor_cents(p, base, settings, "discount")
+    return _pricing.apply_discount(base, pct, floor)
 
 
 def _inhouse_total_ff_qty(lines_in):
@@ -5999,8 +6000,9 @@ def begin_product_data(slug):
         _s = _pricing.load_settings(_pricing_settings())
         _base = int(p["price_cents"])
         qty_tiers = []
+        _floor = _pricing.unit_floor_cents(p, _base, _s, "discount")  # incl. FF $50 min
         for m in (1, 3, 6, 12):
-            u = int(round(_base * (1 - _pricing.same_sku_pct(m, _s) / 100.0)))
+            u = _pricing.apply_discount(_base, _pricing.same_sku_pct(m, _s), _floor)
             qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
                               "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS

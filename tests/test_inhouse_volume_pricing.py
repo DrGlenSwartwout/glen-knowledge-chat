@@ -34,8 +34,8 @@ def test_ff_unit_cents_by_total_qty():
     assert f(FF, 1, s) == 6997
     assert f(FF, 3, s) == 6628
     assert f(FF, 6, s) == 6075
-    assert f(FF, 12, s) == 4968
-    assert f(FF, 99, s) == 4968
+    assert f(FF, 12, s) == 5000   # FF minimum unit price: 29% lands at 4968, clamps to $50
+    assert f(FF, 99, s) == 5000
     assert f(NONFF, 12, s) == 7000
 
 
@@ -58,7 +58,7 @@ def test_line_unit_override_wins():
     appmod = _app()
     s = _pricing.load_settings(None)
     assert appmod._inhouse_line_unit_cents(FF, 5000, 12, s) == 5000
-    assert appmod._inhouse_line_unit_cents(FF, None, 12, s) == 4968
+    assert appmod._inhouse_line_unit_cents(FF, None, 12, s) == 5000   # FF $50 floor (was 4968)
     assert appmod._inhouse_line_unit_cents(NONFF, None, 12, s) == 7000
 
 

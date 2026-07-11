@@ -57,7 +57,7 @@ def test_price_cart_applies_repertoire_for_member(monkeypatch, tmp_path):
         ship={"country": "US", "state": "TX"},
         email="member@x.com",
     )
-    # list is 6997; repertoire_reorder_pct=0.29 -> ~4968 (< 5100 gives headroom)
+    # list 6997; repertoire_reorder_pct=0.29 → 4968, then clamps to the FF $50 floor = 5000
     assert out["priced"]["lines"][0]["line_total_cents"] < 5100
     assert out["priced"]["lines"][0]["pct_applied"] >= 28.9
 
