@@ -303,7 +303,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
             f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
     tid_link = _e(report.get("test_id") or "")
     head += (f'<p class=sub><a href="/test/{tid_link}/report" target="_blank">Open clean report</a>'
-             f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Download printable PDF</a></p>')
+             f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Print/Download PDF</a></p>')
 
     # Causal chain table (grouped by layer, matching the editor's cards)
     chain = ("<h2>Causal Chain Report</h2>"
