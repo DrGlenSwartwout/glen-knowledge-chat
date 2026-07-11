@@ -5042,6 +5042,7 @@ _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "t
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
+_RELATED_PRODUCTS_ENABLED = os.environ.get("RELATED_PRODUCTS_ENABLED", "").lower() in ("1", "true", "yes")
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
@@ -6136,6 +6137,30 @@ def begin_product_page_data(slug):
     ]
     from dashboard.product_page_sections import filter_sections as _filter_sections
     sections = _filter_sections(sections, has_ingredients=_has_ings, has_own_video=bool(_own_vids))
+    if _RELATED_PRODUCTS_ENABLED:
+        try:
+            from dashboard import related_products as _rp, related_store as _rstore
+            _prods = _PRODUCTS.get("products") or {}
+            _res = _rp.resolve_related(
+                slug,
+                manual=_rstore.load_manual(slug),
+                harvested=_rstore.load_harvested(slug),
+                semantic=_related_semantic(slug),
+                products=_prods)
+            if _res["featured"]:
+                def _card(rs):
+                    rp_ = _get_product(rs) or _prods.get(rs, {})
+                    imgs = rp_.get("page_images") or []
+                    return {"slug": rs, "name": rp_.get("name", rs),
+                            "price": f"${rp_.get('price_cents', 0) / 100:.2f}",
+                            "url": f"/begin/product/{rs}",
+                            "image": (imgs[0] if imgs else "")}
+                sections.append({
+                    "id": "related", "title": "Dr. Glen recommends", "default_open": True,
+                    "body": {"featured": [_card(s) for s in _res["featured"]],
+                             "more": [_card(s) for s in _res["more"]]}})
+        except Exception as _e:
+            print(f"[related] page-data section skipped: {_e}", flush=True)
     if _REVIEWS_ENABLED:
         from dashboard import product_reviews as _pr
         try:
