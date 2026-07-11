@@ -54,12 +54,22 @@
   .bb-add{ display:flex; gap:8px; margin-top:8px; }
   .bb-add input{ flex:1; padding:7px 9px; border-radius:7px; border:1px solid var(--border);
          background:var(--bg); color:var(--cream); font-size:13px; }
+  .cc-section{ margin:0 24px 48px; background:var(--surface); border:1px solid var(--border);
+               border-radius:12px; padding:14px 16px; max-width:640px; }
+  .cc-row{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .cc-row input, .cc-row select{ padding:7px 9px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; }
+  .cc-row input{ flex:1; min-width:200px; }
+  .cc-result{ margin-top:12px; font-size:13px; }
+  .cc-result div{ margin-top:4px; }
+  .cc-result .lbl{ color:var(--muted); }
 </style>
 <script src="/static/op-nav.js" data-active="clinical"></script>
 <h1>Support Program Editor</h1>
 <p class="sub">Glen's 9 authored condition support programs. Edit item dose/note, reorder, add/remove items, and toggle the consult-recommended flag. Console-only — no client-facing surface yet.</p>
 <div id="content"><p class="sub">Loading…</p></div>
 <div id="bb-content"></div>
+<div id="cc-content"></div>
 <div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
 <script>
   function key(){ return localStorage.getItem('console_key') || ''; }
@@ -321,6 +331,88 @@
     }
   }
 
+  function renderClientCondition(){
+    var opts = '<option value="">— none / clear —</option>' + PROGRAMS.map(function(p){
+      return '<option value="'+esc(p.condition_key)+'">'+esc(p.label)+' ('+esc(p.condition_key)+')</option>';
+    }).join('');
+    var html = '<div class="cc-section">'
+      + '<h2>Client Eye-Condition</h2>'
+      + '<p class="sub" style="margin:6px 0 0;">Look up which support program a client resolves to, and set/clear the operator override.</p>'
+      + '<div class="cc-row"><input type="text" id="cc-email" placeholder="client email">'
+      + '<button type="button" class="addbtn" id="cc-lookup-btn">Look up</button></div>'
+      + '<div class="cc-row"><select id="cc-select">' + opts + '</select>'
+      + '<button type="button" class="addbtn" id="cc-set-btn">Set</button></div>'
+      + '<div class="cc-result" id="cc-result"></div>'
+      + '<span class="status" id="cc-status"></span>'
+      + '</div>';
+    document.getElementById('cc-content').innerHTML = html;
+    document.getElementById('cc-lookup-btn').addEventListener('click', lookupClientCondition);
+    document.getElementById('cc-set-btn').addEventListener('click', setClientCondition);
+  }
+
+  function renderClientConditionResult(j){
+    var el = document.getElementById('cc-result');
+    if (!el) return;
+    var tags = (j.tags || []).map(esc).join(', ') || '(none)';
+    el.innerHTML = '<div><span class="lbl">Resolved:</span> ' + esc(j.resolved || '(none)') + '</div>'
+      + '<div><span class="lbl">Override:</span> ' + esc(j.override || '(none)') + '</div>'
+      + '<div><span class="lbl">Auto-detected:</span> ' + esc(j.auto_detected || '(none)') + '</div>'
+      + '<div><span class="lbl">Tags considered:</span> ' + tags + '</div>';
+    var sel = document.getElementById('cc-select');
+    if (sel) sel.value = j.override || '';
+  }
+
+  async function lookupClientCondition(){
+    var email = document.getElementById('cc-email').value.trim();
+    var statusEl = document.getElementById('cc-status');
+    if (!email){ statusEl.className = 'status err'; statusEl.textContent = 'Email required.'; return; }
+    statusEl.className = 'status'; statusEl.textContent = 'Looking up…';
+    var r;
+    try {
+      r = await fetch('/api/console/client-condition?email=' + encodeURIComponent(email), { headers: hdr() });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (r.status !== 200) {
+      statusEl.className = 'status err'; statusEl.textContent = j.error || 'Lookup failed.'; return;
+    }
+    statusEl.className = 'status ok'; statusEl.textContent = 'Loaded.';
+    renderClientConditionResult(j);
+  }
+
+  async function setClientCondition(){
+    var email = document.getElementById('cc-email').value.trim();
+    var conditionKey = document.getElementById('cc-select').value;
+    var statusEl = document.getElementById('cc-status');
+    if (!email){ statusEl.className = 'status err'; statusEl.textContent = 'Email required.'; return; }
+    statusEl.className = 'status'; statusEl.textContent = 'Saving…';
+    var r;
+    try {
+      r = await fetch('/api/console/client-condition', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ email: email, condition_key: conditionKey })
+      });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j.ok) {
+      statusEl.className = 'status ok'; statusEl.textContent = 'Saved.';
+      await lookupClientCondition();
+    } else {
+      statusEl.className = 'status err'; statusEl.textContent = j.error || 'Save failed.';
+    }
+  }
+
   async function boot(){
     var r;
     try { r = await fetch('/api/console/condition-programs', { headers: hdr() }); }
@@ -333,6 +425,7 @@
     document.getElementById('content').innerHTML = '<div class="grid">' + PROGRAMS.map(card).join('') + '</div>';
     PROGRAMS.forEach(function(_, pi){ wireCard(pi); });
     renderBroadBenefit();
+    renderClientCondition();
   }
   boot();
 </script>

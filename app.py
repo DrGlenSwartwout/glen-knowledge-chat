@@ -17022,6 +17022,170 @@ def api_console_broad_benefit_toggle():
     return jsonify(resp)
 
 
+# ── Condition Support Programs (Slice 3: client eye-condition resolver) ─────
+# Maps a client's health tags/conditions to one of the 9 support-program keys,
+# with an operator override (dashboard/client_conditions.py) that always wins.
+# Console-only in this slice -- no client-facing surface yet.
+
+_SUPPORT_PROGRAM_CONDITION_KEYS = (
+    "glaucoma-elevated-iop", "glaucoma-normal-iop", "dry-amd", "wet-amd",
+    "senile-cataract", "psc-cataract", "dry-eye", "retinitis-pigmentosa",
+    "diabetic-retinopathy",
+)
+
+# Normalized (lowercase, hyphens->spaces, collapsed whitespace) tag phrase ->
+# one of the 9 support-program keys. UNAMBIGUOUS mappings only -- a bare
+# "glaucoma" or "cataract" (no elevated/normal or senile/psc qualifier) is
+# deliberately absent here; _condition_key_from_tags treats those as a signal
+# to skip, not a match, so the operator must set the specific one via the
+# client_conditions override rather than have the resolver guess.
+_CONDITION_TAG_MAP = {
+    "wet amd": "wet-amd",
+    "neovascular amd": "wet-amd",
+    "exudative amd": "wet-amd",
+    "dry amd": "dry-amd",
+    "atrophic amd": "dry-amd",
+    "dry eye": "dry-eye",
+    "retinitis pigmentosa": "retinitis-pigmentosa",
+    "rp": "retinitis-pigmentosa",
+    "diabetic retinopathy": "diabetic-retinopathy",
+    "dr": "diabetic-retinopathy",
+    "psc": "psc-cataract",
+    "psc cataract": "psc-cataract",
+    "posterior subcapsular": "psc-cataract",
+    "senile cataract": "senile-cataract",
+    "age related cataract": "senile-cataract",
+    "nuclear cataract": "senile-cataract",
+    "glaucoma elevated": "glaucoma-elevated-iop",
+    "ocular hypertension": "glaucoma-elevated-iop",
+    "high iop": "glaucoma-elevated-iop",
+    "elevated iop": "glaucoma-elevated-iop",
+    "normal tension glaucoma": "glaucoma-normal-iop",
+    "normal tension": "glaucoma-normal-iop",
+    "low iop glaucoma": "glaucoma-normal-iop",
+    "normal iop": "glaucoma-normal-iop",
+}
+
+# Bare terms that name a CONDITION FAMILY but not a specific one of the 9 keys
+# (a client tagged just "glaucoma" or just "cataract" is ambiguous -- which of
+# the two glaucoma/cataract programs applies is a clinical call, not a guess).
+_AMBIGUOUS_CONDITION_TERMS = {"glaucoma", "cataract"}
+
+
+def _normalize_condition_tag(tag):
+    t = (tag or "").strip().strip('[]"\'')
+    if t.lower().startswith("pb:"):
+        t = t[3:]
+    t = t.strip().lower().replace("-", " ").replace("_", " ")
+    return " ".join(t.split())
+
+
+def _condition_key_from_tags(tags):
+    """First unambiguous match among `tags` (a client's condition/tag strings)
+    to one of the 9 support-program condition keys, or None. A bare
+    "glaucoma"/"cataract" (no qualifier) is ambiguous and is skipped, not
+    guessed -- later tags are still checked."""
+    for raw in (tags or []):
+        norm = _normalize_condition_tag(raw)
+        if not norm or norm in _AMBIGUOUS_CONDITION_TERMS:
+            continue
+        key = _CONDITION_TAG_MAP.get(norm)
+        if key:
+            return key
+    return None
+
+
+def _client_condition_for(email):
+    """Resolve a client's eye-condition support-program key: the operator
+    override (dashboard/client_conditions.py) wins; otherwise auto-detect from
+    the client's `people.conditions` + `people.tags`. Best-effort -- any error
+    returns None, never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        from dashboard import client_conditions as _cc
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _cc.init_table(cx)
+            override = _cc.get(cx, email)
+            if override:
+                return override
+            row = cx.execute(
+                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+                (email,)).fetchone()
+            if not row:
+                return None
+            tags = []
+            for col in ("conditions", "tags"):
+                try:
+                    v = json.loads(row[col] or "[]")
+                except Exception:
+                    v = []
+                if isinstance(v, list):
+                    tags.extend(str(x) for x in v)
+            return _condition_key_from_tags(tags)
+    except Exception:
+        return None
+
+
+@app.route("/api/console/client-condition", methods=["GET"])
+def api_console_client_condition_get():
+    """Owner console: how a client's eye-condition support-program key
+    resolves -- the operator override, the auto-detected key from their
+    tags/conditions, and the winning `resolved` value (override first)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_conditions as _cc
+    tags = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_table(cx)
+        override = _cc.get(cx, email)
+        row = cx.execute(
+            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+            (email,)).fetchone()
+        if row:
+            for col in ("conditions", "tags"):
+                try:
+                    v = json.loads(row[col] or "[]")
+                except Exception:
+                    v = []
+                if isinstance(v, list):
+                    tags.extend(str(x) for x in v)
+    auto_detected = _condition_key_from_tags(tags)
+    resolved = override or auto_detected
+    return jsonify({"email": email, "resolved": resolved, "override": override,
+                     "auto_detected": auto_detected, "tags": tags})
+
+
+@app.route("/api/console/client-condition", methods=["POST"])
+def api_console_client_condition_set():
+    """Owner console: set (or clear, when condition_key is empty/null) the
+    operator override for a client's eye-condition support-program key."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    condition_key = (body.get("condition_key") or "").strip()
+    if condition_key and condition_key not in _SUPPORT_PROGRAM_CONDITION_KEYS:
+        return jsonify({"error": "invalid condition_key"}), 400
+    from dashboard import client_conditions as _cc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_table(cx)
+        if condition_key:
+            _cc.set(cx, email, condition_key, "console")
+        else:
+            _cc.clear(cx, email)
+    return jsonify({"ok": True, "resolved": _client_condition_for(email)})
+
+
 @app.route("/portal/<token>/analyze")
 def portal_analyze_page(token):
     # Landing page for the new-scan email's one-click link. The page's confirm button
