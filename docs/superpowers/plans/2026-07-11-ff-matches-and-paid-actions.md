@@ -567,19 +567,40 @@ def api_portal_ff_add_to_invoice(token):
         if not draft or draft["status"] != "published":
             return jsonify({"error": "not published"}), 409
         ext = f"FFINV-{email}-{scan_date}"           # deterministic => idempotent via UNIQUE(source, external_ref)
-        items = [{"slug": it["slug"], "name": it["name"], "qty": 1,
-                  "unit_cents": 0, "line_cents": 0} for it in draft["items"]]
+        items = []
+        for it in draft["items"]:
+            unit = _ff_line_cents(cx, email, it["slug"])   # real FF price, see note
+            items.append({"slug": it["slug"], "name": it["name"], "qty": 1,
+                          "unit_cents": unit, "line_cents": unit})
+        total = sum(i["line_cents"] for i in items)
         _bos_orders.upsert_order(cx, source="in-house", external_ref=ext, status="proposed",
                                  email=email, name=(portal.get("name") or ""),
-                                 items=items, total_cents=0, channel="ff-invoice",
+                                 items=items, total_cents=total, channel="ff-invoice",
                                  invoice_note="FF matches — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
 ```
 
+Add the pricing helper, mirroring the FF-price precedence already implemented at `app.py:15830` (per-SKU client special → client FF flat → catalog FF price):
+
+```python
+def _ff_line_cents(cx, email, slug):
+    """The real FF unit price for this client + product, in cents.
+    Precedence mirrors app.py:15830 — a per-SKU client special, else the client's
+    FF flat (client_prices.get_ff_flat), else the product's catalog FF price."""
+    special = client_prices.get(cx, email, slug)        # per-SKU client special (same lookup as :15830)
+    if special is not None:
+        return special
+    flat = client_prices.get_ff_flat(cx, email)         # dashboard/client_prices.py:83
+    if flat is not None:
+        return flat
+    return _catalog_ff_price_cents(slug) or 0           # products.json FF price the portal already uses
+```
+
 Notes:
 - Confirm the exact `upsert_order` kwarg names against `dashboard/orders.py:101` and the composer call at `app.py:33614`; the explore found `pay_status`/`portal_published` are NOT kwargs — they fall to the column defaults (`'unpaid'` / `0`), which is exactly what we want. Do not pass them.
-- `unit_cents=0`: pricing is set by Rae in the composer at review time. The row exists to enter the review/invoice queue, not to price. If the composer requires non-zero prices to list the order, price each line via the existing FF client-price lookup (`client_prices.__all_ff__`) instead — implementer confirms which the composer needs and matches it. Prefer the real FF price if trivially available.
+- **Lines carry the real FF price** via `_ff_line_cents` (above). Confirm the exact accessors: the per-SKU client special lookup used at `app.py:15830`, `client_prices.get_ff_flat(cx, email)` (`dashboard/client_prices.py:83`), and the catalog FF price the portal already resolves for a slug (reuse that existing helper — do NOT invent a new products.json reader; name it `_catalog_ff_price_cents` only if no existing one fits, and mirror the price the portal shows). Rae still finalizes volume/adjustments in the composer at review; the row seeds the queue with an honest price, not $0.
+- Test the pricing: seed `client_prices.set_ff_flat(cx, email, 6997)` and assert each line's `unit_cents == 6997` and `total_cents` equals the sum; with no client flat set, assert the line falls back to the catalog FF price (non-zero).
 
 - [ ] **Step 4: Run — PASS** (all five cases).
 
