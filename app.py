@@ -15236,9 +15236,12 @@ def _ff_llm_rank(scan_labels, candidates):
             "sees their own E4L infoceuticals separately on their scan card "
             "-- your job is to recommend DISTINCT Functional Formulation "
             "products from the candidate list below, not to repeat what's "
-            "already shown to them. Select and rank UP TO 5 of the candidate "
-            "products that best support the client's PRIMARY terrain / "
-            "organ-system patterns from the scan findings.\n\n"
+            "already shown to them. Select and rank a well-rounded support "
+            "set of the candidate products that best support the client's "
+            "PRIMARY terrain / organ-system patterns from the scan findings. "
+            "Aim for 4 to 5 formulations when the candidate list offers that "
+            "many relevant, distinct options; choose fewer ONLY if there "
+            "genuinely aren't enough good fits.\n\n"
             "SCAN FINDINGS:\n" + findings_text + "\n\n"
             "CANDIDATE PRODUCTS (choose ONLY from this list, using each "
             "product's exact name as given -- never invent a product not "
@@ -15253,7 +15256,11 @@ def _ff_llm_rank(scan_labels, candidates):
             "outrank one that supports only one.\n"
             "- Prefer a DISTINCT, non-redundant set: avoid picking several "
             "formulations that all target the exact same single system when "
-            "better breadth is available in the candidate list.\n\n"
+            "better breadth is available in the candidate list.\n"
+            "- Build a complete ongoing-support set: round it out with "
+            "foundational, broadly-beneficial formulations rather than "
+            "stopping at the single closest match -- but never pad with a "
+            "formulation that does not fit the scan.\n\n"
             "Safety rules (defense-in-depth -- some of these may already be "
             "excluded from the candidate list above, but never select them "
             "regardless):\n"
@@ -15321,7 +15328,7 @@ def _make_ff_items_for(email, scan_date=None):
         if tail:
             scan_slugs.add(tail)
 
-    raw = _ff_query_specific_formulations("; ".join(labels), 80)
+    raw = _ff_query_specific_formulations("; ".join(labels), 120)
     candidates, seen = [], set()
     for r in raw:
         name = ((r.get("metadata") or {}).get("name") or "").strip()
