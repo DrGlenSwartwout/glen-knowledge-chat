@@ -6037,6 +6037,64 @@ def begin_product_data(slug):
     return jsonify(data)
 
 
+def _related_semantic(slug, k=12):
+    """Up to k catalog slugs semantically nearest to `slug`'s product-copy vector
+    (cached in LOG_DB). Returns [] on ANY problem — this must never raise into
+    the product page.
+
+    Vectors in the `specific-formulations` namespace are NOT keyed by catalog
+    slug (their ids come from the page-copy scraper/ingest, e.g. chunked
+    `{ns_prefix}-{title-slug}-{i:03d}` ids), so a `fetch(ids=[slug])` would not
+    find this product's vector. Instead this follows the same pattern already
+    used by `_resolve_complement()` / `qbo_price_coverage()`: embed the
+    product's own `pinecone_title` (or `name`) text, query the
+    `specific-formulations` namespace for nearest neighbours by similarity,
+    then map each neighbour's `metadata['title']` back to a catalog slug via
+    `_TITLE_TO_SLUG` (deterministic in-catalog resolution)."""
+    import sqlite3 as _sq, json as _json
+    try:
+        with _sq.connect(LOG_DB) as cx:
+            cx.execute("CREATE TABLE IF NOT EXISTS related_semantic ("
+                       "slug TEXT PRIMARY KEY, slugs_json TEXT, generated_at TEXT)")
+            row = cx.execute("SELECT slugs_json FROM related_semantic WHERE slug=?",
+                              (slug,)).fetchone()
+            if row:
+                return _json.loads(row[0])
+    except Exception as e:
+        print(f"[related-sem] cache read failed: {e}", flush=True)
+
+    try:
+        p = _get_product(slug)
+        query_text = (p or {}).get("pinecone_title") or (p or {}).get("name")
+        if not query_text:
+            return []
+        vec = embed(query_text)
+        res = _idx.query(vector=vec, top_k=k + 20, namespace="specific-formulations",
+                          include_metadata=True)
+        slugs, seen = [], set()
+        for m in (res.matches or []):
+            md = m.metadata or {}
+            title = md.get("title")
+            cand = _TITLE_TO_SLUG.get(title) if title else None
+            if not cand or cand == slug or cand in seen:
+                continue
+            seen.add(cand)
+            slugs.append(cand)
+            if len(slugs) >= k:
+                break
+    except Exception as e:
+        print(f"[related-sem] query failed: {e}", flush=True)
+        return []
+
+    try:
+        with _sq.connect(LOG_DB) as cx:
+            cx.execute("INSERT OR REPLACE INTO related_semantic(slug,slugs_json,generated_at) "
+                       "VALUES (?,?,datetime('now'))", (slug, _json.dumps(slugs)))
+    except Exception as e:
+        print(f"[related-sem] cache write failed: {e}", flush=True)
+    return slugs
+
+
 @app.route("/begin/product-page-data/<slug>")
 def begin_product_page_data(slug):
     p = _get_product(slug)
