@@ -5865,6 +5865,26 @@
       "description": "A toothbrush designed to wick moisture and dry quickly between uses, helping the bristles stay clean and dry.",
       "source": "manual-add-2026-07-10"
     },
+    "harmony-laser": {
+      "name": "Harmony Laser",
+      "price_cents": 99700,
+      "bottle_type": "harmony-laser",
+      "source": "manual-add-2026-07-10"
+    },
+    "water-ionizer-5plate": {
+      "name": "5-Plate Water Ionizer (Living Water)",
+      "price_cents": 169700,
+      "regular_cents": 199700,
+      "bottle_type": "own-box",
+      "description": "A 5-plate water ionizer (Life Ionizer) producing alkaline, ionized water. Ships in its own box.",
+      "source": "manual-add-2026-07-10"
+    },
+    "dowsing-rods": {
+      "name": "Dowsing Rods",
+      "price_cents": 5000,
+      "bottle_type": "dowsing-rods",
+      "source": "manual-add-2026-07-10"
+    },
     "heart-health": {
       "name": "Heart Health",
       "price_cents": 6997,
