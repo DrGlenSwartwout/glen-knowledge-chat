@@ -6055,9 +6055,14 @@ def begin_product_page_data(slug):
         else:
             ingredients.append({"name": str(_ing), "dose": "", "slug": _slugify(str(_ing))})
     intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
-    _vids = list(p.get("videos", []))
+    # Formulation-only surfaces (ingredient list, the formula comparison table + its Miron
+    # rotator/story, the Miron educational video) are misleading on a device/book/service
+    # SKU that has no ingredient list, so they are withheld below (see product_page_sections).
+    _has_ings = bool(ingredients)
+    _own_vids = list(p.get("videos", []))
+    _vids = list(_own_vids)
     _mv = _MIRON_ASSETS.get("video")
-    if _mv and _mv.get("src"):
+    if _has_ings and _mv and _mv.get("src"):
         _vids.append({"src": _mv["src"], "title": _mv.get("title", ""), "provider": "mp4", "kind": "educational"})
     sections = [
         {"id": "intro",       "title": "What this does",  "default_open": True,  "body": intro},
@@ -6071,6 +6076,8 @@ def begin_product_page_data(slug):
         {"id": "images",      "title": "Help shape this", "default_open": False, "body": {"images": p.get("page_images", [])}},
         {"id": "cta",         "title": "Order",           "default_open": False, "body": {}},
     ]
+    from dashboard.product_page_sections import filter_sections as _filter_sections
+    sections = _filter_sections(sections, has_ingredients=_has_ings, has_own_video=bool(_own_vids))
     if _REVIEWS_ENABLED:
         from dashboard import product_reviews as _pr
         try:
@@ -6210,8 +6217,9 @@ def begin_product_page_data(slug):
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
         "ai_state": _ai_state,
-        "sections": sections, "miron_assets": _MIRON_ASSETS["assets"],
-        "miron_story": _MIRON_ASSETS.get("story", []),
+        "sections": sections,
+        "miron_assets": _MIRON_ASSETS["assets"] if _has_ings else [],
+        "miron_story": _MIRON_ASSETS.get("story", []) if _has_ings else [],
         "open_sections": _read_open_sections(request.cookies.get("amg_session", ""),
                                              (get_authenticated_user(request) or {}).get("email", "")),
     }
