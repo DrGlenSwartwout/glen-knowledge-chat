@@ -215,3 +215,49 @@ def set_biofield_status(cx, email, status):
                (json.dumps(content), _now_iso(), email))
     cx.commit()
     return True
+
+
+def _read_content(cx, email):
+    row = cx.execute("SELECT content_json FROM client_portals WHERE email=?",
+                     (email.strip().lower(),)).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row[0] or "{}")
+    except Exception:
+        return {}
+
+
+def _write_content(cx, email, content) -> bool:
+    cur = cx.execute("UPDATE client_portals SET content_json=?, updated_at=? WHERE email=?",
+                     (json.dumps(content), _now_iso(), email.strip().lower()))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def get_auto_advance(cx, email) -> bool:
+    content = _read_content(cx, email)
+    if content is None:
+        return True
+    return bool(content.get("auto_advance", True))
+
+
+def set_auto_advance(cx, email, on: bool) -> bool:
+    content = _read_content(cx, email)
+    if content is None:
+        return False
+    content["auto_advance"] = bool(on)
+    return _write_content(cx, email, content)
+
+
+def get_current_scan(cx, email):
+    content = _read_content(cx, email)
+    return (content or {}).get("current_scan_date")
+
+
+def set_current_scan(cx, email, scan_date: str) -> bool:
+    content = _read_content(cx, email)
+    if content is None:
+        return False
+    content["current_scan_date"] = scan_date
+    return _write_content(cx, email, content)

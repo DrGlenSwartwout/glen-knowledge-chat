@@ -15059,6 +15059,16 @@ def _support_programs_enabled():
         "1", "true", "yes", "on")
 
 
+def _portal_scan_history_enabled() -> bool:
+    """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
+    return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _portal_scan_notify_enabled() -> bool:
+    """Confirm-to-send new-analysis emails. Default OFF until the bulk (non-Gmail) channel is configured."""
+    return os.environ.get("PORTAL_SCAN_NOTIFY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -16253,6 +16263,9 @@ def api_client_portal(token):
         elif cur_ptr and cur_ptr in dates:
             picked = cur_ptr
         else:
+            if cur_ptr and cur_ptr not in dates:
+                app.logger.warning("portal current_scan_date %r not in reports for %s; using newest",
+                                   cur_ptr, email_for_reports)
             picked = dates[0]
         rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
         bf_content = rep.get("content") or {}
@@ -16378,6 +16391,30 @@ def api_client_portal(token):
         "element_state": element_state,
         "element_backdrop_enabled": ELEMENT_BACKDROP_ENABLED,
     }
+    # Task 2 (scan-history spec): expose per-client scan-history prefs + the resolved
+    # current scan date behind PORTAL_SCAN_HISTORY_ENABLED. Additive keys only, mirrors
+    # _ff_matches_enabled/_support_programs_enabled — flag off => payload byte-identical.
+    if _portal_scan_history_enabled():
+        try:
+            from dashboard import client_portal as _cp_sh
+            with sqlite3.connect(LOG_DB) as _cx_sh:
+                _aa = _cp_sh.get_auto_advance(_cx_sh, email_for_reports) if email_for_reports else True
+            payload["scan_history_enabled"] = True
+            payload["auto_advance"] = _aa
+            # current_scan_date is the PERSISTED pointer (what client_portals says is
+            # "current"), NOT bf_scan_date (which honors a transient ?scan_date=). The
+            # UI's "Current" badge must track the managed pointer, not whatever scan the
+            # caller happens to be viewing. Resolve the same way the selector above
+            # does (dates[0] fallback), just without req_date.
+            _persisted_ptr = (content or {}).get("current_scan_date")
+            if _persisted_ptr and dates and _persisted_ptr in dates:
+                payload["current_scan_date"] = _persisted_ptr
+            elif dates:
+                payload["current_scan_date"] = dates[0]
+            else:
+                payload["current_scan_date"] = None
+        except Exception:
+            pass
     # Task 5: portal reorder module (real order history + repertoire pricing +
     # member savings + forward-framed locked rows). Additive keys only — never
     # touches reorder_items above (that's the practitioner-curated list the
@@ -16642,6 +16679,32 @@ def api_portal_agree_tos(token):
         except Exception as e:
             print(f"[portal-tos] {email}: {e!r}", flush=True)
             return jsonify({"error": "could not record"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/scan-prefs", methods=["POST"])
+def api_portal_scan_prefs(token):
+    """Client-set scan preferences: auto_advance on/off, pin a scan as current
+    (pin also turns auto_advance off), and notification opt in/out (reuses notify_state)."""
+    if not _portal_scan_history_enabled():
+        return jsonify({"error": "not found"}), 403
+    body = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp, notify_state as _ns
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        pin = (body.get("pin_scan_date") or "").strip()
+        if pin:
+            _cp.set_current_scan(cx, email, pin)
+            _cp.set_auto_advance(cx, email, False)
+        elif "auto_advance" in body:
+            _cp.set_auto_advance(cx, email, bool(body.get("auto_advance")))
+        notify = (body.get("notify") or "").strip().lower()
+        if notify in ("in", "out"):
+            _ns.set_opt(cx, email, notify)
     return jsonify({"ok": True})
 
 
@@ -18034,13 +18097,37 @@ def api_console_biofield_publish():
         return jsonify({"error": "Add some content — at least one layer, a video, or a greeting."}), 400
     from dashboard import client_portal as _cp
     # Publishing a report makes it the client's CURRENT one (wins over any older
-    # reveal report regardless of date), and keeps the pointer the hand-off set.
-    if scan_date:
-        content["current_scan_date"] = scan_date
+    # reveal report regardless of date), and keeps the pointer the hand-off set —
+    # UNLESS the client has opted out of auto-advance, in which case their existing
+    # pin must be preserved. Prefs (auto_advance/current_scan_date) live in
+    # client_portals via the dedicated helpers, kept OUT of `content` — `content`
+    # is also what upsert_report below stamps onto the per-scan report row, and
+    # prefs are portal-level, not per-scan. Capture the EXISTING prefs before the
+    # write so they can be reapplied unconditionally afterward (upsert_portal
+    # replaces content_json wholesale, dropping them) — this also means an
+    # empty-scan_date publish (e.g. editing just the greeting) still preserves an
+    # opted-out client's prefs instead of skipping preservation entirely.
+    existing_aa = True
+    existing_pin = None
+    try:
+        with sqlite3.connect(LOG_DB) as _cx_prefs:
+            _cp.init_client_portal_table(_cx_prefs)
+            existing_aa = _cp.get_auto_advance(_cx_prefs, email)
+            existing_pin = _cp.get_current_scan(_cx_prefs, email)
+    except Exception:
+        existing_aa, existing_pin = True, None
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
         _cp.set_biofield_status(cx, email, "confirmed")
+        # Reapply prefs AFTER upsert_portal (which just replaced content_json and
+        # dropped them). Auto-advance still on + a scan_date this publish -> pointer
+        # advances to it. Otherwise -> restore whatever pin/opt-out existed before.
+        _cp.set_auto_advance(cx, email, existing_aa)
+        if existing_aa and scan_date:
+            _cp.set_current_scan(cx, email, scan_date)
+        elif existing_pin:
+            _cp.set_current_scan(cx, email, existing_pin)
         # upsert returns token=None on UPDATE (only the link's hash is stored), so a
         # plain `if token` guard skipped the email on every republish — "Publish &
         # email client" silently sent nothing for any existing portal. When a send is
@@ -18083,6 +18170,58 @@ def api_console_biofield_publish():
             print(f"[biofield-publish] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "token": token, "url": url, "portal_id": pid,
                     "updated": token is None, "emailed": emailed, "email_status": email_status})
+
+
+@app.route("/api/console/portal/set-current", methods=["POST"])
+def api_console_portal_set_current():
+    """Operator: point a portal at an existing scan_date (authoritative, independent
+    of auto_advance). Guards against a dangling pointer — the scan_date must have a
+    real report row before the portal is pointed at it."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    scan_date = (body.get("scan_date") or "").strip()
+    if not email or not scan_date:
+        return jsonify({"error": "email and scan_date required"}), 400
+    from dashboard import client_portal as _cp, portal_biofield_reports as _pbr
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _pbr.init_table(cx)
+        if scan_date not in _pbr.list_report_dates(cx, email):
+            return jsonify({"error": "no report for that scan_date"}), 400
+        if not _cp.set_current_scan(cx, email, scan_date):
+            return jsonify({"error": "portal not found"}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/portal/notify-scan", methods=["POST"])
+def api_console_portal_notify_scan():
+    """Operator confirm-to-send: email the client that a new analysis is ready.
+    Sends via inbox.send_bulk (GHL-v2/Mailgun domain), never the Gmail-first
+    _send_full_report_email path — keeps the consumer-Gmail daily quota for
+    transactional mail. Gated by PORTAL_SCAN_NOTIFY_ENABLED and the client's
+    notify_state opt status (never sends when opted out)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    if not _portal_scan_notify_enabled():
+        return jsonify({"ok": True, "sent": False, "reason": "flag off"})
+    from dashboard import client_portal as _cp, notify_state as _ns, inbox as _inbox
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if _ns.get_state(cx, email).get("opt_status") == "out":
+            return jsonify({"ok": True, "sent": False, "reason": "opted out"})
+        link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+    if not link:
+        return jsonify({"ok": True, "sent": False, "reason": "no portal"})
+    subject = "Your new analysis is ready"
+    body = ("Aloha,\n\nYour newest analysis is ready in your portal.\n\n"
+            f"{link}\n\nIn wellness,\nDr. Glen & Rae")
+    _inbox.send_bulk(email, subject, body, from_name="Dr. Glen & Rae")
+    return jsonify({"ok": True, "sent": True})
 
 
 @app.route("/api/console/consult-ready", methods=["POST"])
