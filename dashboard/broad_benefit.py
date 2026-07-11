@@ -9,24 +9,56 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+_SEED_NAME = "broad_benefit"
+
+
 def init_table(cx):
     cx.execute("""
         CREATE TABLE IF NOT EXISTS broad_benefit (
             slug TEXT PRIMARY KEY,
             added_at TEXT
         )""")
+    _ensure_seed_state_table(cx)
+
+
+def _ensure_seed_state_table(cx):
+    # Shared-shape marker table (also created by dashboard/condition_programs.py)
+    # tracking which stores have been seeded — ONCE — regardless of their
+    # current row count. A row-count check ("seed when COUNT(*)==0") would
+    # mistake an operator's intentional "remove everything" for "never
+    # seeded" and silently resurrect the full seed list on the next request.
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS _seed_state (
+            name TEXT PRIMARY KEY,
+            seeded_at TEXT
+        )""")
 
 
 def seed_if_empty(cx, slugs_list):
-    """Insert each slug ONLY if the table is currently empty. Idempotent and
-    never overwrites operator add/remove edits."""
-    (count,) = cx.execute("SELECT COUNT(*) FROM broad_benefit").fetchone()
-    if count:
+    """Insert each slug exactly ONCE ever, tracked by a persisted
+    `_seed_state` marker (not the table's current row count). Idempotent
+    (safe to call on every request) and never re-seeds after the first
+    attempt — even if an operator later removes every slug via `remove()`,
+    that empty state is never mistaken for "not yet seeded" and resurrected.
+
+    On that first-ever attempt, seeding still only inserts rows if the table
+    is currently empty (preserves the original guard against clobbering rows
+    that were already present some other way) — but the marker is recorded
+    either way, so this function never runs its insert logic more than once
+    per store."""
+    _ensure_seed_state_table(cx)
+    already = cx.execute("SELECT 1 FROM _seed_state WHERE name=?",
+                          (_SEED_NAME,)).fetchone()
+    if already:
         return
     now = _now()
-    for slug in (slugs_list or []):
-        cx.execute("INSERT OR IGNORE INTO broad_benefit (slug, added_at) VALUES (?,?)",
-                   (slug, now))
+    (count,) = cx.execute("SELECT COUNT(*) FROM broad_benefit").fetchone()
+    if count == 0:
+        for slug in (slugs_list or []):
+            cx.execute("INSERT OR IGNORE INTO broad_benefit (slug, added_at) VALUES (?,?)",
+                       (slug, now))
+    cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
+               (_SEED_NAME, now))
     cx.commit()
 
 

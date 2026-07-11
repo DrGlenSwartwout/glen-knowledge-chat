@@ -89,12 +89,52 @@ def test_post_condition_programs_upsert_visible_via_get(app_mod, tmp_db):
         "consult_recommended": True, "items": new_items,
     })
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True}
+    j = r.get_json()
+    assert j["ok"] is True
+    # "moisturize" IS a real catalog slug, so it must not be flagged unknown.
+    # (See FIX 2 tests below for dedicated coverage of the unknown-slug case.)
+    assert j["unknown_slugs"] == []
     r2 = client.get("/api/console/condition-programs", headers=HDRS)
     prog = next(p for p in r2.get_json()["programs"] if p["condition_key"] == "dry-eye")
     assert prog["label"] == "Dry Eye (edited)"
     assert prog["consult_recommended"] is True
     assert prog["items"] == new_items
+
+
+def test_post_condition_programs_flags_unknown_slugs(app_mod, tmp_db):
+    client = app_mod.app.test_client()
+    client.get("/api/console/condition-programs", headers=HDRS)  # seed first
+    r = client.post("/api/console/condition-programs", headers=HDRS, json={
+        "condition_key": "dry-eye", "label": "Dry Eye",
+        "consult_recommended": False,
+        "items": [
+            {"slug": "totally-bogus-slug-xyz", "name": "Bogus"},
+            {"slug": "wholomega", "name": "WholOmega",
+             "alts": [{"slug": "another-bogus-slug", "name": "Also Bogus"}]},
+        ],
+    })
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is True
+    assert set(j["unknown_slugs"]) == {"totally-bogus-slug-xyz", "another-bogus-slug"}
+    # the save is NOT blocked by unknown slugs — the program is still saved
+    r2 = client.get("/api/console/condition-programs", headers=HDRS)
+    prog = next(p for p in r2.get_json()["programs"] if p["condition_key"] == "dry-eye")
+    assert prog["label"] == "Dry Eye"
+
+
+def test_post_condition_programs_valid_slugs_report_empty_unknown(app_mod, tmp_db):
+    client = app_mod.app.test_client()
+    client.get("/api/console/condition-programs", headers=HDRS)  # seed first
+    r = client.post("/api/console/condition-programs", headers=HDRS, json={
+        "condition_key": "dry-eye", "label": "Dry Eye",
+        "consult_recommended": False,
+        "items": [{"slug": "wholomega", "name": "WholOmega"}],
+    })
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is True
+    assert j["unknown_slugs"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +164,27 @@ def test_post_broad_benefit_add_and_remove(app_mod, tmp_db):
     assert "brand-new-slug" not in j2["broad_benefit"]
 
 
+def test_post_broad_benefit_add_unknown_slug_still_adds_but_flags(app_mod, tmp_db):
+    client = app_mod.app.test_client()
+    r = client.post("/api/console/broad-benefit", headers=HDRS,
+                     json={"slug": "totally-bogus-slug-xyz", "action": "add"})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is True
+    assert "totally-bogus-slug-xyz" in j["broad_benefit"]  # still added
+    assert j.get("unknown_slug") is True
+
+
+def test_post_broad_benefit_add_known_slug_no_unknown_flag(app_mod, tmp_db):
+    client = app_mod.app.test_client()
+    r = client.post("/api/console/broad-benefit", headers=HDRS,
+                     json={"slug": "wholomega", "action": "add"})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is True
+    assert not j.get("unknown_slug")
+
+
 # ---------------------------------------------------------------------------
 # GET /console/support-programs (editor page)
 # ---------------------------------------------------------------------------
@@ -134,3 +195,49 @@ def test_support_programs_editor_page_serves(app_mod):
     assert r.status_code == 200
     assert "text/html" in r.content_type
     assert "Support Program" in r.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Real seed content (data/condition_programs_seed.json), through the seed path
+# ---------------------------------------------------------------------------
+
+EXPECTED_BROAD_BENEFIT_SLUGS = {
+    "glutathione-syntropy", "vitamin-c-syntropy", "perfect-skin", "fiber-cleanse",
+    "microbiome", "liver-support", "nous-energy", "chelation", "immune-modulation",
+    "scar-solve", "scar-silk", "scar-soft-drink", "lymph-flow", "sleep-syntropy",
+    "mitochondrial-biogenesis", "wholomega", "brain-cleanse", "free-and-easy",
+    "glucose-tolerance", "reverse-age", "neuro-magnesium", "rise--shine",
+    "vital-energy-be", "sustain", "stress-release", "vitality",
+}
+
+
+def test_real_seed_content_loads_correctly_through_seed_path(app_mod, tmp_db):
+    """Loads the ACTUAL data/condition_programs_seed.json (not a test fixture)
+    through the real app seed path (GET triggers _init_support_programs_tables,
+    which is unmocked here) and asserts Glen-approved seed content survives
+    the round trip."""
+    client = app_mod.app.test_client()
+    r = client.get("/api/console/condition-programs", headers=HDRS)
+    assert r.status_code == 200
+    j = r.get_json()
+
+    programs = {p["condition_key"]: p for p in j["programs"]}
+    assert len(programs) == 9
+
+    assert len(EXPECTED_BROAD_BENEFIT_SLUGS) == 26
+    assert set(j["broad_benefit"]) == EXPECTED_BROAD_BENEFIT_SLUGS
+
+    assert programs["wet-amd"]["consult_recommended"] is True
+
+    cataract_items = programs["senile-cataract"]["items"]
+    lens_zyme = next(it for it in cataract_items if it["slug"] == "lens-zyme")
+    assert "brunescent" in lens_zyme.get("note", "").lower()
+
+    # dose/alts round-trip intact
+    glaucoma_items = programs["glaucoma-elevated-iop"]["items"]
+    iop = next(it for it in glaucoma_items if it["slug"] == "iop-syntropy")
+    assert iop["dose"] == "3 times a day"
+    ocuheal = next(it for it in glaucoma_items if it["slug"] == "ocuheal-eye-drops")
+    assert ocuheal["alts"] == [
+        {"slug": "neuro-eye-drops-aces-gl-lite-eye-drops", "name": "Neuro Eye Drops"},
+    ]

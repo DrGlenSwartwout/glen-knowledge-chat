@@ -81,3 +81,19 @@ def test_remove_nonexistent_is_safe(tmp_db):
     bb.init_table(cx)
     bb.remove(cx, "never-existed")  # must not raise
     assert bb.all_slugs(cx) == []
+
+
+def test_seed_marker_prevents_resurrection_after_full_removal(tmp_db):
+    """An operator removing every slug (e.g. via POST .../broad-benefit
+    {action:"remove"} one at a time) leaves the table empty on purpose. A
+    row-count-based seed_if_empty would mistake that for "never seeded" and
+    silently re-insert all seed slugs on the next call. The persisted
+    _seed_state marker must prevent that."""
+    cx = _cx(tmp_db)
+    bb.init_table(cx)
+    bb.seed_if_empty(cx, SLUGS)
+    for slug in list(bb.all_slugs(cx)):
+        bb.remove(cx, slug)
+    assert bb.all_slugs(cx) == []
+    bb.seed_if_empty(cx, SLUGS)
+    assert bb.all_slugs(cx) == []

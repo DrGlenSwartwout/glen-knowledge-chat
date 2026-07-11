@@ -71,6 +71,20 @@ def test_seed_if_empty_never_overwrites_operator_edit(tmp_db):
     assert got["items"] == [{"slug": "moisturize", "name": "Moisturize"}]
 
 
+def test_seed_marker_prevents_resurrection_after_table_cleared(tmp_db):
+    """Mirrors the broad_benefit resurrection guard: once seeded, the
+    persisted _seed_state marker means a later empty table (cleared by any
+    means) is never mistaken for "not yet seeded"."""
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.seed_if_empty(cx, SEED)
+    cx.execute("DELETE FROM condition_programs")
+    cx.commit()
+    assert cp.all(cx) == []
+    cp.seed_if_empty(cx, SEED)
+    assert cp.all(cx) == []
+
+
 def test_get_returns_none_for_missing_key(tmp_db):
     cx = _cx(tmp_db)
     cp.init_table(cx)
@@ -121,3 +135,32 @@ def test_all_returns_list(tmp_db):
     rows = cp.all(cx)
     assert isinstance(rows, list)
     assert len(rows) == 2
+
+
+CLINICAL_ORDER = [
+    "glaucoma-elevated-iop", "glaucoma-normal-iop", "dry-amd", "wet-amd",
+    "senile-cataract", "psc-cataract", "dry-eye", "retinitis-pigmentosa",
+    "diabetic-retinopathy",
+]
+
+
+def test_all_returns_clinical_order_not_alphabetical(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    # Insert in reverse (also non-alphabetical) order so a passing test can't
+    # be an accident of insertion order or of alphabetical sorting.
+    for key in reversed(CLINICAL_ORDER):
+        cp.upsert(cx, key, key, False, [])
+    rows = cp.all(cx)
+    assert [r["condition_key"] for r in rows] == CLINICAL_ORDER
+
+
+def test_all_sorts_unknown_keys_last_by_key(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "wet-amd", "Wet AMD", True, [])
+    cp.upsert(cx, "zzz-unknown", "Unknown Z", False, [])
+    cp.upsert(cx, "aaa-unknown", "Unknown A", False, [])
+    rows = cp.all(cx)
+    keys = [r["condition_key"] for r in rows]
+    assert keys == ["wet-amd", "aaa-unknown", "zzz-unknown"]

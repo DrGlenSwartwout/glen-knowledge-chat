@@ -16907,27 +16907,54 @@ def api_console_condition_programs_list():
     return jsonify({"programs": programs, "broad_benefit": broad})
 
 
+def _unknown_slugs_in_items(items):
+    """Slugs (item-level or alt-level) not resolvable in the live catalog.
+    Order-preserving, de-duplicated. Validation NEVER blocks a save — Glen
+    may be saving a work-in-progress program — it only surfaces a warning
+    for the editor to display."""
+    seen = set()
+    unknown = []
+    for it in (items or []):
+        slug = (it.get("slug") or "").strip()
+        if slug and not _get_product(slug) and slug not in seen:
+            seen.add(slug)
+            unknown.append(slug)
+        for alt in (it.get("alts") or []):
+            aslug = (alt.get("slug") or "").strip()
+            if aslug and not _get_product(aslug) and aslug not in seen:
+                seen.add(aslug)
+                unknown.append(aslug)
+    return unknown
+
+
 @app.route("/api/console/condition-programs", methods=["POST"])
 def api_console_condition_programs_upsert():
-    """Owner console: upsert one condition program (Glen's edit pass)."""
+    """Owner console: upsert one condition program (Glen's edit pass).
+    Saves regardless of unknown slugs (work-in-progress is fine) but reports
+    any item/alt slug not resolvable in the live catalog via unknown_slugs."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     key = (body.get("condition_key") or "").strip()
     if not key:
         return jsonify({"error": "condition_key required"}), 400
+    items = body.get("items") or []
+    unknown_slugs = _unknown_slugs_in_items(items)
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         condition_programs.upsert(cx, key, body.get("label") or "",
                                    bool(body.get("consult_recommended")),
-                                   body.get("items") or [])
-    return jsonify({"ok": True})
+                                   items)
+    return jsonify({"ok": True, "unknown_slugs": unknown_slugs})
 
 
 @app.route("/api/console/broad-benefit", methods=["POST"])
 def api_console_broad_benefit_toggle():
-    """Owner console: add or remove a slug from the broad-benefit flag list."""
+    """Owner console: add or remove a slug from the broad-benefit flag list.
+    An unknown slug is still added (Glen may be flagging a product ahead of
+    catalog import) but the response flags it via unknown_slug so the editor
+    can warn."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
@@ -16943,7 +16970,10 @@ def api_console_broad_benefit_toggle():
         else:
             broad_benefit.remove(cx, slug)
         updated = broad_benefit.all_slugs(cx)
-    return jsonify({"ok": True, "broad_benefit": updated})
+    resp = {"ok": True, "broad_benefit": updated}
+    if action == "add" and not _get_product(slug):
+        resp["unknown_slug"] = True
+    return jsonify(resp)
 
 
 @app.route("/portal/<token>/analyze")
