@@ -1,0 +1,333 @@
+{
+  "condition_programs": {
+    "glaucoma-elevated-iop": {
+      "label": "Glaucoma \u2014 Elevated IOP",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "neuroprotect",
+          "name": "Neuroprotect"
+        },
+        {
+          "slug": "ocuflow-bedtime",
+          "name": "OcuFlow Bedtime"
+        },
+        {
+          "slug": "iop-syntropy",
+          "name": "IOP Syntropy",
+          "dose": "3 times a day"
+        },
+        {
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops",
+          "alts": [
+            {
+              "slug": "neuro-eye-drops-aces-gl-lite-eye-drops",
+              "name": "Neuro Eye Drops"
+            }
+          ]
+        },
+        {
+          "slug": "immune-modulation",
+          "name": "Immune Modulation"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega",
+          "dose": "4/day"
+        }
+      ]
+    },
+    "glaucoma-normal-iop": {
+      "label": "Glaucoma \u2014 Normal / Low IOP",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "neuroprotect",
+          "name": "Neuroprotect"
+        },
+        {
+          "slug": "ocuflow-daytime",
+          "name": "OcuFlow Daytime"
+        },
+        {
+          "slug": "ocuflow-bedtime",
+          "name": "OcuFlow Bedtime"
+        },
+        {
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops",
+          "alts": [
+            {
+              "slug": "neuro-eye-drops-aces-gl-lite-eye-drops",
+              "name": "Neuro Eye Drops"
+            }
+          ]
+        },
+        {
+          "slug": "immune-modulation",
+          "name": "Immune Modulation"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega",
+          "dose": "4/day"
+        }
+      ]
+    },
+    "dry-amd": {
+      "label": "Dry AMD",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "macular-wellness-astaxanthin",
+          "name": "Macular Wellness Astaxanthin"
+        },
+        {
+          "slug": "macular-wellness-lycopene",
+          "name": "Macular Wellness Lycopene"
+        },
+        {
+          "slug": "macular-wellness-lutein",
+          "name": "Macular Wellness Lutein"
+        },
+        {
+          "slug": "macular-wellness-zeaxanthin",
+          "name": "Macular Wellness Zeaxanthin"
+        },
+        {
+          "slug": "macular-wellness-mesozeaxanthin",
+          "name": "Macular Wellness Meso-Zeaxanthin"
+        },
+        {
+          "slug": "lipid-zyme",
+          "name": "Lipid Zyme"
+        },
+        {
+          "slug": "lipid-cleanse",
+          "name": "Lipid Cleanse"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega"
+        }
+      ]
+    },
+    "wet-amd": {
+      "label": "Wet AMD",
+      "consult_recommended": true,
+      "items": [
+        {
+          "slug": "angiogenx",
+          "name": "AngiogenX",
+          "dose": "1 or more/day"
+        },
+        {
+          "slug": "macular-wellness-astaxanthin",
+          "name": "Macular Wellness Astaxanthin"
+        },
+        {
+          "slug": "macular-wellness-lycopene",
+          "name": "Macular Wellness Lycopene"
+        },
+        {
+          "slug": "lipid-zyme",
+          "name": "Lipid Zyme"
+        },
+        {
+          "slug": "lipid-cleanse",
+          "name": "Lipid Cleanse"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega"
+        },
+        {
+          "slug": "scar-solve",
+          "name": "Scar Solve"
+        },
+        {
+          "slug": "scar-soft-drink",
+          "name": "Scar Soft"
+        },
+        {
+          "slug": "scar-silk",
+          "name": "Scar Silk",
+          "alts": [
+            {
+              "slug": "clear-the-way",
+              "name": "Clear the Way"
+            }
+          ]
+        }
+      ]
+    },
+    "senile-cataract": {
+      "label": "Senile (Age-Related) Cataract",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "golden-book",
+          "name": "Golden Book"
+        },
+        {
+          "slug": "crystalline-clarity",
+          "name": "Crystalline Clarity"
+        },
+        {
+          "slug": "clarity",
+          "name": "Clarity"
+        },
+        {
+          "slug": "clear-lens-eye-drops",
+          "name": "Clear Lens Eyedrops",
+          "alts": [
+            {
+              "slug": "ocuheal-eye-drops",
+              "name": "OcuHeal Eye Drops"
+            }
+          ]
+        },
+        {
+          "slug": "lens-zyme",
+          "name": "Lens-Zyme Brunescense Buster",
+          "note": "Add for brunescent cataracts"
+        }
+      ]
+    },
+    "psc-cataract": {
+      "label": "PSC Cataract (Posterior Subcapsular)",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "psc-protect",
+          "name": "PSC Protect"
+        },
+        {
+          "slug": "immune-modulation",
+          "name": "Immune Modulation"
+        },
+        {
+          "slug": "adrenal-syntropy",
+          "name": "Adrenal Syntropy"
+        },
+        {
+          "slug": "clear-lens-eye-drops",
+          "name": "Clear Lens Eyedrops"
+        }
+      ]
+    },
+    "dry-eye": {
+      "label": "Dry Eye",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "aces-eye-drops",
+          "name": "ACES Eye Drops",
+          "alts": [
+            {
+              "slug": "ocuheal-eye-drops",
+              "name": "OcuHeal Eye Drops"
+            }
+          ]
+        },
+        {
+          "slug": "moisturize",
+          "name": "Moisturize"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega",
+          "dose": "4 capsules/day"
+        },
+        {
+          "slug": "moisture-eyes-night-oil",
+          "name": "Moisture Eyes Night Oil",
+          "alts": [
+            {
+              "slug": "moisture-eyes-night-drops",
+              "name": "Moisture Eyes Night Drops"
+            }
+          ]
+        }
+      ]
+    },
+    "retinitis-pigmentosa": {
+      "label": "Retinitis Pigmentosa",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "iron-out",
+          "name": "Iron Out"
+        },
+        {
+          "slug": "neuro-magnesium",
+          "name": "Retina Restore Neuro-Magnesium",
+          "note": "mapped to Neuro-Magnesium \u2014 confirm"
+        },
+        {
+          "slug": "macular-wellness-astaxanthin",
+          "name": "Macular Wellness Astaxanthin"
+        }
+      ]
+    },
+    "diabetic-retinopathy": {
+      "label": "Diabetic Retinopathy",
+      "consult_recommended": false,
+      "items": [
+        {
+          "slug": "glucose-tolerance",
+          "name": "Glucose Tolerance"
+        },
+        {
+          "slug": "reverse-age",
+          "name": "Reverse AGE"
+        },
+        {
+          "slug": "angiogenx",
+          "name": "AngiogenX"
+        },
+        {
+          "slug": "lipid-cleanse",
+          "name": "Lipid Cleanse"
+        },
+        {
+          "slug": "lipid-zyme",
+          "name": "Lipid Zyme"
+        },
+        {
+          "slug": "macular-wellness-astaxanthin",
+          "name": "Macular Wellness Astaxanthin"
+        }
+      ]
+    }
+  },
+  "broad_benefit_slugs": [
+    "glutathione-syntropy",
+    "vitamin-c-syntropy",
+    "perfect-skin",
+    "fiber-cleanse",
+    "microbiome",
+    "liver-support",
+    "nous-energy",
+    "chelation",
+    "immune-modulation",
+    "scar-solve",
+    "scar-silk",
+    "scar-soft-drink",
+    "lymph-flow",
+    "sleep-syntropy",
+    "mitochondrial-biogenesis",
+    "wholomega",
+    "brain-cleanse",
+    "free-and-easy",
+    "glucose-tolerance",
+    "reverse-age",
+    "neuro-magnesium",
+    "rise--shine",
+    "vital-energy-be",
+    "sustain",
+    "stress-release",
+    "vitality"
+  ]
+}

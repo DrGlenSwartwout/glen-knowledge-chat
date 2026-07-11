@@ -1,0 +1,431 @@
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Program Editor</title>
+<style>
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594;
+         --gold:#d4a843; --green:#7fd6a0; --amber:#e0b96b; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--cream);
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1{ margin:18px 24px 2px; font-size:22px; }
+  h2{ margin:0; font-size:16px; }
+  .sub{ margin:0 24px 14px; color:var(--muted); font-size:13px; }
+  .grid{ margin:0 24px 24px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); }
+  .pcard{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .phead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .key{ color:#9db4ff; font-size:11.5px; margin-left:6px; }
+  .consult-row{ display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; color:var(--muted); }
+  .item{ border-top:1px solid var(--border); padding:10px 0; }
+  .item:first-of-type{ border-top:none; }
+  label.flabel{ display:block; color:var(--muted); font-size:11.5px; margin-top:6px; }
+  .item input, .item textarea, .plabel-input{
+         width:100%; padding:6px 8px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; font-family:inherit; margin-top:2px; }
+  .item-row{ display:flex; gap:8px; align-items:flex-start; }
+  .item-fields{ flex:1; }
+  .item-btns{ display:flex; flex-direction:column; gap:4px; }
+  .item-btns button{ padding:3px 7px; font-size:11px; border-radius:5px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); cursor:pointer; }
+  .item-btns button:hover{ border-color:var(--gold); }
+  .alt-row{ margin-top:6px; padding-left:10px; border-left:2px solid var(--border); }
+  .actions{ margin-top:12px; display:flex; align-items:center; gap:10px; }
+  button.save, button.addbtn{ padding:8px 14px; border-radius:8px; border:1px solid var(--gold);
+         background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; font-size:13px; }
+  button.save:hover, button.addbtn:hover{ filter:brightness(1.08); }
+  button.save:disabled{ opacity:0.6; cursor:default; }
+  .status{ font-size:12px; color:var(--muted); }
+  .status.err{ color:#e08a8a; }
+  .status.ok{ color:var(--green); }
+  .status.warn{ color:var(--amber); }
+  .empty{ margin:24px; color:var(--muted); font-size:16px; }
+  #keybox{ margin:24px; }
+  #keybox input{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+                 background:var(--surface); color:var(--cream); min-width:260px; }
+  #keybox button{ padding:9px 13px; border-radius:8px; border:1px solid var(--gold);
+                  background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
+  .bb-section{ margin:0 24px 48px; background:var(--surface); border:1px solid var(--border);
+               border-radius:12px; padding:14px 16px; max-width:640px; }
+  .bb-list{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+  .chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px;
+         border:1px solid var(--border); background:var(--bg); font-size:12.5px; }
+  .chip button{ border:none; background:none; color:var(--muted); cursor:pointer; font-size:13px; padding:0; }
+  .chip button:hover{ color:#e08a8a; }
+  .bb-add{ display:flex; gap:8px; margin-top:8px; }
+  .bb-add input{ flex:1; padding:7px 9px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; }
+  .cc-section{ margin:0 24px 48px; background:var(--surface); border:1px solid var(--border);
+               border-radius:12px; padding:14px 16px; max-width:640px; }
+  .cc-row{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .cc-row input, .cc-row select{ padding:7px 9px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; }
+  .cc-row input{ flex:1; min-width:200px; }
+  .cc-result{ margin-top:12px; font-size:13px; }
+  .cc-result div{ margin-top:4px; }
+  .cc-result .lbl{ color:var(--muted); }
+</style>
+<script src="/static/op-nav.js" data-active="clinical"></script>
+<h1>Support Program Editor</h1>
+<p class="sub">Glen's 9 authored condition support programs. Edit item dose/note, reorder, add/remove items, and toggle the consult-recommended flag. Console-only — no client-facing surface yet.</p>
+<div id="content"><p class="sub">Loading…</p></div>
+<div id="bb-content"></div>
+<div id="cc-content"></div>
+<div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; boot(); }
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  var PROGRAMS = [];
+  var BROAD = [];
+
+  function altBlock(pi, ii, ai, alt){
+    return '<div class="alt-row" data-pi="'+pi+'" data-ii="'+ii+'" data-ai="'+ai+'">'
+      + '<label class="flabel">Alt slug</label>'
+      + '<input type="text" class="a-slug" value="'+esc(alt.slug||'')+'">'
+      + '<label class="flabel">Alt name</label>'
+      + '<input type="text" class="a-name" value="'+esc(alt.name||'')+'">'
+      + '<div class="item-btns"><button type="button" class="rm-alt" data-pi="'+pi+'" data-ii="'+ii+'" data-ai="'+ai+'">Remove alt</button></div>'
+      + '</div>';
+  }
+
+  function itemBlock(pi, ii, it){
+    var alts = it.alts || [];
+    var altsHtml = alts.map(function(a, ai){ return altBlock(pi, ii, ai, a); }).join('');
+    return '<div class="item" data-pi="'+pi+'" data-ii="'+ii+'">'
+      + '<div class="item-row">'
+      + '<div class="item-fields">'
+      + '<label class="flabel">Slug</label>'
+      + '<input type="text" class="f-slug" value="'+esc(it.slug||'')+'">'
+      + '<label class="flabel">Name</label>'
+      + '<input type="text" class="f-name" value="'+esc(it.name||'')+'">'
+      + '<label class="flabel">Dose</label>'
+      + '<input type="text" class="f-dose" value="'+esc(it.dose||'')+'">'
+      + '<label class="flabel">Note</label>'
+      + '<input type="text" class="f-note" value="'+esc(it.note||'')+'">'
+      + altsHtml
+      + '<button type="button" class="addalt" data-pi="'+pi+'" data-ii="'+ii+'" style="margin-top:6px;font-size:11px;">+ Add alt</button>'
+      + '</div>'
+      + '<div class="item-btns">'
+      + '<button type="button" class="up" data-pi="'+pi+'" data-ii="'+ii+'">Up</button>'
+      + '<button type="button" class="down" data-pi="'+pi+'" data-ii="'+ii+'">Down</button>'
+      + '<button type="button" class="rm" data-pi="'+pi+'" data-ii="'+ii+'">Remove</button>'
+      + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  function card(p, pi){
+    var items = p.items || [];
+    var itemsHtml = items.map(function(it, ii){ return itemBlock(pi, ii, it); }).join('');
+    return '<div class="pcard" data-pi="'+pi+'">'
+      + '<div class="phead"><h2>'+esc(p.label)+'<span class="key">'+esc(p.condition_key)+'</span></h2></div>'
+      + '<div class="consult-row"><label><input type="checkbox" class="f-consult" data-pi="'+pi+'"'
+      + (p.consult_recommended ? ' checked' : '') + '> Consult recommended</label></div>'
+      + '<div class="items" data-pi="'+pi+'">' + itemsHtml + '</div>'
+      + '<button type="button" class="additem" data-pi="'+pi+'" style="margin-top:8px;font-size:12px;">+ Add item</button>'
+      + '<div class="actions"><button class="save" data-pi="'+pi+'">Save</button>'
+      + '<span class="status" data-pi-status="'+pi+'"></span></div>'
+      + '</div>';
+  }
+
+  function readItemsFromDom(pi){
+    var container = document.querySelector('.items[data-pi="'+pi+'"]');
+    var out = [];
+    container.querySelectorAll(':scope > .item').forEach(function(node){
+      var slug = node.querySelector('.f-slug').value.trim();
+      var name = node.querySelector('.f-name').value.trim();
+      var dose = node.querySelector('.f-dose').value.trim();
+      var note = node.querySelector('.f-note').value.trim();
+      var it = { slug: slug, name: name };
+      if (dose) it.dose = dose;
+      if (note) it.note = note;
+      var alts = [];
+      node.querySelectorAll(':scope > .alt-row').forEach(function(arow){
+        var aslug = arow.querySelector('.a-slug').value.trim();
+        var aname = arow.querySelector('.a-name').value.trim();
+        if (aslug || aname) alts.push({ slug: aslug, name: aname });
+      });
+      if (alts.length) it.alts = alts;
+      out.push(it);
+    });
+    return out;
+  }
+
+  function rerenderCard(pi){
+    var p = PROGRAMS[pi];
+    var el = document.querySelector('.pcard[data-pi="'+pi+'"]');
+    if (!el) return;
+    el.outerHTML = card(p, pi);
+    wireCard(pi);
+  }
+
+  function wireCard(pi){
+    var el = document.querySelector('.pcard[data-pi="'+pi+'"]');
+    if (!el) return;
+
+    el.querySelector('.f-consult').addEventListener('change', function(e){
+      PROGRAMS[pi].consult_recommended = e.target.checked;
+    });
+
+    el.querySelectorAll('.up').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var ii = Number(btn.getAttribute('data-ii'));
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        if (ii > 0) {
+          var arr = PROGRAMS[pi].items;
+          var tmp = arr[ii-1]; arr[ii-1] = arr[ii]; arr[ii] = tmp;
+          rerenderCard(pi);
+        }
+      });
+    });
+    el.querySelectorAll('.down').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var ii = Number(btn.getAttribute('data-ii'));
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        var arr = PROGRAMS[pi].items;
+        if (ii < arr.length - 1) {
+          var tmp = arr[ii+1]; arr[ii+1] = arr[ii]; arr[ii] = tmp;
+          rerenderCard(pi);
+        }
+      });
+    });
+    el.querySelectorAll('.rm').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var ii = Number(btn.getAttribute('data-ii'));
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        PROGRAMS[pi].items.splice(ii, 1);
+        rerenderCard(pi);
+      });
+    });
+    el.querySelectorAll('.addalt').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var ii = Number(btn.getAttribute('data-ii'));
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        var it = PROGRAMS[pi].items[ii];
+        it.alts = it.alts || [];
+        it.alts.push({ slug: '', name: '' });
+        rerenderCard(pi);
+      });
+    });
+    el.querySelectorAll('.rm-alt').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var ii = Number(btn.getAttribute('data-ii'));
+        var ai = Number(btn.getAttribute('data-ai'));
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        var it = PROGRAMS[pi].items[ii];
+        (it.alts || []).splice(ai, 1);
+        rerenderCard(pi);
+      });
+    });
+    var addItemBtn = el.querySelector('.additem');
+    if (addItemBtn) {
+      addItemBtn.addEventListener('click', function(){
+        PROGRAMS[pi].items = readItemsFromDom(pi);
+        PROGRAMS[pi].items.push({ slug: '', name: '' });
+        rerenderCard(pi);
+      });
+    }
+    var saveBtn = el.querySelector('.save');
+    saveBtn.addEventListener('click', function(){ save(pi); });
+  }
+
+  async function save(pi){
+    var p = PROGRAMS[pi];
+    p.items = readItemsFromDom(pi);
+    var statusEl = document.querySelector('[data-pi-status="'+pi+'"]');
+    var btn = document.querySelector('button.save[data-pi="'+pi+'"]');
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = 'Saving…';
+    var r;
+    try {
+      r = await fetch('/api/console/condition-programs', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({
+          condition_key: p.condition_key, label: p.label,
+          consult_recommended: !!p.consult_recommended, items: p.items
+        })
+      });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; btn.disabled = false; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      statusEl.className = 'status err'; statusEl.textContent = ''; btn.disabled = false; return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j.ok) {
+      var unknown = j.unknown_slugs || [];
+      if (unknown.length) {
+        statusEl.className = 'status warn';
+        statusEl.textContent = 'Saved. Unknown slug(s) not in catalog: ' + unknown.map(esc).join(', ');
+      } else {
+        statusEl.className = 'status ok'; statusEl.textContent = 'Saved.';
+      }
+    } else {
+      statusEl.className = 'status err'; statusEl.textContent = 'Save failed.';
+    }
+    btn.disabled = false;
+  }
+
+  function bbChip(slug){
+    return '<span class="chip" data-slug="'+esc(slug)+'">'+esc(slug)
+      + '<button type="button" class="bb-remove" data-slug="'+esc(slug)+'">&times;</button></span>';
+  }
+
+  function renderBroadBenefit(){
+    var html = '<div class="bb-section">'
+      + '<h2>Broad-Benefit Formulations</h2>'
+      + '<p class="sub" style="margin:6px 0 0;">Slugs the FF matcher should favor as frequently a good match.</p>'
+      + '<div class="bb-list" id="bb-list">' + BROAD.map(bbChip).join('') + '</div>'
+      + '<div class="bb-add"><input type="text" id="bb-input" placeholder="product slug">'
+      + '<button type="button" class="addbtn" id="bb-add-btn">Add</button></div>'
+      + '<span class="status" id="bb-status"></span>'
+      + '</div>';
+    document.getElementById('bb-content').innerHTML = html;
+    document.querySelectorAll('.bb-remove').forEach(function(btn){
+      btn.addEventListener('click', function(){ toggleBroadBenefit(btn.getAttribute('data-slug'), 'remove'); });
+    });
+    document.getElementById('bb-add-btn').addEventListener('click', function(){
+      var input = document.getElementById('bb-input');
+      var slug = input.value.trim();
+      if (!slug) return;
+      toggleBroadBenefit(slug, 'add');
+    });
+  }
+
+  async function toggleBroadBenefit(slug, action){
+    var statusEl = document.getElementById('bb-status');
+    statusEl.className = 'status'; statusEl.textContent = 'Saving…';
+    var r;
+    try {
+      r = await fetch('/api/console/broad-benefit', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ slug: slug, action: action })
+      });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j.ok) {
+      BROAD = j.broad_benefit || [];
+      var inputEl = document.getElementById('bb-input');
+      if (inputEl) inputEl.value = '';
+      renderBroadBenefit();
+      if (j.unknown_slug) {
+        var warnEl = document.getElementById('bb-status');
+        if (warnEl) {
+          warnEl.className = 'status warn';
+          warnEl.textContent = 'Added. Warning: "' + esc(slug) + '" is not in the product catalog.';
+        }
+      }
+    } else {
+      statusEl.className = 'status err'; statusEl.textContent = 'Failed.';
+    }
+  }
+
+  function renderClientCondition(){
+    var opts = '<option value="">— none / clear —</option>' + PROGRAMS.map(function(p){
+      return '<option value="'+esc(p.condition_key)+'">'+esc(p.label)+' ('+esc(p.condition_key)+')</option>';
+    }).join('');
+    var html = '<div class="cc-section">'
+      + '<h2>Client Eye-Condition</h2>'
+      + '<p class="sub" style="margin:6px 0 0;">Look up which support program a client resolves to, and set/clear the operator override.</p>'
+      + '<div class="cc-row"><input type="text" id="cc-email" placeholder="client email">'
+      + '<button type="button" class="addbtn" id="cc-lookup-btn">Look up</button></div>'
+      + '<div class="cc-row"><select id="cc-select">' + opts + '</select>'
+      + '<button type="button" class="addbtn" id="cc-set-btn">Set</button></div>'
+      + '<div class="cc-result" id="cc-result"></div>'
+      + '<span class="status" id="cc-status"></span>'
+      + '</div>';
+    document.getElementById('cc-content').innerHTML = html;
+    document.getElementById('cc-lookup-btn').addEventListener('click', lookupClientCondition);
+    document.getElementById('cc-set-btn').addEventListener('click', setClientCondition);
+  }
+
+  function renderClientConditionResult(j){
+    var el = document.getElementById('cc-result');
+    if (!el) return;
+    var tags = (j.tags || []).map(esc).join(', ') || '(none)';
+    el.innerHTML = '<div><span class="lbl">Resolved:</span> ' + esc(j.resolved || '(none)') + '</div>'
+      + '<div><span class="lbl">Override:</span> ' + esc(j.override || '(none)') + '</div>'
+      + '<div><span class="lbl">Auto-detected:</span> ' + esc(j.auto_detected || '(none)') + '</div>'
+      + '<div><span class="lbl">Tags considered:</span> ' + tags + '</div>';
+    var sel = document.getElementById('cc-select');
+    if (sel) sel.value = j.override || '';
+  }
+
+  async function lookupClientCondition(){
+    var email = document.getElementById('cc-email').value.trim();
+    var statusEl = document.getElementById('cc-status');
+    if (!email){ statusEl.className = 'status err'; statusEl.textContent = 'Email required.'; return; }
+    statusEl.className = 'status'; statusEl.textContent = 'Looking up…';
+    var r;
+    try {
+      r = await fetch('/api/console/client-condition?email=' + encodeURIComponent(email), { headers: hdr() });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (r.status !== 200) {
+      statusEl.className = 'status err'; statusEl.textContent = j.error || 'Lookup failed.'; return;
+    }
+    statusEl.className = 'status ok'; statusEl.textContent = 'Loaded.';
+    renderClientConditionResult(j);
+  }
+
+  async function setClientCondition(){
+    var email = document.getElementById('cc-email').value.trim();
+    var conditionKey = document.getElementById('cc-select').value;
+    var statusEl = document.getElementById('cc-status');
+    if (!email){ statusEl.className = 'status err'; statusEl.textContent = 'Email required.'; return; }
+    statusEl.className = 'status'; statusEl.textContent = 'Saving…';
+    var r;
+    try {
+      r = await fetch('/api/console/client-condition', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ email: email, condition_key: conditionKey })
+      });
+    } catch(e){
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j.ok) {
+      statusEl.className = 'status ok'; statusEl.textContent = 'Saved.';
+      await lookupClientCondition();
+    } else {
+      statusEl.className = 'status err'; statusEl.textContent = j.error || 'Save failed.';
+    }
+  }
+
+  async function boot(){
+    var r;
+    try { r = await fetch('/api/console/condition-programs', { headers: hdr() }); }
+    catch(e){ document.getElementById('content').innerHTML = '<p class="empty">Could not reach the server.</p>'; return; }
+    if (r.status === 401) { document.getElementById('content').innerHTML = ''; document.getElementById('keybox').style.display = 'block'; return; }
+    var j = await r.json();
+    PROGRAMS = j.programs || [];
+    BROAD = j.broad_benefit || [];
+    if (!PROGRAMS.length) { document.getElementById('content').innerHTML = '<p class="empty">No programs found.</p>'; return; }
+    document.getElementById('content').innerHTML = '<div class="grid">' + PROGRAMS.map(card).join('') + '</div>';
+    PROGRAMS.forEach(function(_, pi){ wireCard(pi); });
+    renderBroadBenefit();
+    renderClientCondition();
+  }
+  boot();
+</script>

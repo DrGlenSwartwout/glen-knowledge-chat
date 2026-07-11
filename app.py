@@ -92,6 +92,7 @@ from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
 from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
+from dashboard import condition_programs, broad_benefit
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -12996,6 +12997,14 @@ def console_ff_drafts_page():
     return resp
 
 
+@app.route("/console/support-programs")
+def console_support_programs_page():
+    resp = send_from_directory(STATIC, "console-support-programs.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
@@ -15016,6 +15025,15 @@ def _ff_matches_enabled():
         "1", "true", "yes", "on")
 
 
+def _support_programs_enabled():
+    """The condition support-program portal card (Slice 4a). Default OFF — mirrors
+    _ff_matches_enabled exactly: when off, the portal payload never gains the
+    `support_program` key, so responses stay byte-identical to pre-support-program
+    behavior."""
+    return (os.environ.get("SUPPORT_PROGRAMS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -15222,14 +15240,42 @@ def _parse_ff_rank(text, allowed_names):
         return []
 
 
+def _broad_benefit_slug_set():
+    """Best-effort load of the Slice-1 `broad_benefit` store (Condition
+    Support Programs) as a plain set of slugs, for use as a deterministic
+    "broadly effective" signal in the FF matcher (Slice 2). Opened ONCE per
+    `_make_ff_items_for` call -- never per-candidate -- to avoid a
+    per-candidate DB round trip. Fails closed to an empty set on ANY error
+    (missing table, locked db, etc.) so a store outage can never break the
+    matcher -- it only silently drops the signal, leaving every candidate
+    not-broad."""
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            broad_benefit.init_table(cx)
+            # Seed once here too, so the "broadly effective" FF signal works on a
+            # fresh deploy WITHOUT the support-programs console being opened first.
+            # seed_if_empty is marker-guarded: a no-op after the first seed, and it
+            # never resurrects an operator-cleared list or overwrites edits.
+            broad_benefit.seed_if_empty(
+                cx, (_load_support_programs_seed() or {}).get("broad_benefit_slugs") or [])
+            return set(broad_benefit.all_slugs(cx))
+    except Exception as _e:
+        print(f"[ff-broad-benefit] {_e!r}", flush=True)
+        return set()
+
+
 def _ff_llm_rank(scan_labels, candidates):
     """Retrieval-augmented LLM ranking of FF product candidates for this
     scan's findings. `candidates` is the already-filtered, already-resolved
-    list of {name, slug, url, meaning} (never-recommend products already
-    excluded). Returns a ranked [{"name", "meaning"}, ...] (up to 5, in
-    best-fit-first order) or None on ANY failure -- empty inputs, API
-    error, or a garbage/empty parse -- signalling the caller to fall back
-    to the vector path. Never raises."""
+    list of {name, slug, url, meaning, broad_benefit} (never-recommend
+    products already excluded). A candidate with `broad_benefit` true is
+    rendered in the prompt with a "(broadly effective)" marker after its
+    name (Slice 2), and the ranking guidance nudges the LLM to prefer a
+    marked candidate when two otherwise fit the scan comparably -- this is
+    a soft prompt signal only, never a hard reorder. Returns a ranked
+    [{"name", "meaning"}, ...] (up to 5, in best-fit-first order) or None on
+    ANY failure -- empty inputs, API error, or a garbage/empty parse --
+    signalling the caller to fall back to the vector path. Never raises."""
     try:
         if not scan_labels or not candidates:
             return None
@@ -15239,8 +15285,14 @@ def _ff_llm_rank(scan_labels, candidates):
             nm = (c.get("name") or "").strip()
             if not nm:
                 continue
+            # Deterministic "broadly effective" marker (Slice 2: wires the
+            # Slice-1 broad_benefit store into this prompt) -- purely a
+            # display hint for the LLM; the candidate's real `name` is
+            # unaffected, so `_parse_ff_rank`'s allowed-name join still
+            # works unchanged.
+            label = f"{nm} (broadly effective)" if c.get("broad_benefit") else nm
             mn = (c.get("meaning") or "").strip()
-            cand_lines.append(f"- {nm}: {mn}" if mn else f"- {nm}")
+            cand_lines.append(f"- {label}: {mn}" if mn else f"- {label}")
         candidates_text = "\n".join(cand_lines)
         if not findings_text or not candidates_text:
             return None
@@ -15274,7 +15326,11 @@ def _ff_llm_rank(scan_labels, candidates):
             "- Build a complete ongoing-support set: round it out with "
             "foundational, broadly-beneficial formulations rather than "
             "stopping at the single closest match -- but never pad with a "
-            "formulation that does not fit the scan.\n\n"
+            "formulation that does not fit the scan.\n"
+            "- When two candidates fit the scan comparably, prefer the one "
+            "marked \"(broadly effective)\"; a broadly-effective, "
+            "foundational formulation marked this way is a good choice to "
+            "round out the support set.\n\n"
             "Safety rules (defense-in-depth -- some of these may already be "
             "excluded from the candidate list above, but never select them "
             "regardless):\n"
@@ -15314,9 +15370,14 @@ def _make_ff_items_for(email, scan_date=None):
     qty-eligible Functional Formulation candidate set (never-recommend
     products excluded via `_ff_auto_excluded`; the client's own E4L
     infoceuticals excluded via the `_qty_eligible` gate AND by dropping any
-    slug already on their scan card (`scan_slugs`); deduped by slug), then
-    rank via the inline LLM (`_ff_llm_rank`), biased toward broadly-effective
-    formulations. Falls back to the pure vector path
+    slug already on their scan card (`scan_slugs`); deduped by slug), tags
+    each candidate `broad_benefit` (Slice 2: the Condition Support Programs
+    `broad_benefit` store, loaded ONCE via `_broad_benefit_slug_set` --
+    fail-closed/best-effort, never breaks the matcher), then rank via the
+    inline LLM (`_ff_llm_rank`), which surfaces that flag as a prompt marker
+    biased toward broadly-effective formulations. The `broad_benefit` key is
+    internal to the candidate dict handed to `_ff_llm_rank` and is never
+    copied into the returned items. Falls back to the pure vector path
     (`ff_matcher.generate_ff_matches`, same exclusions + same qty_eligible/
     non-scan-slug scoping) when the LLM ranking is unavailable or empty.
     Returns [] when scan recs are off, unknown, the client has none for this
@@ -15342,6 +15403,10 @@ def _make_ff_items_for(email, scan_date=None):
         if tail:
             scan_slugs.add(tail)
 
+    # Loaded ONCE for this call (not per-candidate) -- see
+    # `_broad_benefit_slug_set` for the fail-closed/best-effort contract.
+    broad_slugs = _broad_benefit_slug_set()
+
     raw = _ff_query_specific_formulations("; ".join(labels), 120)
     candidates, seen = [], set()
     for r in raw:
@@ -15363,6 +15428,11 @@ def _make_ff_items_for(email, scan_date=None):
             "slug": slug,
             "url": order_destination.destination_for(slug),
             "meaning": ((r.get("metadata") or {}).get("meaning") or "").strip(),
+            # INTERNAL to the candidate dict handed to `_ff_llm_rank` --
+            # never copied into the final returned items (see the LLM-path
+            # and fallback-path item construction below, both of which
+            # build a fresh {name, slug, url, meaning} dict).
+            "broad_benefit": slug in broad_slugs,
         })
     if not candidates:
         # No distinct qty_eligible FF candidates survived -- graceful empty,
@@ -16400,6 +16470,20 @@ def api_client_portal(token):
                     payload["ff_matches"] = {"items": _items, "reviewed": _reviewed, "covered": _cov}
         except Exception as _e:
             print(f"[ff-matches/payload] {_e!r}", flush=True)
+    # Support-programs flag (always present, like its sibling ff_matches_enabled): lets
+    # the frontend gate the card without a separate flag call.
+    payload["support_programs_enabled"] = _support_programs_enabled()
+    # Support-program card (flag-gated, best-effort, Slice 4a: read-only display; the
+    # add-to-invoice money path is a later slice). email_for_reports is already
+    # re-pointed by ?member=, so a member's card shows THEIR condition, not the
+    # caregiver's.
+    if _support_programs_enabled():
+        try:
+            _sp_block = _support_program_for(email_for_reports)
+            if _sp_block:
+                payload["support_program"] = _sp_block
+        except Exception as _e:
+            print(f"[support-program/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
@@ -16851,6 +16935,400 @@ def api_console_ff_match_drafts_publish():
             ff_match_drafts.set_items(cx, email, scan_date, body.get("items"))
         published = ff_match_drafts.publish(cx, email, scan_date)
     return jsonify({"published": bool(published)})
+
+
+# ── Condition Support Programs (Slice 1: data stores + console editor) ──────
+# Glen's 9 authored eye-condition remedy groups + the broad-benefit flag list.
+# Console-only in this slice — no client-facing surface yet.
+
+_SUPPORT_PROGRAMS_SEED_CACHE = None
+
+
+def _load_support_programs_seed():
+    """Reads data/condition_programs_seed.json (path relative to this file's
+    dir, matching the fmp_slug_map/products.json pattern elsewhere in app.py).
+    Cached in-process; the file is Glen-approved static content, not runtime
+    state."""
+    global _SUPPORT_PROGRAMS_SEED_CACHE
+    if _SUPPORT_PROGRAMS_SEED_CACHE is None:
+        seed_path = os.path.join(os.path.dirname(__file__), "data",
+                                  "condition_programs_seed.json")
+        with open(seed_path) as f:
+            _SUPPORT_PROGRAMS_SEED_CACHE = json.load(f)
+    return _SUPPORT_PROGRAMS_SEED_CACHE
+
+
+def _init_support_programs_tables(cx):
+    """Idempotent: create-if-missing + seed-if-empty for both stores. Safe to
+    call on every request (mirrors ff_match_drafts.init_table calls above)."""
+    condition_programs.init_table(cx)
+    broad_benefit.init_table(cx)
+    seed = _load_support_programs_seed()
+    condition_programs.seed_if_empty(cx, seed.get("condition_programs") or {})
+    broad_benefit.seed_if_empty(cx, seed.get("broad_benefit_slugs") or [])
+
+
+@app.route("/api/console/condition-programs", methods=["GET"])
+def api_console_condition_programs_list():
+    """Owner console: list all condition-support programs (seeding on first
+    use) + the broad-benefit slug list."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        programs = condition_programs.all(cx)
+        broad = broad_benefit.all_slugs(cx)
+    return jsonify({"programs": programs, "broad_benefit": broad})
+
+
+def _unknown_slugs_in_items(items):
+    """Slugs (item-level or alt-level) not resolvable in the live catalog.
+    Order-preserving, de-duplicated. Validation NEVER blocks a save — Glen
+    may be saving a work-in-progress program — it only surfaces a warning
+    for the editor to display."""
+    seen = set()
+    unknown = []
+    for it in (items or []):
+        slug = (it.get("slug") or "").strip()
+        if slug and not _get_product(slug) and slug not in seen:
+            seen.add(slug)
+            unknown.append(slug)
+        for alt in (it.get("alts") or []):
+            aslug = (alt.get("slug") or "").strip()
+            if aslug and not _get_product(aslug) and aslug not in seen:
+                seen.add(aslug)
+                unknown.append(aslug)
+    return unknown
+
+
+@app.route("/api/console/condition-programs", methods=["POST"])
+def api_console_condition_programs_upsert():
+    """Owner console: upsert one condition program (Glen's edit pass).
+    Saves regardless of unknown slugs (work-in-progress is fine) but reports
+    any item/alt slug not resolvable in the live catalog via unknown_slugs."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    key = (body.get("condition_key") or "").strip()
+    if not key:
+        return jsonify({"error": "condition_key required"}), 400
+    items = body.get("items") or []
+    unknown_slugs = _unknown_slugs_in_items(items)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        condition_programs.upsert(cx, key, body.get("label") or "",
+                                   bool(body.get("consult_recommended")),
+                                   items)
+    return jsonify({"ok": True, "unknown_slugs": unknown_slugs})
+
+
+@app.route("/api/console/broad-benefit", methods=["POST"])
+def api_console_broad_benefit_toggle():
+    """Owner console: add or remove a slug from the broad-benefit flag list.
+    An unknown slug is still added (Glen may be flagging a product ahead of
+    catalog import) but the response flags it via unknown_slug so the editor
+    can warn."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    action = (body.get("action") or "").strip().lower()
+    if not slug or action not in ("add", "remove"):
+        return jsonify({"error": "slug and action ('add'|'remove') required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        if action == "add":
+            broad_benefit.add(cx, slug)
+        else:
+            broad_benefit.remove(cx, slug)
+        updated = broad_benefit.all_slugs(cx)
+    resp = {"ok": True, "broad_benefit": updated}
+    if action == "add" and not _get_product(slug):
+        resp["unknown_slug"] = True
+    return jsonify(resp)
+
+
+# ── Condition Support Programs (Slice 3: client eye-condition resolver) ─────
+# Maps a client's health tags/conditions to one of the 9 support-program keys,
+# with an operator override (dashboard/client_conditions.py) that always wins.
+# Console-only in this slice -- no client-facing surface yet.
+
+_SUPPORT_PROGRAM_CONDITION_KEYS = (
+    "glaucoma-elevated-iop", "glaucoma-normal-iop", "dry-amd", "wet-amd",
+    "senile-cataract", "psc-cataract", "dry-eye", "retinitis-pigmentosa",
+    "diabetic-retinopathy",
+)
+
+# Normalized (lowercase, hyphens->spaces, collapsed whitespace) tag phrase ->
+# one of the 9 support-program keys. UNAMBIGUOUS mappings only -- a bare
+# "glaucoma" or "cataract" (no elevated/normal or senile/psc qualifier) is
+# deliberately absent here; _condition_key_from_tags treats those as a signal
+# to skip, not a match, so the operator must set the specific one via the
+# client_conditions override rather than have the resolver guess.
+_CONDITION_TAG_MAP = {
+    "wet amd": "wet-amd",
+    "neovascular amd": "wet-amd",
+    "exudative amd": "wet-amd",
+    "dry amd": "dry-amd",
+    "atrophic amd": "dry-amd",
+    "dry eye": "dry-eye",
+    "retinitis pigmentosa": "retinitis-pigmentosa",
+    "rp": "retinitis-pigmentosa",
+    "diabetic retinopathy": "diabetic-retinopathy",
+    "dr": "diabetic-retinopathy",
+    "psc": "psc-cataract",
+    "psc cataract": "psc-cataract",
+    "posterior subcapsular": "psc-cataract",
+    "senile cataract": "senile-cataract",
+    "age related cataract": "senile-cataract",
+    "nuclear cataract": "senile-cataract",
+    "glaucoma elevated": "glaucoma-elevated-iop",
+    "ocular hypertension": "glaucoma-elevated-iop",
+    "high iop": "glaucoma-elevated-iop",
+    "elevated iop": "glaucoma-elevated-iop",
+    "normal tension glaucoma": "glaucoma-normal-iop",
+    "normal tension": "glaucoma-normal-iop",
+    "low iop glaucoma": "glaucoma-normal-iop",
+    "normal iop": "glaucoma-normal-iop",
+}
+
+# Bare terms that name a CONDITION FAMILY but not a specific one of the 9 keys
+# (a client tagged just "glaucoma" or just "cataract" is ambiguous -- which of
+# the two glaucoma/cataract programs applies is a clinical call, not a guess).
+_AMBIGUOUS_CONDITION_TERMS = {"glaucoma", "cataract"}
+
+
+def _normalize_condition_tag(tag):
+    t = (tag or "").strip().strip('[]"\'')
+    if t.lower().startswith("pb:"):
+        t = t[3:]
+    t = t.strip().lower().replace("-", " ").replace("_", " ")
+    return " ".join(t.split())
+
+
+def _condition_key_from_tags(tags):
+    """First unambiguous match among `tags` (a client's condition/tag strings)
+    to one of the 9 support-program condition keys, or None. A bare
+    "glaucoma"/"cataract" (no qualifier) is ambiguous and is skipped, not
+    guessed -- later tags are still checked."""
+    for raw in (tags or []):
+        norm = _normalize_condition_tag(raw)
+        if not norm or norm in _AMBIGUOUS_CONDITION_TERMS:
+            continue
+        key = _CONDITION_TAG_MAP.get(norm)
+        if key:
+            return key
+    return None
+
+
+def _client_condition_for(email):
+    """Resolve a client's eye-condition support-program key: the operator
+    override (dashboard/client_conditions.py) wins; otherwise auto-detect from
+    the client's `people.conditions` + `people.tags`. Best-effort -- any error
+    returns None, never raises."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        from dashboard import client_conditions as _cc
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _cc.init_table(cx)
+            override = _cc.get(cx, email)
+            if override:
+                return override
+            row = cx.execute(
+                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+                (email,)).fetchone()
+            if not row:
+                return None
+            tags = []
+            for col in ("conditions", "tags"):
+                try:
+                    v = json.loads(row[col] or "[]")
+                except Exception:
+                    v = []
+                if isinstance(v, list):
+                    tags.extend(str(x) for x in v)
+            return _condition_key_from_tags(tags)
+    except Exception:
+        return None
+
+
+def _support_program_item_view(it):
+    """One authored program item -> the portal-facing shape: {name, url,
+    dose?, note?, alts?}. Carries dose/note only when present; each alt ->
+    {name, url}. Does NOT apply _qty_eligible/never-recommend filtering --
+    these are Glen's explicit authored lists, rendered exactly as stored."""
+    slug = (it.get("slug") or "").strip()
+    view = {"name": it.get("name") or slug, "url": order_destination.destination_for(slug)}
+    if it.get("dose"):
+        view["dose"] = it["dose"]
+    if it.get("note"):
+        view["note"] = it["note"]
+    alts = it.get("alts") or []
+    if alts:
+        view["alts"] = [
+            {"name": a.get("name") or (a.get("slug") or "").strip(),
+             "url": order_destination.destination_for((a.get("slug") or "").strip())}
+            for a in alts
+        ]
+    return view
+
+
+def _support_program_for(email):
+    """The (member-aware) client's support-program portal card, or None when
+    the flag is off, the client has no resolved condition, or the resolved
+    program doesn't exist. Best-effort -- any error returns None, never
+    raises. Item order is preserved from the authored program."""
+    try:
+        key = _client_condition_for(email)
+        if not key:
+            return None
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _init_support_programs_tables(cx)
+            prog = condition_programs.get(cx, key)
+        if not prog:
+            return None
+        return {
+            "condition_key": prog["condition_key"],
+            "label": prog["label"],
+            "consult_recommended": bool(prog["consult_recommended"]),
+            "items": [_support_program_item_view(it) for it in (prog.get("items") or [])],
+        }
+    except Exception:
+        return None
+
+
+@app.route("/api/portal/<token>/support-program/add-to-invoice", methods=["POST"])
+def api_portal_support_program_add_to_invoice(token):
+    """The paid add-to-invoice action for the condition support-program card
+    (Slice 4b) — the MONEY-WRITE step. Creates ONE unpaid, unpublished invoice
+    draft (`orders` row), idempotently keyed on (email, condition_key) via a
+    deterministic external_ref, priced at the client's real FF price
+    (_ff_line_cents, same pricer as the FF add-to-invoice endpoint).
+
+    THE GATE IS DIFFERENT FROM FF: this is open to ANY client who resolves to a
+    support program (they've been tagged with an eye condition) — there is no
+    _ff_covered / entitlement check here, deliberately. A client with no
+    resolved condition is rejected (409); everyone else, covered or not, may
+    queue their program onto an invoice for Rae to finalize.
+
+    Only the program's PRIMARY items are priced/queued — `alts` are either/or
+    choices Rae finalizes in the composer, not auto-added."""
+    if not _support_programs_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_ff_matches (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[support-program/add-to-invoice] household {_e!r}", flush=True)
+        sp = _support_program_for(email)
+        if not sp or not sp.get("items"):
+            return jsonify({"error": "no support program"}), 409
+        key = sp["condition_key"]
+        _init_support_programs_tables(cx)
+        prog = condition_programs.get(cx, key)
+        raw_items = (prog or {}).get("items") or []
+        ext = f"SPINV-{email}-{key}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
+        # Insert-once: never rewrite an existing support-program-invoice order. A second
+        # click after Rae has priced/advanced or paid the order must not touch it.
+        existing = _bos_orders.find_order_by_external_ref(cx, ext)
+        if existing and existing.get("source") == "in-house":
+            return jsonify({"ok": True, "order_ref": ext, "already_added": True})
+        from dashboard import client_prices as _cp_init
+        _cp_init.init_table(cx)
+        items = []
+        for it in raw_items:  # PRIMARY items only -- alts are either/or, not auto-added
+            slug = (it.get("slug") or "").strip()
+            unit = _ff_line_cents(cx, email, slug)
+            items.append({"slug": slug, "name": it.get("name") or slug,
+                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+        total = sum(i["line_cents"] for i in items)
+        _bos_orders.upsert_order(
+            cx, source="in-house", external_ref=ext, status="proposed",
+            email=email, name=(portal.get("name") or ""),
+            items=items, total_cents=total, channel="support-program",
+            invoice_note=f"{sp['label']} support program — pending Rae invoicing")
+        cx.commit()
+        return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/console/client-condition", methods=["GET"])
+def api_console_client_condition_get():
+    """Owner console: how a client's eye-condition support-program key
+    resolves -- the operator override, the auto-detected key from their
+    tags/conditions, and the winning `resolved` value (override first)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    from dashboard import client_conditions as _cc
+    tags = []
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_table(cx)
+        override = _cc.get(cx, email)
+        row = cx.execute(
+            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+            (email,)).fetchone()
+        if row:
+            for col in ("conditions", "tags"):
+                try:
+                    v = json.loads(row[col] or "[]")
+                except Exception:
+                    v = []
+                if isinstance(v, list):
+                    tags.extend(str(x) for x in v)
+    auto_detected = _condition_key_from_tags(tags)
+    resolved = override or auto_detected
+    return jsonify({"email": email, "resolved": resolved, "override": override,
+                     "auto_detected": auto_detected, "tags": tags})
+
+
+@app.route("/api/console/client-condition", methods=["POST"])
+def api_console_client_condition_set():
+    """Owner console: set (or clear, when condition_key is empty/null) the
+    operator override for a client's eye-condition support-program key."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email required"}), 400
+    condition_key = (body.get("condition_key") or "").strip()
+    if condition_key and condition_key not in _SUPPORT_PROGRAM_CONDITION_KEYS:
+        return jsonify({"error": "invalid condition_key"}), 400
+    from dashboard import client_conditions as _cc
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cc.init_table(cx)
+        if condition_key:
+            _cc.set(cx, email, condition_key, "console")
+        else:
+            _cc.clear(cx, email)
+    return jsonify({"ok": True, "resolved": _client_condition_for(email)})
 
 
 @app.route("/portal/<token>/analyze")
