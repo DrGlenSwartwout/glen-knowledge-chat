@@ -5885,6 +5885,142 @@
       "bottle_type": "dowsing-rods",
       "source": "manual-add-2026-07-10"
     },
+    "nes-mihealth": {
+      "name": "NES miHealth",
+      "price_cents": 450000,
+      "regular_cents": 479000,
+      "bottle_type": "own-box",
+      "description": "NES miHealth handheld PEMF + microcurrent bioenergetic device (ordered from E4L, formerly NES). Drop-shipped by the vendor.",
+      "source": "manual-add-2026-07-10"
+    },
+    "kloud-pemf-mini": {
+      "name": "Kloud PEMF Mat (Mini)",
+      "price_cents": 289000,
+      "bottle_type": "own-box",
+      "description": "Kloud Mini PEMF mat (ordered from our Centropix store page). Drop-shipped by Centropix.",
+      "source": "manual-add-2026-07-10"
+    },
+    "kloud-pemf-maxi": {
+      "name": "Kloud PEMF Mat (Maxi)",
+      "price_cents": 359000,
+      "bottle_type": "own-box",
+      "description": "Kloud Maxi PEMF mat (ordered from our Centropix store page). Drop-shipped by Centropix.",
+      "source": "manual-add-2026-07-10"
+    },
+    "denas-scenar": {
+      "name": "DENAS PCM Pro (SCENAR Microcurrent)",
+      "price_cents": 59700,
+      "bottle_type": "denas",
+      "description": "DENAS PCM Pro microcurrent biofeedback device (SCENAR-type).",
+      "source": "manual-add-2026-07-10"
+    },
+    "nir-nasal-clip": {
+      "name": "NIR Near-Infrared Nasal Clip",
+      "price_cents": 9700,
+      "regular_cents": 10000,
+      "bottle_type": "nasal-clip",
+      "description": "Near-infrared intranasal photobiomodulation clip.",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-refreshing-vision": {
+      "name": "Refreshing Vision (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-cataract-solutions": {
+      "name": "Cataract Solutions (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-healing-glaucoma": {
+      "name": "Healing Glaucoma (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-macular-regeneration": {
+      "name": "Macular Degeneration → Macular Regeneration (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-emf-pollution-solutions": {
+      "name": "Electromagnetic Pollution Solutions (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-materia-medica": {
+      "name": "Materia Medica (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-anima-medica": {
+      "name": "Anima Medica (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-the-shire": {
+      "name": "The Shire (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-living-universe": {
+      "name": "The Living Universe (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-as-above-so-below": {
+      "name": "As Above, So Below (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-dry-eye-relief": {
+      "name": "Dry Eye Relief (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "book-nous-energy": {
+      "name": "Nous Energy (book)",
+      "price_cents": 1997,
+      "bottle_type": "book",
+      "source": "manual-add-2026-07-10"
+    },
+    "oasis-tools-install-cert": {
+      "name": "Healing Oasis Tools Install + Training + Certification",
+      "price_cents": 1399700,
+      "info_only": true,
+      "service": true,
+      "service_value_cents": 1399700,
+      "source": "manual-add-2026-07-10",
+      "_note": "In-person install + training + certification service. info_only keeps it out of the funnel/store + self-checkout + shipping packer; billed via the in-house order builder."
+    },
+    "ash-practitioner-cert": {
+      "name": "Accelerated Self Healing (ASH) Practitioner Certification",
+      "price_cents": 299700,
+      "info_only": true,
+      "service": true,
+      "service_value_cents": 299700,
+      "source": "manual-add-2026-07-10",
+      "_note": "Single-pay $2,997. Monthly plan ($300/mo x 12) = ash-practitioner-cert-monthly."
+    },
+    "ash-practitioner-cert-monthly": {
+      "name": "ASH Practitioner Certification (Monthly Plan)",
+      "price_cents": 30000,
+      "info_only": true,
+      "service": true,
+      "service_value_cents": 299700,
+      "source": "manual-add-2026-07-10",
+      "_note": "Monthly installment $300/mo x 12 = $3,600. Single-pay $2,997 = ash-practitioner-cert."
+    },
     "heart-health": {
       "name": "Heart Health",
       "price_cents": 6997,
