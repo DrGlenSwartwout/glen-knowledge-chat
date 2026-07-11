@@ -225,6 +225,24 @@
     border-radius:999px;font-size:.8rem;font-weight:600;padding:5px 10px;cursor:pointer;
     font-family:inherit}
   .scan-old{color:var(--muted);font-size:.82rem;margin:0 0 .6rem}
+  /* Task 7: three-tab portal nav (Current Analysis / Scan History / Orders & Invoices).
+     Guard [hidden] with !important so an unrelated `display:` rule can never override
+     the `hidden` attribute — see memory hidden-attr-vs-display-css. */
+  [data-panel][hidden]{display:none !important}
+  .tabbar{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 16px;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);
+    font-family:"Raleway",sans-serif;font-size:.92rem;font-weight:600;cursor:pointer;
+    padding:9px 6px;margin:0 10px -1px 0;font-family:inherit}
+  .tab.is-active{color:var(--brand);border-bottom-color:var(--brand)}
+  .histgroup{margin:0 0 1.1rem}
+  .histgroup:last-child{margin-bottom:0}
+  .histgroup-label{font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.03em;
+    text-transform:uppercase;margin:0 0 .35rem}
+  .histrow{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;
+    border-bottom:1px dashed var(--line);padding:9px 0;margin:0;cursor:pointer;text-align:left;
+    font:inherit;color:inherit}
+  .histrow:last-child{border-bottom:0}
+  .histrow .pill{margin-left:auto}
   /* cold-portal "preparing your analysis" state */
   .prep{text-align:center;background:linear-gradient(180deg,var(--card),var(--card2))}
   .prep h2{margin:0 0 .2rem}
@@ -486,6 +504,92 @@ const escGreeting = (s)=>{
           .map(b=>"<p>"+b.replace(/\n/g,"<br>")+"</p>").join("");
 };
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
+
+// ── Task 7: three-tab portal nav (Current Analysis / Scan History / Orders &
+// Invoices). Additive, gated on data.scan_history_enabled everywhere it's called
+// from render(); these three helpers are otherwise unused when the flag is off. ──
+// Global (not inside render()) since the tab buttons' onclick="showTab(...)"
+// runs in global scope. Remembers the last-viewed tab in sessionStorage so a
+// household member switch (a full page nav) can land back on the same tab.
+function showTab(name){
+  document.querySelectorAll('#portalTabs .tab').forEach(b =>
+    b.classList.toggle('is-active', b.dataset.tab === name));
+  document.querySelectorAll('[data-panel]').forEach(p =>
+    p.hidden = (p.dataset.panel !== name));
+  try{ sessionStorage.setItem('rm_portal_tab', name); }catch(e){}
+}
+// One Scan History row per date. memberEmail is set only for the group currently
+// being viewed (matches ?member=, or "" for "You") — clicking it reuses the same
+// in-place reload selectScan() already uses, since the member context (the URL's
+// ?member=) doesn't need to change. isCurrent badges data.current_scan_date.
+function scanHistoryRowHtml(dt, isCurrent, memberEmail){
+  return `<button type="button" class="histrow" data-scan="${esc(dt)}"${memberEmail?` data-member="${esc(memberEmail)}"`:""}>
+    <span>${esc(fmtDate(dt))}</span>${isCurrent?' <span class="pill">Current</span>':""}
+  </button>`;
+}
+// Scan History panel body. When data.household is present, groups rows under the
+// person currently being viewed ("You", or the member's label) plus one row per
+// OTHER household member. We only ever hold ONE person's scan_dates at a time
+// (the payload is scoped to whoever ?member= resolves to), so another member's
+// group can't list their dates without switching to them first — that row is a
+// plain "View history" link (reusing the household switcher's window.__hhGo,
+// wired above in render()), which is also how the existing member switcher works.
+function buildScanHistoryHtml(d){
+  const dates = Array.isArray(d.scan_dates) ? d.scan_dates : [];
+  const cur = d.current_scan_date || (dates.length ? dates[0] : null);
+  const household = Array.isArray(d.household) ? d.household : [];
+  const viewingEmail = (new URLSearchParams(location.search).get("member") || "").toLowerCase();
+  let body = "";
+  if(household.length){
+    const me = viewingEmail && household.find(m => (m.email||"").toLowerCase() === viewingEmail);
+    const meLabel = me ? (me.label || me.email) : "You";
+    body += `<div class="histgroup"><p class="histgroup-label">${esc(meLabel)}</p>`
+      + (dates.length
+          ? dates.map(dt => scanHistoryRowHtml(dt, dt === cur, viewingEmail)).join("")
+          : `<p class="muted small">No past analyses yet.</p>`)
+      + `</div>`;
+    household.forEach(m => {
+      if((m.email||"").toLowerCase() === viewingEmail) return;  // already shown above as "me"
+      body += `<div class="histgroup"><p class="histgroup-label">${esc(m.label || m.email)}</p>
+        <button type="button" class="histrow" data-viewmember="1" data-member="${esc(m.email)}">
+          <span>View ${esc(m.label || m.email)}'s history</span></button></div>`;
+    });
+  } else {
+    body = dates.length
+      ? dates.map(dt => scanHistoryRowHtml(dt, dt === cur, "")).join("")
+      : `<p class="muted small">No past analyses yet.</p>`;
+  }
+  return `<div class="card"><h2>Scan History</h2>${body}</div>`;
+}
+// Orders & Invoices panel body — the same invoices/past_invoices data the old
+// combined "History & receipts" card rendered, just moved to its own tab.
+function buildOrdersHtml(d){
+  const invs = Array.isArray(d.invoices) ? d.invoices : [];
+  const past = Array.isArray(d.past_invoices) ? d.past_invoices : [];
+  let body = "";
+  invs.forEach(inv => {
+    body += `<div class="card invoice-card">
+      <h2>Your invoice</h2>
+      <p>Amount due: <strong>$${esc(inv.amount_dollars)}</strong></p>
+      <a class="btn" href="${esc(inv.link)}" target="_blank" rel="noopener">View &amp; pay invoice</a>
+    </div>`;
+  });
+  if(past.length){
+    body += `<div class="card"><h2>Past invoices</h2>`
+      + past.map(inv => {
+          const label = `$${esc(inv.amount_dollars)} paid${inv.when?" &middot; "+esc(inv.when):""}`;
+          return inv.link
+            ? `<p style="margin:.25rem 0"><a href="${esc(inv.link)}" target="_blank" rel="noopener">${label} ↗</a></p>`
+            : `<p class="muted" style="margin:.25rem 0">${label}</p>`;
+        }).join("")
+      + `</div>`;
+  }
+  if(!invs.length && !past.length){
+    body = `<div class="card"><h2>Orders &amp; Invoices</h2><p class="muted">No invoices yet.</p></div>`;
+  }
+  return body;
+}
+
 // The biofield scan the page is currently viewing (null = newest, server default).
 let selectedScanDate = null;
 // Cold-portal "Preparing your analysis…" state. A fresh portal is created with
@@ -836,7 +940,9 @@ function render(d, v){
         <a class="btn" href="${esc(d.report_pdf.url)}" target="_blank" rel="noopener" download>Download your report (PDF)</a>
       </div>`;
   }
-  if(Array.isArray(d.invoices) && d.invoices.length){
+  // Task 7: when scan_history_enabled, unpaid invoices move to the Orders &
+  // Invoices tab (buildOrdersHtml) instead of rendering here.
+  if(!d.scan_history_enabled && Array.isArray(d.invoices) && d.invoices.length){
     d.invoices.forEach(function(inv){
       html += `
         <div class="card invoice-card">
@@ -878,7 +984,9 @@ function render(d, v){
   const histCur = d.scan_date || (histDates.length ? histDates[0] : null);
   const pastDates = histDates.filter(dt => dt !== histCur);
   const pastInv = Array.isArray(d.past_invoices) ? d.past_invoices : [];
-  if(pastDates.length || pastInv.length){
+  // Task 7: superseded by the Scan History + Orders & Invoices tabs when the flag
+  // is on (buildScanHistoryHtml / buildOrdersHtml cover this same data there).
+  if(!d.scan_history_enabled && (pastDates.length || pastInv.length)){
     let hist = `<div class="card history-card"><h2>History &amp; receipts</h2>
       <p class="muted" style="margin:0 0 .6rem">Your earlier analyses and invoices, for reference.</p>`;
     if(pastDates.length){
@@ -1446,7 +1554,37 @@ function render(d, v){
     html += `<div class="card"><h2 style="font-size:1rem">Family notifications</h2>${rows}</div>`;
   }
 
+  // Task 7: client-set scan preferences, in the Current panel's footer. Only
+  // meaningful once scan history exists at all, so this rides the same flag.
+  if (d.scan_history_enabled) {
+    const autoOn = d.auto_advance !== false;      // server default is on
+    const notifyOn = !!d.notify_on;
+    html += `<div class="card quiet" id="scanPrefsCard"><h2 style="font-size:1rem">Your preferences</h2>
+      <label style="display:flex;align-items:center;gap:8px;margin:.3rem 0">
+        <input type="checkbox" id="autoAdvanceToggle" ${autoOn?"checked":""}>
+        Automatically show my newest analysis</label>
+      <label style="display:flex;align-items:center;gap:8px;margin:.3rem 0">
+        <input type="checkbox" id="notifyNewToggle" ${notifyOn?"checked":""}>
+        Email me when a new analysis is ready</label></div>`;
+  }
+
   html += `<div class="foot">With aloha,<br><b>Dr. Glen &amp; Rae</b> · Remedy Match LLC</div>`;
+
+  // Task 7: wrap everything above into the Current Analysis panel and add the
+  // Scan History / Orders & Invoices panels + tab bar. Flag off => html is used
+  // as-is, exactly as before this task (no tab bar, no behavior change).
+  if (d.scan_history_enabled) {
+    const historyHtml = buildScanHistoryHtml(d);
+    const ordersHtml = buildOrdersHtml(d);
+    html = `<div class="tabbar" id="portalTabs">
+        <button type="button" class="tab is-active" data-tab="current" onclick="showTab('current')">Current Analysis</button>
+        <button type="button" class="tab" data-tab="history" onclick="showTab('history')">Scan History</button>
+        <button type="button" class="tab" data-tab="orders" onclick="showTab('orders')">Orders &amp; Invoices</button>
+      </div>
+      <section data-panel="current">${html}</section>
+      <section data-panel="history" hidden>${historyHtml}</section>
+      <section data-panel="orders" hidden>${ordersHtml}</section>`;
+  }
 
   app.innerHTML = html;
   document.getElementById("loading").hidden = true;
@@ -1493,6 +1631,35 @@ function render(d, v){
     t.addEventListener("click", ()=>selectScan(t.getAttribute("data-scan"))));
   const ssel = document.getElementById("bfScanSel");
   if(ssel) ssel.addEventListener("change", ()=>selectScan(ssel.value));
+
+  // Task 7: tab bar + Scan History rows + preference toggles. Everything here is
+  // additive and only wired when the flag put the tab bar in the DOM.
+  if (d.scan_history_enabled) {
+    let wantTab = "current";
+    try{ wantTab = sessionStorage.getItem("rm_portal_tab") || "current"; }catch(e){}
+    showTab(wantTab);
+    app.querySelectorAll(".histrow").forEach(el => el.addEventListener("click", () => {
+      if (el.getAttribute("data-viewmember") === "1") {
+        if (window.__hhGo) window.__hhGo(el.getAttribute("data-member"));
+        return;
+      }
+      // Land back on Current Analysis so the newly-selected scan is actually
+      // visible — otherwise the report loads underneath the still-active,
+      // unchanged History tab and looks like nothing happened.
+      try{ sessionStorage.setItem("rm_portal_tab", "current"); }catch(e){}
+      selectScan(el.getAttribute("data-scan"));
+    }));
+    const aaToggle = document.getElementById("autoAdvanceToggle");
+    if(aaToggle) aaToggle.addEventListener("change", () =>
+      fetch(`/api/portal/${encodeURIComponent(token)}/scan-prefs`, {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({auto_advance: aaToggle.checked})}));
+    const notifToggle = document.getElementById("notifyNewToggle");
+    if(notifToggle) notifToggle.addEventListener("change", () =>
+      fetch(`/api/portal/${encodeURIComponent(token)}/scan-prefs`, {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({notify: notifToggle.checked ? "in" : "out"})}));
+  }
 
   // Request analysis button + states (Scan history, sub-project B).
   app.querySelectorAll(".ra-btn").forEach(b => b.addEventListener("click", async () => {
