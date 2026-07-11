@@ -92,6 +92,7 @@ from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
 from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
+from dashboard import condition_programs, broad_benefit
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -12996,6 +12997,14 @@ def console_ff_drafts_page():
     return resp
 
 
+@app.route("/console/support-programs")
+def console_support_programs_page():
+    resp = send_from_directory(STATIC, "console-support-programs.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
@@ -16851,6 +16860,90 @@ def api_console_ff_match_drafts_publish():
             ff_match_drafts.set_items(cx, email, scan_date, body.get("items"))
         published = ff_match_drafts.publish(cx, email, scan_date)
     return jsonify({"published": bool(published)})
+
+
+# ── Condition Support Programs (Slice 1: data stores + console editor) ──────
+# Glen's 9 authored eye-condition remedy groups + the broad-benefit flag list.
+# Console-only in this slice — no client-facing surface yet.
+
+_SUPPORT_PROGRAMS_SEED_CACHE = None
+
+
+def _load_support_programs_seed():
+    """Reads data/condition_programs_seed.json (path relative to this file's
+    dir, matching the fmp_slug_map/products.json pattern elsewhere in app.py).
+    Cached in-process; the file is Glen-approved static content, not runtime
+    state."""
+    global _SUPPORT_PROGRAMS_SEED_CACHE
+    if _SUPPORT_PROGRAMS_SEED_CACHE is None:
+        seed_path = os.path.join(os.path.dirname(__file__), "data",
+                                  "condition_programs_seed.json")
+        with open(seed_path) as f:
+            _SUPPORT_PROGRAMS_SEED_CACHE = json.load(f)
+    return _SUPPORT_PROGRAMS_SEED_CACHE
+
+
+def _init_support_programs_tables(cx):
+    """Idempotent: create-if-missing + seed-if-empty for both stores. Safe to
+    call on every request (mirrors ff_match_drafts.init_table calls above)."""
+    condition_programs.init_table(cx)
+    broad_benefit.init_table(cx)
+    seed = _load_support_programs_seed()
+    condition_programs.seed_if_empty(cx, seed.get("condition_programs") or {})
+    broad_benefit.seed_if_empty(cx, seed.get("broad_benefit_slugs") or [])
+
+
+@app.route("/api/console/condition-programs", methods=["GET"])
+def api_console_condition_programs_list():
+    """Owner console: list all condition-support programs (seeding on first
+    use) + the broad-benefit slug list."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        programs = condition_programs.all(cx)
+        broad = broad_benefit.all_slugs(cx)
+    return jsonify({"programs": programs, "broad_benefit": broad})
+
+
+@app.route("/api/console/condition-programs", methods=["POST"])
+def api_console_condition_programs_upsert():
+    """Owner console: upsert one condition program (Glen's edit pass)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    key = (body.get("condition_key") or "").strip()
+    if not key:
+        return jsonify({"error": "condition_key required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        condition_programs.upsert(cx, key, body.get("label") or "",
+                                   bool(body.get("consult_recommended")),
+                                   body.get("items") or [])
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/broad-benefit", methods=["POST"])
+def api_console_broad_benefit_toggle():
+    """Owner console: add or remove a slug from the broad-benefit flag list."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    action = (body.get("action") or "").strip().lower()
+    if not slug or action not in ("add", "remove"):
+        return jsonify({"error": "slug and action ('add'|'remove') required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        if action == "add":
+            broad_benefit.add(cx, slug)
+        else:
+            broad_benefit.remove(cx, slug)
+        updated = broad_benefit.all_slugs(cx)
+    return jsonify({"ok": True, "broad_benefit": updated})
 
 
 @app.route("/portal/<token>/analyze")
