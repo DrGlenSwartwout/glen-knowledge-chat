@@ -11,17 +11,30 @@ import urllib.request
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _REPO)
 
-# Grab the "Related Products:" block, then every href inside it.
-_BLOCK = re.compile(r"Related Products:.*?(?=</section>|</div>\s*</div>|$)", re.I | re.S)
-_HREF = re.compile(r'href="(https?://[^"]*remedymatch\.com/(?:remedies/[^"]+|resources/[^"]+))"', re.I)
+# Real remedymatch product pages introduce the related-products grid with an
+# <h2>Related Products:</h2> heading; the grid itself (images + titles, each
+# product linked twice) follows the heading as sibling markup, not nested
+# inside a shared wrapper with the heading. So: find the heading, then scan
+# everything from there to the end of the page for product-id links.
+# Product-id links have the form
+#   .../remedies/<category>/<id>-<slug>   or   .../resources/<id>-<slug>
+# which excludes bare category/breadcrumb links like /remedies/syntropy/
+# that lack the trailing <id>-<slug>.
+_HEADING = re.compile(r"related products:", re.I)
+_HREF = re.compile(
+    r'href="(https?://[^"]*remedymatch\.com/(?:remedies/[^"/]+|resources)/\d+-[a-z0-9-]+)"',
+    re.I,
+)
 
 
 def parse_related(html):
-    block = _BLOCK.search(html or "")
-    if not block:
+    html = html or ""
+    heading = _HEADING.search(html)
+    if not heading:
         return []
+    tail = html[heading.start():]
     seen, out = set(), []
-    for m in _HREF.finditer(block.group(0)):
+    for m in _HREF.finditer(tail):
         u = m.group(1)
         if u not in seen:
             seen.add(u)
