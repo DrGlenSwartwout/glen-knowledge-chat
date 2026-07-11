@@ -3392,6 +3392,23 @@ def prepay_return():
     return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?prepay={'ok' if ok else 'err'}")
 
 
+def _continuous_care_checkout_session(email, term_months):
+    """Create the continuous-care Stripe checkout session (mode=payment: $99 now +
+    card vault). Single source of truth for metadata / save_card / success+cancel
+    URLs shared by /continuous-care/checkout and the portal wrapper. Returns the
+    session dict (read .get("url"))."""
+    from dashboard import stripe_pay as _sp, prepay as _pp
+    base = PUBLIC_BASE_URL.rstrip("/")
+    return _sp.create_checkout_session(
+        _pp.MONTHLY_ANCHOR_CENTS, customer_email=email,
+        description=f"Remedy Match Continuous Care - {term_months} month (monthly)",
+        metadata={"email": email, "kind": "continuous_care_monthly",
+                  "term_months": str(term_months)},
+        success_url=f"{base}/continuous-care/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/",
+        save_card=True)
+
+
 @app.route("/continuous-care/checkout", methods=["POST"])
 def continuous_care_checkout():
     """Start a Stripe Checkout for Continuous Care MONTHLY (6 or 12 month fixed
@@ -3400,7 +3417,6 @@ def continuous_care_checkout():
     2..N off the vaulted card, capped at term_charges_total."""
     if not (CONTINUOUS_CARE_MONTHLY_ENABLED and _STRIPE_ACTIVE):
         return jsonify({"ok": False, "error": "unavailable"}), 200
-    from dashboard import stripe_pay as _sp, prepay as _pp
     data = request.get_json(silent=True) or request.form or {}
     email = (data.get("email") or "").strip().lower()
     try:
@@ -3409,16 +3425,8 @@ def continuous_care_checkout():
         term_months = 0
     if not email or term_months not in (6, 12):
         return jsonify({"ok": False, "error": "invalid"}), 200
-    base = PUBLIC_BASE_URL.rstrip("/")
     try:
-        sess = _sp.create_checkout_session(
-            _pp.MONTHLY_ANCHOR_CENTS, customer_email=email,
-            description=f"Remedy Match Continuous Care - {term_months} month (monthly)",
-            metadata={"email": email, "kind": "continuous_care_monthly",
-                     "term_months": str(term_months)},
-            success_url=f"{base}/continuous-care/return?session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{base}/",
-            save_card=True)
+        sess = _continuous_care_checkout_session(email, term_months)
         return jsonify({"ok": True, "url": sess.get("url")})
     except Exception as e:
         print(f"[continuous-care] checkout failed: {e!r}", flush=True)
