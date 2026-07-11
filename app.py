@@ -16087,6 +16087,26 @@ def api_client_portal(token):
             payload["scan_recommendations"] = _sr_block
     except Exception as _e:
         print(f"[scan-recs/payload] {_e!r}", flush=True)
+    # FF-matches card (flag-gated, best-effort). The GET side NEVER generates a draft —
+    # that only happens via the POST /ff-matches button; if no draft exists yet, the
+    # key stays absent (byte-identical payload). email_for_reports is already re-pointed
+    # by ?member=, so a member's card shows THEIR draft, not the caregiver's.
+    if _ff_matches_enabled():
+        try:
+            with sqlite3.connect(LOG_DB) as _cxf:
+                _cxf.row_factory = sqlite3.Row
+                ff_match_drafts.init_table(_cxf)
+                _ffd = ff_match_drafts.get(_cxf, email_for_reports,
+                                           _current_scan_date_for(email_for_reports))
+                if _ffd:
+                    _cov = _ff_covered(_cxf, email_for_reports)
+                    _items = _ffd["items"]
+                    _reviewed = _ffd["status"] == "published"
+                    if not (_cov and _reviewed):
+                        _items = [{k: v for k, v in it.items() if k != "dosing"} for it in _items]
+                    payload["ff_matches"] = {"items": _items, "reviewed": _reviewed, "covered": _cov}
+        except Exception as _e:
+            print(f"[ff-matches/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
