@@ -91,6 +91,7 @@ from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
+from dashboard import ff_matcher, ff_match_drafts, order_destination
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -14977,6 +14978,14 @@ def _scan_recommendations_enabled():
         "1", "true", "yes", "on")
 
 
+def _ff_matches_enabled():
+    """The FF-match generator + portal card (Slice 3). Default OFF — when off the
+    endpoints 404 and the portal payload never gains the key, so responses stay
+    byte-identical to pre-FF-match behavior."""
+    return (os.environ.get("FF_MATCHES_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -15087,6 +15096,47 @@ def _scan_recommendations_for(email, scan_date=None):
     except Exception as _e:
         print(f"[scan-recs] {_e!r}", flush=True)
         return None
+
+
+def _ff_query_specific_formulations(text, top_k):
+    """Adapter: embed `text` and query the `specific-formulations` Pinecone
+    namespace, reusing the module-level `embed()`/`_idx` this file already
+    constructs (same client as `_assist_resolve_products`'s semantic fallback,
+    app.py:~12862). Never raises — any embedding/Pinecone failure returns []."""
+    try:
+        res = _idx.query(vector=embed(text), top_k=top_k,
+                         namespace="specific-formulations", include_metadata=True)
+        return [{"id": m.id, "score": float(m.score), "metadata": dict(m.metadata or {})}
+                for m in (res.matches or [])]
+    except Exception as _e:
+        print(f"[ff-match] query failed: {_e!r}", flush=True)
+        return []
+
+
+def _make_ff_items_for(email, scan_date=None):
+    """Compose this client's scan recommendations into ranked FF product matches
+    via ff_matcher.generate_ff_matches. Returns [] when scan recs are off,
+    unknown, or the client has none for this scan — never raises."""
+    recs = _scan_recommendations_for(email, scan_date)
+    if not recs:
+        return []
+    scan_items = []
+    for r in (recs.get("infoceuticals") or []):
+        label = (r.get("label") or "").strip()
+        if label:
+            scan_items.append({"label": label, "category": "Infoceuticals"})
+    for r in (recs.get("mihealth") or []):
+        label = (r.get("label") or "").strip()
+        if label:
+            scan_items.append({"label": label, "category": "miHealth"})
+    if not scan_items:
+        return []
+    return ff_matcher.generate_ff_matches(
+        scan_items,
+        query_matches=_ff_query_specific_formulations,
+        resolve_slug=_resolve_buy_slug,
+        destination=order_destination.destination_for,
+    )
 
 
 def _portal_options_for(email):
