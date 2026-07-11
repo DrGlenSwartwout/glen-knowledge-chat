@@ -16671,6 +16671,32 @@ def api_portal_agree_tos(token):
     return jsonify({"ok": True})
 
 
+@app.route("/api/portal/<token>/scan-prefs", methods=["POST"])
+def api_portal_scan_prefs(token):
+    """Client-set scan preferences: auto_advance on/off, pin a scan as current
+    (pin also turns auto_advance off), and notification opt in/out (reuses notify_state)."""
+    if not _portal_scan_history_enabled():
+        return jsonify({"error": "not found"}), 403
+    body = request.get_json(silent=True) or {}
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp, notify_state as _ns
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        pin = (body.get("pin_scan_date") or "").strip()
+        if pin:
+            _cp.set_current_scan(cx, email, pin)
+            _cp.set_auto_advance(cx, email, False)
+        elif "auto_advance" in body:
+            _cp.set_auto_advance(cx, email, bool(body.get("auto_advance")))
+        notify = (body.get("notify") or "").strip().lower()
+        if notify in ("in", "out"):
+            _ns.set_opt(cx, email, notify)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/notify-pref", methods=["POST"])
 def api_portal_notify_pref(token):
     from dashboard import client_portal as _cp, notify_state as _ns
