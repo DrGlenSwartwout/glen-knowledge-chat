@@ -683,6 +683,36 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
     return {"id": sent.get("id"), "threadId": sent.get("threadId")}
 
 
+def send_bulk(to_email: str, subject: str, body: str, from_name: Optional[str] = None,
+              html: Optional[str] = None) -> dict:
+    """Bulk / onboarding email (portal welcome, campaigns). Routes via GHL v2
+    (Mailgun-backed sending domain) when BULK_VIA_GHL is set and GHL is configured, to
+    keep the consumer-Gmail daily quota for transactional mail (invoices, replies).
+    Falls back to Gmail send_email on any GHL failure so nothing is lost. Honors the
+    suppression list + undeliverable guard on BOTH paths."""
+    if _is_undeliverable(to_email):
+        print(f"[send_bulk] skip undeliverable {to_email!r}", flush=True)
+        return {"skipped": "undeliverable"}
+    try:
+        with _sqlite3.connect(_db_path()) as _cx:
+            from dashboard import email_suppression as _es
+            _es.init_table(_cx)
+            if _es.is_suppressed(_cx, to_email):
+                print(f"[send_bulk] suppressed, skip {to_email}", flush=True)
+                return {"skipped": "suppressed"}
+    except Exception as _e:  # noqa: BLE001 — never block a send on a check failure
+        print(f"[send_bulk] suppress-check skipped: {_e!r}", flush=True)
+    if os.environ.get("BULK_VIA_GHL"):
+        try:
+            from dashboard import ghl_email as _ghl
+            if _ghl.is_configured():
+                return _ghl.send_via_ghl(to_email, subject, html=html, text=body,
+                                         from_name=from_name)
+        except Exception as e:  # noqa: BLE001 — fall back to Gmail, never drop the send
+            print(f"[send_bulk] GHL send failed, falling back to Gmail: {e!r}", flush=True)
+    return send_email(to_email, subject, body, from_name=from_name, html=html)
+
+
 # ── Mutations: archive / star / read state ────────────────────────────────────
 
 def _modify_thread(thread_id: str, add: list = None, remove: list = None) -> dict:
