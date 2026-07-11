@@ -229,3 +229,16 @@ def test_ff_llm_rank_prompt_marks_broad_benefit_candidate(monkeypatch):
     assert "Terrain Restore (broadly effective): supports terrain" in prompt
     assert "Adrenal Restore (broadly effective)" not in prompt
     assert "Adrenal Restore: supports adrenal axis" in prompt
+
+
+def test_broad_benefit_signal_not_dormant_on_fresh_db(tmp_path, monkeypatch):
+    """I1 (whole-branch review): the broad_benefit FF signal must work on a
+    fresh deploy WITHOUT the support-programs console being opened first.
+    _broad_benefit_slug_set() must seed-once on read, so a fresh DB yields the
+    seeded slugs immediately."""
+    app = _app()
+    monkeypatch.setattr(app, "LOG_DB", str(tmp_path / "fresh.db"))
+    slugs = app._broad_benefit_slug_set()
+    assert slugs, "broad_benefit signal is dormant on a fresh DB (not seeded on read)"
+    # a known seeded broad-benefit slug is present without any console call
+    assert "immune-modulation" in slugs

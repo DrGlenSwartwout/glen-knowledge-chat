@@ -15252,6 +15252,12 @@ def _broad_benefit_slug_set():
     try:
         with sqlite3.connect(LOG_DB) as cx:
             broad_benefit.init_table(cx)
+            # Seed once here too, so the "broadly effective" FF signal works on a
+            # fresh deploy WITHOUT the support-programs console being opened first.
+            # seed_if_empty is marker-guarded: a no-op after the first seed, and it
+            # never resurrects an operator-cleared list or overwrites edits.
+            broad_benefit.seed_if_empty(
+                cx, (_load_support_programs_seed() or {}).get("broad_benefit_slugs") or [])
             return set(broad_benefit.all_slugs(cx))
     except Exception as _e:
         print(f"[ff-broad-benefit] {_e!r}", flush=True)
