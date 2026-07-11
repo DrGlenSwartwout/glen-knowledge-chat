@@ -53,7 +53,7 @@
       } else if (t.state === "available") {
         const price = money(t.price_cents) + (t.period || "");
         if (t.cta_kind === "checkout_post") {
-          // Paid: reuse the existing live-group POST checkout (returns stripe_url).
+          // Paid: POST the continuous-care checkout (returns stripe_url).
           action = '<button class="cta" data-checkout="' + t.checkout_path + '">' +
                    (t.cta_label || "Choose") + " " + price + "</button>" +
                    '<div class="soon err" hidden></div>';

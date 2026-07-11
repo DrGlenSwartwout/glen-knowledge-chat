@@ -38,6 +38,10 @@ def test_api_program_returns_tiers_for_free_client(client, monkeypatch):
     # to "coming_soon".
     monkeypatch.setenv("PROGRAM_PAID_LIVE_ENABLED", "1")
     monkeypatch.setattr(appmod, "CONTINUOUS_CARE_MONTHLY_ENABLED", True)
+    # The checkout route also requires the global Stripe kill-switch to be on
+    # (_STRIPE_ACTIVE), so the page gate must match that or it would show a
+    # live Join button that 404s at checkout.
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
     # _active_membership_for_email opens its own connection against LOG_DB; the
     # `memberships` table is only created at import time against the real LOG_DB
     # (module-level _init_membership_tables()), not against this test's tmp_path
