@@ -410,6 +410,28 @@ function scheduleHtml(sched){
   if(!rows) return "";
   return `<div class="sched"><h3>Your remedy schedule</h3><table class="sched-tbl"><tr><th>When</th><th>Take</th></tr>${rows}</table></div>`;
 }
+// FF-matches card body (Slice 3b): shared by the initial payload render (d.ff_matches)
+// and the POST-button render (the /ff-matches response), so the two paths never drift.
+// Items are rendered tolerantly: FF-shaped ({name,slug,url,meaning,dosing?}) OR, for
+// animal clients, infoceutical-shaped ({label,item_code,band,...}). Dosing shows ONLY
+// when block.covered && it.dosing (server already strips it otherwise; this is a
+// belt-and-suspenders client-side check, never the sole guard).
+function ffMatchesBodyHtml(block){
+  block = block || {};
+  const items = Array.isArray(block.items) ? block.items : [];
+  const disclose = block.covered
+    ? "AI-generated, pending Dr. Glen's review"
+    : "matched automatically from your scan";
+  let rows = items.map(it => {
+    const nm = esc(it.name || it.label || it.item_code || "");
+    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const meaning = it.meaning ? `<div class="muted" style="font-size:.9em">${esc(it.meaning)}</div>` : "";
+    const dosing = (block.covered && it.dosing) ? `<div class="dose">${esc(it.dosing)}</div>` : "";
+    return `<p style="margin:.5rem 0"><strong>${nameHtml}</strong>${meaning}${dosing}</p>`;
+  }).join("");
+  if(!rows) rows = `<p class="muted">No matches yet.</p>`;
+  return `${rows}<p class="muted small" style="margin-top:.6rem">${esc(disclose)}</p>`;
+}
 // Render a free-text note (e.g. the biofield greeting) as safe rich HTML:
 // escape first, then **bold** -> <strong>, blank lines -> separate <p>, and
 // single newlines -> <br>. Empty input yields "" so callers' default-string
@@ -1070,6 +1092,30 @@ function render(d, v){
     html += s;
   }
 
+  // FF-matches card (Slice 3b, flag-gated): with FF_MATCHES_ENABLED off, d.ff_matches_enabled
+  // is falsy and NEITHER the button NOR the card render — no DOM, no handler — so a client
+  // never sees a button whose POST would 404. When on, the "See my formulation matches"
+  // button always renders (present for animals too — the POST endpoint branches internally).
+  // If the payload already carries d.ff_matches (a draft already existed), render the card
+  // immediately; otherwise the button's click POSTs /ff-matches to generate-once and render
+  // on demand. Dosing is tier-gated server-side, but the client double-checks: only shown
+  // when covered AND the item itself carries dosing.
+  // Add-to-invoice button (Slice 3c.2, the paid money-write step): shown only when covered
+  // AND Glen has reviewed/published the draft (d.ff_matches.reviewed) — matches the server's
+  // own 403/409 gates, so the button never appears for a state the endpoint would reject.
+  if (d.ff_matches_enabled) {
+    const ffBody = d.ff_matches ? ffMatchesBodyHtml(d.ff_matches) : "";
+    const showAddToInvoice = !!(d.ff_matches && d.ff_matches.covered && d.ff_matches.reviewed);
+    html += `<div class="card ffmatch-card">
+      <h2>Your formulation matches</h2>
+      <div id="ffMatchesBody">${ffBody}</div>
+      <button type="button" class="btn" id="ffMatchesBtn" style="margin-top:.7rem">See my formulation matches</button>
+      <p class="small err" id="ffMatchesErr" hidden>Something went wrong — please try again.</p>
+      <button type="button" class="btn" id="ffAddToInvoiceBtn" style="margin-top:.7rem" ${showAddToInvoice ? "" : "hidden"}>Add to my invoice</button>
+      <p class="small" id="ffAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>
+    </div>`;
+  }
+
   // Scan history — every E4L scan date (A: read-only; B: request-analysis button + states).
   if (d.available_scans && d.available_scans.length) {
     let rows = "";
@@ -1462,6 +1508,70 @@ function render(d, v){
   });
   app.querySelectorAll(".remBtn").forEach(rb=>{
     rb.addEventListener("click", ()=>reorderItem(rb));
+  });
+
+  // FF-matches "See my formulation matches" button (Slice 3b). Guards against
+  // double-submit by disabling for the duration of the request. Carries ?member=
+  // so a caregiver viewing a member's tab requests THAT member's matches.
+  const ffBtn = document.getElementById("ffMatchesBtn");
+  if(ffBtn) ffBtn.addEventListener("click", async ()=>{
+    if(ffBtn.disabled) return;
+    ffBtn.disabled = true;
+    const ffErr = document.getElementById("ffMatchesErr");
+    if(ffErr) ffErr.hidden = true;
+    try{
+      const memberParam = new URLSearchParams(location.search).get("member");
+      const u = `/api/portal/${encodeURIComponent(token)}/ff-matches`
+        + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+      const r = await fetch(u, {method:"POST"});
+      const j = await r.json();
+      const body = document.getElementById("ffMatchesBody");
+      if(j && j.ff_matches && body) body.innerHTML = ffMatchesBodyHtml(j.ff_matches);
+      else if(ffErr) ffErr.hidden = false;
+    } catch(e){
+      if(ffErr) ffErr.hidden = false;
+    } finally {
+      ffBtn.disabled = false;
+    }
+  });
+
+  // FF-matches "Add to my invoice" button (Slice 3c.2, the paid money-write step).
+  // Only rendered when covered+reviewed (see render() above); the server independently
+  // re-checks both and is idempotent on a deterministic external_ref, so this handler's
+  // disable-after-click is belt-and-suspenders against a double-submit, not the only guard.
+  const ffAddBtn = document.getElementById("ffAddToInvoiceBtn");
+  if(ffAddBtn) ffAddBtn.addEventListener("click", async ()=>{
+    if(ffAddBtn.disabled) return;
+    ffAddBtn.disabled = true;
+    const ffAddMsg = document.getElementById("ffAddToInvoiceMsg");
+    if(ffAddMsg) ffAddMsg.hidden = true;
+    try{
+      const memberParam = new URLSearchParams(location.search).get("member");
+      const u = `/api/portal/${encodeURIComponent(token)}/ff-matches/add-to-invoice`
+        + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+      const r = await fetch(u, {method:"POST"});
+      const j = await r.json().catch(()=>null);
+      if(r.ok && j && j.ok){
+        if(ffAddMsg){
+          ffAddMsg.textContent = "Added to your next invoice — Rae will finalize it.";
+          ffAddMsg.hidden = false;
+        }
+        // stays disabled on success — the idempotent server would just return the
+        // same order_ref again, but there's no reason to invite a repeat click.
+      } else {
+        if(ffAddMsg){
+          ffAddMsg.textContent = "Something went wrong — please try again.";
+          ffAddMsg.hidden = false;
+        }
+        ffAddBtn.disabled = false;
+      }
+    } catch(e){
+      if(ffAddMsg){
+        ffAddMsg.textContent = "Something went wrong — please try again.";
+        ffAddMsg.hidden = false;
+      }
+      ffAddBtn.disabled = false;
+    }
   });
 }
 

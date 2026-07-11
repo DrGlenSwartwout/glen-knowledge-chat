@@ -91,6 +91,7 @@ from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
+from dashboard import ff_matcher, ff_match_drafts, order_destination
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -12965,6 +12966,14 @@ def console_handoffs_page():
     return resp
 
 
+@app.route("/console/ff-drafts")
+def console_ff_drafts_page():
+    resp = send_from_directory(STATIC, "console-ff-drafts.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
@@ -14977,6 +14986,14 @@ def _scan_recommendations_enabled():
         "1", "true", "yes", "on")
 
 
+def _ff_matches_enabled():
+    """The FF-match generator + portal card (Slice 3). Default OFF — when off the
+    endpoints 404 and the portal payload never gains the key, so responses stay
+    byte-identical to pre-FF-match behavior."""
+    return (os.environ.get("FF_MATCHES_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -15087,6 +15104,93 @@ def _scan_recommendations_for(email, scan_date=None):
     except Exception as _e:
         print(f"[scan-recs] {_e!r}", flush=True)
         return None
+
+
+def _ff_query_specific_formulations(text, top_k):
+    """Adapter: embed `text` and query the `specific-formulations` Pinecone
+    namespace, reusing the module-level `embed()`/`_idx` this file already
+    constructs (same client as `_assist_resolve_products`'s semantic fallback,
+    app.py:~12862). Never raises — any embedding/Pinecone failure returns []."""
+    try:
+        res = _idx.query(vector=embed(text), top_k=top_k,
+                         namespace="specific-formulations", include_metadata=True)
+        out = []
+        for m in (res.matches or []):
+            md = dict(m.metadata or {})
+            if not md.get("name"):
+                md["name"] = md.get("title")
+            out.append({"id": m.id, "score": float(m.score), "metadata": md})
+        return out
+    except Exception as _e:
+        print(f"[ff-match] query failed: {_e!r}", flush=True)
+        return []
+
+
+def _make_ff_items_for(email, scan_date=None):
+    """Compose this client's scan recommendations into ranked FF product matches
+    via ff_matcher.generate_ff_matches. Returns [] when scan recs are off,
+    unknown, or the client has none for this scan — never raises."""
+    recs = _scan_recommendations_for(email, scan_date)
+    if not recs:
+        return []
+    scan_items = []
+    for r in (recs.get("infoceuticals") or []):
+        label = (r.get("label") or "").strip()
+        if label:
+            scan_items.append({"label": label, "category": "Infoceuticals"})
+    for r in (recs.get("mihealth") or []):
+        label = (r.get("label") or "").strip()
+        if label:
+            scan_items.append({"label": label, "category": "miHealth"})
+    if not scan_items:
+        return []
+    return ff_matcher.generate_ff_matches(
+        scan_items,
+        query_matches=_ff_query_specific_formulations,
+        resolve_slug=_resolve_buy_slug,
+        destination=order_destination.destination_for,
+    )
+
+
+def _current_scan_date_for(email):
+    """The scan date the FF-matches card treats as 'current' for this email.
+
+    Mirrors api_client_portal's own selection EXACTLY (app.py ~16056:
+    `_scan_recommendations_for(email_for_reports, req_date or None)`) rather than
+    re-deriving it: with no ?scan_date= override to thread through (this endpoint
+    takes none), that call degenerates to `_scan_recommendations_for(email, None)`,
+    whose own fallback is the newest E4L scan date (dashboard.scan_recommendations.
+    scan_dates_for, DESC). Reuses that existing helper's 'picked' value (returned as
+    its 'scan_date' key) instead of inventing a second selection rule. Returns ""
+    (never None) when the flag is off or the client has no scans — ff_match_drafts'
+    scan_date column is NOT NULL, so an empty string is the safe key, not None."""
+    rec = _scan_recommendations_for(email, None)
+    return (rec or {}).get("scan_date") or ""
+
+
+def _ff_covered(cx, email):
+    """Whether this client's FF matches are already paid/covered (Slice 3c gates
+    dosing visibility on this). Real entitlement check: a paid Biofield Analysis
+    on record, OR an active membership, OR (when FAMILY_PLAN_ENABLED) a
+    caregiver's Family Plan covering this email. Mirrors
+    _portal_biofield_unlocked's inner test, minus the paid-gate flag itself —
+    coverage is about entitlement, not whether the blur flag is on. Fail-closed
+    (False) on any error."""
+    try:
+        email = (email or "").strip().lower()
+        if not email:
+            return False
+        if _has_paid_biofield(email):
+            return True
+        if _active_membership_for_email(email):
+            return True
+        if _family_plan_enabled():
+            from dashboard import family_plan as _fp
+            _fp.init_family_plan_table(cx)
+            return bool(_fp.covers(cx, email))
+        return False
+    except Exception:
+        return False
 
 
 def _portal_options_for(email):
@@ -16009,6 +16113,30 @@ def api_client_portal(token):
             payload["scan_recommendations"] = _sr_block
     except Exception as _e:
         print(f"[scan-recs/payload] {_e!r}", flush=True)
+    # FF-matches flag (always present, like its sibling scan_request_enabled): lets the
+    # frontend gate the button/card without a separate flag call. Off means the client
+    # renders neither — clicking a phantom button would otherwise hit a 404'd endpoint.
+    payload["ff_matches_enabled"] = _ff_matches_enabled()
+    # FF-matches card (flag-gated, best-effort). The GET side NEVER generates a draft —
+    # that only happens via the POST /ff-matches button; if no draft exists yet, the
+    # key stays absent (byte-identical payload). email_for_reports is already re-pointed
+    # by ?member=, so a member's card shows THEIR draft, not the caregiver's.
+    if _ff_matches_enabled():
+        try:
+            with sqlite3.connect(LOG_DB) as _cxf:
+                _cxf.row_factory = sqlite3.Row
+                ff_match_drafts.init_table(_cxf)
+                _ffd = ff_match_drafts.get(_cxf, email_for_reports,
+                                           _current_scan_date_for(email_for_reports))
+                if _ffd:
+                    _cov = _ff_covered(_cxf, email_for_reports)
+                    _items = _ffd["items"]
+                    _reviewed = _ffd["status"] == "published"
+                    if not (_cov and _reviewed):
+                        _items = [{k: v for k, v in it.items() if k != "dosing"} for it in _items]
+                    payload["ff_matches"] = {"items": _items, "reviewed": _reviewed, "covered": _cov}
+        except Exception as _e:
+            print(f"[ff-matches/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
@@ -16284,6 +16412,182 @@ def api_portal_request_analysis(token):
     body = request.get_json(silent=True) or {}
     res, code = _request_analysis_core(token, body.get("scan_id"), body.get("scan_date"))
     return jsonify(res), code
+
+
+@app.route("/api/portal/<token>/ff-matches", methods=["POST"])
+def api_portal_ff_matches(token):
+    """The client-facing FF-product-match card (Slice 3b). Generate-once per
+    (email, scan_date) via ff_match_drafts.get_or_create — repeat calls return the
+    same items without re-invoking the (Pinecone-backed) generator. Animal clients
+    get the scan's own infoceuticals instead — there is no FF product to review.
+    Behind FF_MATCHES_ENABLED — off means the endpoint 404s (byte-identical to
+    pre-FF-match behavior; no payload key exists anywhere either)."""
+    if not _ff_matches_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_open/_request_analysis_core
+        # (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[ff-matches] household {_e!r}", flush=True)
+        scan_date = _current_scan_date_for(email)
+        covered = _ff_covered(cx, email)
+        species = _client_species_for(email)
+        if species and species.get("is_animal"):
+            # Animals get the scan's own infoceuticals, not FF product matches — there is
+            # no orderable formulation to review. _scan_recommendations_for returns a DICT
+            # ({scan_date, scan_dates, infoceuticals:[...], mihealth:[...]}), not a list, so
+            # flatten it into the [{name,url,meaning}] shape the card's items expect. miHealth
+            # cycles are excluded — they are device-run by the practitioner, not orderable.
+            recs = _scan_recommendations_for(email, scan_date) or {}
+            items = [{"name": i["label"], "url": i.get("order_url") or "", "meaning": ""}
+                     for i in (recs.get("infoceuticals") or [])]
+            return jsonify({"ff_matches": {"kind": "infoceutical", "items": items,
+                                            "reviewed": False, "covered": covered,
+                                            "scan_date": scan_date}})
+        ff_match_drafts.init_table(cx)
+        draft = ff_match_drafts.get_or_create(
+            cx, email, scan_date, lambda: _make_ff_items_for(email, scan_date))
+        reviewed = draft["status"] == "published"
+        items = draft["items"]
+        if not (covered and reviewed):   # dosing shown only when covered AND reviewed
+            items = [{k: v for k, v in it.items() if k != "dosing"} for it in items]
+        return jsonify({"ff_matches": {"kind": "ff", "items": items, "reviewed": reviewed,
+                                        "covered": covered, "scan_date": scan_date}})
+
+
+def _ff_line_cents(cx, email, slug):
+    """Real FF unit price in cents: per-SKU client special, else client FF flat
+    (only for FF-eligible products), else catalog price. Mirrors app.py:15943-15949
+    (the reorder-card pricer): per-SKU client special > client FF flat (FF-eligible
+    only) > catalog price_cents."""
+    from dashboard import client_prices as _cp
+    p = _get_product(slug) if slug else None
+    regular = int((p or {}).get("price_cents") or 0)
+    special = _cp.get_price(cx, email, slug)          # per-SKU client special, None if unset
+    if special is not None:
+        return int(special)
+    flat = _cp.get_ff_flat(cx, email)                 # client's flat rate across all FFs
+    if flat is not None and p and _qty_eligible(p):   # FF-volume-eligible only
+        return int(flat)
+    return regular
+
+
+@app.route("/api/portal/<token>/ff-matches/add-to-invoice", methods=["POST"])
+def api_portal_ff_add_to_invoice(token):
+    """The paid add-to-invoice action (Slice 3c.2) — the MONEY-WRITE step. Creates
+    ONE unpaid, unpublished invoice draft (`orders` row), idempotently keyed on
+    (email, scan_date) via a deterministic external_ref, priced at the client's
+    real FF price (_ff_line_cents). Gated on the real _ff_covered entitlement
+    (fail-closed) AND a PUBLISHED ff_match_drafts row — Glen must review the
+    matches before a client can queue them onto an invoice. Rae still finalizes
+    volume/adjustments in the composer; this just seeds the queue honestly."""
+    if not _ff_matches_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_ff_matches (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[ff-matches/add-to-invoice] household {_e!r}", flush=True)
+        if not _ff_covered(cx, email):
+            return jsonify({"error": "not covered"}), 403
+        scan_date = _current_scan_date_for(email)
+        ff_match_drafts.init_table(cx)
+        draft = ff_match_drafts.get(cx, email, scan_date)
+        if not draft or draft["status"] != "published":
+            return jsonify({"error": "not published"}), 409
+        ext = f"FFINV-{email}-{scan_date}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
+        # Insert-once: never rewrite an existing FF-invoice order. upsert_order() UPDATEs
+        # on (source, external_ref) conflict and unconditionally overwrites items_json/
+        # total_cents (and, since this route doesn't pass them, RESETS adjustment_cents/
+        # shipping_cents/discount_cents/points_redeemed_cents to 0). A second click after
+        # Rae has priced/advanced or paid the order must not touch it — refreshing the
+        # queued items is a console action, not a client re-click.
+        existing = _bos_orders.find_order_by_external_ref(cx, ext)
+        if existing and existing.get("source") == "in-house":
+            return jsonify({"ok": True, "order_ref": ext, "already_added": True})
+        from dashboard import client_prices as _cp_init
+        _cp_init.init_table(cx)
+        items = []
+        for it in draft["items"]:
+            unit = _ff_line_cents(cx, email, it.get("slug") or "")
+            items.append({"slug": it.get("slug") or "", "name": it.get("name") or "",
+                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+        total = sum(i["line_cents"] for i in items)
+        _bos_orders.upsert_order(
+            cx, source="in-house", external_ref=ext, status="proposed",
+            email=email, name=(portal.get("name") or ""),
+            items=items, total_cents=total, channel="ff-invoice",
+            invoice_note="FF matches — pending Rae invoicing")
+        cx.commit()
+        return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/console/ff-match-drafts", methods=["GET"])
+def api_console_ff_match_drafts_list():
+    """Owner console: list FF-match drafts for review (Slice 3c). Optional
+    ?status= filter (e.g. 'draft' or 'published')."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ff_match_drafts.init_table(cx)
+        drafts = ff_match_drafts.list_by_status(cx, request.args.get("status"))
+    return jsonify({"drafts": drafts})
+
+
+@app.route("/api/console/ff-match-drafts/publish", methods=["POST"])
+def api_console_ff_match_drafts_publish():
+    """Owner console: publish an FF-match draft, optionally editing its items
+    first (Glen's review pass — e.g. adding a `dosing` field per item). If
+    `items` is present in the body, it is stored via set_items BEFORE
+    publishing, so the published draft reflects the edit."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    scan_date = body.get("scan_date") or ""
+    if not email or not scan_date:
+        return jsonify({"error": "email and scan_date required"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ff_match_drafts.init_table(cx)
+        if "items" in body:
+            ff_match_drafts.set_items(cx, email, scan_date, body.get("items"))
+        published = ff_match_drafts.publish(cx, email, scan_date)
+    return jsonify({"published": bool(published)})
 
 
 @app.route("/portal/<token>/analyze")
