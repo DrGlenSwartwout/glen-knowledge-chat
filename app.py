@@ -18099,32 +18099,35 @@ def api_console_biofield_publish():
     # Publishing a report makes it the client's CURRENT one (wins over any older
     # reveal report regardless of date), and keeps the pointer the hand-off set —
     # UNLESS the client has opted out of auto-advance, in which case their existing
-    # pin must be preserved (upsert_portal REPLACES content_json wholesale, so the
-    # existing current_scan_date has to be carried forward explicitly or it's lost).
-    if scan_date:
-        _aa_on = True
-        try:
-            with sqlite3.connect(LOG_DB) as _cx_aa:
-                _cp.init_client_portal_table(_cx_aa)
-                _aa_on = _cp.get_auto_advance(_cx_aa, email)
-        except Exception:
-            _aa_on = True
-        content["auto_advance"] = _aa_on   # preserve the opt-out itself through the content replace
-        if _aa_on:
-            content["current_scan_date"] = scan_date
-        else:
-            _existing = None
-            try:
-                with sqlite3.connect(LOG_DB) as _cx_cur:
-                    _existing = _cp.get_current_scan(_cx_cur, email)
-            except Exception:
-                _existing = None
-            if _existing:
-                content["current_scan_date"] = _existing   # preserve the client's pin through the content replace
+    # pin must be preserved. Prefs (auto_advance/current_scan_date) live in
+    # client_portals via the dedicated helpers, kept OUT of `content` — `content`
+    # is also what upsert_report below stamps onto the per-scan report row, and
+    # prefs are portal-level, not per-scan. Capture the EXISTING prefs before the
+    # write so they can be reapplied unconditionally afterward (upsert_portal
+    # replaces content_json wholesale, dropping them) — this also means an
+    # empty-scan_date publish (e.g. editing just the greeting) still preserves an
+    # opted-out client's prefs instead of skipping preservation entirely.
+    existing_aa = True
+    existing_pin = None
+    try:
+        with sqlite3.connect(LOG_DB) as _cx_prefs:
+            _cp.init_client_portal_table(_cx_prefs)
+            existing_aa = _cp.get_auto_advance(_cx_prefs, email)
+            existing_pin = _cp.get_current_scan(_cx_prefs, email)
+    except Exception:
+        existing_aa, existing_pin = True, None
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
         _cp.set_biofield_status(cx, email, "confirmed")
+        # Reapply prefs AFTER upsert_portal (which just replaced content_json and
+        # dropped them). Auto-advance still on + a scan_date this publish -> pointer
+        # advances to it. Otherwise -> restore whatever pin/opt-out existed before.
+        _cp.set_auto_advance(cx, email, existing_aa)
+        if existing_aa and scan_date:
+            _cp.set_current_scan(cx, email, scan_date)
+        elif existing_pin:
+            _cp.set_current_scan(cx, email, existing_pin)
         # upsert returns token=None on UPDATE (only the link's hash is stored), so a
         # plain `if token` guard skipped the email on every republish — "Publish &
         # email client" silently sent nothing for any existing portal. When a send is
