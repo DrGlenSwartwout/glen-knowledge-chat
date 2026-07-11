@@ -41,6 +41,7 @@ def test_flag_on_exposes_prefs_and_current(monkeypatch, tmp_db):
     assert j["auto_advance"] is True
     assert j["scan_date"] == "2026-07-09"          # newest when no pointer
     assert j["scan_dates"] == ["2026-07-09", "2026-07-02"]
+    assert j["current_scan_date"] == "2026-07-09"   # persisted pointer: newest when no pointer set
 
 def test_dangling_pointer_falls_to_newest(monkeypatch, tmp_db):
     monkeypatch.setenv("PORTAL_SCAN_HISTORY_ENABLED", "1")
@@ -51,3 +52,17 @@ def test_dangling_pointer_falls_to_newest(monkeypatch, tmp_db):
         cp.set_current_scan(cx, "a@x.com", "2099-01-01")   # points nowhere
     j = app.app.test_client().get(f"/api/portal/{token}").get_json()
     assert j["scan_date"] == "2026-07-09"
+    assert j["current_scan_date"] == "2026-07-09"   # persisted pointer: dangling falls to newest
+
+def test_current_scan_date_is_persisted_pointer_not_displayed_scan(monkeypatch, tmp_db):
+    # T7a regression: current_scan_date must track the PERSISTED pointer, not
+    # whatever scan the caller is transiently viewing via ?scan_date=.
+    monkeypatch.setenv("PORTAL_SCAN_HISTORY_ENABLED", "1")
+    app = _app(monkeypatch, tmp_db)
+    token = _seed(app, tmp_db)
+    from dashboard import client_portal as cp
+    with sqlite3.connect(str(tmp_db)) as cx:
+        cp.set_current_scan(cx, "a@x.com", "2026-07-02")
+    j = app.app.test_client().get(f"/api/portal/{token}?scan_date=2026-07-09").get_json()
+    assert j["scan_date"] == "2026-07-09"           # displayed scan honors the query param
+    assert j["current_scan_date"] == "2026-07-02"   # persisted pointer stays put

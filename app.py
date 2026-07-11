@@ -16401,7 +16401,18 @@ def api_client_portal(token):
                 _aa = _cp_sh.get_auto_advance(_cx_sh, email_for_reports) if email_for_reports else True
             payload["scan_history_enabled"] = True
             payload["auto_advance"] = _aa
-            payload["current_scan_date"] = bf_scan_date
+            # current_scan_date is the PERSISTED pointer (what client_portals says is
+            # "current"), NOT bf_scan_date (which honors a transient ?scan_date=). The
+            # UI's "Current" badge must track the managed pointer, not whatever scan the
+            # caller happens to be viewing. Resolve the same way the selector above
+            # does (dates[0] fallback), just without req_date.
+            _persisted_ptr = (content or {}).get("current_scan_date")
+            if _persisted_ptr and dates and _persisted_ptr in dates:
+                payload["current_scan_date"] = _persisted_ptr
+            elif dates:
+                payload["current_scan_date"] = dates[0]
+            else:
+                payload["current_scan_date"] = None
         except Exception:
             pass
     # Task 5: portal reorder module (real order history + repertoire pricing +
