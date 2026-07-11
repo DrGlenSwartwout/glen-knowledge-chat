@@ -133,14 +133,20 @@ def test_parse_empty_html_is_safe():
 # ── build_tracking_email ─────────────────────────────────────────────────────
 
 def test_email_has_tracking_link_and_signature():
-    msg = build_tracking_email("9405530109355381515251", "Cyndi O'Brien")
+    # a confident email match -> no reviewer note, first-name Aloha greeting
+    msg = build_tracking_email("9405530109355381515251", "Cyndi O'Brien",
+                               resolved_email="cyndi@example.com")
     assert msg["subject"] == "tracking number"
     # live USPS tracking link
     assert "tLabels=9405530109355381515251" in msg["html"]
     assert "9405530109355381515251" in msg["text"]
-    # personalized greeting (first name only)
-    assert "Hi Cyndi," in msg["html"]
-    assert "Hi Cyndi," in msg["text"]
+    # personalized greeting (first name only), Glen's rule: "Aloha", not "Hi"
+    assert "Aloha Cyndi," in msg["html"]
+    assert "Aloha Cyndi," in msg["text"]
+    assert "Hi Cyndi," not in msg["html"]
+    # no reviewer note when the email is known
+    assert "No email on file" not in msg["html"]
+    assert "No email on file" not in msg["text"]
     # Glen's sign-off present in both parts
     assert "Dr. Glen Swartwout" in msg["html"]
     assert "Dr. Glen Swartwout" in msg["text"]
@@ -149,8 +155,31 @@ def test_email_has_tracking_link_and_signature():
 
 def test_email_without_name_omits_greeting():
     msg = build_tracking_email("9405530109355381515251")
-    assert "Hi " not in msg["html"]
+    assert "Aloha " not in msg["html"]
     assert msg["text"].startswith("Your order is on its way")
+
+
+def test_no_email_match_adds_full_name_reviewer_note():
+    """When there's no confident email match, the draft carries the recipient's
+    FULL name (so Glen can look up the address), while the customer greeting stays
+    first-name. The note tells Glen to fill To: and delete the line before sending."""
+    msg = build_tracking_email("9405530109355381515251", "John Kalani",
+                               resolved_email=None)
+    # customer greeting: first name, Aloha
+    assert "Aloha John," in msg["html"]
+    assert "Aloha John," in msg["text"]
+    # reviewer note: full name incl. last name, in both parts
+    assert "No email on file for John Kalani" in msg["html"]
+    assert "No email on file for John Kalani" in msg["text"]
+    assert "delete this line" in msg["text"]
+
+
+def test_no_email_match_first_name_only_has_no_note():
+    """A first-name-only recipient has no last name to surface, so no note."""
+    msg = build_tracking_email("9405530109355381515251", "John", resolved_email=None)
+    assert "Aloha John," in msg["text"]
+    assert "No email on file" not in msg["text"]
+    assert "No email on file" not in msg["html"]
 
 
 # ── shipments table ──────────────────────────────────────────────────────────

@@ -191,28 +191,47 @@ def parse_cns_confirmation(html: str) -> Dict[str, object]:
 
 # ── Draft email (Glen's "tracking number" email, replicated) ─────────────────
 
-def build_tracking_email(tracking: str, recipient_name: Optional[str] = None) -> dict:
+def build_tracking_email(tracking: str, recipient_name: Optional[str] = None,
+                         resolved_email: Optional[str] = None) -> dict:
     """Build the draft Glen reviews + sends. Mirrors his manual email exactly:
-    a greeting (when we know the name), the tracking number as a live USPS link,
-    then his standard sign-off.
+    an "Aloha <first name>" greeting (when we know the name), the tracking number
+    as a live USPS link, then his standard sign-off.
 
     Returns {subject, html, text}. The watcher fills To: separately.
+
+    resolved_email: the matched customer address (or None/blank when no confident
+    GHL match). When it's missing AND we have a last name, a REVIEWER note carrying
+    the recipient's FULL name is prepended so Glen can look up the address, fill
+    To:, and delete the note before sending. The customer greeting stays first-name.
     """
     url = tracking_url(tracking)
     greeting_html = (
-        f"<p>Hi {escape(recipient_name.split()[0])},</p>" if recipient_name else ""
+        f"<p>Aloha {escape(recipient_name.split()[0])},</p>" if recipient_name else ""
     )
     greeting_text = (
-        f"Hi {recipient_name.split()[0]},\n\n" if recipient_name else ""
+        f"Aloha {recipient_name.split()[0]},\n\n" if recipient_name else ""
     )
+    # No email match: surface the full name (esp. the last name) for Glen's lookup.
+    note_html = note_text = ""
+    if not (resolved_email or "").strip() and recipient_name and len(recipient_name.split()) > 1:
+        who = recipient_name.strip()
+        note_html = (
+            f'<p style="color:#b00020"><strong>[No email on file for {escape(who)} '
+            f"&mdash; find their address, fill the To: field, then delete this "
+            f"line before sending.]</strong></p>"
+        )
+        note_text = (
+            f"[No email on file for {who} — find their address, fill the To: field, "
+            f"then delete this line before sending.]\n\n"
+        )
     html = (
-        f"<div dir=\"ltr\">{greeting_html}"
+        f"<div dir=\"ltr\">{note_html}{greeting_html}"
         f"<p>Your order is on its way. Here is your USPS tracking number:</p>"
         f'<h3><a href="{url}">{tracking}</a></h3>'
         f"{SIGNATURE_HTML}</div>"
     )
     text = (
-        f"{greeting_text}Your order is on its way. "
+        f"{note_text}{greeting_text}Your order is on its way. "
         f"Here is your USPS tracking number:\n\n{tracking}\n{url}"
         f"{SIGNATURE_TEXT}"
     )
