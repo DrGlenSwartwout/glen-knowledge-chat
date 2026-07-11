@@ -16464,6 +16464,80 @@ def api_portal_ff_matches(token):
                                         "covered": covered, "scan_date": scan_date}})
 
 
+def _ff_line_cents(cx, email, slug):
+    """Real FF unit price in cents: per-SKU client special, else client FF flat
+    (only for FF-eligible products), else catalog price. Mirrors app.py:15943-15949
+    (the reorder-card pricer): per-SKU client special > client FF flat (FF-eligible
+    only) > catalog price_cents."""
+    from dashboard import client_prices as _cp
+    p = _get_product(slug) if slug else None
+    regular = int((p or {}).get("price_cents") or 0)
+    special = _cp.get_price(cx, email, slug)          # per-SKU client special, None if unset
+    if special is not None:
+        return int(special)
+    flat = _cp.get_ff_flat(cx, email)                 # client's flat rate across all FFs
+    if flat is not None and p and _qty_eligible(p):   # FF-volume-eligible only
+        return int(flat)
+    return regular
+
+
+@app.route("/api/portal/<token>/ff-matches/add-to-invoice", methods=["POST"])
+def api_portal_ff_add_to_invoice(token):
+    """The paid add-to-invoice action (Slice 3c.2) — the MONEY-WRITE step. Creates
+    ONE unpaid, unpublished invoice draft (`orders` row), idempotently keyed on
+    (email, scan_date) via a deterministic external_ref, priced at the client's
+    real FF price (_ff_line_cents). Gated on the real _ff_covered entitlement
+    (fail-closed) AND a PUBLISHED ff_match_drafts row — Glen must review the
+    matches before a client can queue them onto an invoice. Rae still finalizes
+    volume/adjustments in the composer; this just seeds the queue honestly."""
+    if not _ff_matches_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_ff_matches (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[ff-matches/add-to-invoice] household {_e!r}", flush=True)
+        if not _ff_covered(cx, email):
+            return jsonify({"error": "not covered"}), 403
+        scan_date = _current_scan_date_for(email)
+        ff_match_drafts.init_table(cx)
+        draft = ff_match_drafts.get(cx, email, scan_date)
+        if not draft or draft["status"] != "published":
+            return jsonify({"error": "not published"}), 409
+        ext = f"FFINV-{email}-{scan_date}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
+        from dashboard import client_prices as _cp_init
+        _cp_init.init_table(cx)
+        items = []
+        for it in draft["items"]:
+            unit = _ff_line_cents(cx, email, it.get("slug") or "")
+            items.append({"slug": it.get("slug") or "", "name": it.get("name") or "",
+                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+        total = sum(i["line_cents"] for i in items)
+        _bos_orders.upsert_order(
+            cx, source="in-house", external_ref=ext, status="proposed",
+            email=email, name=(portal.get("name") or ""),
+            items=items, total_cents=total, channel="ff-invoice",
+            invoice_note="FF matches — pending Rae invoicing")
+        cx.commit()
+        return jsonify({"ok": True, "order_ref": ext})
+
+
 @app.route("/api/console/ff-match-drafts", methods=["GET"])
 def api_console_ff_match_drafts_list():
     """Owner console: list FF-match drafts for review (Slice 3c). Optional
