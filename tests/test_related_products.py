@@ -52,3 +52,25 @@ def test_auto_capped(monkeypatch):
 def test_empty_when_nothing_related():
     out = rp.resolve_related("iop-syntropy", manual=[], harvested=[], semantic=[], products=_PRODUCTS)
     assert out["featured"] == [] and out["more"] == []
+
+_SLUGS = {"immune-modulation", "book-healing-glaucoma", "denas-scenar", "water-ionizer-9plate"}
+_ALIASES = {
+    "healing-glaucoma-book": "book-healing-glaucoma",
+    "denas-microcurrent-system-for-eye-healing": "denas-scenar",
+    "living-water-ionizer-9-plate": "water-ionizer-9plate",
+}
+
+def test_map_exact_remedies_url():
+    assert rp.map_storefront_slug(
+        "https://remedymatch.com/remedies/syntropy/56-immune-modulation",
+        _SLUGS, _ALIASES) == "immune-modulation"
+
+def test_map_resources_via_alias():
+    assert rp.map_storefront_slug(
+        "https://remedymatch.com/resources/50-healing-glaucoma-book",
+        _SLUGS, _ALIASES) == "book-healing-glaucoma"
+
+def test_map_unknown_returns_none():
+    assert rp.map_storefront_slug(
+        "https://remedymatch.com/resources/999-mystery-widget",
+        _SLUGS, _ALIASES) is None

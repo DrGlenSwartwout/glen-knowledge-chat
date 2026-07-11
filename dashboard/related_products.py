@@ -1,6 +1,8 @@
 """Pure logic for the product-page related-products section. No I/O here so it is
 unit-testable without importing app.py (which needs pinecone)."""
 
+import re as _re
+
 DO_NOT_RECOMMEND = frozenset({
     "electrolyte-mineral-manna",
     "water-ionizer-5plate", "water-ionizer-9plate", "water-ionizer-15plate",
@@ -45,3 +47,21 @@ def resolve_related(base_slug, *, manual, harvested, semantic, products, cap=12)
     featured = featured_manual + auto[:1]
     more = auto[1:]
     return {"featured": featured, "more": more}
+
+
+_URL_TAIL = _re.compile(r"/(?:remedies/[^/]+|resources)/\d+-([a-z0-9-]+)/?$", _re.I)
+
+
+def map_storefront_slug(url, catalog_slugs, aliases):
+    """remedymatch storefront URL -> catalog slug, or None if unresolvable."""
+    if not url:
+        return None
+    m = _URL_TAIL.search(url.strip())
+    if not m:
+        return None
+    sf = m.group(1).lower()
+    if sf in aliases:
+        return aliases[sf]
+    if sf in catalog_slugs:
+        return sf
+    return None
