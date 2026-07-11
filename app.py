@@ -16521,6 +16521,15 @@ def api_portal_ff_add_to_invoice(token):
         if not draft or draft["status"] != "published":
             return jsonify({"error": "not published"}), 409
         ext = f"FFINV-{email}-{scan_date}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
+        # Insert-once: never rewrite an existing FF-invoice order. upsert_order() UPDATEs
+        # on (source, external_ref) conflict and unconditionally overwrites items_json/
+        # total_cents (and, since this route doesn't pass them, RESETS adjustment_cents/
+        # shipping_cents/discount_cents/points_redeemed_cents to 0). A second click after
+        # Rae has priced/advanced or paid the order must not touch it — refreshing the
+        # queued items is a console action, not a client re-click.
+        existing = _bos_orders.find_order_by_external_ref(cx, ext)
+        if existing and existing.get("source") == "in-house":
+            return jsonify({"ok": True, "order_ref": ext, "already_added": True})
         from dashboard import client_prices as _cp_init
         _cp_init.init_table(cx)
         items = []

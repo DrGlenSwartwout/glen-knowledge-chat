@@ -193,6 +193,50 @@ def test_double_post_is_idempotent_single_row(app_mod, tmp_db):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Never-downgrade: a re-click after Rae has advanced/paid the order must
+#     NOT rewrite it (Critical finding — insert-once semantics).
+# ---------------------------------------------------------------------------
+
+def test_second_post_never_overwrites_an_advanced_order(app_mod, tmp_db):
+    _seed_covered_member(tmp_db, MEMBER)
+    token = _seed_portal(tmp_db, MEMBER)
+    scan_date, _items = _seed_draft(tmp_db, MEMBER, published=True)
+    client = app_mod.app.test_client()
+
+    r1 = _post(client, token)
+    assert r1.status_code == 200
+    ext = r1.get_json()["order_ref"]
+    assert ext == f"FFINV-{MEMBER}-{scan_date}"
+
+    # Simulate Rae advancing the order in the console + it being paid, with
+    # manual adjustments/shipping applied and the items re-priced/finalized.
+    with sqlite3.connect(tmp_db) as cx:
+        cx.execute(
+            "UPDATE orders SET status='invoiced', pay_status='paid', paid_cents=9999, "
+            "adjustment_cents=500, shipping_cents=700, total_cents=12345, items_json='[]' "
+            "WHERE source='in-house' AND external_ref=?", (ext,))
+        cx.commit()
+
+    r2 = _post(client, token)
+    assert r2.status_code == 200
+    body2 = r2.get_json()
+    assert body2["ok"] is True
+    assert body2["already_added"] is True
+    assert body2["order_ref"] == ext
+
+    rows = _orders_rows(tmp_db)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["status"] == "invoiced"
+    assert row["pay_status"] == "paid"
+    assert row["paid_cents"] == 9999
+    assert row["adjustment_cents"] == 500
+    assert row["shipping_cents"] == 700
+    assert row["total_cents"] == 12345
+    assert row["items_json"] == "[]"
+
+
+# ---------------------------------------------------------------------------
 # 5. Covered via caregiver's family_plan.covers, not own payment -> allowed
 # ---------------------------------------------------------------------------
 
