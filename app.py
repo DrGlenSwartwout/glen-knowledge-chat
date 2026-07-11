@@ -24073,14 +24073,34 @@ def groovekart_webhook():
                           headers=str(dict(request.headers)))
     data  = request.get_json(force=True, silent=True) or {}
 
-    # Support multiple GrooveKart webhook payload formats
-    customer = data.get("customer") or data.get("billing_address") or data
-    email    = (customer.get("email") or data.get("email") or "").strip()
-    first    = (customer.get("first_name") or customer.get("firstName") or "").strip()
-    last     = (customer.get("last_name")  or customer.get("lastName")  or "").strip()
-    phone    = (customer.get("phone")      or customer.get("telephone") or "").strip()
-    product  = data.get("line_items", [{}])[0].get("name", "") if data.get("line_items") else ""
-    raw      = json.dumps(data)
+    # GrooveKart (PrestaShop) sends FLAT customer_* fields + delivery/invoice address
+    # blocks + a products[] list. Older/other shapes fall back to nested customer/
+    # line_items. Confirmed against a real order payload 2026-07-11: the old code read
+    # customer.email, but GK sends top-level customer_email — so EVERY order silently
+    # 400'd on "No email in payload".
+    customer = data.get("customer") if isinstance(data.get("customer"), dict) else {}
+    _delivery = data.get("delivery")
+    if isinstance(_delivery, list):
+        _delivery = _delivery[0] if _delivery else {}
+    delivery = _delivery if isinstance(_delivery, dict) else {}
+    invoice  = data.get("invoice") if isinstance(data.get("invoice"), dict) else {}
+    ship = delivery or invoice          # Glen: prefer the SHIPPING (delivery) address
+
+    email = (data.get("customer_email") or customer.get("email")
+             or data.get("email") or "").strip()
+    first = (data.get("customer_firstname") or ship.get("firstname")
+             or customer.get("first_name") or customer.get("firstName") or "").strip()
+    last  = (data.get("customer_lastname") or ship.get("lastname")
+             or customer.get("last_name") or customer.get("lastName") or "").strip()
+    phone = (ship.get("phone_mobile") or ship.get("phone")
+             or customer.get("phone") or customer.get("telephone") or "").strip()
+
+    _raw_products = data.get("products") or data.get("line_items") or []
+    product_names = [(p.get("product_name") or p.get("name") or "").strip()
+                     for p in _raw_products if isinstance(p, dict)]
+    product_names = [p for p in product_names if p]
+    product = product_names[0] if product_names else ""
+    raw = json.dumps(data)
 
     # Best-effort order total — GrooveKart/PrestaShop payloads vary
     order_total = None
@@ -24100,18 +24120,39 @@ def groovekart_webhook():
         email=email, first_name=first, last_name=last, phone=phone,
         source_tag="source:gk-purchase"
     )
-    # Add product note
-    if ghl_result.get("contact_id") and product:
-        _ghl_post(f"/contacts/{ghl_result['contact_id']}/notes",
-                  {"body": f"GrooveKart purchase: {product}"})
+    contact_id = ghl_result.get("contact_id")
+    # Set the SHIPPING address on the contact (best-effort; ghl_upsert_contact carries
+    # no address). Glen: use delivery, fall back to invoice.
+    if contact_id and ship:
+        _addr = {k: v for k, v in {
+            "address1": ship.get("address"), "city": ship.get("city"),
+            "state": ship.get("state_name") or ship.get("state"),
+            "postalCode": ship.get("postcode"), "country": ship.get("country"),
+        }.items() if v}
+        if _addr:
+            try:
+                _ghl_put(f"/contacts/{contact_id}", _addr)
+            except Exception as e:
+                print(f"[gk-webhook] address set failed: {e!r}", flush=True)
+    # Note the full order — all products + the shipping address.
+    if contact_id and (product_names or ship.get("address")):
+        _bits = ["GrooveKart order" + (f" {data.get('reference')}" if data.get("reference") else "")]
+        if product_names:
+            _bits.append("Products: " + ", ".join(product_names))
+        if ship.get("address"):
+            _bits.append("Ship: " + ", ".join(x for x in [
+                ship.get("address"), ship.get("city"),
+                f"{ship.get('state_name', '')} {ship.get('postcode', '')}".strip()] if x))
+        _ghl_post(f"/contacts/{contact_id}/notes", {"body": " | ".join(_bits)})
 
     _log_inbound_lead("groovekart", email, first, last, phone, raw, ghl_result)
     credited = _attribute_conversion_by_email(
         email, "store-purchase", product, order_total, "groovekart", raw)
     _ingest_order(source="groovekart",
-                  external_ref=str(data.get("id") or data.get("order_id") or email or _bos_orders._now()),
-                  email=email, name=(first + " " + last).strip(),
-                  items=[{"name": product}] if product else [],
+                  external_ref=str(data.get("id") or data.get("order_id")
+                                   or data.get("reference") or email or _bos_orders._now()),
+                  email=email, name=(first + " " + last).strip(), phone=phone,
+                  items=[{"name": n} for n in product_names],
                   total_cents=int(round(float(order_total or 0) * 100)), channel="retail")
     return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
