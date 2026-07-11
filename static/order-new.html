@@ -94,7 +94,7 @@
     <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Vol price</th><th>Line</th><th></th></tr></thead>
       <tbody id="lines"></tbody></table>
     <div class="addline">
-      <div><label>Add product</label><select id="prod-pick"></select></div>
+      <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
       <div><label>Qty</label><input id="prod-qty" type="number" min="1" value="1"></div>
       <div><label>Unit $ (override)</label><input id="prod-unit" type="number" step="0.01" placeholder="catalog"></div>
       <div><button class="ghost" onclick="addLine()">Add</button></div>
@@ -165,7 +165,13 @@ async function loadCatalog(){
   const r = await fetch("/api/products?all=1", { headers:HEADERS });
   if (r.status===401){ $("auth-warn").style.display="block"; throw new Error("unauthorized"); }
   CATALOG = ((await r.json()).products)||[];
-  const sel = $("prod-pick"); sel.innerHTML = CATALOG.map(p=>
+  renderProdPick();
+  $("prod-search").addEventListener("input", renderProdPick);
+}
+function renderProdPick(){
+  const q = ($("prod-search").value||"").trim().toLowerCase();
+  const list = q ? CATALOG.filter(p => ((p.name||"")+" "+(p.slug||"")).toLowerCase().includes(q)) : CATALOG;
+  $("prod-pick").innerHTML = list.map(p=>
     `<option value="${esc(p.slug)}">${esc(p.name)} — ${dollars(p.price_cents)}</option>`).join("");
 }
 
