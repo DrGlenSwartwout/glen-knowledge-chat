@@ -13121,6 +13121,14 @@ def console_support_programs_page():
     return resp
 
 
+@app.route("/console/related-products")
+def console_related_products_page():
+    resp = send_from_directory(STATIC, "console-related-products.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
@@ -29584,6 +29592,17 @@ def api_money_today():
     except Exception as e: return fail(e)
 
 
+@app.route("/api/console/related-products/<slug>", methods=["GET"])
+@require_console_key
+def api_related_products_get(slug):
+    """Owner console: Glen's manual "Dr. Glen recommends" picks for a product,
+    plus the harvested (auto-derived) candidates to promote from."""
+    try:
+        from dashboard import related_store as _rs
+        return ok({"manual": _rs.load_manual(slug), "harvested": _rs.load_harvested(slug)})
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/money/week")
 @require_console_key
 def api_money_week():
@@ -34663,6 +34682,10 @@ with sqlite3.connect(LOG_DB) as _sc_cx:
     _scstore.migrate(_sc_cx)
 _sca.configure(grant_fn=_studio_credit_grant_and_notify)
 _sca.register()
+
+# ── Related products: console editor for Glen's manual "Dr. Glen recommends" picks ──
+from dashboard import related_products_actions as _rpa
+_rpa.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
