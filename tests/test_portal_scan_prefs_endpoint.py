@@ -44,3 +44,23 @@ def test_bad_token_404(monkeypatch, tmp_db):
     app = _app(monkeypatch, tmp_db)
     r = app.app.test_client().post("/api/portal/BADTOKEN/scan-prefs", json={"auto_advance": False})
     assert r.status_code == 404
+
+def test_notify_opt_drives_shared_notify_state(monkeypatch, tmp_db):
+    # T3a: scan-prefs' "notify" lever writes through to the SAME notify_state
+    # table other portal notification surfaces read/write, so opting in/out
+    # here actually suppresses/resumes portal notifications elsewhere.
+    monkeypatch.setenv("PORTAL_SCAN_HISTORY_ENABLED", "1")
+    app = _app(monkeypatch, tmp_db)
+    token = _seed(tmp_db)
+    from dashboard import notify_state as _ns
+    client = app.app.test_client()
+
+    r = client.post(f"/api/portal/{token}/scan-prefs", json={"notify": "out"})
+    assert r.status_code == 200
+    with sqlite3.connect(str(tmp_db)) as cx:
+        assert _ns.get_state(cx, "a@x.com")["opt_status"] == "out"
+
+    r = client.post(f"/api/portal/{token}/scan-prefs", json={"notify": "in"})
+    assert r.status_code == 200
+    with sqlite3.connect(str(tmp_db)) as cx:
+        assert _ns.get_state(cx, "a@x.com")["opt_status"] == "in"
