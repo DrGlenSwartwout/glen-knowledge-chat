@@ -88,7 +88,7 @@
   function key(){ return localStorage.getItem('console_key') || ''; }
   (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
-  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; var s = document.getElementById('slug-input').value.trim(); if (s) load(s); }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; var s = document.getElementById('slug-input').value.trim(); if (s) loadFromInput(s); }
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
   var CURRENT_SLUG = '';
@@ -167,13 +167,13 @@
   // Validates the operator's typed value against the catalog before adding.
   // Returns true if it was added, false if it was rejected (error already shown).
   function addManualFromInput(rawInput){
+    var trimmed = (rawInput || '').trim();
+    if (!trimmed) return false;
     var errEl = document.getElementById('add-catalog-err');
-    var slug = resolveCatalogSlug(rawInput);
+    var slug = resolveCatalogSlug(trimmed);
     if (!slug) {
       errEl.style.display = 'block';
-      errEl.textContent = (rawInput || '').trim()
-        ? 'Not in the catalog: "' + rawInput.trim() + '". Pick a product from the list.'
-        : '';
+      errEl.textContent = 'Not in the catalog: "' + trimmed + '". Pick a product from the list.';
       return false;
     }
     errEl.style.display = 'none'; errEl.textContent = '';
