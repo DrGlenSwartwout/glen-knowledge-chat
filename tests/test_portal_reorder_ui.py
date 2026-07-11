@@ -16,7 +16,8 @@ HTML = pathlib.Path("static/client-portal.html").read_text()
 # Fields Task 5's _portal_reorder_module() actually emits (app.py) — the
 # single source of truth this test pins the UI against.
 REORDER_FIELDS = {"slug", "name", "qty", "regular_cents", "your_cents",
-                   "is_member_price", "in_repertoire", "channel", "is_reorder"}
+                   "is_member_price", "in_repertoire", "channel", "is_reorder",
+                   "source_label"}
 LOCKED_FIELDS = {"slug", "name", "regular_cents", "tier"}
 UPSELL_FIELDS = {"reorders_30d", "spend_30d_cents", "member_would_pay_cents",
                   "savings_cents", "net_after_fee_cents", "already_member"}
@@ -53,13 +54,9 @@ def test_reorder_row_labels_provenance_and_reserves_reorder_word():
     src = _render_fn_source()
     block = src[src.index('Array.isArray(d.reorder) && d.reorder.length'):
                 src.index('Array.isArray(d.locked_rows)')]
-    assert "it.channel" in block
+    # provenance line renders the server-computed, website-referencing label
+    assert "it.source_label" in block
     assert "it.is_reorder" in block
-    assert "Ordered on your portal" in block
-    # storefront provenance label present (its own label, not the portal one)
-    assert "remedymatch.com" in block.lower()
-    # clinic/other channels (fmp, dispensary, ...) get their own label too
-    assert "Ordered with Dr. Glen" in block
     # 'Reorder' still offered for true reorders
     assert "Reorder" in block
 

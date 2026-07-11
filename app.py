@@ -15728,16 +15728,37 @@ _STOREFRONT_CHANNEL_SOURCES = ("groovekart",)
 
 def _portal_display_channel(source):
     """Customer-facing provenance bucket for an order/purchase `source`. Glen
-    2026-07-11: clients see ALL their purchases in the portal, every channel.
-    Two named buckets carry their own label; everything else (fmp / dispensary /
-    biofield / funnel / wholesale / in-house / personal / dropship / ...) falls
-    to 'clinic' — a purchase made with Dr. Glen's practice. Labels-only boundary:
-    the `source` data value is never touched (it carries downstream semantics)."""
+    2026-07-11: clients see ALL their purchases in the portal, every channel, and
+    the label names the actual WEBSITE for clarity (see _portal_source_label).
+    Named buckets: 'portal' + 'funnel' (both the illtowell.com site), 'storefront'
+    (remedymatch.com); everything else (fmp / dispensary / biofield / wholesale /
+    in-house / personal / dropship / ...) falls to 'clinic' — an in-office
+    purchase with Dr. Glen's practice, which has no storefront URL. Labels-only
+    boundary: the `source` data value is never touched (downstream semantics)."""
     if source in _PORTAL_CHANNEL_SOURCES:
         return "portal"
     if source in _STOREFRONT_CHANNEL_SOURCES:
         return "storefront"
+    if source == "funnel":
+        return "funnel"
     return "clinic"
+
+
+def _portal_source_label(channel):
+    """The customer-facing provenance line for a purchase, referencing the real
+    website where it was placed (Glen 2026-07-11 — name the site for clarity,
+    e.g. "Ordered on illtowell.com"). Migration-safe: the portal/funnel host is
+    read from portal_base()/PUBLIC_BASE_URL at call time, so the myhealingoasis.com
+    portal flip needs no code change here. Clinic/in-office purchases have no
+    storefront URL, so they're named for the practice instead."""
+    from urllib.parse import urlparse
+    if channel == "storefront":
+        return "Ordered on remedymatch.com"
+    if channel == "clinic":
+        return "Ordered with Dr. Glen"
+    if channel == "funnel":
+        return f"Ordered on {urlparse(PUBLIC_BASE_URL).hostname or 'illtowell.com'}"
+    return f"Ordered on {urlparse(portal_base()).hostname or 'illtowell.com'}"  # portal
 
 
 def _portal_reorder_module(email):
@@ -15865,6 +15886,7 @@ def _portal_reorder_module(email):
                 "is_member_price": your_cents < regular_cents,
                 "in_repertoire": in_rep,
                 "channel": "portal",
+                "source_label": _portal_source_label("portal"),
                 "is_reorder": slug in ph_slugs,
             })
 
@@ -15986,6 +16008,7 @@ def _portal_reorder_module(email):
             "is_member_price": your_cents < regular_cents,
             "in_repertoire": slug in rep_slugs,
             "channel": channel,
+            "source_label": _portal_source_label(channel),
             "is_reorder": slug in ph_slugs,
         })
 
