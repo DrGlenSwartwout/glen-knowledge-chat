@@ -25,6 +25,19 @@ def _report():
     }
 
 
+def test_report_html_shows_notes_saved_date_when_present():
+    html = render_report_html(_report(), notes_updated="2026-07-10T22:14:03Z")
+    assert "Last saved: Jul 10, 2026 · 12:14 PM HST" in html
+    assert "id=notesSaved" in html
+
+
+def test_report_html_omits_saved_date_when_never_saved():
+    html = render_report_html(_report())            # no notes_updated
+    # placeholder present but empty (the JS fills it live after a save)
+    assert "id=notesSaved class=food></div>" in html
+    assert "HST</div>" not in html                  # no server-rendered date
+
+
 def test_report_html_shows_client_layers_and_schedule():
     html = render_report_html(_report())
     assert "Lewis Zardo" in html

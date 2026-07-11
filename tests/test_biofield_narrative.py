@@ -5,6 +5,7 @@ from dashboard.biofield_narrative import (
     init_notes_tables, get_notes, save_notes, get_narrative, save_narrative,
     build_narrative_prompt, generate_narrative,
     get_video_script, save_video_script, build_video_script_prompt, generate_video_script,
+    get_notes_updated, fmt_saved_hst,
 )
 
 
@@ -31,6 +32,30 @@ def test_notes_roundtrip(tmp_path):
     assert get_notes(cx, "10") == "kidney felt weak; mercury history"
     save_notes(cx, "10", "updated note")
     assert get_notes(cx, "10") == "updated note"
+
+
+def test_notes_updated_tracks_last_save(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_notes_tables(cx)
+    # never saved -> no timestamp
+    assert get_notes_updated(cx, "10") == ""
+    # save returns a UTC 'Z' timestamp that get_notes_updated reads back
+    ts = save_notes(cx, "10", "first pass")
+    assert ts.endswith("Z")
+    assert get_notes_updated(cx, "10") == ts
+
+
+def test_fmt_saved_hst_converts_utc_to_hst():
+    # 22:14 UTC minus 10h = 12:14 PM HST, same calendar day
+    assert fmt_saved_hst("2026-07-10T22:14:03Z") == "Jul 10, 2026 · 12:14 PM HST"
+    # crosses midnight backward: 05:30 UTC -> 19:30 (7:30 PM) prior day HST
+    assert fmt_saved_hst("2026-07-10T05:30:00Z") == "Jul 9, 2026 · 7:30 PM HST"
+    # midnight HST reads as 12:00 AM, not 0:00
+    assert fmt_saved_hst("2026-07-10T10:00:00Z") == "Jul 10, 2026 · 12:00 AM HST"
+    # empty / unparseable -> "" so the caller shows nothing
+    assert fmt_saved_hst("") == ""
+    assert fmt_saved_hst("not-a-date") == ""
 
 
 def test_narrative_roundtrip(tmp_path):

@@ -32,8 +32,9 @@ from dashboard.biofield_e4l import (
     _db_path as _e4l_db_path, fetch_live as _fetch_live,
     scan_context as _scan_context, search_clients as _search_clients)
 from dashboard.biofield_narrative import (
-    generate_narrative, generate_video_script, get_narrative, get_notes,
-    get_video_script, save_narrative, save_notes, save_video_script)
+    fmt_saved_hst, generate_narrative, generate_video_script, get_narrative,
+    get_notes, get_notes_updated, get_video_script, save_narrative, save_notes,
+    save_video_script)
 from dashboard.biofield_authoring import (
     add_chain_row, authored_report, confirm_all, confirm_row, create_test,
     delete_chain_row, delete_test, list_authored, merge_dosing, remedy_catalog,
@@ -687,6 +688,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             rep = (authored_report(cx, test_id) if str(test_id).startswith("a")
                    else causal_chain_report(cx, test_id))
             notes, narrative = get_notes(cx, test_id), get_narrative(cx, test_id)
+            notes_updated = get_notes_updated(cx, test_id)
             vscript = get_video_script(cx, test_id)
             stresses = None
             try:
@@ -695,7 +697,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 stresses = _st.list_stresses(cx, test_id, chain_rows)
             except Exception:
                 stresses = None
-        return Response(render_report_html(rep, notes, narrative, vscript, stresses=stresses),
+        return Response(render_report_html(rep, notes, narrative, vscript, stresses=stresses,
+                                           notes_updated=notes_updated),
                         mimetype="text/html")
 
     @app.route("/test/<test_id>/report")
@@ -739,6 +742,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             rep = authored_report(cx, test_id)
             dv = dimension_values(cx, DEPTH_KEY)
             transcript = get_notes(cx, test_id)
+            transcript_updated = get_notes_updated(cx, test_id)
             # Stresses each layer's remedies cover, keyed by card layer number so the
             # cards can show them inline (chain_rows grouped to match the head cards).
             groups = group_layers(rep.get("layers") or [])
@@ -1284,8 +1288,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         if not txt:
             return {"ok": True, "skipped": "empty"}
         with sqlite3.connect(db_path) as cx:
-            save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
-        return {"ok": True}
+            ts = save_notes(cx, test_id, txt)  # box holds the full transcript -> replace
+        return {"ok": True, "saved_label": fmt_saved_hst(ts)}
 
     @app.route("/author/<test_id>/mine-profile", methods=["POST"])
     def author_mine_profile(test_id):
@@ -1364,8 +1368,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     @app.route("/test/<test_id>/notes", methods=["POST"])
     def notes_save(test_id):
         with sqlite3.connect(db_path) as cx:
-            save_notes(cx, test_id, (request.get_json(silent=True) or {}).get("notes", ""))
-        return {"ok": True}
+            ts = save_notes(cx, test_id, (request.get_json(silent=True) or {}).get("notes", ""))
+        return {"ok": True, "saved_label": fmt_saved_hst(ts)}
 
     @app.route("/test/<test_id>/narrative", methods=["POST"])
     def narrative_save(test_id):
@@ -1377,7 +1381,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def narrative_generate(test_id):
         notes = (request.get_json(silent=True) or {}).get("notes", "")
         with sqlite3.connect(db_path) as cx:
-            save_notes(cx, test_id, notes)
+            ts = save_notes(cx, test_id, notes)
             ctx, rep = _e4l(cx, test_id)  # authored or FMP report + recent E4L scan
             prof = {}
             try:
@@ -1389,7 +1393,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             except Exception as e:  # no API key / network / model error
                 return {"error": str(e)[:200]}
             save_narrative(cx, test_id, text)
-        return {"narrative": text}
+        return {"narrative": text, "saved_label": fmt_saved_hst(ts)}
 
     @app.route("/test/<test_id>/video-generate", methods=["POST"])
     def video_generate(test_id):
