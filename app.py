@@ -18201,6 +18201,8 @@ def api_console_portal_notify_scan():
         if _ns.get_state(cx, email).get("opt_status") == "out":
             return jsonify({"ok": True, "sent": False, "reason": "opted out"})
         link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+    if not link:
+        return jsonify({"ok": True, "sent": False, "reason": "no portal"})
     subject = "Your new analysis is ready"
     body = ("Aloha,\n\nYour newest analysis is ready in your portal.\n\n"
             f"{link}\n\nIn wellness,\nDr. Glen & Rae")

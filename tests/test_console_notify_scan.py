@@ -59,6 +59,10 @@ def test_flag_on_sends_via_bulk(client, monkeypatch):
     # copy rules: no em dashes, no ALL CAPS words, signed correctly
     assert "—" not in sent["body"]
     assert "In wellness,\nDr. Glen & Rae" in sent["body"]
+    # portal_link_for returns (link, reissued) — the body must embed the URL
+    # string, never the raw tuple.
+    assert "(" not in sent["body"]
+    assert "/portal/" in sent["body"]
 
 
 def test_opted_out_does_not_send(client, monkeypatch):
@@ -72,6 +76,19 @@ def test_opted_out_does_not_send(client, monkeypatch):
     assert r.status_code == 200
     body = r.get_json()
     assert body["sent"] is False and body["reason"] == "opted out"
+    assert not sent
+
+
+def test_no_portal_does_not_send(client, monkeypatch):
+    c, appmod, sent = client
+    # Deliberately do NOT seed a portal row for this email — portal_link_for()
+    # returns (None, False), and the route must guard on that instead of
+    # composing/sending an email with a literal "None" link.
+    monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
+    r = c.post("/api/console/portal/notify-scan", json={"email": "nobody@x.com"}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] is False and body["reason"] == "no portal"
     assert not sent
 
 
