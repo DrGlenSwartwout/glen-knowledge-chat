@@ -83,7 +83,14 @@ def test_animal_returns_infoceuticals_not_ff(app_env, monkeypatch):
         cs.upsert(cx, EMAIL, "Cat", "Sasha")   # token's client is an animal
     out = client.post(f"/api/portal/{token}/ff-matches").get_json()["ff_matches"]
     assert out["kind"] == "infoceutical"      # animals get the scan's infoceuticals
-    assert out["items"]                        # scan recs were seeded for EMAIL
+    # _scan_recommendations_for returns a DICT ({scan_date, scan_dates, infoceuticals,
+    # mihealth}), not a list — the card's items must be flattened to a LIST of
+    # {name, url, meaning} dicts, or every animal's card renders "no matches".
+    assert isinstance(out["items"], list)
+    assert out["items"]                        # scan recs were seeded for EMAIL (BFA, ED6)
+    for it in out["items"]:
+        assert isinstance(it, dict)
+        assert it.get("name")                  # non-empty name
 
 
 def test_unknown_token_404(app_env):

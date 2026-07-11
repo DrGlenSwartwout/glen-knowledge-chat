@@ -77,6 +77,19 @@ def test_flag_off_no_ff_matches_key(app_env):
     assert "ff_matches" not in j
 
 
+def test_ff_matches_enabled_flag_always_present(app_env, monkeypatch):
+    """`ff_matches_enabled` is a plain boolean sibling flag (like scan_request_enabled)
+    that the frontend reads to gate the button/card — unlike `ff_matches` itself, it
+    is always present in the payload, on or off."""
+    app, client, token = app_env  # flag unset
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert not j.get("ff_matches_enabled")
+
+    monkeypatch.setenv("FF_MATCHES_ENABLED", "1")
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert j["ff_matches_enabled"] is True
+
+
 def test_flag_on_no_draft_no_key(app_env, monkeypatch):
     app, client, token = app_env
     monkeypatch.setenv("FF_MATCHES_ENABLED", "1")

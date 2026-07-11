@@ -1092,13 +1092,15 @@ function render(d, v){
     html += s;
   }
 
-  // FF-matches card (Slice 3b): a "See my formulation matches" button always renders
-  // (present for animals too — the POST endpoint branches internally). If the payload
-  // already carries d.ff_matches (a draft already existed), render the card immediately;
-  // otherwise the button's click POSTs /ff-matches to generate-once and render on demand.
-  // No add-to-invoice button here (Slice 3c). Dosing is tier-gated server-side, but the
-  // client double-checks: only shown when covered AND the item itself carries dosing.
-  {
+  // FF-matches card (Slice 3b, flag-gated): with FF_MATCHES_ENABLED off, d.ff_matches_enabled
+  // is falsy and NEITHER the button NOR the card render — no DOM, no handler — so a client
+  // never sees a button whose POST would 404. When on, the "See my formulation matches"
+  // button always renders (present for animals too — the POST endpoint branches internally).
+  // If the payload already carries d.ff_matches (a draft already existed), render the card
+  // immediately; otherwise the button's click POSTs /ff-matches to generate-once and render
+  // on demand. No add-to-invoice button here (Slice 3c). Dosing is tier-gated server-side,
+  // but the client double-checks: only shown when covered AND the item itself carries dosing.
+  if (d.ff_matches_enabled) {
     const ffBody = d.ff_matches ? ffMatchesBodyHtml(d.ff_matches) : "";
     html += `<div class="card ffmatch-card">
       <h2>Your formulation matches</h2>

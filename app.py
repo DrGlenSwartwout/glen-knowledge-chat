@@ -16087,6 +16087,10 @@ def api_client_portal(token):
             payload["scan_recommendations"] = _sr_block
     except Exception as _e:
         print(f"[scan-recs/payload] {_e!r}", flush=True)
+    # FF-matches flag (always present, like its sibling scan_request_enabled): lets the
+    # frontend gate the button/card without a separate flag call. Off means the client
+    # renders neither — clicking a phantom button would otherwise hit a 404'd endpoint.
+    payload["ff_matches_enabled"] = _ff_matches_enabled()
     # FF-matches card (flag-gated, best-effort). The GET side NEVER generates a draft —
     # that only happens via the POST /ff-matches button; if no draft exists yet, the
     # key stays absent (byte-identical payload). email_for_reports is already re-pointed
@@ -16420,7 +16424,14 @@ def api_portal_ff_matches(token):
         covered = _ff_covered(cx, email)
         species = _client_species_for(email)
         if species and species.get("is_animal"):
-            items = _scan_recommendations_for(email, scan_date) or []
+            # Animals get the scan's own infoceuticals, not FF product matches — there is
+            # no orderable formulation to review. _scan_recommendations_for returns a DICT
+            # ({scan_date, scan_dates, infoceuticals:[...], mihealth:[...]}), not a list, so
+            # flatten it into the [{name,url,meaning}] shape the card's items expect. miHealth
+            # cycles are excluded — they are device-run by the practitioner, not orderable.
+            recs = _scan_recommendations_for(email, scan_date) or {}
+            items = [{"name": i["label"], "url": i.get("order_url") or "", "meaning": ""}
+                     for i in (recs.get("infoceuticals") or [])]
             return jsonify({"ff_matches": {"kind": "infoceutical", "items": items,
                                             "reviewed": False, "covered": covered,
                                             "scan_date": scan_date}})
