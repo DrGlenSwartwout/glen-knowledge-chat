@@ -18094,19 +18094,18 @@ def api_console_biofield_publish():
         _aa_on = True
         try:
             with sqlite3.connect(LOG_DB) as _cx_aa:
-                from dashboard import client_portal as _cp_aa
-                _cp_aa.init_client_portal_table(_cx_aa)
-                _aa_on = _cp_aa.get_auto_advance(_cx_aa, email)
+                _cp.init_client_portal_table(_cx_aa)
+                _aa_on = _cp.get_auto_advance(_cx_aa, email)
         except Exception:
             _aa_on = True
+        content["auto_advance"] = _aa_on   # preserve the opt-out itself through the content replace
         if _aa_on:
             content["current_scan_date"] = scan_date
         else:
             _existing = None
             try:
                 with sqlite3.connect(LOG_DB) as _cx_cur:
-                    from dashboard import client_portal as _cp_cur
-                    _existing = _cp_cur.get_current_scan(_cx_cur, email)
+                    _existing = _cp.get_current_scan(_cx_cur, email)
             except Exception:
                 _existing = None
             if _existing:

@@ -26,3 +26,14 @@ def test_optout_keeps_pointer_but_still_stores_report(client):
     with sqlite3.connect(appmod.LOG_DB) as cx:
         assert cp.get_current_scan(cx, "a@x.com") == "2026-07-02"        # pointer unmoved
         assert "2026-07-09" in pbr.list_report_dates(cx, "a@x.com")      # but report stored
+
+    # The opt-out must survive more than one publish. Each publish REPLACES
+    # content_json wholesale (upsert_portal), so if auto_advance itself isn't
+    # re-injected into `content` on every publish, it silently reverts to the
+    # default (True) after exactly one publish post-opt-out — and the pointer
+    # starts moving again on this THIRD publish.
+    _pub(c, appmod, "2026-07-16")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.get_auto_advance(cx, "a@x.com") is False                 # opt-out still in effect
+        assert cp.get_current_scan(cx, "a@x.com") == "2026-07-02"          # pointer still unmoved
+        assert "2026-07-16" in pbr.list_report_dates(cx, "a@x.com")        # but report still stored
