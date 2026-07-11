@@ -15231,14 +15231,36 @@ def _parse_ff_rank(text, allowed_names):
         return []
 
 
+def _broad_benefit_slug_set():
+    """Best-effort load of the Slice-1 `broad_benefit` store (Condition
+    Support Programs) as a plain set of slugs, for use as a deterministic
+    "broadly effective" signal in the FF matcher (Slice 2). Opened ONCE per
+    `_make_ff_items_for` call -- never per-candidate -- to avoid a
+    per-candidate DB round trip. Fails closed to an empty set on ANY error
+    (missing table, locked db, etc.) so a store outage can never break the
+    matcher -- it only silently drops the signal, leaving every candidate
+    not-broad."""
+    try:
+        with sqlite3.connect(LOG_DB) as cx:
+            broad_benefit.init_table(cx)
+            return set(broad_benefit.all_slugs(cx))
+    except Exception as _e:
+        print(f"[ff-broad-benefit] {_e!r}", flush=True)
+        return set()
+
+
 def _ff_llm_rank(scan_labels, candidates):
     """Retrieval-augmented LLM ranking of FF product candidates for this
     scan's findings. `candidates` is the already-filtered, already-resolved
-    list of {name, slug, url, meaning} (never-recommend products already
-    excluded). Returns a ranked [{"name", "meaning"}, ...] (up to 5, in
-    best-fit-first order) or None on ANY failure -- empty inputs, API
-    error, or a garbage/empty parse -- signalling the caller to fall back
-    to the vector path. Never raises."""
+    list of {name, slug, url, meaning, broad_benefit} (never-recommend
+    products already excluded). A candidate with `broad_benefit` true is
+    rendered in the prompt with a "(broadly effective)" marker after its
+    name (Slice 2), and the ranking guidance nudges the LLM to prefer a
+    marked candidate when two otherwise fit the scan comparably -- this is
+    a soft prompt signal only, never a hard reorder. Returns a ranked
+    [{"name", "meaning"}, ...] (up to 5, in best-fit-first order) or None on
+    ANY failure -- empty inputs, API error, or a garbage/empty parse --
+    signalling the caller to fall back to the vector path. Never raises."""
     try:
         if not scan_labels or not candidates:
             return None
@@ -15248,8 +15270,14 @@ def _ff_llm_rank(scan_labels, candidates):
             nm = (c.get("name") or "").strip()
             if not nm:
                 continue
+            # Deterministic "broadly effective" marker (Slice 2: wires the
+            # Slice-1 broad_benefit store into this prompt) -- purely a
+            # display hint for the LLM; the candidate's real `name` is
+            # unaffected, so `_parse_ff_rank`'s allowed-name join still
+            # works unchanged.
+            label = f"{nm} (broadly effective)" if c.get("broad_benefit") else nm
             mn = (c.get("meaning") or "").strip()
-            cand_lines.append(f"- {nm}: {mn}" if mn else f"- {nm}")
+            cand_lines.append(f"- {label}: {mn}" if mn else f"- {label}")
         candidates_text = "\n".join(cand_lines)
         if not findings_text or not candidates_text:
             return None
@@ -15283,7 +15311,11 @@ def _ff_llm_rank(scan_labels, candidates):
             "- Build a complete ongoing-support set: round it out with "
             "foundational, broadly-beneficial formulations rather than "
             "stopping at the single closest match -- but never pad with a "
-            "formulation that does not fit the scan.\n\n"
+            "formulation that does not fit the scan.\n"
+            "- When two candidates fit the scan comparably, prefer the one "
+            "marked \"(broadly effective)\"; a broadly-effective, "
+            "foundational formulation marked this way is a good choice to "
+            "round out the support set.\n\n"
             "Safety rules (defense-in-depth -- some of these may already be "
             "excluded from the candidate list above, but never select them "
             "regardless):\n"
@@ -15323,9 +15355,14 @@ def _make_ff_items_for(email, scan_date=None):
     qty-eligible Functional Formulation candidate set (never-recommend
     products excluded via `_ff_auto_excluded`; the client's own E4L
     infoceuticals excluded via the `_qty_eligible` gate AND by dropping any
-    slug already on their scan card (`scan_slugs`); deduped by slug), then
-    rank via the inline LLM (`_ff_llm_rank`), biased toward broadly-effective
-    formulations. Falls back to the pure vector path
+    slug already on their scan card (`scan_slugs`); deduped by slug), tags
+    each candidate `broad_benefit` (Slice 2: the Condition Support Programs
+    `broad_benefit` store, loaded ONCE via `_broad_benefit_slug_set` --
+    fail-closed/best-effort, never breaks the matcher), then rank via the
+    inline LLM (`_ff_llm_rank`), which surfaces that flag as a prompt marker
+    biased toward broadly-effective formulations. The `broad_benefit` key is
+    internal to the candidate dict handed to `_ff_llm_rank` and is never
+    copied into the returned items. Falls back to the pure vector path
     (`ff_matcher.generate_ff_matches`, same exclusions + same qty_eligible/
     non-scan-slug scoping) when the LLM ranking is unavailable or empty.
     Returns [] when scan recs are off, unknown, the client has none for this
@@ -15351,6 +15388,10 @@ def _make_ff_items_for(email, scan_date=None):
         if tail:
             scan_slugs.add(tail)
 
+    # Loaded ONCE for this call (not per-candidate) -- see
+    # `_broad_benefit_slug_set` for the fail-closed/best-effort contract.
+    broad_slugs = _broad_benefit_slug_set()
+
     raw = _ff_query_specific_formulations("; ".join(labels), 120)
     candidates, seen = [], set()
     for r in raw:
@@ -15372,6 +15413,11 @@ def _make_ff_items_for(email, scan_date=None):
             "slug": slug,
             "url": order_destination.destination_for(slug),
             "meaning": ((r.get("metadata") or {}).get("meaning") or "").strip(),
+            # INTERNAL to the candidate dict handed to `_ff_llm_rank` --
+            # never copied into the final returned items (see the LLM-path
+            # and fallback-path item construction below, both of which
+            # build a fresh {name, slug, url, meaning} dict).
+            "broad_benefit": slug in broad_slugs,
         })
     if not candidates:
         # No distinct qty_eligible FF candidates survived -- graceful empty,
