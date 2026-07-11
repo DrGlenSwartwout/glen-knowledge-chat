@@ -15144,6 +15144,29 @@ def _make_ff_items_for(email, scan_date=None):
     )
 
 
+def _current_scan_date_for(email):
+    """The scan date the FF-matches card treats as 'current' for this email.
+
+    Mirrors api_client_portal's own selection EXACTLY (app.py ~16056:
+    `_scan_recommendations_for(email_for_reports, req_date or None)`) rather than
+    re-deriving it: with no ?scan_date= override to thread through (this endpoint
+    takes none), that call degenerates to `_scan_recommendations_for(email, None)`,
+    whose own fallback is the newest E4L scan date (dashboard.scan_recommendations.
+    scan_dates_for, DESC). Reuses that existing helper's 'picked' value (returned as
+    its 'scan_date' key) instead of inventing a second selection rule. Returns ""
+    (never None) when the flag is off or the client has no scans — ff_match_drafts'
+    scan_date column is NOT NULL, so an empty string is the safe key, not None."""
+    rec = _scan_recommendations_for(email, None)
+    return (rec or {}).get("scan_date") or ""
+
+
+def _ff_covered(cx, email):
+    """Whether this client's FF matches are already paid/covered (Slice 3c gates
+    dosing visibility on this). Stub for Slice 3b — always False, so every draft
+    stays dosing-stripped until 3c wires the real entitlement check."""
+    return False
+
+
 def _portal_options_for(email):
     """The client-facing options+pricing trio for the portal card. Prices are
     DATA-SOURCED (biofield-analysis catalog price + this client's courtesy override
@@ -16339,6 +16362,57 @@ def api_portal_request_analysis(token):
     body = request.get_json(silent=True) or {}
     res, code = _request_analysis_core(token, body.get("scan_id"), body.get("scan_date"))
     return jsonify(res), code
+
+
+@app.route("/api/portal/<token>/ff-matches", methods=["POST"])
+def api_portal_ff_matches(token):
+    """The client-facing FF-product-match card (Slice 3b). Generate-once per
+    (email, scan_date) via ff_match_drafts.get_or_create — repeat calls return the
+    same items without re-invoking the (Pinecone-backed) generator. Animal clients
+    get the scan's own infoceuticals instead — there is no FF product to review.
+    Behind FF_MATCHES_ENABLED — off means the endpoint 404s (byte-identical to
+    pre-FF-match behavior; no payload key exists anywhere either)."""
+    if not _ff_matches_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as api_portal_open/_request_analysis_core
+        # (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[ff-matches] household {_e!r}", flush=True)
+        scan_date = _current_scan_date_for(email)
+        covered = _ff_covered(cx, email)
+        species = _client_species_for(email)
+        if species and species.get("is_animal"):
+            items = _scan_recommendations_for(email, scan_date) or []
+            return jsonify({"ff_matches": {"kind": "infoceutical", "items": items,
+                                            "reviewed": False, "covered": covered,
+                                            "scan_date": scan_date}})
+        ff_match_drafts.init_table(cx)
+        draft = ff_match_drafts.get_or_create(
+            cx, email, scan_date, lambda: _make_ff_items_for(email, scan_date))
+        reviewed = draft["status"] == "published"
+        items = draft["items"]
+        if not covered and not reviewed:   # in 3b nobody is covered: strip for everyone
+            items = [{k: v for k, v in it.items() if k != "dosing"} for it in items]
+        return jsonify({"ff_matches": {"kind": "ff", "items": items, "reviewed": reviewed,
+                                        "covered": covered, "scan_date": scan_date}})
 
 
 @app.route("/portal/<token>/analyze")
