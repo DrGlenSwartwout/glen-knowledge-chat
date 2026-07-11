@@ -15059,6 +15059,16 @@ def _support_programs_enabled():
         "1", "true", "yes", "on")
 
 
+def _portal_scan_history_enabled() -> bool:
+    """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
+    return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _portal_scan_notify_enabled() -> bool:
+    """Confirm-to-send new-analysis emails. Default OFF until the bulk (non-Gmail) channel is configured."""
+    return os.environ.get("PORTAL_SCAN_NOTIFY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _animal_greeting_enabled():
     """Animal greeting ('Give our Aloha to Sasha'). Default OFF — when off the payload
     never gains is_animal/animal_name and the greeting is byte-identical. Flip alongside
@@ -16253,6 +16263,9 @@ def api_client_portal(token):
         elif cur_ptr and cur_ptr in dates:
             picked = cur_ptr
         else:
+            if cur_ptr and cur_ptr not in dates:
+                app.logger.warning("portal current_scan_date %r not in reports for %s; using newest",
+                                   cur_ptr, email_for_reports)
             picked = dates[0]
         rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
         bf_content = rep.get("content") or {}
@@ -16378,6 +16391,19 @@ def api_client_portal(token):
         "element_state": element_state,
         "element_backdrop_enabled": ELEMENT_BACKDROP_ENABLED,
     }
+    # Task 2 (scan-history spec): expose per-client scan-history prefs + the resolved
+    # current scan date behind PORTAL_SCAN_HISTORY_ENABLED. Additive keys only, mirrors
+    # _ff_matches_enabled/_support_programs_enabled — flag off => payload byte-identical.
+    if _portal_scan_history_enabled():
+        try:
+            from dashboard import client_portal as _cp_sh
+            with sqlite3.connect(LOG_DB) as _cx_sh:
+                _aa = _cp_sh.get_auto_advance(_cx_sh, email_for_reports) if email_for_reports else True
+            payload["scan_history_enabled"] = True
+            payload["auto_advance"] = _aa
+            payload["current_scan_date"] = bf_scan_date
+        except Exception:
+            pass
     # Task 5: portal reorder module (real order history + repertoire pricing +
     # member savings + forward-framed locked rows). Additive keys only — never
     # touches reorder_items above (that's the practitioner-curated list the
