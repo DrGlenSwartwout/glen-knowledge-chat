@@ -53,20 +53,23 @@
   on the live page.</p>
 <div class="lookup-section">
   <div class="lookup-row">
-    <input type="text" id="slug-input" placeholder="product slug (e.g. iop-syntropy)">
+    <input type="text" id="slug-input" list="catalog-list" placeholder="product slug or name (e.g. iop-syntropy)">
     <button type="button" class="addbtn" id="lookup-btn">Load</button>
   </div>
   <div class="status" id="lookup-status"></div>
+  <div class="status err" id="lookup-catalog-err" style="display:none;"></div>
 </div>
+<datalist id="catalog-list"></datalist>
 <div class="editor" id="editor">
   <div class="card">
     <h2>Current picks — <span id="slug-label"></span></h2>
     <div class="chip-list" id="manual-list"></div>
     <p class="empty" id="manual-empty" style="display:none;">No manual picks yet.</p>
     <div class="add-row">
-      <input type="text" id="add-input" placeholder="add a product slug">
+      <input type="text" id="add-input" list="catalog-list" placeholder="add a related product (name or slug)">
       <button type="button" class="addbtn" id="add-btn">Add</button>
     </div>
+    <p class="status err" id="add-catalog-err" style="display:none;"></p>
   </div>
   <div class="card">
     <h2>Harvested candidates</h2>
@@ -91,6 +94,47 @@
   var CURRENT_SLUG = '';
   var MANUAL = [];
   var HARVESTED = [];
+
+  // Catalog-backed picker: slug -> name, and a lowercased name -> slug lookup,
+  // so the operator can type either and never save a slug the catalog doesn't have.
+  var CATALOG_BY_SLUG = {};
+  var CATALOG_NAME_TO_SLUG = {};
+
+  async function loadCatalog(){
+    try {
+      var r = await fetch('/api/products?all=1', { headers: hdr() });
+      if (!r.ok) return;
+      var j = await r.json().catch(function(){ return {}; });
+      var products = j.products || [];
+      var dl = document.getElementById('catalog-list');
+      var opts = [];
+      products.forEach(function(p){
+        var slug = p.slug, name = p.name || slug;
+        if (!slug) return;
+        CATALOG_BY_SLUG[slug] = name;
+        CATALOG_NAME_TO_SLUG[name.toLowerCase()] = slug;
+        opts.push('<option value="'+esc(slug)+'" label="'+esc(name)+' — '+esc(slug)+'">'+esc(name)+' — '+esc(slug)+'</option>');
+      });
+      dl.innerHTML = opts.join('');
+    } catch(e) { /* catalog fetch failed; validation will just reject everything until retried */ }
+  }
+
+  // Resolves whatever the operator typed (slug OR product name) to a real
+  // catalog slug. Returns null if it doesn't match anything in the catalog —
+  // callers must not save/load on a null result.
+  function resolveCatalogSlug(input){
+    input = (input || '').trim();
+    if (!input) return null;
+    if (Object.prototype.hasOwnProperty.call(CATALOG_BY_SLUG, input)) return input;
+    var bySlugLower = input.toLowerCase();
+    for (var slug in CATALOG_BY_SLUG) {
+      if (slug.toLowerCase() === bySlugLower) return slug;
+    }
+    if (Object.prototype.hasOwnProperty.call(CATALOG_NAME_TO_SLUG, bySlugLower)) {
+      return CATALOG_NAME_TO_SLUG[bySlugLower];
+    }
+    return null;
+  }
 
   function slugOf(h){ return (typeof h === 'string') ? h : (h.slug || ''); }
   function sourceOf(h){ return (typeof h === 'string') ? '' : (h.source || h.reason || ''); }
@@ -120,6 +164,23 @@
     renderHarvested();
   }
 
+  // Validates the operator's typed value against the catalog before adding.
+  // Returns true if it was added, false if it was rejected (error already shown).
+  function addManualFromInput(rawInput){
+    var errEl = document.getElementById('add-catalog-err');
+    var slug = resolveCatalogSlug(rawInput);
+    if (!slug) {
+      errEl.style.display = 'block';
+      errEl.textContent = (rawInput || '').trim()
+        ? 'Not in the catalog: "' + rawInput.trim() + '". Pick a product from the list.'
+        : '';
+      return false;
+    }
+    errEl.style.display = 'none'; errEl.textContent = '';
+    addManual(slug);
+    return true;
+  }
+
   function renderHarvested(){
     var el = document.getElementById('harvested-list');
     if (!HARVESTED.length) {
@@ -143,6 +204,23 @@
         else { MANUAL = MANUAL.filter(function(s){ return s !== slug; }); renderManual(); }
       });
     });
+  }
+
+  // Validates the operator's typed value (slug or name) against the catalog,
+  // shows an inline error and refuses to load on an unknown value.
+  function loadFromInput(rawInput){
+    var errEl = document.getElementById('lookup-catalog-err');
+    var slug = resolveCatalogSlug(rawInput);
+    if (!slug) {
+      errEl.style.display = 'block';
+      errEl.textContent = (rawInput || '').trim()
+        ? 'Not in the catalog: "' + rawInput.trim() + '". Pick a product from the list.'
+        : '';
+      document.getElementById('editor').style.display = 'none';
+      return;
+    }
+    errEl.style.display = 'none'; errEl.textContent = '';
+    load(slug);
   }
 
   async function load(slug){
@@ -204,19 +282,20 @@
   }
 
   document.getElementById('lookup-btn').addEventListener('click', function(){
-    var slug = document.getElementById('slug-input').value.trim();
-    if (slug) load(slug);
+    var v = document.getElementById('slug-input').value;
+    if (v.trim()) loadFromInput(v);
   });
   document.getElementById('slug-input').addEventListener('keydown', function(e){
-    if (e.key === 'Enter') { var slug = e.target.value.trim(); if (slug) load(slug); }
+    if (e.key === 'Enter') { var v = e.target.value; if (v.trim()) loadFromInput(v); }
   });
   document.getElementById('add-btn').addEventListener('click', function(){
     var input = document.getElementById('add-input');
-    addManual(input.value);
-    input.value = '';
+    if (addManualFromInput(input.value)) input.value = '';
   });
   document.getElementById('add-input').addEventListener('keydown', function(e){
-    if (e.key === 'Enter') { addManual(e.target.value); e.target.value = ''; }
+    if (e.key === 'Enter') { if (addManualFromInput(e.target.value)) e.target.value = ''; }
   });
   document.getElementById('save-btn').addEventListener('click', save);
+
+  loadCatalog();
 </script>

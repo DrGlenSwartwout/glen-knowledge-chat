@@ -8,7 +8,7 @@ def _exec_set(params, ctx):
     slug = (params.get("slug") or "").strip()
     if not slug:
         raise ValueError("slug required")
-    related = [s for s in (params.get("related") or []) if isinstance(s, str) and s.strip()]
+    related = [s.strip() for s in (params.get("related") or []) if isinstance(s, str) and s.strip()]
     _rs.save_manual(slug, related)
     return {"slug": slug, "related": related, "saved": True}
 
