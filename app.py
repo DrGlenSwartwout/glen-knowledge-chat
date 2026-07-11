@@ -496,6 +496,20 @@ def send_portal_welcome_email(to_email, name, login_url):
     from dashboard import portal_welcome as _pw
     subject, body, html_body = _pw.welcome_email_content(name, login_url)
 
+    # Path 0: bulk router — GHL v2 (Mailgun-backed sending domain) when configured, else
+    # Gmail — so onboarding email stops consuming the consumer-Gmail daily quota that
+    # transactional mail (invoices) needs. Only active when BULK_VIA_GHL is set; on any
+    # failure it falls through to the legacy cascade below.
+    if os.environ.get("BULK_VIA_GHL"):
+        try:
+            from dashboard import inbox as _inbox
+            res = _inbox.send_bulk(to_email, subject, body,
+                                   from_name="Dr. Glen Swartwout", html=html_body)
+            via = res.get("via") or ("skipped:" + res["skipped"] if res.get("skipped") else "gmail")
+            return via, None
+        except Exception as e:
+            print(f"[welcome] bulk-router send failed, trying legacy cascade: {e}", flush=True)
+
     # Path 1: GHL workflow trigger (reuse the magic-link workflow channel)
     if GHL_MAGIC_WORKFLOW:
         try:
