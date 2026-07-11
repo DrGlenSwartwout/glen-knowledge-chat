@@ -74,3 +74,13 @@ def test_map_unknown_returns_none():
     assert rp.map_storefront_slug(
         "https://remedymatch.com/resources/999-mystery-widget",
         _SLUGS, _ALIASES) is None
+
+def test_map_rejects_nonremedymatch_domain():
+    assert rp.map_storefront_slug(
+        "https://evil.example.com/resources/50-healing-glaucoma-book",
+        _SLUGS, _ALIASES) is None
+
+def test_map_tolerates_query_string():
+    assert rp.map_storefront_slug(
+        "https://remedymatch.com/remedies/syntropy/56-immune-modulation?ref=email",
+        _SLUGS, _ALIASES) == "immune-modulation"

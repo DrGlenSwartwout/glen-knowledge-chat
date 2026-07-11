@@ -2,6 +2,7 @@
 unit-testable without importing app.py (which needs pinecone)."""
 
 import re as _re
+from urllib.parse import urlsplit as _urlsplit
 
 DO_NOT_RECOMMEND = frozenset({
     "electrolyte-mineral-manna",
@@ -53,10 +54,14 @@ _URL_TAIL = _re.compile(r"/(?:remedies/[^/]+|resources)/\d+-([a-z0-9-]+)/?$", _r
 
 
 def map_storefront_slug(url, catalog_slugs, aliases):
-    """remedymatch storefront URL -> catalog slug, or None if unresolvable."""
+    """remedymatch storefront URL -> catalog slug, or None if unresolvable.
+    Only maps URLs on the remedymatch.com host; query strings/fragments are ignored."""
     if not url:
         return None
-    m = _URL_TAIL.search(url.strip())
+    parts = _urlsplit(url.strip())
+    if "remedymatch.com" not in (parts.netloc or "").lower():
+        return None
+    m = _URL_TAIL.search(parts.path or "")
     if not m:
         return None
     sf = m.group(1).lower()
