@@ -16209,7 +16209,7 @@ def api_portal_program(token):
     tiers = _pt.program_blocks(
         paid_owned=paid_owned,
         family_owned=family_owned,
-        paid_enabled=(_subscriptions_enabled() and _portal_offers_enabled()),
+        paid_live=(_program_paid_live_enabled() and CONTINUOUS_CARE_MONTHLY_ENABLED),
         family_enabled=_family_plan_enabled(),
     )
     return jsonify({

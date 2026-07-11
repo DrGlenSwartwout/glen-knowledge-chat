@@ -32,11 +32,12 @@ def test_api_program_404_when_flag_off(client, monkeypatch):
 def test_api_program_returns_tiers_for_free_client(client, monkeypatch):
     c, appmod = client
     monkeypatch.setenv("PORTAL_PROGRAM_PAGE_ENABLED", "1")
-    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "1")
-    # Paid availability requires BOTH the subscriptions flag and the master
-    # portal-offers flag (the actual checkout endpoint gates on both), so this
-    # must be set too or the paid tier falls back to "coming_soon".
-    monkeypatch.setenv("PORTAL_OFFERS_ENABLED", "1")
+    # Paid availability now requires the new live-gate flag AND continuous-care
+    # monthly checkout being on (the actual checkout endpoint the Join button
+    # posts to gates on both), so both must be set or the paid tier falls back
+    # to "coming_soon".
+    monkeypatch.setenv("PROGRAM_PAID_LIVE_ENABLED", "1")
+    monkeypatch.setattr(appmod, "CONTINUOUS_CARE_MONTHLY_ENABLED", True)
     # _active_membership_for_email opens its own connection against LOG_DB; the
     # `memberships` table is only created at import time against the real LOG_DB
     # (module-level _init_membership_tables()), not against this test's tmp_path
@@ -52,20 +53,21 @@ def test_api_program_returns_tiers_for_free_client(client, monkeypatch):
     tiers = {t["key"]: t for t in body["tiers"]}
     assert tiers["free"]["state"] == "owned"
     assert tiers["paid"]["state"] == "available"
+    assert tiers["paid"]["checkout_path"] == "/portal/offer/continuous-care/checkout"
     assert body["current_tier"] == "free"
     assert body["ambassador"]["status"] == "none"
     assert {g["key"] for g in body["grow"]} == {"practitioner", "coach", "cert"}
 
 
-def test_api_program_paid_coming_soon_when_offers_master_flag_off(client, monkeypatch):
-    # SUBSCRIPTIONS_ENABLED alone must NOT make the paid tier "available": the
-    # real checkout endpoint (/portal/offer/live-group/checkout) also requires
-    # the master PORTAL_OFFERS_ENABLED flag, so the program page must agree or
-    # it renders a dead "Join" button that POSTs into a 404.
+def test_api_program_paid_coming_soon_when_not_live(client, monkeypatch):
+    # With PROGRAM_PAID_LIVE_ENABLED unset, the paid tier must not go live even
+    # if continuous-care checkout itself is enabled: the program page must
+    # agree with the checkout endpoint's gate or it renders a dead "Join"
+    # button that POSTs into a 404.
     c, appmod = client
     monkeypatch.setenv("PORTAL_PROGRAM_PAGE_ENABLED", "1")
-    monkeypatch.setenv("SUBSCRIPTIONS_ENABLED", "1")
-    monkeypatch.delenv("PORTAL_OFFERS_ENABLED", raising=False)
+    monkeypatch.delenv("PROGRAM_PAID_LIVE_ENABLED", raising=False)
+    monkeypatch.setattr(appmod, "CONTINUOUS_CARE_MONTHLY_ENABLED", True)
     monkeypatch.setattr(appmod, "_active_membership_for_email", lambda e: None)
     tok = _seed_portal(appmod, "free2@x.com")
     r = c.get(f"/api/portal/{tok}/program")

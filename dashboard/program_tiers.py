@@ -14,7 +14,7 @@ def _state(owned, enabled):
     return "available" if enabled else "coming_soon"
 
 
-def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
+def program_blocks(*, paid_owned, family_owned, paid_live, family_enabled):
     """The three sellable tiers, in ladder order, with per-viewer state."""
     free = {
         "key": "free",
@@ -39,14 +39,15 @@ def program_blocks(*, paid_owned, family_owned, paid_enabled, family_enabled):
             "Live group coaching with Dr. Glen",
             "Your protocol re-matched as you progress",
             "Your AI ally and Terrain Restore support",
+            "Billed $99 per month for 12 months; your first month is charged today",
         ],
         "price_cents": _po.MEMBERSHIP_PRICE_CENTS,
         "value_cents": None,
         "period": "/mo",
         "cta_label": "Join",
-        "checkout_path": "/portal/offer/live-group/checkout",
+        "checkout_path": "/portal/offer/continuous-care/checkout",
         "cta_kind": "checkout_post",
-        "state": _state(paid_owned, paid_enabled),
+        "state": _state(paid_owned, paid_live),
     }
     family = {
         "key": "family",
