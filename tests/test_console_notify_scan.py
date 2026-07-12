@@ -142,3 +142,39 @@ def test_missing_email_400(client):
     c, appmod, sent = client
     r = c.post("/api/console/portal/notify-scan", json={}, headers=_auth())
     assert r.status_code == 400
+
+
+def test_family_variant_happy_path(client, monkeypatch):
+    c, appmod, sent = client
+    from dashboard import client_portal as cp, household as hh
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        hh.init_household_tables(cx)
+        cp.upsert_portal(cx, "care@x.com", "Karin Takahashi", {})
+        cp.upsert_portal(cx, "pet@x.com", "Sasha Takahashi", {})
+        hh.add_member(cx, "care@x.com", "pet@x.com", label="Sasha", relationship="pet")
+    monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
+    r = c.post("/api/console/portal/notify-scan",
+               json={"email": "care@x.com", "member": "pet@x.com"}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] is True
+    assert sent.get("to") == "care@x.com"
+    assert sent.get("subject") == "Sasha's new Biofield Analysis is ready"
+    assert sent["body"].startswith("Aloha Karin,")
+    assert "Sasha's newest Biofield Analysis is ready in your family portal" in sent["body"]
+
+
+def test_family_variant_not_viewable_does_not_send(client, monkeypatch):
+    c, appmod, sent = client
+    from dashboard import client_portal as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        cp.upsert_portal(cx, "care@x.com", "Karin Takahashi", {})
+    monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
+    r = c.post("/api/console/portal/notify-scan",
+               json={"email": "care@x.com", "member": "stranger@x.com"}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] is False and body["reason"] == "not a viewable member"
+    assert not sent

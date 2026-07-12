@@ -18483,41 +18483,78 @@ def api_console_portal_notify_scan():
     Sends via inbox.send_bulk (GHL-v2/Mailgun domain), never the Gmail-first
     _send_full_report_email path — keeps the consumer-Gmail daily quota for
     transactional mail. Gated by PORTAL_SCAN_NOTIFY_ENABLED and the client's
-    notify_state opt status (never sends when opted out)."""
+    notify_state opt status (never sends when opted out).
+
+    Optional `member`: family/caregiver variant. When present (and different
+    from `email`), notifies the caregiver (`email` — still the recipient
+    mailbox, still subject to their own opt/link checks) that a household
+    MEMBER's analysis is ready, gated on household.can_view(email, member).
+    The primary (no-`member`) path below is unchanged."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
-    email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
+    _body_in = request.get_json(silent=True) or {}
+    email = (_body_in.get("email") or "").strip().lower()
+    member = (_body_in.get("member") or "").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
+    if member == email:
+        member = ""
     if not _portal_scan_notify_enabled():
         return jsonify({"ok": True, "sent": False, "reason": "flag off"})
     from dashboard import client_portal as _cp, notify_state as _ns, inbox as _inbox
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
+        if member:
+            from dashboard import household as _hh
+            _hh.init_household_tables(cx)
+            if not _hh.can_view(cx, email, member):
+                return jsonify({"ok": True, "sent": False, "reason": "not a viewable member"})
         if _ns.get_state(cx, email).get("opt_status") == "out":
             return jsonify({"ok": True, "sent": False, "reason": "opted out"})
         link, _reissued = _cp.portal_link_for(cx, email, portal_base())
         rec = _cp.get_portal_content_by_email(cx, email)
+        mrec = _cp.get_portal_content_by_email(cx, member) if member else None
     if not link:
         return jsonify({"ok": True, "sent": False, "reason": "no portal"})
     _name_parts = ((rec or {}).get("name") or "").split()
     first = _name_parts[0] if _name_parts else ""
-    subject = "Your new Biofield Analysis is ready"
     greeting = f"Aloha {first}," if first else "Aloha,"
-    body = (
-        f"{greeting}\n\n"
-        "Your newest Biofield Analysis is ready in your portal. It maps the layers "
-        "your body is working through right now, along with the gentle remedy schedule "
-        "matched to where you are today.\n\n"
-        "There is nothing to prepare. When you have a quiet moment, open your portal "
-        "and read through it at your own pace. If anything raises a question, we are here.\n\n"
-        "Open your portal:\n"
-        f"{link}\n\n"
-        "In wellness,\n"
-        "Dr. Glen & Rae\n\n"
-        "Remedy Match LLC\n"
-        "PO Box 126, Hilo, HI 96721"
-    )
+    if member:
+        _mp = ((mrec or {}).get("name") or "").split()
+        member_first = _mp[0] if _mp else ""
+        member_possessive = f"{member_first}'s" if member_first else "Your family member's"
+        subject = (f"{member_first}'s new Biofield Analysis is ready" if member_first
+                   else "A new Biofield Analysis is ready")
+        body = (
+            f"{greeting}\n\n"
+            f"{member_possessive} newest Biofield Analysis is ready in your family portal. "
+            "It maps the layers their body is working through now, with the gentle remedy "
+            "schedule matched to where they are today.\n\n"
+            "There is nothing to prepare. When you have a quiet moment, open your portal "
+            "and read through it at your own pace. If anything raises a question, we are here.\n\n"
+            "Open your portal:\n"
+            f"{link}\n\n"
+            "In wellness,\n"
+            "Dr. Glen & Rae\n\n"
+            "Remedy Match LLC\n"
+            "PO Box 126, Hilo, HI 96721"
+        )
+    else:
+        subject = "Your new Biofield Analysis is ready"
+        body = (
+            f"{greeting}\n\n"
+            "Your newest Biofield Analysis is ready in your portal. It maps the layers "
+            "your body is working through right now, along with the gentle remedy schedule "
+            "matched to where you are today.\n\n"
+            "There is nothing to prepare. When you have a quiet moment, open your portal "
+            "and read through it at your own pace. If anything raises a question, we are here.\n\n"
+            "Open your portal:\n"
+            f"{link}\n\n"
+            "In wellness,\n"
+            "Dr. Glen & Rae\n\n"
+            "Remedy Match LLC\n"
+            "PO Box 126, Hilo, HI 96721"
+        )
     _inbox.send_bulk(email, subject, body, from_name="Dr. Glen & Rae")
     return jsonify({"ok": True, "sent": True})
 
