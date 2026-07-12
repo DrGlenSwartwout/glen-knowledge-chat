@@ -2684,6 +2684,24 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
             if cur.rowcount != 1:
                 return invalid_html, 400
             cx.commit()
+            # Wishlist Task 4: this magic-link sign-in (reorder / cert / biofield)
+            # just tied the browsing session to a real email — merge the anonymous
+            # session's wishlist into it so the list follows the visitor home.
+            # Flag-gated + best-effort: a merge failure must never break sign-in.
+            if _WISHLIST_ENABLED:
+                try:
+                    import sqlite3 as _wsq
+                    from dashboard import wishlist as _wl
+                    # Already inside the enclosing `with _db_lock, ...` block above,
+                    # so _db_lock is held here — do NOT re-acquire it (threading.Lock
+                    # is not reentrant; nesting would deadlock). Use a dedicated
+                    # connection so merge_wishlist's internal commit() never touches
+                    # this handler's shared `cx`.
+                    with _wsq.connect(LOG_DB) as _cxw:
+                        _wl.init_wishlist_table(_cxw)
+                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
+                except Exception as _e:
+                    print(f"[wishlist] merge skipped: {_e}", flush=True)
 
     if request.method == "GET":
         return _confirm_post_page(request.path, title=title, heading=heading,
@@ -5043,6 +5061,7 @@ _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower()
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
 _RELATED_PRODUCTS_ENABLED = os.environ.get("RELATED_PRODUCTS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_WISHLIST_ENABLED = os.environ.get("WISHLIST_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
@@ -5939,6 +5958,56 @@ def begin_section_pref():
     return jsonify({"ok": True})
 
 
+def _wishlist_ids(request):
+    au = get_authenticated_user(request) or {}
+    email = (au.get("email") or request.cookies.get("rm_reorder_email", "") or "").strip().lower()
+    session_id = request.cookies.get("amg_session", "")
+    return email, session_id
+
+
+@app.route("/begin/wishlist/toggle", methods=["POST"])
+def begin_wishlist_toggle():
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    import sqlite3 as _sq
+    from dashboard import wishlist as _wl
+    slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+    if not slug:
+        return jsonify({"error": "slug required"}), 400
+    email, session_id = _wishlist_ids(request)
+    session_id = session_id or uuid.uuid4().hex
+    try:
+        with _db_lock, _sq.connect(LOG_DB) as cx:
+            _wl.init_wishlist_table(cx)
+            owner = _wl.resolve_owner(email, session_id)
+            saved = _wl.toggle(cx, owner, slug)
+    except Exception as _e:
+        print(f"[wishlist] toggle failed: {_e}", flush=True)
+        return jsonify({"error": "failed"}), 500
+    resp = jsonify({"saved": saved})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60*60*24*365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/begin/wishlist", methods=["GET"])
+def begin_wishlist_get():
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    import sqlite3 as _sq
+    from dashboard import wishlist as _wl
+    email, session_id = _wishlist_ids(request)
+    try:
+        with _db_lock, _sq.connect(LOG_DB) as cx:
+            _wl.init_wishlist_table(cx)
+            slugs = _wl.list_union(cx, email, session_id)
+    except Exception as _e:
+        print(f"[wishlist] get failed: {_e}", flush=True)
+        return jsonify({"slugs": []})
+    return jsonify({"slugs": slugs})
+
+
 def _resolve_buy_slug(name):
     """Map a remedy NAME to a products.json slug (our QBO checkout catalog) so
     RemedyMatch can offer a Buy button. Returns slug or None."""
@@ -6320,6 +6389,16 @@ def begin_product_page_data(slug):
             _page_data["founding_video_url"] = _launch2.get("video_url", "")
     except Exception as _fe2:
         print(f"[founding] product-page-data enrich failed: {_fe2!r}", flush=True)
+    if _WISHLIST_ENABLED:
+        try:
+            import sqlite3 as _wsq
+            from dashboard import wishlist as _wl
+            _wem, _wses = _wishlist_ids(request)
+            with _db_lock, _wsq.connect(LOG_DB) as _wcx:
+                _wl.init_wishlist_table(_wcx)
+                _page_data["wishlist_saved"] = slug in _wl.list_union(_wcx, _wem, _wses)
+        except Exception as _e:
+            print(f"[wishlist] page-data flag skipped: {_e}", flush=True)
     return jsonify(_page_data)
 
 
@@ -8171,6 +8250,27 @@ def _fulfill_prepay_term(session_id):
             return {"ok": False, "reason": "unpaid"}
         claimed = False
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            # Wishlist Task 4: payment just verified succeeded, so this is a real
+            # purchaser email — merge the anonymous session's wishlist into it so
+            # the list follows the visitor home. Called from both the /prepay/return
+            # redirect (browser request, amg_session cookie present) and the Stripe
+            # webhook (no browser cookies, so session_id is empty and this is a
+            # harmless no-op there). Flag-gated + best-effort: a merge failure must
+            # never break fulfillment.
+            if _WISHLIST_ENABLED:
+                try:
+                    import sqlite3 as _wsq
+                    from dashboard import wishlist as _wl
+                    # Already inside the enclosing `with _db_lock, ...` block above,
+                    # so _db_lock is held here — do NOT re-acquire it (threading.Lock
+                    # is not reentrant; nesting would deadlock). Use a dedicated
+                    # connection so merge_wishlist's internal commit() never touches
+                    # this handler's shared `cx`.
+                    with _wsq.connect(LOG_DB) as _cxw:
+                        _wl.init_wishlist_table(_cxw)
+                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
+                except Exception as _e:
+                    print(f"[wishlist] merge skipped: {_e}", flush=True)
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS prepay_term_grants "
                 "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
@@ -16459,6 +16559,21 @@ def api_client_portal(token):
     from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
     email_for_reports = (portal.get("email") or "").strip().lower()
+    # Wishlist Task 4: session becomes tied to an email the moment the portal loads
+    # for a known account — merge the anonymous session's wishlist into it so the
+    # list follows the visitor home. Uses the PRIMARY portal email (pre household
+    # re-point below), since the browsing session belongs to the account holder,
+    # not whichever household member they may be viewing. Flag-gated + best-effort:
+    # a merge failure must never break the portal load.
+    if _WISHLIST_ENABLED and email_for_reports:
+        try:
+            import sqlite3 as _wsq
+            from dashboard import wishlist as _wl
+            with _db_lock, _wsq.connect(LOG_DB) as _cxw:
+                _wl.init_wishlist_table(_cxw)
+                _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
+        except Exception as _e:
+            print(f"[wishlist] merge skipped: {_e}", flush=True)
     # Task 3: household/family portal-view switcher. Flag-gated + best-effort — a
     # household lookup failure must never break the portal load. An absent or
     # unauthorized ?member= silently falls back to serving the primary's own view
@@ -16834,6 +16949,36 @@ def api_client_portal(token):
         }
     except Exception:
         pass
+    # Wishlist Task 5: hydrated card list for the portal shell's wishlist tab/card.
+    # Keyed to email_for_reports, which is already re-pointed by ?member= above, so
+    # a caregiver viewing a household member's tab sees the MEMBER's own wishlist —
+    # matches the sibling cards above (ff_matches, scan_recommendations,
+    # support_program, is_animal/animal_name), all of which read the re-pointed
+    # email. NOTE: the Task 4 merge near the top of this function intentionally
+    # still uses the pre-re-point primary email — the anonymous browsing session
+    # belongs to the account holder, not whichever member is being viewed; that
+    # block must NOT move. Flag-gated + best-effort: a hydration failure must never
+    # break the portal load.
+    if _WISHLIST_ENABLED and email_for_reports:
+        try:
+            import sqlite3 as _wsq2
+            from dashboard import wishlist as _wl2
+            _wcards = []
+            with _db_lock, _wsq2.connect(LOG_DB) as _wcx2:
+                _wl2.init_wishlist_table(_wcx2)
+                _wslugs = _wl2.list_for(_wcx2, "email:" + email_for_reports)
+            for _s in _wslugs:
+                _wp = _get_product(_s)
+                if not _wp:
+                    continue
+                _wimgs = _wp.get("page_images") or []
+                _wcards.append({"slug": _s, "name": _wp.get("name", _s),
+                                "price": f"${_wp.get('price_cents', 0)/100:.2f}",
+                                "url": f"/begin/product/{_s}",
+                                "image": (_wimgs[0] if _wimgs else "")})
+            payload["wishlist"] = _wcards
+        except Exception as _e:
+            print(f"[wishlist] portal payload skipped: {_e}", flush=True)
     return jsonify(payload)
 
 
@@ -16990,6 +17135,53 @@ def api_portal_notify_pref(token):
             return jsonify({"error": "not found"}), 404
         _ns.set_opt(cx, portal["email"], pref)
     return jsonify({"ok": True, "pref": pref})
+
+
+@app.route("/api/portal/<token>/wishlist/toggle", methods=["POST"])
+def api_portal_wishlist_toggle(token):
+    """Token-scoped wishlist remove/add for the portal card. Fixes the bug where
+    the card's × posted to /begin/wishlist/toggle, which resolves the owner from
+    begin-side cookies/auth — not the portal token. A portal visitor (emailed
+    magic-link, no site login) has no matching begin-side identity, so that
+    toggle hit a sess:<amg_session> owner instead of the displayed
+    email:<portal-email> owner: it inserted a phantom row, returned
+    {"saved": true}, and never removed the displayed item. This endpoint
+    resolves the owner from the portal token/session instead, and replicates the
+    ?member= household re-point from api_client_portal so the toggle targets the
+    SAME email whose wishlist is on screen."""
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+    if not slug:
+        return jsonify({"error": "slug required"}), 400
+    import sqlite3 as _wsq
+    from dashboard import wishlist as _wl
+    try:
+        with _db_lock, _wsq.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _rec = _portal_record_for(_cx, token)
+            if not _rec:
+                return jsonify({"error": "not found"}), 404
+            _email = (_rec.get("email") or "").strip().lower()
+            # Replicate api_client_portal's ?member= household re-point (see
+            # around line 16578) so a caregiver on a household member's tab
+            # removes from THAT member's wishlist, matching what's displayed —
+            # not the primary account holder's.
+            if _household_view_enabled() and _email:
+                try:
+                    from dashboard import household as _hh
+                    _hh.init_household_tables(_cx)
+                    _req_member = (request.args.get("member") or "").strip().lower()
+                    if _req_member and _hh.can_view(_cx, _email, _req_member):
+                        _email = _req_member
+                except Exception as _he:
+                    print(f"[wishlist] household re-point skipped: {_he}", flush=True)
+            _wl.init_wishlist_table(_cx)
+            _saved = _wl.toggle(_cx, "email:" + _email, slug) if _email else False
+        return jsonify({"saved": _saved})
+    except Exception as _e:
+        print(f"[wishlist] portal toggle failed: {_e}", flush=True)
+        return jsonify({"error": "failed"}), 500
 
 
 @app.route("/api/portal/<token>/scene-pref", methods=["POST"])
