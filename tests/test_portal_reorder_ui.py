@@ -83,6 +83,12 @@ def test_membership_upsell_only_references_real_fields_and_hides_for_members():
     # gated: hidden entirely when already_member is true
     guard_line = src[idx: idx + 120]
     assert "already_member" in guard_line
+    # Glen 2026-07-12: never claim the member is "ahead" off a single order —
+    # net_after_fee_cents is the UNCOVERED part of the fee (a shortfall) when
+    # savings are below it, not a gain. Guard the inverted-sign copy from
+    # returning; "covers your membership" is only shown when savings reach it.
+    low = block.lower()
+    assert "ahead even after" not in low
 
 
 def test_reorder_button_has_one_shot_latch():
