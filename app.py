@@ -5976,10 +5976,14 @@ def begin_wishlist_toggle():
         return jsonify({"error": "slug required"}), 400
     email, session_id = _wishlist_ids(request)
     session_id = session_id or uuid.uuid4().hex
-    with _sq.connect(LOG_DB) as cx:
-        _wl.init_wishlist_table(cx)
-        owner = _wl.resolve_owner(email, session_id)
-        saved = _wl.toggle(cx, owner, slug)
+    try:
+        with _db_lock, _sq.connect(LOG_DB) as cx:
+            _wl.init_wishlist_table(cx)
+            owner = _wl.resolve_owner(email, session_id)
+            saved = _wl.toggle(cx, owner, slug)
+    except Exception as _e:
+        print(f"[wishlist] toggle failed: {_e}", flush=True)
+        return jsonify({"error": "failed"}), 500
     resp = jsonify({"saved": saved})
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", session_id, max_age=60*60*24*365,
@@ -5994,9 +5998,13 @@ def begin_wishlist_get():
     import sqlite3 as _sq
     from dashboard import wishlist as _wl
     email, session_id = _wishlist_ids(request)
-    with _sq.connect(LOG_DB) as cx:
-        _wl.init_wishlist_table(cx)
-        slugs = _wl.list_union(cx, email, session_id)
+    try:
+        with _db_lock, _sq.connect(LOG_DB) as cx:
+            _wl.init_wishlist_table(cx)
+            slugs = _wl.list_union(cx, email, session_id)
+    except Exception as _e:
+        print(f"[wishlist] get failed: {_e}", flush=True)
+        return jsonify({"slugs": []})
     return jsonify({"slugs": slugs})
 
 
