@@ -85,3 +85,47 @@ def test_parse_unknown_source_returns_none():
 
 def test_norm_name():
     assert _norm_name("J. Morris  Williams") == "j morris williams"
+
+
+from dashboard.order_harvest import harvest_buyer
+
+def _search_returning(msgs):
+    return lambda query: msgs
+
+def test_harvest_single_exact_match_hits():
+    msgs = [{"sender": "Transactions@prod.eprocessingnetwork.com",
+             "body": "Name: J Morris Williams\nE-Mail: jmw@example.com\n"}]
+    r = harvest_buyer(_search_returning(msgs), "J Morris Williams")
+    assert r["email"] == "jmw@example.com"
+    assert r["first"] == "J" and r["last"] == "Morris Williams"
+    assert r["source"] == "eprocessing"
+
+def test_harvest_name_mismatch_returns_none():
+    msgs = [{"sender": "Transactions@prod.eprocessingnetwork.com",
+             "body": "Name: Someone Else\nE-Mail: else@example.com\n"}]
+    assert harvest_buyer(_search_returning(msgs), "J Morris Williams") is None
+
+def test_harvest_two_distinct_emails_returns_none():
+    msgs = [
+        {"sender": "Transactions@prod.eprocessingnetwork.com",
+         "body": "Name: Pat Lee\nE-Mail: pat1@example.com\n"},
+        {"sender": "support@remedymatch.com",
+         "body": "customer: Pat Lee (pat2@example.com)\n"},
+    ]
+    assert harvest_buyer(_search_returning(msgs), "Pat Lee") is None
+
+def test_harvest_same_email_two_sources_prefers_neworder():
+    msgs = [
+        {"sender": "Transactions@prod.eprocessingnetwork.com",
+         "body": "Name: Pat Lee\nE-Mail: pat@example.com\n"},
+        {"sender": "support@remedymatch.com",
+         "body": 'customer: Pat Lee (pat@example.com)\n<a href="/remedies/1-x">X</a>'},
+    ]
+    r = harvest_buyer(_search_returning(msgs), "Pat Lee")
+    assert r["email"] == "pat@example.com"
+    assert r["source"] == "neworder"          # storefront wins → enables onboarding
+    assert r["products"] == ["X"]
+
+def test_harvest_merchant_only_returns_none():
+    msgs = [{"sender": "noreply-ecns@usps.com", "body": "irrelevant"}]
+    assert harvest_buyer(_search_returning(msgs), "Anyone") is None

@@ -86,3 +86,39 @@ def parse_order_email(source: str, body: str) -> Optional[dict]:
         email = None
     return {"source": source, "name": name, "email": email,
             "phone": phone, "products": products}
+
+
+def _split_name(full: str) -> tuple[str, str]:
+    parts = (full or "").split()
+    if not parts:
+        return "", ""
+    return parts[0], " ".join(parts[1:])
+
+
+def harvest_buyer(gmail_search: Callable[[str], list], ship_to_name: str):
+    """Return the buyer's contact ONLY on a precision-safe match, else None."""
+    target = _norm_name(ship_to_name)
+    if not target:
+        return None
+    candidates = []
+    for msg in gmail_search(ship_to_name) or []:
+        src = detect_source(msg.get("sender", ""))
+        if not src:
+            continue
+        parsed = parse_order_email(src, msg.get("body", ""))
+        if not parsed or not parsed.get("email"):
+            continue
+        if _norm_name(parsed.get("name") or "") != target:
+            continue
+        candidates.append(parsed)
+    if not candidates:
+        return None
+    distinct = {c["email"].lower() for c in candidates}
+    if len(distinct) != 1:
+        return None                      # ambiguous → never guess
+    # Prefer a storefront "neworder" candidate (carries products + enables onboarding)
+    best = next((c for c in candidates if c["source"] == "neworder"), candidates[0])
+    first, last = _split_name(best.get("name") or ship_to_name)
+    return {"email": best["email"], "first": first, "last": last,
+            "phone": best.get("phone"), "source": best["source"],
+            "products": best.get("products") or []}
