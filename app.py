@@ -19382,6 +19382,113 @@ def coach_subscribe_return():
     return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
 
 
+@app.route("/api/portal/<token>/family-plan/subscribe", methods=["POST"])
+def portal_family_plan_subscribe(token):
+    """Start a Stripe Checkout for the $147/mo Family Plan (caregiver-initiated
+    from their portal). Vaults the card; month 1 is charged now; months 2..N by
+    the monthly cron off the vaulted card. Entitlement is covers() (unchanged)."""
+    if not _family_plan_enabled():
+        return jsonify({"error": "not_found"}), 404
+    if not _STRIPE_ACTIVE:
+        return jsonify({"error": "unavailable"}), 503
+    from dashboard import portal_identity as _pi, family_plan as _fp
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        email = ident.email
+    from dashboard import stripe_pay as _sp
+    base = PUBLIC_BASE_URL.rstrip("/")
+    sess = _sp.create_checkout_session(
+        _fp.PLAN["amount_cents"], customer_email=email, description=_fp.PLAN["label"],
+        metadata={"kind": "family_plan", "email": email},
+        success_url=f"{base}/family-plan/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/portal/{token}", save_card=True)
+    return jsonify({"ok": True, "url": sess.get("url")})
+
+
+def _fulfill_family_plan(session_id):
+    """Activate a caregiver's paid Family Plan from a paid+vaulted checkout,
+    idempotently (claim-then-activate on family_sub_grants(session_id) PRIMARY
+    KEY). Callable from the /family-plan/return redirect AND the webhook so a
+    closed tab still gets fulfilled. Re-fetches the session + PaymentIntent;
+    only proceeds on a succeeded payment WITH a vaulted customer + method.
+    Never raises."""
+    try:
+        from dashboard import stripe_pay as _sp, family_plan as _fp, subscriptions as _subs
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "family_plan":
+            return {"ok": False, "reason": "not_family_plan"}
+        email = (md.get("email") or "").strip().lower()
+        pi_id = sess.get("payment_intent")
+        if not (email and pi_id):
+            return {"ok": False, "reason": "incomplete"}
+        pi = _sp.get_payment_intent(pi_id)
+        if pi.get("status") != "succeeded":
+            return {"ok": False, "reason": "unpaid"}
+        customer, pm = pi.get("customer"), pi.get("payment_method")
+        if not (customer and pm):
+            return {"ok": False, "reason": "no_card"}
+        from datetime import date as _date
+        next_charge = _subs.add_months(_date.today().isoformat(), 1)
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            cx.execute("CREATE TABLE IF NOT EXISTS family_sub_grants "
+                       "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
+            _fp.init_family_plan_table(cx)
+            claimed = cx.execute(
+                "INSERT OR IGNORE INTO family_sub_grants (session_id,email,created_at) VALUES (?,?,?)",
+                (session_id, email, _fp._now())).rowcount == 1
+            cx.commit()
+            if not claimed:
+                return {"ok": True, "reason": "already_fulfilled"}
+            _fp.activate(cx, email, next_charge_at=next_charge, customer_id=customer,
+                         payment_method_id=pm, source="stripe")
+            _fp.record_charge(cx, caregiver_email=email,
+                              amount_cents=_fp.PLAN["amount_cents"], pi_id=pi_id,
+                              status="succeeded")
+        try:
+            html = ("<p>Your Family Plan is active. Everyone in your household with "
+                    "sharing on now has their full analysis unlocked. You can cancel "
+                    "any time from your portal.</p>")
+            send_evox_email(email, "", "Your Family Plan is active", html, html, b"")
+        except Exception:
+            app.logger.exception("family plan confirmation failed")
+        return {"ok": True}
+    except Exception:
+        app.logger.exception("family plan fulfill failed for %s", session_id)
+        return {"ok": False, "reason": "error"}
+
+
+@app.route("/family-plan/return")
+def family_plan_return():
+    sid = request.args.get("session_id", "")
+    if sid:
+        _fulfill_family_plan(sid)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
+
+
+@app.route("/api/portal/<token>/family-plan/cancel", methods=["POST"])
+def portal_family_plan_cancel(token):
+    """Caregiver self-cancel. Stops covers() for the household at the next read;
+    no refund, no proration (the current paid cycle simply is not renewed)."""
+    from dashboard import portal_identity as _pi, family_plan as _fp
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _fp.init_family_plan_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        _fp.set_status(cx, ident.email, "cancelled")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/community/coach-subscribe/cancel", methods=["POST"])
 def community_coach_subscribe_cancel():
     from dashboard import coach_subscriptions as _cs
@@ -19458,6 +19565,73 @@ def coach_subscriptions_charge_cron():
             except Exception:
                 app.logger.exception("coach sub failure notify (glen) failed for %s", email)
     return jsonify({"charged": charged, "failed": failed})
+
+
+@app.route("/api/cron/family-plan/charge", methods=["POST"])
+def family_plan_charge_cron():
+    """Monthly charge cron for paid Family Plans. Charges each due, non-comp,
+    active plan off the vaulted card. On success: record + advance next_charge_at
+    one month (the only way the date moves, so a same-day re-run cannot
+    double-charge). On failure: record, mark past_due, notify; after 3 consecutive
+    failures cancel the plan (past_due still entitles mid-cycle, so grace is
+    bounded). Comped plans (next_charge_at NULL / source='comp') are never due."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import family_plan as _fp, stripe_pay as _sp, subscriptions as _subs
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    charged = failed = cancelled = 0
+    with sqlite3.connect(LOG_DB) as rcx:
+        rcx.row_factory = sqlite3.Row
+        _fp.init_family_plan_table(rcx)
+        due_rows = _fp.due(rcx, today)
+    for sub in due_rows:
+        email = sub["caregiver_email"]
+        try:
+            res = _sp.charge_off_session(
+                sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
+                description=_fp.PLAN["label"],
+                metadata={"kind": "family_plan_cycle", "email": email})
+            ok = res.get("status") == "succeeded"
+            pi_id = res.get("id") or ""
+        except Exception:
+            app.logger.exception("family plan charge raised for %s", email)
+            ok = False
+            pi_id = ""
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fp.init_family_plan_table(cx)
+            _fp.record_charge(cx, caregiver_email=email, amount_cents=sub["amount_cents"],
+                              pi_id=pi_id, status="succeeded" if ok else "failed")
+            if ok:
+                _fp.mark_charged(cx, email, _subs.add_months(today, 1))
+            else:
+                _fp.mark_failed(cx, email)
+                row = _fp.get(cx, email)
+                if row and int(row.get("fail_count") or 0) >= 3:
+                    _fp.set_status(cx, email, "cancelled")
+                    was_cancelled = True
+                else:
+                    was_cancelled = False
+        if ok:
+            charged += 1
+        else:
+            failed += 1
+            if was_cancelled:
+                cancelled += 1
+            html = (f"<p>We could not process this month's Family Plan charge for {email}. "
+                    f"Please update the card on file from your portal to keep the plan active.</p>")
+            try:
+                send_evox_email(email, "", "Your Family Plan payment did not go through",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("family plan failure notify (member) failed for %s", email)
+            try:
+                send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Family Plan charge failed: {email}",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("family plan failure notify (glen) failed for %s", email)
+    return jsonify({"charged": charged, "failed": failed, "cancelled": cancelled})
 
 
 def _coach_session_email():
@@ -24879,6 +25053,7 @@ def webhook_stripe():
                 _fulfill_continuous_care_monthly(session_id)
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
+                _fulfill_family_plan(session_id)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
