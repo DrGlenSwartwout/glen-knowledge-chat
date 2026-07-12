@@ -214,6 +214,8 @@
     width:28px;height:28px;border-radius:50%;font-size:1rem;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit}
   .wishRemBtn:hover{border-color:var(--err);color:var(--err)}
+  .wishitem-pick{display:inline-flex;align-items:center;margin-right:8px}
+  .wishitem .qty-ctl{margin-left:auto}
   .lockedrow{padding:9px 0;border-bottom:1px dashed var(--line);opacity:.62}
   .lockedrow:last-child{border-bottom:0}
   .lockedrow-top{display:flex;justify-content:space-between;gap:10px}
@@ -1430,16 +1432,25 @@ function render(d, v){
       const slug = esc(it.slug||"");
       const img = it.image ? `<img class="wishitem-img" src="${esc(it.image)}" alt="" loading="lazy">` : "";
       wrows += `<div class="wishitem" data-slug="${slug}">
+        <label class="wishitem-pick"><input type="checkbox" class="wishSel"></label>
         <a class="wishitem-link" href="${esc(it.url||"#")}">
           ${img}
           <span class="nm-wrap"><span class="nm">${esc(it.name||it.slug||"")}</span></span>
           <span class="pr">${esc(it.price||"")}</span>
         </a>
+        <span class="qty-ctl">
+          <button type="button" class="qtybtn" data-dir="-1" aria-label="Decrease quantity">−</button>
+          <span class="qtyval" data-qty="1">1</span>
+          <button type="button" class="qtybtn" data-dir="1" aria-label="Increase quantity">+</button>
+        </span>
         <button type="button" class="wishRemBtn" data-slug="${slug}" aria-label="Remove from wishlist">×</button>
       </div>`;
     });
     html += `<div class="card" id="wishlistCard"><h2>Your wishlist</h2>
-      <div>${wrows}</div></div>`;
+      <div>${wrows}</div>
+      <button class="btn full" id="wishOrderBtn" disabled>Order selected</button>
+      <p class="muted small" style="margin:.7rem 0 0">Select items, set how many, and order them together. Member price and shipping are calculated at checkout.</p>
+      <p class="small err" id="wishErr" hidden></p></div>`;
   }
 
   if(Array.isArray(d.locked_rows) && d.locked_rows.length){
@@ -1784,7 +1795,7 @@ function render(d, v){
   // on an absent node returns an empty list).
   app.querySelectorAll(".qtybtn").forEach(qb=>{
     qb.addEventListener("click", ()=>{
-      const row = qb.closest(".remitem");
+      const row = qb.closest(".remitem, .wishitem");
       const val = row && row.querySelector(".qtyval");
       if(!val) return;
       let q = (parseInt(val.getAttribute("data-qty"), 10) || 1) + (parseInt(qb.getAttribute("data-dir"), 10) || 0);
@@ -1833,6 +1844,22 @@ function render(d, v){
       }
     });
   });
+
+  // Move-to-order: checking wishlist rows enables the combined "Order selected"
+  // button and shows the live count. Clicking it folds every checked row's
+  // {slug, qty} into one checkout.
+  const wishOrderBtn = document.getElementById("wishOrderBtn");
+  if(wishOrderBtn){
+    const card = document.getElementById("wishlistCard");
+    const refresh = ()=>{
+      const n = card.querySelectorAll(".wishSel:checked").length;
+      wishOrderBtn.disabled = n === 0;
+      wishOrderBtn.textContent = n ? `Order selected (${n})` : "Order selected";
+    };
+    card.querySelectorAll(".wishSel").forEach(cb=> cb.addEventListener("change", refresh));
+    wishOrderBtn.addEventListener("click", ()=> orderWishlist(wishOrderBtn));
+    refresh();
+  }
 
   // FF-matches "See my formulation matches" button (Slice 3b). Guards against
   // double-submit by disabling for the duration of the request. Carries ?member=
@@ -3507,6 +3534,43 @@ async function reorder(){
   }catch(e){
     err.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
     err.hidden = false; btn.disabled = false; btn.textContent = label;
+  }
+}
+
+async function orderWishlist(btn){
+  // Move-to-order: post every checked wishlist row's {slug, qty} as ONE checkout
+  // so the selected items are ordered together (folded), each at its chosen qty.
+  // Add-then-confirm: the endpoint returns a live Stripe URL; the charge only
+  // happens if the client confirms on Stripe's page. One-shot latch (disabled
+  // before any await) so a double-click can't double-fire.
+  if(btn.disabled) return;
+  const card = document.getElementById("wishlistCard");
+  const err = document.getElementById("wishErr");
+  if(err) err.hidden = true;
+  const items = [];
+  card.querySelectorAll(".wishitem").forEach(row=>{
+    const cb = row.querySelector(".wishSel");
+    if(!cb || !cb.checked) return;
+    const slug = row.getAttribute("data-slug") || "";
+    const qv = row.querySelector(".qtyval");
+    const qty = Math.max(1, parseInt(qv && qv.getAttribute("data-qty"), 10) || 1);
+    if(slug) items.push({slug, qty});
+  });
+  if(!items.length) return;
+  btn.disabled = true;
+  const label = btn.textContent; btn.textContent = "Setting up your order…";
+  try{
+    const c = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items}),
+    });
+    const cj = await c.json();
+    if(cj.stripe_url){ location.href = cj.stripe_url; return; }
+    throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
+  }catch(e){
+    if(err){ err.textContent = e.message || "Something went wrong. Please reach out and we’ll help."; err.hidden = false; }
+    btn.disabled = false; btn.textContent = label;
   }
 }
 
