@@ -98,11 +98,68 @@ def make_draft_fn(service):
     return draft_fn
 
 
+def make_gmail_search_fn(service):
+    """Return search(query) -> [{'sender','body'}] over the connected mailbox."""
+    def _plain(payload):
+        if payload.get("mimeType", "").startswith("text/"):
+            data = payload.get("body", {}).get("data")
+            if data:
+                return base64.urlsafe_b64decode(data).decode("utf-8", "replace")
+        for p in payload.get("parts", []) or []:
+            t = _plain(p)
+            if t:
+                return t
+        return ""
+    def search(query):
+        q = query  # caller passes the ship-to name; harvest widens as needed
+        listing = service.users().messages().list(
+            userId="me", q=q, maxResults=10).execute()
+        out = []
+        for m in listing.get("messages", []):
+            full = service.users().messages().get(
+                userId="me", id=m["id"], format="full").execute()
+            headers = {h["name"].lower(): h["value"]
+                       for h in full.get("payload", {}).get("headers", [])}
+            out.append({"sender": headers.get("from", ""),
+                        "body": _plain(full.get("payload", {}))})
+        return out
+    return search
+
+
+def make_harvest_fn(gmail_search):
+    from dashboard.order_harvest import harvest_buyer
+    return lambda name: harvest_buyer(gmail_search, name)
+
+
+def make_persist_contact():
+    """Upsert the harvested buyer into GHL; onboard ONLY genuine new storefront
+    buyers (source 'neworder' AND newly created). Returns {contact_id, onboarded}."""
+    from app import ghl_upsert_contact, ghl_add_to_pipeline, ghl_enroll_workflow
+    def persist(identity, ship_to_name):
+        tag = ("source:gk-purchase" if identity.get("source") == "neworder"
+               else "source:phone-email-order")
+        cid, created, err = ghl_upsert_contact(
+            identity["email"], first_name=identity.get("first") or "",
+            last_name=identity.get("last") or "", phone=identity.get("phone") or "",
+            source_tag=tag, extra_tags=["tracking-harvest"])
+        onboarded = False
+        if not err and cid and identity.get("source") == "neworder" and created:
+            _opp, e_pipe = ghl_add_to_pipeline(cid, ship_to_name, identity["email"])
+            _wf, e_wf = ghl_enroll_workflow(cid)
+            onboarded = not e_wf          # workflow enroll is what actually onboards
+            if e_pipe or e_wf:
+                print(f"[tracking-harvest] onboarding partial for {identity['email']}: "
+                      f"pipeline_err={e_pipe} workflow_err={e_wf}", flush=True)
+        return {"contact_id": cid, "onboarded": onboarded}
+    return persist
+
+
 # ── Core decision logic (pure of Gmail/GHL; unit-tested) ─────────────────────
 
-def handle_confirmation(html, msg_id, cx, find_contact, draft_fn, dry_run=True):
+def handle_confirmation(html, msg_id, cx, find_contact, draft_fn,
+                        harvest_fn=None, persist_contact=None, dry_run=True):
     """Process one confirmation email's HTML. Returns a list of per-shipment
-    result dicts. In dry-run, no drafts are created and nothing is recorded."""
+    result dicts. In dry-run, no drafts/GHL writes/DB writes happen."""
     parsed = parse_cns_confirmation(html)
     results = []
     for s in parsed["shipments"]:
@@ -115,26 +172,42 @@ def handle_confirmation(html, msg_id, cx, find_contact, draft_fn, dry_run=True):
         match = find_contact(s["recipient_name"])
         conf = match["confidence"] if match else "none"
         to = match["email"] if (match and conf in ("high", "medium")) else None
+        ghl_contact_id = (match or {}).get("contact_id")
+
+        # No confident GHL match: try a precision-safe harvest from order emails.
+        harvested = None
+        if to is None and harvest_fn is not None:
+            harvested = harvest_fn(s["recipient_name"])
+            if harvested and harvested.get("email"):
+                to = harvested["email"]
+                conf = "harvested"
+
         status = "drafted" if to else "needs_review"
         email = build_tracking_email(s["tracking"], s["recipient_name"], resolved_email=to)
 
         draft_id = None
+        onboarded = False
         if dry_run:
-            action = "would draft"
+            action = "would draft (harvested)" if conf == "harvested" else "would draft"
         else:
+            if harvested and conf == "harvested" and persist_contact is not None:
+                pc = persist_contact(harvested, s["recipient_name"]) or {}
+                ghl_contact_id = pc.get("contact_id") or ghl_contact_id
+                onboarded = bool(pc.get("onboarded"))
             draft_id = draft_fn(to=to, subject=email["subject"],
                                 html=email["html"], text=email["text"])
             record_shipment(
                 cx, tracking_number=s["tracking"], order_uuid=parsed["order_uuid"],
                 recipient_name=s["recipient_name"], address_block=s["address_block"],
                 resolved_email=to, match_confidence=conf,
-                ghl_contact_id=(match or {}).get("contact_id"),
+                ghl_contact_id=ghl_contact_id,
                 draft_id=draft_id, status=status, source_msg_id=msg_id)
             action = "drafted"
 
         results.append({"tracking": s["tracking"], "recipient": s["recipient_name"],
                         "to": to or "(blank — needs review)", "confidence": conf,
-                        "status": status, "action": action, "draft_id": draft_id})
+                        "status": status, "action": action, "draft_id": draft_id,
+                        "onboarded": onboarded})
     return results
 
 
@@ -158,6 +231,8 @@ def main():
 
     svc = gmail_service()
     draft_fn = make_draft_fn(svc) if not dry_run else (lambda **k: None)
+    harvest_fn = make_harvest_fn(make_gmail_search_fn(svc))
+    persist_contact = None if dry_run else make_persist_contact()
 
     q = f"{GMAIL_QUERY} newer_than:{args.days}d"
     listing = svc.users().messages().list(
@@ -176,7 +251,9 @@ def main():
                 userId="me", id=mid, format="full").execute()
             html = _extract_html(msg.get("payload", {}))
             for r in handle_confirmation(html, mid, cx, find_contact_by_name,
-                                         draft_fn, dry_run=dry_run):
+                                         draft_fn, harvest_fn=harvest_fn,
+                                         persist_contact=persist_contact,
+                                         dry_run=dry_run):
                 totals[r["action"]] = totals.get(r["action"], 0) + 1
                 line = (f"  [{r.get('confidence','-'):>6}] {r['recipient']:<22} "
                         f"{r['tracking']}  -> {r.get('to','')}  ({r['action']})")
