@@ -15,7 +15,7 @@
 - Scope: ONLY households with an active Family Plan (`dashboard.family_plan.covers(cx, buyer_email)` is True). Non-covered buyers ship immediately as today — the hook must return without creating a hold.
 - The 4-day window belongs to the GROUP, anchored to the FIRST held order's arrival. Sibling orders join but never slide the deadline; only `extend_hold` moves it.
 - Never hold: pickup-channel orders, already-grouped/held orders, terminal-status orders. Reuse `combined_shipments._combinable_reason`-style guards.
-- Emails: send to the caregiver, cc consented adult members (`household.cc_recipients_for` / `viewable_members_for` filtered to non-`pet`/non-`child` relationships). Never email a `pet`/`child` member account. One invite email per hold group (guard on `invite_sent_at`).
+- Emails: send to the caregiver, cc consented adult members (`household.cc_recipients_for` / `viewable_members_for` filtered to non-`pet`/non-`child`/non-`animal:*` relationships). Never email a `pet`, `child`, or animal account. Animals may be tagged with a species-namespaced relationship of the form `animal:<species>` (e.g. `animal:cat`, `animal:dog`) as well as the legacy bare `pet` — treat ANY relationship equal to `pet`/`child` OR beginning with `animal` as never-email. (Real example: household member "Sasha Takahashi" is a cat, relationship `animal:cat`.) One invite email per hold group (guard on `invite_sent_at`).
 - Scanner safety: the caregiver "ship now" link is a GET that renders `_confirm_post_page`; the actual release happens on the POST. Never mutate on the bare GET.
 - All new sqlite functions are pure (take a `cx` connection), mirror `dashboard/combined_shipments.py` conventions, and are unit-testable without Flask.
 - Time: pass `now` into engine functions (default `datetime.now(timezone.utc)`) so tests are deterministic. Store timestamps as ISO-8601 UTC strings, matching `combined_shipments._now()`.
@@ -642,12 +642,14 @@ def test_invite_recipients_exclude_pet_child_and_compose():
     HH.add_member(cx, "cg@x.com", "spouse@x.com", relationship="dependent")
     HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
     HH.add_member(cx, "cg@x.com", "rex@x.com", relationship="pet")
+    HH.add_member(cx, "cg@x.com", "sasha@x.com", relationship="animal:cat")  # species-namespaced animal
     o1 = _order(cx, "cg@x.com")
     g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
     rec = H.invite_recipients(cx, g)
     assert rec["to"] == "cg@x.com"
     assert "spouse@x.com" in rec["cc"]
     assert "kid@x.com" not in rec["cc"] and "rex@x.com" not in rec["cc"]
+    assert "sasha@x.com" not in rec["cc"]  # animal:cat is never emailed
     msg = H.compose_invite(H.get_hold(cx, g), "July 16", "https://x/hold/abc/ship")
     assert "July 16" in msg["body"]
     assert "https://x/hold/abc/ship" in msg["html"]
@@ -661,13 +663,29 @@ Expected: FAIL — `AttributeError: ... 'invite_recipients'`
 
 - [ ] **Step 3: Write minimal implementation**
 
+First, REPLACE the Task 1 module constant `_DEPENDENT_NO_EMAIL = {"pet", "child"}` with a prefix-aware predicate (animals may be tagged `animal:<species>`, e.g. `animal:cat`, as well as legacy bare `pet`):
+
+```python
+_NO_EMAIL_EXACT = {"pet", "child"}
+
+
+def _never_email(relationship):
+    """Household members we never send an invite to: children, and any animal —
+    whether tagged with the legacy bare 'pet' or a species-namespaced
+    'animal:<species>' (e.g. 'animal:cat', 'animal:dog')."""
+    r = (relationship or "").strip().lower()
+    return r in _NO_EMAIL_EXACT or r.startswith("animal")
+```
+
+Then:
+
 ```python
 def invite_recipients(cx, group_id):
     hold = get_hold(cx, group_id)
     cg = hold["caregiver_email"]
     cc = []
     for m in _hh.viewable_members_for(cx, cg):
-        if (m.get("relationship") or "").strip().lower() in _DEPENDENT_NO_EMAIL:
+        if _never_email(m.get("relationship")):
             continue
         if _lc(m["email"]) and _lc(m["email"]) != _lc(cg):
             cc.append(_lc(m["email"]))
