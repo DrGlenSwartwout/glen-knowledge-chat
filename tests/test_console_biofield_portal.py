@@ -306,3 +306,35 @@ def test_load_current_scan_date_none_when_unset(client):
     _seed(appmod, "nocur@y.com", "NoCur")
     j = c.get("/api/console/biofield-portal?key=test-secret&email=nocur@y.com").get_json()
     assert j["current_scan_date"] is None
+
+
+def test_load_returns_caregivers_for_member(client):
+    # #818: loading a household MEMBER's console record must additively surface
+    # their consenting caregiver(s), so the console can offer a "notify caregiver"
+    # action for that member's scan.
+    c, appmod = client
+    from dashboard import household as hh
+    _seed(appmod, "kiddo@y.com", "Kiddo")
+    _seed(appmod, "mom@y.com", "Mom")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    hh.init_household_tables(cx)
+    hh.add_member(cx, "mom@y.com", "kiddo@y.com", label="Kiddo", relationship="child")
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=kiddo@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == [{"email": "mom@y.com", "name": "Mom"}]
+
+
+def test_load_caregivers_empty_for_plain_client(client):
+    c, appmod = client
+    _seed(appmod, "solo@y.com", "Solo")
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=solo@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == []
+
+
+def test_load_unknown_returns_empty_caregivers(client):
+    c, _ = client
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=nobody2@y.com").get_json()
+    assert j["found"] is False
+    assert j["caregivers"] == []

@@ -20284,27 +20284,37 @@ def api_console_biofield_load():
         return jsonify({"found": False, "content": {}})
     from dashboard import client_portal as _cp
     from dashboard import portal_biofield_reports as _pbr
+    from dashboard import household as _hh
     req_date = (request.args.get("scan_date") or "").strip()
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
+        _hh.init_household_tables(cx)
         dates = _pbr.list_report_dates(cx, email)
         rec = _cp.get_portal_content_by_email(cx, email)
         current_scan_date = _cp.get_current_scan(cx, email)
+        caregivers = []
+        for cg in _hh.caregivers_for(cx, email):
+            if cg.get("share_consent") != 1:
+                continue
+            cg_email = cg.get("primary_email") or ""
+            cg_rec = _cp.get_portal_content_by_email(cx, cg_email)
+            caregivers.append({"email": cg_email, "name": (cg_rec or {}).get("name") or ""})
         if dates:
             picked = req_date if req_date in dates else dates[0]
             rep = _pbr.get_report(cx, email, picked) or {}
             return jsonify({"found": True, "name": (rec or {}).get("name") or "",
                             "content": rep.get("content") or {}, "status": rep.get("status") or "",
                             "scan_date": picked, "scan_dates": dates, "has_token": bool(rec),
-                            "current_scan_date": current_scan_date})
+                            "current_scan_date": current_scan_date, "caregivers": caregivers})
     if not rec:
         return jsonify({"found": False, "name": "", "content": {}, "has_token": False,
-                        "scan_dates": [], "scan_date": None, "current_scan_date": None})
+                        "scan_dates": [], "scan_date": None, "current_scan_date": None,
+                        "caregivers": caregivers})
     return jsonify({"found": True, "name": rec.get("name") or "",
                     "content": rec.get("content") or {}, "has_token": True,
                     "scan_dates": [], "scan_date": None,
-                    "current_scan_date": current_scan_date})
+                    "current_scan_date": current_scan_date, "caregivers": caregivers})
 
 
 @app.route("/api/console/portal-links", methods=["GET"])
