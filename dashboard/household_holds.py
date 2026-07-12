@@ -54,9 +54,14 @@ def init_hold_tables(cx):
 
 def caregiver_of(cx, buyer_email):
     """The active-plan caregiver covering this buyer, or None. A buyer who holds
-    their own plan is their own caregiver."""
+    their own plan is their own caregiver.
+
+    `family_plan.covers()` is the single source of truth for WHETHER a buyer is
+    entitled (which statuses count as active, the share-consent gate). We gate on
+    it first so this module can never diverge from that policy; the walk below only
+    RESOLVES the caregiver's identity, and is reached solely when covers() is True."""
     e = _lc(buyer_email)
-    if not e:
+    if not e or not _fp.covers(cx, e):
         return None
     if _fp.is_active(cx, e):
         return e
