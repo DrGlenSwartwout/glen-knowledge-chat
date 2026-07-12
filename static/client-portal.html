@@ -214,7 +214,7 @@
     width:28px;height:28px;border-radius:50%;font-size:1rem;line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit}
   .wishRemBtn:hover{border-color:var(--err);color:var(--err)}
-  .wishitem-pick{display:inline-flex;align-items:center;margin-right:8px}
+  .wishitem-pick{display:inline-flex;align-items:center}
   .wishitem .qty-ctl{margin-left:auto}
   .lockedrow{padding:9px 0;border-bottom:1px dashed var(--line);opacity:.62}
   .lockedrow:last-child{border-bottom:0}
@@ -1819,6 +1819,20 @@ function render(d, v){
   // (toggle flips it off since it was already saved), so drop the row from the
   // DOM and hide the whole card once it's empty. One-shot latch (disabled
   // immediately) so a double-click can't double-fire the toggle.
+  // Move-to-order: recompute the "Order selected (N)" button's count + enabled
+  // state from the currently-checked rows. Shared so both the checkbox-change
+  // wiring below AND the remove (×) handler can call it — removing a checked row
+  // must drop it from the count, else the button shows a stale N and can look
+  // clickable while resolving to an empty order.
+  function refreshWishOrder(){
+    const card = document.getElementById("wishlistCard");
+    const btn = document.getElementById("wishOrderBtn");
+    if(!card || !btn) return;
+    const n = card.querySelectorAll(".wishSel:checked").length;
+    btn.disabled = n === 0;
+    btn.textContent = n ? `Order selected (${n})` : "Order selected";
+  }
+
   app.querySelectorAll(".wishRemBtn").forEach(wb=>{
     wb.addEventListener("click", async ()=>{
       if(wb.disabled) return;
@@ -1836,6 +1850,7 @@ function render(d, v){
           const card = document.getElementById("wishlistCard");
           if(row) row.remove();
           if(card && !card.querySelector(".wishitem")) card.remove();
+          refreshWishOrder();
         } else {
           wb.disabled = false;
         }
@@ -1851,14 +1866,9 @@ function render(d, v){
   const wishOrderBtn = document.getElementById("wishOrderBtn");
   if(wishOrderBtn){
     const card = document.getElementById("wishlistCard");
-    const refresh = ()=>{
-      const n = card.querySelectorAll(".wishSel:checked").length;
-      wishOrderBtn.disabled = n === 0;
-      wishOrderBtn.textContent = n ? `Order selected (${n})` : "Order selected";
-    };
-    card.querySelectorAll(".wishSel").forEach(cb=> cb.addEventListener("change", refresh));
+    card.querySelectorAll(".wishSel").forEach(cb=> cb.addEventListener("change", refreshWishOrder));
     wishOrderBtn.addEventListener("click", ()=> orderWishlist(wishOrderBtn));
-    refresh();
+    refreshWishOrder();
   }
 
   // FF-matches "See my formulation matches" button (Slice 3b). Guards against
