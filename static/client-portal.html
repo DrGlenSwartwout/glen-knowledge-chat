@@ -781,6 +781,32 @@ function wirePatternDetails(){
   });
 }
 
+// Family Plan Subscribe/Cancel: delegated once on document (buttons are injected
+// via render()'s innerHTML, so a per-render listener would stack). Uses `seg`,
+// the same token variable the neighboring portal POSTs use (agree-tos,
+// process-request, etc.) in this same scope.
+document.addEventListener("click", async (e) => {
+  const sub = e.target.closest("[data-fp-subscribe]");
+  const cxl = e.target.closest("[data-fp-cancel]");
+  if(sub){
+    sub.disabled = true;
+    try{
+      const r = await fetch(`/api/portal/${encodeURIComponent(seg)}/family-plan/subscribe`,
+                            {method:"POST", credentials:"same-origin"});
+      const j = await r.json();
+      if(j && j.url){ window.location.href = j.url; } else { sub.disabled = false; }
+    }catch(_){ sub.disabled = false; }
+  } else if(cxl){
+    if(!window.confirm("Cancel the Family Plan? Household members lose their unlocked analysis at the end of the cycle.")) return;
+    cxl.disabled = true;
+    try{
+      await fetch(`/api/portal/${encodeURIComponent(seg)}/family-plan/cancel`,
+                  {method:"POST", credentials:"same-origin"});
+      window.location.reload();
+    }catch(_){ cxl.disabled = false; }
+  }
+});
+
 function render(d, v){
   d = d || {};
   // Premium element backdrop: key the Glendalf scene off the member's deficient
@@ -1006,11 +1032,11 @@ function render(d, v){
     // payload (dashboard/family_plan.PLAN), never hardcoded here.
     const fpl = o.family_plan;
     if(fpl && fpl.active){
-      html += `<p><strong>${esc(fpl.label)}</strong> — you're on it. Everyone in your household has full scan results, member pricing, your monthly family shipment, and group coaching with Dr. Glen.</p>`;
+      html += `<p><strong>${esc(fpl.label)}</strong> — you're on it. Everyone in your household with sharing on has their full analysis unlocked. <button type="button" class="linklike" data-fp-cancel="1">Cancel plan</button></p>`;
     } else if(fpl){
       const fpPrice = "$" + Math.round(fpl.price_cents/100);
       const fpValue = "$" + Math.round(fpl.value_cents/100);
-      html += `<p><strong>${esc(fpl.label)}</strong> — full scan results for everyone in your household, one monthly family shipment, member pricing on every remedy, and group coaching with Dr. Glen. <strong>${fpPrice}/month</strong> (a ${fpValue}/month value). Just reply to arrange it.</p>`;
+      html += `<p><strong>${esc(fpl.label)}</strong> — full analysis for everyone in your household. <strong>${fpPrice}/month</strong> (a ${fpValue}/month value). <button type="button" class="btn" data-fp-subscribe="1">Start the Family Plan</button></p>`;
     } else {
       html += `<p class="muted">No monthly subscription, and nothing you need to sign up for.</p>`;
     }
