@@ -144,9 +144,12 @@ def make_persist_contact():
             source_tag=tag, extra_tags=["tracking-harvest"])
         onboarded = False
         if not err and cid and identity.get("source") == "neworder" and created:
-            ghl_add_to_pipeline(cid, ship_to_name, identity["email"])
-            ghl_enroll_workflow(cid)
-            onboarded = True
+            _opp, e_pipe = ghl_add_to_pipeline(cid, ship_to_name, identity["email"])
+            _wf, e_wf = ghl_enroll_workflow(cid)
+            onboarded = not e_wf          # workflow enroll is what actually onboards
+            if e_pipe or e_wf:
+                print(f"[tracking-harvest] onboarding partial for {identity['email']}: "
+                      f"pipeline_err={e_pipe} workflow_err={e_wf}", flush=True)
         return {"contact_id": cid, "onboarded": onboarded}
     return persist
 
