@@ -48,3 +48,17 @@ def test_list_union_dedupes():
     cx = _cx()
     w.toggle(cx, "sess:s1", "a"); w.toggle(cx, "email:e@x.com", "a"); w.toggle(cx, "email:e@x.com", "c")
     assert sorted(w.list_union(cx, "e@x.com", "s1")) == ["a", "c"]
+
+def test_slugs_for_returns_set():
+    cx = _cx()
+    w.toggle(cx, "email:e@x.com", "a"); w.toggle(cx, "email:e@x.com", "b")
+    assert w.slugs_for(cx, "email:e@x.com") == {"a", "b"}
+
+def test_slugs_for_empty_when_none():
+    cx = _cx()
+    assert w.slugs_for(cx, "email:none@x.com") == set()
+
+def test_slugs_for_scopes_by_owner():
+    cx = _cx()
+    w.toggle(cx, "email:e@x.com", "a"); w.toggle(cx, "sess:s1", "b")
+    assert w.slugs_for(cx, "email:e@x.com") == {"a"}

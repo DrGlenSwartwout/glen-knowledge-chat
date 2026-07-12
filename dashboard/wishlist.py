@@ -43,6 +43,15 @@ def list_for(cx, owner):
         "SELECT slug FROM wishlist WHERE owner=? ORDER BY rowid DESC", (owner,))]
 
 
+def slugs_for(cx, owner):
+    """Set of slugs currently on ``owner``'s wishlist. ``owner`` is a resolved
+    key ('email:<addr>' / 'sess:<id>', see resolve_owner). Empty set if none."""
+    if not owner:
+        return set()
+    return {r[0] for r in cx.execute(
+        "SELECT slug FROM wishlist WHERE owner=?", (owner,))}
+
+
 def merge_wishlist(cx, session_id, email):
     e = (email or "").strip().lower()
     if not session_id or not e:

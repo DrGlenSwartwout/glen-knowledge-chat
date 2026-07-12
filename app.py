@@ -18400,6 +18400,18 @@ def api_client_portal_checkout(token):
                 entitled = entitled | _accepted_recommendation_slugs(_rcx, email)
         except Exception:
             pass  # entitlement-union failure must never break checkout
+        if _WISHLIST_ENABLED:
+            # The customer's own saved-and-chosen wishlist item is authorization
+            # to buy it, same as an accepted recommendation. Union those slugs so
+            # a wishlist-only (never-before-purchased) slug is purchasable at the
+            # member price. Failure must never break checkout.
+            try:
+                from dashboard import wishlist as _wl
+                with sqlite3.connect(LOG_DB) as _wcx:
+                    _wl.init_wishlist_table(_wcx)
+                    entitled = entitled | _wl.slugs_for(_wcx, "email:" + email)
+            except Exception:
+                pass
         items = []
         for it in posted:
             if not isinstance(it, dict):
