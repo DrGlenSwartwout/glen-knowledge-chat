@@ -67,6 +67,21 @@ def test_candidates_capped_at_n(tmp_path):
     assert any(c.get("is_default") for c in L1["candidates"])   # default survives the cap
 
 
+def test_layer_uses_chain_row_codes_when_coverage_misses(tmp_path):
+    from dashboard.biofield_authoring import add_chain_row
+    cx = sqlite3.connect(str(tmp_path / "c.db"))
+    init_stress_tables(cx)
+    # ES9 is a scan stress that no chain remedy covers and whose label won't match the
+    # head -> the coverage-based assignment misses it entirely.
+    seed_from_scan(cx, "a7", [{"code": "ES9", "name": "Adrenal Fatigue"}], {})
+    # ...but the synthesis carried ES9 on the layer's chain row.
+    add_chain_row(cx, "a7", 1, "Layer One", "", "", codes=["ES9"])
+    chain = [{"layer": 1, "head": "Layer One", "remedy": ""}]
+    L1 = _layer(layer_candidates(cx, "a7", chain, fallback_by_code={"ES9": ["Adrenal Support"]}), 1)
+    assert L1["codes"] == ["ES9"]                       # code came from the chain row
+    assert L1["candidates"] and L1["candidates"][0]["remedy"] == "Adrenal Support"
+
+
 def test_render_panel_html():
     from dashboard.biofield_report_html import render_layer_candidates_panel
     html = render_layer_candidates_panel([{

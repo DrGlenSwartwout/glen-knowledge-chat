@@ -65,6 +65,12 @@ def init_auth_tables(cx):
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN updated_at TEXT")
     except Exception:
         pass
+    try:
+        # Per-layer stress codes (JSON list), carried from the synthesis/reveal so a
+        # layer knows its own patterns even when the coverage map doesn't link them.
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN codes TEXT")
+    except Exception:
+        pass
     # Backfill: a pre-existing row was never edited, so updated_at == created_at.
     # Seeding it with _now() instead would mark every historical row as "edited".
     cx.execute("UPDATE biofield_auth_chain SET updated_at=created_at "
@@ -101,16 +107,17 @@ def update_header(cx, tid, name=None, email=None, date=None):
 
 
 def add_chain_row(cx, tid, layer, head, most_affected, remedy,
-                  dosage="", frequency="", timing="", confirmed=1, origin="live"):
+                  dosage="", frequency="", timing="", confirmed=1, origin="live", codes=None):
     init_auth_tables(cx)
     now = _now()   # born unedited: updated_at == created_at
+    codes_json = json.dumps([str(c).strip() for c in (codes or []) if str(c).strip()])
     cur = cx.execute(
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
-        "dosage,frequency,timing,sort_seq,created_at,updated_at,confirmed,origin) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "dosage,frequency,timing,sort_seq,created_at,updated_at,confirmed,origin,codes) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_num(tid), layer, (head or "").strip(), (most_affected or "").strip(),
          (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, now, now,
-         1 if confirmed else 0, (origin or "live")))
+         1 if confirmed else 0, (origin or "live"), codes_json))
     cx.commit()
     return cur.lastrowid
 

@@ -530,9 +530,28 @@ def layer_candidates(cx, tid, chain_rows, fallback_by_code=None, n=5):
             if low:
                 learned.add(low)
     fb = fallback_by_code or {}
+    # Per-layer stress codes carried from the synthesis/reveal (biofield_auth_chain.codes).
+    # The coverage-based stress ASSIGNMENT is sparse for hand-authored chains -- a layer
+    # keeps its own patterns here so it can still generate candidates.
+    chain_codes = {}
+    try:
+        _crows = cx.execute("SELECT layer, codes FROM biofield_auth_chain WHERE test_id=?",
+                            (_num(tid),)).fetchall()
+    except Exception:
+        _crows = []                                   # table/column absent -> no per-layer codes
+    for ln, cj in _crows:
+        if not cj:
+            continue
+        try:
+            for c in (json.loads(cj) or []):
+                if c:
+                    chain_codes.setdefault(ln, set()).add(c)
+        except Exception:
+            continue
     out = []
     for L in stresses["by_layer"]:
         codes = {s["code"] for s in L["stresses"] if s.get("code")}
+        codes |= chain_codes.get(L["layer"], set())
         default_disp = list(L.get("remedies") or [])
         default_lower = {(d or "").strip().lower() for d in default_disp}
         scored = []
@@ -556,6 +575,18 @@ def layer_candidates(cx, tid, chain_rows, fallback_by_code=None, n=5):
                         scored.append({"remedy": name, "covers": [code], "coverage": 0,
                                        "source": "functional", "used_before": low in learned,
                                        "is_default": low in default_lower})
+        # Always surface the layer's CURRENT remedy as a (default) candidate, even when
+        # the coverage map doesn't list it -- so review always shows "current + alternatives"
+        # rather than alternatives with the current pick mysteriously absent.
+        present = {(c["remedy"] or "").strip().lower() for c in scored}
+        for dname in default_disp:
+            dl = (dname or "").strip().lower()
+            if dl and dl not in present:
+                dcov = sorted(coverage.get(dl, set()) & codes)
+                scored.insert(0, {"remedy": dname, "covers": dcov, "coverage": len(dcov),
+                                  "source": "current", "used_before": dl in learned,
+                                  "is_default": True})
+                present.add(dl)
         capped = scored[:n]
         if scored and not any(c.get("is_default") for c in capped):
             dflt = next((c for c in scored if c.get("is_default")), None)

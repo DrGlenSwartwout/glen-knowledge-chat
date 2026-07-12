@@ -106,6 +106,7 @@ def import_layers_to_test(cx, tid, layers):
         add_chain_row(cx, tid, L.get("n"), L.get("title") or "",
                       L.get("most_affected") or "", name,
                       dosage=d.get("dosage", ""), frequency=d.get("frequency", ""),
-                      timing=d.get("timing", ""), confirmed=0, origin="scan")
+                      timing=d.get("timing", ""), confirmed=0, origin="scan",
+                      codes=L.get("codes") or [])
         n += 1
     return n
