@@ -5043,6 +5043,7 @@ _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower()
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
 _RELATED_PRODUCTS_ENABLED = os.environ.get("RELATED_PRODUCTS_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_WISHLIST_ENABLED = os.environ.get("WISHLIST_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
@@ -5937,6 +5938,47 @@ def begin_section_pref():
     except Exception as e:
         print(f"[section-pref] {e}", flush=True)
     return jsonify({"ok": True})
+
+
+def _wishlist_ids(request):
+    au = get_authenticated_user(request) or {}
+    email = (au.get("email") or request.cookies.get("rm_reorder_email", "") or "").strip().lower()
+    session_id = request.cookies.get("amg_session", "")
+    return email, session_id
+
+
+@app.route("/begin/wishlist/toggle", methods=["POST"])
+def begin_wishlist_toggle():
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    import sqlite3 as _sq
+    from dashboard import wishlist as _wl
+    slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+    if not slug:
+        return jsonify({"error": "slug required"}), 400
+    email, session_id = _wishlist_ids(request)
+    session_id = session_id or uuid.uuid4().hex
+    with _sq.connect(LOG_DB) as cx:
+        _wl.init_wishlist_table(cx)
+        owner = _wl.resolve_owner(email, session_id)
+        saved = _wl.toggle(cx, owner, slug)
+    resp = jsonify({"saved": saved})
+    if not request.cookies.get("amg_session"):
+        resp.set_cookie("amg_session", session_id, max_age=60*60*24*365, samesite="Lax")
+    return resp
+
+
+@app.route("/begin/wishlist", methods=["GET"])
+def begin_wishlist_get():
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    import sqlite3 as _sq
+    from dashboard import wishlist as _wl
+    email, session_id = _wishlist_ids(request)
+    with _sq.connect(LOG_DB) as cx:
+        _wl.init_wishlist_table(cx)
+        slugs = _wl.list_union(cx, email, session_id)
+    return jsonify({"slugs": slugs})
 
 
 def _resolve_buy_slug(name):
