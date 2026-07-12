@@ -120,10 +120,13 @@ def covers(cx, email):
 
 
 def due(cx, today):
-    """Active, billable subs whose next_charge_at has arrived. Comped plans
-    (source='comp', next_charge_at NULL) are never billable and are excluded."""
+    """Billable subs whose next_charge_at has arrived. Includes both 'active' and
+    'past_due': a past_due sub (a prior failed charge) still entitles the household
+    (grace) and MUST be retried on each cron run so its fail_count can climb to the
+    cancel threshold — otherwise a single failed payment would cover forever.
+    Comped plans (source='comp', next_charge_at NULL) are never billable, excluded."""
     rows = cx.execute(
-        "SELECT * FROM family_subscriptions WHERE status='active' "
+        "SELECT * FROM family_subscriptions WHERE status IN ('active','past_due') "
         "AND next_charge_at IS NOT NULL AND next_charge_at <= ? "
         "AND (source IS NULL OR source != 'comp') ORDER BY next_charge_at",
         (today,)).fetchall()

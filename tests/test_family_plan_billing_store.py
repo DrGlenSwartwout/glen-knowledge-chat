@@ -18,9 +18,12 @@ def test_due_excludes_future_cancelled_and_comp():
     fp.activate(cx, "cxl@x.com", next_charge_at="2026-07-01",
                 customer_id="c", payment_method_id="p")
     fp.set_status(cx, "cxl@x.com", "cancelled")                    # cancelled -> not due
+    fp.activate(cx, "pastdue@x.com", next_charge_at="2026-07-02",
+                customer_id="c", payment_method_id="p")
+    fp.set_status(cx, "pastdue@x.com", "past_due")                 # past_due -> RETRIED (still due)
     fp.activate(cx, "comp@x.com", next_charge_at=None, source="comp")  # comp -> never due
     emails = [d["caregiver_email"] for d in fp.due(cx, "2026-07-15")]
-    assert emails == ["due@x.com"]
+    assert emails == ["due@x.com", "pastdue@x.com"]                # active + past_due, ordered by date
 
 
 def test_mark_charged_advances_and_resets():
