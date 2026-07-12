@@ -46,9 +46,25 @@ def parse_related(html):
 # catalog slug differs from the storefront slug. Extend as the unmapped report shows.
 ALIASES = {
     "healing-glaucoma-book": "book-healing-glaucoma",
+    "healing-glaucoma-ebook": "book-healing-glaucoma",
     "denas-microcurrent-system-for-eye-healing": "denas-scenar",
+    "denas-pcm-6-microcurrent": "denas-scenar",
     "living-water-ionizer-9-plate": "water-ionizer-9plate",
+    "living-water-ionizer-5-plate": "water-ionizer-5plate",
+    "living-water-ionizer-15-plate": "water-ionizer-15plate",
     "kloud-mini-pemf-mat": "kloud-pemf-mini",
+    "kloud-maxi-pemf-mat": "kloud-pemf-maxi",
+    "harmony-soft-laser-172-hz": "harmony-laser",
+    "neuromagnesium": "neuro-magnesium",
+    "free-easy": "free-and-easy",
+    "cataract-solutions-book": "book-cataract-solutions",
+    "cataract-solutions-ebook": "book-cataract-solutions",
+    "macular-degeneration-macular-regeneration-book": "book-macular-regeneration",
+    "macular-degeneration-macular-regeneration-ebook": "book-macular-regeneration",
+    "electromagnetic-pollution-solutions-book": "book-emf-pollution-solutions",
+    "electromagnetic-pollution-solutions-ebook": "book-emf-pollution-solutions",
+    "refreshing-vision-book": "book-refreshing-vision",
+    "refreshing-vision-ebook": "book-refreshing-vision",
 }
 
 
@@ -71,11 +87,15 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"[harvest] {slug}: fetch failed: {e}", file=sys.stderr)
             continue
-        related = []
+        related, seen = [], set()
         for u in urls:
             mapped = map_storefront_slug(u, catalog_slugs, ALIASES)
             if mapped and mapped != slug:
-                related.append(mapped)
+                # Dedup by mapped slug: distinct storefront URLs (e.g. a book + its
+                # ebook edition) can alias to the same catalog product.
+                if mapped not in seen:
+                    seen.add(mapped)
+                    related.append(mapped)
             elif not mapped:
                 unmapped.append(u)
         if related:
