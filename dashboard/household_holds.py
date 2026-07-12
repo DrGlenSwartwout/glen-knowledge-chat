@@ -3,7 +3,9 @@ up to N days so same-household orders combine into ONE parcel via
 dashboard/combined_shipments. Pure sqlite; the hold layer sits UPSTREAM of the
 combined-shipment layer and never touches labels/tracking/delivery.
 """
+import hashlib
 import os
+import secrets
 from datetime import datetime, timezone, timedelta
 
 from dashboard import orders as _orders
@@ -167,3 +169,33 @@ def due_holds(cx, now=None):
         "SELECT * FROM household_holds WHERE status='open' AND hold_until <= ? "
         "ORDER BY id", (_iso(now),)).fetchall()
     return [dict(r) for r in rows]
+
+
+def _tok_hash(raw):
+    return hashlib.sha256(("household-hold:" + (raw or "")).encode("utf-8")).hexdigest()
+
+
+def set_release_token(cx, group_id):
+    """Mint a one-time release token for this hold group, embeddable in an email
+    link. Only its SHA-256 hash is stored; the raw token is returned once and
+    never persisted."""
+    raw = secrets.token_urlsafe(32)
+    cx.execute("UPDATE household_holds SET release_token_hash=?, updated_at=? WHERE id=?",
+               (_tok_hash(raw), _iso(_now()), group_id))
+    cx.commit()
+    return raw
+
+
+def hold_by_release_token(cx, raw_token):
+    """Look up a hold group by its raw release token. None for an empty or
+    unknown token."""
+    raw_token = (raw_token or "").strip()
+    if not raw_token:
+        return None
+    row = cx.execute("SELECT * FROM household_holds WHERE release_token_hash=?",
+                     (_tok_hash(raw_token),)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    d["members"] = orders_in_hold(cx, d["id"])
+    return d

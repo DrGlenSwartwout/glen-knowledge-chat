@@ -92,3 +92,15 @@ def test_extend_pushes_deadline_from_current():
     g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com", hold_days=4, now=t0)["group_id"]
     H.extend_hold(cx, g, 3)  # 2026-07-16 -> 2026-07-19
     assert H.get_hold(cx, g)["hold_until"].startswith("2026-07-19")
+
+
+def test_release_token_roundtrip_and_wrong_token():
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
+    raw = H.set_release_token(cx, g)
+    assert isinstance(raw, str) and len(raw) > 20
+    got = H.hold_by_release_token(cx, raw)
+    assert got and got["id"] == g
+    assert H.hold_by_release_token(cx, "not-the-token") is None
