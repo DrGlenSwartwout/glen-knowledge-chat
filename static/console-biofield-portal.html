@@ -105,6 +105,10 @@
         <button class="btn ghost sm" onclick="notifyScanReady()">Notify client (new analysis ready)</button>
         <span id="notify-scan-msg" class="muted small"></span>
       </div>
+      <div id="notifyCaregiverWrap" style="display:none;margin-top:10px">
+        <div class="slabel">Notify caregiver about this member</div>
+        <div id="notifyCaregiverList"></div>
+      </div>
     </div>
 
     <div class="card">
@@ -573,6 +577,8 @@ let SCAN_DATES = [];
 let PORTAL_CURRENT_DATE = null;   // initialized from the GET response's persisted
                                    // current_scan_date, then kept live by in-session clicks
 let _lastLoadedEmail = "";
+let CAREGIVERS = [];              // this member's consenting caregivers, from the GET response
+let CAREGIVERS_MEMBER_EMAIL = ""; // the loaded member's email, for the notify-caregiver call
 async function loadExisting(scanDate){
   const email = val('email');
   if(!email){ setStatus('Enter an email first.', false); return; }
@@ -583,13 +589,17 @@ async function loadExisting(scanDate){
   const r = await api('GET', url);
   if(!r.ok){ setStatus('Could not load.', false); return; }
   if(!r.json.found){ setStatus('No portal yet for that email — fill the form to create one.', true);
-    $('scanWrap').style.display='none'; curScanDate=""; SCAN_DATES=[]; renderScanDatesList(); return; }
+    $('scanWrap').style.display='none'; curScanDate=""; SCAN_DATES=[]; renderScanDatesList();
+    CAREGIVERS=[]; CAREGIVERS_MEMBER_EMAIL=""; renderCaregiverList(); return; }
   $('name').value = r.json.name||'';
   populate(r.json.content||{});
   const dates = r.json.scan_dates || [];
   curScanDate = r.json.scan_date || "";
   SCAN_DATES = dates;
   PORTAL_CURRENT_DATE = r.json.current_scan_date || null;
+  CAREGIVERS = r.json.caregivers || [];
+  CAREGIVERS_MEMBER_EMAIL = email;
+  renderCaregiverList();
   const wrap = $('scanWrap'), sel = $('scanSel');
   if(dates.length){
     sel.innerHTML = dates.map(d=>`<option value="${esc(d)}"${d===curScanDate?' selected':''}>${esc(d)}</option>`).join('');
@@ -640,6 +650,41 @@ function renderScanDatesList(){
     }
     list.appendChild(row);
   });
+}
+
+// ── Notify caregiver(s) that this MEMBER's new analysis is ready ────────────
+function renderCaregiverList(){
+  const wrap = $('notifyCaregiverWrap'), list = $('notifyCaregiverList');
+  if(!wrap || !list) return;
+  list.innerHTML = '';
+  if(!CAREGIVERS.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  CAREGIVERS.forEach(cg=>{
+    const row = document.createElement('div');
+    row.className = 'line-sm';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:4px';
+    const label = cg.name || cg.email;
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost sm';
+    btn.textContent = 'Notify ' + label;
+    const msg = document.createElement('span');
+    msg.className = 'muted small';
+    btn.onclick = () => notifyCaregiver(cg.email, label, msg);
+    row.appendChild(btn);
+    row.appendChild(msg);
+    list.appendChild(row);
+  });
+}
+async function notifyCaregiver(caregiverEmail, caregiverLabel, msgEl){
+  const member = CAREGIVERS_MEMBER_EMAIL;
+  if(!member){ msgEl.textContent = 'Load the member first.'; return; }
+  msgEl.textContent = 'Sending…';
+  const r = await api('POST', '/api/console/portal/notify-scan', {email: caregiverEmail, member});
+  if(!r.ok){ msgEl.textContent = 'Error ' + r.status; return; }
+  const j = r.json || {};
+  msgEl.textContent = j.sent
+    ? ('Sent to ' + caregiverLabel + '.')
+    : ('Not sent (' + (j.reason || 'unknown reason') + ').');
 }
 async function setScanCurrent(scanDate){
   const email = val('email');

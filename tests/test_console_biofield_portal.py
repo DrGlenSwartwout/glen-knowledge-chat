@@ -306,3 +306,72 @@ def test_load_current_scan_date_none_when_unset(client):
     _seed(appmod, "nocur@y.com", "NoCur")
     j = c.get("/api/console/biofield-portal?key=test-secret&email=nocur@y.com").get_json()
     assert j["current_scan_date"] is None
+
+
+def test_load_returns_caregivers_for_member(client):
+    # #818: loading a household MEMBER's console record must additively surface
+    # their consenting caregiver(s), so the console can offer a "notify caregiver"
+    # action for that member's scan.
+    c, appmod = client
+    from dashboard import household as hh
+    _seed(appmod, "kiddo@y.com", "Kiddo")
+    _seed(appmod, "mom@y.com", "Mom")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    hh.init_household_tables(cx)
+    hh.add_member(cx, "mom@y.com", "kiddo@y.com", label="Kiddo", relationship="child")
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=kiddo@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == [{"email": "mom@y.com", "name": "Mom"}]
+
+
+def test_load_excludes_caregiver_without_share_consent(client):
+    # #818 follow-up: a caregiver link that has been revoked (share_consent=0)
+    # must NOT be surfaced in the console's caregivers list, even though the
+    # household link itself still exists.
+    c, appmod = client
+    from dashboard import household as hh
+    _seed(appmod, "kiddo2@y.com", "Kiddo2")
+    _seed(appmod, "auntie@y.com", "Auntie")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    hh.init_household_tables(cx)
+    hh.add_member(cx, "auntie@y.com", "kiddo2@y.com", label="Kiddo2", relationship="aunt")
+    hh.set_share_consent(cx, "auntie@y.com", "kiddo2@y.com", 0)
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=kiddo2@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == []
+
+
+def test_load_caregivers_mixed_consent_only_returns_consented(client):
+    # Mixed case: one caregiver with consent revoked, one still consenting —
+    # only the consenting caregiver should appear.
+    c, appmod = client
+    from dashboard import household as hh
+    _seed(appmod, "kiddo3@y.com", "Kiddo3")
+    _seed(appmod, "auntie2@y.com", "Auntie2")
+    _seed(appmod, "mom2@y.com", "Mom2")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    hh.init_household_tables(cx)
+    hh.add_member(cx, "auntie2@y.com", "kiddo3@y.com", label="Kiddo3", relationship="aunt")
+    hh.set_share_consent(cx, "auntie2@y.com", "kiddo3@y.com", 0)
+    hh.add_member(cx, "mom2@y.com", "kiddo3@y.com", label="Kiddo3", relationship="mother")
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=kiddo3@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == [{"email": "mom2@y.com", "name": "Mom2"}]
+
+
+def test_load_caregivers_empty_for_plain_client(client):
+    c, appmod = client
+    _seed(appmod, "solo@y.com", "Solo")
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=solo@y.com").get_json()
+    assert j["found"] is True
+    assert j["caregivers"] == []
+
+
+def test_load_unknown_returns_empty_caregivers(client):
+    c, _ = client
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=nobody2@y.com").get_json()
+    assert j["found"] is False
+    assert j["caregivers"] == []
