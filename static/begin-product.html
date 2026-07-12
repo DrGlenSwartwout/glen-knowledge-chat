@@ -68,6 +68,25 @@
     .sp-video-cap{ font-size:13px; color:var(--muted); margin-top:4px; }
     .sp-video-empty{ font-size:13.5px; color:var(--muted); font-style:italic; }
 
+    /* ── Related products (Task 7) ── */
+    .sp-related-grid{ display:flex; flex-wrap:wrap; gap:12px; }
+    .sp-related-card{ display:flex; flex-direction:column; width:calc(50% - 6px);
+      background:var(--surface); border:1px solid var(--border); border-radius:9px;
+      padding:9px; transition:border-color .2s var(--ease); }
+    .sp-related-card:hover{ border-color:var(--gold); }
+    @media(min-width:480px){ .sp-related-card{ width:calc(33.333% - 8px); } }
+    .sp-related-img{ width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:7px;
+      display:block; margin-bottom:8px; background:rgba(127,127,127,.12); }
+    .sp-related-name{ font-size:13px; font-weight:600; color:var(--cream); line-height:1.35; }
+    .sp-related-price{ font-size:12.5px; color:var(--gold); margin-top:4px; }
+    .sp-related-reason{ font-size:12px; font-style:italic; color:var(--muted); line-height:1.4; margin-top:6px; }
+    .sp-related-more{ margin-top:12px; }
+    .sp-related-morebtn{ display:inline-flex; align-items:center; gap:7px; font-family:var(--heading);
+      font-weight:600; font-size:13.5px; color:var(--gold); background:transparent;
+      border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:9px 18px; margin-top:12px;
+      cursor:pointer; transition:border-color .2s var(--ease), background .2s var(--ease); }
+    .sp-related-morebtn:hover{ border-color:var(--gold); background:rgba(212,168,67,0.08); }
+
     /* ── CTA section ── */
     .sp-cta-wrap{ padding:6px 0 4px; }
     .cta-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
@@ -398,6 +417,67 @@
         ul.appendChild(li);
       });
       return ul;
+    }
+
+    function renderRelatedBody(body){
+      function card(c){
+        var a = document.createElement('a');
+        a.className = 'sp-related-card';
+        a.href = (c && c.url) || '#';
+        if (c && c.image){
+          var img = document.createElement('img');
+          img.className = 'sp-related-img';
+          img.src = c.image;
+          img.alt = '';
+          a.appendChild(img);
+        }
+        var nm = document.createElement('span');
+        nm.className = 'sp-related-name';
+        nm.textContent = (c && c.name) || '';
+        a.appendChild(nm);
+        var pr = document.createElement('span');
+        pr.className = 'sp-related-price';
+        pr.textContent = (c && c.price) || '';
+        a.appendChild(pr);
+        if (c && c.reason){
+          var rs = document.createElement('span');
+          rs.className = 'sp-related-reason';
+          rs.textContent = c.reason;
+          a.appendChild(rs);
+        }
+        return a;
+      }
+      var featured = (body && Array.isArray(body.featured)) ? body.featured : [];
+      var more = (body && Array.isArray(body.more)) ? body.more : [];
+      if (!featured.length && !more.length){
+        var p = document.createElement('p');
+        p.className = 'sp-text';
+        p.textContent = 'No related products yet.';
+        return p;
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'sp-related';
+      var featuredWrap = document.createElement('div');
+      featuredWrap.className = 'sp-related-grid';
+      featured.forEach(function(c){ featuredWrap.appendChild(card(c)); });
+      wrap.appendChild(featuredWrap);
+      if (more.length){
+        var moreWrap = document.createElement('div');
+        moreWrap.className = 'sp-related-more sp-related-grid';
+        moreWrap.style.display = 'none';
+        more.forEach(function(c){ moreWrap.appendChild(card(c)); });
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'sp-related-morebtn';
+        btn.textContent = 'See more like this';
+        btn.onclick = function(){
+          moreWrap.style.display = 'flex';
+          btn.style.display = 'none';
+        };
+        wrap.appendChild(moreWrap);
+        wrap.appendChild(btn);
+      }
+      return wrap;
     }
 
     // ── SVG glyphs for comparison table ─────────────────────────────────────
@@ -1158,6 +1238,7 @@
         case 'research':    return renderResearchBody(sec.body);
         case 'reviews':     return renderReviewsBody(sec.body);
         case 'images':      return renderImagesBody(sec.body);
+        case 'related':     return renderRelatedBody(sec.body);
         case 'cta':         return renderCtaBody(ctaUrl);
         default:
           var p = document.createElement('p');
@@ -1203,6 +1284,7 @@
           case 'research':    teaser.textContent = 'Studies behind the key ingredients'; break;
           case 'reviews':     teaser.textContent = 'Verified buyer experiences'; break;
           case 'images':      teaser.textContent = 'Product photos'; break;
+          case 'related':     teaser.textContent = 'Explore what pairs well'; break;
           default:            teaser.textContent = ''; break;
         }
         btn.appendChild(teaser);

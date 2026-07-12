@@ -1,0 +1,326 @@
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Related Products Editor</title>
+<style>
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594;
+         --gold:#d4a843; --green:#7fd6a0; --amber:#e0b96b; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--cream);
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1{ margin:18px 24px 2px; font-size:22px; }
+  h2{ margin:0; font-size:16px; }
+  .sub{ margin:0 24px 14px; color:var(--muted); font-size:13px; }
+  .lookup-section{ margin:0 24px 20px; background:var(--surface); border:1px solid var(--border);
+               border-radius:12px; padding:14px 16px; max-width:640px; }
+  .lookup-row{ display:flex; gap:8px; }
+  .lookup-row input{ flex:1; padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; font-family:inherit; }
+  button.addbtn, button.save{ padding:9px 14px; border-radius:8px; border:1px solid var(--gold);
+         background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; font-size:13px; }
+  button.addbtn:hover, button.save:hover{ filter:brightness(1.08); }
+  button.save:disabled{ opacity:0.6; cursor:default; }
+  .editor{ margin:0 24px 48px; display:none; max-width:640px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:12px;
+         padding:14px 16px; margin-bottom:14px; }
+  .chip{ display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px;
+         border:1px solid var(--border); background:var(--bg); font-size:12.5px; margin:0 8px 8px 0; }
+  .chip button{ border:none; background:none; color:var(--muted); cursor:pointer; font-size:13px; padding:0; }
+  .chip button:hover{ color:#e08a8a; }
+  .chip-list{ display:flex; flex-wrap:wrap; margin-top:8px; }
+  .manual-row{ display:flex; align-items:center; gap:8px; width:100%; margin-bottom:8px; }
+  .manual-row .chip{ margin:0; flex:none; }
+  .manual-reason{ flex:1; min-width:0; padding:5px 9px; border:1px solid var(--border);
+                  border-radius:6px; background:var(--bg); color:var(--cream); font-size:12.5px; }
+  .harv-item{ display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--border); }
+  .harv-item:first-of-type{ border-top:none; }
+  .harv-item label{ flex:1; font-size:13px; }
+  .harv-src{ color:var(--muted); font-size:11.5px; }
+  .add-row{ display:flex; gap:8px; margin-top:10px; }
+  .add-row input{ flex:1; padding:7px 9px; border-radius:7px; border:1px solid var(--border);
+         background:var(--bg); color:var(--cream); font-size:13px; }
+  .actions{ margin-top:14px; display:flex; align-items:center; gap:10px; }
+  .status{ font-size:12px; color:var(--muted); }
+  .status.err{ color:#e08a8a; }
+  .status.ok{ color:var(--green); }
+  .empty{ margin:8px 0 0; color:var(--muted); font-size:13px; }
+  #keybox{ margin:24px; }
+  #keybox input{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+                 background:var(--surface); color:var(--cream); min-width:260px; }
+  #keybox button{ padding:9px 13px; border-radius:8px; border:1px solid var(--gold);
+                  background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
+</style>
+<script src="/static/op-nav.js" data-active="clinical"></script>
+<h1>Related Products Editor</h1>
+<p class="sub">Curate Glen's manual "Dr. Glen recommends" picks for a product. Promote harvested
+  (auto-derived) candidates or add any slug by hand. Manual picks always win over the harvested list
+  on the live page.</p>
+<div class="lookup-section">
+  <div class="lookup-row">
+    <input type="text" id="slug-input" list="catalog-list" placeholder="product slug or name (e.g. iop-syntropy)">
+    <button type="button" class="addbtn" id="lookup-btn">Load</button>
+  </div>
+  <div class="status" id="lookup-status"></div>
+  <div class="status err" id="lookup-catalog-err" style="display:none;"></div>
+</div>
+<datalist id="catalog-list"></datalist>
+<div class="editor" id="editor">
+  <div class="card">
+    <h2>Current picks — <span id="slug-label"></span></h2>
+    <div class="chip-list" id="manual-list"></div>
+    <p class="empty" id="manual-empty" style="display:none;">No manual picks yet.</p>
+    <div class="add-row">
+      <input type="text" id="add-input" list="catalog-list" placeholder="add a related product (name or slug)">
+      <button type="button" class="addbtn" id="add-btn">Add</button>
+    </div>
+    <p class="status err" id="add-catalog-err" style="display:none;"></p>
+  </div>
+  <div class="card">
+    <h2>Harvested candidates</h2>
+    <p class="sub" style="margin:6px 0 0;">Auto-derived suggestions. Check any to promote into the
+      manual picks above.</p>
+    <div id="harvested-list"></div>
+    <p class="empty" id="harvested-empty" style="display:none;">No harvested candidates for this slug.</p>
+  </div>
+  <div class="actions">
+    <button class="save" id="save-btn">Save</button>
+    <span class="status" id="save-status"></span>
+  </div>
+</div>
+<div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; var s = document.getElementById('slug-input').value.trim(); if (s) loadFromInput(s); }
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  var CURRENT_SLUG = '';
+  var MANUAL = [];
+  var HARVESTED = [];
+
+  // Catalog-backed picker: slug -> name, and a lowercased name -> slug lookup,
+  // so the operator can type either and never save a slug the catalog doesn't have.
+  var CATALOG_BY_SLUG = {};
+  var CATALOG_NAME_TO_SLUG = {};
+
+  async function loadCatalog(){
+    try {
+      var r = await fetch('/api/products?all=1', { headers: hdr() });
+      if (!r.ok) return;
+      var j = await r.json().catch(function(){ return {}; });
+      var products = j.products || [];
+      var dl = document.getElementById('catalog-list');
+      var opts = [];
+      products.forEach(function(p){
+        var slug = p.slug, name = p.name || slug;
+        if (!slug) return;
+        CATALOG_BY_SLUG[slug] = name;
+        CATALOG_NAME_TO_SLUG[name.toLowerCase()] = slug;
+        opts.push('<option value="'+esc(slug)+'" label="'+esc(name)+' — '+esc(slug)+'">'+esc(name)+' — '+esc(slug)+'</option>');
+      });
+      dl.innerHTML = opts.join('');
+    } catch(e) { /* catalog fetch failed; validation will just reject everything until retried */ }
+  }
+
+  // Resolves whatever the operator typed (slug OR product name) to a real
+  // catalog slug. Returns null if it doesn't match anything in the catalog —
+  // callers must not save/load on a null result.
+  function resolveCatalogSlug(input){
+    input = (input || '').trim();
+    if (!input) return null;
+    if (Object.prototype.hasOwnProperty.call(CATALOG_BY_SLUG, input)) return input;
+    var bySlugLower = input.toLowerCase();
+    for (var slug in CATALOG_BY_SLUG) {
+      if (slug.toLowerCase() === bySlugLower) return slug;
+    }
+    if (Object.prototype.hasOwnProperty.call(CATALOG_NAME_TO_SLUG, bySlugLower)) {
+      return CATALOG_NAME_TO_SLUG[bySlugLower];
+    }
+    return null;
+  }
+
+  function slugOf(h){ return (typeof h === 'string') ? h : (h.slug || ''); }
+  function sourceOf(h){ return (typeof h === 'string') ? '' : (h.source || h.reason || ''); }
+
+  // MANUAL holds {slug, reason} objects. Look one up by slug.
+  function manualIndexOf(slug){
+    for (var i = 0; i < MANUAL.length; i++){ if (MANUAL[i].slug === slug) return i; }
+    return -1;
+  }
+
+  function renderManual(){
+    var list = document.getElementById('manual-list');
+    list.innerHTML = MANUAL.map(function(m){
+      return '<div class="manual-row" data-slug="'+esc(m.slug)+'">'
+        + '<span class="chip">'+esc(m.slug)
+        + '<button type="button" class="rm-manual" data-slug="'+esc(m.slug)+'">&times;</button></span>'
+        + '<input type="text" class="manual-reason" data-slug="'+esc(m.slug)+'"'
+        + ' placeholder="Why Dr. Glen recommends this (optional)" value="'+esc(m.reason || '')+'">'
+        + '</div>';
+    }).join('');
+    document.getElementById('manual-empty').style.display = MANUAL.length ? 'none' : 'block';
+    list.querySelectorAll('.rm-manual').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var slug = btn.getAttribute('data-slug');
+        MANUAL = MANUAL.filter(function(m){ return m.slug !== slug; });
+        renderManual();
+        renderHarvested();
+      });
+    });
+    // Update the model on each keystroke without re-rendering (keeps input focus).
+    list.querySelectorAll('.manual-reason').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        var idx = manualIndexOf(inp.getAttribute('data-slug'));
+        if (idx !== -1) MANUAL[idx].reason = inp.value;
+      });
+    });
+  }
+
+  function addManual(slug){
+    slug = (slug || '').trim();
+    if (!slug || manualIndexOf(slug) !== -1) return;
+    MANUAL.push({ slug: slug, reason: '' });
+    renderManual();
+    renderHarvested();
+  }
+
+  // Validates the operator's typed value against the catalog before adding.
+  // Returns true if it was added, false if it was rejected (error already shown).
+  function addManualFromInput(rawInput){
+    var trimmed = (rawInput || '').trim();
+    if (!trimmed) return false;
+    var errEl = document.getElementById('add-catalog-err');
+    var slug = resolveCatalogSlug(trimmed);
+    if (!slug) {
+      errEl.style.display = 'block';
+      errEl.textContent = 'Not in the catalog: "' + trimmed + '". Pick a product from the list.';
+      return false;
+    }
+    errEl.style.display = 'none'; errEl.textContent = '';
+    addManual(slug);
+    return true;
+  }
+
+  function renderHarvested(){
+    var el = document.getElementById('harvested-list');
+    if (!HARVESTED.length) {
+      el.innerHTML = '';
+      document.getElementById('harvested-empty').style.display = 'block';
+      return;
+    }
+    document.getElementById('harvested-empty').style.display = 'none';
+    el.innerHTML = HARVESTED.map(function(h, i){
+      var slug = slugOf(h);
+      var src = sourceOf(h);
+      var checked = manualIndexOf(slug) !== -1;
+      return '<div class="harv-item"><label><input type="checkbox" class="harv-check" data-slug="'+esc(slug)+'"'
+        + (checked ? ' checked' : '') + '> '+esc(slug)+'</label>'
+        + (src ? '<span class="harv-src">'+esc(src)+'</span>' : '') + '</div>';
+    }).join('');
+    el.querySelectorAll('.harv-check').forEach(function(cb){
+      cb.addEventListener('change', function(){
+        var slug = cb.getAttribute('data-slug');
+        if (cb.checked) addManual(slug);
+        else { MANUAL = MANUAL.filter(function(m){ return m.slug !== slug; }); renderManual(); }
+      });
+    });
+  }
+
+  // Validates the operator's typed value (slug or name) against the catalog,
+  // shows an inline error and refuses to load on an unknown value.
+  function loadFromInput(rawInput){
+    var errEl = document.getElementById('lookup-catalog-err');
+    var slug = resolveCatalogSlug(rawInput);
+    if (!slug) {
+      errEl.style.display = 'block';
+      errEl.textContent = (rawInput || '').trim()
+        ? 'Not in the catalog: "' + rawInput.trim() + '". Pick a product from the list.'
+        : '';
+      document.getElementById('editor').style.display = 'none';
+      return;
+    }
+    errEl.style.display = 'none'; errEl.textContent = '';
+    load(slug);
+  }
+
+  async function load(slug){
+    CURRENT_SLUG = slug;
+    var statusEl = document.getElementById('lookup-status');
+    statusEl.className = 'status'; statusEl.textContent = 'Loading…';
+    document.getElementById('editor').style.display = 'none';
+    var r;
+    try {
+      r = await fetch('/api/console/related-products/' + encodeURIComponent(slug), { headers: hdr() });
+    } catch(e) {
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      statusEl.className = 'status err'; statusEl.textContent = ''; return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (r.status !== 200) {
+      statusEl.className = 'status err'; statusEl.textContent = j.error || 'Load failed.'; return;
+    }
+    // Normalize stored manual picks (bare slug strings, back-compat, or {slug,reason}).
+    MANUAL = (j.manual || []).map(function(m){
+      return (typeof m === 'string') ? { slug: m, reason: '' }
+                                     : { slug: (m.slug || ''), reason: (m.reason || '') };
+    }).filter(function(m){ return m.slug; });
+    HARVESTED = j.harvested || [];
+    statusEl.className = 'status ok'; statusEl.textContent = 'Loaded.';
+    document.getElementById('slug-label').textContent = slug;
+    document.getElementById('editor').style.display = 'block';
+    document.getElementById('save-status').textContent = '';
+    renderManual();
+    renderHarvested();
+  }
+
+  async function save(){
+    if (!CURRENT_SLUG) return;
+    var btn = document.getElementById('save-btn');
+    var statusEl = document.getElementById('save-status');
+    btn.disabled = true;
+    statusEl.className = 'status'; statusEl.textContent = 'Saving…';
+    var r;
+    try {
+      r = await fetch('/api/action/related_products.set', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({ slug: CURRENT_SLUG, related: MANUAL })
+      });
+    } catch(e) {
+      statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; btn.disabled = false; return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      statusEl.className = 'status err'; statusEl.textContent = ''; btn.disabled = false; return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (r.status < 300 && j.status === 'done') {
+      statusEl.className = 'status ok'; statusEl.textContent = 'Saved.';
+    } else {
+      statusEl.className = 'status err';
+      statusEl.textContent = j.error || j.reason || 'Save failed.';
+    }
+    btn.disabled = false;
+  }
+
+  document.getElementById('lookup-btn').addEventListener('click', function(){
+    var v = document.getElementById('slug-input').value;
+    if (v.trim()) loadFromInput(v);
+  });
+  document.getElementById('slug-input').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { var v = e.target.value; if (v.trim()) loadFromInput(v); }
+  });
+  document.getElementById('add-btn').addEventListener('click', function(){
+    var input = document.getElementById('add-input');
+    if (addManualFromInput(input.value)) input.value = '';
+  });
+  document.getElementById('add-input').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { if (addManualFromInput(e.target.value)) e.target.value = ''; }
+  });
+  document.getElementById('save-btn').addEventListener('click', save);
+
+  loadCatalog();
+</script>

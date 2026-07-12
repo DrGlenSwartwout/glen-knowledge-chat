@@ -5042,6 +5042,7 @@ _STRIPE_ACTIVE = os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "t
 _SALES_PAGES_ENABLED = os.environ.get("SALES_PAGES_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_COPY_ENABLED = os.environ.get("SALES_PAGES_AI_COPY", "").strip().lower() in ("1", "true", "yes")
 _SALES_AI_IMAGES_ENABLED = os.environ.get("SALES_PAGES_AI_IMAGES", "").strip().lower() in ("1", "true", "yes")
+_RELATED_PRODUCTS_ENABLED = os.environ.get("RELATED_PRODUCTS_ENABLED", "").strip().lower() in ("1", "true", "yes")
 _SALES_IMAGE_PICK_ENABLED = os.environ.get("SALES_PAGES_IMAGE_PICK", "").strip().lower() in ("1", "true", "yes")
 _IMAGE_PICK_REWARD_CENTS = int(os.environ.get("IMAGE_PICK_REWARD_CENTS", "100"))
 _SALES_IMAGE_TOURNAMENT_ENABLED = os.environ.get("SALES_PAGES_IMAGE_TOURNAMENT", "").strip().lower() in ("1", "true", "yes")
@@ -6037,6 +6038,64 @@ def begin_product_data(slug):
     return jsonify(data)
 
 
+def _related_semantic(slug, k=12):
+    """Up to k catalog slugs semantically nearest to `slug`'s product-copy vector
+    (cached in LOG_DB). Returns [] on ANY problem — this must never raise into
+    the product page.
+
+    Vectors in the `specific-formulations` namespace are NOT keyed by catalog
+    slug (their ids come from the page-copy scraper/ingest, e.g. chunked
+    `{ns_prefix}-{title-slug}-{i:03d}` ids), so a `fetch(ids=[slug])` would not
+    find this product's vector. Instead this follows the same pattern already
+    used by `_resolve_complement()` / `qbo_price_coverage()`: embed the
+    product's own `pinecone_title` (or `name`) text, query the
+    `specific-formulations` namespace for nearest neighbours by similarity,
+    then map each neighbour's `metadata['title']` back to a catalog slug via
+    `_TITLE_TO_SLUG` (deterministic in-catalog resolution)."""
+    import sqlite3 as _sq, json as _json
+    try:
+        with _sq.connect(LOG_DB) as cx:
+            cx.execute("CREATE TABLE IF NOT EXISTS related_semantic ("
+                       "slug TEXT PRIMARY KEY, slugs_json TEXT, generated_at TEXT)")
+            row = cx.execute("SELECT slugs_json FROM related_semantic WHERE slug=?",
+                              (slug,)).fetchone()
+            if row:
+                return _json.loads(row[0])
+    except Exception as e:
+        print(f"[related-sem] cache read failed: {e}", flush=True)
+
+    try:
+        p = _get_product(slug)
+        query_text = (p or {}).get("pinecone_title") or (p or {}).get("name")
+        if not query_text:
+            return []
+        vec = embed(query_text)
+        res = _idx.query(vector=vec, top_k=k + 20, namespace="specific-formulations",
+                          include_metadata=True)
+        slugs, seen = [], set()
+        for m in (res.matches or []):
+            md = m.metadata or {}
+            title = md.get("title")
+            cand = _TITLE_TO_SLUG.get(title) if title else None
+            if not cand or cand == slug or cand in seen:
+                continue
+            seen.add(cand)
+            slugs.append(cand)
+            if len(slugs) >= k:
+                break
+    except Exception as e:
+        print(f"[related-sem] query failed: {e}", flush=True)
+        return []
+
+    try:
+        with _sq.connect(LOG_DB) as cx:
+            cx.execute("INSERT OR REPLACE INTO related_semantic(slug,slugs_json,generated_at) "
+                       "VALUES (?,?,datetime('now'))", (slug, _json.dumps(slugs)))
+    except Exception as e:
+        print(f"[related-sem] cache write failed: {e}", flush=True)
+    return slugs
+
+
 @app.route("/begin/product-page-data/<slug>")
 def begin_product_page_data(slug):
     p = _get_product(slug)
@@ -6078,6 +6137,32 @@ def begin_product_page_data(slug):
     ]
     from dashboard.product_page_sections import filter_sections as _filter_sections
     sections = _filter_sections(sections, has_ingredients=_has_ings, has_own_video=bool(_own_vids))
+    if _RELATED_PRODUCTS_ENABLED:
+        try:
+            from dashboard import related_products as _rp, related_store as _rstore
+            _prods = _PRODUCTS.get("products") or {}
+            _res = _rp.resolve_related(
+                slug,
+                manual=_rstore.load_manual(slug),
+                harvested=_rstore.load_harvested(slug),
+                semantic=_related_semantic(slug),
+                products=_prods)
+            if _res["featured"]:
+                _reasons = _res.get("reasons", {})
+                def _card(rs):
+                    rp_ = _get_product(rs) or _prods.get(rs, {})
+                    imgs = rp_.get("page_images") or []
+                    return {"slug": rs, "name": rp_.get("name", rs),
+                            "price": f"${rp_.get('price_cents', 0) / 100:.2f}",
+                            "url": f"/begin/product/{rs}",
+                            "image": (imgs[0] if imgs else ""),
+                            "reason": _reasons.get(rs, "")}
+                sections.append({
+                    "id": "related", "title": "Dr. Glen recommends", "default_open": True,
+                    "body": {"featured": [_card(s) for s in _res["featured"]],
+                             "more": [_card(s) for s in _res["more"]]}})
+        except Exception as _e:
+            print(f"[related] page-data section skipped: {_e}", flush=True)
     if _REVIEWS_ENABLED:
         from dashboard import product_reviews as _pr
         try:
@@ -13033,6 +13118,14 @@ def console_ff_drafts_page():
 @app.route("/console/support-programs")
 def console_support_programs_page():
     resp = send_from_directory(STATIC, "console-support-programs.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/console/related-products")
+def console_related_products_page():
+    resp = send_from_directory(STATIC, "console-related-products.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
@@ -29662,6 +29755,17 @@ def api_money_today():
     except Exception as e: return fail(e)
 
 
+@app.route("/api/console/related-products/<slug>", methods=["GET"])
+@require_console_key
+def api_related_products_get(slug):
+    """Owner console: Glen's manual "Dr. Glen recommends" picks for a product,
+    plus the harvested (auto-derived) candidates to promote from."""
+    try:
+        from dashboard import related_store as _rs
+        return ok({"manual": _rs.load_manual(slug), "harvested": _rs.load_harvested(slug)})
+    except Exception as e: return fail(e)
+
+
 @app.route("/api/money/week")
 @require_console_key
 def api_money_week():
@@ -34741,6 +34845,10 @@ with sqlite3.connect(LOG_DB) as _sc_cx:
     _scstore.migrate(_sc_cx)
 _sca.configure(grant_fn=_studio_credit_grant_and_notify)
 _sca.register()
+
+# ── Related products: console editor for Glen's manual "Dr. Glen recommends" picks ──
+from dashboard import related_products_actions as _rpa
+_rpa.register()
 
 
 # ── In-house order entry (Phase 1: proposed invoice) — OWNER only ───────────────
