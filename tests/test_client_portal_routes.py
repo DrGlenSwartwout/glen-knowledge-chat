@@ -405,6 +405,20 @@ def test_client_login_routes_dark_by_default(client, monkeypatch):
     assert c.get("/portal/me").status_code == 404
 
 
+def test_client_login_page_carries_join_wiring(client, monkeypatch):
+    # When the page is live it must ship the new-visitor "join" path: the reveal
+    # status probe, the provision-anyone endpoint, and the join button. The block
+    # itself stays hidden until the JS sees HEALING_OASIS_ENABLED at runtime.
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)
+    r = c.get("/portal/login")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert "/api/healing-oasis/status" in body
+    assert "/api/healing-oasis/request" in body
+    assert 'id="joinGo"' in body
+
+
 def test_client_login_verify_sets_session_when_enabled(client, monkeypatch):
     c, appmod = client
     monkeypatch.setattr(appmod, "_client_login_enabled", lambda: True)

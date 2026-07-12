@@ -37,7 +37,14 @@
     background:var(--card);color:var(--ink)}
   .btn{display:block;width:100%;background:var(--btn-bg);color:var(--btn-fg);border:0;cursor:pointer;
     font-size:1rem;font-weight:600;border-radius:10px;padding:13px 18px}
+  .btn[hidden]{display:none!important}   /* beat .btn{display:block} so hidden hides */
+  .btn-secondary{background:transparent;color:var(--brand);border:1px solid var(--brand)}
   .msg{color:var(--brand);margin-top:12px;min-height:1.4em}
+  /* New-visitor join path — revealed only when HEALING_OASIS_ENABLED (see script). */
+  .join{margin-top:20px;border-top:1px solid var(--line);padding-top:16px;text-align:left}
+  .join[hidden]{display:none}
+  .join-sep{color:var(--muted);font-size:.85rem;font-weight:600;letter-spacing:.03em;margin:0 0 4px;text-align:center}
+  .join-sub{color:var(--muted);font-size:.9rem;margin:0 0 12px;text-align:center}
   .theme-toggle{position:fixed;top:14px;right:14px;width:40px;height:40px;border-radius:50%;
     border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:1.1rem;
     display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
@@ -63,6 +70,16 @@
     <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
     <button class="btn" id="go">Send my sign-in link</button>
     <p class="msg" id="msg"></p>
+
+    <!-- New-visitor join. Hidden until /api/healing-oasis/status reports the feature
+         is live (HEALING_OASIS_ENABLED); reveal mirrors static/begin.html. Reuses the
+         #email field above and the shared #msg line. -->
+    <div class="join" id="join" hidden>
+      <p class="join-sep">New here?</p>
+      <p class="join-sub">Create your Healing Oasis and we'll email your private link.</p>
+      <input id="joinName" type="text" placeholder="Your name" autocomplete="name">
+      <button class="btn btn-secondary" id="joinGo">Create my Healing Oasis</button>
+    </div>
   </div></div>
 <script>
 const go = document.getElementById("go"), msg = document.getElementById("msg");
@@ -77,6 +94,28 @@ go.addEventListener("click", async ()=>{
     msg.textContent = j.message || "Check your email for a sign-in link.";
   }catch(e){ msg.textContent = "Something went wrong — please try again."; }
   go.disabled = false;
+});
+
+// New-visitor join: reveal only when the feature is live, then wire it up. Same
+// backend the begin.html "My Healing Oasis" button uses (provisions anyone).
+const join = document.getElementById("join");
+fetch("/api/healing-oasis/status").then(r=>r.json()).then(d=>{
+  if(d && d.enabled) join.hidden = false;
+}).catch(()=>{});
+
+const joinGo = document.getElementById("joinGo");
+joinGo.addEventListener("click", async ()=>{
+  const email = (document.getElementById("email").value||"").trim();
+  const name = (document.getElementById("joinName").value||"").trim();
+  if(email.indexOf("@") < 1){ msg.textContent = "Please enter a valid email address."; return; }
+  joinGo.disabled = true; msg.textContent = "Sending…";
+  try{
+    const r = await fetch("/api/healing-oasis/request", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({name, email})});
+    const j = await r.json();
+    msg.textContent = j.message || "Check your email for your link.";
+  }catch(e){ msg.textContent = "Something went wrong — please try again."; }
+  joinGo.disabled = false;
 });
 </script>
 </body>
