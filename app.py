@@ -19569,17 +19569,20 @@ def coach_subscriptions_charge_cron():
 
 @app.route("/api/cron/family-plan/charge", methods=["POST"])
 def family_plan_charge_cron():
-    """Monthly charge cron for paid Family Plans. Charges each due, non-comp,
-    active plan off the vaulted card. On success: record + advance next_charge_at
-    one month (the only way the date moves, so a same-day re-run cannot
-    double-charge). On failure: record, mark past_due, notify; after 3 consecutive
-    failures cancel the plan (past_due still entitles mid-cycle, so grace is
-    bounded). Comped plans (next_charge_at NULL / source='comp') are never due."""
+    """Daily charge cron for paid Family Plans. Charges each due, non-comp, active
+    plan off the vaulted card. On success: record + advance next_charge_at one month.
+    On failure: record, mark past_due, and reschedule the next attempt two days out
+    (spacing the dunning retries); after 4 failed attempts (every other day, ~6 days
+    of grace) cancel the plan. past_due still entitles mid-cycle, so grace is bounded.
+    Comped plans (next_charge_at NULL / source='comp') are never due. A same-day
+    re-run cannot double-charge: a success moves next_charge_at a month out and a
+    failure moves it two days out, so a just-processed row is no longer due."""
     if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import family_plan as _fp, stripe_pay as _sp, subscriptions as _subs
-    from datetime import date as _date
+    from datetime import date as _date, timedelta as _timedelta
     today = _date.today().isoformat()
+    retry_at = (_date.today() + _timedelta(days=2)).isoformat()  # dunning: next attempt 2 days out
     charged = failed = cancelled = 0
     with sqlite3.connect(LOG_DB) as rcx:
         rcx.row_factory = sqlite3.Row
@@ -19606,9 +19609,9 @@ def family_plan_charge_cron():
             if ok:
                 _fp.mark_charged(cx, email, _subs.add_months(today, 1))
             else:
-                _fp.mark_failed(cx, email)
+                _fp.mark_failed(cx, email, retry_at)
                 row = _fp.get(cx, email)
-                if row and int(row.get("fail_count") or 0) >= 3:
+                if row and int(row.get("fail_count") or 0) >= 4:
                     _fp.set_status(cx, email, "cancelled")
                     was_cancelled = True
                 else:

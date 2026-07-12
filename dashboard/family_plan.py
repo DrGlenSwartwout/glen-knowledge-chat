@@ -140,9 +140,15 @@ def mark_charged(cx, caregiver_email, next_charge_at):
     cx.commit()
 
 
-def mark_failed(cx, caregiver_email):
-    cx.execute("UPDATE family_subscriptions SET fail_count=fail_count+1, status='past_due' "
-               "WHERE caregiver_email=?", (_lc(caregiver_email),))
+def mark_failed(cx, caregiver_email, retry_at):
+    """Record a failed charge: bump fail_count, set past_due, and schedule the next
+    retry by moving next_charge_at to retry_at (so the daily cron re-attempts on that
+    date, not every day — spacing the dunning retries). A later success resets
+    fail_count via mark_charged; enough failed attempts get the plan cancelled by the
+    cron. Advancing next_charge_at here is a retry schedule, not a paid-cycle advance
+    (the charge captured no money), so it does not violate the paid-once invariant."""
+    cx.execute("UPDATE family_subscriptions SET fail_count=fail_count+1, status='past_due', "
+               "next_charge_at=? WHERE caregiver_email=?", (retry_at, _lc(caregiver_email)))
     cx.commit()
 
 
