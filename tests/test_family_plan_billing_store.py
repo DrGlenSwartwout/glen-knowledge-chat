@@ -30,9 +30,10 @@ def test_mark_charged_advances_and_resets():
     cx = _cx()
     fp.activate(cx, "m@x.com", next_charge_at="2026-07-01",
                 customer_id="c", payment_method_id="p")
-    fp.mark_failed(cx, "m@x.com")
-    assert fp.get(cx, "m@x.com")["fail_count"] == 1
-    assert fp.get(cx, "m@x.com")["status"] == "past_due"
+    fp.mark_failed(cx, "m@x.com", "2026-07-03")
+    row = fp.get(cx, "m@x.com")
+    assert row["fail_count"] == 1 and row["status"] == "past_due"
+    assert row["next_charge_at"] == "2026-07-03"   # failure reschedules the retry
     fp.mark_charged(cx, "m@x.com", "2026-08-01")
     s = fp.get(cx, "m@x.com")
     assert s["next_charge_at"] == "2026-08-01" and s["fail_count"] == 0

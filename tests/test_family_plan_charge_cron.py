@@ -72,22 +72,38 @@ def test_cron_never_charges_a_comp():
     assert d["charged"] == 0 and not charge.called
 
 
-def test_cron_failed_charge_goes_past_due_no_advance():
+def test_cron_failed_charge_schedules_retry_two_days_out():
+    from datetime import date, timedelta
     _seed("fail@x.com", "2026-01-01")
     with mock.patch("dashboard.stripe_pay.charge_off_session",
                     return_value={"id": None, "status": "failed"}), \
          mock.patch.object(appmod, "send_evox_email"):
         d = _client().post("/api/cron/family-plan/charge", headers=_hdr()).get_json()
-    assert d["failed"] == 1
+    assert d["failed"] == 1 and d["cancelled"] == 0
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
         s = fp.get(cx, "fail@x.com")
         assert s["status"] == "past_due" and s["fail_count"] == 1
-        assert s["next_charge_at"] == "2026-01-01"
+        # dunning: next attempt rescheduled two days out, not left daily-due
+        assert s["next_charge_at"] == (date.today() + timedelta(days=2)).isoformat()
 
 
-def test_cron_third_failure_cancels_and_stops_cover():
-    _seed("dead@x.com", "2026-01-01", fail_count=2)   # already failed twice
+def test_cron_third_failure_stays_in_grace():
+    _seed("still@x.com", "2026-01-01", fail_count=2, status="past_due")  # failed twice; this is #3
+    with mock.patch("dashboard.stripe_pay.charge_off_session",
+                    return_value={"id": None, "status": "failed"}), \
+         mock.patch.object(appmod, "send_evox_email"):
+        d = _client().post("/api/cron/family-plan/charge", headers=_hdr()).get_json()
+    assert d["failed"] == 1 and d["cancelled"] == 0            # 4-try threshold: 3rd does not cancel
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
+        s = fp.get(cx, "still@x.com")
+        assert s["status"] == "past_due" and s["fail_count"] == 3
+        assert fp.is_active(cx, "still@x.com") is True         # still entitles during grace
+
+
+def test_cron_fourth_failure_cancels_and_stops_cover():
+    _seed("dead@x.com", "2026-01-01", fail_count=3, status="past_due")  # already failed three times
     with mock.patch("dashboard.stripe_pay.charge_off_session",
                     return_value={"id": None, "status": "failed"}), \
          mock.patch.object(appmod, "send_evox_email"):
@@ -125,5 +141,9 @@ def test_cron_one_exception_does_not_abort_batch():
     assert d["charged"] == 1 and d["failed"] == 1
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
-        assert fp.get(cx, "boom@x.com")["next_charge_at"] == "2026-01-01"   # not advanced
-        assert fp.get(cx, "ok@x.com")["next_charge_at"] > "2026-01-02"      # advanced
+        from datetime import date, timedelta
+        boom = fp.get(cx, "boom@x.com")
+        # the raised charge is a failure for boom only: past_due + retry scheduled 2d out
+        assert boom["status"] == "past_due" and boom["fail_count"] == 1
+        assert boom["next_charge_at"] == (date.today() + timedelta(days=2)).isoformat()
+        assert fp.get(cx, "ok@x.com")["next_charge_at"] > "2026-01-02"      # advanced (success, +1mo)

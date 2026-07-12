@@ -17,7 +17,7 @@
 - **No cron double-charge** — `mark_charged` advances `next_charge_at` only after a successful charge, in the same locked write; the cron only charges `next_charge_at <= today`.
 - **Cron auth** — `X-Console-Key` header must equal `CONSOLE_SECRET` (mirrors the coach cron).
 - **Route gating** — the subscribe route 404s when `_family_plan_enabled()` is off and 503s when `_STRIPE_ACTIVE` is false.
-- **Statuses** — `active` / `past_due` / `cancelled` (British spelling, matching the existing console cancel + `ACTIVE_STATUSES`). `past_due` still entitles the household (grace) AND is retried by the cron every run; grace is bounded — after 3 total failures the plan is `cancelled` and cover stops. (Because the cron is monthly, worst-case grace on a dead card is ~3 cron cycles.)
+- **Statuses** — `active` / `past_due` / `cancelled` (British spelling, matching the existing console cancel + `ACTIVE_STATUSES`). `past_due` still entitles the household (grace) AND is retried by the cron. Dunning cadence (updated post-#824): a failed charge reschedules the next attempt **2 days out** (via `mark_failed(cx, email, retry_at)` moving `next_charge_at`), and after **4 failed attempts** the plan is `cancelled` — every-other-day retries, ~6 days of grace. A success still moves `next_charge_at` one month out.
 - **Copy rules** (client-portal.html): no em dashes, no ALL CAPS.
 - **Card capture is Stripe-hosted** — store only `stripe_customer_id` + `payment_method_id`.
 
