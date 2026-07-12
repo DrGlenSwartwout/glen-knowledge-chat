@@ -159,6 +159,12 @@
     // reprint. Appended last so it survives the grouped-shipment acts rebuild
     // above and reads as the trailing action on the card.
     if (o.status!=='cancelled') acts += (acts ? ' ' : '') + printInvBtn(o.id);
+    // Shipping-overpayment credit (slice 2): when the feature is on and this order
+    // carries an outstanding credit, offer a one-click refund (the alternative to
+    // letting it auto-apply to the customer's next order).
+    if (HH.shipCredit && Number(o.overpay_credit_cents||0) > 0) {
+      acts += (acts ? ' ' : '') + '<button onclick="refundShipCredit('+Number(o.id)+')" title="Refund this shipping overpayment to the customer instead of auto-applying it to their next order">Refund credit $'+(Number(o.overpay_credit_cents)/100).toFixed(2)+'</button>';
+    }
     // Paid receipt on the portal (auto for new payments; a manual publish for older ones).
     var rcpt = portalReceiptBtn(o);
     if (rcpt) acts += (acts ? ' ' : '') + rcpt;
@@ -300,7 +306,7 @@
     // Combined-shipment feature flag + auto-suggest clusters (best-effort).
     try {
       var sr = await fetch('/api/console/shipments/suggestions', {headers:hdr()});
-      if (sr.ok){ var sj = await sr.json(); HH.enabled = !!sj.enabled; HH.clusters = sj.clusters || []; }
+      if (sr.ok){ var sj = await sr.json(); HH.enabled = !!sj.enabled; HH.clusters = sj.clusters || []; HH.shipCredit = !!sj.ship_credit_enabled; }
     } catch(e){ HH.enabled = false; HH.clusters = []; }
     HH.byId = {}; orders.forEach(function(o){ HH.byId[o.id] = o; });  // for the combine confirm
     // Header-search deep link (Records mode): /console/orders?q=<ref|name|email>
@@ -516,6 +522,21 @@
   function ship(id){
     var tn = prompt('Tracking number (optional):','');
     act(id, 'orders.set_tracking', {tracking_number: tn||''});
+  }
+  // One-click refund of an order's outstanding shipping credit. MONEY_SEND action:
+  // first POST returns needs_confirmation + a summary; on OK we re-POST confirmed.
+  async function refundShipCredit(id){
+    var r = await fetch('/api/action/finance.refund_ship_credit', {method:'POST', headers:hdr(), body:JSON.stringify({order_id:id})});
+    var res = await r.json().catch(function(){ return {}; });
+    if (res && res.status === 'needs_confirmation'){
+      if (!confirm(res.summary || 'Refund this shipping credit?')) return;
+      r = await fetch('/api/action/finance.refund_ship_credit', {method:'POST', headers:hdr(), body:JSON.stringify({order_id:id, confirmed:true})});
+      res = await r.json().catch(function(){ return {}; });
+    }
+    if (res && res.status === 'pending_approval'){ alert('Refund queued for owner approval.'); }
+    else if (!res || res.status !== 'done'){ alert((res && res.result && res.result.error) || (res && res.error) || 'Refund did not complete.'); }
+    else if (res.result && res.result.message){ alert(res.result.message); }
+    load();
   }
 
   if (key()) { document.getElementById('gate').style.display='none'; load(); }

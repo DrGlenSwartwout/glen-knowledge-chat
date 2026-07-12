@@ -5089,6 +5089,37 @@ INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true"
 TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _ship_credit_enabled():
+    """Dark-flag gate for shipping-credit auto-apply + refund (slice 2). Read live
+    (not an import-time constant) so a Doppler flip on redeploy AND test monkeypatch
+    both take effect. When off, grant/apply/refund are all no-ops."""
+    return os.environ.get("SHIP_CREDIT_AUTOAPPLY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _plan_ship_credit(email, chargeable_cents):
+    """Flag-gated: how much of the customer's shipping credit to auto-apply to a new
+    order whose payable total is chargeable_cents. Returns cents (0 when the flag is
+    off, no email, or no balance). The caller folds this into the order's discount +
+    records it in ship_credit_applied_cents; the ledger is debited centrally at payment
+    settle (_settle_order_points). Best-effort — never raises into a checkout."""
+    if not _ship_credit_enabled():
+        return 0
+    try:
+        from dashboard import ship_credit as _ship_credit
+        with _sqlite3.connect(LOG_DB) as _scx:
+            _points_init_ship(_scx)
+            bal = _ship_credit.balance(_scx, email)
+        return _ship_credit.plan_application(bal, chargeable_cents)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ship_credit] plan skipped: {e!r}", flush=True)
+        return 0
+
+
+def _points_init_ship(cx):
+    from dashboard import points as _points
+    _points.init_points_table(cx)
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Kill-switch for the premium per-element Glendalf backdrop on the member portal.
 # Off -> the portal API returns element_state=null, so the page shows plain (no
@@ -5819,6 +5850,13 @@ def _settle_order_points(order, *, order_ref):
                 _points.redeem(cx, email, value_cents=redeemed, order_ref=order_ref)
             except ValueError:
                 pass   # balance already spent elsewhere; don't block the order
+        # Slice 2 (dark): consume any shipping credit that a checkout auto-applied to
+        # THIS order, debiting the customer's ship_credit balance. Central + idempotent
+        # per order_ref, so every checkout flow settles the same way (mirrors points).
+        applied = int(order.get("ship_credit_applied_cents") or 0)
+        if applied > 0:
+            from dashboard import ship_credit as _ship_credit
+            _ship_credit.consume(cx, email, applied, applied_ref=order_ref)
         # Earn only on a full-price order (no discount AND no points used) -- the "full-price only" rule.
         # Additional suppression: skip buyer earn on an affiliate-acquired FIRST order.
         if discount == 0 and redeemed == 0 and product_cents > 0 \
@@ -35073,8 +35111,10 @@ def console_shipment_suggestions():
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     enabled = _bos_combined_shipments._enabled()
+    ship_credit = _ship_credit_enabled()
     if not enabled:
-        return jsonify({"ok": True, "enabled": False, "clusters": []})
+        return jsonify({"ok": True, "enabled": False, "clusters": [],
+                        "ship_credit_enabled": ship_credit})
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
@@ -35087,7 +35127,8 @@ def console_shipment_suggestions():
             cx, household_of=_household_of)
     finally:
         cx.close()
-    return jsonify({"ok": True, "enabled": True, "clusters": clusters})
+    return jsonify({"ok": True, "enabled": True, "clusters": clusters,
+                    "ship_credit_enabled": ship_credit})
 
 
 def _recompute_combined_shipping(cx, sid):
@@ -35140,6 +35181,13 @@ def _recompute_combined_shipping(cx, sid):
             credit = _bos_combined_shipments.paid_member_overpay_cents(
                 m.get("paid_cents"), m.get("total_cents"), old_ship, int(share))
             _bos_orders.set_order_overpay_credit(cx, m["id"], credit)
+            # Slice 2 (dark): also grant the credit to the customer's spendable
+            # ship_credit balance so it auto-applies to their next order / can be
+            # refunded. Keyed to this paid order's external_ref, idempotent.
+            if credit > 0 and _ship_credit_enabled():
+                from dashboard import ship_credit as _ship_credit
+                _ship_credit.grant(cx, m.get("email"), credit,
+                                   source_ref=m.get("external_ref"))
             updates.append({"order_id": m["id"], "name": m.get("name") or "",
                             "skipped": "paid", "shipping_cents": old_ship,
                             "fair_share_cents": int(share),

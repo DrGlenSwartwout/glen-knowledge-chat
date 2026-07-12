@@ -111,6 +111,24 @@ Surfaced as a "Refund credit" button on `console-orders.html` order cards that c
   flow (reorder) exercised for the applied-line + consume.
 - Flag-off regression: every new path is a no-op; slice-1 tests still green.
 
+## Staging (implementation reality)
+Auto-apply must thread a NEW credit component (`ship_credit_applied_cents`) through
+pricing, storage, invoice rendering AND each order-CREATION site (distinct from the
+shared re-pricer, which the invoice editor also calls — folding there would re-apply
+on every edit), on live card-charging paths. That is materially more invasive than a
+one-shot edit and each charging flow needs isolated verification. So this lands in two
+PRs:
+
+- **Slice 2a (this PR):** the credit becomes a real, email-keyed spendable balance
+  (`ship_credit` scope) granted at recalc; the central consume-on-payment hook in
+  `_settle_order_points`; the `_plan_ship_credit` helper; and the **one-click refund**
+  (`finance.refund_ship_credit`, with the already-refunded guard that plain
+  `finance.refund_order` lacks) surfaced as a flag-gated console button. With the flag
+  on, credits accrue and are refundable; they do not yet auto-apply.
+- **Slice 2b (follow-up):** wire `_plan_ship_credit` into each order-CREATION site
+  (funnel, reorder, portal, in-house), threading `ship_credit_applied_cents` through
+  pricing/storage/invoice-render and the editor preserve path, verified per flow.
+
 ## Rollout
-Ship dark. Enable `SHIP_CREDIT_AUTOAPPLY_ENABLED` in prd after verifying each flow
-on the live surface. Reversible (flip flag off).
+Ship dark. Enable `SHIP_CREDIT_AUTOAPPLY_ENABLED` in prd after 2b lands and each flow
+is verified on the live surface. Reversible (flip flag off).
