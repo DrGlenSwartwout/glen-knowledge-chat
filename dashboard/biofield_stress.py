@@ -503,3 +503,65 @@ def resolve_remedy_set(cx, tid, chain_rows, force_computed=False):
     return {"picks": picks, "uncovered": uncovered, "remedies": remedies,
             "source": source, "pattern_key": key,
             "has_pattern": _get_pattern_set(cx, key) is not None}
+
+
+def layer_candidates(cx, tid, chain_rows, fallback_by_code=None, n=5):
+    """Per-layer ranked remedy pick-list that AUGMENTS the set-cover default.
+
+    For each causal-chain layer, return the current pick(s) as `default` plus up to
+    `n` candidates ordered coverage-first with a learned boost:
+      - coverage: remedies in the per-test coverage map that cover >=1 of the
+        layer's stress codes, ranked by how many they cover;
+      - learned boost: remedies in the saved set / pattern template for this test
+        are lifted to the top of their tier and tagged `used_before`;
+      - blank layers (no coverer, but the layer still has codes) fall back to
+        `fallback_by_code` -- a {code: [remedy names]} map the CALLER injects from
+        the formulation map -- tagged source "functional", so a layer never shows
+        nothing.
+    Pure over `cx` (biofield_auth_* tables); e4l.db / the formulation map stay in
+    the caller, keeping this function's DB boundary clean and unit-testable."""
+    stresses = list_stresses(cx, tid, chain_rows)
+    active_tokens, _label, coverage = _remedy_context(cx, tid, chain_rows)
+    key, _toks = _pattern_key(active_tokens)
+    learned = set()
+    for src in (get_saved_remedy_set(cx, tid), _get_pattern_set(cx, key)):
+        for r in (src or []):
+            low = (r or "").strip().lower()
+            if low:
+                learned.add(low)
+    fb = fallback_by_code or {}
+    out = []
+    for L in stresses["by_layer"]:
+        codes = {s["code"] for s in L["stresses"] if s.get("code")}
+        default_disp = list(L.get("remedies") or [])
+        default_lower = {(d or "").strip().lower() for d in default_disp}
+        scored = []
+        for remedy, rcodes in coverage.items():
+            hit = sorted(set(rcodes) & codes)
+            if not hit:
+                continue
+            low = (remedy or "").strip().lower()
+            scored.append({"remedy": remedy, "covers": hit, "coverage": len(hit),
+                           "source": "coverage", "used_before": low in learned,
+                           "is_default": low in default_lower})
+        # learned first, then most coverage, then name (stable, hash-seed independent)
+        scored.sort(key=lambda c: (not c["used_before"], -c["coverage"], c["remedy"].lower()))
+        if not scored and codes:
+            seen = set()
+            for code in sorted(codes):
+                for name in (fb.get(code) or []):
+                    low = (name or "").strip().lower()
+                    if low and low not in seen:
+                        seen.add(low)
+                        scored.append({"remedy": name, "covers": [code], "coverage": 0,
+                                       "source": "functional", "used_before": low in learned,
+                                       "is_default": low in default_lower})
+        capped = scored[:n]
+        if scored and not any(c.get("is_default") for c in capped):
+            dflt = next((c for c in scored if c.get("is_default")), None)
+            if dflt:
+                capped = capped[:max(0, n - 1)] + [dflt]
+        out.append({"n": L["layer"], "head": L.get("head") or "",
+                    "codes": sorted(codes), "default": default_disp,
+                    "candidates": capped})
+    return out
