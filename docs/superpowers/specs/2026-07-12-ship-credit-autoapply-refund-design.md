@@ -125,9 +125,21 @@ PRs:
   (`finance.refund_ship_credit`, with the already-refunded guard that plain
   `finance.refund_order` lacks) surfaced as a flag-gated console button. With the flag
   on, credits accrue and are refundable; they do not yet auto-apply.
-- **Slice 2b (follow-up):** wire `_plan_ship_credit` into each order-CREATION site
-  (funnel, reorder, portal, in-house), threading `ship_credit_applied_cents` through
-  pricing/storage/invoice-render and the editor preserve path, verified per flow.
+- **Slice 2b (DELIVERED):** `_plan_ship_credit` wired into the retail order-CREATION
+  sites — funnel (`/begin/checkout`), reorder (`_checkout_cart`), and in-house
+  (`/api/orders/manual`, with the editor preserve path mirroring the existing
+  points-preserve at re-price). The credit folds into the QBO invoice discount on the
+  card flows (charge drops) and reduces the proposed total on the in-house flow, shown
+  as a "Shipping credit" invoice line; `ship_credit_applied_cents` threads through
+  `upsert_order`/`_ingest_order`; consume fires at payment in BOTH `_settle_order_points`
+  (card returns) and `set_order_payment` (in-house/record-payment), idempotent per order.
+  - **Scoped OUT:** the practitioner/dispensary checkout (`/api/client/<code>/checkout`
+    → `build_client_order`) is a distinct channel with its own internal pricing; a retail
+    household shipping credit applying there is an edge case that would require threading
+    through that module's internals. Left for a later pass if needed.
+  - **Known edge:** apply happens at checkout but consume at payment (mirrors points);
+    refunding a source credit while a discounted-but-unpaid order is pending could
+    double-benefit. Rare, small amounts; documented rather than reserved.
 
 ## Rollout
 Ship dark. Enable `SHIP_CREDIT_AUTOAPPLY_ENABLED` in prd after 2b lands and each flow
