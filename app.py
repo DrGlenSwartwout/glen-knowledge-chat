@@ -34933,15 +34933,19 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 pay_method=pay_method, practitioner_id=practitioner_id,
                 margin_cents=margin_cents,
                 ship_credit_applied_cents=ship_credit_applied_cents)
+            if paid_cents is not None and _oid:
+                _bos_orders.mark_order_paid_keep_status(
+                    cx, _oid, method="card", amount_cents=int(paid_cents))
+            # Hold hook runs AFTER the mark-paid block above so a pre-paid ingested
+            # order (e.g. GrooveKart) is already marked paid when eligible_for_hold
+            # checks it — an already-paid order must never be held (Task: don't
+            # delay a paid customer's shipment for household batching).
             try:
                 from dashboard import household_holds as _holds
                 _holds.init_hold_tables(cx)
                 _holds.maybe_hold_new_order(cx, _oid)
             except Exception as _e:
                 print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
-            if paid_cents is not None and _oid:
-                _bos_orders.mark_order_paid_keep_status(
-                    cx, _oid, method="card", amount_cents=int(paid_cents))
             # NEW: every buyer gets a portal home (idempotent, fail-open)
             try:
                 from dashboard import portal_provision as _pp

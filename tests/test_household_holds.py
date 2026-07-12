@@ -141,6 +141,29 @@ def test_maybe_hold_gated_by_flag_and_eligibility(monkeypatch):
     assert H.maybe_hold_new_order(cx, o2) is None
 
 
+def test_already_paid_order_not_eligible():
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    assert H.eligible_for_hold(cx, O.get_order(cx, o1)) is True
+    O.mark_order_paid_keep_status(cx, o1, method="card", amount_cents=1000)
+    assert H.eligible_for_hold(cx, O.get_order(cx, o1)) is False
+
+
+def test_maybe_hold_skips_already_paid_order(monkeypatch):
+    cx = _cx()
+    monkeypatch.setenv("HOUSEHOLD_AUTO_BATCH_ENABLED", "1")
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    paid = _order(cx, "cg@x.com")
+    O.mark_order_paid_keep_status(cx, paid, method="card", amount_cents=1000)
+    assert H.maybe_hold_new_order(cx, paid) is None
+    unpaid = O.upsert_order(cx, source="test", external_ref="cg@x.com#2", email="cg@x.com",
+                            name="cg", items=[{"slug": "x", "qty": 1}], total_cents=1000,
+                            channel="ship", status="proposed")
+    res = H.maybe_hold_new_order(cx, unpaid)
+    assert res is not None and res["opened"] is True
+
+
 def test_holds_actions_registered():
     from dashboard import actions as A
     import dashboard.household_holds  # noqa: F401 (import self-registers)

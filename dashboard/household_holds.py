@@ -92,6 +92,8 @@ def eligible_for_hold(cx, order):
         return False
     if order.get("group_shipment_id") is not None:
         return False
+    if (order.get("pay_status") or "") == "paid":
+        return False
     return caregiver_of(cx, order.get("email")) is not None
 
 
