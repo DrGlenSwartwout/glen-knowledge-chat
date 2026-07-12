@@ -34783,6 +34783,12 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 shipping_cents=int(shipping_cents or 0), status=status,
                 pay_method=pay_method, practitioner_id=practitioner_id,
                 margin_cents=margin_cents)
+            try:
+                from dashboard import household_holds as _holds
+                _holds.init_hold_tables(cx)
+                _holds.maybe_hold_new_order(cx, _oid)
+            except Exception as _e:
+                print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
             if paid_cents is not None and _oid:
                 _bos_orders.mark_order_paid_keep_status(
                     cx, _oid, method="card", amount_cents=int(paid_cents))
@@ -35790,6 +35796,12 @@ def api_orders_manual():
             shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.maybe_hold_new_order(cx, oid)
+        except Exception as _e:
+            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
         if _gift_rows and oid:
             from dashboard import review_gifts as _rg2
             for _g in _gift_rows:
@@ -37361,6 +37373,12 @@ def bos_orders_create():
             name=b.get("name", ""), phone=b.get("phone", ""), items=b.get("items") or [],
             total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
             channel=b.get("channel", "retail"))
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.maybe_hold_new_order(cx, oid)
+        except Exception as _e:
+            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     finally:

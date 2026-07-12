@@ -104,3 +104,18 @@ def test_release_token_roundtrip_and_wrong_token():
     got = H.hold_by_release_token(cx, raw)
     assert got and got["id"] == g
     assert H.hold_by_release_token(cx, "not-the-token") is None
+
+
+def test_maybe_hold_gated_by_flag_and_eligibility(monkeypatch):
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    monkeypatch.setenv("HOUSEHOLD_AUTO_BATCH_ENABLED", "")
+    assert H.maybe_hold_new_order(cx, o1) is None            # flag off -> no hold
+    monkeypatch.setenv("HOUSEHOLD_AUTO_BATCH_ENABLED", "1")
+    res = H.maybe_hold_new_order(cx, o1)
+    assert res and res["opened"] is True
+    assert O.get_order(cx, o1)["hold_group_id"] == res["group_id"]
+    # a stranger order is never held even with the flag on
+    o2 = _order(cx, "stranger@x.com")
+    assert H.maybe_hold_new_order(cx, o2) is None

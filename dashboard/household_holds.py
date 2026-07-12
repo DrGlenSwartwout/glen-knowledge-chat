@@ -186,6 +186,22 @@ def set_release_token(cx, group_id):
     return raw
 
 
+def maybe_hold_new_order(cx, order_id, *, now=None):
+    """Called right after a shippable order is created. If the auto-batch flag is
+    on and this order belongs to an active Family-Plan household, open or join a
+    hold group and return the hold result; otherwise return None (ship as normal)."""
+    if not _enabled():
+        return None
+    order = _orders.get_order(cx, order_id)
+    if not eligible_for_hold(cx, order):
+        return None
+    cg = caregiver_of(cx, order.get("email"))
+    if not cg:
+        return None
+    return open_or_join_hold(cx, order_id, caregiver_email=cg,
+                             household_key=cg, now=now)
+
+
 def hold_by_release_token(cx, raw_token):
     """Look up a hold group by its raw release token. None for an empty or
     unknown token."""
