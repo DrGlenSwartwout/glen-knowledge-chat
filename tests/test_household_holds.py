@@ -246,3 +246,56 @@ def test_cancel_last_member_closes_group():
     H.remove_from_hold(cx, o1)
     assert O.get_order(cx, o1)["hold_group_id"] is None
     assert H.get_hold(cx, g)["status"] == "cancelled"
+
+
+def test_list_open_holds_includes_members_excludes_released_and_cancelled():
+    from datetime import datetime, timezone, timedelta
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    FP.activate(cx, "other@x.com", next_charge_at="2999-01-01")
+
+    t0 = datetime(2026, 7, 12, 9, 0, tzinfo=timezone.utc)
+    t_later = t0 + timedelta(days=1)
+
+    # Group A: open, due later -- two members.
+    o1 = _order(cx, "cg@x.com")
+    o2 = _order(cx, "kid@x.com")
+    ga = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com",
+                             household_key="cg@x.com", hold_days=4, now=t_later)["group_id"]
+    H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com",
+                        household_key="cg@x.com", hold_days=4, now=t_later)
+
+    # Group B: open, due sooner -- one member. Should sort first.
+    o3 = _order(cx, "other@x.com")
+    gb = H.open_or_join_hold(cx, o3, caregiver_email="other@x.com",
+                             household_key="other@x.com", hold_days=1, now=t0)["group_id"]
+
+    # Group C: released -- must be excluded. (Distinct order email: upsert_order
+    # keys on (source, external_ref)=email, so reusing "cg@x.com" here would
+    # silently overwrite o1's row instead of creating a new order.)
+    o4 = _order(cx, "cg-released@x.com")
+    gc = H.open_or_join_hold(cx, o4, caregiver_email="cg@x.com",
+                             household_key="cg-released@x.com", hold_days=4, now=t0)["group_id"]
+    H.release_hold(cx, gc, by="test")
+
+    # Group D: cancelled (last member removed) -- must be excluded.
+    o5 = _order(cx, "cg-cancelled@x.com")
+    gd = H.open_or_join_hold(cx, o5, caregiver_email="cg@x.com",
+                             household_key="cg-cancelled@x.com", hold_days=4, now=t0)["group_id"]
+    H.remove_from_hold(cx, o5)
+
+    open_ids = {gb, ga}
+    excluded_ids = {gc, gd}
+
+    holds = H.list_open_holds(cx)
+    got_ids = [h["id"] for h in holds]
+
+    assert set(got_ids) == open_ids
+    assert not (set(got_ids) & excluded_ids)
+    # Ordered by hold_until: group B (due sooner) before group A.
+    assert got_ids == [gb, ga]
+
+    by_id = {h["id"]: h for h in holds}
+    assert {m["id"] for m in by_id[ga]["members"]} == {o1, o2}
+    assert {m["id"] for m in by_id[gb]["members"]} == {o3}

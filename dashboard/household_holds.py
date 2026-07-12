@@ -196,6 +196,19 @@ def extend_hold(cx, group_id, days, *, now=None):
     return get_hold(cx, group_id)
 
 
+def list_open_holds(cx):
+    """All currently-open hold groups (status='open'), soonest-due first, each
+    with its member orders attached. Read-only console view of what's forming."""
+    rows = cx.execute(
+        "SELECT * FROM household_holds WHERE status='open' ORDER BY hold_until").fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["members"] = orders_in_hold(cx, d["id"])
+        out.append(d)
+    return out
+
+
 def due_holds(cx, now=None):
     now = now or _now()
     rows = cx.execute(

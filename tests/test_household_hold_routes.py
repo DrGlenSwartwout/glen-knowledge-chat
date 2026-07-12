@@ -217,3 +217,44 @@ def test_sweep_releases_due_holds(client, monkeypatch):
     with sqlite3.connect(client.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         assert H.get_hold(cx, g)["status"] == "released"
+
+
+def test_console_household_holds_get_shows_open_hold_with_members(client):
+    g, raw, o1, o2 = _seed_hold(client)
+    c = client.app.test_client()
+
+    # No key -- unauthorized.
+    r_noauth = c.get("/api/console/household-holds")
+    assert r_noauth.status_code == 401
+    assert r_noauth.get_json()["error"] == "unauthorized"
+
+    # With the console key -- the open hold and its members are visible.
+    r = c.get("/api/console/household-holds",
+              headers={"X-Console-Key": client.CONSOLE_SECRET})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["ok"] is True
+    holds = data["holds"]
+    matching = [h for h in holds if h["group_id"] == g]
+    assert len(matching) == 1
+    hold = matching[0]
+    assert hold["caregiver_email"] == "cg@x.com"
+    assert hold["household_key"] == "cg@x.com"
+    assert hold["opened_at"] and hold["hold_until"]
+    member_ids = {m["order_id"] for m in hold["members"]}
+    assert member_ids == {o1, o2}
+    for m in hold["members"]:
+        assert set(m.keys()) == {"order_id", "name", "email", "status"}
+
+    # Read-only: the GET must not mutate the hold's status.
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import household_holds as H
+        assert H.get_hold(cx, g)["status"] == "open"
+
+    # Once released, the group no longer shows up as open.
+    c.post(f"/hold/{raw}/ship")
+    r2 = c.get("/api/console/household-holds",
+               headers={"X-Console-Key": client.CONSOLE_SECRET})
+    ids_after = {h["group_id"] for h in r2.get_json()["holds"]}
+    assert g not in ids_after
