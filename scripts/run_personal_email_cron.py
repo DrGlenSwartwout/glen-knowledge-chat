@@ -152,6 +152,11 @@ def run_daily_piggybacks():
     # never double-charges; comped plans are never billed.
     _piggyback_post("family-plan-charge", "/api/cron/family-plan/charge",
                     "X-Console-Key", CONSOLE_SECRET)
+    # Household hold-and-batch (#task-10): auto-release any hold group past its
+    # ship-by deadline — combines >=2 orders into one shipment, or just un-holds a
+    # lone order. Idempotent (a released group is no longer 'open').
+    _piggyback_post("household-holds-sweep", "/api/cron/household-holds/sweep",
+                    "X-Console-Key", CONSOLE_SECRET)
     # Refresh GrooveKart retail history from order emails, then re-seed active
     # members' repertoires from purchase_history (FMP + GK). Both idempotent;
     # GK rebuild runs first so the reseed picks up the newest orders. Harmless

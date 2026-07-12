@@ -19567,6 +19567,32 @@ def coach_subscriptions_charge_cron():
     return jsonify({"charged": charged, "failed": failed})
 
 
+@app.route("/api/cron/household-holds/sweep", methods=["POST"])
+def household_holds_sweep_cron():
+    """Auto-release hold groups past their ship-by deadline: 2+ orders -> one
+    combined shipment; a lone order -> just un-held so it ships normally. Idempotent:
+    a released group is no longer 'open' so a re-run skips it."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household_holds as _holds
+    from dashboard import combined_shipments as _cs
+    released = combined = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _holds.init_hold_tables(cx)
+        for g in _holds.due_holds(cx):
+            res = _holds.release_hold(cx, g["id"], by="deadline")
+            released += 1
+            ids = res["order_ids"]
+            if len(ids) >= 2:
+                try:
+                    _cs.create_shipment(cx, ids, created_by="deadline-release")
+                    combined += 1
+                except Exception as e:
+                    print(f"[hold-sweep] create_shipment({ids}) failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "released": released, "combined": combined})
+
+
 @app.route("/api/cron/family-plan/charge", methods=["POST"])
 def family_plan_charge_cron():
     """Daily charge cron for paid Family Plans. Charges each due, non-comp, active

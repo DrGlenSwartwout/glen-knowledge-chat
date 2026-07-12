@@ -86,3 +86,27 @@ def test_post_is_idempotent_on_already_released_hold(client):
     r_get = c.get(f"/hold/{raw}/ship")
     assert r_get.status_code in (200, 404)
     assert b"<form" not in r_get.data
+
+
+def test_sweep_releases_due_holds(client, monkeypatch):
+    import sqlite3, datetime as _dt
+    from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        FP.init_family_plan_table(cx); HH.init_household_tables(cx); H.init_hold_tables(cx)
+        FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+        HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+        o1 = O.upsert_order(cx, source="t", external_ref="cg@x.com", email="cg@x.com", name="cg",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000, channel="ship")
+        o2 = O.upsert_order(cx, source="t", external_ref="kid@x.com", email="kid@x.com", name="kid",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000, channel="ship")
+        past = _dt.datetime(2020, 1, 1, tzinfo=_dt.timezone.utc)
+        g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com", now=past)["group_id"]
+        H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com", household_key="cg@x.com", now=past)
+    c = client.app.test_client()
+    r = c.post("/api/cron/household-holds/sweep",
+               headers={"X-Console-Key": client.CONSOLE_SECRET})
+    assert r.status_code == 200
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        assert H.get_hold(cx, g)["status"] == "released"
