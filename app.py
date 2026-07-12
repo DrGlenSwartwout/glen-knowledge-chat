@@ -19363,6 +19363,73 @@ def coach_subscriptions_charge_cron():
     return jsonify({"charged": charged, "failed": failed})
 
 
+@app.route("/api/cron/family-plan/charge", methods=["POST"])
+def family_plan_charge_cron():
+    """Monthly charge cron for paid Family Plans. Charges each due, non-comp,
+    active plan off the vaulted card. On success: record + advance next_charge_at
+    one month (the only way the date moves, so a same-day re-run cannot
+    double-charge). On failure: record, mark past_due, notify; after 3 consecutive
+    failures cancel the plan (past_due still entitles mid-cycle, so grace is
+    bounded). Comped plans (next_charge_at NULL / source='comp') are never due."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import family_plan as _fp, stripe_pay as _sp, subscriptions as _subs
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    charged = failed = cancelled = 0
+    with sqlite3.connect(LOG_DB) as rcx:
+        rcx.row_factory = sqlite3.Row
+        _fp.init_family_plan_table(rcx)
+        due_rows = _fp.due(rcx, today)
+    for sub in due_rows:
+        email = sub["caregiver_email"]
+        try:
+            res = _sp.charge_off_session(
+                sub["stripe_customer_id"], sub["payment_method_id"], sub["amount_cents"],
+                description=_fp.PLAN["label"],
+                metadata={"kind": "family_plan_cycle", "email": email})
+            ok = res.get("status") == "succeeded"
+            pi_id = res.get("id") or ""
+        except Exception:
+            app.logger.exception("family plan charge raised for %s", email)
+            ok = False
+            pi_id = ""
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fp.init_family_plan_table(cx)
+            _fp.record_charge(cx, caregiver_email=email, amount_cents=sub["amount_cents"],
+                              pi_id=pi_id, status="succeeded" if ok else "failed")
+            if ok:
+                _fp.mark_charged(cx, email, _subs.add_months(today, 1))
+            else:
+                _fp.mark_failed(cx, email)
+                row = _fp.get(cx, email)
+                if row and int(row.get("fail_count") or 0) >= 3:
+                    _fp.set_status(cx, email, "cancelled")
+                    was_cancelled = True
+                else:
+                    was_cancelled = False
+        if ok:
+            charged += 1
+        else:
+            failed += 1
+            if was_cancelled:
+                cancelled += 1
+            html = (f"<p>We could not process this month's Family Plan charge for {email}. "
+                    f"Please update the card on file from your portal to keep the plan active.</p>")
+            try:
+                send_evox_email(email, "", "Your Family Plan payment did not go through",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("family plan failure notify (member) failed for %s", email)
+            try:
+                send_evox_email(GLEN_CONSULT_EMAIL, "Glen", f"Family Plan charge failed: {email}",
+                                html, html, b"")
+            except Exception:
+                app.logger.exception("family plan failure notify (glen) failed for %s", email)
+    return jsonify({"charged": charged, "failed": failed, "cancelled": cancelled})
+
+
 def _coach_session_email():
     pid = _practitioner_session_pid()
     if not pid:
