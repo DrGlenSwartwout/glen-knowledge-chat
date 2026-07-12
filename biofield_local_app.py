@@ -1114,6 +1114,24 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             added += 1
         return added
 
+    def _layer_fallback_map():
+        """{item_code: [formulation names, priority order]} from the e4l.db formulation
+        map, injected into layer_candidates so a blank layer still offers candidates.
+        Empty on any error (feature degrades to coverage-only, never breaks)."""
+        fb = {}
+        try:
+            with sqlite3.connect(e4l_db) as ecx:
+                for code, name in ecx.execute(
+                        "SELECT m.item_code, f.name FROM e4l_formulation_map m "
+                        "JOIN formulations f ON f.id=m.formulation_id "
+                        "WHERE m.item_code IS NOT NULL "
+                        "ORDER BY m.priority ASC, m.id ASC").fetchall():
+                    if code and name:
+                        fb.setdefault(code, []).append(name)
+        except Exception as e:
+            print(f"[layer-fallback] {e!r}", flush=True)
+        return fb
+
     @app.route("/author/<test_id>/suggest-remedies")
     def author_suggest_remedies(test_id):
         from dashboard import biofield_stress as _st
@@ -1124,10 +1142,15 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             # this test, else stay hidden (empty html).
             if only_saved and _st.get_saved_remedy_set(cx, test_id) is None:
                 return {"ok": True, "html": "", "picks": [], "uncovered": [],
-                        "source": None, "pattern_key": "", "has_pattern": False}
+                        "source": None, "pattern_key": "", "has_pattern": False,
+                        "layer_candidates": []}
             rep = _report_for(cx, test_id)
-            data = _st.resolve_remedy_set(cx, test_id, _chain_rows_for(rep), force_computed=force)
-        return _suggest_payload(data)
+            chain = _chain_rows_for(rep)
+            data = _st.resolve_remedy_set(cx, test_id, chain, force_computed=force)
+            lc = _st.layer_candidates(cx, test_id, chain, fallback_by_code=_layer_fallback_map())
+        resp = _suggest_payload(data)
+        resp["layer_candidates"] = lc
+        return resp
 
     @app.route("/author/<test_id>/remedy-set/suggest", methods=["POST"])
     def author_remedy_set_suggest(test_id):
