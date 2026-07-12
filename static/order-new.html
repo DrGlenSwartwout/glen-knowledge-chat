@@ -106,7 +106,7 @@
     <div class="grid2">
       <div><label>Order discount $ (blank = rule-based)</label><input id="o-discount" type="number" step="0.01" placeholder="auto"></div>
       <div><label>Payment method</label>
-        <select id="o-method"><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Credit card</option><option>Zelle</option><option>Wise</option></select></div>
+        <select id="o-method"><option>Credit card (Stripe)</option><option>eProcessing</option><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Zelle</option><option>Wise</option></select></div>
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
       <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
       <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
@@ -240,6 +240,18 @@ function syncShippingUI(){
   // cannot teach us one — hide the client default entirely.
   $("pickup-default-wrap").style.display = (phys && $("c-email").value.trim()) ? "block" : "none";
 }
+// Pre-select the payment-method dropdown to `m`, tolerating legacy stored labels
+// ("Credit card" / "Stripe" / "card" all mean the automated Stripe option). A blank
+// or unrecognized value leaves the current selection (the static Stripe default) alone.
+function setMethod(m){
+  m = (m||"").trim(); if (!m) return;
+  const sel = $("o-method"); const opts = Array.from(sel.options).map(o=>o.text);
+  const low = m.toLowerCase();
+  const alias = {"credit card":"Credit card (Stripe)","stripe":"Credit card (Stripe)",
+                 "card":"Credit card (Stripe)"};
+  const target = opts.find(o=>o.toLowerCase()===low) || alias[low];
+  if (target && opts.includes(target)) sel.value = target;
+}
 async function loadPickupDefault(email){
   email = (email||"").trim();
   if (!email){ $("pickup-default").checked = false; syncShippingUI(); return; }
@@ -254,6 +266,9 @@ async function loadPickupDefault(email){
     // On a NEW order the client's default pre-checks Pickup (still overridable).
     // On an EDIT the stored order's own channel already won — don't fight it.
     if (!EDIT_OID && j.pickup_default && hasShippableLine()) $("pickup").checked = true;
+    // Likewise, pre-select the client's most-recent payment method on a NEW order
+    // (blank -> the Stripe default stands). On an EDIT the order's own method already won.
+    if (!EDIT_OID) setMethod(j.last_pay_method);
   }catch(e){ /* a missing preference is just "no default" */ }
   syncShippingUI();
 }
@@ -394,6 +409,7 @@ async function loadOrderForEdit(oid){
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;
   if (o.invoice_note) $("o-note").value = o.invoice_note;
+  setMethod(o.pay_method);          // restore this order's own recorded method (edit mode)
   renderLines();
   loadPickupDefault(o.email||"");   // shows the client's default; EDIT_OID keeps it from overriding this order
 }
