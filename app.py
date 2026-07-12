@@ -18500,7 +18500,8 @@ def api_console_portal_notify_scan():
         rec = _cp.get_portal_content_by_email(cx, email)
     if not link:
         return jsonify({"ok": True, "sent": False, "reason": "no portal"})
-    first = ((rec or {}).get("name") or "").strip().split()[0] if (rec or {}).get("name") else ""
+    _name_parts = ((rec or {}).get("name") or "").split()
+    first = _name_parts[0] if _name_parts else ""
     subject = "Your new Biofield Analysis is ready"
     greeting = f"Aloha {first}," if first else "Aloha,"
     body = (

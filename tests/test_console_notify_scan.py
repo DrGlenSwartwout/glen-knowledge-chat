@@ -86,6 +86,24 @@ def test_flag_on_sends_generic_greeting_when_no_name(client, monkeypatch):
     assert sent["body"].startswith("Aloha,")
 
 
+def test_flag_on_sends_generic_greeting_when_whitespace_only_name(client, monkeypatch):
+    # Regression: a stored name of all-whitespace ("   ") is truthy, so the
+    # old guard `if (rec or {}).get("name")` passed it through to
+    # .strip().split()[0], which raises IndexError on an empty split result.
+    # Must fall back to the generic "Aloha," greeting instead of crashing.
+    c, appmod, sent = client
+    from dashboard import client_portal as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        cp.upsert_portal(cx, "ws@x.com", "   ", {})
+    monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
+    r = c.post("/api/console/portal/notify-scan", json={"email": "ws@x.com"}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] is True
+    assert sent["body"].startswith("Aloha,")
+
+
 def test_opted_out_does_not_send(client, monkeypatch):
     c, appmod, sent = client
     _seed(appmod)
