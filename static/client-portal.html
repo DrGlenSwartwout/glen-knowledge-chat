@@ -529,13 +529,24 @@ function scanHistoryRowHtml(dt, isCurrent, memberEmail){
     <span>${esc(fmtDate(dt))}</span>${isCurrent?' <span class="pill">Current</span>':""}
   </button>`;
 }
+// One inline row for an OTHER household member's scan (issue #810). Clicking it
+// navigates straight to that member + scan_date via window.__hhGo, same as the
+// switcher above, just pre-picking the date instead of resetting it.
+function memberScanRowHtml(email, dt, isCurrent){
+  return `<button type="button" class="histrow" data-viewmember-date="1"
+      data-member="${esc(email)}" data-scan="${esc(dt)}">
+    <span>${esc(fmtDate(dt))}</span>${isCurrent?' <span class="pill">Current</span>':""}
+  </button>`;
+}
 // Scan History panel body. When data.household is present, groups rows under the
-// person currently being viewed ("You", or the member's label) plus one row per
-// OTHER household member. We only ever hold ONE person's scan_dates at a time
-// (the payload is scoped to whoever ?member= resolves to), so another member's
-// group can't list their dates without switching to them first — that row is a
-// plain "View history" link (reusing the household switcher's window.__hhGo,
-// wired above in render()), which is also how the existing member switcher works.
+// person currently being viewed ("You", or the member's label) plus one group per
+// OTHER household member. Issue #810: when the backend's PORTAL_SCAN_HISTORY_ENABLED
+// enrichment has run, each member entry carries its OWN scan_dates (+ current_scan_date)
+// and those render as inline rows here — no extra fetch, no "View <name>'s history"
+// hop required. A member with scan_dates == [] (flag on, but no scans) shows "No
+// scans yet"; a member with the key absent at all (flag off, or the payload predates
+// #810) falls back to the original plain link (reusing window.__hhGo, wired above
+// in render()), which is also how the existing member switcher works.
 function buildScanHistoryHtml(d){
   const dates = Array.isArray(d.scan_dates) ? d.scan_dates : [];
   const cur = d.current_scan_date || (dates.length ? dates[0] : null);
@@ -552,9 +563,17 @@ function buildScanHistoryHtml(d){
       + `</div>`;
     household.forEach(m => {
       if((m.email||"").toLowerCase() === viewingEmail) return;  // already shown above as "me"
-      body += `<div class="histgroup"><p class="histgroup-label">${esc(m.label || m.email)}</p>
-        <button type="button" class="histrow" data-viewmember="1" data-member="${esc(m.email)}">
-          <span>View ${esc(m.label || m.email)}'s history</span></button></div>`;
+      const mDates = Array.isArray(m.scan_dates) ? m.scan_dates : null;
+      let inner;
+      if(mDates && mDates.length){
+        inner = mDates.map(dt => memberScanRowHtml(m.email, dt, dt === m.current_scan_date)).join("");
+      } else if(mDates){
+        inner = `<p class="muted small">No scans yet.</p>`;
+      } else {
+        inner = `<button type="button" class="histrow" data-viewmember="1" data-member="${esc(m.email)}">
+          <span>View ${esc(m.label || m.email)}'s history</span></button>`;
+      }
+      body += `<div class="histgroup"><p class="histgroup-label">${esc(m.label || m.email)}</p>${inner}</div>`;
     });
   } else {
     body = dates.length
@@ -830,10 +849,14 @@ function render(d, v){
   if (d.household && d.household.length) {
     const params = new URLSearchParams(location.search);
     const cur = (params.get("member") || "").toLowerCase();
-    const go = (email) => {
+    const go = (email, scanDate) => {
       const p = new URLSearchParams(location.search);
       if (email) p.set("member", email); else p.delete("member");
-      p.delete("scan_date");                 // reset date when switching people
+      // Issue #810: an inline household scan row passes its own date so the
+      // nav lands directly on that member's chosen scan. The plain switcher
+      // (dropdown, "View <name>'s history" link) omits scanDate and keeps the
+      // old behavior — reset the date when switching people.
+      if (scanDate) p.set("scan_date", scanDate); else p.delete("scan_date");
       location.search = p.toString();
     };
     window.__hhGo = go;                        // referenced by the inline handlers below
@@ -1650,6 +1673,11 @@ function render(d, v){
     app.querySelectorAll(".histrow").forEach(el => el.addEventListener("click", () => {
       if (el.getAttribute("data-viewmember") === "1") {
         if (window.__hhGo) window.__hhGo(el.getAttribute("data-member"));
+        return;
+      }
+      if (el.getAttribute("data-viewmember-date") === "1") {
+        // Issue #810: inline member row — jump straight to that member's scan.
+        if (window.__hhGo) window.__hhGo(el.getAttribute("data-member"), el.getAttribute("data-scan"));
         return;
       }
       // Land back on Current Analysis so the newly-selected scan is actually

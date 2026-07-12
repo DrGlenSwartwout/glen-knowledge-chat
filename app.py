@@ -16693,6 +16693,26 @@ def api_client_portal(token):
     # — the helper never raises, so this can never break the portal load.
     payload["practitioner_brand"] = _patient_practitioner_brand(email_for_reports)
     if _household_view_enabled():
+        # Issue #810: inline each member's own scan dates (+ persisted current
+        # pointer) so the Scan History tab can list them as rows instead of a
+        # "View <name>'s history" link. Additive keys only, dates-only (no
+        # content/layers) — members are already can_view-filtered above, and a
+        # per-member lookup failure must never break the portal load. Flag off
+        # keeps household entries byte-identical to pre-#810 shape.
+        if _portal_scan_history_enabled() and household:
+            try:
+                from dashboard import client_portal as _cp_hh
+                with sqlite3.connect(LOG_DB) as _cx_hh:
+                    _pbr.init_table(_cx_hh)
+                    for _m in household:
+                        try:
+                            _m["scan_dates"] = _pbr.list_report_dates(_cx_hh, _m["email"])
+                            _m["current_scan_date"] = _cp_hh.get_current_scan(_cx_hh, _m["email"])
+                        except Exception:
+                            _m["scan_dates"] = []
+                            _m["current_scan_date"] = None
+            except Exception:
+                pass
         payload["household"] = household
         if _household_sharing_enabled():
             payload["household_cc"] = household_cc          # {member_email: 0|1} for the caregiver UI

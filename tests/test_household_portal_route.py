@@ -3,9 +3,13 @@ from pathlib import Path
 import pytest
 
 
-def _app(tmp_path, monkeypatch, *, flag="1"):
+def _app(tmp_path, monkeypatch, *, flag="1", scan_history=None):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("HOUSEHOLD_VIEW_ENABLED", flag)
+    if scan_history is not None:
+        monkeypatch.setenv("PORTAL_SCAN_HISTORY_ENABLED", scan_history)
+    else:
+        monkeypatch.delenv("PORTAL_SCAN_HISTORY_ENABLED", raising=False)
     repo = Path(__file__).resolve().parent.parent
     if str(repo) not in sys.path: sys.path.insert(0, str(repo))
     try:
@@ -70,3 +74,37 @@ def test_flag_off_no_household(tmp_path, monkeypatch):
     j = c.get(f"/api/portal/{token}?member=mochi@x.com").get_json()
     assert "household" not in j                       # no household key when flag off
     assert "2026-06-20" in (j.get("bf_scan_dates") or j.get("scan_dates") or [])  # served primary
+
+
+def test_household_entries_carry_scan_dates_when_history_flag_on(tmp_path, monkeypatch):
+    """Issue #810: Scan History tab lists a household member's scans INLINE
+    instead of just a 'View <name>'s history' link. The payload's household
+    entries need each member's own scan_dates (newest-first) + current_scan_date
+    so the frontend can render rows without a follow-up fetch."""
+    appmod = _app(tmp_path, monkeypatch, scan_history="1")
+    from dashboard import client_portal as cp, portal_biofield_reports as pbr
+    token = _seed(appmod, "karin@x.com", "mochi@x.com")
+    if not token: pytest.skip("no portal upsert helper")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        # a second, newer report for the member + a portal row so a current-scan
+        # pointer can be persisted (set_current_scan needs an existing content row)
+        pbr.upsert_report(cx, "mochi@x.com", "2026-07-01", "s2", {"who": "member"}, "confirmed")
+        cp.upsert_portal(cx, "mochi@x.com", "Mochi", {})
+        cx.commit()
+        cp.set_current_scan(cx, "mochi@x.com", "2026-06-25")
+    c = appmod.app.test_client()
+    j = c.get(f"/api/portal/{token}").get_json()
+    mochi = next(m for m in j["household"] if m["email"] == "mochi@x.com")
+    assert mochi["scan_dates"] == ["2026-07-01", "2026-06-25"]   # newest-first
+    assert mochi["current_scan_date"] == "2026-06-25"            # persisted pointer, not newest
+
+
+def test_household_entries_have_no_scan_dates_when_history_flag_off(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch, scan_history="0")
+    token = _seed(appmod, "karin@x.com", "mochi@x.com")
+    if not token: pytest.skip("no portal upsert helper")
+    c = appmod.app.test_client()
+    j = c.get(f"/api/portal/{token}").get_json()
+    mochi = next(m for m in j["household"] if m["email"] == "mochi@x.com")
+    assert "scan_dates" not in mochi
+    assert "current_scan_date" not in mochi
