@@ -1073,8 +1073,10 @@ git commit -m "feat(holds): deadline sweep cron + daily piggyback"
 ### Task 11: Fair-share shipping recompute at release (money path)
 
 **Files:**
-- Modify: `app.py` (call `_recompute_combined_shipping(cx, group_shipment_id)` after `create_shipment` in BOTH release paths: the sweep cron and the ship-now route and the operator action)
+- Modify: `app.py` — add a `_release_to_shipment(cx, ids, *, created_by)` helper (create_shipment + `_recompute_combined_shipping`) and call it from the TWO automated release paths in app.py: the ship-now route (`household_hold_ship`) and the sweep cron (`household_holds_sweep_cron`).
 - Test: `tests/test_household_hold_routes.py`
+
+**NOT in scope:** the operator board action `_release_exec` (in `dashboard/household_holds.py`) stays as-is calling `create_shipment` only — an operator recomputes shipping via the EXISTING `/api/console/shipments/<sid>/recalc-shipping` endpoint, exactly like the existing manual `shipments.combine` flow (which also recomputes as a separate step). Do NOT try to import app-level `_recompute_combined_shipping` into `household_holds.py`.
 
 **Interfaces:**
 - Consumes: `_recompute_combined_shipping(cx, sid)` (already in `app.py`), `combined_shipments.create_shipment` (returns a shipment dict whose `id` is the `group_shipment_id` on member orders).
@@ -1094,10 +1096,12 @@ def test_release_recomputes_combined_shipping(client):
         CS.init_combined_shipments_table(cx)
         FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
         HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
-        o1 = O.create_order(cx, source="t", email="cg@x.com", name="cg",
+        # NOTE: dashboard/orders.py has upsert_order (requires external_ref), not create_order.
+        # Match the _seed_hold helper already in this test file.
+        o1 = O.upsert_order(cx, source="t", external_ref="cg@x.com", email="cg@x.com", name="cg",
                             items=[{"slug": "x", "qty": 1}], total_cents=1000,
                             shipping_cents=800, channel="ship")
-        o2 = O.create_order(cx, source="t", email="kid@x.com", name="kid",
+        o2 = O.upsert_order(cx, source="t", external_ref="kid@x.com", email="kid@x.com", name="kid",
                             items=[{"slug": "x", "qty": 1}], total_cents=1000,
                             shipping_cents=800, channel="ship")
         g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
@@ -1138,7 +1142,7 @@ def _release_to_shipment(cx, order_ids, *, created_by):
     return sid
 ```
 
-Then replace the inline `create_shipment(...)` calls in `household_hold_ship` (Task 8), `household_holds_sweep_cron` (Task 10), and `_release_exec` (Task 9) with `_release_to_shipment(cx, ids, created_by=...)`. (For `_release_exec`, which lives in `household_holds.py`, keep its own `create_shipment` call but add a follow-on call into a thin `app`-level recompute is not importable there — instead have the operator action return the ids and let the board's action-runner call `_recompute_combined_shipping`; simplest: the operator action calls `create_shipment` only, and a note in the action description says shipping is recomputed by the board's post-combine hook. Prefer routing the operator release through the same `/api/cron`/route helper if the action-runner has `app` context.)
+Then replace the inline `create_shipment(...)` calls in ONLY the two app.py automated paths — `household_hold_ship` (Task 8 route) and `household_holds_sweep_cron` (Task 10 cron) — with `_release_to_shipment(cx, ids, created_by=...)`. Leave `_release_exec` (the Task 9 operator board action, in `household_holds.py`) UNCHANGED: it keeps calling `create_shipment` only, because the operator recomputes shipping through the existing `/api/console/shipments/<sid>/recalc-shipping` endpoint just like the manual `shipments.combine` flow. (Rationale: `_recompute_combined_shipping` is app-level and must not be imported into the pure `household_holds.py` engine.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
