@@ -39,6 +39,13 @@ from dashboard.tracking import (
     shipment_exists,
 )
 
+# Confidence tiers we trust enough to email the customer without a human glance.
+#   "high"      — exactly one GHL contact whose name matches the ship-to EXACTLY
+#   "harvested" — a single email precision-parsed from the order confirmation
+# "medium" (single but fuzzy GHL match) and "low"/none stay drafts for review, so
+# --auto-send never mails a guessed recipient.
+AUTO_SEND_CONFIDENCES = ("high", "harvested")
+
 GMAIL_QUERY = 'from:noreply-ecns@usps.com subject:"Payment Confirmation"'
 TOKEN_PATH = Path(os.environ.get(
     "GMAIL_TOKEN_PATH", str(Path.home() / ".config" / "google" / "token.json")))
@@ -96,6 +103,17 @@ def make_draft_fn(service):
             userId="me", body={"message": {"raw": raw}}).execute()
         return res.get("id")
     return draft_fn
+
+
+def make_send_fn(service):
+    """Send the tracking email outright (gmail.compose scope covers messages.send).
+    Only ever called for AUTO_SEND_CONFIDENCES recipients with a non-blank To:."""
+    def send_fn(to, subject, html, text):
+        raw = build_raw(subject, html, text, to=to)
+        res = service.users().messages().send(
+            userId="me", body={"raw": raw}).execute()
+        return res.get("id")
+    return send_fn
 
 
 def make_gmail_search_fn(service):
@@ -157,9 +175,15 @@ def make_persist_contact():
 # ── Core decision logic (pure of Gmail/GHL; unit-tested) ─────────────────────
 
 def handle_confirmation(html, msg_id, cx, find_contact, draft_fn,
-                        harvest_fn=None, persist_contact=None, dry_run=True):
+                        harvest_fn=None, persist_contact=None, send_fn=None,
+                        auto_send=False, dry_run=True):
     """Process one confirmation email's HTML. Returns a list of per-shipment
-    result dicts. In dry-run, no drafts/GHL writes/DB writes happen."""
+    result dicts. In dry-run, no drafts/sends/GHL writes/DB writes happen.
+
+    When auto_send is on (and a send_fn is supplied), a recipient resolved at an
+    AUTO_SEND_CONFIDENCES tier is emailed outright (status 'sent') instead of
+    drafted. Fuzzy ('medium') and unresolved ('low'/none) recipients always draft,
+    so an uncertain match is never auto-mailed."""
     parsed = parse_cns_confirmation(html)
     results = []
     for s in parsed["shipments"]:
@@ -182,27 +206,38 @@ def handle_confirmation(html, msg_id, cx, find_contact, draft_fn,
                 to = harvested["email"]
                 conf = "harvested"
 
-        status = "drafted" if to else "needs_review"
+        # Auto-send only high-confidence recipients; everything else drafts.
+        send_eligible = (auto_send and to is not None
+                         and conf in AUTO_SEND_CONFIDENCES)
+        status = ("sent" if send_eligible else
+                  "drafted" if to else "needs_review")
         email = build_tracking_email(s["tracking"], s["recipient_name"], resolved_email=to)
 
         draft_id = None
         onboarded = False
         if dry_run:
-            action = "would draft (harvested)" if conf == "harvested" else "would draft"
+            verb = "would send" if send_eligible else "would draft"
+            action = f"{verb} (harvested)" if conf == "harvested" else verb
         else:
             if harvested and conf == "harvested" and persist_contact is not None:
                 pc = persist_contact(harvested, s["recipient_name"]) or {}
                 ghl_contact_id = pc.get("contact_id") or ghl_contact_id
                 onboarded = bool(pc.get("onboarded"))
-            draft_id = draft_fn(to=to, subject=email["subject"],
-                                html=email["html"], text=email["text"])
+            if send_eligible and send_fn is not None:
+                draft_id = send_fn(to=to, subject=email["subject"],
+                                   html=email["html"], text=email["text"])
+                action = "sent"
+            else:
+                status = "drafted" if to else "needs_review"  # never sent
+                draft_id = draft_fn(to=to, subject=email["subject"],
+                                    html=email["html"], text=email["text"])
+                action = "drafted"
             record_shipment(
                 cx, tracking_number=s["tracking"], order_uuid=parsed["order_uuid"],
                 recipient_name=s["recipient_name"], address_block=s["address_block"],
                 resolved_email=to, match_confidence=conf,
                 ghl_contact_id=ghl_contact_id,
                 draft_id=draft_id, status=status, source_msg_id=msg_id)
-            action = "drafted"
 
         results.append({"tracking": s["tracking"], "recipient": s["recipient_name"],
                         "to": to or "(blank — needs review)", "confidence": conf,
@@ -217,6 +252,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--live", action="store_true",
                     help="actually create Gmail drafts + record (default: dry-run)")
+    ap.add_argument("--auto-send", action="store_true",
+                    help="email high-confidence + harvested recipients outright "
+                         "instead of drafting; fuzzy/unresolved still draft")
     ap.add_argument("--days", type=int, default=14,
                     help="how many days back to scan (default 14)")
     ap.add_argument("--max", type=int, default=25, help="max emails to scan")
@@ -231,6 +269,7 @@ def main():
 
     svc = gmail_service()
     draft_fn = make_draft_fn(svc) if not dry_run else (lambda **k: None)
+    send_fn = make_send_fn(svc) if (not dry_run and args.auto_send) else None
     harvest_fn = make_harvest_fn(make_gmail_search_fn(svc))
     persist_contact = None if dry_run else make_persist_contact()
 
@@ -240,10 +279,11 @@ def main():
     msg_ids = [m["id"] for m in listing.get("messages", [])]
 
     db = args.db or _db_path()
-    print(f"{'DRY-RUN' if dry_run else 'LIVE'} | {len(msg_ids)} confirmation "
+    mode = "DRY-RUN" if dry_run else ("LIVE+AUTO-SEND" if args.auto_send else "LIVE")
+    print(f"{mode} | {len(msg_ids)} confirmation "
           f"email(s) in last {args.days}d | db={db}\n")
 
-    totals = {"would draft": 0, "drafted": 0, "skipped (already processed)": 0}
+    totals = {}
     with sqlite3.connect(db) as cx:
         init_tracking_schema(cx)
         for mid in msg_ids:
@@ -253,6 +293,7 @@ def main():
             for r in handle_confirmation(html, mid, cx, find_contact_by_name,
                                          draft_fn, harvest_fn=harvest_fn,
                                          persist_contact=persist_contact,
+                                         send_fn=send_fn, auto_send=args.auto_send,
                                          dry_run=dry_run):
                 totals[r["action"]] = totals.get(r["action"], 0) + 1
                 line = (f"  [{r.get('confidence','-'):>6}] {r['recipient']:<22} "
