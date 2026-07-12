@@ -97,6 +97,14 @@
           <select id="scanSel" onchange="loadExisting(this.value)"></select>
         </div>
       </div>
+      <div id="scanDatesWrap" style="display:none;margin-top:.7rem">
+        <div class="slabel">Scan history: set which report the client's portal shows</div>
+        <div id="scanDatesList"></div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn ghost sm" onclick="notifyScanReady()">Notify client (new analysis ready)</button>
+        <span id="notify-scan-msg" class="muted small"></span>
+      </div>
     </div>
 
     <div class="card">
@@ -561,29 +569,104 @@ function populate(d){
 
 // ── Load / publish ──────────────────────────────────────────────────────────
 let curScanDate = "";
+let SCAN_DATES = [];
+let PORTAL_CURRENT_DATE = null;   // known only once set this session — the GET
+                                   // load path doesn't surface the persisted pointer
+let _lastLoadedEmail = "";
 async function loadExisting(scanDate){
   const email = val('email');
   if(!email){ setStatus('Enter an email first.', false); return; }
+  if(email !== _lastLoadedEmail) PORTAL_CURRENT_DATE = null;   // switched client — forget the old guess
+  _lastLoadedEmail = email;
   let url = `/api/console/biofield-portal?email=${encodeURIComponent(email)}`;
   if(scanDate) url += `&scan_date=${encodeURIComponent(scanDate)}`;
   const r = await api('GET', url);
   if(!r.ok){ setStatus('Could not load.', false); return; }
   if(!r.json.found){ setStatus('No portal yet for that email — fill the form to create one.', true);
-    $('scanWrap').style.display='none'; curScanDate=""; return; }
+    $('scanWrap').style.display='none'; curScanDate=""; SCAN_DATES=[]; renderScanDatesList(); return; }
   $('name').value = r.json.name||'';
   populate(r.json.content||{});
   const dates = r.json.scan_dates || [];
   curScanDate = r.json.scan_date || "";
+  SCAN_DATES = dates;
   const wrap = $('scanWrap'), sel = $('scanSel');
   if(dates.length){
     sel.innerHTML = dates.map(d=>`<option value="${esc(d)}"${d===curScanDate?' selected':''}>${esc(d)}</option>`).join('');
     wrap.style.display='';
   } else { wrap.style.display='none'; }
+  renderScanDatesList();
   const stat = r.json.status ? ` [${r.json.status}]` : '';
   setStatus(curScanDate
     ? `Loaded scan ${curScanDate}${stat} — edit and Publish to confirm this report.`
     : 'Loaded existing portal — edit and republish (the link stays the same).', true);
   loadInvoicePanel(email);
+}
+
+// ── Per-scan "Set as current" (points the portal at an already-confirmed
+// report, independent of auto_advance) ──────────────────────────────────────
+function renderScanDatesList(){
+  const wrap = $('scanDatesWrap'), list = $('scanDatesList');
+  if(!wrap || !list) return;
+  list.innerHTML = '';
+  if(!SCAN_DATES.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  SCAN_DATES.forEach(d=>{
+    const row = document.createElement('div');
+    row.className = 'line-sm';
+    row.style.cssText = 'display:flex;align-items:center;gap:8px';
+    const label = document.createElement('span');
+    label.style.minWidth = '110px';
+    label.textContent = d;
+    row.appendChild(label);
+    const isCurrent = d === PORTAL_CURRENT_DATE;
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost sm';
+    btn.textContent = isCurrent ? 'Current' : 'Set as current';
+    btn.disabled = isCurrent;
+    btn.onclick = () => setScanCurrent(d);
+    row.appendChild(btn);
+    if(d === curScanDate){
+      const tag = document.createElement('span');
+      tag.className = 'muted small';
+      tag.textContent = 'loaded above';
+      row.appendChild(tag);
+    }
+    if(isCurrent){
+      const tag = document.createElement('span');
+      tag.className = 'small'; tag.style.color = 'var(--green)';
+      tag.textContent = 'portal points here';
+      row.appendChild(tag);
+    }
+    list.appendChild(row);
+  });
+}
+async function setScanCurrent(scanDate){
+  const email = val('email');
+  if(!email){ setStatus('Enter an email first.', false); return; }
+  const r = await api('POST', '/api/console/portal/set-current', {email, scan_date: scanDate});
+  if(r.ok && r.json && r.json.ok){
+    PORTAL_CURRENT_DATE = scanDate;
+    renderScanDatesList();
+    setStatus(`Portal now points the client at the ${scanDate} scan.`, true);
+  } else {
+    setStatus((r.json && r.json.error) || `Set-current failed (${r.status}).`, false);
+  }
+}
+
+// ── Notify client that a new analysis is ready (confirm-to-send) ────────────
+async function notifyScanReady(){
+  const email = val('email');
+  const msg = $('notify-scan-msg');
+  if(!email){ msg.textContent = 'Enter an email first.'; return; }
+  msg.textContent = 'Sending…';
+  const r = await api('POST', '/api/console/portal/notify-scan', {email});
+  if(!r.ok){ msg.textContent = 'Error ' + r.status; return; }
+  const j = r.json || {};
+  if(j.sent){
+    msg.textContent = 'Sent. The client was emailed that their new analysis is ready.';
+  } else {
+    msg.textContent = 'Not sent (' + (j.reason || 'unknown reason') + ').';
+  }
 }
 
 async function importFmp(){
