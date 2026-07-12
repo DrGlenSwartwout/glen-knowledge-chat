@@ -5964,7 +5964,8 @@ def begin_wishlist_toggle():
         saved = _wl.toggle(cx, owner, slug)
     resp = jsonify({"saved": saved})
     if not request.cookies.get("amg_session"):
-        resp.set_cookie("amg_session", session_id, max_age=60*60*24*365, samesite="Lax")
+        resp.set_cookie("amg_session", session_id, max_age=60*60*24*365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
     return resp
 
 
