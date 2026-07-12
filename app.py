@@ -35959,8 +35959,23 @@ def api_console_client_prefs():
             email = (request.args.get("email") or "").strip().lower()
             if not email:
                 return jsonify({"ok": False, "error": "email required"}), 400
+            # Most-recent recorded payment method for this client, so the order
+            # builder can pre-select the way they last paid (falling back to the
+            # Stripe default when they have no history). Read-only; a missing
+            # orders table or column just means "no history" -> None.
+            last_pay_method = None
+            try:
+                _r = cx.execute(
+                    "SELECT pay_method FROM orders WHERE lower(email)=? "
+                    "AND pay_method IS NOT NULL AND TRIM(pay_method)!='' "
+                    "ORDER BY created_at DESC, id DESC LIMIT 1", (email,)).fetchone()
+                if _r:
+                    last_pay_method = _r[0]
+            except sqlite3.OperationalError:
+                pass
             return jsonify({"ok": True, "email": email,
-                            "pickup_default": _cpf.get_pickup_default(cx, email)})
+                            "pickup_default": _cpf.get_pickup_default(cx, email),
+                            "last_pay_method": last_pay_method})
         body = request.get_json(silent=True) or {}
         email = (body.get("email") or "").strip().lower()
         if not email:
