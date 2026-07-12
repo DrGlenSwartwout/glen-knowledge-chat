@@ -54,6 +54,7 @@
   .pay-badge.paid { color:#2f8a4f; }
   .pay-badge.unpaid { color:#b04a2f; }
   .pay-badge.claimed { color:#8a6d2f; }
+  .pay-badge.credit { color:#1F5A4D; background:#e7f3ee; }
   details.fulfill { margin-top:8px; font-size:12px; border-top:1px solid var(--border); padding-top:7px; }
   details.fulfill summary { cursor:pointer; color:var(--muted); font-size:11px; }
   .ffline { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--cream); }
@@ -171,6 +172,10 @@
     if (ps==='paid') badge += ' <span class="pay-badge paid">Paid'+(o.pay_method?' &middot; '+esc(o.pay_method):'')+'</span>';
     else if (ps==='claimed') badge += ' <span class="pay-badge claimed">payment claimed — confirm'+(o.pay_method?' ('+esc(o.pay_method)+')':'')+'</span>';
     else badge += ' <span class="pay-badge unpaid">Unpaid</span>';
+    // Shipping overpayment credit (combined-shipment recalc lowered a paid member's
+    // share below what they paid): flag it so Rae can apply it forward or refund.
+    var opc = Number(o.overpay_credit_cents||0);
+    if (opc>0) badge += ' <span class="pay-badge credit" title="Combined shipping came in lower than this paid order — apply to their next order or refund">Credit $'+(opc/100).toFixed(2)+' (overpaid shipping)</span>';
     // Collapsed default: clickable HEADER (name + pay/backorder badge ; date placed ·
     // where/how placed · amount). Click opens the BODY (products, tracking, fulfillment,
     // actions). Action buttons live in the body, so clicking them never toggles the card.
@@ -426,10 +431,14 @@
       if (!j.ok){ if(!quiet) alert('Could not recalc shipping: '+(j.error||'error')); load(); return; }
       if (!quiet){
         var lines = (j.members||[]).map(function(m){
+          if (m.skipped==='paid'){
+            var cr = Number(m.overpay_credit_cents||0);
+            return '• '+(m.name||('#'+m.order_id))+': '
+              + '$'+((m.shipping_cents||0)/100).toFixed(2)+' (paid'
+              + (cr>0 ? ') — credit $'+(cr/100).toFixed(2)+' (overpaid)' : ', unchanged)');
+          }
           return '• '+(m.name||('#'+m.order_id))+': '
-            + (m.skipped==='paid'
-                ? '$'+((m.shipping_cents||0)/100).toFixed(2)+' (paid, unchanged)'
-                : '$'+((m.new_shipping_cents||0)/100).toFixed(2));
+            + '$'+((m.new_shipping_cents||0)/100).toFixed(2);
         }).join('\n');
         alert('Combined parcel shipping $'+((j.combined_shipping_cents||0)/100).toFixed(2)+', split:\n'+lines);
       }

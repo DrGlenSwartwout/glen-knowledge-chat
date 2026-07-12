@@ -291,6 +291,46 @@ def test_billing_never_changes_across_flow():
     assert before == after
 
 
+# ── overpayment credit for already-paid members (Desiree case) ───────────────
+
+def test_paid_member_overpay_cents_normal_saving():
+    from dashboard import combined_shipments as C
+    # Paid $50 incl. $9 standalone shipping; fair combined share now $6 -> credit $3.
+    assert C.paid_member_overpay_cents(5000, 5000, 900, 600) == 300
+
+
+def test_paid_member_overpay_cents_no_saving_is_zero():
+    from dashboard import combined_shipments as C
+    # Share didn't drop (>= old shipping) -> no credit, never negative.
+    assert C.paid_member_overpay_cents(5000, 5000, 600, 600) == 0
+    assert C.paid_member_overpay_cents(5000, 5000, 600, 900) == 0
+
+
+def test_paid_member_overpay_cents_falls_back_to_total_when_paid_cents_zero():
+    from dashboard import combined_shipments as C
+    # Legacy paid row with paid_cents unset -> use billed total as the amount paid.
+    assert C.paid_member_overpay_cents(0, 5000, 900, 600) == 300
+
+
+def test_set_order_overpay_credit_is_idempotent_and_freezes_invoice():
+    O, _C, cx = _db()
+    a, _ = _two(O, cx)
+    before = O.get_order(cx, a)
+    assert O.set_order_overpay_credit(cx, a, 300) is True
+    o = O.get_order(cx, a)
+    assert o["overpay_credit_cents"] == 300
+    # paid invoice fields are frozen — credit is informational only
+    assert o["total_cents"] == before["total_cents"]
+    assert o["shipping_cents"] == before["shipping_cents"]
+    assert o["paid_cents"] == before["paid_cents"]
+    assert o["pay_status"] == before["pay_status"]
+    # REPLACE, not accumulate; 0 clears it
+    O.set_order_overpay_credit(cx, a, 300)
+    assert O.get_order(cx, a)["overpay_credit_cents"] == 300
+    O.set_order_overpay_credit(cx, a, 0)
+    assert O.get_order(cx, a)["overpay_credit_cents"] == 0
+
+
 # ── actions + flag gate ──────────────────────────────────────────────────────
 
 class _Actor:

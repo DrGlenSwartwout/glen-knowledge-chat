@@ -106,6 +106,25 @@ def split_shipping_proportional(total_cents, weights):
     return floors
 
 
+def paid_member_overpay_cents(paid_cents, total_cents, old_shipping_cents,
+                              new_share_cents):
+    """The shipping-overpayment credit owed to an ALREADY-PAID combined-shipment
+    member after recalc lowered their fair one-parcel shipping share.
+
+    The member paid `paid_cents` (fallback: their billed `total_cents`, for legacy
+    paid rows recorded before paid_cents was captured) against a bill that included
+    `old_shipping_cents`; their fair total is now
+    `total_cents - old_shipping_cents + new_share_cents`. The credit is what they
+    paid minus that fair total, never negative — combining only ever lowers a share,
+    so a member is never owed a *charge*; if combining didn't lower their share the
+    credit is 0. When paid == total (the normal case) this reduces to
+    `old_shipping_cents - new_share_cents`, exactly the shipping saving."""
+    paid = int(paid_cents or 0) or int(total_cents or 0)
+    fair_total = max(0, int(total_cents or 0)
+                     - int(old_shipping_cents or 0) + int(new_share_cents or 0))
+    return max(0, paid - fair_total)
+
+
 def _unpaid_members(cx, sid):
     """Member orders of a shipment that aren't paid/claimed yet."""
     return [m for m in _orders.orders_in_group(cx, sid)
