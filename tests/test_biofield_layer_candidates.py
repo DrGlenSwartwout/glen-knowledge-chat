@@ -65,3 +65,18 @@ def test_candidates_capped_at_n(tmp_path):
     L1 = _layer(layer_candidates(cx, "a5", _CHAIN, n=5), 1)
     assert len(L1["candidates"]) <= 5
     assert any(c.get("is_default") for c in L1["candidates"])   # default survives the cap
+
+
+def test_render_panel_html():
+    from dashboard.biofield_report_html import render_layer_candidates_panel
+    html = render_layer_candidates_panel([{
+        "n": 1, "head": "Heart", "codes": ["ED1"], "default": ["Heart Health"],
+        "candidates": [
+            {"remedy": "Heart Health", "covers": ["ED1"], "coverage": 1,
+             "source": "coverage", "used_before": False, "is_default": True},
+            {"remedy": "Cardio Plus", "covers": ["ED1"], "coverage": 1,
+             "source": "coverage", "used_before": True, "is_default": False}]}])
+    assert "Layer alternatives" in html
+    assert 'data-remedy="Cardio Plus"' in html and "layerPick(this)" in html
+    assert "used before" in html                    # learned flag surfaced
+    assert render_layer_candidates_panel([]) == ""  # nothing to show

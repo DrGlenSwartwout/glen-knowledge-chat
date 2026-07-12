@@ -27,7 +27,8 @@ from dashboard import biofield_fee, biofield_handoff, biofield_invoice
 from dashboard.biofield_report import causal_chain_report, list_tests
 from dashboard.biofield_report_html import (
     render_author_html, render_e4l_panel, render_fee_panel, render_invoice_page,
-    render_list_html, render_report_html, render_stress_panel, render_suggest_panel)
+    render_list_html, render_report_html, render_stress_panel, render_suggest_panel,
+    render_layer_candidates_panel)
 from dashboard.biofield_e4l import (
     _db_path as _e4l_db_path, fetch_live as _fetch_live,
     scan_context as _scan_context, search_clients as _search_clients)
@@ -1074,10 +1075,14 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         return [{"layer": l.get("layer"), "head": l.get("head"), "remedy": l.get("remedy")}
                 for l in (rep.get("layers") or [])]
 
-    def _suggest_payload(data):
+    def _suggest_payload(data, layer_candidates=None):
+        html = render_suggest_panel(data)
+        if layer_candidates:
+            html += render_layer_candidates_panel(layer_candidates)
         return {"ok": True, "picks": data["picks"], "uncovered": data["uncovered"],
                 "source": data["source"], "pattern_key": data["pattern_key"],
-                "has_pattern": data["has_pattern"], "html": render_suggest_panel(data)}
+                "has_pattern": data["has_pattern"], "html": html,
+                "layer_candidates": layer_candidates or []}
 
     def _append_layers(cx, test_id, rems):
         """Append each remedy as a new causal-chain layer at the bottom (existing
@@ -1148,9 +1153,41 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             chain = _chain_rows_for(rep)
             data = _st.resolve_remedy_set(cx, test_id, chain, force_computed=force)
             lc = _st.layer_candidates(cx, test_id, chain, fallback_by_code=_layer_fallback_map())
-        resp = _suggest_payload(data)
-        resp["layer_candidates"] = lc
-        return resp
+        return _suggest_payload(data, lc)
+
+    @app.route("/author/<test_id>/layer/<int:n>/select", methods=["POST"])
+    def author_layer_select(test_id, n):
+        """Swap layer <n>'s remedy to the picked candidate: update the layer's chain
+        row (canonical name + auto-filled dosing, mirroring _append_layers), or add a
+        row if the layer had none (a blank layer). Then persist the resulting CHAIN as
+        the saved remedy set so the pick feeds the learning loop, and return the
+        refreshed panel + candidates."""
+        from dashboard import biofield_stress as _st
+        from dashboard.biofield_authoring import update_chain_row, add_chain_row
+        body = request.get_json(silent=True) or {}
+        remedy = (body.get("remedy") or "").strip()
+        if not remedy:
+            return {"ok": False, "error": "remedy required"}, 400
+        tnum = int(str(test_id).lstrip("a") or 0)
+        with sqlite3.connect(db_path) as cx:
+            name = resolve_remedy_name(cx, remedy)         # 'heart health' -> 'Heart Health'
+            d = remedy_dosing(cx, name)                    # auto-fill from the FF
+            rows = cx.execute("SELECT id FROM biofield_auth_chain WHERE test_id=? AND layer=? "
+                              "ORDER BY id", (tnum, n)).fetchall()
+            if rows:
+                update_chain_row(cx, rows[0][0], remedy=name, dosage=d.get("dosage", ""),
+                                 frequency=d.get("frequency", ""), timing=d.get("timing", ""))
+            else:
+                add_chain_row(cx, test_id, n, (body.get("head") or ""), "", name,
+                              d.get("dosage", ""), d.get("frequency", ""), d.get("timing", ""),
+                              confirmed=1, origin="live")
+            rep = _report_for(cx, test_id)
+            chain = _chain_rows_for(rep)
+            chain_rems = [(r.get("remedy") or "").strip() for r in chain if (r.get("remedy") or "").strip()]
+            _st.save_remedy_set(cx, test_id, chain_rems)   # learn Glen's actual chain
+            data = _st.resolve_remedy_set(cx, test_id, chain)
+            lc = _st.layer_candidates(cx, test_id, chain, fallback_by_code=_layer_fallback_map())
+        return _suggest_payload(data, lc)
 
     @app.route("/author/<test_id>/remedy-set/suggest", methods=["POST"])
     def author_remedy_set_suggest(test_id):
