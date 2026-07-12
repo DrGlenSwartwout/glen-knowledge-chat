@@ -84,6 +84,13 @@ def init_orders_table(cx):
         "ALTER TABLE orders ADD COLUMN adjustment_cents INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE orders ADD COLUMN practitioner_id TEXT",
         "ALTER TABLE orders ADD COLUMN margin_cents INTEGER DEFAULT 0",
+        # Shipping-overpayment credit owed to an already-PAID combined-shipment
+        # member: when Recalc shipping lowers their fair one-parcel share below what
+        # they paid standalone, the saving is recorded here (informational — the
+        # paid invoice/total is left frozen). Surfaced in the console so Rae can
+        # apply it to the client's next order or refund it. 0 = none. See
+        # set_order_overpay_credit + combined_shipments.paid_member_overpay_cents.
+        "ALTER TABLE orders ADD COLUMN overpay_credit_cents INTEGER NOT NULL DEFAULT 0",
         # Read-receipts (Task 5): raw token from the invoice link most recently
         # SENT to the customer (send_invoice), so the Orders board can look up
         # whether the client has opened it (dashboard.opens.get_open). The
@@ -324,6 +331,21 @@ def set_order_shipping(cx, order_id, shipping_cents, total_cents):
     cur = cx.execute(
         "UPDATE orders SET shipping_cents=?, total_cents=?, updated_at=? WHERE id=?",
         (int(shipping_cents or 0), int(total_cents or 0), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_overpay_credit(cx, order_id, credit_cents):
+    """Record (idempotent REPLACE) the shipping-overpayment credit owed to an
+    already-paid order after a combined-shipment recalc lowered its fair one-parcel
+    shipping share below what the client paid standalone. Informational only — does
+    NOT touch shipping_cents/total_cents/paid_cents (a paid invoice stays frozen);
+    the console surfaces it so Rae can apply it to the next order or refund it.
+    Clamped >= 0; passing 0 clears a stale credit (self-heals if a later recalc
+    raises the share back). Returns True if the order existed."""
+    cur = cx.execute(
+        "UPDATE orders SET overpay_credit_cents=?, updated_at=? WHERE id=?",
+        (max(0, int(credit_cents or 0)), _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
 

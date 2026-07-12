@@ -35096,7 +35096,9 @@ def _recompute_combined_shipping(cx, sid):
     and split it across members in proportion to each member's OWN standalone
     shipping — so each pays their fair share and the combining saving is passed on
     pro-rata. Only UNPAID members are re-billed; a member already paid keeps its
-    invoice as billed. Returns a summary dict."""
+    invoice as billed, but if combining lowered their fair share below what they
+    paid, the overpayment is recorded as an order credit (overpay_credit_cents) for
+    Rae to apply forward or refund. Returns a summary dict."""
     members = _bos_orders.orders_in_group(cx, sid)
     if len(members) < 2:
         return {"ok": False, "error": "shipment has fewer than 2 members"}
@@ -35130,8 +35132,18 @@ def _recompute_combined_shipping(cx, sid):
     for m, share in zip(members, shares):
         old_ship = int(m.get("shipping_cents") or 0)
         if (m.get("pay_status") or "unpaid") == "paid":
+            # A paid invoice is frozen (never re-billed). But if combining lowered
+            # this member's fair share below what they paid standalone, record the
+            # overpayment as a credit on the order (informational — total/shipping
+            # untouched) so Rae can apply it to the next order or refund it.
+            # Idempotent: recompute + REPLACE on every recalc, never stack.
+            credit = _bos_combined_shipments.paid_member_overpay_cents(
+                m.get("paid_cents"), m.get("total_cents"), old_ship, int(share))
+            _bos_orders.set_order_overpay_credit(cx, m["id"], credit)
             updates.append({"order_id": m["id"], "name": m.get("name") or "",
-                            "skipped": "paid", "shipping_cents": old_ship})
+                            "skipped": "paid", "shipping_cents": old_ship,
+                            "fair_share_cents": int(share),
+                            "overpay_credit_cents": credit})
             continue
         new_total = max(0, int(m.get("total_cents") or 0) - old_ship + int(share))
         _bos_orders.set_order_shipping(cx, m["id"], int(share), new_total)
@@ -35145,7 +35157,9 @@ def _recompute_combined_shipping(cx, sid):
 @app.route("/api/console/shipments/<int:sid>/recalc-shipping", methods=["POST"])
 def console_shipment_recalc_shipping(sid):
     """Owner/ops: recompute + split one-parcel shipping across a combined shipment's
-    unpaid members (proportional to each member's own standalone shipping)."""
+    unpaid members (proportional to each member's own standalone shipping). A paid
+    member whose share drops below what they paid gets an overpayment credit
+    recorded on their order (not re-billed)."""
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
