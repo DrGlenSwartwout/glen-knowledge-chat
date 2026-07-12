@@ -18497,11 +18497,26 @@ def api_console_portal_notify_scan():
         if _ns.get_state(cx, email).get("opt_status") == "out":
             return jsonify({"ok": True, "sent": False, "reason": "opted out"})
         link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+        rec = _cp.get_portal_content_by_email(cx, email)
     if not link:
         return jsonify({"ok": True, "sent": False, "reason": "no portal"})
-    subject = "Your new analysis is ready"
-    body = ("Aloha,\n\nYour newest analysis is ready in your portal.\n\n"
-            f"{link}\n\nIn wellness,\nDr. Glen & Rae")
+    first = ((rec or {}).get("name") or "").strip().split()[0] if (rec or {}).get("name") else ""
+    subject = "Your new Biofield Analysis is ready"
+    greeting = f"Aloha {first}," if first else "Aloha,"
+    body = (
+        f"{greeting}\n\n"
+        "Your newest Biofield Analysis is ready in your portal. It maps the layers "
+        "your body is working through right now, along with the gentle remedy schedule "
+        "matched to where you are today.\n\n"
+        "There is nothing to prepare. When you have a quiet moment, open your portal "
+        "and read through it at your own pace. If anything raises a question, we are here.\n\n"
+        "Open your portal:\n"
+        f"{link}\n\n"
+        "In wellness,\n"
+        "Dr. Glen & Rae\n\n"
+        "Remedy Match LLC\n"
+        "PO Box 126, Hilo, HI 96721"
+    )
     _inbox.send_bulk(email, subject, body, from_name="Dr. Glen & Rae")
     return jsonify({"ok": True, "sent": True})
 

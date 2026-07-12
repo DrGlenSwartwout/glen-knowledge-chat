@@ -49,20 +49,41 @@ def test_flag_off_does_not_send(client, monkeypatch):
 
 def test_flag_on_sends_via_bulk(client, monkeypatch):
     c, appmod, sent = client
-    _seed(appmod)
+    from dashboard import client_portal as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        cp.upsert_portal(cx, "a@x.com", "Karin Takahashi", {})
     monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
     r = c.post("/api/console/portal/notify-scan", json={"email": "a@x.com"}, headers=_auth())
     assert r.status_code == 200
     body = r.get_json()
     assert body["sent"] is True
     assert sent.get("to") == "a@x.com"
+    assert sent.get("subject") == "Your new Biofield Analysis is ready"
     # copy rules: no em dashes, no ALL CAPS words, signed correctly
     assert "—" not in sent["body"]
     assert "In wellness,\nDr. Glen & Rae" in sent["body"]
+    # personalized greeting using the client's first name
+    assert sent["body"].startswith("Aloha Karin,")
+    assert "Biofield Analysis" in sent["body"]
     # portal_link_for returns (link, reissued) — the body must embed the URL
     # string, never the raw tuple.
     assert "(" not in sent["body"]
     assert "/portal/" in sent["body"]
+
+
+def test_flag_on_sends_generic_greeting_when_no_name(client, monkeypatch):
+    c, appmod, sent = client
+    from dashboard import client_portal as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.init_client_portal_table(cx)
+        cp.upsert_portal(cx, "a@x.com", "", {})
+    monkeypatch.setenv("PORTAL_SCAN_NOTIFY_ENABLED", "1")
+    r = c.post("/api/console/portal/notify-scan", json={"email": "a@x.com"}, headers=_auth())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] is True
+    assert sent["body"].startswith("Aloha,")
 
 
 def test_opted_out_does_not_send(client, monkeypatch):
