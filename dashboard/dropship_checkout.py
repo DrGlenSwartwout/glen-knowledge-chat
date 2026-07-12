@@ -171,7 +171,8 @@ def practitioner_price_for(pid: str, slug: str) -> int:
 def build_client_order(cart: List[dict], practitioner: dict, *,
                        patient: dict, method=None,
                        points_to_redeem_cents=0, points_balance_cents=0,
-                       effective_settings=None, program_member=False) -> dict:
+                       effective_settings=None, program_member=False,
+                       ship_credit_balance_cents=0) -> dict:
     """Price + invoice a patient-paid (dispensary) cart at the practitioner's price S.
 
     The patient is the QBO customer and pays S per bottle.  The practitioner's
@@ -273,8 +274,16 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
                               int(points_balance_cents or 0),
                               total_fee_cents))
 
+    # Shipping credit (slice 2b, flag-gated by the caller which passes a 0 balance
+    # when off): auto-apply the patient's outstanding ship_credit balance, bounded by
+    # the payable after points (subtotal − points; GET is recorded, not charged).
+    # Folded into the invoice discount so the charge drops; debited at payment settle.
+    from dashboard import ship_credit as _sc
+    ship_credit_applied = _sc.plan_application(
+        int(ship_credit_balance_cents or 0), max(0, subtotal_cents - redeem_cents))
+
     inv = qb.create_invoice(cust, lines, email_to=patient["email"],
-                            discount_cents=redeem_cents)
+                            discount_cents=redeem_cents + ship_credit_applied)
     invoice_id = inv.get("Id")
 
     return {
@@ -287,5 +296,6 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
         "subtotal_cents": subtotal_cents,
         "margin_cents": total_margin_cents,
         "points_redeemed_cents": redeem_cents,
+        "ship_credit_applied_cents": ship_credit_applied,
         "get_cents": get_cents,
     }

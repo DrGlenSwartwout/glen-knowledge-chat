@@ -76,3 +76,18 @@ def credit(cx, email: str, *, value_cents: int, reason: str, order_ref: str, sco
     """Idempotent direct credit — bypasses earn_pct calculation. Safe to call repeatedly."""
     if not has_entry(cx, order_ref=order_ref, reason=reason, scope=scope):
         _add(cx, email, value_cents, reason, order_ref, scope=scope)
+
+
+def spend(cx, email, *, value_cents, reason, order_ref, scope="rm"):
+    """Idempotent guarded debit (the mirror of credit): no-op if a row with this
+    (order_ref, reason, scope) already exists; else redeems value_cents CLAMPED to the
+    current balance under a distinct reason. Unlike redeem() this never raises on an
+    over-request (it spends what's there) and it carries a caller-chosen reason so the
+    (order_ref, reason) pair is the idempotency key. Returns cents actually spent."""
+    if has_entry(cx, order_ref=order_ref, reason=reason, scope=scope):
+        return 0
+    amt = min(int(value_cents), balance(cx, email, scope=scope))
+    if amt <= 0:
+        return 0
+    _add(cx, email, -amt, reason, order_ref, scope=scope)
+    return amt
