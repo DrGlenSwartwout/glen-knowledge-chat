@@ -35,6 +35,14 @@ CREATE TABLE IF NOT EXISTS family_subscriptions (
     fail_count INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_familysub_due ON family_subscriptions(status, next_charge_at);
+CREATE TABLE IF NOT EXISTS family_sub_charges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    caregiver_email TEXT,
+    amount_cents INTEGER,
+    pi_id TEXT,
+    status TEXT,
+    charged_at TEXT
+);
 """
 
 
@@ -109,3 +117,33 @@ def covers(cx, email):
         if cg["share_consent"] and is_active(cx, cg["primary_email"]):
             return True
     return False
+
+
+def due(cx, today):
+    """Active, billable subs whose next_charge_at has arrived. Comped plans
+    (source='comp', next_charge_at NULL) are never billable and are excluded."""
+    rows = cx.execute(
+        "SELECT * FROM family_subscriptions WHERE status='active' "
+        "AND next_charge_at IS NOT NULL AND next_charge_at <= ? "
+        "AND (source IS NULL OR source != 'comp') ORDER BY next_charge_at",
+        (today,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_charged(cx, caregiver_email, next_charge_at):
+    cx.execute("UPDATE family_subscriptions SET next_charge_at=?, last_charged_at=?, "
+               "fail_count=0, status='active' WHERE caregiver_email=?",
+               (next_charge_at, _now(), _lc(caregiver_email)))
+    cx.commit()
+
+
+def mark_failed(cx, caregiver_email):
+    cx.execute("UPDATE family_subscriptions SET fail_count=fail_count+1, status='past_due' "
+               "WHERE caregiver_email=?", (_lc(caregiver_email),))
+    cx.commit()
+
+
+def record_charge(cx, *, caregiver_email, amount_cents, pi_id, status):
+    cx.execute("INSERT INTO family_sub_charges (caregiver_email,amount_cents,pi_id,status,charged_at) "
+               "VALUES (?,?,?,?,?)", (_lc(caregiver_email), amount_cents, pi_id, status, _now()))
+    cx.commit()
