@@ -25,21 +25,38 @@ GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
 ]
 
+# Token-path resolution: env var override → Render persistent disk →
+# local home-dir convention. First file that exists wins. Mirrors
+# dashboard/inbox.py:_resolve_token_path() so both the send path and the
+# reply-watcher cron find the same token on Render.
+_TOKEN_PATH_CANDIDATES = [
+    "/data/google-token.json",       # Render persistent disk
+    str(DEFAULT_TOKEN_PATH),         # local dev
+]
+
+
+def _resolve_token_path() -> Path:
+    """Return the first existing token path among env override + known locations."""
+    env_override = os.environ.get("GMAIL_TOKEN_PATH")
+    candidates = ([env_override] if env_override else []) + _TOKEN_PATH_CANDIDATES
+    for c in candidates:
+        if c and Path(c).exists():
+            return Path(c)
+    raise RuntimeError(
+        f"No Gmail token at any of: {[c for c in candidates if c]}. "
+        f"Run '~/AI-Training/02 Skills/google-auth.py' first."
+    )
+
 
 def _get_gmail_service():
     """Build a Gmail API service client using the OAuth token written by
-    `~/AI-Training/02 Skills/google-auth.py`. Token path can be overridden
-    via the GMAIL_TOKEN_PATH env var (useful for Render where it lands at
-    /data/google-token.json)."""
+    `~/AI-Training/02 Skills/google-auth.py`. Token path resolution checks
+    GMAIL_TOKEN_PATH env override, then /data/google-token.json (Render
+    persistent disk), then the local ~/.config/google/token.json default."""
     from googleapiclient.discovery import build
     from google.oauth2.credentials import Credentials
 
-    token_path = Path(os.environ.get("GMAIL_TOKEN_PATH", str(DEFAULT_TOKEN_PATH)))
-    if not token_path.exists():
-        raise RuntimeError(
-            f"No Gmail token at {token_path}. "
-            f"Run '~/AI-Training/02 Skills/google-auth.py' first."
-        )
+    token_path = _resolve_token_path()
     creds = Credentials.from_authorized_user_file(
         str(token_path), scopes=GMAIL_SCOPES
     )
