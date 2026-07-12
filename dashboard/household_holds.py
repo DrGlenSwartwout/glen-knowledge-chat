@@ -340,7 +340,8 @@ def _release_exec(params, ctx):
     return {"group_id": gid, "order_ids": ids,
             "shipment_id": (made["id"] if made else None),
             "message": (f"Hold #{gid} released; combined shipment "
-                        f"#{made['id']} created." if made
+                        f"#{made['id']} created — run Recalc shipping to apply "
+                        "combined rates." if made
                         else f"Hold #{gid} released ({len(ids)} order).")}
 
 
@@ -350,5 +351,6 @@ action(key="holds.extend", module="orders", title="Extend household hold",
 
 action(key="holds.release", module="orders", title="Release household hold now",
        description="Close a household hold and send its orders to fulfillment "
-                   "(combining 2+ into one shipment).",
+                   "(combining 2+ into one shipment). If a shipment is created, "
+                   "run Recalc shipping on it afterward to apply combined rates.",
        risk_tier=LOW_WRITE, permission=(OWNER, OPS), reversible=False)(_release_exec)

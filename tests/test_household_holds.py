@@ -164,6 +164,21 @@ def test_maybe_hold_skips_already_paid_order(monkeypatch):
     assert res is not None and res["opened"] is True
 
 
+def test_release_exec_nudges_operator_to_recalc_shipping():
+    from dashboard import combined_shipments as CS
+    cx = _cx()
+    CS.init_combined_shipments_table(cx)
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    o1 = _order(cx, "cg@x.com")
+    o2 = _order(cx, "kid@x.com")
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
+    H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com", household_key="cg@x.com")
+    res = H._release_exec({"group_id": g}, {"cx": cx})
+    assert res["shipment_id"] is not None
+    assert "recalc shipping" in res["message"].lower()
+
+
 def test_holds_actions_registered():
     from dashboard import actions as A
     import dashboard.household_holds  # noqa: F401 (import self-registers)
