@@ -2684,6 +2684,17 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
             if cur.rowcount != 1:
                 return invalid_html, 400
             cx.commit()
+            # Wishlist Task 4: this magic-link sign-in (reorder / cert / biofield)
+            # just tied the browsing session to a real email — merge the anonymous
+            # session's wishlist into it so the list follows the visitor home.
+            # Flag-gated + best-effort: a merge failure must never break sign-in.
+            if _WISHLIST_ENABLED:
+                try:
+                    from dashboard import wishlist as _wl
+                    _wl.init_wishlist_table(cx)
+                    _wl.merge_wishlist(cx, request.cookies.get("amg_session", ""), email)
+                except Exception as _e:
+                    print(f"[wishlist] merge skipped: {_e}", flush=True)
 
     if request.method == "GET":
         return _confirm_post_page(request.path, title=title, heading=heading,
@@ -8214,6 +8225,20 @@ def _fulfill_prepay_term(session_id):
             return {"ok": False, "reason": "unpaid"}
         claimed = False
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            # Wishlist Task 4: payment just verified succeeded, so this is a real
+            # purchaser email — merge the anonymous session's wishlist into it so
+            # the list follows the visitor home. Called from both the /prepay/return
+            # redirect (browser request, amg_session cookie present) and the Stripe
+            # webhook (no browser cookies, so session_id is empty and this is a
+            # harmless no-op there). Flag-gated + best-effort: a merge failure must
+            # never break fulfillment.
+            if _WISHLIST_ENABLED:
+                try:
+                    from dashboard import wishlist as _wl
+                    _wl.init_wishlist_table(cx)
+                    _wl.merge_wishlist(cx, request.cookies.get("amg_session", ""), email)
+                except Exception as _e:
+                    print(f"[wishlist] merge skipped: {_e}", flush=True)
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS prepay_term_grants "
                 "(session_id TEXT PRIMARY KEY, email TEXT, tier_key TEXT, granted_at TEXT)")
@@ -16502,6 +16527,20 @@ def api_client_portal(token):
     from dashboard import portal_biofield_reports as _pbr
     import datetime as _dt
     email_for_reports = (portal.get("email") or "").strip().lower()
+    # Wishlist Task 4: session becomes tied to an email the moment the portal loads
+    # for a known account — merge the anonymous session's wishlist into it so the
+    # list follows the visitor home. Uses the PRIMARY portal email (pre household
+    # re-point below), since the browsing session belongs to the account holder,
+    # not whichever household member they may be viewing. Flag-gated + best-effort:
+    # a merge failure must never break the portal load.
+    if _WISHLIST_ENABLED and email_for_reports:
+        try:
+            from dashboard import wishlist as _wl
+            with sqlite3.connect(LOG_DB) as _cxw:
+                _wl.init_wishlist_table(_cxw)
+                _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
+        except Exception as _e:
+            print(f"[wishlist] merge skipped: {_e}", flush=True)
     # Task 3: household/family portal-view switcher. Flag-gated + best-effort — a
     # household lookup failure must never break the portal load. An absent or
     # unauthorized ?member= silently falls back to serving the primary's own view
