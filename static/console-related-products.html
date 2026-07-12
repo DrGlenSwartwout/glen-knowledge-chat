@@ -263,12 +263,15 @@
     if (r.status !== 200) {
       statusEl.className = 'status err'; statusEl.textContent = j.error || 'Load failed.'; return;
     }
+    // The GET is ok()-wrapped: {ok:true, data:{manual, harvested}}. Unwrap `data`
+    // (fall back to the bare object for safety).
+    var payload = j.data || j;
     // Normalize stored manual picks (bare slug strings, back-compat, or {slug,reason}).
-    MANUAL = (j.manual || []).map(function(m){
+    MANUAL = (payload.manual || []).map(function(m){
       return (typeof m === 'string') ? { slug: m, reason: '' }
                                      : { slug: (m.slug || ''), reason: (m.reason || '') };
     }).filter(function(m){ return m.slug; });
-    HARVESTED = j.harvested || [];
+    HARVESTED = payload.harvested || [];
     statusEl.className = 'status ok'; statusEl.textContent = 'Loaded.';
     document.getElementById('slug-label').textContent = slug;
     document.getElementById('editor').style.display = 'block';
