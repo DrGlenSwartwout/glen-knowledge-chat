@@ -6,6 +6,7 @@ combined-shipment layer and never touches labels/tracking/delivery.
 import hashlib
 import os
 import secrets
+import sqlite3
 from datetime import datetime, timezone, timedelta
 
 from dashboard import orders as _orders
@@ -59,6 +60,13 @@ def init_hold_tables(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_hold_status ON household_holds(status)")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_hold_cg ON household_holds(caregiver_email, status)")
+    # Partial unique index: at most ONE open hold group per (caregiver, household)
+    # at a time. Closes the read-then-INSERT race in open_or_join_hold, where two
+    # near-simultaneous same-household orders could both find no open group and
+    # each INSERT their own -- splitting the household across two groups.
+    cx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_hold_open_per_household "
+        "ON household_holds(caregiver_email, household_key) WHERE status='open'")
     cx.commit()
 
 
@@ -132,10 +140,25 @@ def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days
         cx.commit()
         return {"group_id": existing["id"], "opened": False, "joined": True}
     hold_until = _iso(now + timedelta(days=int(hold_days)))
-    cur = cx.execute(
-        "INSERT INTO household_holds (caregiver_email, household_key, status, "
-        "opened_at, hold_until, updated_at) VALUES (?,?,'open',?,?,?)",
-        (_lc(caregiver_email), _lc(household_key), _iso(now), hold_until, _iso(now)))
+    try:
+        cur = cx.execute(
+            "INSERT INTO household_holds (caregiver_email, household_key, status, "
+            "opened_at, hold_until, updated_at) VALUES (?,?,'open',?,?,?)",
+            (_lc(caregiver_email), _lc(household_key), _iso(now), hold_until, _iso(now)))
+    except sqlite3.IntegrityError:
+        # Lost the race: a concurrent same-household order already opened a group
+        # between our read above and this INSERT (ux_hold_open_per_household
+        # rejected the duplicate open row). Re-query and join that group instead
+        # of raising -- the household must never be split across two groups.
+        cx.rollback()
+        winner = _open_group_for(cx, caregiver_email, household_key)
+        if winner is None:
+            raise
+        _orders.set_order_hold_group(cx, order_id, winner["id"])
+        cx.execute("UPDATE household_holds SET updated_at=? WHERE id=?",
+                   (_iso(now), winner["id"]))
+        cx.commit()
+        return {"group_id": winner["id"], "opened": False, "joined": True}
     gid = int(cur.lastrowid)
     _orders.set_order_hold_group(cx, order_id, gid)
     cx.commit()

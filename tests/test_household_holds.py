@@ -179,6 +179,58 @@ def test_release_exec_nudges_operator_to_recalc_shipping():
     assert "recalc shipping" in res["message"].lower()
 
 
+def test_partial_unique_index_on_open_hold_per_household():
+    cx = _cx()
+    idx = cx.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' "
+        "AND name='ux_hold_open_per_household'").fetchone()
+    assert idx is not None
+    assert "UNIQUE" in idx["sql"].upper()
+
+
+def test_second_open_group_same_household_violates_unique_index():
+    cx = _cx()
+    cx.execute(
+        "INSERT INTO household_holds (caregiver_email, household_key, status, "
+        "opened_at, hold_until) VALUES ('cg@x.com','cg@x.com','open','2026-01-01','2026-01-05')")
+    cx.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        cx.execute(
+            "INSERT INTO household_holds (caregiver_email, household_key, status, "
+            "opened_at, hold_until) VALUES ('cg@x.com','cg@x.com','open','2026-01-01','2026-01-05')")
+
+
+def test_open_or_join_race_falls_back_to_join_on_integrity_error(monkeypatch):
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    o1 = _order(cx, "cg@x.com")
+    o2 = _order(cx, "kid@x.com")
+
+    orig = H._open_group_for
+    calls = {"n": 0}
+
+    def flaky(cx_, caregiver_email, household_key):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None  # simulate the race: no open group visible yet
+        return orig(cx_, caregiver_email, household_key)
+
+    monkeypatch.setattr(H, "_open_group_for", flaky)
+
+    r1 = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")
+    assert r1["opened"] is True
+
+    calls["n"] = 0  # o2's check-before-insert also misses the (now-committed) o1 group
+    r2 = H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com", household_key="cg@x.com")
+    assert r2["opened"] is False and r2["joined"] is True
+    assert r2["group_id"] == r1["group_id"]
+
+    rows = cx.execute("SELECT COUNT(*) c FROM household_holds WHERE status='open'").fetchone()
+    assert rows["c"] == 1
+    assert O.get_order(cx, o2)["hold_group_id"] == r1["group_id"]
+
+
 def test_holds_actions_registered():
     from dashboard import actions as A
     import dashboard.household_holds  # noqa: F401 (import self-registers)
