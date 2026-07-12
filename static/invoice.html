@@ -293,6 +293,7 @@ function buildInvoicePrintHtml(o){
   tot += r('Shipping', o.shipping_cents);
   if(o.get_cents) tot += r('Hawai‘i GET (absorbed)', o.get_cents);
   if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
+  if(o.ship_credit_applied_cents) tot += r('Shipping credit', o.ship_credit_applied_cents, true);
   tot += `<div class="r grand"><span>Total</span><span>${money(o.total_cents)}</span></div>`;
   const savings = totalSavings(lines);
   if(savings>0) tot += r('You save', savings, false, 'save');
@@ -352,6 +353,7 @@ function renderTotals() {
     + (t.adjustment_cents?('<div class="row"><span>Adjustment</span><span>'+(t.adjustment_cents<0?'−':'+')+money(Math.abs(t.adjustment_cents))+'</span></div>'):'')
     + row('Shipping', t.shipping_cents) + (t.get_cents?row('Hawai‘i GET (absorbed)', t.get_cents):'')
     + pointsRow
+    + (t.ship_credit_applied_cents?row('Shipping credit','-'+money(t.ship_credit_applied_cents),true):'')
     + '<div class="row grand"><span>Total</span><span>'+money(t.total_cents)+'</span></div>'
     + (totalSavings(ORDER.lines)>0 ? '<div class="row save"><span>You save</span><span>'+money(totalSavings(ORDER.lines))+'</span></div>' : '')
     // Upgrade hook (on-screen only — deliberately NOT in the print/PDF #print-root,
