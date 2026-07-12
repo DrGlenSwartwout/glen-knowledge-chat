@@ -1249,6 +1249,62 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             return {"catalog": remedy_catalog(cx, request.args.get("q", ""),
                                               _safe_int(request.args.get("limit"), 20))}
 
+    # --- Formulation-map curation (code -> ranked remedies, in e4l.db) -------------
+    @app.route("/formulation-map")
+    def formulation_map_page():
+        from dashboard import formulation_map as _fm
+        from dashboard.formulation_map_html import render_formulation_map_page
+        from dashboard.biofield_report_html import _workflow_nav
+        with sqlite3.connect(e4l_db) as cx:
+            _fm.init_tables(cx)
+            cx.row_factory = sqlite3.Row
+            items = cx.execute("SELECT code, name FROM e4l_items WHERE code IS NOT NULL "
+                               "ORDER BY category, sort_order").fetchall()
+            codes = [(r["code"], r["name"], _fm.mappings_for(cx, r["code"])) for r in items]
+        try:
+            with sqlite3.connect(db_path) as cxp:
+                names = remedy_catalog(cxp, "", 600)
+        except Exception:
+            names = []
+        opts = "".join(f"<option value=\"{(n or '').replace(chr(34), '&quot;')}\">" for n in names)
+        datalist = f"<datalist id=fmcatalog>{opts}</datalist>"
+        return render_formulation_map_page(codes, nav=_workflow_nav("map"),
+                                           catalog_datalist=datalist)
+
+    @app.route("/api/formulation-map/propose")
+    def formulation_map_propose_route():
+        from dashboard import formulation_map as _fm, formulation_map_propose as _fp
+        code = request.args.get("code", "")
+        with sqlite3.connect(e4l_db) as cx:
+            _fm.init_tables(cx)
+            have = [m["name"] for m in _fm.mappings_for(cx, code)]
+        return {"ok": True, "proposals": _fp.propose_for_code(code, exclude=have)}
+
+    @app.route("/api/formulation-map/add", methods=["POST"])
+    def formulation_map_add():
+        from dashboard import formulation_map as _fm
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(e4l_db) as cx:
+            _fm.init_tables(cx)
+            return {"ok": True, "mappings": _fm.add_mapping(cx, b.get("code"), b.get("remedy"))}
+
+    @app.route("/api/formulation-map/remove", methods=["POST"])
+    def formulation_map_remove():
+        from dashboard import formulation_map as _fm
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(e4l_db) as cx:
+            _fm.init_tables(cx)
+            return {"ok": True, "mappings": _fm.remove_mapping(cx, b.get("code"),
+                                                               b.get("formulation_id"))}
+
+    @app.route("/api/formulation-map/reorder", methods=["POST"])
+    def formulation_map_reorder():
+        from dashboard import formulation_map as _fm
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(e4l_db) as cx:
+            _fm.init_tables(cx)
+            return {"ok": True, "mappings": _fm.reorder(cx, b.get("code"), b.get("order") or [])}
+
     @app.route("/api/dosing")
     def api_dosing():
         with sqlite3.connect(db_path) as cx:
