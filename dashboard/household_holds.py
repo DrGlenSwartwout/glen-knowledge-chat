@@ -147,6 +147,20 @@ def release_hold(cx, group_id, *, by):
     return {"group_id": group_id, "order_ids": order_ids, "status": "released"}
 
 
+def extend_hold(cx, group_id, days, *, now=None):
+    """Push a hold group's deadline out by `days` from its CURRENT hold_until
+    (not from now). Raises ValueError if the group isn't open."""
+    hold = get_hold(cx, group_id)
+    if hold is None or hold["status"] != "open":
+        raise ValueError(f"hold #{group_id} is not open")
+    base = datetime.fromisoformat(hold["hold_until"])
+    new_until = _iso(base + timedelta(days=int(days)))
+    cx.execute("UPDATE household_holds SET hold_until=?, updated_at=? WHERE id=?",
+               (new_until, _iso(now or _now()), group_id))
+    cx.commit()
+    return get_hold(cx, group_id)
+
+
 def due_holds(cx, now=None):
     now = now or _now()
     rows = cx.execute(

@@ -81,3 +81,14 @@ def test_due_holds_only_past_deadline_open():
     after = datetime(2026, 7, 16, 10, 0, tzinfo=timezone.utc)
     assert H.due_holds(cx, now=before) == []
     assert [d["id"] for d in H.due_holds(cx, now=after)] == [g]
+
+
+def test_extend_pushes_deadline_from_current():
+    from datetime import datetime, timezone
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    t0 = datetime(2026, 7, 12, 9, 0, tzinfo=timezone.utc)
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com", hold_days=4, now=t0)["group_id"]
+    H.extend_hold(cx, g, 3)  # 2026-07-16 -> 2026-07-19
+    assert H.get_hold(cx, g)["hold_until"].startswith("2026-07-19")
