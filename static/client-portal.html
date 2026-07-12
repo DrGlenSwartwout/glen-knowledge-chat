@@ -1828,6 +1828,12 @@ function render(d, v){
     const card = document.getElementById("wishlistCard");
     const btn = document.getElementById("wishOrderBtn");
     if(!card || !btn) return;
+    // While an order is in flight the button is intentionally latched (disabled,
+    // "Setting up your order…"). A checkbox change must NOT re-enable it, or a
+    // second click would fire a second /checkout — and the endpoint materializes
+    // the invoice + ingests the order at POST time, so that double-charges. Leave
+    // the latched state untouched until orderWishlist clears busy.
+    if(btn.dataset.busy === "1") return;
     const n = card.querySelectorAll(".wishSel:checked").length;
     btn.disabled = n === 0;
     btn.textContent = n ? `Order selected (${n})` : "Order selected";
@@ -3567,6 +3573,7 @@ async function orderWishlist(btn){
     if(slug) items.push({slug, qty});
   });
   if(!items.length) return;
+  btn.dataset.busy = "1";  // latch against refreshWishOrder re-enabling mid-flight
   btn.disabled = true;
   const label = btn.textContent; btn.textContent = "Setting up your order…";
   try{
@@ -3580,6 +3587,7 @@ async function orderWishlist(btn){
     throw new Error(cj.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
   }catch(e){
     if(err){ err.textContent = e.message || "Something went wrong. Please reach out and we’ll help."; err.hidden = false; }
+    btn.dataset.busy = "";  // clear latch so the button recovers after a failed order
     btn.disabled = false; btn.textContent = label;
   }
 }
