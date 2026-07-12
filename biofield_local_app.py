@@ -1266,7 +1266,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 names = remedy_catalog(cxp, "", 600)
         except Exception:
             names = []
-        opts = "".join(f"<option value=\"{(n or '').replace(chr(34), '&quot;')}\">" for n in names)
+        def _nm(n):
+            return (n.get("name") if isinstance(n, dict) else n) or ""
+        opts = "".join(f"<option value=\"{_nm(n).replace(chr(34), '&quot;')}\">" for n in names)
         datalist = f"<datalist id=fmcatalog>{opts}</datalist>"
         return render_formulation_map_page(codes, nav=_workflow_nav("map"),
                                            catalog_datalist=datalist)
