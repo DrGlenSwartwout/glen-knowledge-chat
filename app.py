@@ -2690,9 +2690,16 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
             # Flag-gated + best-effort: a merge failure must never break sign-in.
             if _WISHLIST_ENABLED:
                 try:
+                    import sqlite3 as _wsq
                     from dashboard import wishlist as _wl
-                    _wl.init_wishlist_table(cx)
-                    _wl.merge_wishlist(cx, request.cookies.get("amg_session", ""), email)
+                    # Already inside the enclosing `with _db_lock, ...` block above,
+                    # so _db_lock is held here — do NOT re-acquire it (threading.Lock
+                    # is not reentrant; nesting would deadlock). Use a dedicated
+                    # connection so merge_wishlist's internal commit() never touches
+                    # this handler's shared `cx`.
+                    with _wsq.connect(LOG_DB) as _cxw:
+                        _wl.init_wishlist_table(_cxw)
+                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
                     print(f"[wishlist] merge skipped: {_e}", flush=True)
 
@@ -8234,9 +8241,16 @@ def _fulfill_prepay_term(session_id):
             # never break fulfillment.
             if _WISHLIST_ENABLED:
                 try:
+                    import sqlite3 as _wsq
                     from dashboard import wishlist as _wl
-                    _wl.init_wishlist_table(cx)
-                    _wl.merge_wishlist(cx, request.cookies.get("amg_session", ""), email)
+                    # Already inside the enclosing `with _db_lock, ...` block above,
+                    # so _db_lock is held here — do NOT re-acquire it (threading.Lock
+                    # is not reentrant; nesting would deadlock). Use a dedicated
+                    # connection so merge_wishlist's internal commit() never touches
+                    # this handler's shared `cx`.
+                    with _wsq.connect(LOG_DB) as _cxw:
+                        _wl.init_wishlist_table(_cxw)
+                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
                     print(f"[wishlist] merge skipped: {_e}", flush=True)
             cx.execute(
@@ -16535,8 +16549,9 @@ def api_client_portal(token):
     # a merge failure must never break the portal load.
     if _WISHLIST_ENABLED and email_for_reports:
         try:
+            import sqlite3 as _wsq
             from dashboard import wishlist as _wl
-            with sqlite3.connect(LOG_DB) as _cxw:
+            with _db_lock, _wsq.connect(LOG_DB) as _cxw:
                 _wl.init_wishlist_table(_cxw)
                 _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
         except Exception as _e:
