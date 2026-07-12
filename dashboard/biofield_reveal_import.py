@@ -77,7 +77,8 @@ def synthesize_reveal_layers(email, scan_id=None, *, e4l_db=DEFAULT_E4L_DB,
                        "summary": (L.get("summary") or "").strip(),
                        "most_affected": ", ".join(L.get("pattern_labels") or []),
                        "remedy_name": name,
-                       "codes": list(L.get("patterns") or [])})
+                       "codes": list(L.get("patterns") or []),
+                       "alternatives": L.get("alternatives") or []})
     return {"found": True, "scan_id": scan["scan_id"], "scan_date": scan["scan_date"],
             "days_ago": days, "fresh": days is not None and days < 7, "layers": layers}
 

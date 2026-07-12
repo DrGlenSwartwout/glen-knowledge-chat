@@ -203,6 +203,10 @@ def _workflow_nav(active, client_email=""):
         f"href=\"{_e(base + '/console/' + page + key_qs)}\">{label}</a>"
         for tid, label, page in _WF_TABS
     )
+    # The formulation-map curator is a LOCAL :8011 page (not a prod console page), so it
+    # links relatively — reachable from both this strip and the Reveals area.
+    tabs += (f"<a class=\"{'active' if active == 'map' else ''}\" "
+             f"href=\"/formulation-map{key_qs}\">Map</a>")
     strip = f"<nav class=wfnav>{tabs}</nav>"
     client_email = (client_email or "").strip()
     if not client_email:

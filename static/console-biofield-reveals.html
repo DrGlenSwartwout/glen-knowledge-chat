@@ -56,6 +56,11 @@
   .remedy-dd-item:last-child{ border-bottom:0; }
   .remedy-dd-item:hover,.remedy-dd-item.active{ background:rgba(255,255,255,.07); }
   .remedy-dd-item .mslug{ color:var(--muted); font-size:11px; }
+  .remedy-alts{ margin:6px 0; display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+  .remedy-alts .alt-lbl{ font-size:11px; color:var(--muted); }
+  .alt-chip{ font-size:11px; padding:3px 8px; border:1px solid var(--line); border-radius:6px;
+             background:#12151b; color:#cfd6df; cursor:pointer; }
+  .alt-chip:hover{ border-color:#d4a843; }
   .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
   .btn{ background:var(--accent); color:#fff; border:0; border-radius:8px;
         padding:8px 14px; font:inherit; cursor:pointer; }
@@ -468,6 +473,7 @@ function buildCard(d){
       // Stash the originals so Save (collectLayers) preserves them.
       row.dataset.patterns = JSON.stringify(L.patterns || []);
       row.dataset.patternLabels = JSON.stringify(L.pattern_labels || []);
+      row.dataset.alternatives = JSON.stringify(L.alternatives || []);
 
       var rem = L.remedy || {};
 
@@ -500,6 +506,33 @@ function buildCard(d){
       meaningArea.value = rem.meaning || '';
       row.appendChild(meaningArea);
       attachRemedySearch(nameInput, slugInput, meaningArea);
+
+      // Ranked alternatives (precomputed at synthesis from the curated formulation
+      // map). Click one to swap the layer's remedy -- name + slug set here, meaning
+      // regenerated server-side on Save (same contract as the type-ahead swap).
+      var alts = Array.isArray(L.alternatives) ? L.alternatives : [];
+      if (alts.length) {
+        var altWrap = document.createElement('div');
+        altWrap.className = 'remedy-alts';
+        var altLbl = document.createElement('span');
+        altLbl.className = 'alt-lbl';
+        altLbl.textContent = 'Alternatives: ';
+        altWrap.appendChild(altLbl);
+        alts.forEach(function(a){
+          if (!a || !a.name) return;
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'alt-chip';
+          b.textContent = a.name + (a.score ? ' (' + a.score + ')' : '');
+          b.onclick = function(){
+            nameInput.value = a.name;
+            slugInput.value = a.slug || '';
+            meaningArea.value = 'A description for ' + a.name + ' will be generated when you save.';
+          };
+          altWrap.appendChild(b);
+        });
+        row.insertBefore(altWrap, slugLabel);
+      }
 
       var rememberLabel = document.createElement('label');
       var rememberCheck = document.createElement('input');
@@ -681,14 +714,17 @@ function collectLayers(card){
     var rememberEl = row.querySelector('.remedy-remember');
     var patterns = [];
     var patternLabels = [];
+    var alternatives = [];
     try { patterns = JSON.parse(row.dataset.patterns || '[]'); } catch (e) {}
     try { patternLabels = JSON.parse(row.dataset.patternLabels || '[]'); } catch (e) {}
+    try { alternatives = JSON.parse(row.dataset.alternatives || '[]'); } catch (e) {}
     out.push({
       n: idx + 1,
       title: titleEl ? titleEl.value : '',
       summary: summaryEl ? summaryEl.value : '',
       patterns: patterns,
       pattern_labels: patternLabels,
+      alternatives: alternatives,
       remedy: {
         name: nameEl ? nameEl.value : '',
         slug: slugEl ? slugEl.value : '',
