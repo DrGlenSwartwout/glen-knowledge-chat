@@ -1143,12 +1143,16 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         force = request.args.get("force") == "computed"
         only_saved = request.args.get("only_persisted") == "1"
         with sqlite3.connect(db_path) as cx:
-            # Init-time restore: render only if a set was previously preserved for
-            # this test, else stay hidden (empty html).
+            # Init-time restore: the consolidation set renders only if one was
+            # preserved, but the per-layer alternatives always show (they need only a
+            # chain), so the panel is visible on page load without a saved set.
             if only_saved and _st.get_saved_remedy_set(cx, test_id) is None:
-                return {"ok": True, "html": "", "picks": [], "uncovered": [],
-                        "source": None, "pattern_key": "", "has_pattern": False,
-                        "layer_candidates": []}
+                rep0 = _report_for(cx, test_id)
+                lc0 = _st.layer_candidates(cx, test_id, _chain_rows_for(rep0),
+                                           fallback_by_code=_layer_fallback_map())
+                return {"ok": True, "html": render_layer_candidates_panel(lc0), "picks": [],
+                        "uncovered": [], "source": None, "pattern_key": "",
+                        "has_pattern": False, "layer_candidates": lc0}
             rep = _report_for(cx, test_id)
             chain = _chain_rows_for(rep)
             data = _st.resolve_remedy_set(cx, test_id, chain, force_computed=force)
