@@ -91,6 +91,12 @@ def init_orders_table(cx):
         # apply it to the client's next order or refund it. 0 = none. See
         # set_order_overpay_credit + combined_shipments.paid_member_overpay_cents.
         "ALTER TABLE orders ADD COLUMN overpay_credit_cents INTEGER NOT NULL DEFAULT 0",
+        # Shipping credit AUTO-APPLIED to this order from the customer's ship_credit
+        # balance (dashboard/ship_credit.py) at checkout: cents knocked off this
+        # order's total + charged amount, shown as a "Shipping credit applied" line.
+        # 0 = none. Distinct from overpay_credit_cents (which records credit this
+        # order GENERATED); this records credit this order CONSUMED.
+        "ALTER TABLE orders ADD COLUMN ship_credit_applied_cents INTEGER NOT NULL DEFAULT 0",
         # Read-receipts (Task 5): raw token from the invoice link most recently
         # SENT to the customer (send_invoice), so the Orders board can look up
         # whether the client has opened it (dashboard.opens.get_open). The
@@ -346,6 +352,17 @@ def set_order_overpay_credit(cx, order_id, credit_cents):
     cur = cx.execute(
         "UPDATE orders SET overpay_credit_cents=?, updated_at=? WHERE id=?",
         (max(0, int(credit_cents or 0)), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_ship_credit_applied(cx, order_id, applied_cents):
+    """Record the shipping credit auto-applied to this order at checkout (cents).
+    Display/audit only — the actual charge reduction is done by the checkout flow and
+    the balance debit by dashboard.ship_credit.consume. Clamped >= 0."""
+    cur = cx.execute(
+        "UPDATE orders SET ship_credit_applied_cents=?, updated_at=? WHERE id=?",
+        (max(0, int(applied_cents or 0)), _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
 

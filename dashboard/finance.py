@@ -326,6 +326,70 @@ action(key="finance.refund_order", module="money", title="Refund order",
        confirm_summary=_refund_confirm_summary)(_refund_order_exec)
 
 
+def _ship_credit_flag_on():
+    return os.environ.get("SHIP_CREDIT_AUTOAPPLY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _refund_ship_credit_summary(params):
+    try:
+        amt = f"${float(params.get('_amount', 0)):.2f}"
+    except (TypeError, ValueError):
+        amt = "the"
+    who = params.get("_who") or f"order #{params.get('order_id', '?')}"
+    return (f"Refund {amt} shipping credit to {who} instead of applying it to their "
+            f"next order. Card payments refund via Stripe; otherwise it books a "
+            f"QuickBooks money-out receipt for you to send. Confirm?")
+
+
+def _refund_ship_credit_exec(params, ctx):
+    """One-click refund of an already-paid order's outstanding SHIPPING credit (from a
+    combined-shipment recalc) to the customer, instead of auto-applying it to their
+    next order. Refunds only the portion still outstanding in their ship_credit
+    balance (never more than the order generated), then removes it from the ledger so
+    it can't also auto-apply. Idempotent — a second click is a no-op (already-refunded
+    guard, the gap the plain finance.refund_order lacks)."""
+    from dashboard.orders import get_order
+    from dashboard import ship_credit as _sc
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    if not _ship_credit_flag_on():
+        raise ValueError("shipping-credit feature is off")
+    order = get_order(cx, int(params["order_id"]))
+    if not order:
+        raise ValueError(f"order #{params['order_id']} not found")
+    email = (order.get("email") or "").strip().lower()
+    source_ref = (order.get("external_ref") or "").strip()
+    generated = int(order.get("overpay_credit_cents") or 0)
+    if not email or not source_ref or generated <= 0:
+        raise ValueError("this order has no shipping credit to refund")
+    if _sc.already_refunded(cx, source_ref=source_ref):
+        return {"order_id": order.get("id"), "already_refunded": True,
+                "message": "This order's shipping credit was already refunded."}
+    # Refund only what's still outstanding (not already spent on a later order),
+    # bounded by what this order generated.
+    outstanding = min(generated, _sc.balance(cx, email))
+    if outstanding <= 0:
+        raise ValueError("this shipping credit has already been used on another order")
+    # Remove from the ledger FIRST (idempotent marker) so a mid-refund retry can't
+    # re-refund; if the money-out fails the exception propagates and the marker stays,
+    # which is the safe side (no double payout).
+    _sc.mark_refunded(cx, email, outstanding, source_ref=source_ref)
+    res = _refund_order_exec(
+        {"amount": outstanding / 100.0, "order_id": order.get("id"),
+         "reason": f"Shipping overpayment credit refund (order #{order.get('id')})",
+         "cx": cx}, ctx)
+    res["ship_credit_refunded_cents"] = outstanding
+    res["message"] = (f"Refunded ${outstanding/100:.2f} shipping credit. " + res.get("message", ""))
+    return res
+
+
+action(key="finance.refund_ship_credit", module="money", title="Refund shipping credit",
+       description="Refund an order's outstanding shipping-overpayment credit instead of auto-applying it.",
+       risk_tier=MONEY_SEND, permission=(OWNER, OPS, "va"),
+       confirm_summary=_refund_ship_credit_summary)(_refund_ship_credit_exec)
+
+
 def _record_payment_confirm_summary(params):
     amt = float(params.get("amount") or 0)
     m = params.get("method")
