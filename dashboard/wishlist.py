@@ -41,3 +41,30 @@ def list_for(cx, owner):
         return []
     return [r[0] for r in cx.execute(
         "SELECT slug FROM wishlist WHERE owner=? ORDER BY rowid DESC", (owner,))]
+
+
+def merge_wishlist(cx, session_id, email):
+    e = (email or "").strip().lower()
+    if not session_id or not e:
+        return 0
+    src, dst = "sess:" + session_id, "email:" + e
+    rows = [r[0] for r in cx.execute("SELECT slug FROM wishlist WHERE owner=?", (src,))]
+    if not rows:
+        return 0
+    for slug in rows:
+        cx.execute("INSERT OR IGNORE INTO wishlist(owner, slug) VALUES (?, ?)", (dst, slug))
+    cx.execute("DELETE FROM wishlist WHERE owner=?", (src,))
+    cx.commit()
+    return len(rows)
+
+
+def list_union(cx, email, session_id):
+    seen, out = set(), []
+    for owner in (resolve_owner(email, None), resolve_owner(None, session_id)):
+        if not owner:
+            continue
+        for slug in list_for(cx, owner):
+            if slug not in seen:
+                seen.add(slug)
+                out.append(slug)
+    return out
