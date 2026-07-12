@@ -83,3 +83,48 @@ def eligible_for_hold(cx, order):
     if order.get("group_shipment_id") is not None:
         return False
     return caregiver_of(cx, order.get("email")) is not None
+
+
+def _open_group_for(cx, caregiver_email, household_key):
+    row = cx.execute(
+        "SELECT * FROM household_holds WHERE caregiver_email=? AND household_key=? "
+        "AND status='open' ORDER BY id DESC LIMIT 1",
+        (_lc(caregiver_email), _lc(household_key))).fetchone()
+    return dict(row) if row else None
+
+
+def get_hold(cx, group_id):
+    row = cx.execute("SELECT * FROM household_holds WHERE id=?", (group_id,)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    d["members"] = orders_in_hold(cx, group_id)
+    return d
+
+
+def orders_in_hold(cx, group_id):
+    return _orders.orders_in_hold_group(cx, group_id)
+
+
+def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days=4, now=None):
+    """Open a new hold group for this order, or join it to the household's
+    already-open group. The hold window belongs to the GROUP and is anchored
+    to the FIRST order's arrival: a sibling order joining an open group does
+    NOT push out hold_until — only a later extend_hold (Task 4) moves it."""
+    now = now or _now()
+    existing = _open_group_for(cx, caregiver_email, household_key)
+    if existing:
+        _orders.set_order_hold_group(cx, order_id, existing["id"])
+        cx.execute("UPDATE household_holds SET updated_at=? WHERE id=?",
+                   (_iso(now), existing["id"]))
+        cx.commit()
+        return {"group_id": existing["id"], "opened": False, "joined": True}
+    hold_until = _iso(now + timedelta(days=int(hold_days)))
+    cur = cx.execute(
+        "INSERT INTO household_holds (caregiver_email, household_key, status, "
+        "opened_at, hold_until, updated_at) VALUES (?,?,'open',?,?,?)",
+        (_lc(caregiver_email), _lc(household_key), _iso(now), hold_until, _iso(now)))
+    gid = int(cur.lastrowid)
+    _orders.set_order_hold_group(cx, order_id, gid)
+    cx.commit()
+    return {"group_id": gid, "opened": True, "joined": False}

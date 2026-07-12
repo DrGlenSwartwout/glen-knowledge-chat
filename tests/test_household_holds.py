@@ -33,3 +33,24 @@ def test_eligible_only_for_covered_shippable(tmp_path):
     assert H.eligible_for_hold(cx, O.get_order(cx, covered)) is True
     assert H.eligible_for_hold(cx, O.get_order(cx, uncovered)) is False
     assert H.eligible_for_hold(cx, O.get_order(cx, pickup)) is False
+
+
+def test_open_then_sibling_joins_same_group_deadline_from_first():
+    from datetime import datetime, timezone
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    o1 = _order(cx, "cg@x.com")
+    o2 = _order(cx, "kid@x.com")
+    t0 = datetime(2026, 7, 12, 9, 0, tzinfo=timezone.utc)
+    r1 = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com",
+                             household_key="cg@x.com", hold_days=4, now=t0)
+    assert r1["opened"] is True and r1["joined"] is False
+    t1 = datetime(2026, 7, 14, 9, 0, tzinfo=timezone.utc)  # 2 days later
+    r2 = H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com",
+                             household_key="cg@x.com", hold_days=4, now=t1)
+    assert r2["opened"] is False and r2["joined"] is True
+    assert r2["group_id"] == r1["group_id"]
+    hold = H.get_hold(cx, r1["group_id"])
+    assert hold["hold_until"].startswith("2026-07-16")  # t0 + 4d, NOT t1 + 4d
+    assert {m["id"] for m in H.orders_in_hold(cx, r1["group_id"])} == {o1, o2}
