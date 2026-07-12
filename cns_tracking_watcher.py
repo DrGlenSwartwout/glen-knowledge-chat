@@ -23,6 +23,19 @@ Auth: needs a Gmail token with gmail.readonly + gmail.compose at
 
 from __future__ import annotations
 
+# Gevent must monkey-patch BEFORE ssl/socket are imported. The live run imports
+# `app` (for the harvest→onboard helpers), whose own monkey.patch_all() then runs
+# after googleapiclient/requests have already pulled in ssl — which recurses to a
+# RecursionError on Python 3.12+ (see conftest.py / gevent issue #1016). Patching
+# here, first, makes app's later patch_all() a no-op. Guarded + best-effort so the
+# watcher still runs if gevent is absent.
+try:
+    from gevent import monkey
+    if not monkey.is_module_patched("ssl"):
+        monkey.patch_all()
+except ImportError:
+    pass
+
 import argparse
 import base64
 import os
