@@ -78,6 +78,11 @@ def init_orders_table(cx):
         # dashboard/combined_shipments.py). NULL = ships on its own. Distinct from
         # `shipment_id`, which links to the tracking `shipments` table.
         "ALTER TABLE orders ADD COLUMN group_shipment_id INTEGER",
+        # Household hold-and-batch (see dashboard/household_holds.py): when set,
+        # this order is held pending release into a combined shipment, tracked by
+        # household_holds.id. NULL = not held. Distinct from group_shipment_id,
+        # which links an order to the combined_shipments table once released.
+        "ALTER TABLE orders ADD COLUMN hold_group_id INTEGER",
         # Manual invoice adjustment (SIGNED): negative = credit, positive =
         # debit/surcharge. Applied to the total on top of the rule-based discount;
         # shown as its own line on the invoice + QBO. 0 = none.
@@ -299,6 +304,12 @@ def set_order_status(cx, order_id, status):
             _ungroup_cancelled_from_shipment(cx, order_id)
         except Exception as e:  # never let group cleanup block the cancel
             print(f"[orders] ungroup-on-cancel skipped for #{order_id}: {e!r}", flush=True)
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.remove_from_hold(cx, order_id)
+        except Exception as e:  # never let hold cleanup block the cancel
+            print(f"[orders] hold-remove-on-cancel skipped for #{order_id}: {e!r}", flush=True)
     return cur.rowcount > 0
 
 
@@ -386,6 +397,24 @@ def orders_in_group(cx, group_shipment_id):
     """Member orders of a combined shipment, oldest first."""
     cur = cx.execute("SELECT * FROM orders WHERE group_shipment_id=? ORDER BY id",
                      (group_shipment_id,))
+    return [_row_to_dict(r) for r in cur.fetchall()]
+
+
+def set_order_hold_group(cx, order_id, hold_group_id):
+    """Link (or, with None, unlink) an order to a household hold (see
+    dashboard/household_holds.py). Returns True if the order existed."""
+    cur = cx.execute(
+        "UPDATE orders SET hold_group_id=?, updated_at=? WHERE id=?",
+        (hold_group_id, _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def orders_in_hold_group(cx, hold_group_id):
+    """Member orders of a household hold, oldest first (cancelled orders excluded,
+    mirroring how a cancelled order is dropped from a combined shipment)."""
+    cur = cx.execute("SELECT * FROM orders WHERE hold_group_id=? AND status!='cancelled' "
+                     "ORDER BY id", (hold_group_id,))
     return [_row_to_dict(r) for r in cur.fetchall()]
 
 

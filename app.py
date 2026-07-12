@@ -19646,6 +19646,31 @@ def coach_subscriptions_charge_cron():
     return jsonify({"charged": charged, "failed": failed})
 
 
+@app.route("/api/cron/household-holds/sweep", methods=["POST"])
+def household_holds_sweep_cron():
+    """Auto-release hold groups past their ship-by deadline: 2+ orders -> one
+    combined shipment; a lone order -> just un-held so it ships normally. Idempotent:
+    a released group is no longer 'open' so a re-run skips it."""
+    if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household_holds as _holds
+    released = combined = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _holds.init_hold_tables(cx)
+        for g in _holds.due_holds(cx):
+            res = _holds.release_hold(cx, g["id"], by="deadline")
+            released += 1
+            ids = res["order_ids"]
+            if len(ids) >= 2:
+                try:
+                    _release_to_shipment(cx, ids, created_by="deadline-release")
+                    combined += 1
+                except Exception as e:
+                    print(f"[hold-sweep] create_shipment({ids}) failed: {e!r}", flush=True)
+    return jsonify({"ok": True, "released": released, "combined": combined})
+
+
 @app.route("/api/cron/family-plan/charge", methods=["POST"])
 def family_plan_charge_cron():
     """Daily charge cron for paid Family Plans. Charges each due, non-comp, active
@@ -34085,6 +34110,46 @@ def coaching_activate(token):
     return resp
 
 
+@app.route("/hold/<token>/ship", methods=["GET", "POST"])
+def household_hold_ship(token):
+    """Caregiver 'ship now' release page for a household hold group. GET renders
+    a scanner-safe confirm (no mutation); POST releases the hold and, when it
+    has 2+ member orders, groups them into a combined_shipments shipment. See
+    _confirm_post_page for why GET must never consume the token."""
+    from dashboard import household_holds as _holds
+    invalid = ("<!doctype html><meta charset=utf-8><title>Link expired</title>"
+               "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
+               "<h1>This shipment is already on its way</h1>"
+               "<p>Nothing more to do — your household order has been released.</p></div>")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _holds.init_hold_tables(cx)
+        hold = _holds.hold_by_release_token(cx, token)
+        if hold is None or hold["status"] != "open":
+            return invalid, (200 if hold else 404)
+        if request.method == "GET":
+            members = hold.get("members") or []
+            names = ", ".join((m.get("name") or m.get("email") or f"#{m['id']}") for m in members)
+            return _confirm_post_page(
+                f"/hold/{token}/ship",
+                title="Ship your household order",
+                heading="Ship your household order now?",
+                blurb=f"This will send your household's order ({names}) to fulfillment now. "
+                      "Anything ordered after this ships separately.",
+                button="Ship it now")
+        # POST: release, then hand to the combined-shipment layer
+        res = _holds.release_hold(cx, hold["id"], by="caregiver")
+        ids = res["order_ids"]
+        try:
+            _release_to_shipment(cx, ids, created_by="caregiver-release")
+        except Exception as e:
+            print(f"[hold-ship] create_shipment({ids}) failed: {e!r}", flush=True)
+    return ("<!doctype html><meta charset=utf-8><title>On its way</title>"
+            "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
+            "<h1>Done — your order is on its way</h1>"
+            "<p>We’ll email tracking as soon as it ships.</p></div>"), 200
+
+
 # ── Slice 6: studio.com credit intent + daily renewal-reminder cron ──────────
 
 @app.route("/coaching/studio-credit", methods=["GET"])
@@ -34872,6 +34937,16 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
             if paid_cents is not None and _oid:
                 _bos_orders.mark_order_paid_keep_status(
                     cx, _oid, method="card", amount_cents=int(paid_cents))
+            # Hold hook runs AFTER the mark-paid block above so a pre-paid ingested
+            # order (e.g. GrooveKart) is already marked paid when eligible_for_hold
+            # checks it — an already-paid order must never be held (Task: don't
+            # delay a paid customer's shipment for household batching).
+            try:
+                from dashboard import household_holds as _holds
+                _holds.init_hold_tables(cx)
+                _holds.maybe_hold_new_order(cx, _oid)
+            except Exception as _e:
+                print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
             # NEW: every buyer gets a portal home (idempotent, fail-open)
             try:
                 from dashboard import portal_provision as _pp
@@ -35177,6 +35252,21 @@ def console_shipment_suggestions():
         cx.close()
     return jsonify({"ok": True, "enabled": True, "clusters": clusters,
                     "ship_credit_enabled": ship_credit})
+
+
+def _release_to_shipment(cx, order_ids, *, created_by):
+    """Group released hold orders into one combined shipment and recompute
+    fair-share shipping. Returns the shipment id (None for a lone order)."""
+    from dashboard import combined_shipments as _cs
+    if len(order_ids) < 2:
+        return None
+    made = _cs.create_shipment(cx, order_ids, created_by=created_by)
+    sid = made["id"]
+    try:
+        _recompute_combined_shipping(cx, sid)
+    except Exception as e:
+        print(f"[hold-release] recompute shipping failed for #{sid}: {e!r}", flush=True)
+    return sid
 
 
 def _recompute_combined_shipping(cx, sid):
@@ -35898,6 +35988,12 @@ def api_orders_manual():
             points_redeemed_cents=points_redeemed_cents,
             ship_credit_applied_cents=_sc_apply,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.maybe_hold_new_order(cx, oid)
+        except Exception as _e:
+            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
         if _gift_rows and oid:
             from dashboard import review_gifts as _rg2
             for _g in _gift_rows:
@@ -37470,6 +37566,12 @@ def bos_orders_create():
             name=b.get("name", ""), phone=b.get("phone", ""), items=b.get("items") or [],
             total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
             channel=b.get("channel", "retail"))
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.maybe_hold_new_order(cx, oid)
+        except Exception as _e:
+            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     finally:
