@@ -28,6 +28,10 @@
   .chip button{ border:none; background:none; color:var(--muted); cursor:pointer; font-size:13px; padding:0; }
   .chip button:hover{ color:#e08a8a; }
   .chip-list{ display:flex; flex-wrap:wrap; margin-top:8px; }
+  .manual-row{ display:flex; align-items:center; gap:8px; width:100%; margin-bottom:8px; }
+  .manual-row .chip{ margin:0; flex:none; }
+  .manual-reason{ flex:1; min-width:0; padding:5px 9px; border:1px solid var(--border);
+                  border-radius:6px; background:var(--bg); color:var(--cream); font-size:12.5px; }
   .harv-item{ display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--border); }
   .harv-item:first-of-type{ border-top:none; }
   .harv-item label{ flex:1; font-size:13px; }
@@ -139,27 +143,44 @@
   function slugOf(h){ return (typeof h === 'string') ? h : (h.slug || ''); }
   function sourceOf(h){ return (typeof h === 'string') ? '' : (h.source || h.reason || ''); }
 
+  // MANUAL holds {slug, reason} objects. Look one up by slug.
+  function manualIndexOf(slug){
+    for (var i = 0; i < MANUAL.length; i++){ if (MANUAL[i].slug === slug) return i; }
+    return -1;
+  }
+
   function renderManual(){
     var list = document.getElementById('manual-list');
-    list.innerHTML = MANUAL.map(function(slug){
-      return '<span class="chip" data-slug="'+esc(slug)+'">'+esc(slug)
-        + '<button type="button" class="rm-manual" data-slug="'+esc(slug)+'">&times;</button></span>';
+    list.innerHTML = MANUAL.map(function(m){
+      return '<div class="manual-row" data-slug="'+esc(m.slug)+'">'
+        + '<span class="chip">'+esc(m.slug)
+        + '<button type="button" class="rm-manual" data-slug="'+esc(m.slug)+'">&times;</button></span>'
+        + '<input type="text" class="manual-reason" data-slug="'+esc(m.slug)+'"'
+        + ' placeholder="Why Dr. Glen recommends this (optional)" value="'+esc(m.reason || '')+'">'
+        + '</div>';
     }).join('');
     document.getElementById('manual-empty').style.display = MANUAL.length ? 'none' : 'block';
     list.querySelectorAll('.rm-manual').forEach(function(btn){
       btn.addEventListener('click', function(){
         var slug = btn.getAttribute('data-slug');
-        MANUAL = MANUAL.filter(function(s){ return s !== slug; });
+        MANUAL = MANUAL.filter(function(m){ return m.slug !== slug; });
         renderManual();
         renderHarvested();
+      });
+    });
+    // Update the model on each keystroke without re-rendering (keeps input focus).
+    list.querySelectorAll('.manual-reason').forEach(function(inp){
+      inp.addEventListener('input', function(){
+        var idx = manualIndexOf(inp.getAttribute('data-slug'));
+        if (idx !== -1) MANUAL[idx].reason = inp.value;
       });
     });
   }
 
   function addManual(slug){
     slug = (slug || '').trim();
-    if (!slug || MANUAL.indexOf(slug) !== -1) return;
-    MANUAL.push(slug);
+    if (!slug || manualIndexOf(slug) !== -1) return;
+    MANUAL.push({ slug: slug, reason: '' });
     renderManual();
     renderHarvested();
   }
@@ -192,7 +213,7 @@
     el.innerHTML = HARVESTED.map(function(h, i){
       var slug = slugOf(h);
       var src = sourceOf(h);
-      var checked = MANUAL.indexOf(slug) !== -1;
+      var checked = manualIndexOf(slug) !== -1;
       return '<div class="harv-item"><label><input type="checkbox" class="harv-check" data-slug="'+esc(slug)+'"'
         + (checked ? ' checked' : '') + '> '+esc(slug)+'</label>'
         + (src ? '<span class="harv-src">'+esc(src)+'</span>' : '') + '</div>';
@@ -201,7 +222,7 @@
       cb.addEventListener('change', function(){
         var slug = cb.getAttribute('data-slug');
         if (cb.checked) addManual(slug);
-        else { MANUAL = MANUAL.filter(function(s){ return s !== slug; }); renderManual(); }
+        else { MANUAL = MANUAL.filter(function(m){ return m.slug !== slug; }); renderManual(); }
       });
     });
   }
@@ -242,7 +263,11 @@
     if (r.status !== 200) {
       statusEl.className = 'status err'; statusEl.textContent = j.error || 'Load failed.'; return;
     }
-    MANUAL = j.manual || [];
+    // Normalize stored manual picks (bare slug strings, back-compat, or {slug,reason}).
+    MANUAL = (j.manual || []).map(function(m){
+      return (typeof m === 'string') ? { slug: m, reason: '' }
+                                     : { slug: (m.slug || ''), reason: (m.reason || '') };
+    }).filter(function(m){ return m.slug; });
     HARVESTED = j.harvested || [];
     statusEl.className = 'status ok'; statusEl.textContent = 'Loaded.';
     document.getElementById('slug-label').textContent = slug;

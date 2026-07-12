@@ -23,16 +23,31 @@ def guardrail_ok(slug, base_slug, products):
     return True
 
 
+def _entry_slug(entry):
+    """A manual pick is either a bare slug string or {"slug","reason"}."""
+    return entry.get("slug") if isinstance(entry, dict) else entry
+
+
+def _entry_reason(entry):
+    return (entry.get("reason") or "").strip() if isinstance(entry, dict) else ""
+
+
 def resolve_related(base_slug, *, manual, harvested, semantic, products, cap=12):
-    """Merge the three sources into {featured, more}. Manual picks bypass the
-    guardrail (Glen's explicit choice) and lead; auto = harvested then semantic,
-    guardrail-filtered, deduped, capped at `cap`."""
+    """Merge the three sources into {featured, more, reasons}. Manual picks bypass
+    the guardrail (Glen's explicit choice) and lead; auto = harvested then semantic,
+    guardrail-filtered, deduped, capped at `cap`. `reasons` maps slug -> Glen's
+    optional explanation, only for manual picks that carry one."""
     seen = set()
     featured_manual = []
-    for s in manual:
+    reasons = {}
+    for entry in manual:
+        s = _entry_slug(entry)
         if s and s != base_slug and s not in seen and s in products:
             seen.add(s)
             featured_manual.append(s)
+            r = _entry_reason(entry)
+            if r:
+                reasons[s] = r
 
     auto = []
     for s in list(harvested) + list(semantic):
@@ -44,10 +59,10 @@ def resolve_related(base_slug, *, manual, harvested, semantic, products, cap=12)
             break
 
     if not featured_manual and not auto:
-        return {"featured": [], "more": []}
+        return {"featured": [], "more": [], "reasons": {}}
     featured = featured_manual + auto[:1]
     more = auto[1:]
-    return {"featured": featured, "more": more}
+    return {"featured": featured, "more": more, "reasons": reasons}
 
 
 _URL_TAIL = _re.compile(r"/(?:remedies/[^/]+|resources)/\d+-([a-z0-9-]+)/?$", _re.I)

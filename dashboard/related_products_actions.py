@@ -8,7 +8,19 @@ def _exec_set(params, ctx):
     slug = (params.get("slug") or "").strip()
     if not slug:
         raise ValueError("slug required")
-    related = [s.strip() for s in (params.get("related") or []) if isinstance(s, str) and s.strip()]
+    # Each related pick is either a bare slug string or {"slug","reason"}; store the
+    # normalized {"slug","reason"} form (reason is Glen's optional explanation).
+    related = []
+    for item in (params.get("related") or []):
+        if isinstance(item, dict):
+            s = (item.get("slug") or "").strip()
+            reason = (item.get("reason") or "").strip()
+        elif isinstance(item, str):
+            s, reason = item.strip(), ""
+        else:
+            continue
+        if s:
+            related.append({"slug": s, "reason": reason})
     _rs.save_manual(slug, related)
     return {"slug": slug, "related": related, "saved": True}
 

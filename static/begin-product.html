@@ -79,6 +79,7 @@
       display:block; margin-bottom:8px; background:rgba(127,127,127,.12); }
     .sp-related-name{ font-size:13px; font-weight:600; color:var(--cream); line-height:1.35; }
     .sp-related-price{ font-size:12.5px; color:var(--gold); margin-top:4px; }
+    .sp-related-reason{ font-size:12px; font-style:italic; color:var(--muted); line-height:1.4; margin-top:6px; }
     .sp-related-more{ margin-top:12px; }
     .sp-related-morebtn{ display:inline-flex; align-items:center; gap:7px; font-family:var(--heading);
       font-weight:600; font-size:13.5px; color:var(--gold); background:transparent;
@@ -438,6 +439,12 @@
         pr.className = 'sp-related-price';
         pr.textContent = (c && c.price) || '';
         a.appendChild(pr);
+        if (c && c.reason){
+          var rs = document.createElement('span');
+          rs.className = 'sp-related-reason';
+          rs.textContent = c.reason;
+          a.appendChild(rs);
+        }
         return a;
       }
       var featured = (body && Array.isArray(body.featured)) ? body.featured : [];

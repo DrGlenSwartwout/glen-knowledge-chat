@@ -21,6 +21,35 @@ def test_manual_first_then_one_auto_in_featured():
     assert out["featured"] == ["immune-modulation", "wholomega"]
     assert out["more"] == ["neuroprotect", "book-healing-glaucoma"]
 
+def test_manual_object_entries_carry_reasons():
+    # A manual pick may be {"slug","reason"}; the reason surfaces in `reasons`,
+    # keyed by slug, only for manual picks that have one. Auto picks get none.
+    out = rp.resolve_related(
+        "iop-syntropy",
+        manual=[{"slug": "immune-modulation", "reason": "Pairs with eye pressure support"},
+                {"slug": "denas-scenar"}],
+        harvested=["wholomega"],
+        semantic=[],
+        products=_PRODUCTS)
+    assert out["featured"] == ["immune-modulation", "denas-scenar", "wholomega"]
+    assert out["reasons"] == {"immune-modulation": "Pairs with eye pressure support"}
+
+
+def test_string_and_object_manual_entries_both_work():
+    out = rp.resolve_related(
+        "iop-syntropy",
+        manual=["immune-modulation", {"slug": "wholomega", "reason": "  Omega-3s  "}],
+        harvested=[], semantic=[], products=_PRODUCTS)
+    assert out["featured"] == ["immune-modulation", "wholomega"]
+    # reason is trimmed; the bare-string entry has no reason
+    assert out["reasons"] == {"wholomega": "Omega-3s"}
+
+
+def test_reasons_present_even_when_empty():
+    out = rp.resolve_related("iop-syntropy", manual=[], harvested=[], semantic=[], products=_PRODUCTS)
+    assert out["reasons"] == {}
+
+
 def test_auto_drops_self_inactive_and_do_not_recommend():
     out = rp.resolve_related(
         "iop-syntropy",

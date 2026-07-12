@@ -42,7 +42,10 @@ Three inputs, merged at render time:
 
 ### Relatedness resolution (per product slug)
 
-- **manual** = `related-manual.json[slug]` (order preserved, as entered).
+- **manual** = `related-manual.json[slug]` (order preserved, as entered). Each entry is
+  `{slug, reason}` — `reason` is Glen's optional one-line explanation, shown on that card
+  under the price ("why Dr. Glen recommends this"). Auto/semantic picks carry no reason.
+  Bare-slug entries are still accepted (back-compat) and treated as `reason: ""`.
 - **auto** = harvested[slug] first (curation), then semantic neighbors to fill,
   deduped against manual and against each other, guardrail-filtered, capped at 12.
 

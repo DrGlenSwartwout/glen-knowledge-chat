@@ -6148,13 +6148,15 @@ def begin_product_page_data(slug):
                 semantic=_related_semantic(slug),
                 products=_prods)
             if _res["featured"]:
+                _reasons = _res.get("reasons", {})
                 def _card(rs):
                     rp_ = _get_product(rs) or _prods.get(rs, {})
                     imgs = rp_.get("page_images") or []
                     return {"slug": rs, "name": rp_.get("name", rs),
                             "price": f"${rp_.get('price_cents', 0) / 100:.2f}",
                             "url": f"/begin/product/{rs}",
-                            "image": (imgs[0] if imgs else "")}
+                            "image": (imgs[0] if imgs else ""),
+                            "reason": _reasons.get(rs, "")}
                 sections.append({
                     "id": "related", "title": "Dr. Glen recommends", "default_open": True,
                     "body": {"featured": [_card(s) for s in _res["featured"]],
