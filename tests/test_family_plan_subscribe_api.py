@@ -76,3 +76,17 @@ def test_fulfill_ignores_unpaid():
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
         assert fp.get(cx, "u@x.com") is None
+
+
+def test_cancel_sets_cancelled_and_stops_cover():
+    tok = _tok("cxl2@x.com")
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
+        fp.activate(cx, "cxl2@x.com", next_charge_at="2026-08-01",
+                    customer_id="c", payment_method_id="p"); cx.commit()
+    r = _client().post(f"/api/portal/{tok}/family-plan/cancel")
+    assert r.get_json()["ok"] is True
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
+        assert fp.get(cx, "cxl2@x.com")["status"] == "cancelled"
+        assert fp.is_active(cx, "cxl2@x.com") is False

@@ -19268,6 +19268,23 @@ def family_plan_return():
     return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
 
 
+@app.route("/api/portal/<token>/family-plan/cancel", methods=["POST"])
+def portal_family_plan_cancel(token):
+    """Caregiver self-cancel. Stops covers() for the household at the next read;
+    no refund, no proration (the current paid cycle simply is not renewed)."""
+    from dashboard import portal_identity as _pi, family_plan as _fp
+    sess_cookie = request.cookies.get("rm_portal_session", "")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _fp.init_family_plan_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "not_found"}), 404
+        _fp.set_status(cx, ident.email, "cancelled")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/community/coach-subscribe/cancel", methods=["POST"])
 def community_coach_subscribe_cancel():
     from dashboard import coach_subscriptions as _cs
