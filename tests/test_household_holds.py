@@ -54,3 +54,30 @@ def test_open_then_sibling_joins_same_group_deadline_from_first():
     hold = H.get_hold(cx, r1["group_id"])
     assert hold["hold_until"].startswith("2026-07-16")  # t0 + 4d, NOT t1 + 4d
     assert {m["id"] for m in H.orders_in_hold(cx, r1["group_id"])} == {o1, o2}
+
+
+def test_release_returns_order_ids_and_closes_group():
+    from datetime import datetime, timezone
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    o1 = _order(cx, "cg@x.com"); o2 = _order(cx, "kid@x.com")
+    t0 = datetime(2026, 7, 12, 9, 0, tzinfo=timezone.utc)
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com", now=t0)["group_id"]
+    H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com", household_key="cg@x.com", now=t0)
+    res = H.release_hold(cx, g, by="caregiver")
+    assert sorted(res["order_ids"]) == sorted([o1, o2])
+    assert H.get_hold(cx, g)["status"] == "released"
+
+
+def test_due_holds_only_past_deadline_open():
+    from datetime import datetime, timezone
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    t0 = datetime(2026, 7, 12, 9, 0, tzinfo=timezone.utc)
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com", hold_days=4, now=t0)["group_id"]
+    before = datetime(2026, 7, 15, 9, 0, tzinfo=timezone.utc)
+    after = datetime(2026, 7, 16, 10, 0, tzinfo=timezone.utc)
+    assert H.due_holds(cx, now=before) == []
+    assert [d["id"] for d in H.due_holds(cx, now=after)] == [g]

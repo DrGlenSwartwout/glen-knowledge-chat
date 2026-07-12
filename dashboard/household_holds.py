@@ -128,3 +128,28 @@ def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days
     _orders.set_order_hold_group(cx, order_id, gid)
     cx.commit()
     return {"group_id": gid, "opened": True, "joined": False}
+
+
+def release_hold(cx, group_id, *, by):
+    """Close an open hold group. Returns its non-cancelled member order ids so the
+    caller can hand them to combined_shipments.create_shipment. Idempotent: a
+    non-open group returns its ids with the existing status."""
+    hold = get_hold(cx, group_id)
+    if hold is None:
+        return {"group_id": group_id, "order_ids": [], "status": "missing"}
+    order_ids = [m["id"] for m in hold["members"]]
+    if hold["status"] != "open":
+        return {"group_id": group_id, "order_ids": order_ids, "status": hold["status"]}
+    cx.execute("UPDATE household_holds SET status='released', released_at=?, released_by=?, "
+               "updated_at=? WHERE id=?",
+               (_iso(_now()), str(by or ""), _iso(_now()), group_id))
+    cx.commit()
+    return {"group_id": group_id, "order_ids": order_ids, "status": "released"}
+
+
+def due_holds(cx, now=None):
+    now = now or _now()
+    rows = cx.execute(
+        "SELECT * FROM household_holds WHERE status='open' AND hold_until <= ? "
+        "ORDER BY id", (_iso(now),)).fetchall()
+    return [dict(r) for r in rows]
