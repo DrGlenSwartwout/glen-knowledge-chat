@@ -21015,6 +21015,34 @@ def api_console_household_reassign():
     return jsonify(res), (200 if res.get("ok") else 400)
 
 
+@app.route("/api/console/household-holds", methods=["GET"])
+def api_console_household_holds():
+    """Read-only: open household hold groups forming right now, with their
+    member orders, so an operator can see what's currently held before it
+    ships. No writes, no side effects."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import household_holds as _hhh
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _hhh.init_hold_tables(cx)
+        holds = _hhh.list_open_holds(cx)
+    out = []
+    for h in holds:
+        out.append({
+            "group_id": h["id"],
+            "caregiver_email": h["caregiver_email"],
+            "household_key": h["household_key"],
+            "opened_at": h["opened_at"],
+            "hold_until": h["hold_until"],
+            "invite_sent_at": h.get("invite_sent_at"),
+            "members": [{"order_id": m["id"], "name": m.get("name"),
+                        "email": m.get("email"), "status": m.get("status")}
+                       for m in h["members"]],
+        })
+    return jsonify({"ok": True, "holds": out})
+
+
 @app.route("/api/console/biofield/review-queue", methods=["GET"])
 def api_console_biofield_review_queue():
     if not _portal_console_ok():
