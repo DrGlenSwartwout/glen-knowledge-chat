@@ -1,8 +1,10 @@
 """FMP -> portal biofield importer.
 
-Pulls a client's Causal Chain Report from the FMP tables in Supabase, maps it to
-the portal layer schema, and (via the app's LLM) drafts the warm prose in Glen's
-voice. Self-contained; the editor's "Import from FMP" button calls import_content().
+Pulls a client's Causal Chain Report from the local FMP snapshot tables (fmp_snap_*
+in chat_log.db), maps it to the portal layer schema, and (via the app's LLM) drafts
+the warm prose in Glen's voice. Self-contained; the editor's "Import from FMP" button
+calls import_content(). (Prior versions read the live Supabase fmp_newapp mirror,
+which was decommissioned — see fetch_causal_chain.)
 
 Layer 1 = most recent/surface; higher = deeper root (narrative-skill rule).
 The FMP auto-"Consider" remedy lines and blank-remedy rows are skipped.
@@ -10,6 +12,8 @@ The FMP auto-"Consider" remedy lines and blank-remedy rows are skipped.
 import json
 import os
 import re
+import sqlite3
+from pathlib import Path
 
 _MAP_PATH = os.path.join(os.path.dirname(__file__), "data", "infoceutical_codes.json")
 try:
@@ -62,31 +66,64 @@ def build_layers(rows):
             for i, (_, d) in enumerate(keep, start=1)]
 
 
-_SQL = (
-    "SELECT cc.layer, cc.head_chain, cc.remedy, cc.dosage "
-    "FROM fmp_newapp.client_causal_chain cc "
-    "JOIN fmp_newapp.client_biofield_test cbt ON cbt.id = cc.id_fk_test "
-    "JOIN fmp_newapp.clients cl ON cl.id = cc.id_fk_client "
-    "WHERE lower(cl.email) = %s AND cbt.active = TRUE "
-    "ORDER BY cc.id ASC")  # layer is TEXT; build_layers re-sorts numerically
+# The live FMP mirror (Supabase schema fmp_newapp) was decommissioned; its data now
+# lives in the local FMP snapshot tables (fmp_snap_*) in chat_log.db. The causal-chain
+# remedies (with dosing) live in fmp_snap_client_remedy: `layer` is the chain layer,
+# `data_2` is the Head-of-Chain label, `remedy`/`dosage` the protocol, and
+# `zc_dosage_text` FMP's composed dosing line ("1 scoop - 2 times a day - in water").
+_SNAP_SQL = (
+    "SELECT r.layer AS layer, r.data_2 AS head_chain, r.remedy AS remedy, "
+    "COALESCE(NULLIF(TRIM(r.zc_dosage_text), ''), r.dosage) AS dosage "
+    "FROM fmp_snap_client_remedy r "
+    "JOIN fmp_clients c ON c.id_pk = r.id_fk_client "
+    "WHERE lower(c.email) = ? AND r.id_fk_test = ? "
+    "ORDER BY CAST(r.layer AS INTEGER) ASC, CAST(r.id_pk AS INTEGER) ASC")
+
+# Snapshot `active` is uniformly 'Yes' (an export artifact) so it can't isolate the
+# current test the way live FMP's cbt.active=TRUE did. Scope to the client's newest
+# test instead (highest id_fk_test — PKs increment over time = the report's subject).
+_LATEST_TEST_SQL = (
+    "SELECT r.id_fk_test FROM fmp_snap_client_remedy r "
+    "JOIN fmp_clients c ON c.id_pk = r.id_fk_client "
+    "WHERE lower(c.email) = ? "
+    "ORDER BY CAST(r.id_fk_test AS INTEGER) DESC LIMIT 1")
 
 
-def fetch_causal_chain(email):
-    """Live pull of a client's active Causal Chain Report from FMP (Supabase).
-    Returns [{layer, head_chain, remedy, dosage}] or [] (no match / any error)."""
+def _snapshot_db_path():
+    base = os.environ.get("DATA_DIR") or str(Path(__file__).resolve().parents[1])
+    return str(Path(base) / "chat_log.db")
+
+
+def fetch_causal_chain(email, conn=None):
+    """Pull a client's most-recent Causal Chain remedies from the local FMP snapshot
+    (fmp_snap_* in chat_log.db), mapped to the portal-layer shape
+    {layer, head_chain, remedy, dosage}. Returns [] on no match / any error.
+
+    `conn` is an optional open sqlite connection (tests inject a fixture DB);
+    otherwise chat_log.db is opened read-only for the call. Dosing prefers FMP's
+    composed zc_dosage_text over the bare dosage. Authoring is a LOCAL console
+    operation — prod's chat_log.db may lack the snapshot tables, in which case this
+    returns [] gracefully and the editor shows "not found"."""
     email = (email or "").strip().lower()
     if not email:
         return []
+    own = conn is None
+    cx = None
     try:
-        import db_supabase
-        with db_supabase.supabase_cursor() as cur:
-            cur.execute(_SQL, (email,))
-            rows = cur.fetchall()
-        return [{"layer": r.get("layer"), "head_chain": r.get("head_chain"),
-                 "remedy": r.get("remedy"), "dosage": r.get("dosage")} for r in rows]
+        cx = conn or sqlite3.connect(_snapshot_db_path())
+        cx.row_factory = sqlite3.Row
+        latest = cx.execute(_LATEST_TEST_SQL, (email,)).fetchone()
+        if not latest:
+            return []
+        rows = cx.execute(_SNAP_SQL, (email, latest[0])).fetchall()
+        return [{"layer": r["layer"], "head_chain": r["head_chain"],
+                 "remedy": r["remedy"], "dosage": r["dosage"]} for r in rows]
     except Exception as e:
-        print(f"[fmp-import] fetch failed: {e!r}", flush=True)
+        print(f"[fmp-import] snapshot fetch failed: {e!r}", flush=True)
         return []
+    finally:
+        if own and cx is not None:
+            cx.close()
 
 
 _VOICE = (
