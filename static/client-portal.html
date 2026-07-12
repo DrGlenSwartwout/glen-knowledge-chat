@@ -1797,18 +1797,24 @@ function render(d, v){
     rb.addEventListener("click", ()=>reorderItem(rb));
   });
 
-  // Task 7: wishlist remove (×) buttons. POSTs /begin/wishlist/toggle with the
-  // row's slug; {saved:false} confirms it was removed (toggle flips it off
-  // since it was already saved), so drop the row from the DOM and hide the
-  // whole card once it's empty. One-shot latch (disabled immediately) so a
-  // double-click can't double-fire the toggle.
+  // Task 7: wishlist remove (×) buttons. POSTs the TOKEN-SCOPED
+  // /api/portal/<token>/wishlist/toggle (not /begin/wishlist/toggle — that
+  // resolves the owner from begin-side cookies/auth, which a portal visitor
+  // arriving via emailed magic-link never has, so it silently toggled a
+  // phantom sess:<amg_session> row instead of the displayed email:<portal-email>
+  // one and never removed anything). Carries ?member= so a caregiver viewing a
+  // household member's tab removes from THAT member's wishlist, matching the
+  // ff-matches button's pattern below. {saved:false} confirms it was removed
+  // (toggle flips it off since it was already saved), so drop the row from the
+  // DOM and hide the whole card once it's empty. One-shot latch (disabled
+  // immediately) so a double-click can't double-fire the toggle.
   app.querySelectorAll(".wishRemBtn").forEach(wb=>{
     wb.addEventListener("click", async ()=>{
       if(wb.disabled) return;
       wb.disabled = true;
       const slug = wb.getAttribute("data-slug") || "";
       try{
-        const r = await fetch("/begin/wishlist/toggle", {
+        const r = await fetch("/api/portal/" + token + "/wishlist/toggle" + location.search, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({slug}),

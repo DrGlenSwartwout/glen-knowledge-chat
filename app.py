@@ -17129,6 +17129,53 @@ def api_portal_notify_pref(token):
     return jsonify({"ok": True, "pref": pref})
 
 
+@app.route("/api/portal/<token>/wishlist/toggle", methods=["POST"])
+def api_portal_wishlist_toggle(token):
+    """Token-scoped wishlist remove/add for the portal card. Fixes the bug where
+    the card's × posted to /begin/wishlist/toggle, which resolves the owner from
+    begin-side cookies/auth — not the portal token. A portal visitor (emailed
+    magic-link, no site login) has no matching begin-side identity, so that
+    toggle hit a sess:<amg_session> owner instead of the displayed
+    email:<portal-email> owner: it inserted a phantom row, returned
+    {"saved": true}, and never removed the displayed item. This endpoint
+    resolves the owner from the portal token/session instead, and replicates the
+    ?member= household re-point from api_client_portal so the toggle targets the
+    SAME email whose wishlist is on screen."""
+    if not _WISHLIST_ENABLED:
+        return ("", 404)
+    slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+    if not slug:
+        return jsonify({"error": "slug required"}), 400
+    import sqlite3 as _wsq
+    from dashboard import wishlist as _wl
+    try:
+        with _db_lock, _wsq.connect(LOG_DB) as _cx:
+            _cx.row_factory = sqlite3.Row
+            _rec = _portal_record_for(_cx, token)
+            if not _rec:
+                return jsonify({"error": "not found"}), 404
+            _email = (_rec.get("email") or "").strip().lower()
+            # Replicate api_client_portal's ?member= household re-point (see
+            # around line 16578) so a caregiver on a household member's tab
+            # removes from THAT member's wishlist, matching what's displayed —
+            # not the primary account holder's.
+            if _household_view_enabled() and _email:
+                try:
+                    from dashboard import household as _hh
+                    _hh.init_household_tables(_cx)
+                    _req_member = (request.args.get("member") or "").strip().lower()
+                    if _req_member and _hh.can_view(_cx, _email, _req_member):
+                        _email = _req_member
+                except Exception as _he:
+                    print(f"[wishlist] household re-point skipped: {_he}", flush=True)
+            _wl.init_wishlist_table(_cx)
+            _saved = _wl.toggle(_cx, "email:" + _email, slug) if _email else False
+        return jsonify({"saved": _saved})
+    except Exception as _e:
+        print(f"[wishlist] portal toggle failed: {_e}", flush=True)
+        return jsonify({"error": "failed"}), 500
+
+
 @app.route("/api/portal/<token>/scene-pref", methods=["POST"])
 def api_portal_scene_pref(token):
     """Persist the member's fireside backdrop choice server-side so it follows them
