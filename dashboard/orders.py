@@ -116,7 +116,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  status="new", get_cents=0, person_id=None,
                  discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
                  invoice_note=None, adjustment_cents=0,
-                 pay_method=None, practitioner_id=None, margin_cents=None):
+                 pay_method=None, practitioner_id=None, margin_cents=None,
+                 ship_credit_applied_cents=None):
     """Idempotent on (source, external_ref). Inserts a new order, or updates the
     soft fields of an existing one WITHOUT regressing its lifecycle status.
     items and address are only overwritten when explicitly provided (not None).
@@ -157,6 +158,9 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if margin_cents is not None:
             sets.append("margin_cents=?")
             vals.append(int(margin_cents))
+        if ship_credit_applied_cents is not None:
+            sets.append("ship_credit_applied_cents=?")
+            vals.append(max(0, int(ship_credit_applied_cents)))
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
@@ -165,8 +169,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
         "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents, "
-        "pay_method, practitioner_id, margin_cents) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "pay_method, practitioner_id, margin_cents, ship_credit_applied_cents) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (_now(), source, ref, channel, email, name, phone,
          json.dumps(items or []), int(total_cents or 0), json.dumps(address or {}),
          status, int(get_cents or 0),
@@ -175,7 +179,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
          (str(invoice_note) if invoice_note is not None else None), int(adjustment_cents or 0),
          (str(pay_method) if pay_method is not None else None),
          (str(practitioner_id) if practitioner_id is not None else None),
-         (int(margin_cents) if margin_cents is not None else None)))
+         (int(margin_cents) if margin_cents is not None else None),
+         max(0, int(ship_credit_applied_cents or 0))))
     cx.commit()
     return cur.lastrowid
 
@@ -579,6 +584,27 @@ def _ensure_portal_receipt(cx, order_id):
         pass
 
 
+def _consume_ship_credit_on_pay(cx, order_id):
+    """Best-effort: when an order is marked paid, debit any shipping credit it
+    auto-applied (ship_credit_applied_cents) from the customer's ledger. Idempotent
+    per applying order (its external_ref is the guard). Covers the in-house /
+    record-payment path; the card checkout-return path double-covers via
+    _settle_order_points (idempotent, so the second call is a no-op). Never raises."""
+    try:
+        row = cx.execute(
+            "SELECT COALESCE(email,''), COALESCE(external_ref,''), "
+            "COALESCE(ship_credit_applied_cents,0) FROM orders WHERE id=?",
+            (order_id,)).fetchone()
+        if not row:
+            return
+        email, ref, applied = row[0], row[1], int(row[2] or 0)
+        if applied > 0 and email and ref:
+            from dashboard import ship_credit as _sc
+            _sc.consume(cx, email, applied, applied_ref=ref)
+    except Exception as e:  # noqa: BLE001 — a ledger hiccup must never block a payment
+        print(f"[ship_credit] consume-on-pay skipped for #{order_id}: {e!r}", flush=True)
+
+
 def set_order_payment(cx, order_id, *, method, amount_cents):
     """Record payment on an order: mark paid + capture method/amount/time, and
     drop it into the fulfillment board as 'new'. No money is moved (Phase 1)."""
@@ -589,6 +615,7 @@ def set_order_payment(cx, order_id, *, method, amount_cents):
     cx.commit()
     if cur.rowcount:
         _ensure_portal_receipt(cx, order_id)
+        _consume_ship_credit_on_pay(cx, order_id)
     return cur.rowcount > 0
 
 

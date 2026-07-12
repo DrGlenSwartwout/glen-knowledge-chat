@@ -5120,6 +5120,22 @@ def _plan_ship_credit(email, chargeable_cents):
 def _points_init_ship(cx):
     from dashboard import points as _points
     _points.init_points_table(cx)
+
+
+def _ship_credit_balance_if_enabled(email):
+    """The customer's outstanding shipping-credit balance in cents, or 0 when the
+    feature flag is off (or on any error). For flows that compute their own payable
+    internally (dispensary build_client_order) and clamp the balance themselves."""
+    if not _ship_credit_enabled():
+        return 0
+    try:
+        from dashboard import ship_credit as _ship_credit
+        with _sqlite3.connect(LOG_DB) as _scx:
+            _points_init_ship(_scx)
+            return _ship_credit.balance(_scx, email)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ship_credit] balance skipped: {e!r}", flush=True)
+        return 0
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Kill-switch for the premium per-element Glendalf backdrop on the member portal.
 # Off -> the portal API returns element_state=null, so the page shows plain (no
@@ -7948,11 +7964,16 @@ def begin_checkout(slug):
                          program_member=_is_paid_member(email), email=email)
     except CheckoutError as ce:
         return jsonify({"ok": False, "error": str(ce)}), 400
+    # Shipping credit (slice 2b, flag-gated): auto-apply the customer's outstanding
+    # ship_credit balance to this order, bounded by the payable (net product + shipping;
+    # GET is absorbed, not charged). Folded into the invoice discount so the charge
+    # drops; the ledger is debited centrally at payment settle.
+    _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
     cust = qb.find_or_create_customer(email, name)
     allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
     inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
                             allow_online_pay=allow_online, email_to=email,
-                            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+                            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
     _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
     if not _gift_won:
         _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
@@ -7991,7 +8012,8 @@ def begin_checkout(slug):
                   address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
-                  shipping_cents=pc["shipping_cents"])
+                  shipping_cents=pc["shipping_cents"],
+                  ship_credit_applied_cents=_sc_apply)
     if method in ("zelle", "wise"):
         out["pay_instructions"] = _ALT_PAY.get(method, {})
     elif method == "card" and _STRIPE_ACTIVE:
@@ -8915,6 +8937,23 @@ def begin_checkout_return():
                                                 reason="earn:dispensary", order_ref=_inv, scope=scope)
                             except Exception as _pe:
                                 app.logger.exception("client points settle failed: %s", _pe)
+                        # Slice 2b: consume any shipping credit auto-applied to this
+                        # dispensary order (global ship_credit scope, email-keyed —
+                        # NOT the dispensary points scope). This flow settles here, not
+                        # via _settle_order_points/set_order_payment; idempotent per
+                        # invoice. Read the applied amount off the ingested order.
+                        try:
+                            _p_email = (md.get("patient_email") or "").strip().lower()
+                            if _p_email and _inv:
+                                with sqlite3.connect(LOG_DB) as _sccx:
+                                    _sccx.row_factory = sqlite3.Row
+                                    _o = _bos_orders.find_order_by_external_ref(_sccx, str(_inv))
+                                    _applied = int((_o or {}).get("ship_credit_applied_cents") or 0)
+                                    if _applied > 0:
+                                        from dashboard import ship_credit as _shc
+                                        _shc.consume(_sccx, _p_email, _applied, applied_ref=str(_inv))
+                        except Exception as _sce:
+                            app.logger.exception("client ship-credit settle failed: %s", _sce)
                 except Exception as _ce:
                     app.logger.exception(
                         "client margin credit failed: %s", _ce)
@@ -14684,6 +14723,7 @@ def api_client_checkout(code):
             points_balance_cents=bal_cents,
             effective_settings=_practitioner_effective_settings(pid, _program_member),
             program_member=_program_member,
+            ship_credit_balance_cents=_ship_credit_balance_if_enabled(email),
         )
     except Exception as e:
         print(f"[client-checkout] build failed: {e!r}", flush=True)
@@ -14704,7 +14744,8 @@ def api_client_checkout(code):
                   get_cents=out.get("get_cents", 0),
                   pay_method=method,
                   practitioner_id=pid,
-                  margin_cents=int(out.get("margin_cents") or 0))
+                  margin_cents=int(out.get("margin_cents") or 0),
+                  ship_credit_applied_cents=int(out.get("ship_credit_applied_cents") or 0))
 
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
@@ -23136,13 +23177,17 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
                      program_member=_is_paid_member(email), email=email)
     if not pc["qbo_lines"]:
         raise CheckoutError("Your cart is empty or those items are no longer available.")
+    # Shipping credit (slice 2b, flag-gated) — same fold as the funnel: auto-apply the
+    # customer's ship_credit balance (bounded by net product + shipping) into the
+    # invoice discount; the ledger is debited at payment settle.
+    _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
     cust = qb.find_or_create_customer(email, ship.get("name", ""))
     inv = qb.create_invoice(
         cust,
         pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
         allow_online_pay=True,
         email_to=email,
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
     _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
                   total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
@@ -23150,7 +23195,8 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
                   get_cents=pc["priced"].get("get_cents", 0),
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
-                  shipping_cents=pc["shipping_cents"])
+                  shipping_cents=pc["shipping_cents"],
+                  ship_credit_applied_cents=_sc_apply)
     _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
     out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
            "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
@@ -34802,7 +34848,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                   items=None, total_cents=0, address=None, channel="retail",
                   get_cents=0, discount_cents=0, points_redeemed_cents=0, shipping_cents=0,
                   status="new", paid_cents=None, pay_method=None, practitioner_id=None,
-                  margin_cents=None):
+                  margin_cents=None, ship_credit_applied_cents=None):
     """Best-effort: record an order into the BOS orders table. Never raises into
     a checkout path. get_cents = absorbed Hawai'i GET owed (recorded, not charged).
     status defaults to 'new' (enters fulfillment); pass 'done' for digital charges
@@ -34820,7 +34866,8 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                 points_redeemed_cents=int(points_redeemed_cents or 0),
                 shipping_cents=int(shipping_cents or 0), status=status,
                 pay_method=pay_method, practitioner_id=practitioner_id,
-                margin_cents=margin_cents)
+                margin_cents=margin_cents,
+                ship_credit_applied_cents=ship_credit_applied_cents)
             if paid_cents is not None and _oid:
                 _bos_orders.mark_order_paid_keep_status(
                     cx, _oid, method="card", amount_cents=int(paid_cents))
@@ -35676,6 +35723,11 @@ def api_orders_edit(oid):
         existing_points = int(order.get("points_redeemed_cents") or 0)
         priced["points_redeemed_cents"] = existing_points
         priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
+        # Same for a shipping credit already auto-applied to this order: carry it
+        # forward unchanged (re-planning would double-read the balance and re-pricing
+        # would spring the total back up, desyncing the payment-settle consume).
+        existing_ship_credit = int(order.get("ship_credit_applied_cents") or 0)
+        priced["total_cents"] = max(0, priced["total_cents"] - existing_ship_credit)
         # Preserve any $0 approved review-gift lines (the editor form drops them; they're
         # not owner-editable but must stay on the invoice + keep their fulfillment link).
         for _g in (order.get("items") or []):
@@ -35691,6 +35743,7 @@ def api_orders_edit(oid):
             adjustment_cents=priced["adjustment_cents"],
             points_redeemed_cents=priced["points_redeemed_cents"],
             shipping_cents=priced["shipping_cents"],
+            ship_credit_applied_cents=existing_ship_credit,
             invoice_note=(note.strip() if isinstance(note, str) else None))
         was_paid = (order.get("pay_status") == "paid")
     finally:
@@ -35798,6 +35851,11 @@ def api_orders_manual():
     adjustment_cents = priced["adjustment_cents"]
     points_redeemed_cents = priced["points_redeemed_cents"]
     total_cents = priced["total_cents"]
+    # Shipping credit (slice 2b, flag-gated): auto-apply the customer's outstanding
+    # ship_credit to this proposed order, reducing the total the operator will collect.
+    # Shows as a "Shipping credit" invoice line; the ledger is debited at payment settle.
+    _sc_apply = _plan_ship_credit(customer.get("email"), total_cents)
+    total_cents = max(0, total_cents - _sc_apply)
     # Approved review gifts: append as $0 lines (no price impact) — manual-create only.
     _gift_rows = []
     _gift_email = (customer.get("email") or "").strip().lower()
@@ -35837,6 +35895,7 @@ def api_orders_manual():
             discount_cents=discount_cents, adjustment_cents=adjustment_cents,
             shipping_cents=shipping_cents,
             points_redeemed_cents=points_redeemed_cents,
+            ship_credit_applied_cents=_sc_apply,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
         if _gift_rows and oid:
             from dashboard import review_gifts as _rg2
@@ -36464,6 +36523,7 @@ def _invoice_summary(order):
         "shipping_cents": int(order.get("shipping_cents") or 0),
         "get_cents": int(order.get("get_cents") or 0),
         "points_redeemed_cents": int(order.get("points_redeemed_cents") or 0),
+        "ship_credit_applied_cents": int(order.get("ship_credit_applied_cents") or 0),
         "total_cents": int(order.get("total_cents") or 0),
         "status": order.get("status"),
         "pay_status": order.get("pay_status") or "unpaid",
