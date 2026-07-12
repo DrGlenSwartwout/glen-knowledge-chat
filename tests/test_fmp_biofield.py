@@ -42,35 +42,69 @@ def test_build_layers_skips_consider_and_blank():
     assert layers[0]["n"] == 1
 
 
-class _FakeCur:
-    def __init__(self, rows): self._rows = rows; self.executed = None
-    def execute(self, sql, params): self.executed = (sql, params)
-    def fetchall(self): return self._rows
+def _snapshot_conn():
+    """In-memory stand-in for the local FMP snapshot tables in chat_log.db,
+    seeded to mirror a real client (Desiree, id 4576) with an OLDER test (217)
+    and a NEWER test (235). fetch_causal_chain must return only the newest."""
+    import sqlite3
+    cx = sqlite3.connect(":memory:")
+    cx.executescript(
+        "CREATE TABLE fmp_clients (id_pk TEXT, email TEXT);"
+        "CREATE TABLE fmp_snap_client_biofield_test (id_pk TEXT, id_fk_client TEXT, active TEXT, date_test TEXT);"
+        "CREATE TABLE fmp_snap_client_remedy (id_pk TEXT, id_fk_client TEXT, id_fk_test TEXT, "
+        "id_fk_causal_chain TEXT, layer TEXT, data_2 TEXT, remedy TEXT, dosage TEXT, zc_dosage_text TEXT);")
+    cx.execute("INSERT INTO fmp_clients VALUES ('4576','desireedallaguardia@gmail.com')")
+    cx.executemany("INSERT INTO fmp_snap_client_biofield_test (id_pk,id_fk_client,active,date_test) VALUES (?,?,?,?)",
+                   [("217", "4576", "Yes", "2026-04-17"), ("235", "4576", "Yes", "2026-05-17")])
+    cx.executemany(
+        "INSERT INTO fmp_snap_client_remedy "
+        "(id_pk,id_fk_client,id_fk_test,id_fk_causal_chain,layer,data_2,remedy,dosage,zc_dosage_text) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        [  # older test 217 — must NOT appear
+            ("1445", "4576", "217", "1061", "1", "ED7 Lung Epigenetics", "Focus Neuro-Magnesium Powder", "1 scoop", "1 scoop - 2x/day"),
+           # newer test 235 — layer 2 inserted before layer 1 to prove ordering
+            ("9002", "4576", "235", "1171", "2", "MB8 Love", "Mauve Mullein Flower Essence", "", "5 drops - nightly"),
+            ("9001", "4576", "235", "1170", "1", "ED5 Circulation", "Black Tourmaline", "2 drops", "2 drops - daily")])
+    cx.commit()
+    return cx
 
 
-class _FakeCtx:
-    def __init__(self, cur): self.cur = cur
-    def __enter__(self): return self.cur
-    def __exit__(self, *a): return False
-
-
-def test_fetch_causal_chain_queries_by_email(monkeypatch):
+def test_fetch_causal_chain_reads_latest_snapshot_test():
     from dashboard import fmp_biofield as fb
-    import db_supabase
-    cur = _FakeCur([{"layer": "1", "head_chain": "MB6 Liberator", "remedy": "Neuroprotect", "dosage": "x"}])
-    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(cur))
-    out = fb.fetch_causal_chain("Backdoc.Molina@gmail.com")
-    assert out == [{"layer": "1", "head_chain": "MB6 Liberator", "remedy": "Neuroprotect", "dosage": "x"}]
-    assert cur.executed[1] == ("backdoc.molina@gmail.com",)          # lowercased param
-    assert "fmp_newapp.client_causal_chain" in cur.executed[0]
+    out = fb.fetch_causal_chain("Desireedallaguardia@GMAIL.com", conn=_snapshot_conn())
+    # only the newest test (235), ordered by layer, dosing from composed zc_dosage_text
+    assert out == [
+        {"layer": "1", "head_chain": "ED5 Circulation", "remedy": "Black Tourmaline", "dosage": "2 drops - daily"},
+        {"layer": "2", "head_chain": "MB8 Love", "remedy": "Mauve Mullein Flower Essence", "dosage": "5 drops - nightly"},
+    ]
+    # the older test's remedy must be excluded
+    assert all("Focus Neuro-Magnesium" not in r["remedy"] for r in out)
 
 
-def test_fetch_causal_chain_handles_errors(monkeypatch):
+def test_fetch_causal_chain_feeds_build_layers():
     from dashboard import fmp_biofield as fb
-    import db_supabase
-    def _boom(): raise RuntimeError("supabase down")
-    monkeypatch.setattr(db_supabase, "supabase_cursor", _boom)
-    assert fb.fetch_causal_chain("x@y.com") == []
+    layers = fb.build_layers(fb.fetch_causal_chain("desireedallaguardia@gmail.com", conn=_snapshot_conn()))
+    assert [l["n"] for l in layers] == [1, 2]
+    assert layers[0]["remedy"] == "Black Tourmaline"
+    assert layers[0]["dosing"] == "2 drops - daily"
+
+
+def test_fetch_causal_chain_falls_back_to_bare_dosage():
+    from dashboard import fmp_biofield as fb
+    cx = _snapshot_conn()
+    cx.execute("UPDATE fmp_snap_client_remedy SET zc_dosage_text='' WHERE id_pk='9001'")
+    cx.commit()
+    out = fb.fetch_causal_chain("desireedallaguardia@gmail.com", conn=cx)
+    assert out[0]["dosage"] == "2 drops"   # empty composed text -> bare dosage
+
+
+def test_fetch_causal_chain_empty_and_error_safe():
+    from dashboard import fmp_biofield as fb
+    assert fb.fetch_causal_chain("nobody@x.com", conn=_snapshot_conn()) == []
+    assert fb.fetch_causal_chain("", conn=_snapshot_conn()) == []
+    import sqlite3
+    bare = sqlite3.connect(":memory:")   # no snapshot tables -> OperationalError, swallowed
+    assert fb.fetch_causal_chain("x@y.com", conn=bare) == []
 
 
 def test_draft_prose_parses_llm_json(monkeypatch):
