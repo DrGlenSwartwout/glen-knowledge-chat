@@ -683,6 +683,7 @@ async function suggestPreserved(){
 function mrNames(){return [].slice.call(document.querySelectorAll('#mrlist .mrname'))
  .map(function(i){return (i.value||'').trim()}).filter(Boolean)}
 function mrSetPanel(j){if(j&&j.html!==undefined)document.getElementById('suggestpanel').innerHTML=j.html}
+async function layerPick(b){mrSetPanel(await post('/author/__TID__/layer/'+b.getAttribute('data-n')+'/select',{remedy:b.getAttribute('data-remedy')}))}
 async function mrSave(){mrSetPanel(await post('/author/__TID__/remedy-set',{remedies:mrNames()}))}
 async function mrEdit(inp){await mrSave()}
 var _mrDrag=null;
@@ -1213,6 +1214,48 @@ def render_suggest_panel(data):
     return (f"<div class=card>{head}"
             f"<ol id=mrlist style='margin:6px 0 0;padding-left:20px'>{rows}</ol>"
             f"{unc_html}{btns}</div>")
+
+
+def render_layer_candidates_panel(layer_candidates):
+    """Per-layer ranked pick-list: each layer shows its current default remedy plus a
+    collapsed 'alternatives' list (coverage-first, learned picks flagged). Picking one
+    calls layerPick(this) -> POST .../layer/<n>/select. Pure HTML; '' when no layers."""
+    lcs = layer_candidates or []
+    if not lcs:
+        return ""
+    blocks = ""
+    for L in lcs:
+        n = str(L.get("n"))
+        head = _e(L.get("head") or "")
+        default = _e(", ".join(L.get("default") or []) or "—")
+        cands = L.get("candidates") or []
+        btns = ""
+        for c in cands:
+            rem = c.get("remedy") or ""
+            tags = []
+            if c.get("is_default"):
+                tags.append("current")
+            if c.get("used_before"):
+                tags.append("★ used before")
+            if c.get("source") == "functional":
+                tags.append("functional")
+            elif c.get("coverage"):
+                tags.append(f"covers {c['coverage']}")
+            tag = (f" <span class=food>({_e(', '.join(tags))})</span>") if tags else ""
+            cls = "btn ghost lcpick" + (" lccur" if c.get("is_default") else "")
+            btns += (f"<button type=button class='{cls}' data-n=\"{_e(n)}\" "
+                     f"data-remedy=\"{_e(rem)}\" onclick='layerPick(this)' "
+                     "style='font-size:11px;margin:2px 4px 2px 0'>"
+                     f"{_e(rem)}{tag}</button>")
+        blocks += (f"<div class=lclayer style='margin:6px 0'>"
+                   f"<div class=food style='font-size:11px'>Layer {_e(n)}"
+                   f"{(' &middot; ' + head) if head else ''} &middot; default: {default}</div>"
+                   f"<details><summary class=food style='font-size:11px;cursor:pointer'>"
+                   f"alternatives ({len(cands)}) &#9662;</summary>"
+                   f"<div style='margin-top:4px'>{btns or '<span class=food>none</span>'}</div>"
+                   "</details></div>")
+    return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
+            f"letter-spacing:.04em'>Layer alternatives</div>{blocks}</div>")
 
 
 def render_stress_panel(data):

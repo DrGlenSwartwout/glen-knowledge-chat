@@ -32,6 +32,36 @@ def test_route_returns_suggestion(tmp_path):
     assert j["uncovered"] == [] and "html" in j
 
 
+def test_route_returns_layer_candidates(tmp_path):
+    db = str(tmp_path / "c.db")
+    client = create_app(db, scan_lookup=lambda e: _NONE).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").split("/")[-1]
+    _seed(db, int(tid.lstrip("a")))
+    client.post(f"/author/{tid}/row", json={"layer": 1, "head": "Membrane", "remedy": "Neuro Magnesium"})
+    j = client.get(f"/author/{tid}/suggest-remedies").get_json()
+    assert "layer_candidates" in j and isinstance(j["layer_candidates"], list)
+    L1 = next(L for L in j["layer_candidates"] if L["n"] == 1)
+    assert any(c["remedy"].lower() == "neuro magnesium" and c.get("is_default")
+               for c in L1["candidates"])
+
+
+def test_layer_select_swaps_chain_remedy_and_learns(tmp_path):
+    from dashboard.biofield_stress import get_saved_remedy_set
+    db = str(tmp_path / "c.db")
+    client = create_app(db, scan_lookup=lambda e: _NONE).test_client()
+    tid = client.post("/author/new").headers["Location"].rstrip("/").split("/")[-1]
+    _seed(db, int(tid.lstrip("a")))
+    client.post(f"/author/{tid}/row", json={"layer": 1, "head": "Membrane", "remedy": "Neuro Magnesium"})
+    j = client.post(f"/author/{tid}/layer/1/select", json={"remedy": "Nerve Star"}).get_json()
+    assert j["ok"] and "layer_candidates" in j
+    cx = sqlite3.connect(db)
+    rem = cx.execute("SELECT remedy FROM biofield_auth_chain WHERE test_id=? AND layer=1",
+                     (int(tid.lstrip("a")),)).fetchone()[0]
+    assert "nerve star" in rem.lower()                        # chain row swapped
+    saved = get_saved_remedy_set(cx, tid) or []
+    assert any("nerve star" in s.lower() for s in saved)      # pick fed the learning loop
+
+
 def test_route_reflects_live_chain(tmp_path):
     db = str(tmp_path / "c.db")
     client = create_app(db, scan_lookup=lambda e: _NONE).test_client()
