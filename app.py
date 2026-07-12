@@ -34000,6 +34000,48 @@ def coaching_activate(token):
     return resp
 
 
+@app.route("/hold/<token>/ship", methods=["GET", "POST"])
+def household_hold_ship(token):
+    """Caregiver 'ship now' release page for a household hold group. GET renders
+    a scanner-safe confirm (no mutation); POST releases the hold and, when it
+    has 2+ member orders, groups them into a combined_shipments shipment. See
+    _confirm_post_page for why GET must never consume the token."""
+    from dashboard import household_holds as _holds
+    from dashboard import combined_shipments as _cs
+    invalid = ("<!doctype html><meta charset=utf-8><title>Link expired</title>"
+               "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
+               "<h1>This shipment is already on its way</h1>"
+               "<p>Nothing more to do — your household order has been released.</p></div>")
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _holds.init_hold_tables(cx)
+        hold = _holds.hold_by_release_token(cx, token)
+        if hold is None or hold["status"] != "open":
+            return invalid, (200 if hold else 404)
+        if request.method == "GET":
+            members = hold.get("members") or []
+            names = ", ".join((m.get("name") or m.get("email") or f"#{m['id']}") for m in members)
+            return _confirm_post_page(
+                f"/hold/{token}/ship",
+                title="Ship your household order",
+                heading="Ship your household order now?",
+                blurb=f"This will send your household's order ({names}) to fulfillment now. "
+                      "Anything ordered after this ships separately.",
+                button="Ship it now")
+        # POST: release, then hand to the combined-shipment layer
+        res = _holds.release_hold(cx, hold["id"], by="caregiver")
+        ids = res["order_ids"]
+        try:
+            if len(ids) >= 2:
+                _cs.create_shipment(cx, ids, created_by="caregiver-release")
+        except Exception as e:
+            print(f"[hold-ship] create_shipment({ids}) failed: {e!r}", flush=True)
+    return ("<!doctype html><meta charset=utf-8><title>On its way</title>"
+            "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
+            "<h1>Done — your order is on its way</h1>"
+            "<p>We’ll email tracking as soon as it ships.</p></div>"), 200
+
+
 # ── Slice 6: studio.com credit intent + daily renewal-reminder cron ──────────
 
 @app.route("/coaching/studio-credit", methods=["GET"])
