@@ -281,3 +281,28 @@ def test_load_legacy_no_reports_unchanged(client):
     cp.upsert_portal(cx, "lg2@y.com", "Lg2", {"layers": [{"n": 1, "title": "Legacy"}]}); cx.close()
     j = c.get("/api/console/biofield-portal?key=test-secret&email=lg2@y.com").get_json()
     assert j["found"] and j["scan_dates"] == [] and j["content"]["layers"][0]["title"] == "Legacy"
+
+
+def test_load_returns_persisted_current_scan_date(client):
+    # #810: the console GET must surface the persisted "current" pointer on load,
+    # not only after an in-session Set-as-current click.
+    c, appmod = client
+    from dashboard import client_portal as cp, portal_biofield_reports as R
+    import sqlite3, datetime
+    cx = sqlite3.connect(appmod.LOG_DB); cp.init_client_portal_table(cx); R.init_table(cx)
+    today = datetime.date.today().isoformat()
+    old = (datetime.date.today() - datetime.timedelta(days=40)).isoformat()
+    cp.upsert_portal(cx, "cur@y.com", "Cur", {})
+    R.upsert_report(cx, "cur@y.com", today, "s1", {"layers": []}, "confirmed")
+    R.upsert_report(cx, "cur@y.com", old, "s0", {"layers": []}, "confirmed")
+    cp.set_current_scan(cx, "cur@y.com", old)
+    cx.close()
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=cur@y.com").get_json()
+    assert j["current_scan_date"] == old
+
+
+def test_load_current_scan_date_none_when_unset(client):
+    c, appmod = client
+    _seed(appmod, "nocur@y.com", "NoCur")
+    j = c.get("/api/console/biofield-portal?key=test-secret&email=nocur@y.com").get_json()
+    assert j["current_scan_date"] is None

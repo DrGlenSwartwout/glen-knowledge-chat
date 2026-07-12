@@ -570,13 +570,13 @@ function populate(d){
 // ── Load / publish ──────────────────────────────────────────────────────────
 let curScanDate = "";
 let SCAN_DATES = [];
-let PORTAL_CURRENT_DATE = null;   // known only once set this session — the GET
-                                   // load path doesn't surface the persisted pointer
+let PORTAL_CURRENT_DATE = null;   // initialized from the GET response's persisted
+                                   // current_scan_date, then kept live by in-session clicks
 let _lastLoadedEmail = "";
 async function loadExisting(scanDate){
   const email = val('email');
   if(!email){ setStatus('Enter an email first.', false); return; }
-  if(email !== _lastLoadedEmail) PORTAL_CURRENT_DATE = null;   // switched client — forget the old guess
+  if(email !== _lastLoadedEmail) PORTAL_CURRENT_DATE = null;   // switched client — forget the old value until the GET below re-initializes it
   _lastLoadedEmail = email;
   let url = `/api/console/biofield-portal?email=${encodeURIComponent(email)}`;
   if(scanDate) url += `&scan_date=${encodeURIComponent(scanDate)}`;
@@ -589,6 +589,7 @@ async function loadExisting(scanDate){
   const dates = r.json.scan_dates || [];
   curScanDate = r.json.scan_date || "";
   SCAN_DATES = dates;
+  PORTAL_CURRENT_DATE = r.json.current_scan_date || null;
   const wrap = $('scanWrap'), sel = $('scanSel');
   if(dates.length){
     sel.innerHTML = dates.map(d=>`<option value="${esc(d)}"${d===curScanDate?' selected':''}>${esc(d)}</option>`).join('');
