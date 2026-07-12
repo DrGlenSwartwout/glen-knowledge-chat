@@ -1,6 +1,6 @@
 # tests/test_biofield_reveal_routes.py
 """Begin #4a - reveal ingest + reveal route."""
-import importlib, sqlite3, sys
+import importlib, json, sqlite3, sys
 from pathlib import Path
 import pytest
 
@@ -128,6 +128,39 @@ def test_console_list_includes_board_signals(monkeypatch, tmp_path):
     assert d["ordered"] is True
     assert d["order_count"] == 1                  # cancelled order excluded
     assert d["order_total_cents"] == 5000
+
+
+def test_console_list_includes_order_contents(monkeypatch, tmp_path):
+    # The 🛒 basket badge opens a popup of order contents, so the list endpoint
+    # must return each non-cancelled order's line items under `orders`.
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "CONSOLE_SECRET", "ck", raising=False)
+    from dashboard import biofield_reveals
+    with sqlite3.connect(db) as cx:
+        biofield_reveals.upsert(cx, "buyer@x.com", "2026-06-19",
+                                {"greeting": "Aloha", "body": "reading"},
+                                [{"name": "Cistus", "slug": "cistus", "meaning": "calm"}], "s")
+        cx.execute("CREATE TABLE IF NOT EXISTS orders "
+                   "(id INTEGER PRIMARY KEY, email TEXT, total_cents INTEGER, status TEXT, "
+                   "created_at TEXT, items_json TEXT)")
+        cx.execute("INSERT INTO orders (email, total_cents, status, created_at, items_json) "
+                   "VALUES (?,?,?,?,?)",
+                   ("buyer@x.com", 5000, "done", "2026-06-20T00:00:00Z",
+                    json.dumps([{"name": "Cistus", "slug": "cistus", "qty": 2, "line_cents": 5000}])))
+        cx.execute("INSERT INTO orders (email, total_cents, status, created_at, items_json) "
+                   "VALUES (?,?,?,?,?)",
+                   ("buyer@x.com", 2000, "cancelled", "2026-06-21T00:00:00Z",
+                    json.dumps([{"name": "Excluded", "slug": "x", "qty": 1, "line_cents": 2000}])))
+        cx.commit()
+    client = app_module.app.test_client()
+    body = client.get("/api/console/biofield-reveals?key=ck").get_json()
+    d = body["drafts"][0]
+    assert len(d["orders"]) == 1                  # cancelled order excluded
+    o = d["orders"][0]
+    assert o["total_cents"] == 5000
+    assert o["items"][0]["name"] == "Cistus"
+    assert o["items"][0]["qty"] == 2
+    assert o["items"][0]["line_cents"] == 5000
 
 
 def test_console_page_served(monkeypatch, tmp_path):

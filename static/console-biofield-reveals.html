@@ -78,6 +78,22 @@
          background:var(--bg); z-index:50; }
   #gate .card{ min-width:300px; }
   #app{ display:none; }
+  .sum-order.ordered{ cursor:pointer; }
+  .sum-order.ordered:hover{ text-decoration:underline; }
+  #order-modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+                background:rgba(0,0,0,.6); z-index:80; }
+  #order-modal .modal-card{ position:relative; background:var(--card); border:1px solid var(--line);
+                border-radius:10px; padding:18px; max-width:520px; width:calc(100% - 40px);
+                max-height:80vh; overflow:auto; }
+  #order-modal h3{ margin:0 0 4px; font-size:16px; padding-right:24px; }
+  .om-close{ position:absolute; top:14px; right:16px; cursor:pointer; color:var(--muted);
+             font-size:20px; line-height:1; border:0; background:transparent; }
+  .om-order{ border:1px solid var(--line); border-radius:8px; padding:10px; margin:10px 0; background:#0c0e12; }
+  .om-order-head{ display:flex; justify-content:space-between; gap:10px; font-size:12px;
+                  color:var(--muted); margin-bottom:6px; }
+  .om-item{ display:flex; justify-content:space-between; gap:10px; padding:3px 0; font-size:13px; }
+  .om-item .om-amt{ color:var(--muted); flex:0 0 auto; }
+  .om-empty{ color:var(--muted); font-size:13px; padding:2px 0; }
 </style>
 </head>
 <body>
@@ -95,6 +111,15 @@
   <h1>Biofield Reveals</h1>
   <p style="color:var(--muted);margin:0 0 16px">Review each reveal, then <strong>Approve &amp; send link</strong> — that un-blurs the top remedy and emails the client. The rest unlock when they become a paying member.</p>
   <div id="list"></div>
+</div>
+
+<div id="order-modal">
+  <div class="modal-card">
+    <button class="om-close" type="button" onclick="closeOrderModal()">×</button>
+    <h3 id="om-title">Order contents</h3>
+    <div id="om-sub" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
+    <div id="om-body"></div>
+  </div>
 </div>
 
 <script>
@@ -366,6 +391,10 @@ function buildCard(d){
     var cents = (typeof d.order_total_cents === 'number') ? d.order_total_cents : 0;
     orderBadge.className = 'sum-order ordered';
     orderBadge.textContent = '🛒 $' + Math.round(cents/100);
+    orderBadge.title = 'Click to see order contents';
+    // Stop the click from toggling the card's expand/collapse — the basket is
+    // its own control: it opens the order-contents popup.
+    orderBadge.addEventListener('click', function(e){ e.stopPropagation(); openOrderModal(d); });
   } else {
     orderBadge.className = 'sum-order none';
     orderBadge.textContent = 'no order';
@@ -922,6 +951,72 @@ async function pollPull(id, input, btn, st, tries, doneMsg){
   }
   setTimeout(function(){ pollPull(id, input, btn, st, tries + 1, doneMsg); }, 10000);
 }
+
+// ---- Order-contents popup (opened from the 🛒 basket badge) -----------------
+function _amt(cents){ return (typeof cents === 'number') ? '$' + (cents/100).toFixed(2) : ''; }
+
+function closeOrderModal(){ document.getElementById('order-modal').style.display = 'none'; }
+
+function openOrderModal(d){
+  var m = document.getElementById('order-modal');
+  var who = d.client_name || d.email || ('reveal #' + d.id);
+  document.getElementById('om-title').textContent = 'Order contents — ' + who;
+  var orders = Array.isArray(d.orders) ? d.orders : [];
+  var totalCents = (typeof d.order_total_cents === 'number') ? d.order_total_cents : 0;
+  document.getElementById('om-sub').textContent =
+    orders.length + ' order' + (orders.length === 1 ? '' : 's') +
+    ' · $' + Math.round(totalCents/100) + ' total (non-cancelled)';
+  var body = document.getElementById('om-body');
+  body.innerHTML = '';
+  if(!orders.length){
+    var none = document.createElement('div');
+    none.className = 'om-empty';
+    none.textContent = 'No line-item detail available for this order.';
+    body.appendChild(none);
+  }
+  orders.forEach(function(o){
+    var box = document.createElement('div');
+    box.className = 'om-order';
+    var head = document.createElement('div');
+    head.className = 'om-order-head';
+    var left = document.createElement('span');
+    left.textContent = '#' + o.id +
+      (o.created_at ? ' · ' + String(o.created_at).slice(0,10) : '') +
+      (o.status ? ' · ' + o.status : '');
+    var right = document.createElement('span');
+    right.textContent = _amt(o.total_cents);
+    head.appendChild(left); head.appendChild(right);
+    box.appendChild(head);
+    var items = Array.isArray(o.items) ? o.items : [];
+    if(!items.length){
+      var ie = document.createElement('div');
+      ie.className = 'om-empty';
+      ie.textContent = '(no line items recorded)';
+      box.appendChild(ie);
+    }
+    items.forEach(function(it){
+      var line = document.createElement('div');
+      line.className = 'om-item';
+      var nm = document.createElement('span');
+      nm.textContent = ((it.qty && it.qty !== 1) ? (it.qty + '× ') : '') + (it.name || '');
+      var am = document.createElement('span');
+      am.className = 'om-amt';
+      am.textContent = _amt(it.line_cents);
+      line.appendChild(nm); line.appendChild(am);
+      box.appendChild(line);
+    });
+    body.appendChild(box);
+  });
+  m.style.display = 'flex';
+}
+
+// Close the popup on backdrop click or Escape.
+document.getElementById('order-modal').addEventListener('click', function(e){
+  if(e.target === this) closeOrderModal();
+});
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') closeOrderModal();
+});
 
 boot();
 </script>
