@@ -54,6 +54,26 @@ def test_parse_authorizenet():
     assert r["email"] == "carl.client@example.com"
     assert r["phone"] == "555-222-3333"
 
+# Authorize.net receipt where the merchant block ALSO carries Phone:/Email:
+# labels ahead of "Customer Information" — must not leak into the customer record.
+AUTHNET_WITH_MERCHANT = """Merchant: Remedy Match LLC
+Phone: (808) 217-9647
+Email: support@remedymatch.com
+Customer Information
+First Name: Carl
+Last Name: Client
+Email: carl.client@example.com
+Phone: 555-222-3333
+"""
+
+def test_parse_authorizenet_ignores_merchant_labels():
+    r = parse_order_email("authorizenet", AUTHNET_WITH_MERCHANT)
+    assert r["name"] == "Carl Client"
+    assert r["email"] == "carl.client@example.com"
+    assert r["phone"] == "555-222-3333"
+    assert "(808) 217-9647" not in (r["phone"] or "")
+    assert r["email"] != "support@remedymatch.com"
+
 def test_parse_invoice_uses_to_header():
     body = "To: Deb Buyer <deb.buyer@example.com>\nSubject: Your Remedy Match invoice INH-77\n"
     r = parse_order_email("invoice", body)

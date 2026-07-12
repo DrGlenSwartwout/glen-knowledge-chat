@@ -56,13 +56,19 @@ def parse_order_email(source: str, body: str) -> Optional[dict]:
                     for t in re.findall(r'/remedies/[^"]+">([^<]+)</a>', body)]
 
     elif source == "authorizenet":
-        f = re.search(r"First Name:\s*(.+?)\s*$", body, re.M)
-        l = re.search(r"Last Name:\s*(.+?)\s*$", body, re.M)
+        # Scope to the customer block only — a merchant block earlier in the
+        # body (Healing Oasis / support@remedymatch.com / (808) 217-9647) can
+        # carry its own "Phone:"/"Email:" labels and must never be matched.
+        marker = "Customer Information"
+        idx = body.find(marker)
+        customer_block = body[idx + len(marker):] if idx != -1 else body
+        f = re.search(r"First Name:\s*(.+?)\s*$", customer_block, re.M)
+        l = re.search(r"Last Name:\s*(.+?)\s*$", customer_block, re.M)
         if f or l:
             name = _clean(" ".join(x.group(1).strip() for x in (f, l) if x))
-        m = re.search(r"(?<!support@remedymatch\.com)\bEmail:\s*([^\s<>]+@[^\s<>]+)", body)
-        email = _clean(m.group(1)) if m and m.group(1) != _MERCHANT_EMAIL else email
-        m = re.search(r"Phone:\s*([0-9()+\-.\s]{7,})", body)
+        m = re.search(r"\bEmail:\s*([^\s<>]+@[^\s<>]+)", customer_block)
+        email = _clean(m.group(1)) if m else None
+        m = re.search(r"Phone:\s*([0-9()+\-.\s]{7,})", customer_block)
         phone = _clean(m.group(1)) if m else None
 
     elif source == "invoice":
