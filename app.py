@@ -16566,31 +16566,6 @@ def api_client_portal(token):
                 _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
         except Exception as _e:
             print(f"[wishlist] merge skipped: {_e}", flush=True)
-    # Wishlist Task 5: hydrated card list for the portal shell's wishlist tab/card.
-    # Keyed to the PRIMARY portal email (same rationale as the merge above — the
-    # browsing session's wishlist belongs to the account holder). Flag-gated +
-    # best-effort: a hydration failure must never break the portal load.
-    _wcards = None
-    if _WISHLIST_ENABLED and email_for_reports:
-        try:
-            import sqlite3 as _wsq2
-            from dashboard import wishlist as _wl2
-            _wcards = []
-            with _db_lock, _wsq2.connect(LOG_DB) as _wcx2:
-                _wl2.init_wishlist_table(_wcx2)
-                _wslugs = _wl2.list_for(_wcx2, "email:" + email_for_reports)
-            for _s in _wslugs:
-                _wp = _get_product(_s)
-                if not _wp:
-                    continue
-                _wimgs = _wp.get("page_images") or []
-                _wcards.append({"slug": _s, "name": _wp.get("name", _s),
-                                "price": f"${_wp.get('price_cents', 0)/100:.2f}",
-                                "url": f"/begin/product/{_s}",
-                                "image": (_wimgs[0] if _wimgs else "")})
-        except Exception as _e:
-            _wcards = None
-            print(f"[wishlist] portal payload skipped: {_e}", flush=True)
     # Task 3: household/family portal-view switcher. Flag-gated + best-effort — a
     # household lookup failure must never break the portal load. An absent or
     # unauthorized ?member= silently falls back to serving the primary's own view
@@ -16966,10 +16941,36 @@ def api_client_portal(token):
         }
     except Exception:
         pass
-    # Wishlist Task 5: hydrated cards computed earlier (right after the Task 4 merge,
-    # keyed to the primary portal email) — attach here once `payload` exists.
-    if _WISHLIST_ENABLED and email_for_reports and _wcards is not None:
-        payload["wishlist"] = _wcards
+    # Wishlist Task 5: hydrated card list for the portal shell's wishlist tab/card.
+    # Keyed to email_for_reports, which is already re-pointed by ?member= above, so
+    # a caregiver viewing a household member's tab sees the MEMBER's own wishlist —
+    # matches the sibling cards above (ff_matches, scan_recommendations,
+    # support_program, is_animal/animal_name), all of which read the re-pointed
+    # email. NOTE: the Task 4 merge near the top of this function intentionally
+    # still uses the pre-re-point primary email — the anonymous browsing session
+    # belongs to the account holder, not whichever member is being viewed; that
+    # block must NOT move. Flag-gated + best-effort: a hydration failure must never
+    # break the portal load.
+    if _WISHLIST_ENABLED and email_for_reports:
+        try:
+            import sqlite3 as _wsq2
+            from dashboard import wishlist as _wl2
+            _wcards = []
+            with _db_lock, _wsq2.connect(LOG_DB) as _wcx2:
+                _wl2.init_wishlist_table(_wcx2)
+                _wslugs = _wl2.list_for(_wcx2, "email:" + email_for_reports)
+            for _s in _wslugs:
+                _wp = _get_product(_s)
+                if not _wp:
+                    continue
+                _wimgs = _wp.get("page_images") or []
+                _wcards.append({"slug": _s, "name": _wp.get("name", _s),
+                                "price": f"${_wp.get('price_cents', 0)/100:.2f}",
+                                "url": f"/begin/product/{_s}",
+                                "image": (_wimgs[0] if _wimgs else "")})
+            payload["wishlist"] = _wcards
+        except Exception as _e:
+            print(f"[wishlist] portal payload skipped: {_e}", flush=True)
     return jsonify(payload)
 
 
