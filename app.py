@@ -22272,6 +22272,7 @@ def api_e4l_reveal_draft():
                     "summary": (L.get("summary") or "").strip(),
                     "patterns": L.get("patterns") or [],
                     "pattern_labels": L.get("pattern_labels") or [],
+                    "alternatives": L.get("alternatives") or [],   # ranked picks for the reveal UI
                     "remedy": out_rem})
             # Derived flat remedies = the surviving layer remedies, in order (for #4b/#4c).
             derived = [L["remedy"] for L in cleaned_layers if L.get("remedy")]

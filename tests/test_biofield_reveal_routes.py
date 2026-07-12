@@ -49,6 +49,27 @@ def test_ingest_stores_draft_and_mints_token_once(monkeypatch, tmp_path):
     assert n == 1  # token minted once
 
 
+def test_ingest_preserves_layer_alternatives(monkeypatch, tmp_path):
+    app_module = _load_app(); db = _fresh(app_module, monkeypatch, tmp_path)
+    monkeypatch.setenv("CRON_SECRET", "k")
+    monkeypatch.setattr(app_module, "_send_inquiry_email", lambda *a, **k: True)
+    client = app_module.app.test_client()
+    payload = {"email": "b@x.com", "scan_date": "2026-06-20",
+               "interpretation": {"greeting": "Aloha"},
+               "layers": [{"n": 1, "title": "Heart", "summary": "s", "patterns": ["ED6"],
+                           "pattern_labels": ["Heart Driver"],
+                           "remedy": {"name": "Heart Health", "slug": "heart-health"},
+                           "alternatives": [{"name": "Rhythm Restore", "slug": "rhythm-restore", "score": 0.92}]}],
+               "source": "m"}
+    assert client.post("/api/e4l/reveal-draft", json=payload,
+                       headers={"X-Cron-Secret": "k"}).status_code == 200
+    from dashboard import biofield_reveals
+    with sqlite3.connect(db) as cx:
+        rows = biofield_reveals.list_pending(cx)
+    alts = rows[0]["layers"][0].get("alternatives") or []
+    assert [a["name"] for a in alts] == ["Rhythm Restore"]      # survived the endpoint's reshape
+
+
 def test_ingest_requires_auth(monkeypatch, tmp_path):
     app_module = _load_app(); _fresh(app_module, monkeypatch, tmp_path)
     monkeypatch.setenv("CRON_SECRET", "k")
