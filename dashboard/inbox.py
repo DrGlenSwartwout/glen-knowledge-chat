@@ -653,6 +653,14 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
     — a check error never blocks a send. Auth magic-links use a separate path and
     are intentionally NOT guarded here.
     """
+    # Never send real email under pytest. This is the shared Gmail transport, so a
+    # full-suite run otherwise fires every test that reaches it (e.g. the Continuous
+    # Care signup alert via _notify_first_cc_signup), flooding the real inbox.
+    # pytest sets PYTEST_CURRENT_TEST on every test; prod never does, so live
+    # sending is unaffected. Tests that assert on send behavior mock at a higher
+    # level (e.g. _send_full_report_email) and are unaffected by this guard.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return {"skipped": "pytest"}
     from dashboard import email_suppression as _es
     try:
         with _sqlite3.connect(_db_path()) as _cx:
