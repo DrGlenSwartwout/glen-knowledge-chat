@@ -135,6 +135,24 @@ def test_release_recomputes_combined_shipping(client, monkeypatch):
         assert sum(int(m["shipping_cents"] or 0) for m in members) <= 1600
 
 
+def test_flag_off_no_hold_end_to_end(monkeypatch):
+    # Deliberately does NOT use the app-reloading `client` fixture: the flag
+    # is read at call time (os.environ.get inside household_holds._enabled()),
+    # so no app/module reload is needed to prove inertness. This runs bare.
+    monkeypatch.setenv("HOUSEHOLD_AUTO_BATCH_ENABLED", "")
+    from dashboard import orders as O, family_plan as FP, household_holds as H
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    O.init_orders_table(cx)
+    FP.init_family_plan_table(cx)
+    H.init_hold_tables(cx)
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    oid = O.upsert_order(cx, source="t", external_ref="cg@x.com", email="cg@x.com", name="cg",
+                         items=[{"slug": "x", "qty": 1}], total_cents=1000, channel="ship")
+    assert H.maybe_hold_new_order(cx, oid) is None
+    assert O.get_order(cx, oid)["hold_group_id"] is None
+
+
 def test_sweep_releases_due_holds(client, monkeypatch):
     import sqlite3, datetime as _dt
     from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H
