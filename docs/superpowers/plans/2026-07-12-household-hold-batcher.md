@@ -780,7 +780,7 @@ import pytest
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("HOUSEHOLD_AUTO_BATCH_ENABLED", "1")
     monkeypatch.setenv("HOUSEHOLD_SHIPMENTS_ENABLED", "1")
-    monkeypatch.setenv("LOG_DB", str(tmp_path / "log.db"))
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))  # app.LOG_DB derives from DATA_DIR, NOT LOG_DB
     import app as _app
     importlib.reload(_app)
     _app.app.config["TESTING"] = True
