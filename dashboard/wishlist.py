@@ -40,4 +40,4 @@ def list_for(cx, owner):
     if not owner:
         return []
     return [r[0] for r in cx.execute(
-        "SELECT slug FROM wishlist WHERE owner=? ORDER BY added_at DESC, slug", (owner,))]
+        "SELECT slug FROM wishlist WHERE owner=? ORDER BY rowid DESC", (owner,))]

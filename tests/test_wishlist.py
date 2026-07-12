@@ -23,3 +23,9 @@ def test_owners_are_independent():
     w.toggle(cx, "sess:s1", "a"); w.toggle(cx, "email:e@x.com", "b")
     assert w.list_for(cx, "sess:s1") == ["a"]
     assert w.list_for(cx, "email:e@x.com") == ["b"]
+
+def test_list_for_is_newest_first():
+    cx = _cx()
+    for s in ["a", "b", "c"]:
+        w.toggle(cx, "sess:s1", s)
+    assert w.list_for(cx, "sess:s1") == ["c", "b", "a"]
