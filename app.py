@@ -13756,7 +13756,8 @@ def api_console_reviews_list():
 def _biofield_status_brief(cx, email):
     """Board signals for a reveal's owner email: paid (active member) + order rollup.
     Drives the reveals board columns + order badge. Best-effort, never raises."""
-    out = {"paid": False, "ordered": False, "order_count": 0, "order_total_cents": 0}
+    out = {"paid": False, "ordered": False, "order_count": 0,
+           "order_total_cents": 0, "orders": []}
     email = (email or "").strip().lower()
     if not email:
         return out
@@ -13771,6 +13772,32 @@ def _biofield_status_brief(cx, email):
         out["order_count"] = len(rows)
         out["ordered"] = len(rows) > 0
         out["order_total_cents"] = sum(int(r[0] or 0) for r in rows)
+    except Exception:
+        pass
+    # Basket contents for the order-badge popup: each non-cancelled order's line
+    # items. Kept in its own best-effort block so a minimal orders table (missing
+    # items_json/created_at) still yields the totals above — only `orders` drops.
+    try:
+        orows = cx.execute(
+            "SELECT id, COALESCE(created_at,'') , COALESCE(status,'') , "
+            "COALESCE(total_cents,0) , COALESCE(items_json,'[]') "
+            "FROM orders WHERE lower(email)=? AND status!='cancelled' ORDER BY id DESC",
+            (email,)).fetchall()
+        orders = []
+        for oid, created_at, status, total_cents, items_json in orows:
+            try:
+                its = json.loads(items_json or "[]") or []
+            except Exception:
+                its = []
+            orders.append({
+                "id": oid, "created_at": created_at, "status": status,
+                "total_cents": int(total_cents or 0),
+                "items": [{"name": (it.get("name") or it.get("slug") or ""),
+                           "qty": it.get("qty") or 1,
+                           "line_cents": it.get("line_cents")}
+                          for it in its if isinstance(it, dict)],
+            })
+        out["orders"] = orders
     except Exception:
         pass
     return out
