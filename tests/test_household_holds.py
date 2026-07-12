@@ -146,3 +146,13 @@ def test_holds_actions_registered():
     import dashboard.household_holds  # noqa: F401 (import self-registers)
     assert A.get_action("holds.extend") is not None
     assert A.get_action("holds.release") is not None
+
+
+def test_cancel_last_member_closes_group():
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    o1 = _order(cx, "cg@x.com")
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
+    H.remove_from_hold(cx, o1)
+    assert O.get_order(cx, o1)["hold_group_id"] is None
+    assert H.get_hold(cx, g)["status"] == "cancelled"

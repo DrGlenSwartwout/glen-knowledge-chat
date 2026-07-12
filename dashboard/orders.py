@@ -293,6 +293,12 @@ def set_order_status(cx, order_id, status):
             _ungroup_cancelled_from_shipment(cx, order_id)
         except Exception as e:  # never let group cleanup block the cancel
             print(f"[orders] ungroup-on-cancel skipped for #{order_id}: {e!r}", flush=True)
+        try:
+            from dashboard import household_holds as _holds
+            _holds.init_hold_tables(cx)
+            _holds.remove_from_hold(cx, order_id)
+        except Exception as e:  # never let hold cleanup block the cancel
+            print(f"[orders] hold-remove-on-cancel skipped for #{order_id}: {e!r}", flush=True)
     return cur.rowcount > 0
 
 

@@ -225,6 +225,23 @@ def hold_by_release_token(cx, raw_token):
     return d
 
 
+def remove_from_hold(cx, order_id):
+    """Called when a held order is cancelled: drop it from its hold group. If
+    that leaves the group with no remaining (non-cancelled) members, close the
+    group as 'cancelled' — an empty hold has nothing left to combine."""
+    order = _orders.get_order(cx, order_id)
+    gid = order.get("hold_group_id") if order else None
+    if gid is None:
+        return {"ok": False, "reason": "not in a hold"}
+    _orders.set_order_hold_group(cx, order_id, None)
+    remaining = orders_in_hold(cx, gid)
+    if not remaining:
+        cx.execute("UPDATE household_holds SET status='cancelled', updated_at=? "
+                   "WHERE id=? AND status='open'", (_iso(_now()), gid))
+        cx.commit()
+    return {"ok": True, "group_id": gid, "remaining": len(remaining)}
+
+
 def invite_recipients(cx, group_id):
     hold = get_hold(cx, group_id)
     cg = hold["caregiver_email"]
