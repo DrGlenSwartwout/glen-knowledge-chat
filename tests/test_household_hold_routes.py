@@ -88,6 +88,53 @@ def test_post_is_idempotent_on_already_released_hold(client):
     assert b"<form" not in r_get.data
 
 
+def test_release_recomputes_combined_shipping(client, monkeypatch):
+    from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H
+    from dashboard import combined_shipments as CS
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        FP.init_family_plan_table(cx); HH.init_household_tables(cx); H.init_hold_tables(cx)
+        CS.init_combined_shipments_table(cx)
+        FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+        HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+        # NOTE: dashboard/orders.py has upsert_order (requires external_ref), not create_order.
+        o1 = O.upsert_order(cx, source="t", external_ref="cg@x.com", email="cg@x.com", name="cg",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000,
+                            shipping_cents=800, channel="ship")
+        o2 = O.upsert_order(cx, source="t", external_ref="kid@x.com", email="kid@x.com", name="kid",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000,
+                            shipping_cents=800, channel="ship")
+        g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
+        H.open_or_join_hold(cx, o2, caregiver_email="cg@x.com", household_key="cg@x.com")
+        raw = H.set_release_token(cx, g)
+
+    # Spy on the real recompute so the assertion is meaningful even if the
+    # geometric packer happens to price the fake "x" slug's combined parcel
+    # at exactly 1600 (which would make a bare "<= 1600" check pass whether
+    # or not recompute actually ran).
+    calls = []
+    orig = client._recompute_combined_shipping
+
+    def _spy(cx, sid):
+        calls.append(sid)
+        return orig(cx, sid)
+
+    monkeypatch.setattr(client, "_recompute_combined_shipping", _spy)
+
+    client.app.test_client().post(f"/hold/{raw}/ship")
+
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        sid = O.get_order(cx, o1)["group_shipment_id"]
+        assert sid is not None
+        # _recompute_combined_shipping actually ran for this new shipment,
+        # not just create_shipment in isolation.
+        assert calls == [sid]
+        members = O.orders_in_group(cx, sid)
+        # combined parcel shipping is split, so the pair's total shipping is <= 2x single
+        assert sum(int(m["shipping_cents"] or 0) for m in members) <= 1600
+
+
 def test_sweep_releases_due_holds(client, monkeypatch):
     import sqlite3, datetime as _dt
     from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H

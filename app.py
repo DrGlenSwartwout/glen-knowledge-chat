@@ -19575,7 +19575,6 @@ def household_holds_sweep_cron():
     if request.headers.get("X-Console-Key") != CONSOLE_SECRET:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import household_holds as _holds
-    from dashboard import combined_shipments as _cs
     released = combined = 0
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
@@ -19586,7 +19585,7 @@ def household_holds_sweep_cron():
             ids = res["order_ids"]
             if len(ids) >= 2:
                 try:
-                    _cs.create_shipment(cx, ids, created_by="deadline-release")
+                    _release_to_shipment(cx, ids, created_by="deadline-release")
                     combined += 1
                 except Exception as e:
                     print(f"[hold-sweep] create_shipment({ids}) failed: {e!r}", flush=True)
@@ -34033,7 +34032,6 @@ def household_hold_ship(token):
     has 2+ member orders, groups them into a combined_shipments shipment. See
     _confirm_post_page for why GET must never consume the token."""
     from dashboard import household_holds as _holds
-    from dashboard import combined_shipments as _cs
     invalid = ("<!doctype html><meta charset=utf-8><title>Link expired</title>"
                "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
                "<h1>This shipment is already on its way</h1>"
@@ -34058,8 +34056,7 @@ def household_hold_ship(token):
         res = _holds.release_hold(cx, hold["id"], by="caregiver")
         ids = res["order_ids"]
         try:
-            if len(ids) >= 2:
-                _cs.create_shipment(cx, ids, created_by="caregiver-release")
+            _release_to_shipment(cx, ids, created_by="caregiver-release")
         except Exception as e:
             print(f"[hold-ship] create_shipment({ids}) failed: {e!r}", flush=True)
     return ("<!doctype html><meta charset=utf-8><title>On its way</title>"
@@ -35162,6 +35159,21 @@ def console_shipment_suggestions():
     finally:
         cx.close()
     return jsonify({"ok": True, "enabled": True, "clusters": clusters})
+
+
+def _release_to_shipment(cx, order_ids, *, created_by):
+    """Group released hold orders into one combined shipment and recompute
+    fair-share shipping. Returns the shipment id (None for a lone order)."""
+    from dashboard import combined_shipments as _cs
+    if len(order_ids) < 2:
+        return None
+    made = _cs.create_shipment(cx, order_ids, created_by=created_by)
+    sid = made["id"]
+    try:
+        _recompute_combined_shipping(cx, sid)
+    except Exception as e:
+        print(f"[hold-release] recompute shipping failed for #{sid}: {e!r}", flush=True)
+    return sid
 
 
 def _recompute_combined_shipping(cx, sid):
