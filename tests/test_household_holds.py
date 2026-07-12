@@ -106,6 +106,26 @@ def test_release_token_roundtrip_and_wrong_token():
     assert H.hold_by_release_token(cx, "not-the-token") is None
 
 
+def test_invite_recipients_exclude_pet_child_and_compose():
+    cx = _cx()
+    FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+    HH.add_member(cx, "cg@x.com", "spouse@x.com", relationship="dependent")
+    HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+    HH.add_member(cx, "cg@x.com", "rex@x.com", relationship="pet")
+    HH.add_member(cx, "cg@x.com", "sasha@x.com", relationship="animal:cat")  # species-namespaced animal
+    o1 = _order(cx, "cg@x.com")
+    g = H.open_or_join_hold(cx, o1, caregiver_email="cg@x.com", household_key="cg@x.com")["group_id"]
+    rec = H.invite_recipients(cx, g)
+    assert rec["to"] == "cg@x.com"
+    assert "spouse@x.com" in rec["cc"]
+    assert "kid@x.com" not in rec["cc"] and "rex@x.com" not in rec["cc"]
+    assert "sasha@x.com" not in rec["cc"]  # animal:cat is never emailed
+    msg = H.compose_invite(H.get_hold(cx, g), "July 16", "https://x/hold/abc/ship")
+    assert "July 16" in msg["body"]
+    assert "https://x/hold/abc/ship" in msg["html"]
+    assert msg["subject"]
+
+
 def test_maybe_hold_gated_by_flag_and_eligibility(monkeypatch):
     cx = _cx()
     FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")

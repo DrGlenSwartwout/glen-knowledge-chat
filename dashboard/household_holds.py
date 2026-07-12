@@ -13,7 +13,15 @@ from dashboard import family_plan as _fp
 from dashboard import household as _hh
 
 _TERMINAL = _orders._TERMINAL_STATUSES  # ("shipped","delivered","done","cancelled")
-_DEPENDENT_NO_EMAIL = {"pet", "child"}  # accounts we never email an invite to
+_NO_EMAIL_EXACT = {"pet", "child"}
+
+
+def _never_email(relationship):
+    """Household members we never send an invite to: children, and any animal —
+    whether tagged with the legacy bare 'pet' or a species-namespaced
+    'animal:<species>' (e.g. 'animal:cat', 'animal:dog')."""
+    r = (relationship or "").strip().lower()
+    return r in _NO_EMAIL_EXACT or r.startswith("animal")
 
 
 def _now():
@@ -215,3 +223,66 @@ def hold_by_release_token(cx, raw_token):
     d = dict(row)
     d["members"] = orders_in_hold(cx, d["id"])
     return d
+
+
+def invite_recipients(cx, group_id):
+    hold = get_hold(cx, group_id)
+    cg = hold["caregiver_email"]
+    cc = []
+    for m in _hh.viewable_members_for(cx, cg):
+        if _never_email(m.get("relationship")):
+            continue
+        if _lc(m["email"]) and _lc(m["email"]) != _lc(cg):
+            cc.append(_lc(m["email"]))
+    return {"to": _lc(cg), "cc": cc}
+
+
+def compose_invite(hold, ship_date, release_url):
+    members = hold.get("members") or []
+    lines = []
+    for m in members:
+        who = m.get("name") or m.get("email") or f"order #{m.get('id')}"
+        lines.append(f"  • {who}")
+    items = "\n".join(lines) if lines else "  • your order"
+    subject = "Your household order is being prepared to ship"
+    body = (
+        f"A shipment for your household is being prepared to go out on {ship_date}.\n\n"
+        f"It currently includes:\n{items}\n\n"
+        "If anyone else in your household wants to add something, just place their "
+        "order in the next few days and it will ship together in the same box.\n\n"
+        f"Or if nothing else is coming, ship it now: {release_url}\n\n"
+        "In wellness,\nDr. Glen & Rae"
+    )
+    html = (
+        f"<p>A shipment for your household is being prepared to go out on "
+        f"<strong>{ship_date}</strong>.</p>"
+        f"<p>It currently includes:</p><ul>"
+        + "".join(f"<li>{(m.get('name') or m.get('email') or ('order #' + str(m.get('id'))))}</li>"
+                  for m in members)
+        + "</ul>"
+        "<p>If anyone else in your household wants to add something, just place "
+        "their order in the next few days and it will ship together in the same box.</p>"
+        f"<p>Or if nothing else is coming, "
+        f"<a href='{release_url}'>ship it now</a>.</p>"
+        "<p>In wellness,<br>Dr. Glen &amp; Rae</p>"
+    )
+    return {"subject": subject, "body": body, "html": html}
+
+
+def send_invite(cx, group_id, *, base_url, now=None):
+    """One invite per group. Mints the release token, composes, sends via Gmail,
+    stamps invite_sent_at. No-op if already sent."""
+    hold = get_hold(cx, group_id)
+    if hold is None or hold.get("invite_sent_at"):
+        return {"skipped": "already_sent_or_missing"}
+    raw = set_release_token(cx, group_id)
+    ship_date = datetime.fromisoformat(hold["hold_until"]).strftime("%B %-d")
+    release_url = f"{base_url.rstrip('/')}/hold/{raw}/ship"
+    rec = invite_recipients(cx, group_id)
+    msg = compose_invite(get_hold(cx, group_id), ship_date, release_url)
+    from dashboard import inbox as _inbox
+    res = _inbox.send_email(rec["to"], msg["subject"], msg["body"], html=msg["html"])
+    cx.execute("UPDATE household_holds SET invite_sent_at=?, updated_at=? WHERE id=?",
+               (_iso(now or _now()), _iso(now or _now()), group_id))
+    cx.commit()
+    return {"sent_to": rec["to"], "cc": rec["cc"], "send_result": res}
