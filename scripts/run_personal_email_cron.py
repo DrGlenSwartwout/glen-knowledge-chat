@@ -144,6 +144,14 @@ def run_daily_piggybacks():
     for path in ("/admin/sync-pb-tags", "/admin/sync-practitioner-tags",
                  "/admin/sync-people-to-ghl", "/api/cron/charge-subscriptions"):
         _piggyback_post(f"pb-sync-chain {path}", path, "X-Cron-Secret", CRON_SECRET, timeout=600)
+    # Paid Family Plan renewals (#823): charge each caregiver's plan on its due date,
+    # retry past_due, cancel after 3 consecutive fails. Own call (not folded into the
+    # loop above) because this endpoint authenticates with X-Console-Key, not the
+    # pb-sync chain's X-Cron-Secret. Idempotent — it charges only rows whose
+    # next_charge_at is due and advances the date only on success, so a daily run
+    # never double-charges; comped plans are never billed.
+    _piggyback_post("family-plan-charge", "/api/cron/family-plan/charge",
+                    "X-Console-Key", CONSOLE_SECRET)
     # Refresh GrooveKart retail history from order emails, then re-seed active
     # members' repertoires from purchase_history (FMP + GK). Both idempotent;
     # GK rebuild runs first so the reseed picks up the newest orders. Harmless
