@@ -39,7 +39,7 @@ Existing: `family_subscriptions(caregiver_email PK, amount_cents, stripe_custome
 
 Add (mirroring `coach_subscriptions`):
 - `family_sub_charges(id INTEGER PK AUTOINCREMENT, caregiver_email TEXT, amount_cents INTEGER, pi_id TEXT, status TEXT, charged_at TEXT)` — one ledger row per charge attempt (audit + idempotency evidence). Created in `init_family_plan_table`.
-- `due(cx, today) -> [dict]`: `SELECT * FROM family_subscriptions WHERE status='active' AND next_charge_at IS NOT NULL AND next_charge_at <= ? AND source != 'comp' ORDER BY next_charge_at`. The `IS NOT NULL` + `source != 'comp'` guards ensure a comped plan (no card, no charge date) is never billed. Only `active` is charged — `past_due`/`cancelled` are not auto-retried here (dunning handled in the cron).
+- `due(cx, today) -> [dict]`: `SELECT * FROM family_subscriptions WHERE status IN ('active','past_due') AND next_charge_at IS NOT NULL AND next_charge_at <= ? AND (source IS NULL OR source != 'comp') ORDER BY next_charge_at`. The `IS NOT NULL` + `source != 'comp'` guards ensure a comped plan (no card, no charge date) is never billed. Both `active` AND `past_due` are charged: a past_due sub still entitles the household (grace) and must be retried each run so its `fail_count` can reach the cancel threshold — otherwise one failed payment would cover forever. `cancelled` is excluded.
 - `mark_charged(cx, caregiver_email, next_charge_at)`: set `next_charge_at`, `last_charged_at=now`, `fail_count=0`, `status='active'`.
 - `mark_failed(cx, caregiver_email)`: `fail_count += 1`, `status='past_due'`.
 - `record_charge(cx, *, caregiver_email, amount_cents, pi_id, status)`: insert a `family_sub_charges` row.

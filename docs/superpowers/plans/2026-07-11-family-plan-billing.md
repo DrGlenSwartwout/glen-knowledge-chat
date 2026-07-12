@@ -17,7 +17,7 @@
 - **No cron double-charge** — `mark_charged` advances `next_charge_at` only after a successful charge, in the same locked write; the cron only charges `next_charge_at <= today`.
 - **Cron auth** — `X-Console-Key` header must equal `CONSOLE_SECRET` (mirrors the coach cron).
 - **Route gating** — the subscribe route 404s when `_family_plan_enabled()` is off and 503s when `_STRIPE_ACTIVE` is false.
-- **Statuses** — `active` / `past_due` / `cancelled` (British spelling, matching the existing console cancel + `ACTIVE_STATUSES`). `past_due` still entitles (grace); bounded to 3 failures then `cancelled`.
+- **Statuses** — `active` / `past_due` / `cancelled` (British spelling, matching the existing console cancel + `ACTIVE_STATUSES`). `past_due` still entitles the household (grace) AND is retried by the cron every run; grace is bounded — after 3 total failures the plan is `cancelled` and cover stops. (Because the cron is monthly, worst-case grace on a dead card is ~3 cron cycles.)
 - **Copy rules** (client-portal.html): no em dashes, no ALL CAPS.
 - **Card capture is Stripe-hosted** — store only `stripe_customer_id` + `payment_method_id`.
 
@@ -62,9 +62,12 @@ def test_due_excludes_future_cancelled_and_comp():
     fp.activate(cx, "cxl@x.com", next_charge_at="2026-07-01",
                 customer_id="c", payment_method_id="p")
     fp.set_status(cx, "cxl@x.com", "cancelled")                    # cancelled -> not due
+    fp.activate(cx, "pastdue@x.com", next_charge_at="2026-07-02",
+                customer_id="c", payment_method_id="p")
+    fp.set_status(cx, "pastdue@x.com", "past_due")                 # past_due -> RETRIED (still due)
     fp.activate(cx, "comp@x.com", next_charge_at=None, source="comp")  # comp -> never due
     emails = [d["caregiver_email"] for d in fp.due(cx, "2026-07-15")]
-    assert emails == ["due@x.com"]
+    assert emails == ["due@x.com", "pastdue@x.com"]                # active + past_due, ordered by date
 
 
 def test_mark_charged_advances_and_resets():
@@ -115,10 +118,13 @@ Append to `dashboard/family_plan.py` (after `covers`):
 
 ```python
 def due(cx, today):
-    """Active, billable subs whose next_charge_at has arrived. Comped plans
-    (source='comp', next_charge_at NULL) are never billable and are excluded."""
+    """Billable subs whose next_charge_at has arrived. Includes both 'active' and
+    'past_due': a past_due sub (a prior failed charge) still entitles the household
+    (grace) and MUST be retried on each cron run so its fail_count can climb to the
+    cancel threshold — otherwise a single failed payment would cover forever.
+    Comped plans (source='comp', next_charge_at NULL) are never billable, excluded."""
     rows = cx.execute(
-        "SELECT * FROM family_subscriptions WHERE status='active' "
+        "SELECT * FROM family_subscriptions WHERE status IN ('active','past_due') "
         "AND next_charge_at IS NOT NULL AND next_charge_at <= ? "
         "AND (source IS NULL OR source != 'comp') ORDER BY next_charge_at",
         (today,)).fetchall()
@@ -550,6 +556,19 @@ def test_cron_third_failure_cancels_and_stops_cover():
         assert s["status"] == "cancelled" and fp.is_active(cx, "dead@x.com") is False
 
 
+def test_cron_retries_a_past_due_sub_and_recovers_on_success():
+    _seed("grace@x.com", "2026-01-01", fail_count=1, status="past_due")  # prior failure, in grace
+    with mock.patch("dashboard.stripe_pay.charge_off_session",
+                    return_value={"id": "pi_ok", "status": "succeeded"}):
+        d = _client().post("/api/cron/family-plan/charge", headers=_hdr()).get_json()
+    assert d["charged"] == 1
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row; fp.init_family_plan_table(cx)
+        s = fp.get(cx, "grace@x.com")
+        assert s["status"] == "active" and s["fail_count"] == 0      # recovered
+        assert s["next_charge_at"] > "2026-01-01"                    # advanced
+
+
 def test_cron_one_exception_does_not_abort_batch():
     _seed("boom@x.com", "2026-01-01")     # due first, raises
     _seed("ok@x.com", "2026-01-02")       # due second, succeeds
@@ -647,7 +666,7 @@ def family_plan_charge_cron():
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd ~/deploy-chat && python -m pytest tests/test_family_plan_charge_cron.py -v`
-Expected: PASS (7 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 5: Create the cron entry script**
 
