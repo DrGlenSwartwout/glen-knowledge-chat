@@ -45,6 +45,31 @@ def test_prompt_grounds_device_in_description_without_inventing_ingredients():
     assert "660 nm soft-laser red nightlight" in user
     assert "no ingredient list" in user.lower()
 
+def test_prompt_frames_infoceutical_energetically_not_nutritionally():
+    # Infoceuticals (url under .../infoceuticals/) are energetic-frequency remedies, not
+    # nutritional supplements. The prompt must forbid nutritional framing and asking for a
+    # missing ingredient stack (that produced an LLM refusal on the Rejuvenation page).
+    prod = {"name": "Rejuvenation",
+            "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/220-rejuv",
+            "ingredients": []}
+    system, user = sc.build_section_prompt("intro", prod)
+    assert "energetic frequency" in system.lower()
+    assert "not a nutritional supplement" in system.lower()
+    assert "nutritional support" in system.lower()  # named only to forbid it
+    assert "never ask for missing information" in system.lower()
+    assert "Rejuvenation" in user
+    assert "no ingredient list" in user.lower()
+
+
+def test_prompt_still_nutritional_for_a_supplement():
+    # A real supplement (no infoceutical url) keeps the nutritional-formula framing.
+    prod = {"name": "Iron Syntropy", "url": "https://remedymatch.com/remedies/syntropy/319-iron-syntropy",
+            "ingredients": [{"name": "Iron bisglycinate", "dose": "18 mg"}]}
+    system, user = sc.build_section_prompt("research", prod)
+    assert "nutritional formulas" in system.lower()
+    assert "Iron bisglycinate" in user and "18 mg" in user
+
+
 def test_narrative_sections_are_exactly_three():
     assert sc.NARRATIVE_SECTIONS == ("intro", "description", "research")
 
