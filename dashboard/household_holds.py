@@ -286,3 +286,50 @@ def send_invite(cx, group_id, *, base_url, now=None):
                (_iso(now or _now()), _iso(now or _now()), group_id))
     cx.commit()
     return {"sent_to": rec["to"], "cc": rec["cc"], "send_result": res}
+
+
+# ── Board actions (self-register on import) ──────────────────────────────────
+from dashboard.actions import action, LOW_WRITE
+from dashboard.rbac import OWNER, OPS
+
+
+def _cx_of(params, ctx):
+    cx = (ctx or {}).get("cx") or (params or {}).get("cx")
+    if cx is None:
+        raise ValueError("no db connection")
+    return cx
+
+
+def _extend_exec(params, ctx):
+    cx = _cx_of(params, ctx)
+    gid = int(params["group_id"])
+    days = int(params.get("days", 2))
+    hold = extend_hold(cx, gid, days)
+    return {"group_id": gid, "hold_until": hold["hold_until"],
+            "message": f"Hold #{gid} extended to {hold['hold_until'][:10]}."}
+
+
+def _release_exec(params, ctx):
+    from dashboard import combined_shipments as _cs
+    cx = _cx_of(params, ctx)
+    gid = int(params["group_id"])
+    res = release_hold(cx, gid, by="operator")
+    ids = res["order_ids"]
+    made = None
+    if len(ids) >= 2:
+        made = _cs.create_shipment(cx, ids, created_by="operator-release")
+    return {"group_id": gid, "order_ids": ids,
+            "shipment_id": (made["id"] if made else None),
+            "message": (f"Hold #{gid} released; combined shipment "
+                        f"#{made['id']} created." if made
+                        else f"Hold #{gid} released ({len(ids)} order).")}
+
+
+action(key="holds.extend", module="orders", title="Extend household hold",
+       description="Push a household hold group's ship-by deadline out N days (default 2).",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS), reversible=True)(_extend_exec)
+
+action(key="holds.release", module="orders", title="Release household hold now",
+       description="Close a household hold and send its orders to fulfillment "
+                   "(combining 2+ into one shipment).",
+       risk_tier=LOW_WRITE, permission=(OWNER, OPS), reversible=False)(_release_exec)

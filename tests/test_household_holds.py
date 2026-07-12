@@ -139,3 +139,10 @@ def test_maybe_hold_gated_by_flag_and_eligibility(monkeypatch):
     # a stranger order is never held even with the flag on
     o2 = _order(cx, "stranger@x.com")
     assert H.maybe_hold_new_order(cx, o2) is None
+
+
+def test_holds_actions_registered():
+    from dashboard import actions as A
+    import dashboard.household_holds  # noqa: F401 (import self-registers)
+    assert A.get_action("holds.extend") is not None
+    assert A.get_action("holds.release") is not None
