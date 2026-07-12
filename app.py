@@ -5120,6 +5120,22 @@ def _plan_ship_credit(email, chargeable_cents):
 def _points_init_ship(cx):
     from dashboard import points as _points
     _points.init_points_table(cx)
+
+
+def _ship_credit_balance_if_enabled(email):
+    """The customer's outstanding shipping-credit balance in cents, or 0 when the
+    feature flag is off (or on any error). For flows that compute their own payable
+    internally (dispensary build_client_order) and clamp the balance themselves."""
+    if not _ship_credit_enabled():
+        return 0
+    try:
+        from dashboard import ship_credit as _ship_credit
+        with _sqlite3.connect(LOG_DB) as _scx:
+            _points_init_ship(_scx)
+            return _ship_credit.balance(_scx, email)
+    except Exception as e:  # noqa: BLE001
+        print(f"[ship_credit] balance skipped: {e!r}", flush=True)
+        return 0
 BIOFIELD_TRIAL_ENABLED = os.environ.get("BIOFIELD_TRIAL_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Kill-switch for the premium per-element Glendalf backdrop on the member portal.
 # Off -> the portal API returns element_state=null, so the page shows plain (no
@@ -8921,6 +8937,23 @@ def begin_checkout_return():
                                                 reason="earn:dispensary", order_ref=_inv, scope=scope)
                             except Exception as _pe:
                                 app.logger.exception("client points settle failed: %s", _pe)
+                        # Slice 2b: consume any shipping credit auto-applied to this
+                        # dispensary order (global ship_credit scope, email-keyed —
+                        # NOT the dispensary points scope). This flow settles here, not
+                        # via _settle_order_points/set_order_payment; idempotent per
+                        # invoice. Read the applied amount off the ingested order.
+                        try:
+                            _p_email = (md.get("patient_email") or "").strip().lower()
+                            if _p_email and _inv:
+                                with sqlite3.connect(LOG_DB) as _sccx:
+                                    _sccx.row_factory = sqlite3.Row
+                                    _o = _bos_orders.find_order_by_external_ref(_sccx, str(_inv))
+                                    _applied = int((_o or {}).get("ship_credit_applied_cents") or 0)
+                                    if _applied > 0:
+                                        from dashboard import ship_credit as _shc
+                                        _shc.consume(_sccx, _p_email, _applied, applied_ref=str(_inv))
+                        except Exception as _sce:
+                            app.logger.exception("client ship-credit settle failed: %s", _sce)
                 except Exception as _ce:
                     app.logger.exception(
                         "client margin credit failed: %s", _ce)
@@ -14690,6 +14723,7 @@ def api_client_checkout(code):
             points_balance_cents=bal_cents,
             effective_settings=_practitioner_effective_settings(pid, _program_member),
             program_member=_program_member,
+            ship_credit_balance_cents=_ship_credit_balance_if_enabled(email),
         )
     except Exception as e:
         print(f"[client-checkout] build failed: {e!r}", flush=True)
@@ -14710,7 +14744,8 @@ def api_client_checkout(code):
                   get_cents=out.get("get_cents", 0),
                   pay_method=method,
                   practitioner_id=pid,
-                  margin_cents=int(out.get("margin_cents") or 0))
+                  margin_cents=int(out.get("margin_cents") or 0),
+                  ship_credit_applied_cents=int(out.get("ship_credit_applied_cents") or 0))
 
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
