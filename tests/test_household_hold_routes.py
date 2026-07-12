@@ -153,6 +153,48 @@ def test_flag_off_no_hold_end_to_end(monkeypatch):
     assert O.get_order(cx, oid)["hold_group_id"] is None
 
 
+def test_hold_new_order_and_invite_wires_send_invite_once(client):
+    # Proves the previously-orphaned household_holds.send_invite is now actually
+    # called by app._hold_new_order_and_invite when a NEW hold group opens, and
+    # that a second same-household order that only JOINS the group does not
+    # re-send (invite_sent_at must not move / duplicate-send).
+    from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        FP.init_family_plan_table(cx); HH.init_household_tables(cx); H.init_hold_tables(cx)
+        FP.activate(cx, "cg@x.com", next_charge_at="2999-01-01")
+        HH.add_member(cx, "cg@x.com", "kid@x.com", relationship="child")
+        o1 = O.upsert_order(cx, source="t", external_ref="cg@x.com", email="cg@x.com", name="cg",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000, channel="ship")
+
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        res1 = client._hold_new_order_and_invite(cx, o1)
+        cx.commit()
+    assert res1 is not None and res1["opened"] is True
+    gid = res1["group_id"]
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        hold_after_open = H.get_hold(cx, gid)
+        assert hold_after_open["invite_sent_at"] is not None
+        first_invite_sent_at = hold_after_open["invite_sent_at"]
+
+    # A second household order JOINS the same open group -- must not re-invite.
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        o2 = O.upsert_order(cx, source="t", external_ref="kid@x.com", email="kid@x.com", name="kid",
+                            items=[{"slug": "x", "qty": 1}], total_cents=1000, channel="ship")
+        res2 = client._hold_new_order_and_invite(cx, o2)
+        cx.commit()
+    assert res2 is not None and res2["opened"] is False and res2["joined"] is True
+    assert res2["group_id"] == gid
+
+    with sqlite3.connect(client.LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        hold_after_join = H.get_hold(cx, gid)
+        assert hold_after_join["invite_sent_at"] == first_invite_sent_at
+
+
 def test_sweep_releases_due_holds(client, monkeypatch):
     import sqlite3, datetime as _dt
     from dashboard import orders as O, family_plan as FP, household as HH, household_holds as H

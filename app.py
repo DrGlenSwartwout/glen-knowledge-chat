@@ -34942,11 +34942,9 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
             # checks it — an already-paid order must never be held (Task: don't
             # delay a paid customer's shipment for household batching).
             try:
-                from dashboard import household_holds as _holds
-                _holds.init_hold_tables(cx)
-                _holds.maybe_hold_new_order(cx, _oid)
+                _hold_new_order_and_invite(cx, _oid)
             except Exception as _e:
-                print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
+                print(f"[hold] hold+invite skipped: {_e!r}", flush=True)
             # NEW: every buyer gets a portal home (idempotent, fail-open)
             try:
                 from dashboard import portal_provision as _pp
@@ -35267,6 +35265,20 @@ def _release_to_shipment(cx, order_ids, *, created_by):
     except Exception as e:
         print(f"[hold-release] recompute shipping failed for #{sid}: {e!r}", flush=True)
     return sid
+
+
+def _hold_new_order_and_invite(cx, order_id):
+    """Hold a new order and, if it OPENED a new household group, email the caregiver
+    the 'ship now' invite (one per group). Fail-open: never break order creation."""
+    from dashboard import household_holds as _holds
+    _holds.init_hold_tables(cx)
+    res = _holds.maybe_hold_new_order(cx, order_id)
+    if res and res.get("opened"):
+        try:
+            _holds.send_invite(cx, res["group_id"], base_url=PUBLIC_BASE_URL)
+        except Exception as _e:
+            print(f"[hold] send_invite skipped for group {res.get('group_id')}: {_e!r}", flush=True)
+    return res
 
 
 def _recompute_combined_shipping(cx, sid):
@@ -35989,11 +36001,9 @@ def api_orders_manual():
             ship_credit_applied_cents=_sc_apply,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
         try:
-            from dashboard import household_holds as _holds
-            _holds.init_hold_tables(cx)
-            _holds.maybe_hold_new_order(cx, oid)
+            _hold_new_order_and_invite(cx, oid)
         except Exception as _e:
-            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
+            print(f"[hold] hold+invite skipped: {_e!r}", flush=True)
         if _gift_rows and oid:
             from dashboard import review_gifts as _rg2
             for _g in _gift_rows:
@@ -37567,11 +37577,9 @@ def bos_orders_create():
             total_cents=int(b.get("total_cents") or 0), address=b.get("address") or {},
             channel=b.get("channel", "retail"))
         try:
-            from dashboard import household_holds as _holds
-            _holds.init_hold_tables(cx)
-            _holds.maybe_hold_new_order(cx, oid)
+            _hold_new_order_and_invite(cx, oid)
         except Exception as _e:
-            print(f"[hold] maybe_hold_new_order skipped: {_e!r}", flush=True)
+            print(f"[hold] hold+invite skipped: {_e!r}", flush=True)
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     finally:
