@@ -14,7 +14,9 @@ def _tok(email="care@x.com", name="Care"):
     with sqlite3.connect(appmod.LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         cp.init_client_portal_table(cx); fp.init_family_plan_table(cx)
-        token, _ = cp.upsert_portal(cx, email, name, {}); cx.commit()
+        cp.upsert_portal(cx, email, name, {})     # ensure the client_portals row exists
+        token = cp.reissue_token(cx, email)        # always returns a fresh raw token for an existing row
+        cx.commit()
     return token
 
 
@@ -45,7 +47,6 @@ def test_subscribe_stripe_inactive_503():
 
 
 def test_fulfill_activates_and_charges_once():
-    _tok("f@x.com")
     fake_session = {"metadata": {"kind": "family_plan", "email": "f@x.com"},
                     "payment_intent": "pi_1"}
     fake_pi = {"status": "succeeded", "customer": "cus_1", "payment_method": "pm_1"}
