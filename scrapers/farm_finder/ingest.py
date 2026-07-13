@@ -1,0 +1,67 @@
+"""Farm ingest runner: crawl Food for Humans -> map -> upsert into practitioners.
+
+Farms are stored as practitioners rows (tier='farm'); the mapping puts practice
+markers in specialties[] and products/order_options in the new columns. The
+existing practitioner_finder.db.run_upsert is column-generic, so it writes the
+farm columns automatically once migrations/practitioners-farms.sql is applied.
+Idempotent on source_url — safe to re-run (weekly cron in Phase 3).
+
+Usage:
+  python3 -m scrapers.farm_finder.ingest              # DRY RUN (no DB) — default
+  python3 -m scrapers.farm_finder.ingest --limit 25   # dry-run a sample
+  python3 -m scrapers.farm_finder.ingest --apply      # WRITE to practitioners
+
+--apply is gated deliberately: it performs a prod DB write and requires the
+migration to be applied first. Dry run validates the crawl + mapping only.
+"""
+import argparse
+import sys
+
+from scrapers.farm_finder.foodforhumans import scrape
+from scrapers.farm_finder.mapping import to_practitioner_row
+
+
+def ingest(limit=None, sleep=0.5, apply=False, log=print) -> dict:
+    """Crawl, map, and (if apply) upsert farms. Returns a summary dict.
+
+    apply=False (default) builds and validates rows but writes nothing — no DB
+    import happens, so it is safe anywhere."""
+    farms = scrape(limit=limit, sleep=sleep)
+    rows = [to_practitioner_row(f) for f in farms]
+
+    written = 0
+    if apply:
+        # Import lazily so a dry run never touches the DB layer.
+        from scrapers.practitioner_finder.db import run_upsert
+        for r in rows:
+            run_upsert(r)
+            written += 1
+
+    summary = {
+        "scraped": len(farms),
+        "mapped": len(rows),
+        "written": written,
+        "applied": apply,
+        "with_geo": sum(1 for r in rows if r.get("lat") is not None),
+        "with_website": sum(1 for r in rows if r.get("website")),
+    }
+    log(f"farm ingest: {summary}")
+    return summary
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--sleep", type=float, default=0.5)
+    ap.add_argument("--apply", action="store_true",
+                    help="WRITE to practitioners (prod DB). Default is dry run.")
+    args = ap.parse_args()
+    summary = ingest(limit=args.limit, sleep=args.sleep, apply=args.apply)
+    if not args.apply:
+        print("DRY RUN — nothing written. Re-run with --apply to write "
+              "(after applying migrations/practitioners-farms.sql).")
+    sys.exit(0 if summary["mapped"] else 1)
+
+
+if __name__ == "__main__":
+    main()

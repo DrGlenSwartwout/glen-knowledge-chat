@@ -100,3 +100,16 @@ def test_mapped_row_carries_farm_columns_and_maps_geocode_quality():
     # 'source' precision maps onto the existing enum's 'full'
     assert pr["geocode_quality"] == "full"
     assert pr["name"] == "Meadowdale Farm and Sawmill"
+
+
+# --- ingest runner (dry run writes nothing, no DB import) ---
+
+def test_ingest_dry_run_maps_but_writes_nothing(monkeypatch):
+    from scrapers.farm_finder import ingest as ingest_mod
+
+    monkeypatch.setattr(ingest_mod, "scrape", lambda **kw: [_row()])
+    summary = ingest_mod.ingest(apply=False, log=lambda *_: None)
+    assert summary == {
+        "scraped": 1, "mapped": 1, "written": 0, "applied": False,
+        "with_geo": 1, "with_website": 1,
+    }

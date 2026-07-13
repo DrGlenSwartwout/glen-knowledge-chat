@@ -101,25 +101,24 @@ practices + products + contact**, each mapped to a `tier='farm'` row. Example:
 
 ## Remaining work
 
-**Phase 1 — ingest**
-- Apply `migrations/practitioners-farms.sql` (staging → prod).
-- Add a farm upsert path (reuse `practitioner_finder/db.py` upsert; farms carry
-  `products`/`order_options`, so extend the insert column set) + a `run_all`-
-  style runner over `foodforhumans.scrape()`. Idempotent on `source_url`.
-- Full crawl of all 1,822 listings.
+**Phase 1 — ingest (CODE DONE; prod write pending)**
+- `scrapers/farm_finder/ingest.py` crawls → maps → upserts via the column-generic
+  `practitioner_finder/db.run_upsert` (writes `products`/`order_options`
+  automatically). Idempotent on `source_url`. **Dry-run by default**; `--apply`
+  writes. Dry run validated (8/8 mapped, all geocoded).
+- **Two gated prod actions remain (need Glen / a non-bg run):**
+  1. Apply `migrations/practitioners-farms.sql` to prod Supabase.
+  2. `python3 -m scrapers.farm_finder.ingest --apply` — full crawl of 1,822
+     listings into `practitioners`.
 
-**Phase 2 — surface**
-- Frontend: add the "🌱 Regenerative Farms" parent chip + practice sub-chips to
-  `static/practitioner-finder.html`; branch the card renderer on `tier==='farm'`
-  (products, ordering options, practice badges; suppress the patient-inquiry
-  form — link out to the farm instead).
-- **Done already:** result cards now render a clickable website link (gold,
-  `target=_blank`, http(s)-scheme-guarded) whenever a row has a `website` —
-  previously websites showed only in the side panel. This covers practitioners
-  today and farms once ingested (farms use direct contact, no inquiry form).
-  Verified by headless render of the real card path.
-- Confirm the portal embed card shows the new category (it renders the same page
-  → expected free).
+**Phase 2 — surface (DONE)**
+- `static/practitioner-finder.html`: "🌱 Regenerative Farms" parent chip +
+  practice sub-chips; card + side-panel branch on `tier==='farm'` (Offers,
+  Ordering, prettified practice badges, direct contact, source attribution; no
+  inquiry checkbox/note). Clickable website links added to all result cards
+  (gold, `target=_blank`, http(s)-scheme-guarded) — previously side-panel only.
+- Render-verified headless (list + farm side panel) against the real card path.
+  Serves both the public page and the portal embed (same file → free).
 
 **Phase 3 — automation + growth**
 - Weekly cron (fork `run_all.py` + a launchd plist) re-crawls; upsert keeps it
