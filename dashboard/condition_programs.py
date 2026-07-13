@@ -44,6 +44,10 @@ def init_table(cx):
             items_json TEXT NOT NULL DEFAULT '[]',
             updated_at TEXT
         )""")
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(condition_programs)")}
+    if "modifiers_json" not in cols:
+        cx.execute("ALTER TABLE condition_programs "
+                   "ADD COLUMN modifiers_json TEXT NOT NULL DEFAULT '[]'")
     _ensure_seed_state_table(cx)
 
 
@@ -66,6 +70,7 @@ def _row(r):
         "label": r["label"],
         "consult_recommended": bool(r["consult_recommended"]),
         "items": json.loads(r["items_json"] or "[]"),
+        "modifiers": json.loads((r["modifiers_json"] if "modifiers_json" in r.keys() else None) or "[]"),
         "updated_at": r["updated_at"],
     }
 
@@ -85,17 +90,20 @@ def all(cx):
     return parsed
 
 
-def upsert(cx, key, label, consult_recommended, items):
+def upsert(cx, key, label, consult_recommended, items, modifiers=None):
     now = _now()
     cx.execute("""
-        INSERT INTO condition_programs (condition_key, label, consult_recommended, items_json, updated_at)
-        VALUES (?,?,?,?,?)
+        INSERT INTO condition_programs
+            (condition_key, label, consult_recommended, items_json, modifiers_json, updated_at)
+        VALUES (?,?,?,?,?,?)
         ON CONFLICT(condition_key) DO UPDATE SET
             label=excluded.label,
             consult_recommended=excluded.consult_recommended,
             items_json=excluded.items_json,
+            modifiers_json=excluded.modifiers_json,
             updated_at=excluded.updated_at
-        """, (key, label, 1 if consult_recommended else 0, json.dumps(items or []), now))
+        """, (key, label, 1 if consult_recommended else 0,
+              json.dumps(items or []), json.dumps(modifiers or []), now))
     cx.commit()
 
 
@@ -120,11 +128,12 @@ def seed_if_empty(cx, seed_dict):
         for key, prog in (seed_dict or {}).items():
             cx.execute("""
                 INSERT OR IGNORE INTO condition_programs
-                    (condition_key, label, consult_recommended, items_json, updated_at)
-                VALUES (?,?,?,?,?)
+                    (condition_key, label, consult_recommended, items_json, modifiers_json, updated_at)
+                VALUES (?,?,?,?,?,?)
                 """, (key, prog.get("label") or "",
                       1 if prog.get("consult_recommended") else 0,
-                      json.dumps(prog.get("items") or []), now))
+                      json.dumps(prog.get("items") or []),
+                      json.dumps(prog.get("modifiers") or []), now))
     cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
                (_SEED_NAME, now))
     cx.commit()

@@ -35,7 +35,8 @@ def test_init_table_creates_schema(tmp_db):
     cx = _cx(tmp_db)
     cp.init_table(cx)
     cols = {r[1] for r in cx.execute("PRAGMA table_info(condition_programs)")}
-    assert cols == {"condition_key", "label", "consult_recommended", "items_json", "updated_at"}
+    assert cols == {"condition_key", "label", "consult_recommended", "items_json",
+                     "modifiers_json", "updated_at"}
 
 
 def test_seed_if_empty_populates_table(tmp_db):
