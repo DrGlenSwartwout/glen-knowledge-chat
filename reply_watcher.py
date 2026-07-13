@@ -7,60 +7,36 @@ Public entrypoint: process_inbox_replies()
 
 import base64
 import json
-import os
 import re
 import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
+
+from dashboard import gmail_token as _gmail_token
 
 
 PROCESSED_LABEL = "AMG_PROCESSED"
 NONUSER_LABEL = "AMG_NONUSER"
 
-# Token written by ~/AI-Training/02 Skills/google-auth.py
-DEFAULT_TOKEN_PATH = Path.home() / ".config" / "google" / "token.json"
-
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
 ]
 
-# Token-path resolution: env var override → Render persistent disk →
-# local home-dir convention. First file that exists wins. Mirrors
-# dashboard/inbox.py:_resolve_token_path() so both the send path and the
-# reply-watcher cron find the same token on Render.
-_TOKEN_PATH_CANDIDATES = [
-    "/data/google-token.json",       # Render persistent disk
-    str(DEFAULT_TOKEN_PATH),         # local dev
-]
 
-
-def _resolve_token_path() -> Path:
-    """Return the first existing token path among env override + known locations."""
-    env_override = os.environ.get("GMAIL_TOKEN_PATH")
-    candidates = ([env_override] if env_override else []) + _TOKEN_PATH_CANDIDATES
-    for c in candidates:
-        if c and Path(c).exists():
-            return Path(c)
-    raise RuntimeError(
-        f"No Gmail token at any of: {[c for c in candidates if c]}. "
-        f"Run '~/AI-Training/02 Skills/google-auth.py' first."
-    )
-
-
-def _get_gmail_service():
-    """Build a Gmail API service client using the OAuth token written by
-    `~/AI-Training/02 Skills/google-auth.py`. Token path resolution checks
-    GMAIL_TOKEN_PATH env override, then /data/google-token.json (Render
-    persistent disk), then the local ~/.config/google/token.json default."""
+def _build_service_from_creds(creds):
     from googleapiclient.discovery import build
-    from google.oauth2.credentials import Credentials
-
-    token_path = _resolve_token_path()
-    creds = Credentials.from_authorized_user_file(
-        str(token_path), scopes=GMAIL_SCOPES
-    )
     return build("gmail", "v1", credentials=creds)
+
+
+def _get_gmail_service(db_path=None):
+    """Load durable creds (DB-first, file fallback, self-heal) and build the
+    Gmail service. Returns (svc, LoadedGmail) so the caller can persist a
+    refresh and record token health at the end of a run."""
+    loaded = _gmail_token.load_gmail_credentials(
+        db_path or _gmail_token.default_db_path(),
+        name="inbox_gmail", scopes=GMAIL_SCOPES,
+    )
+    return _build_service_from_creds(loaded.creds), loaded
 
 
 def _ensure_label(svc, label_name: str) -> str:
@@ -189,18 +165,46 @@ def process_inbox_replies(
     Idempotency: messages already carrying AMG_PROCESSED or AMG_NONUSER
     are excluded by the search query, so re-running this is safe.
 
+    When no svc is injected, credentials are loaded from the durable store
+    (dashboard/gmail_token.py) and, at the end of the run, any refreshed
+    token is written back and the token health row is marked ok. An
+    injected svc bypasses the token load entirely (existing callers/tests).
+
     Returns a counts dict:
       {"processed": int, "skipped_nonuser": int, "errored": int,
        "details": [...]}
     """
-    if svc is None:
-        svc = _get_gmail_service()
     if db_path is None:
-        db_path = str(Path(__file__).parent / "chat_log.db")
+        db_path = _gmail_token.default_db_path()
+
+    loaded = None
+    if svc is None:
+        svc, loaded = _get_gmail_service(db_path)
 
     processed_label_id = _ensure_label(svc, PROCESSED_LABEL)
     nonuser_label_id = _ensure_label(svc, NONUSER_LABEL)
+    counts = _scan_and_process(
+        svc, db_path, dry_run, max_messages,
+        processed_label_id, nonuser_label_id,
+    )
 
+    if loaded is not None:
+        try:
+            _gmail_token.persist_refreshed_credentials(db_path, loaded)
+            _gmail_token.record_ok(db_path, "inbox_gmail")
+        except Exception as e:  # best-effort; never fail the run on write-back
+            print(f"[reply-watcher] token write-back failed: {e!r}", flush=True)
+
+    return counts
+
+
+def _scan_and_process(
+    svc, db_path, dry_run, max_messages, processed_label_id, nonuser_label_id
+) -> dict:
+    """Query Gmail for unread, unprocessed inbox replies and run each
+    through the personalization loop. Extracted from process_inbox_replies
+    so the token-load/persist bookends can wrap it without touching this
+    scanning logic."""
     query = (
         f"in:inbox is:unread "
         f"-label:{PROCESSED_LABEL} -label:{NONUSER_LABEL} "
