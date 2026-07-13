@@ -51,7 +51,7 @@ def test_resolver_client_reported_remove_only_when_fact_true():
 def test_resolver_suppresses_clinician_measured():
     prog = {"items": [{"slug": "glucose-tolerance", "name": "G"}],
             "modifiers": [{"when": "proliferative", "action": "add", "source": "clinician-measured",
-                "client_default": False, "items": [{"slug": "angiogenx", "name": "AngiogenX"}]}]}
+                "client_default": True, "items": [{"slug": "angiogenx", "name": "AngiogenX"}]}]}
     assert [i["slug"] for i in cp.resolve_program_items(prog)] == ["glucose-tolerance"]
 
 def test_resolver_dedupes_adds_against_base():
