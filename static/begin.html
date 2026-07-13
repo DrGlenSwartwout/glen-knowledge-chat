@@ -601,6 +601,22 @@
     .hero-grid { grid-template-columns: 1fr; }
     .hero-head h1 { font-size: 24px; }
   }
+  /* Begin #1b: Scan/Find/Heal explainer */
+  .how { max-width: 1080px; margin: 34px auto 0; padding: 26px 20px; border-top: 1px solid var(--border); }
+  .how-cap { text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700; margin: 0; }
+  .how-h { font-family: var(--serif); text-align: center; font-weight: 600; font-size: clamp(22px, 2.8vw, 32px); margin: 6px 0 4px; text-wrap: balance; }
+  .how-lede { text-align: center; color: var(--muted); max-width: 52ch; margin: 0 auto 26px; font-size: 15px; line-height: 1.55; }
+  .how-flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: start; gap: 6px; }
+  .how-cell { text-align: center; padding: 8px 12px; }
+  .how-motif { width: 100%; max-width: 220px; height: 74px; margin: 0 auto 12px; display: block; border: 1px solid var(--border); border-radius: 9px; background: #0c1e14; }
+  .how-n { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  .how-cell b { display: block; font-size: 18px; margin: 4px 0 6px; }
+  .how-cell span { color: var(--muted); font-size: 15px; line-height: 1.5; }
+  .how-arw { align-self: center; color: var(--border); }
+  .how-arw svg { width: 26px; height: 26px; display: block; }
+  .how-foot { text-align: center; margin-top: 24px; color: var(--muted); font-size: 15px; }
+  .how-foot b { color: var(--cream); }
+  @media (max-width: 680px) { .how-flow { grid-template-columns: 1fr; } .how-arw { display: none; } }
   /* Begin #2 journey strip */
   #journey-strip { max-width: 1080px; margin: 18px auto 0; padding: 0 20px; display: none; }
   #journey-strip.unfolded { display: block; }
@@ -741,6 +757,32 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="how reveal" aria-label="How it works">
+    <p class="how-cap">How it works</p>
+    <h2 class="how-h">Three steps to a protocol built around you</h2>
+    <p class="how-lede">Not another shelf of generic supplements. Your body&rsquo;s own signal, matched to what it is asking for, guided all the way to coherence.</p>
+    <div class="how-flow">
+      <div class="how-cell">
+        <canvas class="how-motif" id="m-scan" width="240" height="76" aria-hidden="true"></canvas>
+        <div class="how-n">Step 01</div><b>Scan</b>
+        <span>A short voice sample captures your body&rsquo;s raw energy signature in seconds.</span>
+      </div>
+      <div class="how-arw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="how-cell">
+        <canvas class="how-motif" id="m-find" width="240" height="76" aria-hidden="true"></canvas>
+        <div class="how-n">Step 02</div><b>Find</b>
+        <span>Your signal is compared to remedy after remedy until the right ones resonate.</span>
+      </div>
+      <div class="how-arw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+      <div class="how-cell">
+        <canvas class="how-motif" id="m-heal" width="240" height="76" aria-hidden="true"></canvas>
+        <div class="how-n">Step 03</div><b>Heal</b>
+        <span>Your field settles into coherence, the body&rsquo;s own return to order and syntropy.</span>
+      </div>
+    </div>
+    <p class="how-foot">A <b>welcome call</b> is offered right after you start. You are never alone in this.</p>
   </section>
 
   <!-- BEGIN #2: 4-card journey map. Hidden until unfold (Task 4). Renders from
