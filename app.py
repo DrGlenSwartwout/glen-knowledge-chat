@@ -17969,6 +17969,31 @@ def api_practitioner_condition_program_get(patient_email):
                     "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
 
 
+@app.route("/api/practitioner/condition-program", methods=["POST"])
+def api_practitioner_condition_program_save():
+    """Save the practitioner's composed condition program for a patient
+    (Task 4) — the write side of Task 3's candidate list. Same guard order
+    as the GET: flag off -> 404, no pid -> 401, not authorized -> 403
+    (checked BEFORE any write)."""
+    if not _program_composer_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("patient_email") or "").strip().lower()
+    from dashboard import continuity_view as _cv, practitioner_programs as _pgm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        _pgm.upsert(cx, patient_email=email, practitioner_id=pid,
+                    condition_key=(body.get("condition_key") or ""),
+                    items=body.get("items") or [], note=body.get("note") or "")
+    return jsonify({"ok": True, "saved": True})
+
+
 @app.route("/api/portal/<token>/support-program/add-to-invoice", methods=["POST"])
 def api_portal_support_program_add_to_invoice(token):
     """The paid add-to-invoice action for the condition support-program card

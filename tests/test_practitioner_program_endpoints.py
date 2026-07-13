@@ -133,3 +133,66 @@ def test_returns_saved_program_when_present(wired):
     assert r.status_code == 200
     body = r.get_json()
     assert body["saved"] == {"items": [{"slug": "wholomega", "name": "WholOmega"}], "note": "start low"}
+
+
+# --- Task 4: POST /api/practitioner/condition-program (save) ---
+
+def _post_body(**overrides):
+    body = {
+        "token": "irrelevant-here",
+        "patient_email": EMAIL,
+        "condition_key": CONDITION_KEY,
+        "items": [{"slug": "wholomega", "name": "WholOmega", "dose": "1/day"}],
+        "note": "start low",
+    }
+    body.update(overrides)
+    return body
+
+
+def test_post_flag_off_404s(monkeypatch, wired):
+    app_module, _db = wired
+    monkeypatch.delenv("PROGRAM_COMPOSER_ENABLED", raising=False)
+    client = app_module.app.test_client()
+    r = client.post("/api/practitioner/condition-program", json=_post_body())
+    assert r.status_code == 404
+
+
+def test_post_requires_auth(monkeypatch, wired):
+    app_module, _db = wired
+    monkeypatch.setattr(app_module, "_practitioner_session_pid", lambda: None)
+    client = app_module.app.test_client()
+    r = client.post("/api/practitioner/condition-program", json=_post_body())
+    assert r.status_code == 401
+    assert r.get_json()["ok"] is False
+
+
+def test_post_403_when_not_authorized_and_nothing_written(monkeypatch, wired):
+    app_module, db_path = wired
+    from dashboard import continuity_view as cv
+    monkeypatch.setattr(cv, "authorized_patient", lambda cx, pid, email: False)
+    client = app_module.app.test_client()
+    r = client.post("/api/practitioner/condition-program", json=_post_body())
+    assert r.status_code == 403
+    assert r.get_json()["ok"] is False
+
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        assert pp.get(cx, EMAIL) is None
+
+
+def test_post_authorized_save_persists(wired):
+    app_module, db_path = wired
+    client = app_module.app.test_client()
+    r = client.post("/api/practitioner/condition-program", json=_post_body())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["saved"] is True
+
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        saved = pp.get(cx, EMAIL)
+    assert saved is not None
+    assert saved["condition_key"] == CONDITION_KEY
+    assert saved["items"] == [{"slug": "wholomega", "name": "WholOmega", "dose": "1/day"}]
+    assert saved["note"] == "start low"
