@@ -193,6 +193,13 @@ def parse_listing(html_text: str, url: str) -> Optional[NormalizedFarmRow]:
     lat = geo.get("latitude")
     lng = geo.get("longitude")
 
+    # streetAddress arrives as the full one-line address ("1400 Buttermilk Road,
+    # Lenoir City, Tennessee 37771, United States"); keep only the street line so
+    # it doesn't duplicate the city/state/postal columns on the card.
+    street = addr.get("streetAddress")
+    if street:
+        street = street.split(",")[0].strip() or None
+
     return NormalizedFarmRow(
         name=lb.get("name", "").strip(),
         source_org=SOURCE_ORG,
@@ -205,7 +212,7 @@ def parse_listing(html_text: str, url: str) -> Optional[NormalizedFarmRow]:
         email=lb.get("email"),
         website=_pick_website(html_text),
         image_url=image_url,
-        address1=addr.get("streetAddress"),
+        address1=street,
         city=addr.get("addressLocality"),
         state=_region_code(addr.get("addressRegion")),
         postal=addr.get("postalCode"),

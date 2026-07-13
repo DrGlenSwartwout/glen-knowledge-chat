@@ -9,6 +9,7 @@ import json
 import sys
 
 from scrapers.farm_finder.foodforhumans import scrape
+from scrapers.farm_finder.mapping import to_practitioner_row
 
 
 def main() -> None:
@@ -17,6 +18,11 @@ def main() -> None:
 
     rows = scrape(limit=limit, sleep=0.5)
     dicts = [r.to_dict() for r in rows]
+    # The integrated shape actually written to the practitioners table.
+    practitioner_rows = [to_practitioner_row(r) for r in rows]
+    with open(f"{out_dir}/farm_finder_pilot_practitioner_rows.json", "w",
+              encoding="utf-8") as fh:
+        json.dump(practitioner_rows, fh, indent=2, ensure_ascii=False)
 
     json_path = f"{out_dir}/farm_finder_pilot.json"
     csv_path = f"{out_dir}/farm_finder_pilot.csv"
@@ -43,12 +49,14 @@ def main() -> None:
     with_practices = sum(1 for d in dicts if d.get("practices"))
     print(f"pre-geocoded: {geocoded}/{len(rows)}   with practices: "
           f"{with_practices}/{len(rows)}\n")
-    for d in dicts:
+    for d, pr in zip(dicts, practitioner_rows):
         loc = ", ".join(x for x in [d.get("city"), d.get("state")] if x)
         prac = ", ".join(d.get("practices", [])[:4])
-        print(f"- {d['name']} ({loc}) [{d.get('lat')},{d.get('lng')}]")
-        print(f"    practices: {prac}")
-        print(f"    products:  {', '.join(d.get('products', []))}")
+        print(f"- {d['name']} ({loc}) [{d.get('lat')},{d.get('lng')}] "
+              f"tier={pr['tier']}")
+        print(f"    specialties: {', '.join(pr['specialties'])}")
+        print(f"    products:    {', '.join(d.get('products', []))}")
+        print(f"    ordering:    {', '.join(d.get('order_options', []))}")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,12 @@ fixture and assert the NormalizedFarmRow fields. No network."""
 import os
 
 from scrapers.farm_finder.foodforhumans import parse_listing
+from scrapers.farm_finder.mapping import (
+    PARENT_SPECIALTY,
+    TIER_FARM,
+    practice_slug,
+    to_practitioner_row,
+)
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "farm_finder", "meadowdale.html"
@@ -34,7 +40,7 @@ def test_contact_fields():
 
 def test_location_is_pre_geocoded():
     row = _row()
-    assert row.address1.startswith("1400 Buttermilk Road")
+    assert row.address1 == "1400 Buttermilk Road"   # street line only
     assert row.city == "Lenoir City"
     assert row.state == "TN"          # normalized from "Tennessee"
     assert row.postal == "37771"
@@ -64,3 +70,33 @@ def test_practices_are_segmented_not_mixed_with_order_options():
 
 def test_no_localbusiness_returns_none():
     assert parse_listing("<html><body>not a farm</body></html>", URL) is None
+
+
+# --- integration mapping (farm -> practitioners row) ---
+
+def test_practice_slug():
+    assert practice_slug("Pasture-Raised") == "pasture_raised"
+    assert practice_slug("Non-GMO") == "non_gmo"
+    assert practice_slug("No Till") == "no_till"
+
+
+def test_mapped_row_is_a_farm_tier_with_parent_specialty():
+    pr = to_practitioner_row(_row())
+    assert pr["tier"] == TIER_FARM
+    # parent tag first so the "Regenerative Farms" chip matches every farm ...
+    assert pr["specialties"][0] == PARENT_SPECIALTY
+    # ... and each practice is a filterable sub-tag slug.
+    assert "pasture_raised" in pr["specialties"]
+    assert "rotational_grazing" in pr["specialties"]
+    # no duplicate specialties
+    assert len(pr["specialties"]) == len(set(pr["specialties"]))
+
+
+def test_mapped_row_carries_farm_columns_and_maps_geocode_quality():
+    pr = to_practitioner_row(_row())
+    assert pr["products"] == ["Chicken", "Turkey", "Eggs"]
+    assert "Farm Pickup" in pr["order_options"]
+    assert pr["website"] == "https://www.meadowdalefarm.com/"
+    # 'source' precision maps onto the existing enum's 'full'
+    assert pr["geocode_quality"] == "full"
+    assert pr["name"] == "Meadowdale Farm and Sawmill"
