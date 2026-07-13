@@ -1413,10 +1413,10 @@
   // into each trough, like a sensor measuring amplitude as the signal passes.
   var SCANW=[{f:2,a:.8,ph:.3},{f:4.3,a:.5,ph:1.5},{f:8,a:.26,ph:2.1},{f:1.2,a:.5,ph:.9}];
   var SCANMAX=SCANW.reduce(function(s,c){return s+c.a;},0);
-  // E4L amplitude color: green (trough) -> yellow -> orange -> purple (peak)
+  // E4L amplitude color: gray (trough) -> green -> yellow -> orange -> purple (peak)
   function e4l(t){
     t=t<0?0:(t>1?1:t);
-    var st=[[0,62,170,95],[0.40,240,200,70],[0.72,232,130,45],[1,150,85,190]];
+    var st=[[0,120,126,124],[0.22,62,170,95],[0.48,240,200,70],[0.72,232,130,45],[1,150,85,190]];
     for(var i=1;i<st.length;i++){ if(t<=st[i][0]){ var a=st[i-1],b=st[i],f=(t-a[0])/((b[0]-a[0])||1);
       return Math.round(a[1]+(b[1]-a[1])*f)+','+Math.round(a[2]+(b[2]-a[2])*f)+','+Math.round(a[3]+(b[3]-a[3])*f); } }
     return '150,85,190';
@@ -1435,7 +1435,7 @@
       x.lineWidth=2;x.strokeStyle=g;x.shadowBlur=0;x.stroke();
       x.strokeStyle='rgba(253,244,216,.22)';x.lineWidth=1;
       x.beginPath();x.moveTo(W/2,H*0.12);x.lineTo(W/2,H*0.88);x.stroke();
-      var vc=sumComps(SCANW,0.5,scroll,1),tt=0.5+0.5*(vc/SCANMAX);
+      var vc=sumComps(SCANW,0.5,scroll,1),tt=0.5+0.5*Math.max(-1,Math.min(1,(vc/SCANMAX)*2.4));
       tt=tt<0?0:(tt>1?1:tt);
       var rgb=e4l(tt),glowA=0.4+0.6*tt,yc=mid - vc*H*0.16;
       x.shadowColor='rgba('+rgb+','+glowA.toFixed(3)+')';x.shadowBlur=5+12*tt;
@@ -1459,7 +1459,7 @@
       var x=o.x,W=o.W,H=o.H;x.clearRect(0,0,W,H);
       if(!last)last=t;
       if(!reduce&&t-last>period){i=(i+1)%REMEDIES.length;last=t;}
-      var cand=REMEDIES[reduce?3:i],matched=cand.match;
+      var cand=REMEDIES[reduce?2:i],matched=cand.match;
       line(o,function(u){return H*0.32 - sumComps(YOU,u,t,0.0012)*H*0.16;},'rgba(212,168,67,'+(matched?'1':'.9')+')',matched?'rgba(212,168,67,.8)':0,matched?6:0);
       line(o,function(u){return H*0.58 - sumComps(cand.comps,u,t,0.0012)*H*0.16;},matched?'rgba(95,174,110,1)':'rgba(120,140,128,.75)',matched?'rgba(95,174,110,.9)':0,matched?9:0);
       x.shadowBlur=0;x.font='600 10px system-ui,sans-serif';x.textAlign='center';
