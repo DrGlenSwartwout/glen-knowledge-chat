@@ -137,3 +137,46 @@ def seed_if_empty(cx, seed_dict):
     cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
                (_SEED_NAME, now))
     cx.commit()
+
+
+def resolve_program_items(program, audience="client", client_facts=None):
+    """Apply a program's modifiers to its base items; return the resolved list.
+
+    modifier = {when, action:"add"|"remove", items:[{slug,name?,dose?},...],
+                source:"diagnosis-implied"|"clinician-measured"|"client-reported",
+                client_default:bool}
+    A modifier is ACTIVE when:
+      - diagnosis-implied: client_default is True
+      - client-reported:   client_facts[when] is truthy
+      - clinician-measured: never (client suppresses; the practitioner surface
+        handles these as explicit toggles, not via this resolver)
+    `audience` is accepted for forward-compat; client and practitioner resolve
+    the same auto-applied default set today. add de-dupes against present slugs;
+    remove drops by slug."""
+    client_facts = client_facts or {}
+    base = [dict(it) for it in (program.get("items") or [])]
+    remove_slugs, additions = set(), []
+    for mod in (program.get("modifiers") or []):
+        source = mod.get("source")
+        if source == "diagnosis-implied":
+            active = bool(mod.get("client_default"))
+        elif source == "client-reported":
+            active = bool(client_facts.get(mod.get("when")))
+        else:
+            active = False
+        if not active:
+            continue
+        if mod.get("action") == "remove":
+            for it in (mod.get("items") or []):
+                s = (it.get("slug") or "").strip()
+                if s:
+                    remove_slugs.add(s)
+        elif mod.get("action") == "add":
+            additions.extend(dict(it) for it in (mod.get("items") or []))
+    resolved = [it for it in base if (it.get("slug") or "").strip() not in remove_slugs]
+    present = {(it.get("slug") or "").strip() for it in resolved}
+    for it in additions:
+        s = (it.get("slug") or "").strip()
+        if s and s not in present:
+            resolved.append(it); present.add(s)
+    return resolved
