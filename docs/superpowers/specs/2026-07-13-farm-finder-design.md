@@ -120,12 +120,20 @@ practices + products + contact**, each mapped to a `tier='farm'` row. Example:
 - Render-verified headless (list + farm side panel) against the real card path.
   Serves both the public page and the portal embed (same file → free).
 
-**Phase 3 — automation + growth**
-- Weekly cron (fork `run_all.py` + a launchd plist) re-crawls; upsert keeps it
-  idempotent; rows absent from a fresh crawl are aged out (mark stale, do NOT
-  hard-delete — mirrors practitioner conventions).
-- Add second sources behind the `NormalizedFarmRow` contract; de-dup across
-  sources on website domain or name + lat/lng proximity.
+**Phase 3 — automation + growth (automation DONE)**
+- Weekly re-crawl: added `_run_farm_scrape` as the `foodforhumans_farms` adapter
+  in the EXISTING `scrapers/practitioner_finder/run_all.py` (not a separate cron)
+  — so farms re-crawl in the same Sunday 11 pm HST launchd run, inheriting its
+  per-run logging, failure isolation, and Glen-notification. Idempotent upsert;
+  no aggressive staleness removal (mirrors the practitioner adapters). The global
+  geocode sweep skips farms (pre-geocoded) and the GHL sync skips them
+  (`WHERE tier='org_member'`), so no config change was needed.
+- De-dup: `scrapers/farm_finder/dedupe.py` (`dedupe_farms`) collapses the same
+  farm across sources by website domain, else name-slug + coarse coords. A no-op
+  for one source; plugs in when a 2nd adapter's rows are combined before upsert.
+- **Deferred (needs an available source):** a 2nd directory. Regeneration
+  International has the ideal clean JSON endpoint but currently 403s; revisit and
+  add behind the `NormalizedFarmRow` contract + `dedupe_farms` when it returns.
 
 ## Open questions
 

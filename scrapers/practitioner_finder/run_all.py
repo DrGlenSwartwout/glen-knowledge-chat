@@ -289,6 +289,23 @@ def _run_ifm_scrape() -> tuple[int, int, int]:
     return len(rows), len(rows), 0
 
 
+def _run_farm_scrape() -> tuple[int, int, int]:
+    # Regenerative Farm Finder (Phase 3). Crawl Food for Humans and upsert farms
+    # as tier='farm' practitioners rows. Farms carry exact source coords, so the
+    # global geocode sweep skips them; the GHL sync skips them too (tier filter).
+    # Idempotent on source_url — mirrors the practitioner re-crawl (no aggressive
+    # staleness removal). ~1.8k listings at a polite throttle: the slowest adapter
+    # in the weekly run, but weekly is fine.
+    from scrapers.farm_finder.foodforhumans import scrape
+    from scrapers.farm_finder.mapping import to_practitioner_row
+    farms = scrape()
+    for f in farms:
+        run_upsert(to_practitioner_row(f))
+    geocoded = sum(1 for f in farms if f.lat is not None)
+    print(f"  farms: {len(farms)} rows ({geocoded} pre-geocoded)")
+    return len(farms), len(farms), 0
+
+
 ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("oepf", _run_oepf_scrape),
     ("iaomt", _run_iaomt_scrape),
@@ -311,6 +328,7 @@ ADAPTERS: list[tuple[str, Callable[[], tuple[int, int, int]]]] = [
     ("a4m", _run_a4m_scrape),
     ("ifm", _run_ifm_scrape),
     ("chc", _run_chc_scrape),
+    ("foodforhumans_farms", _run_farm_scrape),  # Regenerative Farm Finder (Phase 3)
 ]
 
 
