@@ -102,3 +102,13 @@ def load_gmail_credentials(db_path: str, name: str = "inbox_gmail",
     if source == "file":
         _write_db_token(db_path, name, normalized)  # self-heal the durable store
     return LoadedGmail(creds=creds, source=source, original_json=normalized, name=name)
+
+
+def persist_refreshed_credentials(db_path: str, loaded: LoadedGmail) -> bool:
+    """Write the token back to the DB if google-auth refreshed it during the run.
+    Best-effort: comparison is against the normalized baseline captured at load."""
+    current = loaded.creds.to_json()
+    if current == loaded.original_json:
+        return False
+    _write_db_token(db_path, loaded.name, current)
+    return True

@@ -56,3 +56,23 @@ def test_raises_when_nowhere(tmp_path, monkeypatch):
     monkeypatch.setattr(gt, "_FILE_CANDIDATES", [str(tmp_path / "nope.json")])
     with pytest.raises(gt.GmailTokenMissing):
         gt.load_gmail_credentials(db, name="inbox_gmail", scopes=SCOPES)
+
+def test_persist_writes_only_when_changed(tmp_path):
+    db = _db(tmp_path)
+    creds = gt._build_creds(_token_json(access="old"), SCOPES)
+    baseline = creds.to_json()
+    # unchanged -> no write, returns False
+    loaded_same = gt.LoadedGmail(creds=creds, source="db",
+                                 original_json=baseline, name="inbox_gmail")
+    assert gt.persist_refreshed_credentials(db, loaded_same) is False
+    with sqlite3.connect(db) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM oauth_tokens").fetchone()[0] == 0
+    # changed (simulate refresh) -> writes, returns True
+    creds.token = "new-access"
+    loaded_changed = gt.LoadedGmail(creds=creds, source="db",
+                                    original_json=baseline, name="inbox_gmail")
+    assert gt.persist_refreshed_credentials(db, loaded_changed) is True
+    with sqlite3.connect(db) as cx:
+        row = cx.execute("SELECT token_json FROM oauth_tokens WHERE name=?",
+                         ("inbox_gmail",)).fetchone()
+    assert json.loads(row[0])["token"] == "new-access"
