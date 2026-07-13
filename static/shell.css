@@ -83,3 +83,12 @@ body.js-shell-on { padding-top: var(--jshell-h); }
 .js-wallet-coupon { padding: 6px 8px; border: 1px dashed var(--gold,#d4a843); border-radius: 8px;
   margin: 6px 0; font-size: 13px; }
 .js-wallet-coupon .js-exp { color: var(--muted,#a89870); font-size: 11px; }
+
+/* Shared three-state theme toggle (rendered by theme-mode.js mountToggle). */
+.rm-theme-seg{display:inline-flex;border:1px solid var(--hair,#21472d);border-radius:999px;overflow:hidden}
+.rm-theme-seg-btn{appearance:none;border:none;background:transparent;color:var(--dim,#8fa89b);
+  padding:5px 8px;cursor:pointer;display:inline-flex;align-items:center;line-height:0}
+.rm-theme-seg-btn+.rm-theme-seg-btn{border-left:1px solid var(--hair,#21472d)}
+.rm-theme-seg-btn svg{width:15px;height:15px}
+.rm-theme-seg-btn[aria-pressed="true"]{background:var(--gold,#d4a843);color:#22160a}
+.rm-theme-seg-btn:focus-visible{outline:2px solid var(--gold,#d4a843);outline-offset:2px}

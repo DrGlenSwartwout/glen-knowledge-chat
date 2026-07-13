@@ -38,11 +38,45 @@ def test_resolve_mode_funnel_default():
     assert shell_nav.resolve_mode("/begin/match", False) == "funnel"
 
 
+def test_should_inject_theme_excludes_practitioner():
+    assert shell_nav.should_inject_theme("/practitioner/portal") is False
+    assert shell_nav.should_inject_theme("/practitioner/settings") is False
+
+
+def test_should_inject_theme_allows_funnel_and_portal():
+    assert shell_nav.should_inject_theme("/begin") is True
+    assert shell_nav.should_inject_theme("/client-portal") is True
+
+
 def test_inject_adds_assets_before_head_close():
     out = shell_nav.inject_shell_html("<head><title>x</title></head><body></body>", "funnel")
     assert "/static/shell.js" in out and "/static/shell.css" in out
     assert '"mode":"funnel"' in out or "'mode':'funnel'" in out
     assert out.index("shell.js") < out.index("</head>")
+
+
+def test_inject_theme_adds_controller_scripts():
+    out = shell_nav.inject_theme_html("<head></head>")
+    assert "/static/sun-engine.js" in out
+    assert "/static/theme-mode.js" in out
+    assert out.index("sun-engine.js") < out.index("theme-mode.js")
+
+
+def test_inject_theme_is_idempotent():
+    once = shell_nav.inject_theme_html("<head></head>")
+    twice = shell_nav.inject_theme_html(once)
+    assert twice.count("/static/sun-engine.js") == 1
+
+
+def test_inject_theme_noop_without_head():
+    assert shell_nav.inject_theme_html("<body>no head</body>") == "<body>no head</body>"
+
+
+def test_theme_controller_before_shell_when_both_applied():
+    html = shell_nav.inject_theme_html("<head></head>")
+    html = shell_nav.inject_shell_html(html, "funnel")
+    assert html.index("theme-mode.js") < html.index("shell.js")
+    assert html.index("sun-engine.js") < html.index("theme-mode.js")
 
 
 def test_inject_is_idempotent():

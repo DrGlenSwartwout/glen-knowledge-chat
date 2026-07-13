@@ -6,7 +6,12 @@ _EXCLUDE_EXACT = ("/begin/state", "/begin/fireside")
 _MEMBER_PREFIXES = ("/client-portal", "/coaching", "/affiliate-hub",
                     "/cert-portal", "/practitioner", "/dashboard", "/workspace")
 
+# Pages that still ship their own independent theme toggle; the universal theme
+# controller must NOT inject there or the two toggles fight (e.g. practitioner-*).
+_THEME_EXCLUDE_PREFIXES = ("/practitioner",)
+
 _MARKER = 'id="journey-shell-assets"'
+_THEME_MARKER = 'id="theme-assets"'
 
 
 def should_inject(path: str, content_type: str, status: int) -> bool:
@@ -31,6 +36,29 @@ def resolve_mode(path: str, authenticated: bool) -> str:
     if any(p.startswith(pre) for pre in _MEMBER_PREFIXES):
         return "member"
     return "funnel"
+
+
+def should_inject_theme(path: str) -> bool:
+    """True when the universal theme controller may attach to this path. The
+    caller must already have passed should_inject(); this only removes pages
+    that carry their own theme system pending migration."""
+    p = (path or "")
+    return not any(p.startswith(pre) for pre in _THEME_EXCLUDE_PREFIXES)
+
+
+def inject_theme_html(html: str) -> str:
+    """Insert the theme controller <script> tags before </head>. Idempotent;
+    no-op when no </head>. Independent of the journey-shell flag: theming is
+    universal, so this runs on every public HTML page."""
+    if _THEME_MARKER in (html or ""):
+        return html
+    if "</head>" not in html:
+        return html
+    tags = (
+        f'<script {_THEME_MARKER} src="/static/sun-engine.js"></script>'
+        f'<script src="/static/theme-mode.js"></script>'
+    )
+    return html.replace("</head>", tags + "\n</head>", 1)
 
 
 def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False, quest_enabled: bool = False) -> str:

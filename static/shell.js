@@ -10,12 +10,8 @@
   // --- Light/Dark theme (shared mechanism: localStorage 'rm-theme' + <html data-theme>).
   //     The ribbon is theme-aware and owns its own toggle; theme-toggle.js suppresses its
   //     floating button when the ribbon (window.__SHELL__) is present. ---
-  function applyTheme(t) {
-    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-    else document.documentElement.removeAttribute("data-theme");
-  }
   function applyShellTheme() {
-    try { applyTheme(localStorage.getItem("rm-theme")); } catch (e) {}
+    // theme-mode.js owns applying data-theme; here we only ensure the light palette exists.
     // Inject the light-palette override only if no other owner already did (theme-toggle.js
     // or op-nav.js). Keep in sync with static/theme-toggle.js.
     if (!document.getElementById("rm-theme-style") && !document.getElementById("op-nav-theme-style")) {
@@ -105,23 +101,8 @@
       walletBtn.onclick = function () { wp.classList.toggle("open"); };
     }
 
-    // Light/Dark toggle — the ribbon owns the theme control on public pages.
-    var themeBtn = el("button", "js-theme", "☀"); themeBtn.title = "Light / Dark";
-    function relabelTheme() {
-      themeBtn.textContent = document.documentElement.getAttribute("data-theme") === "light" ? "☾" : "☀";
-    }
-    relabelTheme();
-    themeBtn.onclick = function () {
-      var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
-      applyTheme(next);
-      try { localStorage.setItem("rm-theme", next); } catch (e) {}
-      relabelTheme();
-    };
-    bar.appendChild(themeBtn);
-    window.addEventListener("storage", function (e) {
-      if (e.key !== "rm-theme") return;
-      applyTheme(e.newValue); relabelTheme();
-    });
+    // Light/Dark/Auto toggle — rendered and owned by theme-mode.js.
+    if (window.RMTheme) window.RMTheme.mountToggle(bar);
 
     document.body.appendChild(bar);
     document.body.classList.add("js-shell-on");
