@@ -45,3 +45,9 @@ def test_name_typos_fixed():
     names = [i["name"] for p in progs.values() for i in p["items"]]
     assert "Clear Lens Eyedrops" not in names
     assert "Lens-Zyme Brunescense Buster" not in names
+
+def test_wet_amd_leakage_angiogenx_keeps_dose():
+    p = _seed()["condition_programs"]["wet-amd"]
+    leak = [m for m in p["modifiers"] if m["when"] == "leakage"][0]
+    ax = [i for i in leak["items"] if i["slug"] == "angiogenx"][0]
+    assert ax.get("dose") == "1 or more/day"

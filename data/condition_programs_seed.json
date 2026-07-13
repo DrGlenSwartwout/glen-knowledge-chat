@@ -221,7 +221,7 @@
           "source": "diagnosis-implied",
           "client_default": true,
           "items": [
-            {"slug": "angiogenx", "name": "AngiogenX"}
+            {"slug": "angiogenx", "name": "AngiogenX", "dose": "1 or more/day"}
           ]
         },
         {
