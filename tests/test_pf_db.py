@@ -38,6 +38,18 @@ def test_search_sql_with_specialties_and_radius():
     assert params[8] == ["eye_care", "syntonic"]  # specialty filter
 
 
+def test_search_sql_selects_farm_columns():
+    # products/order_options must be in the SELECT so farm cards can render
+    # "Offers"/"Ordering". They are NULL for clinicians. The public view was
+    # refreshed (migrations/practitioners-farms.sql) to expose them.
+    sql, _ = build_search_sql(
+        lat=21.3, lng=-157.8, radius_miles=25,
+        specialties=["regenerative_farms"], tiers=None, limit=200,
+    )
+    assert "products" in sql
+    assert "order_options" in sql
+
+
 def test_search_sql_no_specialties_no_filter():
     sql, params = build_search_sql(
         lat=21.0, lng=-157.0, radius_miles=50,
