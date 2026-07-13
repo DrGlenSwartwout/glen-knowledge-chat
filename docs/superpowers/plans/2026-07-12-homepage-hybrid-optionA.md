@@ -304,3 +304,7 @@ gh pr create --draft --title "Homepage hybrid (Option A): re-skinned hero + Scan
 - **Guardrail coverage:** chat IDs preserved (Global Constraints + Task 2 interfaces), `[data-name]` spans preserved (Task 1 Step 3), `unlock('video')` re-wired or consciously dropped (Task 2 Step 1), reduced-motion handled (Task 4).
 - **Placeholder scan:** the only intentional placeholders are the three remedy names in `REMEDIES`, flagged in Task 4 Step 1 for Glen to confirm with real Functional Formulation names.
 - **Verification reality:** deploy-chat has no CI and this is visual; every task ends in a headless-browser render check, and the live app must be run to do them (the sub-agent should launch it locally, not rely on tests).
+
+## Execution note (2026-07-12)
+
+Task 4's waveform script shipped in a refined final form (superseding the code in this doc): Scan is a continuous waveform that scrolls past a fixed central detector cursor, and the cursor is colored on the E4L amplitude scale (green at the trough shading through yellow and orange to purple at the peak, glow intensifying toward the top), not the earlier bar style. Find cycles the real Functional Formulation names Microbiome and Terrain Restore, then Neuro-Magnesium locks green as the match. The shipped `static/begin.html` is source of truth. The Task 4 `<script>` was placed as a sibling after the main app script (nesting would truncate at the first literal `</script>`). Live browser render-verification remains a pre-merge gate.
