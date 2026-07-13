@@ -11,10 +11,14 @@
 --   - products / order_options          (new farm-only array columns; NULL for clinicians)
 
 -- 1) Allow the new tier value. Rebuild the CHECK constraint to include 'farm'.
+-- Must preserve every value already allowed by the live constraint (which
+-- includes 'healing_oasis', added by a later migration than practitioners.sql)
+-- or the ADD fails against existing rows.
 ALTER TABLE practitioners DROP CONSTRAINT IF EXISTS practitioners_tier_check;
 ALTER TABLE practitioners ADD CONSTRAINT practitioners_tier_check
   CHECK (tier IN (
-    'org_member','eyehealing','panel_in_cert','panel_certified','farm'));
+    'org_member','eyehealing','panel_in_cert','panel_certified',
+    'healing_oasis','farm'));
 
 -- 2) Farm-only columns. Nullable; clinicians leave them NULL.
 ALTER TABLE practitioners ADD COLUMN IF NOT EXISTS products      text[];
