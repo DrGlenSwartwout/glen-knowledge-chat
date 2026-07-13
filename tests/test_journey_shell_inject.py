@@ -45,6 +45,15 @@ def test_inject_adds_assets_before_head_close():
     assert out.index("shell.js") < out.index("</head>")
 
 
+def test_inject_adds_theme_controller_before_shell():
+    out = shell_nav.inject_shell_html("<head></head>", "funnel")
+    assert "/static/sun-engine.js" in out
+    assert "/static/theme-mode.js" in out
+    # controller must load before shell.js so window.RMTheme exists when the ribbon mounts
+    assert out.index("sun-engine.js") < out.index("theme-mode.js")
+    assert out.index("theme-mode.js") < out.index("shell.js")
+
+
 def test_inject_is_idempotent():
     once = shell_nav.inject_shell_html("<head></head>", "funnel")
     twice = shell_nav.inject_shell_html(once, "funnel")

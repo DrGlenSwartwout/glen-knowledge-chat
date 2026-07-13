@@ -46,6 +46,8 @@ def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gif
     tags = (
         f'<link {_MARKER} rel="stylesheet" href="/static/shell.css">'
         f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg},"questEnabled":{qe}}};</script>'
+        f'<script src="/static/sun-engine.js"></script>'
+        f'<script src="/static/theme-mode.js"></script>'
         f'<script defer src="/static/shell.js"></script>'
     )
     if quest_enabled:

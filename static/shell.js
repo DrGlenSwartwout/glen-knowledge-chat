@@ -10,10 +10,6 @@
   // --- Light/Dark theme (shared mechanism: localStorage 'rm-theme' + <html data-theme>).
   //     The ribbon is theme-aware and owns its own toggle; theme-toggle.js suppresses its
   //     floating button when the ribbon (window.__SHELL__) is present. ---
-  function applyTheme(t) {
-    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-    else document.documentElement.removeAttribute("data-theme");
-  }
   function applyShellTheme() {
     // theme-mode.js owns applying data-theme; here we only ensure the light palette exists.
     // Inject the light-palette override only if no other owner already did (theme-toggle.js
