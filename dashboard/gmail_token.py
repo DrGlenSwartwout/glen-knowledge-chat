@@ -112,3 +112,47 @@ def persist_refreshed_credentials(db_path: str, loaded: LoadedGmail) -> bool:
         return False
     _write_db_token(db_path, loaded.name, current)
     return True
+
+
+def _health_name(name: str) -> str:
+    """Return the health row name for a token name."""
+    return f"{name}_health"
+
+
+def _parse_iso(s: str) -> datetime:
+    """Parse an ISO 8601 timestamp string."""
+    return datetime.fromisoformat(s)
+
+
+def record_ok(db_path: str, name: str, now_iso: Optional[str] = None) -> None:
+    """Record that the token is healthy. Clears alert dedup window."""
+    now = now_iso or datetime.now(timezone.utc).isoformat()
+    _write_db_token(db_path, _health_name(name),
+                    json.dumps({"healthy": True, "last_ok": now, "last_alert": None}))
+
+
+def record_alert(db_path: str, name: str, now_iso: str) -> None:
+    """Record that an alert occurred for this token."""
+    raw = _read_db_token(db_path, _health_name(name))
+    state = json.loads(raw) if raw else {}
+    state["healthy"] = False
+    state["last_alert"] = now_iso
+    _write_db_token(db_path, _health_name(name), json.dumps(state))
+
+
+def should_send_alert(db_path: str, name: str, now_iso: str,
+                      window_hours: int = 6) -> bool:
+    """Check if an alert should be sent based on the dedup window.
+
+    Returns True if:
+    - No prior health row exists (first alert)
+    - No prior alert was recorded
+    - Enough time has passed since the last alert (outside the window)
+    """
+    raw = _read_db_token(db_path, _health_name(name))
+    if not raw:
+        return True
+    last_alert = (json.loads(raw) or {}).get("last_alert")
+    if not last_alert:
+        return True
+    return _parse_iso(now_iso) - _parse_iso(last_alert) >= timedelta(hours=window_hours)

@@ -76,3 +76,28 @@ def test_persist_writes_only_when_changed(tmp_path):
         row = cx.execute("SELECT token_json FROM oauth_tokens WHERE name=?",
                          ("inbox_gmail",)).fetchone()
     assert json.loads(row[0])["token"] == "new-access"
+
+def test_alert_dedup_within_window(tmp_path):
+    db = _db(tmp_path)
+    t0 = "2026-07-13T00:00:00+00:00"
+    t_soon = "2026-07-13T02:00:00+00:00"   # +2h, inside 6h window
+    t_later = "2026-07-13T07:00:00+00:00"  # +7h, outside window
+    # first time: no health row -> should alert
+    assert gt.should_send_alert(db, "inbox_gmail", t0) is True
+    gt.record_alert(db, "inbox_gmail", t0)
+    # inside window -> suppressed
+    assert gt.should_send_alert(db, "inbox_gmail", t_soon) is False
+    # outside window -> alert again
+    assert gt.should_send_alert(db, "inbox_gmail", t_later) is True
+
+def test_record_ok_clears_alert_and_marks_healthy(tmp_path):
+    db = _db(tmp_path)
+    t0 = "2026-07-13T00:00:00+00:00"
+    gt.record_alert(db, "inbox_gmail", t0)
+    gt.record_ok(db, "inbox_gmail", now_iso="2026-07-13T01:00:00+00:00")
+    raw = gt._read_db_token(db, "inbox_gmail_health")
+    state = json.loads(raw)
+    assert state["healthy"] is True
+    assert state["last_alert"] is None
+    # after an OK, a later failure alerts again (window cleared)
+    assert gt.should_send_alert(db, "inbox_gmail", "2026-07-13T01:30:00+00:00") is True
