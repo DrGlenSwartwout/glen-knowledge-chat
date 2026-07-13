@@ -61,5 +61,6 @@
   { "title": "Inventory & Stock", "page": "Products", "url": "/admin/ingredients", "keywords": ["inventory","stock","on hand","on-hand","par","reorder","balance","ledger"] },
   { "title": "Production Runs", "page": "Products", "url": "/admin/ingredients", "keywords": ["production","run","batch","made","consumption","manufacture","produced"] },
   { "title": "Reorder / Shopping List", "page": "Products", "url": "/admin/ingredients", "keywords": ["reorder","shopping","buy","purchase","demand","bom","par","shortfall","restock"] },
-  { "title": "Sourcing Inbox (supplier quotes)", "page": "Products", "url": "/admin/ingredients", "keywords": ["sourcing","quote","supplier","price","email","inbox","moq"] }
+  { "title": "Sourcing Inbox (supplier quotes)", "page": "Products", "url": "/admin/ingredients", "keywords": ["sourcing","quote","supplier","price","email","inbox","moq"] },
+  { "title": "Task Board", "page": "R&D", "url": "/console/taskboard", "keywords": ["task","tasks","board","kanban","todo","to-do","backlog","in flight","done","projects","prs","markers"] }
 ]
