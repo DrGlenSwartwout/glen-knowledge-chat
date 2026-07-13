@@ -15395,6 +15395,12 @@ def _support_programs_enabled():
         "1", "true", "yes", "on")
 
 
+def _program_composer_enabled():
+    """Practitioner condition-program composer + its client card. Default OFF."""
+    return (os.environ.get("PROGRAM_COMPOSER_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _portal_scan_history_enabled() -> bool:
     """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
     return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -17908,6 +17914,59 @@ def _support_program_for(email):
         }
     except Exception:
         return None
+
+
+def _practitioner_candidate_view(it):
+    """One authored/modifier program item -> the practitioner-composer candidate
+    shape: {slug, name, dose?, alts?}. Names/slug only — the client card later
+    runs `_support_program_item_view` for URLs."""
+    v = {"slug": (it.get("slug") or "").strip(), "name": it.get("name") or (it.get("slug") or "")}
+    if it.get("dose"): v["dose"] = it["dose"]
+    if it.get("alts"): v["alts"] = [{"slug": a.get("slug"), "name": a.get("name")} for a in it["alts"]]
+    return v
+
+
+@app.route("/api/practitioner/condition-program/<path:patient_email>", methods=["GET"])
+def api_practitioner_condition_program_get(patient_email):
+    """The practitioner's condition-program composer candidate list for a
+    patient (Task 3): the authored program's base items plus each modifier's
+    items, pre-checked per `condition_programs.resolve_program_items` (so
+    diagnosis-implied+client_default and client-reported-with-fact items come
+    back checked; clinician-measured items always come back unchecked, since
+    the resolver never auto-applies those — the practitioner toggles them by
+    hand), alongside any already-saved practitioner_programs row."""
+    if not _program_composer_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    email = (patient_email or "").strip().lower()
+    from dashboard import continuity_view as _cv, practitioner_programs as _pgm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        key = _client_condition_for(email)
+        _init_support_programs_tables(cx)
+        prog = condition_programs.get(cx, key) if key else None
+        saved = _pgm.get(cx, email)
+    if not prog:
+        return jsonify({"ok": True, "condition_key": key, "label": None,
+                        "candidates": [], "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
+    resolved = {(it.get("slug") or "") for it in condition_programs.resolve_program_items(
+        prog, audience="client", client_facts=_client_facts_for(email))}
+    candidates = []
+    for it in (prog.get("items") or []):
+        candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
+    for mod in (prog.get("modifiers") or []):
+        for it in (mod.get("items") or []):
+            candidates.append({**_practitioner_candidate_view(it), "section": "modifier",
+                               "when": mod.get("when"), "source": mod.get("source"),
+                               "checked": (it.get("slug") or "") in resolved})
+    return jsonify({"ok": True, "condition_key": prog["condition_key"], "label": prog["label"],
+                    "candidates": candidates,
+                    "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
 
 
 @app.route("/api/portal/<token>/support-program/add-to-invoice", methods=["POST"])
