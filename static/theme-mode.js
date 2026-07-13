@@ -49,10 +49,12 @@
 
   function requestLocation(){
     if (geoDenied || !navigator.geolocation) return;
+    var raw = lsGet(GEO_KEY);
+    if (raw) { try { if (JSON.parse(raw).denied) return; } catch (e) {} }
     navigator.geolocation.getCurrentPosition(function(p){
       lsSet(GEO_KEY, JSON.stringify({ lat: p.coords.latitude, lng: p.coords.longitude }));
       apply();
-    }, function(){ geoDenied = true; }, { timeout: 8000, maximumAge: 86400000 });
+    }, function(){ geoDenied = true; lsSet(GEO_KEY, JSON.stringify({ denied: true })); }, { timeout: 8000, maximumAge: 86400000 });
   }
 
   function setMode(mode){
