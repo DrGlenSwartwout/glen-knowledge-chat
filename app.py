@@ -15395,6 +15395,12 @@ def _support_programs_enabled():
         "1", "true", "yes", "on")
 
 
+def _program_composer_enabled():
+    """Practitioner condition-program composer + its client card. Default OFF."""
+    return (os.environ.get("PROGRAM_COMPOSER_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _portal_scan_history_enabled() -> bool:
     """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
     return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -17066,6 +17072,17 @@ def api_client_portal(token):
                 payload["support_program"] = _sp_block
         except Exception as _e:
             print(f"[support-program/payload] {_e!r}", flush=True)
+    # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
+    # standing hand-composed program, distinct from the condition-driven
+    # support_program card above and from the reco-card. email_for_reports is
+    # already re-pointed by ?member=, so a member's card shows THEIR program.
+    if _program_composer_enabled():
+        try:
+            _pp_block = _practitioner_program_card(email_for_reports)
+            if _pp_block:
+                payload["practitioner_program"] = _pp_block
+        except Exception as _e:
+            print(f"[practitioner-program/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
@@ -17908,6 +17925,110 @@ def _support_program_for(email):
         }
     except Exception:
         return None
+
+
+def _practitioner_program_card(email):
+    """The client-facing card for a practitioner-composed program (Task 5).
+    Distinct from `_support_program_for` (the condition-driven program) and
+    from the reco-card (the one-shot AI nudge) -- this is the practitioner's
+    standing, hand-composed program for this patient. Best-effort: None on
+    any error, when the flag is off, or when no program is saved."""
+    if not _program_composer_enabled():
+        return None
+    try:
+        from dashboard import practitioner_programs as _pgm
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            saved = _pgm.get(cx, email)
+            if not saved:
+                return None
+            _init_support_programs_tables(cx)
+            prog = condition_programs.get(cx, saved.get("condition_key")) if saved.get("condition_key") else None
+        label = (prog or {}).get("label") or "Your Practitioner's Program"
+        return {"label": label, "note": saved.get("note") or "",
+                "items": [_support_program_item_view(it) for it in (saved.get("items") or [])]}
+    except Exception:
+        return None
+
+
+def _practitioner_candidate_view(it):
+    """One authored/modifier program item -> the practitioner-composer candidate
+    shape: {slug, name, dose?, alts?}. Names/slug only — the client card later
+    runs `_support_program_item_view` for URLs."""
+    v = {"slug": (it.get("slug") or "").strip(), "name": it.get("name") or (it.get("slug") or "")}
+    if it.get("dose"): v["dose"] = it["dose"]
+    if it.get("alts"): v["alts"] = [{"slug": a.get("slug"), "name": a.get("name")} for a in it["alts"]]
+    return v
+
+
+@app.route("/api/practitioner/condition-program/<path:patient_email>", methods=["GET"])
+def api_practitioner_condition_program_get(patient_email):
+    """The practitioner's condition-program composer candidate list for a
+    patient (Task 3): the authored program's base items plus each modifier's
+    items, pre-checked per `condition_programs.resolve_program_items` (so
+    diagnosis-implied+client_default and client-reported-with-fact items come
+    back checked; clinician-measured items always come back unchecked, since
+    the resolver never auto-applies those — the practitioner toggles them by
+    hand), alongside any already-saved practitioner_programs row."""
+    if not _program_composer_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    email = (patient_email or "").strip().lower()
+    from dashboard import continuity_view as _cv, practitioner_programs as _pgm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        key = _client_condition_for(email)
+        _init_support_programs_tables(cx)
+        prog = condition_programs.get(cx, key) if key else None
+        saved = _pgm.get(cx, email)
+    if not prog:
+        return jsonify({"ok": True, "condition_key": key, "label": None,
+                        "candidates": [], "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
+    resolved = {(it.get("slug") or "") for it in condition_programs.resolve_program_items(
+        prog, audience="client", client_facts=_client_facts_for(email))}
+    candidates = []
+    for it in (prog.get("items") or []):
+        candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
+    for mod in (prog.get("modifiers") or []):
+        if mod.get("action") != "add":
+            continue
+        for it in (mod.get("items") or []):
+            candidates.append({**_practitioner_candidate_view(it), "section": "modifier",
+                               "when": mod.get("when"), "source": mod.get("source"),
+                               "checked": (it.get("slug") or "") in resolved})
+    return jsonify({"ok": True, "condition_key": prog["condition_key"], "label": prog["label"],
+                    "candidates": candidates,
+                    "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
+
+
+@app.route("/api/practitioner/condition-program", methods=["POST"])
+def api_practitioner_condition_program_save():
+    """Save the practitioner's composed condition program for a patient
+    (Task 4) — the write side of Task 3's candidate list. Same guard order
+    as the GET: flag off -> 404, no pid -> 401, not authorized -> 403
+    (checked BEFORE any write)."""
+    if not _program_composer_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    body = request.get_json(silent=True) or {}
+    email = (body.get("patient_email") or "").strip().lower()
+    from dashboard import continuity_view as _cv, practitioner_programs as _pgm
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        _pgm.upsert(cx, patient_email=email, practitioner_id=pid,
+                    condition_key=(body.get("condition_key") or ""),
+                    items=body.get("items") or [], note=body.get("note") or "")
+    return jsonify({"ok": True, "saved": True})
 
 
 @app.route("/api/portal/<token>/support-program/add-to-invoice", methods=["POST"])

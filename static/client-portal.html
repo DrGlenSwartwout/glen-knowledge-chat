@@ -108,6 +108,14 @@
   .card.quiet .btn{background:transparent;color:var(--ink);border:1px solid var(--line);
     box-shadow:none;font-weight:600}
   .card.quiet .btn:hover{border-color:var(--brand);color:var(--brand);filter:none}
+  /* Practitioner-composed program (Task 5): a standing program from your practitioner,
+     distinct from BOTH the condition support-program card (Glen's pre-authored list) and
+     the reco-card (a one-shot accept/dismiss nudge) — no action buttons, a left accent
+     stripe + small badge mark it as "from your practitioner". */
+  .practitioner-program-card{border-left:4px solid var(--brand);background:var(--brand-soft)}
+  .practitioner-program-card .pp-badge{display:inline-block;font-size:.72rem;font-weight:700;
+    letter-spacing:.04em;text-transform:uppercase;color:var(--brand);background:var(--card);
+    border:1px solid var(--brand);border-radius:999px;padding:.15rem .6rem;margin-bottom:.6rem}
   .video-card{text-align:center;background:linear-gradient(180deg,var(--card),var(--card2))}
   .video-wrap{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#000;margin-top:.3rem}
   .video-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
@@ -483,6 +491,17 @@ function supportProgramBodyHtml(sp){
   }).join("");
   if(!rows) rows = `<p class="muted">No program items yet.</p>`;
   return `${consult}${rows}`;
+}
+// Practitioner-composed program card body (Task 5): a standing program your
+// practitioner hand-composed for you (distinct from the condition support-program
+// above and from the one-shot reco-card below). Reuses supportProgramBodyHtml for
+// the item rows so dose/alts render identically ("or <Alt>", each linked); adds the
+// practitioner's overall note ahead of the items. No accept/dismiss action — it's
+// not a one-shot nudge, so nothing to accept or dismiss.
+function practitionerProgramBodyHtml(pp){
+  pp = pp || {};
+  const note = pp.note ? `<p class="note small" style="margin:0 0 .7rem">${esc(pp.note)}</p>` : "";
+  return `${note}${supportProgramBodyHtml(pp)}`;
 }
 // Render a free-text note (e.g. the biofield greeting) as safe rich HTML:
 // escape first, then **bold** -> <strong>, blank lines -> separate <p>, and
@@ -1321,6 +1340,21 @@ function render(d, v){
       ${supportProgramBodyHtml(sp)}
       ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
       <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
+    </div>`;
+  }
+
+  // Practitioner-composed program card (Task 5, flag-gated server-side): a standing
+  // program your practitioner hand-composed for you, present ONLY when
+  // PROGRAM_COMPOSER_ENABLED is on and a program has been saved for this patient.
+  // Distinct from the support-program card above (Glen's condition-driven list) and
+  // from the reco-card below (a one-shot AI nudge with accept/dismiss) — this is a
+  // standing program, so there's no action button here, just the list + note.
+  if (d.practitioner_program) {
+    const pp = d.practitioner_program;
+    html += `<div class="card practitioner-program-card">
+      <span class="pp-badge">From your practitioner</span>
+      <h2>${esc(pp.label || "Your Practitioner's Program")}</h2>
+      ${practitionerProgramBodyHtml(pp)}
     </div>`;
   }
 

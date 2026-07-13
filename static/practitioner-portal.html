@@ -319,6 +319,16 @@
     <div id="cont-detail" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px"></div>
   </div>
 
+  <!-- Condition Program composer: practitioner hand-composes a per-patient program
+       from a condition's authored base + modifier items, for a consented continuity
+       patient. Reuses the continuity roster; distinct save from "Recommend to patient". -->
+  <div class="panel" id="program-composer-panel" style="display:none">
+    <h2>Condition Program composer</h2>
+    <div class="muted" style="font-size:13px;margin:4px 0 10px">Pick a patient to compose their Condition Program. Base items are pre-checked; modifier items are pre-checked when they already apply to this patient. Adjust and save — this is separate from your continuity recommendation above.</div>
+    <div id="pgm-roster" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    <div id="pgm-detail" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px"></div>
+  </div>
+
   <div class="panel reco" id="reco-ffs" style="display:none"></div>
 
   <div class="panel" id="pricing-panel">
@@ -700,6 +710,138 @@ function sendContinuityRecommendation(){
         msg.style.color = '#8fd6a3'; msg.textContent = 'Sent to your patient\'s portal.';
       } else {
         msg.style.color = 'var(--gold)'; msg.textContent = (res.body && res.body.error) || 'Could not send.';
+      }
+    })
+    .catch(function(){ btn.disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
+}
+
+// Clients tab: Condition Program composer — reuses the continuity roster for patient
+// selection, then per-patient candidate toggles from /api/practitioner/condition-program/<email>.
+// A distinct store from continuity's "Recommend to patient" and from the AI reco card.
+var PGM_CANDIDATES = [];  // last-loaded candidate list for the open patient (index-addressed by checkboxes)
+var PGM_EMAIL = null;
+var PGM_CONDITION_KEY = '';
+function loadProgramComposer(){
+  var panel = $('program-composer-panel'); if(!panel) return;
+  fetch('/api/practitioner/continuity/roster?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d || !d.ok){ panel.style.display = 'none'; return; }
+      var roster = d.roster || [];
+      panel.style.display = '';
+      var host = $('pgm-roster');
+      if(!roster.length){
+        host.innerHTML = '<div class="muted" style="font-size:13px">No consented continuity patients yet.</div>';
+        return;
+      }
+      host.innerHTML = roster.map(function(p){
+        return '<button type="button" class="ghost pgm-pt" data-email="' + escapeHtml(p.email) + '">'
+          + escapeHtml(p.name || p.email) + '</button>';
+      }).join('');
+      Array.prototype.forEach.call(host.querySelectorAll('.pgm-pt'), function(b){
+        b.addEventListener('click', function(){ openProgramPatient(b.getAttribute('data-email')); });
+      });
+    })
+    .catch(function(){ panel.style.display = 'none'; });
+}
+function openProgramPatient(email){
+  PGM_EMAIL = email;
+  var box = $('pgm-detail');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="muted" style="font-size:13px">Loading ' + escapeHtml(email) + '…</div>';
+  fetch('/api/practitioner/condition-program/' + encodeURIComponent(email) + '?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      if(res.status !== 200 || !res.body.ok){
+        box.innerHTML = '<div class="warn">' + escapeHtml((res.body && res.body.error) || 'Could not load this patient.') + '</div>';
+        return;
+      }
+      renderProgramComposerDetail(res.body);
+    })
+    .catch(function(){ box.innerHTML = '<div class="warn">Network error loading this patient.</div>'; });
+}
+function pgmCandItemHtml(c, i, checked){
+  var doseHtml = c.dose ? ' <span class="muted" style="font-size:12px">' + escapeHtml(c.dose) + '</span>' : '';
+  return '<label style="display:flex;align-items:center;gap:8px;padding:5px 0">'
+    + '<input type="checkbox" class="pgm-item" data-i="' + i + '"' + (checked ? ' checked' : '') + '>'
+    + '<span>' + escapeHtml(c.name || c.slug) + '</span>' + doseHtml
+    + '</label>';
+}
+// candidates arrive base-items-first then modifiers grouped in authored order (see
+// api_practitioner_condition_program_get) -- group contiguous modifier items under one
+// when/source label rather than re-deriving groups client-side.
+function renderProgramCandidates(candidates, checkedSlugs){
+  var html = '', lastSection = null, lastGroupKey = null;
+  candidates.forEach(function(c, i){
+    if(c.section === 'base'){
+      if(lastSection !== 'base'){
+        html += '<div class="muted" style="font-size:12px;font-weight:700;margin:10px 0 2px">Base</div>';
+        lastSection = 'base'; lastGroupKey = null;
+      }
+    } else {
+      var key = (c.when || '') + '|' + (c.source || '');
+      if(lastSection !== 'modifier' || key !== lastGroupKey){
+        html += '<div class="muted" style="font-size:12px;font-weight:700;margin:12px 0 2px">'
+          + escapeHtml(c.when || 'Modifier') + (c.source ? ' <span style="font-weight:400">(' + escapeHtml(c.source) + ')</span>' : '')
+          + '</div>';
+        lastSection = 'modifier'; lastGroupKey = key;
+      }
+    }
+    var checked = checkedSlugs ? !!checkedSlugs[c.slug] : !!c.checked;
+    html += pgmCandItemHtml(c, i, checked);
+  });
+  return html;
+}
+function renderProgramComposerDetail(d){
+  var box = $('pgm-detail');
+  PGM_CANDIDATES = d.candidates || [];
+  PGM_CONDITION_KEY = d.condition_key || '';
+  if(!PGM_CANDIDATES.length){
+    box.innerHTML = '<h3 style="margin:0 0 6px">' + escapeHtml(PGM_EMAIL) + '</h3>'
+      + '<div class="muted" style="font-size:13px;margin:8px 0">No condition program available for this patient yet.</div>';
+    return;
+  }
+  // If a program was already saved for this patient, pre-select exactly those items
+  // instead of the resolver's defaults -- the saved selection is ground truth.
+  var savedSlugs = null, savedNote = '';
+  if(d.saved){
+    savedSlugs = {};
+    (d.saved.items || []).forEach(function(it){ savedSlugs[it.slug] = true; });
+    savedNote = d.saved.note || '';
+  }
+  box.innerHTML =
+      '<h3 style="margin:0 0 6px">' + escapeHtml(PGM_EMAIL) + '</h3>'
+    + (d.label ? '<div class="muted" style="font-size:13px;margin-bottom:8px">' + escapeHtml(d.label) + '</div>' : '')
+    + '<div id="pgm-cand-list">' + renderProgramCandidates(PGM_CANDIDATES, savedSlugs) + '</div>'
+    + '<textarea id="pgm-note" placeholder="Add a note for this program (optional)…" style="width:100%;margin-top:10px;min-height:60px;background:var(--surface-2);color:inherit;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:13px">' + escapeHtml(savedNote) + '</textarea>'
+    + '<button type="button" id="pgm-save" style="margin-top:10px">Save program</button>'
+    + '<span id="pgm-msg" style="margin-left:10px;font-size:13px"></span>';
+  $('pgm-save').addEventListener('click', saveProgramComposer);
+}
+function saveProgramComposer(){
+  var btn = $('pgm-save'), msg = $('pgm-msg');
+  var checked = document.querySelectorAll('#pgm-cand-list .pgm-item:checked');
+  var items = Array.prototype.map.call(checked, function(cb){
+    var c = PGM_CANDIDATES[parseInt(cb.getAttribute('data-i'), 10)];
+    var item = {slug: c.slug, name: c.name};
+    if(c.dose) item.dose = c.dose;
+    if(c.alts) item.alts = c.alts;
+    return item;
+  });
+  var note = ($('pgm-note').value || '').trim();
+  btn.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Saving…';
+  fetch('/api/practitioner/condition-program', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: TOKEN, patient_email: PGM_EMAIL, condition_key: PGM_CONDITION_KEY, items: items, note: note})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      if(res.status === 200 && res.body.ok){
+        msg.style.color = '#8fd6a3'; msg.textContent = 'Saved.';
+        setTimeout(function(){ openProgramPatient(PGM_EMAIL); }, 800);  // defer so "Saved." message renders first
+      } else {
+        msg.style.color = 'var(--gold)'; msg.textContent = (res.body && res.body.error) || 'Could not save.';
       }
     })
     .catch(function(){ btn.disabled = false; msg.style.color = 'var(--gold)'; msg.textContent = 'Network error.'; });
@@ -1312,6 +1454,7 @@ function render(d){
   renderDispenseStats(d);
   renderRecommended(d);
   loadContinuity();
+  loadProgramComposer();
   loadCoachRequests();
   loadCoachMessages();
   renderPricing(d);
