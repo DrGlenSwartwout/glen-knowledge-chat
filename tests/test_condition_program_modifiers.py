@@ -59,3 +59,13 @@ def test_resolver_dedupes_adds_against_base():
             "modifiers": [{"when": "drusen", "action": "add", "source": "diagnosis-implied",
                 "client_default": True, "items": [{"slug": "lipid-zyme", "name": "Lipid Zyme"}]}]}
     assert [i["slug"] for i in cp.resolve_program_items(prog)] == ["lipid-zyme"]
+
+
+def test_unknown_slugs_includes_modifier_items(monkeypatch):
+    import app
+    monkeypatch.setattr(app, "_get_product", lambda s: None)  # nothing resolves
+    items = [{"slug": "wholomega"}]
+    prog_modifiers = [{"items": [{"slug": "made-up-slug"}]}]
+    # helper must scan modifiers too
+    unknown = app._unknown_slugs_in_items(items, prog_modifiers)
+    assert "wholomega" in unknown and "made-up-slug" in unknown

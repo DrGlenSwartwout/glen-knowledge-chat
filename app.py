@@ -17638,11 +17638,11 @@ def api_console_condition_programs_list():
     return jsonify({"programs": programs, "broad_benefit": broad})
 
 
-def _unknown_slugs_in_items(items):
-    """Slugs (item-level or alt-level) not resolvable in the live catalog.
-    Order-preserving, de-duplicated. Validation NEVER blocks a save — Glen
-    may be saving a work-in-progress program — it only surfaces a warning
-    for the editor to display."""
+def _unknown_slugs_in_items(items, modifiers=None):
+    """Slugs (item-level, alt-level, or modifier-item-level) not resolvable
+    in the live catalog. Order-preserving, de-duplicated. Validation NEVER
+    blocks a save — Glen may be saving a work-in-progress program — it only
+    surfaces a warning for the editor to display."""
     seen = set()
     unknown = []
     for it in (items or []):
@@ -17655,6 +17655,11 @@ def _unknown_slugs_in_items(items):
             if aslug and not _get_product(aslug) and aslug not in seen:
                 seen.add(aslug)
                 unknown.append(aslug)
+    for mod in (modifiers or []):
+        for it in (mod.get("items") or []):
+            slug = (it.get("slug") or "").strip()
+            if slug and not _get_product(slug) and slug not in seen:
+                seen.add(slug); unknown.append(slug)
     return unknown
 
 
@@ -17670,13 +17675,14 @@ def api_console_condition_programs_upsert():
     if not key:
         return jsonify({"error": "condition_key required"}), 400
     items = body.get("items") or []
-    unknown_slugs = _unknown_slugs_in_items(items)
+    modifiers = body.get("modifiers") or []
+    unknown_slugs = _unknown_slugs_in_items(items, modifiers)
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         condition_programs.upsert(cx, key, body.get("label") or "",
                                    bool(body.get("consult_recommended")),
-                                   items)
+                                   items, modifiers)
     return jsonify({"ok": True, "unknown_slugs": unknown_slugs})
 
 
