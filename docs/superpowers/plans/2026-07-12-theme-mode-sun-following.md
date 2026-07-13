@@ -560,4 +560,37 @@ gh pr create --draft --title "Theme: unified 3-state Light/Dark/Auto (sun-follow
 
 **Type consistency:** `sunTimes` returns `{sunrise, sunset}` (Task 1) and is consumed with those exact names in `currentContext` (Task 2). `_resolve(mode, ctx)` signature is identical in the test (Task 2 Step 1) and the implementation (Task 2 Step 3). `mountToggle(container)` is defined in Task 2 and called with a single element argument in Tasks 3 and 4.
 
-**Known follow-ups (out of scope here):** the chat widget iframe (`embed.html`) still relies on the mirrored `rm-theme` key for cross-document sync; folding it onto `rm-theme-mode` is a later cleanup. The remaining four redesign plans (icon set, header rebuild, homepage hybrid, portal relabels) are separate documents.
+**Known follow-ups (out of scope here):** migrate the four `/practitioner/*` pages
+(`practitioner-portal.html`, `-settings`, `-register`, `-dropship`) off their own
+2-state `rm-theme` toggle onto the unified controller; until then they are excluded
+from theme injection (see Execution notes). The remaining four redesign plans (icon
+set, header rebuild, homepage hybrid, portal relabels) are separate documents.
+
+## Execution notes (2026-07-12)
+
+The plan shipped as written for Tasks 1, 2, 4, and 5, with two corrections made
+during Task 3 after review caught real integration gaps:
+
+- **Controller injection moved server-side and decoupled from the ribbon flag.**
+  The plan added the `sun-engine.js`/`theme-mode.js` includes only to `begin.html`,
+  but `shell.js` (and thus the theme system) runs on ~19 funnel pages plus the
+  portal, injected by `shell_nav`. Wiring one page would have left every other page
+  with `window.RMTheme` undefined and no toggle. Fix: a new
+  `shell_nav.inject_theme_html` injects the controller (synchronous, before the
+  deferred `shell.js`) into every `should_inject` page, from `_inject_journey_shell`
+  in `app.py`, and it runs ALWAYS, not gated on `JOURNEY_SHELL_ENABLED` (theming is
+  universal; only the ribbon is flag-gated). The `begin.html` manual includes were
+  reverted. `theme-mode.js` gained an idempotency guard.
+- **`/practitioner/*` excluded from theme injection.** Those four pages still ship
+  their own `rm-theme` toggle; injecting the controller there made the two fight and
+  the theme choice fail to persist. `shell_nav.should_inject_theme` skips
+  `/practitioner` prefixes pending their migration.
+
+The `embed.html` chat-iframe cross-document sync was confirmed intact: the controller
+is injected there too and its `storage` listener on `rm-theme-mode`/`rm-theme`
+preserves parent-following.
+
+**Live render-verification (pre-merge gate, not runnable in this headless job):**
+1) portal/login/community in Light for a daytime new `auto` visitor stay legible over
+the fireside/video scene; 2) the funnel ribbon shows the 3-button SVG control and
+toggling writes only `rm-theme-mode`; 3) the chat iframe follows a parent theme change.
