@@ -1495,17 +1495,22 @@ function render(d, v){
   if(d.membership_upsell && !d.membership_upsell.already_member && (d.membership_upsell.savings_cents||0) > 0){
     const mu = d.membership_upsell;
     const times = mu.reorders_30d === 1 ? "once" : `${esc(mu.reorders_30d)} times`;
-    const netLine = (mu.net_after_fee_cents||0) > 0
-      ? `<p class="muted small">That's <b>${esc(money(mu.net_after_fee_cents))}</b> ahead even after the membership fee — before Zoom Q&amp;A, group coaching, or expanded education even come into it.</p>`
-      : `<p class="muted small">Membership pays for itself on remedies alone — and that's before Zoom Q&amp;A, group coaching, or expanded education.</p>`;
-    html += `<div class="card upsell-card"><h2>You could be saving more</h2>
-      <p class="muted small">You ordered ${times} in the last 30 days. As a member, those same remedies would have saved you <b>${esc(money(mu.savings_cents))}</b>.</p>
-      ${netLine}
+    // Lead with the benefits, then reinforce with savings. NEVER claim the member
+    // is "ahead" off a single order: when the month's savings are below the fee,
+    // net_after_fee_cents is the part of the fee still UNCOVERED (a shortfall), not
+    // a gain. Only claim "covers your membership" when savings actually reach the
+    // fee (net_after_fee_cents <= 0). Savings recur every month they reorder.
+    const coversFee = (mu.net_after_fee_cents||0) <= 0;
+    const saveLine = coversFee
+      ? `<p class="muted small">You ordered ${times} in the last 30 days, and as a member those same remedies would have saved you <b>${esc(money(mu.savings_cents))}</b>, enough to cover your membership on remedies alone.</p>`
+      : `<p class="muted small">You ordered ${times} in the last 30 days, and as a member those same remedies would have saved you <b>${esc(money(mu.savings_cents))}</b>, every month you reorder.</p>`;
+    html += `<div class="card upsell-card"><h2>Everything your membership unlocks</h2>
       <ul class="upsell-benefits small muted">
         <li>Live Zoom Q&amp;A + group coaching</li>
         <li>Expanded education</li>
         <li>Member pricing on your repertoire</li>
       </ul>
+      ${saveLine}
       <a class="btn full" href="/prepay">Become a member</a></div>`;
   }
 
