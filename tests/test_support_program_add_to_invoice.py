@@ -68,12 +68,13 @@ def app_mod(tmp_db, monkeypatch):
     return app
 
 
-def _seed_program(tmp_db, key="wet-amd", label="Wet AMD", items=None, consult_recommended=False):
+def _seed_program(tmp_db, key="wet-amd", label="Wet AMD", items=None, consult_recommended=False,
+                   modifiers=None):
     items = WET_AMD_ITEMS if items is None else items
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
         prog.init_table(cx)
-        prog.upsert(cx, key, label, consult_recommended, items)
+        prog.upsert(cx, key, label, consult_recommended, items, modifiers=modifiers)
 
 
 def _seed_condition(tmp_db, email, key):
@@ -298,3 +299,47 @@ def test_consult_recommended_condition_rejects_add_to_invoice(app_mod, tmp_db, m
     with sqlite3.connect(tmp_db) as cx:
         rows = cx.execute("SELECT * FROM orders WHERE external_ref LIKE 'SPINV-%'").fetchall()
     assert rows == [], "no order may be created for a consult-recommended condition"
+
+
+# ---------------------------------------------------------------------------
+# Modifier-resolved item reaches the persisted order: a non-consult program
+# with an ACTIVE diagnosis-implied "add" modifier must have the RESOLVED item
+# set (base + modifier addition) priced and written to orders.items_json --
+# not just the authored base items. Guards against regressing to pricing the
+# raw, unresolved program.
+# ---------------------------------------------------------------------------
+
+def test_diagnosis_implied_modifier_addition_is_priced_and_persisted(app_mod, tmp_db):
+    base_items = [{"slug": "wholomega", "name": "Wholomega"}]
+    modifiers = [{
+        "when": "dry-eye-severe",
+        "action": "add",
+        "items": [{"slug": "lipid-zyme", "name": "Lipid-Zyme"}],
+        "source": "diagnosis-implied",
+        "client_default": True,
+    }]
+    _seed_program(tmp_db, key="dry-eye-modtest", label="Dry Eye (mod test)",
+                  items=base_items, modifiers=modifiers, consult_recommended=False)
+    _seed_condition(tmp_db, TAGGED, "dry-eye-modtest")
+    token = _seed_portal(tmp_db, TAGGED)
+    client = app_mod.app.test_client()
+    r = _post(client, token)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["order_ref"] == f"SPINV-{TAGGED}-dry-eye-modtest"
+
+    rows = _orders_rows(tmp_db)
+    assert len(rows) == 1
+    row = rows[0]
+    items = json.loads(row["items_json"])
+    slugs = [i["slug"] for i in items]
+    # base item + the diagnosis-implied modifier addition, both present
+    assert slugs == ["wholomega", "lipid-zyme"]
+
+    added = next(i for i in items if i["slug"] == "lipid-zyme")
+    # real catalog price, not a zero/unresolved stub -- proves the modifier
+    # addition was actually priced via _ff_line_cents, not dropped on the floor
+    assert added["unit_cents"] == FF_CATALOG_CENTS
+    assert added["line_cents"] == FF_CATALOG_CENTS
+    assert row["total_cents"] == sum(i["line_cents"] for i in items)
