@@ -17835,11 +17835,24 @@ def _support_program_item_view(it):
     return view
 
 
+def _client_facts_for(email):
+    """Per-client intake facts driving client-reported program modifiers.
+    Best-effort; any error returns {}."""
+    try:
+        from dashboard import client_facts as _cf
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            return _cf.get_facts(cx, email)
+    except Exception:
+        return {}
+
+
 def _support_program_for(email):
     """The (member-aware) client's support-program portal card, or None when
     the flag is off, the client has no resolved condition, or the resolved
     program doesn't exist. Best-effort -- any error returns None, never
-    raises. Item order is preserved from the authored program."""
+    raises. Item order is preserved from the authored program, with the
+    resolver's modifiers (base ± diagnosis-implied/client-reported) applied."""
     try:
         key = _client_condition_for(email)
         if not key:
@@ -17850,11 +17863,13 @@ def _support_program_for(email):
             prog = condition_programs.get(cx, key)
         if not prog:
             return None
+        resolved = condition_programs.resolve_program_items(
+            prog, audience="client", client_facts=_client_facts_for(email))
         return {
             "condition_key": prog["condition_key"],
             "label": prog["label"],
             "consult_recommended": bool(prog["consult_recommended"]),
-            "items": [_support_program_item_view(it) for it in (prog.get("items") or [])],
+            "items": [_support_program_item_view(it) for it in resolved],
         }
     except Exception:
         return None
@@ -17910,7 +17925,8 @@ def api_portal_support_program_add_to_invoice(token):
         key = sp["condition_key"]
         _init_support_programs_tables(cx)
         prog = condition_programs.get(cx, key)
-        raw_items = (prog or {}).get("items") or []
+        raw_items = condition_programs.resolve_program_items(
+            (prog or {}), audience="client", client_facts=_client_facts_for(email))
         ext = f"SPINV-{email}-{key}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
         # Insert-once: never rewrite an existing support-program-invoice order. A second
         # click after Rae has priced/advanced or paid the order must not touch it.
