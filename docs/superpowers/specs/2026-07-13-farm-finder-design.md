@@ -111,8 +111,13 @@ practices + products + contact**, each mapped to a `tier='farm'` row. Example:
 **Phase 2 — surface**
 - Frontend: add the "🌱 Regenerative Farms" parent chip + practice sub-chips to
   `static/practitioner-finder.html`; branch the card renderer on `tier==='farm'`
-  (products, ordering options, practice badges, "Visit farm website"; suppress
-  the patient-inquiry form — link out to the farm instead).
+  (products, ordering options, practice badges; suppress the patient-inquiry
+  form — link out to the farm instead).
+- **Done already:** result cards now render a clickable website link (gold,
+  `target=_blank`, http(s)-scheme-guarded) whenever a row has a `website` —
+  previously websites showed only in the side panel. This covers practitioners
+  today and farms once ingested (farms use direct contact, no inquiry form).
+  Verified by headless render of the real card path.
 - Confirm the portal embed card shows the new category (it renders the same page
   → expected free).
 

@@ -199,6 +199,9 @@
       color: var(--cream);
     }
     .result-card .meta { font-size: 0.85rem; color: var(--muted); }
+    .result-card .card-website { font-size: 0.85rem; margin-top: 0.25rem; }
+    .result-card .card-website a { text-decoration: none; }
+    .result-card .card-website a:hover { text-decoration: underline; }
 
     .side-panel {
       position: fixed; top: 0; right: 0; height: 100vh; width: min(420px, 100%);
@@ -792,6 +795,25 @@
         meta.innerHTML = metaParts.join(' &middot; ');
         card.appendChild(meta);
 
+        // Clickable website link on the card itself (previously only in the
+        // side panel). Covers practitioners with a site and, once ingested,
+        // farms (tier 'farm') which use direct contact. Click is isolated so it
+        // opens the site instead of the card's side panel.
+        const cardSite = httpUrl(p.website);
+        if (cardSite) {
+          const siteDiv = document.createElement('div');
+          siteDiv.className = 'card-website';
+          const a = document.createElement('a');
+          a.href = cardSite;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = websiteLabel(p.website);
+          a.style.color = 'var(--gold)';
+          a.addEventListener('click', (e) => e.stopPropagation());
+          siteDiv.appendChild(a);
+          card.appendChild(siteDiv);
+        }
+
         // Checkbox wrapper (top-right corner; stopPropagation prevents side panel open)
         const cbWrapper = document.createElement('label');
         cbWrapper.className = 'card-select-wrapper';
@@ -859,7 +881,8 @@
       }
       if (p.phone) parts.push(`<div style="margin-top:0.4rem"><a href="tel:${escapeHtml(p.phone)}" style="color:var(--gold)">${escapeHtml(p.phone)}</a></div>`);
       if (p.email) parts.push(`<div><a href="mailto:${escapeHtml(p.email)}" style="color:var(--gold)">${escapeHtml(p.email)}</a></div>`);
-      if (p.website) parts.push(`<div><a href="${escapeHtml(p.website)}" target="_blank" rel="noopener" style="color:var(--gold)">${escapeHtml(p.website)}</a></div>`);
+      const panelSite = httpUrl(p.website);
+      if (panelSite) parts.push(`<div><a href="${escapeHtml(panelSite)}" target="_blank" rel="noopener" style="color:var(--gold)">${escapeHtml(websiteLabel(p.website))}</a></div>`);
       if (p.source_org) {
         parts.push(`<div style="margin-top:1rem;color:var(--muted);font-size:0.85rem">Source: ${escapeHtml(p.source_org)}</div>`);
       }
@@ -878,6 +901,23 @@
       return String(s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
       }[c]));
+    }
+
+    // Return the URL only if it is a safe http(s) link, else null — guards the
+    // href against a stored `javascript:`/`data:` scheme (escapeHtml stops
+    // attribute break-out but not scheme execution on click). Adds https:// to
+    // a bare domain like "example.com" so the link still resolves.
+    function httpUrl(u) {
+      if (!u) return null;
+      let s = String(u).trim();
+      if (/^https?:\/\//i.test(s)) return s;
+      if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(s)) return 'https://' + s;
+      return null;
+    }
+
+    // A short display label for a website URL (drop scheme + trailing slash).
+    function websiteLabel(u) {
+      return String(u).replace(/^https?:\/\//i, '').replace(/\/$/, '');
     }
 
     // ── Slice 4: checkbox delegation ──
