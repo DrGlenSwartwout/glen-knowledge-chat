@@ -93,6 +93,13 @@ def test_saved_program_unknown_condition_key_falls_back_to_default_label(wired):
     assert card["label"] == "Your Practitioner's Program"
 
 
-def test_bad_email_never_raises(wired):
+def test_practitioner_program_card_swallows_errors(monkeypatch, wired):
+    """Verify the best-effort guard: if practitioner_programs.get raises,
+    _practitioner_program_card returns None instead of propagating."""
     app_module, _db = wired
-    assert app_module._practitioner_program_card(None) is None
+    # Monkeypatch the store's get to raise an error
+    def boom(*a, **k):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(pp, "get", boom)
+    # The function should catch the error and return None
+    assert app_module._practitioner_program_card("someone@example.com") is None
