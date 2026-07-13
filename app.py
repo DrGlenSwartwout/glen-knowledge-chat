@@ -37877,7 +37877,8 @@ def _inject_journey_shell(response):
         html = response.get_data(as_text=True)
         if "</head>" not in html:
             return response
-        html = shell_nav.inject_theme_html(html)  # theme controller: always on, flag-independent
+        if shell_nav.should_inject_theme(request.path):  # skip pages with their own theme toggle (e.g. /practitioner/*)
+            html = shell_nav.inject_theme_html(html)
         if JOURNEY_SHELL_ENABLED:
             authed = bool(get_authenticated_user(request))
             mode = shell_nav.resolve_mode(request.path, authed)

@@ -38,6 +38,16 @@ def test_resolve_mode_funnel_default():
     assert shell_nav.resolve_mode("/begin/match", False) == "funnel"
 
 
+def test_should_inject_theme_excludes_practitioner():
+    assert shell_nav.should_inject_theme("/practitioner/portal") is False
+    assert shell_nav.should_inject_theme("/practitioner/settings") is False
+
+
+def test_should_inject_theme_allows_funnel_and_portal():
+    assert shell_nav.should_inject_theme("/begin") is True
+    assert shell_nav.should_inject_theme("/client-portal") is True
+
+
 def test_inject_adds_assets_before_head_close():
     out = shell_nav.inject_shell_html("<head><title>x</title></head><body></body>", "funnel")
     assert "/static/shell.js" in out and "/static/shell.css" in out
