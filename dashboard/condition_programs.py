@@ -44,6 +44,10 @@ def init_table(cx):
             items_json TEXT NOT NULL DEFAULT '[]',
             updated_at TEXT
         )""")
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(condition_programs)")}
+    if "modifiers_json" not in cols:
+        cx.execute("ALTER TABLE condition_programs "
+                   "ADD COLUMN modifiers_json TEXT NOT NULL DEFAULT '[]'")
     _ensure_seed_state_table(cx)
 
 
@@ -66,6 +70,7 @@ def _row(r):
         "label": r["label"],
         "consult_recommended": bool(r["consult_recommended"]),
         "items": json.loads(r["items_json"] or "[]"),
+        "modifiers": json.loads((r["modifiers_json"] if "modifiers_json" in r.keys() else None) or "[]"),
         "updated_at": r["updated_at"],
     }
 
@@ -85,17 +90,20 @@ def all(cx):
     return parsed
 
 
-def upsert(cx, key, label, consult_recommended, items):
+def upsert(cx, key, label, consult_recommended, items, modifiers=None):
     now = _now()
     cx.execute("""
-        INSERT INTO condition_programs (condition_key, label, consult_recommended, items_json, updated_at)
-        VALUES (?,?,?,?,?)
+        INSERT INTO condition_programs
+            (condition_key, label, consult_recommended, items_json, modifiers_json, updated_at)
+        VALUES (?,?,?,?,?,?)
         ON CONFLICT(condition_key) DO UPDATE SET
             label=excluded.label,
             consult_recommended=excluded.consult_recommended,
             items_json=excluded.items_json,
+            modifiers_json=excluded.modifiers_json,
             updated_at=excluded.updated_at
-        """, (key, label, 1 if consult_recommended else 0, json.dumps(items or []), now))
+        """, (key, label, 1 if consult_recommended else 0,
+              json.dumps(items or []), json.dumps(modifiers or []), now))
     cx.commit()
 
 
@@ -120,11 +128,55 @@ def seed_if_empty(cx, seed_dict):
         for key, prog in (seed_dict or {}).items():
             cx.execute("""
                 INSERT OR IGNORE INTO condition_programs
-                    (condition_key, label, consult_recommended, items_json, updated_at)
-                VALUES (?,?,?,?,?)
+                    (condition_key, label, consult_recommended, items_json, modifiers_json, updated_at)
+                VALUES (?,?,?,?,?,?)
                 """, (key, prog.get("label") or "",
                       1 if prog.get("consult_recommended") else 0,
-                      json.dumps(prog.get("items") or []), now))
+                      json.dumps(prog.get("items") or []),
+                      json.dumps(prog.get("modifiers") or []), now))
     cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
                (_SEED_NAME, now))
     cx.commit()
+
+
+def resolve_program_items(program, audience="client", client_facts=None):
+    """Apply a program's modifiers to its base items; return the resolved list.
+
+    modifier = {when, action:"add"|"remove", items:[{slug,name?,dose?},...],
+                source:"diagnosis-implied"|"clinician-measured"|"client-reported",
+                client_default:bool}
+    A modifier is ACTIVE when:
+      - diagnosis-implied: client_default is True
+      - client-reported:   client_facts[when] is truthy
+      - clinician-measured: never (client suppresses; the practitioner surface
+        handles these as explicit toggles, not via this resolver)
+    `audience` is accepted for forward-compat; client and practitioner resolve
+    the same auto-applied default set today. add de-dupes against present slugs;
+    remove drops by slug."""
+    client_facts = client_facts or {}
+    base = [dict(it) for it in (program.get("items") or [])]
+    remove_slugs, additions = set(), []
+    for mod in (program.get("modifiers") or []):
+        source = mod.get("source")
+        if source == "diagnosis-implied":
+            active = bool(mod.get("client_default"))
+        elif source == "client-reported":
+            active = bool(client_facts.get(mod.get("when")))
+        else:
+            active = False
+        if not active:
+            continue
+        if mod.get("action") == "remove":
+            for it in (mod.get("items") or []):
+                s = (it.get("slug") or "").strip()
+                if s:
+                    remove_slugs.add(s)
+        elif mod.get("action") == "add":
+            additions.extend(dict(it) for it in (mod.get("items") or []))
+    resolved = [it for it in base if (it.get("slug") or "").strip() not in remove_slugs]
+    present = {(it.get("slug") or "").strip() for it in resolved}
+    for it in additions:
+        s = (it.get("slug") or "").strip()
+        if s and s not in present:
+            resolved.append(it); present.add(s)
+    return resolved

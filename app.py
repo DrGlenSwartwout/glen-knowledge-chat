@@ -17667,11 +17667,11 @@ def api_console_condition_programs_list():
     return jsonify({"programs": programs, "broad_benefit": broad})
 
 
-def _unknown_slugs_in_items(items):
-    """Slugs (item-level or alt-level) not resolvable in the live catalog.
-    Order-preserving, de-duplicated. Validation NEVER blocks a save — Glen
-    may be saving a work-in-progress program — it only surfaces a warning
-    for the editor to display."""
+def _unknown_slugs_in_items(items, modifiers=None):
+    """Slugs (item-level, alt-level, or modifier-item-level) not resolvable
+    in the live catalog. Order-preserving, de-duplicated. Validation NEVER
+    blocks a save — Glen may be saving a work-in-progress program — it only
+    surfaces a warning for the editor to display."""
     seen = set()
     unknown = []
     for it in (items or []):
@@ -17684,6 +17684,11 @@ def _unknown_slugs_in_items(items):
             if aslug and not _get_product(aslug) and aslug not in seen:
                 seen.add(aslug)
                 unknown.append(aslug)
+    for mod in (modifiers or []):
+        for it in (mod.get("items") or []):
+            slug = (it.get("slug") or "").strip()
+            if slug and not _get_product(slug) and slug not in seen:
+                seen.add(slug); unknown.append(slug)
     return unknown
 
 
@@ -17699,13 +17704,14 @@ def api_console_condition_programs_upsert():
     if not key:
         return jsonify({"error": "condition_key required"}), 400
     items = body.get("items") or []
-    unknown_slugs = _unknown_slugs_in_items(items)
+    modifiers = body.get("modifiers") or []
+    unknown_slugs = _unknown_slugs_in_items(items, modifiers)
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         condition_programs.upsert(cx, key, body.get("label") or "",
                                    bool(body.get("consult_recommended")),
-                                   items)
+                                   items, modifiers)
     return jsonify({"ok": True, "unknown_slugs": unknown_slugs})
 
 
@@ -17864,11 +17870,24 @@ def _support_program_item_view(it):
     return view
 
 
+def _client_facts_for(email):
+    """Per-client intake facts driving client-reported program modifiers.
+    Best-effort; any error returns {}."""
+    try:
+        from dashboard import client_facts as _cf
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            return _cf.get_facts(cx, email)
+    except Exception:
+        return {}
+
+
 def _support_program_for(email):
     """The (member-aware) client's support-program portal card, or None when
     the flag is off, the client has no resolved condition, or the resolved
     program doesn't exist. Best-effort -- any error returns None, never
-    raises. Item order is preserved from the authored program."""
+    raises. Item order is preserved from the authored program, with the
+    resolver's modifiers (base ± diagnosis-implied/client-reported) applied."""
     try:
         key = _client_condition_for(email)
         if not key:
@@ -17879,11 +17898,13 @@ def _support_program_for(email):
             prog = condition_programs.get(cx, key)
         if not prog:
             return None
+        resolved = condition_programs.resolve_program_items(
+            prog, audience="client", client_facts=_client_facts_for(email))
         return {
             "condition_key": prog["condition_key"],
             "label": prog["label"],
             "consult_recommended": bool(prog["consult_recommended"]),
-            "items": [_support_program_item_view(it) for it in (prog.get("items") or [])],
+            "items": [_support_program_item_view(it) for it in resolved],
         }
     except Exception:
         return None
@@ -17939,7 +17960,8 @@ def api_portal_support_program_add_to_invoice(token):
         key = sp["condition_key"]
         _init_support_programs_tables(cx)
         prog = condition_programs.get(cx, key)
-        raw_items = (prog or {}).get("items") or []
+        raw_items = condition_programs.resolve_program_items(
+            (prog or {}), audience="client", client_facts=_client_facts_for(email))
         ext = f"SPINV-{email}-{key}"  # deterministic -> idempotent via UNIQUE(source, external_ref)
         # Insert-once: never rewrite an existing support-program-invoice order. A second
         # click after Rae has priced/advanced or paid the order must not touch it.
