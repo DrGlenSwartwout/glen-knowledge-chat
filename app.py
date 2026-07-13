@@ -17995,6 +17995,8 @@ def api_practitioner_condition_program_get(patient_email):
     for it in (prog.get("items") or []):
         candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
     for mod in (prog.get("modifiers") or []):
+        if mod.get("action") != "add":
+            continue
         for it in (mod.get("items") or []):
             candidates.append({**_practitioner_candidate_view(it), "section": "modifier",
                                "when": mod.get("when"), "source": mod.get("source"),

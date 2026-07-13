@@ -121,6 +121,42 @@ def test_candidates_checked_rule(wired):
     assert clinician["checked"] is False
 
 
+def test_remove_modifier_items_not_duplicated_as_candidates(wired, monkeypatch):
+    """A `remove` modifier (e.g. the real on_areds2 modifier on dry-amd/wet-amd)
+    lists items that are ALSO base items (macular-wellness-lutein etc). Those
+    must NOT be surfaced a second time as a modifier-section candidate — the
+    remove modifier isn't an additive "include" checkbox, and a duplicate
+    slug meant the composer saved duplicates / couldn't round-trip unchecking.
+    An `add` modifier's items must still come through as modifier candidates."""
+    app_module, db_path = wired
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        condition_programs.upsert(
+            cx, CONDITION_KEY, "Dry AMD Support", False,
+            items=[{"slug": "wholomega", "name": "WholOmega"},
+                   {"slug": "macular-wellness-lutein", "name": "Macular Wellness Lutein"}],
+            modifiers=[
+                {"when": "on_areds2", "action": "remove", "source": "client-reported",
+                 "client_default": False,
+                 "items": [{"slug": "macular-wellness-lutein", "name": "Macular Wellness Lutein"}]},
+                {"when": "drusen", "action": "add", "source": "diagnosis-implied",
+                 "client_default": True,
+                 "items": [{"slug": "drusen-support", "name": "Drusen Support"}]},
+            ])
+
+    client = app_module.app.test_client()
+    r = client.get(f"/api/practitioner/condition-program/{EMAIL}")
+    assert r.status_code == 200
+    candidates = r.get_json()["candidates"]
+
+    matches = [c for c in candidates if c["slug"] == "macular-wellness-lutein"]
+    assert len(matches) == 1
+    assert matches[0]["section"] == "base"
+
+    add_mod = next(c for c in candidates if c["slug"] == "drusen-support")
+    assert add_mod["section"] == "modifier"
+
+
 def test_returns_saved_program_when_present(wired):
     app_module, db_path = wired
     with sqlite3.connect(db_path) as cx:
