@@ -80,6 +80,18 @@
       "consult_recommended": false,
       "items": [
         {
+          "slug": "macular-wellness-lutein",
+          "name": "Macular Wellness Lutein"
+        },
+        {
+          "slug": "macular-wellness-zeaxanthin",
+          "name": "Macular Wellness Zeaxanthin"
+        },
+        {
+          "slug": "macular-wellness-mesozeaxanthin",
+          "name": "Macular Wellness Meso-Zeaxanthin"
+        },
+        {
           "slug": "macular-wellness-astaxanthin",
           "name": "Macular Wellness Astaxanthin"
         },
@@ -87,6 +99,57 @@
           "slug": "macular-wellness-lycopene",
           "name": "Macular Wellness Lycopene"
         },
+        {
+          "slug": "macular-wellness-crocin",
+          "name": "Macular Wellness Crocin"
+        },
+        {
+          "slug": "wholomega",
+          "name": "WholOmega"
+        },
+        {
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops"
+        },
+        {
+          "slug": "ocuflow-bedtime",
+          "name": "OcuFlow Bedtime",
+          "alts": [
+            {
+              "slug": "brain-cleanse",
+              "name": "Brain Cleanse"
+            }
+          ]
+        }
+      ],
+      "modifiers": [
+        {
+          "when": "drusen",
+          "action": "add",
+          "source": "diagnosis-implied",
+          "client_default": true,
+          "items": [
+            {"slug": "lipid-cleanse", "name": "Lipid Cleanse"},
+            {"slug": "lipid-zyme", "name": "Lipid Zyme"}
+          ]
+        },
+        {
+          "when": "on_areds2",
+          "action": "remove",
+          "source": "client-reported",
+          "client_default": false,
+          "items": [
+            {"slug": "macular-wellness-lutein"},
+            {"slug": "macular-wellness-zeaxanthin"},
+            {"slug": "macular-wellness-mesozeaxanthin"}
+          ]
+        }
+      ]
+    },
+    "wet-amd": {
+      "label": "Wet AMD",
+      "consult_recommended": true,
+      "items": [
         {
           "slug": "macular-wellness-lutein",
           "name": "Macular Wellness Lutein"
@@ -100,29 +163,6 @@
           "name": "Macular Wellness Meso-Zeaxanthin"
         },
         {
-          "slug": "lipid-zyme",
-          "name": "Lipid Zyme"
-        },
-        {
-          "slug": "lipid-cleanse",
-          "name": "Lipid Cleanse"
-        },
-        {
-          "slug": "wholomega",
-          "name": "WholOmega"
-        }
-      ]
-    },
-    "wet-amd": {
-      "label": "Wet AMD",
-      "consult_recommended": true,
-      "items": [
-        {
-          "slug": "angiogenx",
-          "name": "AngiogenX",
-          "dose": "1 or more/day"
-        },
-        {
           "slug": "macular-wellness-astaxanthin",
           "name": "Macular Wellness Astaxanthin"
         },
@@ -131,33 +171,68 @@
           "name": "Macular Wellness Lycopene"
         },
         {
-          "slug": "lipid-zyme",
-          "name": "Lipid Zyme"
-        },
-        {
-          "slug": "lipid-cleanse",
-          "name": "Lipid Cleanse"
+          "slug": "macular-wellness-crocin",
+          "name": "Macular Wellness Crocin"
         },
         {
           "slug": "wholomega",
           "name": "WholOmega"
         },
         {
-          "slug": "scar-solve",
-          "name": "Scar Solve"
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops"
         },
         {
-          "slug": "scar-soft-drink",
-          "name": "Scar Soft"
-        },
-        {
-          "slug": "scar-silk",
-          "name": "Scar Silk",
+          "slug": "ocuflow-bedtime",
+          "name": "OcuFlow Bedtime",
           "alts": [
             {
-              "slug": "clear-the-way",
-              "name": "Clear the Way"
+              "slug": "brain-cleanse",
+              "name": "Brain Cleanse"
             }
+          ]
+        }
+      ],
+      "modifiers": [
+        {
+          "when": "drusen",
+          "action": "add",
+          "source": "diagnosis-implied",
+          "client_default": true,
+          "items": [
+            {"slug": "lipid-cleanse", "name": "Lipid Cleanse"},
+            {"slug": "lipid-zyme", "name": "Lipid Zyme"}
+          ]
+        },
+        {
+          "when": "on_areds2",
+          "action": "remove",
+          "source": "client-reported",
+          "client_default": false,
+          "items": [
+            {"slug": "macular-wellness-lutein"},
+            {"slug": "macular-wellness-zeaxanthin"},
+            {"slug": "macular-wellness-mesozeaxanthin"}
+          ]
+        },
+        {
+          "when": "leakage",
+          "action": "add",
+          "source": "diagnosis-implied",
+          "client_default": true,
+          "items": [
+            {"slug": "angiogenx", "name": "AngiogenX"}
+          ]
+        },
+        {
+          "when": "scar",
+          "action": "add",
+          "source": "diagnosis-implied",
+          "client_default": true,
+          "items": [
+            {"slug": "scar-solve", "name": "Scar Solve"},
+            {"slug": "scar-soft-drink", "name": "Scar Soft"},
+            {"slug": "scar-silk", "name": "Scar Silk", "alts": [{"slug": "clear-the-way", "name": "Clear the Way"}]}
           ]
         }
       ]
@@ -180,7 +255,7 @@
         },
         {
           "slug": "clear-lens-eye-drops",
-          "name": "Clear Lens Eyedrops",
+          "name": "Clear Lens Eye Drops",
           "alts": [
             {
               "slug": "ocuheal-eye-drops",
@@ -190,7 +265,7 @@
         },
         {
           "slug": "lens-zyme",
-          "name": "Lens-Zyme Brunescense Buster",
+          "name": "Lens-Zyme Brunescence Buster",
           "note": "Add for brunescent cataracts"
         }
       ]
@@ -213,7 +288,13 @@
         },
         {
           "slug": "clear-lens-eye-drops",
-          "name": "Clear Lens Eyedrops"
+          "name": "Clear Lens Eye Drops",
+          "alts": [
+            {
+              "slug": "ocuheal-eye-drops",
+              "name": "OcuHeal Eye Drops"
+            }
+          ]
         }
       ]
     },
@@ -268,6 +349,10 @@
         {
           "slug": "macular-wellness-astaxanthin",
           "name": "Macular Wellness Astaxanthin"
+        },
+        {
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops"
         }
       ]
     },
@@ -284,10 +369,6 @@
           "name": "Reverse AGE"
         },
         {
-          "slug": "angiogenx",
-          "name": "AngiogenX"
-        },
-        {
           "slug": "lipid-cleanse",
           "name": "Lipid Cleanse"
         },
@@ -298,6 +379,31 @@
         {
           "slug": "macular-wellness-astaxanthin",
           "name": "Macular Wellness Astaxanthin"
+        },
+        {
+          "slug": "ocuheal-eye-drops",
+          "name": "OcuHeal Eye Drops"
+        },
+        {
+          "slug": "ocuflow-bedtime",
+          "name": "OcuFlow Bedtime",
+          "alts": [
+            {
+              "slug": "brain-cleanse",
+              "name": "Brain Cleanse"
+            }
+          ]
+        }
+      ],
+      "modifiers": [
+        {
+          "when": "proliferative",
+          "action": "add",
+          "source": "clinician-measured",
+          "client_default": false,
+          "items": [
+            {"slug": "angiogenx", "name": "AngiogenX"}
+          ]
         }
       ]
     }
