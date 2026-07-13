@@ -34,15 +34,22 @@ class GmailTokenMissing(RuntimeError):
 
 
 def default_db_path() -> str:
-    # dashboard/ is one level below the repo root where chat_log.db lives.
-    return str(Path(__file__).resolve().parent.parent / "chat_log.db")
+    # Mirror app.LOG_DB: the runtime DB lives on the env DATA_DIR persistent
+    # disk on Render (/data), falling back to the repo root in local dev.
+    root = os.environ.get("DATA_DIR") or str(Path(__file__).resolve().parent.parent)
+    return str(Path(root) / "chat_log.db")
 
 
 def _read_db_token(db_path: str, name: str) -> Optional[str]:
     with sqlite3.connect(db_path, timeout=10) as cx:
-        row = cx.execute(
-            "SELECT token_json FROM oauth_tokens WHERE name=?", (name,)
-        ).fetchone()
+        try:
+            row = cx.execute(
+                "SELECT token_json FROM oauth_tokens WHERE name=?", (name,)
+            ).fetchone()
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e):
+                return None
+            raise
     return row[0] if row else None
 
 
@@ -100,7 +107,10 @@ def load_gmail_credentials(db_path: str, name: str = "inbox_gmail",
     creds = _build_creds(token_json, scopes)
     normalized = creds.to_json()  # canonical baseline for refresh comparison
     if source == "file":
-        _write_db_token(db_path, name, normalized)  # self-heal the durable store
+        try:
+            _write_db_token(db_path, name, normalized)  # self-heal the durable store
+        except Exception as e:  # noqa: BLE001 - best-effort; a load from file must still succeed
+            print(f"gmail_token: self-heal write failed for '{name}': {e}", flush=True)
     return LoadedGmail(creds=creds, source=source, original_json=normalized, name=name)
 
 
@@ -115,7 +125,13 @@ def persist_refreshed_credentials(db_path: str, loaded: LoadedGmail) -> bool:
 
 
 def _health_name(name: str) -> str:
-    """Return the health row name for a token name."""
+    """Return the health row name for a token name.
+
+    Health rows share the oauth_tokens table with real credential rows but store
+    a JSON health blob (see record_ok/record_alert), not a token. Any future code
+    that enumerates all oauth_tokens rows and treats each as a credential must
+    skip rows whose name ends in '_health'.
+    """
     return f"{name}_health"
 
 

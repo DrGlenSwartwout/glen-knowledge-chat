@@ -110,3 +110,54 @@ def test_alert_boundary_is_inclusive(tmp_path):
     # at exactly the window boundary the alert re-fires (>= semantics).
     # If the comparator regressed from >= to >, this returns False and the test fails.
     assert gt.should_send_alert(db, "inbox_gmail", t_exact) is True
+
+
+def test_default_db_path_honors_data_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert gt.default_db_path() == str(tmp_path / "chat_log.db")
+
+
+def test_default_db_path_falls_back_to_repo_root(monkeypatch):
+    monkeypatch.delenv("DATA_DIR", raising=False)
+    expected_root = Path(gt.__file__).resolve().parent.parent
+    assert gt.default_db_path() == str(expected_root / "chat_log.db")
+
+
+def test_read_db_token_missing_table_returns_none(tmp_path):
+    # A fresh DB with no oauth_tokens table at all (e.g. brand-new persistent
+    # disk) must not raise sqlite3.OperationalError -- it should fall through
+    # to the file fallback in load_gmail_credentials.
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE unrelated (id INTEGER)")
+        cx.commit()
+    assert gt._read_db_token(db, "inbox_gmail") is None
+
+
+def test_load_falls_through_to_file_when_db_table_missing(tmp_path, monkeypatch):
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE unrelated (id INTEGER)")
+        cx.commit()
+    tokfile = tmp_path / "google-token.json"
+    tokfile.write_text(_token_json(access="from-file"))
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tokfile))
+    loaded = gt.load_gmail_credentials(db, name="inbox_gmail", scopes=SCOPES)
+    assert loaded.source == "file"
+
+
+def test_self_heal_write_failure_is_best_effort(tmp_path, monkeypatch):
+    # A transient self-heal write failure must not fail an otherwise-successful
+    # load from the file fallback -- the design is best-effort.
+    db = _db(tmp_path)
+    tokfile = tmp_path / "google-token.json"
+    tokfile.write_text(_token_json(access="from-file"))
+    monkeypatch.setenv("GMAIL_TOKEN_PATH", str(tokfile))
+
+    def _boom(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(gt, "_write_db_token", _boom)
+    loaded = gt.load_gmail_credentials(db, name="inbox_gmail", scopes=SCOPES)
+    assert loaded.source == "file"
+    assert loaded.creds.refresh_token == "1//refresh"

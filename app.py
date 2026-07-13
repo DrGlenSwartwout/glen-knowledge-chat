@@ -23367,10 +23367,11 @@ def cron_reply_watch():
     max_messages = max(1, max_messages)  # 0/negative would silently scan nothing or 400 Gmail
     from reply_watcher import process_inbox_replies
     from dashboard import gmail_token as _gt
+    from google.auth.exceptions import RefreshError
     try:
         counts = process_inbox_replies(db_path=str(LOG_DB), dry_run=dry_run,
                                        max_messages=max_messages)
-    except _gt.GmailTokenMissing as e:
+    except (_gt.GmailTokenMissing, RefreshError) as e:
         now_iso = datetime.now(timezone.utc).isoformat()
         if _gt.should_send_alert(str(LOG_DB), "inbox_gmail", now_iso):
             _send_token_alert(

@@ -34,3 +34,28 @@ def test_token_missing_alerts_once(monkeypatch, tmp_path):
     r2 = client.post("/api/cron/reply-watch", headers={"X-Cron-Secret": "s3cret"})
     assert r1.status_code == 500 and r2.status_code == 500
     assert len(sent) == 1  # deduped within the 6h window
+
+
+def test_refresh_error_alerts_once(monkeypatch, tmp_path):
+    app_module = _app()
+    from google.auth.exceptions import RefreshError
+    db = str(tmp_path / "chat_log.db")
+    import sqlite3
+    with sqlite3.connect(db) as cx:
+        cx.execute("CREATE TABLE oauth_tokens (name TEXT PRIMARY KEY, "
+                   "token_json TEXT NOT NULL, updated_at TEXT NOT NULL)")
+        cx.commit()
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    # process_inbox_replies raises invalid_grant lazily on the first Gmail API call
+    def _raise(*a, **k):
+        raise RefreshError("invalid_grant", None)
+    monkeypatch.setattr("reply_watcher.process_inbox_replies", _raise)
+    sent = []
+    monkeypatch.setattr(app_module, "_send_token_alert",
+                        lambda subject, body: sent.append(subject) or True)
+    client = app_module.app.test_client()
+    r1 = client.post("/api/cron/reply-watch", headers={"X-Cron-Secret": "s3cret"})
+    r2 = client.post("/api/cron/reply-watch", headers={"X-Cron-Secret": "s3cret"})
+    assert r1.status_code == 500 and r2.status_code == 500
+    assert len(sent) == 1  # deduped within the 6h window

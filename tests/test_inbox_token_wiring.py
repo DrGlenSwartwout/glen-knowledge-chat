@@ -1,5 +1,4 @@
 import types
-import pytest
 from dashboard import inbox
 from dashboard import gmail_token as gt
 
