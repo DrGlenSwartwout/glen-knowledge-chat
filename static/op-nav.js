@@ -56,7 +56,7 @@
                        {id:"coaching",label:"Coaching",href:"/console/coaching-cohort"+qs}, {id:"cert",label:"Cert",href:"/console/cert"+qs} ],
       communication: [ {id:"inbox",label:"Inbox",href:"/console/inbox"+qs}, {id:"handoffs",label:"Biofield Pipeline",href:"/console/handoffs"+qs},
                        {id:"portal-links",label:"Portal Links",href:"/console/portal-links"+qs} ],
-      rnd:           [ {id:"rnd",label:"R&D Home",href:"/console/rnd"+qs} ],
+      rnd:           [ {id:"rnd",label:"R&D Home",href:"/console/rnd"+qs}, {id:"taskboard",label:"Task Board",href:"/console/taskboard"+qs} ],
       production:    [ {id:"products",label:"Products",href:"/console/products"+qs}, {id:"ingredients",label:"Ingredients",href:"/admin/ingredients"+qs} ],
       finance:       [ {id:"money",label:"Money",href:"/console/money"+qs}, {id:"pricing",label:"Pricing",href:"/console/pricing-settings"+qs},
                        {id:"studio-credits",label:"Studio Credits",href:"/console/studio-credits"+qs}, {id:"tax",label:"Tax",href:"/admin/tax"+qs} ],

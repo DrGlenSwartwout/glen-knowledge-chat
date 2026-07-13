@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Board - Business OS</title>
+<style>
+  :root { --bg:#0a150d; --surface:#111f16; --surface2:#162318; --border:#21472d;
+          --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; --red:#c0432b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--cream); font-family:"Open Sans",system-ui,sans-serif; padding:24px; }
+  body > :not(.op-nav-bar):not(.op-nav-sub):not(#gate):not(script):not(style) { max-width:1400px; margin-left:auto; margin-right:auto; }
+  h1 { font-family:"Raleway",sans-serif; font-size:22px; margin-bottom:2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .toolbar button, .toolbar label.btn { background:var(--surface2); color:var(--cream); border:1px solid var(--border);
+    padding:6px 11px; border-radius:7px; font-size:12px; cursor:pointer; }
+  .toolbar button:hover, .toolbar label.btn:hover { border-color:var(--gold); }
+  .toolbar .chk { display:flex; gap:5px; align-items:center; font-size:12px; color:var(--muted); }
+  .board { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start; }
+  @media (max-width:1100px){ .board { grid-template-columns:1fr 1fr; } }
+  @media (max-width:640px){ .board { grid-template-columns:1fr; } }
+  .lane { background:var(--surface); border:1px solid var(--border); border-radius:12px; min-height:120px; display:flex; flex-direction:column; }
+  .lane.drag-over { outline:2px dashed var(--gold); outline-offset:-3px; }
+  .lane-h { padding:10px 12px; font-weight:600; font-size:13px; letter-spacing:.04em; display:flex; justify-content:space-between;
+    align-items:center; border-bottom:1px solid var(--border); text-transform:uppercase; color:var(--muted); }
+  .lane-h .count { color:var(--gold); }
+  .lane-body { padding:9px; display:flex; flex-direction:column; gap:9px; }
+  .card { background:var(--surface2); border:1px solid var(--border); border-left:3px solid var(--green); border-radius:9px;
+    padding:9px 10px; cursor:grab; }
+  .card.dragging { opacity:.45; }
+  .card.pinned { border-left-color:var(--gold); }
+  .card.archived { opacity:.5; border-left-style:dashed; cursor:default; }
+  .card.terminal { border-left-color:var(--green); cursor:default; }
+  .card .title { font-weight:560; font-size:14px; word-break:break-word; line-height:1.35; }
+  .card .meta { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px; font-size:11px; color:var(--muted); }
+  .badge { border:1px solid var(--border); border-radius:5px; padding:1px 6px; text-transform:uppercase; letter-spacing:.04em; font-size:10px; }
+  .chip { border-radius:20px; padding:1px 8px; font-size:10px; color:#0a150d; font-weight:600; }
+  .card a.ev { color:var(--gold); text-decoration:none; }
+  .acts { display:flex; gap:4px; margin-left:auto; }
+  .acts button { background:transparent; border:0; cursor:pointer; font-size:13px; opacity:.55; padding:0 2px; color:inherit; }
+  .acts button:hover { opacity:1; }
+  .note { margin-top:6px; font-size:12px; color:var(--cream); background:var(--surface); border-radius:6px; padding:4px 7px; }
+  .note-input { margin-top:6px; width:100%; font:12px inherit; padding:4px 6px; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--cream); }
+  .arch-h { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:4px 2px 0; }
+  .empty { color:var(--muted); font-size:12px; padding:6px 4px; opacity:.6; }
+  #gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:50; }
+  #gate input { padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--cream); }
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="rnd" data-sub="taskboard"></script>
+  <div id="gate"><div style="text-align:center">
+    <p style="margin-bottom:10px;color:var(--muted)">Enter console key</p>
+    <input id="key" type="password" placeholder="console key" />
+    <button onclick="unlock()" style="padding:10px 14px;margin-left:6px;border-radius:8px;border:1px solid var(--border);background:var(--gold);color:#0a150d;cursor:pointer">Unlock</button>
+  </div></div>
+
+  <h1>Task Board</h1>
+  <div class="sub" id="sub">Vault-wide tasks, auto-populated from repo &amp; vault activity.</div>
+  <div class="toolbar">
+    <button id="refresh" title="Re-fetch the latest synced snapshot">↻ Refresh</button>
+    <button id="export">⇩ Export state</button>
+    <label class="btn" for="import">⇧ Import state<input id="import" type="file" accept="application/json" hidden></label>
+    <label class="chk"><input type="checkbox" id="showhidden"> show hidden</label>
+    <button id="clearov" title="Clear all manual moves/pins/hides/notes">⟲ Reset manual</button>
+  </div>
+  <div class="board" id="board"></div>
+
+<script>
+  let CARDS = [], GENERATED_AT = "", SYNCED_AT = "";
+  const OV_KEY = "taskboard.console.overrides.v1";
+  const SEEN_KEY = "taskboard.console.lastseen.v1";
+  const LANES = [
+    {key:"backlog",  label:"⚪ Backlog"},
+    {key:"next",     label:"🟡 Next"},
+    {key:"inflight", label:"🔵 In Flight"},
+    {key:"done",     label:"🟢 Done"},
+  ];
+  const PILLAR_COLORS = ["#3d8a52","#d4a843","#5a9bd4","#b08ad6","#d47a6a","#68b06a","#c9a04a","#7fb0bd"];
+
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; load(); }
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+
+  function loadLS(k){ try{return JSON.parse(localStorage.getItem(k)||"{}");}catch(e){return {};} }
+  function saveLS(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+  function ovAll(){ return loadLS(OV_KEY); }
+  function setOv(id, patch){
+    const o = ovAll(); o[id] = Object.assign({}, o[id], patch);
+    const e = o[id];
+    if(e && !e.lane && !e.pinned && !e.hidden && !e.note){ delete o[id]; }
+    saveLS(OV_KEY, o);
+  }
+  function pillarColor(name){
+    if(!name) return null;
+    let h=0; for(const ch of name) h=(h*31+ch.charCodeAt(0))>>>0;
+    return PILLAR_COLORS[h % PILLAR_COLORS.length];
+  }
+  function esc(s){ const d=document.createElement("div"); d.textContent=s==null?"":String(s); return d.innerHTML; }
+  function ago(ts){
+    if(!ts) return "never";
+    const t = Date.parse(ts.replace(" ","T")+(/[Zz]|[+-]\d\d:?\d\d$/.test(ts)?"":"Z"));
+    if(isNaN(t)) return ts;
+    const m = Math.max(0, Math.round((Date.now()-t)/60000));
+    if(m<1) return "just now"; if(m<60) return m+"m ago";
+    const h=Math.round(m/60); if(h<24) return h+"h ago"; return Math.round(h/24)+"d ago";
+  }
+
+  function render(){
+    const board = document.getElementById("board");
+    board.innerHTML = "";
+    const ov = ovAll();
+    const showHidden = document.getElementById("showhidden").checked;
+    const seen = {};
+    const resolved = CARDS.map(c => {
+      const o = ov[c.id] || {};
+      const lane = c.terminal ? c.auto_lane : (o.lane || c.auto_lane);
+      seen[c.id] = {title:c.title, lane, source:c.source, pillar:c.pillar};
+      return Object.assign({}, c, { lane, pinned:!!o.pinned, hidden:!!o.hidden, note:o.note||null, archived:false });
+    });
+    saveLS(SEEN_KEY, Object.assign(loadLS(SEEN_KEY), seen));
+    const present = new Set(CARDS.map(c=>c.id));
+    const lastseen = loadLS(SEEN_KEY);
+    const archived = [];
+    for(const id of Object.keys(lastseen)){
+      if(present.has(id)) continue;
+      const o = ov[id] || {};
+      if(o.hidden && !showHidden) continue;
+      const ls = lastseen[id];
+      archived.push({id, title:ls.title, source:ls.source, pillar:ls.pillar, lane:(o.lane||ls.lane||"backlog"), note:o.note||null, pinned:false, hidden:!!o.hidden, archived:true});
+    }
+    const all = resolved.concat(archived);
+    for(const L of LANES){
+      const laneEl = document.createElement("div");
+      laneEl.className="lane"; laneEl.dataset.lane=L.key;
+      const inLane = all.filter(c=>c.lane===L.key && (!c.hidden || showHidden));
+      inLane.sort((a,b)=> (b.pinned-a.pinned) || (a.archived-b.archived) || a.title.localeCompare(b.title));
+      const count = inLane.filter(c=>!c.archived).length;
+      const h=document.createElement("div"); h.className="lane-h";
+      h.innerHTML = `<span>${L.label}</span><span class="count">${count}</span>`;
+      laneEl.appendChild(h);
+      const body=document.createElement("div"); body.className="lane-body";
+      if(inLane.length===0){ const e=document.createElement("div"); e.className="empty"; e.textContent="—"; body.appendChild(e); }
+      let archHeaderDone=false;
+      for(const c of inLane){
+        if(c.archived && !archHeaderDone){ const ah=document.createElement("div"); ah.className="arch-h"; ah.textContent="archived"; body.appendChild(ah); archHeaderDone=true; }
+        body.appendChild(cardEl(c));
+      }
+      laneEl.appendChild(body);
+      wireDrop(laneEl);
+      board.appendChild(laneEl);
+    }
+    document.getElementById("sub").textContent =
+      `${CARDS.length} tasks · generated ${(GENERATED_AT||"").replace("T"," ").slice(0,16)} · synced ${ago(SYNCED_AT)} · drag to move, changes saved on this device`;
+  }
+
+  function cardEl(c){
+    const el=document.createElement("div");
+    el.className="card"+(c.pinned?" pinned":"")+(c.archived?" archived":"")+(c.terminal?" terminal":"");
+    el.draggable=!c.archived && !c.terminal; el.dataset.id=c.id;
+    if(c.terminal) el.title="Auto-set to Done (merged PR) — manual moves don't apply";
+    const pc=pillarColor(c.pillar);
+    const chip = c.pillar ? `<span class="chip" style="background:${pc}">${esc(c.pillar)}</span>` : "";
+    const lock = c.terminal ? `<span class="badge" title="merged — locked to Done">🔒 done</span>` : "";
+    const ev = c.evidence ? `<a class="ev" href="${esc(c.evidence)}" target="_blank" rel="noopener" title="open source">↗</a>` : "";
+    const date = c.last_activity ? `<span>${esc(c.last_activity)}</span>` : "";
+    el.innerHTML =
+      `<div class="title">${esc(c.title)}</div>`+
+      `<div class="meta"><span class="badge">${esc(c.source)}</span>${lock}${chip}${date}${ev}`+
+        `<span class="acts">`+
+          (c.archived?"":`<button data-a="pin" title="pin">${c.pinned?"📌":"📍"}</button>`)+
+          `<button data-a="note" title="note">✎</button>`+
+          `<button data-a="hide" title="hide">✕</button>`+
+        `</span></div>`+
+      (c.note?`<div class="note">${esc(c.note)}</div>`:"");
+    if(!c.archived && !c.terminal){
+      el.addEventListener("dragstart",e=>{e.dataTransfer.setData("text/plain",c.id);el.classList.add("dragging");});
+      el.addEventListener("dragend",()=>el.classList.remove("dragging"));
+    }
+    el.querySelector('[data-a="pin"]')?.addEventListener("click",()=>{ setOv(c.id,{pinned:!c.pinned}); render(); });
+    el.querySelector('[data-a="hide"]')?.addEventListener("click",()=>{ setOv(c.id,{hidden:true}); render(); });
+    el.querySelector('[data-a="note"]')?.addEventListener("click",()=>{
+      if(el.querySelector(".note-input")) return;
+      const inp=document.createElement("input"); inp.className="note-input"; inp.value=c.note||""; inp.placeholder="note…";
+      el.appendChild(inp); inp.focus();
+      const commit=()=>{ setOv(c.id,{note:inp.value.trim()||null}); render(); };
+      inp.addEventListener("keydown",e=>{ if(e.key==="Enter") commit(); if(e.key==="Escape") render(); });
+      inp.addEventListener("blur",commit);
+    });
+    return el;
+  }
+
+  function wireDrop(laneEl){
+    laneEl.addEventListener("dragover",e=>{e.preventDefault();laneEl.classList.add("drag-over");});
+    laneEl.addEventListener("dragleave",()=>laneEl.classList.remove("drag-over"));
+    laneEl.addEventListener("drop",e=>{
+      e.preventDefault(); laneEl.classList.remove("drag-over");
+      const id=e.dataTransfer.getData("text/plain"); const lane=laneEl.dataset.lane;
+      const c=CARDS.find(x=>x.id===id);
+      if(c && c.auto_lane===lane){ setOv(id,{lane:null}); } else { setOv(id,{lane}); }
+      render();
+    });
+  }
+
+  document.getElementById("refresh").addEventListener("click",load);
+  document.getElementById("showhidden").addEventListener("change",render);
+  document.getElementById("clearov").addEventListener("click",()=>{
+    if(confirm("Clear all manual moves, pins, hides and notes?")){ localStorage.removeItem(OV_KEY); render(); }
+  });
+  document.getElementById("export").addEventListener("click",()=>{
+    const blob=new Blob([JSON.stringify(ovAll(),null,2)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="board-overrides.json"; a.click(); URL.revokeObjectURL(a.href);
+  });
+  document.getElementById("import").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+    r.onload=()=>{ try{ saveLS(OV_KEY, JSON.parse(r.result)); render(); }catch(err){ alert("Invalid JSON: "+err.message); } };
+    r.readAsText(f);
+  });
+
+  async function load(){
+    try{
+      const r = await fetch('/api/console/taskboard', {headers:hdr()});
+      if(r.status===401){ document.getElementById('gate').style.display='flex'; return; }
+      const d = await r.json();
+      CARDS = d.cards || []; GENERATED_AT = d.generated_at || ""; SYNCED_AT = d.synced_at || "";
+      render();
+    }catch(e){ document.getElementById("sub").textContent = "Could not load board: "+e.message; }
+  }
+
+  // Poll for a fresher pushed snapshot, but never while the user is mid-edit.
+  let lastAct = Date.now();
+  ["mousemove","keydown","click","dragstart"].forEach(e=>document.addEventListener(e,()=>lastAct=Date.now()));
+  setInterval(()=>{
+    if(document.querySelector(".note-input")) return;
+    if(!document.hidden && (Date.now()-lastAct) < 60000) return;
+    load();
+  }, 5*60000);
+
+  if (key()) { document.getElementById('gate').style.display='none'; load(); }
+</script>
+</body>
+</html>

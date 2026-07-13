@@ -11149,6 +11149,35 @@ def api_console_client_scans_sync():
     return jsonify({"ok": True, "upserted": total})
 
 
+@app.route("/api/console/taskboard/sync", methods=["POST"])
+def api_console_taskboard_sync():
+    """Owner sync: store the latest vault Task Board snapshot (tasks.json), pushed by
+    the local task-board refresh since prod can't scan the vault. The whole board is
+    one row, so a re-push fully replaces the prior snapshot. Renders at
+    /console/taskboard."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import task_board as _tb
+    data = request.get_json(silent=True) or {}
+    cards = data.get("cards") or []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _tb.init_task_board_table(cx)
+        n = _tb.upsert_board(cx, cards, data.get("generated_at"))
+    return jsonify({"ok": True, "upserted": n})
+
+
+@app.route("/api/console/taskboard", methods=["GET"])
+def api_console_taskboard():
+    """Read the stored Task Board snapshot for the /console/taskboard page."""
+    if not _console_key_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import task_board as _tb
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _tb.init_task_board_table(cx)
+        board = _tb.get_board(cx)
+    return jsonify(board)
+
+
 @app.route("/api/console/scan-recommendations/sync", methods=["POST"])
 def api_console_scan_recommendations_sync():
     """Owner sync: upsert each client's per-scan E4L recommendations into
@@ -22928,6 +22957,13 @@ def _send_practitioner_invite(email, name, pid):
 @app.route("/console/practitioners")
 def console_practitioners_page():
     resp = send_from_directory(STATIC, "console-practitioners.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/console/taskboard")
+def console_taskboard_page():
+    resp = send_from_directory(STATIC, "console-taskboard.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
