@@ -37870,8 +37870,6 @@ def console_top_products_page():
 
 @app.after_request
 def _inject_journey_shell(response):
-    if not JOURNEY_SHELL_ENABLED:
-        return response
     try:
         if not shell_nav.should_inject(request.path, response.content_type or "", response.status_code):
             return response
@@ -37879,9 +37877,12 @@ def _inject_journey_shell(response):
         html = response.get_data(as_text=True)
         if "</head>" not in html:
             return response
-        authed = bool(get_authenticated_user(request))
-        mode = shell_nav.resolve_mode(request.path, authed)
-        response.set_data(shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED, REWARDS_1B_GIFT_ENABLED, quest_enabled=JOURNEY_QUEST_ENABLED))
+        html = shell_nav.inject_theme_html(html)  # theme controller: always on, flag-independent
+        if JOURNEY_SHELL_ENABLED:
+            authed = bool(get_authenticated_user(request))
+            mode = shell_nav.resolve_mode(request.path, authed)
+            html = shell_nav.inject_shell_html(html, mode, REWARDS_1B_ENABLED, REWARDS_1B_GIFT_ENABLED, quest_enabled=JOURNEY_QUEST_ENABLED)
+        response.set_data(html)
     except Exception as e:  # never let the shell break a page
         print(f"[journey-shell] inject skipped: {e!r}", flush=True)
     return response

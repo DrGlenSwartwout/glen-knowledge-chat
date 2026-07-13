@@ -3,6 +3,7 @@
    shared 3-state toggle. Sets data-theme ONLY; never injects palette CSS.
    Load in <head>, not deferred, before paint. */
 (function () {
+  if (window.RMTheme) return;
   var MODE_KEY = 'rm-theme-mode', GEO_KEY = 'rm-geo', MIRROR_KEY = 'rm-theme';
   var VALID = { light: 1, dark: 1, auto: 1 };
   var geoDenied = false;

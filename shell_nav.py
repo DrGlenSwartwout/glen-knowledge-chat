@@ -7,6 +7,7 @@ _MEMBER_PREFIXES = ("/client-portal", "/coaching", "/affiliate-hub",
                     "/cert-portal", "/practitioner", "/dashboard", "/workspace")
 
 _MARKER = 'id="journey-shell-assets"'
+_THEME_MARKER = 'id="theme-assets"'
 
 
 def should_inject(path: str, content_type: str, status: int) -> bool:
@@ -33,6 +34,21 @@ def resolve_mode(path: str, authenticated: bool) -> str:
     return "funnel"
 
 
+def inject_theme_html(html: str) -> str:
+    """Insert the theme controller <script> tags before </head>. Idempotent;
+    no-op when no </head>. Independent of the journey-shell flag: theming is
+    universal, so this runs on every public HTML page."""
+    if _THEME_MARKER in (html or ""):
+        return html
+    if "</head>" not in html:
+        return html
+    tags = (
+        f'<script {_THEME_MARKER} src="/static/sun-engine.js"></script>'
+        f'<script src="/static/theme-mode.js"></script>'
+    )
+    return html.replace("</head>", tags + "\n</head>", 1)
+
+
 def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gift: bool = False, quest_enabled: bool = False) -> str:
     """Insert the shell <link>+<script> tags before </head>. Idempotent; no-op when no </head>."""
     if _MARKER in (html or ""):
@@ -46,8 +62,6 @@ def inject_shell_html(html: str, mode: str, rewards1b: bool = False, rewards_gif
     tags = (
         f'<link {_MARKER} rel="stylesheet" href="/static/shell.css">'
         f'<script>window.__SHELL__={{"mode":"{mode}","rewards1b":{r1},"rewardsGift":{rg},"questEnabled":{qe}}};</script>'
-        f'<script src="/static/sun-engine.js"></script>'
-        f'<script src="/static/theme-mode.js"></script>'
         f'<script defer src="/static/shell.js"></script>'
     )
     if quest_enabled:
