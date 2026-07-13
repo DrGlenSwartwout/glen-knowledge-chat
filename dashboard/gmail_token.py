@@ -134,14 +134,14 @@ def record_ok(db_path: str, name: str, now_iso: Optional[str] = None) -> None:
 def record_alert(db_path: str, name: str, now_iso: str) -> None:
     """Record that an alert occurred for this token."""
     raw = _read_db_token(db_path, _health_name(name))
-    state = json.loads(raw) if raw else {}
+    state = json.loads(raw) if raw else {"healthy": False, "last_ok": None, "last_alert": None}
     state["healthy"] = False
     state["last_alert"] = now_iso
     _write_db_token(db_path, _health_name(name), json.dumps(state))
 
 
 def should_send_alert(db_path: str, name: str, now_iso: str,
-                      window_hours: int = 6) -> bool:
+                     window_hours: int = 6) -> bool:
     """Check if an alert should be sent based on the dedup window.
 
     Returns True if:

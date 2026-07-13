@@ -101,3 +101,12 @@ def test_record_ok_clears_alert_and_marks_healthy(tmp_path):
     assert state["last_alert"] is None
     # after an OK, a later failure alerts again (window cleared)
     assert gt.should_send_alert(db, "inbox_gmail", "2026-07-13T01:30:00+00:00") is True
+
+def test_alert_boundary_is_inclusive(tmp_path):
+    db = _db(tmp_path)
+    t0 = "2026-07-13T00:00:00+00:00"
+    t_exact = "2026-07-13T06:00:00+00:00"  # exactly window_hours (6h) later
+    gt.record_alert(db, "inbox_gmail", t0)
+    # at exactly the window boundary the alert re-fires (>= semantics).
+    # If the comparator regressed from >= to >, this returns False and the test fails.
+    assert gt.should_send_alert(db, "inbox_gmail", t_exact) is True
