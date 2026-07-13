@@ -17072,6 +17072,17 @@ def api_client_portal(token):
                 payload["support_program"] = _sp_block
         except Exception as _e:
             print(f"[support-program/payload] {_e!r}", flush=True)
+    # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
+    # standing hand-composed program, distinct from the condition-driven
+    # support_program card above and from the reco-card. email_for_reports is
+    # already re-pointed by ?member=, so a member's card shows THEIR program.
+    if _program_composer_enabled():
+        try:
+            _pp_block = _practitioner_program_card(email_for_reports)
+            if _pp_block:
+                payload["practitioner_program"] = _pp_block
+        except Exception as _e:
+            print(f"[practitioner-program/payload] {_e!r}", flush=True)
     # Animal greeting (flag-gated, best-effort). email_for_reports is already re-pointed
     # by ?member=, so a caregiver viewing the pet's tab gets the PET's species, not theirs.
     try:
@@ -17912,6 +17923,30 @@ def _support_program_for(email):
             "consult_recommended": bool(prog["consult_recommended"]),
             "items": [_support_program_item_view(it) for it in resolved],
         }
+    except Exception:
+        return None
+
+
+def _practitioner_program_card(email):
+    """The client-facing card for a practitioner-composed program (Task 5).
+    Distinct from `_support_program_for` (the condition-driven program) and
+    from the reco-card (the one-shot AI nudge) -- this is the practitioner's
+    standing, hand-composed program for this patient. Best-effort: None on
+    any error, when the flag is off, or when no program is saved."""
+    if not _program_composer_enabled():
+        return None
+    try:
+        from dashboard import practitioner_programs as _pgm
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            saved = _pgm.get(cx, email)
+            if not saved:
+                return None
+            _init_support_programs_tables(cx)
+            prog = condition_programs.get(cx, saved.get("condition_key")) if saved.get("condition_key") else None
+        label = (prog or {}).get("label") or "Your Practitioner's Program"
+        return {"label": label, "note": saved.get("note") or "",
+                "items": [_support_program_item_view(it) for it in (saved.get("items") or [])]}
     except Exception:
         return None
 
