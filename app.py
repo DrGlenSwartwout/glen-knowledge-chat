@@ -15850,6 +15850,13 @@ def _data_sharing_enabled():
         "1", "true", "yes", "on")
 
 
+def _reward_gifts_enabled():
+    """Catalog-gift fulfillment for data-sharing reward grants. Default OFF — when off, the
+    reward.select_gift action and gift-catalog surfaces stay inert."""
+    return (os.environ.get("REWARD_GIFTS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _client_species_for(email):
     """{"is_animal": True, "animal_name": ...} when the flag is on AND this client is an
     animal; None otherwise (flag off, human, unknown, or any error)."""

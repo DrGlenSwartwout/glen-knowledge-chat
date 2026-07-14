@@ -54,6 +54,28 @@ def _exec_dismiss(params, ctx):
     return {"ok": ok}
 
 
+def select_gift(cx, grant_id, sku, actor):
+    """Attach a catalog gift (from data/reward-gifts.json, matched to the grant's tier) to
+    a PENDING data-sharing reward grant and fulfill it. Bad grant/sku: no gift row created,
+    grant left pending."""
+    from dashboard import review_gifts as _rg
+    row = cx.execute("SELECT email, tier FROM member_reward_grants WHERE id=? AND status='pending'",
+                     (grant_id,)).fetchone()
+    if not row:
+        return {"ok": False, "error": "no pending grant"}
+    email, tier = row[0], row[1]
+    opt = next((o for o in _rg.reward_options_for_level(tier) if o["sku"] == sku), None)
+    if not opt:
+        return {"ok": False, "error": "sku not in level catalog"}
+    _rg.add_reward_gift(cx, email, sku, opt["label"], grant_id)
+    set_reward_status(cx, grant_id, "fulfilled", actor)
+    return {"ok": True, "sku": sku}
+
+
+def _exec_select_gift(params, ctx):
+    return select_gift(ctx["cx"], params.get("grant_id"), params.get("sku"), _actor_name(ctx))
+
+
 def register():
     if get_action("reward.fulfill"):
         return
@@ -65,3 +87,7 @@ def register():
         key="reward.dismiss", module="reward", title="Dismiss data-sharing reward",
         description="Dismiss a pending data-sharing reward without granting.",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_dismiss))
+    register_action(Action(
+        key="reward.select_gift", module="reward", title="Select reward gift",
+        description="Attach a catalog gift to a pending data-sharing reward and fulfill it.",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_select_gift))
