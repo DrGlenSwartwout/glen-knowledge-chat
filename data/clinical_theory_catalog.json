@@ -708,7 +708,7 @@
    "title": "Chemistry",
    "blurb": "The biochemical and terrain layers, from biophysics through the phases of terrain.",
    "path": "chemistry",
-   "entry_count": 114,
+   "entry_count": 111,
    "entries": [
     {
      "slug": "biophysics",
@@ -753,24 +753,10 @@
      "remedies": []
     },
     {
-     "slug": "biochemistry",
-     "name": "Biochemistry",
-     "alt_name": "",
-     "description": "",
-     "remedies": []
-    },
-    {
      "slug": "minerals",
      "name": "Minerals",
      "alt_name": "",
      "description": "Minerals are the most fundamental of all nutrients.Each Mineral has its own personality and relationships within the living organism.We think of a Mineral's nucleus as a coherent geometric structure of a community of protons built on the resonance forms of the Platonic Solids, along the lines first proposed by Professor Moon of the Manhattan Project in his Moon Model of the Nucleus which I describe in more detail on the linked page.The electron orbital fields interact with those of other minerals to produce the bonding relationships of organic chemistry.Light is the resonant energetic communic",
-     "remedies": []
-    },
-    {
-     "slug": "nutrient-minerals",
-     "name": "Nutrient Minerals",
-     "alt_name": "",
-     "description": "",
      "remedies": []
     },
     {
@@ -1923,13 +1909,6 @@
        "url": "https://remedymatch.com/body-systems/system-4-communicate/34-endocrine-restore"
       }
      ]
-    },
-    {
-     "slug": "testosterone",
-     "name": "Testosterone",
-     "alt_name": "",
-     "description": "",
-     "remedies": []
     },
     {
      "slug": "thyroxine",
