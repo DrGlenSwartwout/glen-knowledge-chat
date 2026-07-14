@@ -133,3 +133,24 @@ def test_derive_uses_newest_scan_when_date_none(monkeypatch, tmp_path):
     fa = out["focus_areas"][0]
     assert fa["name"] == "Nervous System"
     assert fa["items"] == ["ED4 - Nerve"]
+
+
+def test_ff_slug_flows_through(monkeypatch, tmp_path):
+    """The FF counterpart's slug must flow from _resolve_remedy_slug into the
+    payload's ff.slug. Guards the _resolve_remedy_slug({"name": ...}) dict-arg
+    contract -- the earlier bare-string call raised AttributeError (swallowed),
+    silently always yielding slug=None. Slug resolution is forced deterministic
+    so the test doesn't depend on the app's real title->slug index (loaded from
+    prod data at import)."""
+    db = str(tmp_path / "c.db")
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row; _seed(cx); cx.close()
+    monkeypatch.setattr(app_mod, "LOG_DB", db)
+    monkeypatch.setenv("PRL_SUPPLEMENT_ENABLED", "1")
+    # Resolver receives a dict {"name": <ff>} (the fixed contract); return a slug
+    # only for that shape, so a regression to the bare-string call fails here.
+    monkeypatch.setattr(app_mod, "_resolve_remedy_slug",
+                        lambda x: "neuroprotect" if (x or {}).get("name") == "Neuroprotect" else None)
+    out = app_mod._prl_supplement_for("a@b.com", "2026-07-01")
+    ff = out["focus_areas"][0]["products"][0]["ff"]
+    assert ff["name"] == "Neuroprotect"
+    assert ff["slug"] == "neuroprotect"  # non-None slug flowed through _prl_ff_view

@@ -20,11 +20,12 @@ def normalize_product_name(name, catalog_names):
     if name in catalog_names:
         return name
 
-    # Hardcoded mappings for known missing products (data quality issues in source)
-    # "Probiotic Caps" mapped to 30-softgel variant by product URL slug (probiotic-caps.html).
-    # UNCONFIRMED — Glen to verify which softgel count E4L's "Probiotic Caps" actually refers to.
+    # Hardcoded mappings for known missing products (data quality issues in source).
+    # "Probiotic Caps" -> 60-softgel variant: CONFIRMED via E4L GetScanPatternsWithPRL
+    # ExternalID 2690, which matches prlabs item #2690 = "Premier Probiotic (60 Softgels)"
+    # (item #2680 is the 30-softgel version). Confirmed 2026-07-13.
     missing_mappings = {
-        "Probiotic Caps": "Premier Probiotic (30 Softgels)",
+        "Probiotic Caps": "Premier Probiotic (60 Softgels)",
     }
     if name in missing_mappings:
         mapped = missing_mappings[name]
@@ -83,8 +84,8 @@ def build():
     catalog_names = set(catalog.keys())
 
     # Print all hardcoded assumptions at build time for auditability.
-    print("WARNING: Hardcoded/assumed mappings (please verify):")
-    print("  'Probiotic Caps' -> 'Premier Probiotic (30 Softgels)' [URL slug probiotic-caps.html, UNCONFIRMED]")
+    print("Hardcoded name mappings applied:")
+    print("  'Probiotic Caps' -> 'Premier Probiotic (60 Softgels)' [CONFIRMED: E4L ExternalID 2690 = prlabs item #2690]")
 
     products = []
     for name, p in catalog.items():

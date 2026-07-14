@@ -484,6 +484,10 @@ function supportProgramBodyHtml(sp){
 // (PRL_SUPPLEMENT_ENABLED) — see d.prl_supplement_enabled at the card block below.
 function prlSupplementBodyHtml(sp){
   sp = sp || {};
+  // Only permit http(s) hrefs; drop javascript:/data:/other schemes (defense in
+  // depth — these URLs come from a curated seed, not user input, but a bad value
+  // must never yield a clickable script href).
+  const safeUrl = u => { u = String(u||""); return /^https?:\/\//i.test(u) ? u : ""; };
   const fas = Array.isArray(sp.focus_areas) ? sp.focus_areas : [];
   const relLabel = {substitute:"your equivalent", complement:"complements", consider:"or consider"};
   let blocks = fas.map(fa => {
@@ -492,7 +496,8 @@ function prlSupplementBodyHtml(sp){
     const items = Array.isArray(fa.items) && fa.items.length
       ? `<div class="muted" style="font-size:.85em;margin:.1rem 0 .4rem">${fa.items.map(esc).join(" · ")}</div>` : "";
     const rows = prods.map(p => {
-      const nm = p.url ? `<a href="${esc(p.url)}">${esc(p.name||"")}</a>` : esc(p.name||"");
+      const purl = safeUrl(p.url);
+      const nm = purl ? `<a href="${esc(purl)}">${esc(p.name||"")}</a>` : esc(p.name||"");
       const ff = p.ff && p.ff.name
         ? `<div class="muted" style="font-size:.9em">${esc(relLabel[p.ff.relation]||"related")}: ${esc(p.ff.name)}</div>` : "";
       return `<p style="margin:.35rem 0"><strong>${nm}</strong>${ff}</p>`;
@@ -500,7 +505,8 @@ function prlSupplementBodyHtml(sp){
     return `<div style="margin:.2rem 0 .8rem"><h3 style="margin:.2rem 0;font-size:1em">${esc(fa.name||"")}</h3>${items}${rows}</div>`;
   }).join("");
   if(!blocks) blocks = `<p class="muted">No PRL matches yet.</p>`;
-  const btn = `<a class="btn" href="${esc(sp.prl_link||"https://truly.vip/prl")}" target="_blank" rel="noopener" style="background:#2f6f5e;color:#fff;margin-top:.5rem">Go to Premier Research Labs</a>`;
+  const btnHref = safeUrl(sp.prl_link) || "https://truly.vip/prl";
+  const btn = `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="background:#2f6f5e;color:#fff;margin-top:.5rem">Go to Premier Research Labs</a>`;
   const micro = `<p class="small muted" style="margin-top:.4rem">Budget-friendly option — order these directly from PRL, or use your matched formulas above.</p>`;
   return `${blocks}${btn}${micro}`;
 }
