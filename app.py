@@ -15689,6 +15689,13 @@ def _animal_greeting_enabled():
         "1", "true", "yes", "on")
 
 
+def _data_sharing_enabled():
+    """Data-sharing opt-in rewards feature. Default OFF — when off, the reward ledger
+    and consent endpoints are inert and the portal payload never gains sharing-related keys."""
+    return (os.environ.get("DATA_SHARING_REWARD_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _client_species_for(email):
     """{"is_animal": True, "animal_name": ...} when the flag is on AND this client is an
     animal; None otherwise (flag off, human, unknown, or any error)."""
