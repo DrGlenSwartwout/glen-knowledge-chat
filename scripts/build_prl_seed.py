@@ -26,6 +26,12 @@ def normalize_product_name(name, catalog_names):
     # (item #2680 is the 30-softgel version). Confirmed 2026-07-13.
     missing_mappings = {
         "Probiotic Caps": "Premier Probiotic (60 Softgels)",
+        # E4L display names that differ from the prlabs catalog name for the SAME
+        # product (confirmed by the product's URL slug):
+        "Asta Complete-FX": "Astaxanthin Complex, Premier",   # asta-complete-fx.html
+        "PQQ Complex with CoQ-10": "PQQ Complex, Premier",    # pqq-complex-with-coq10.html
+        "Max B-ND": "Max B-ND™ (Fermented) (2 oz)",           # ™ + size in catalog name
+        "Premier Magnesium": "Magnesium Glycinate Caps, Premier",  # PRL's magnesium SKU
     }
     if name in missing_mappings:
         mapped = missing_mappings[name]
@@ -103,6 +109,7 @@ def build():
 
     focus_area_products, focus_area_items = [], []
     stats = {"exact": 0, "normalized": 0, "fallback": 0}
+    dropped = []  # E4L products with no catalog match (e.g. Noni, Lecithin) — skipped, not fatal
     for fid, v in fa.items():
         fid = int(fid)
         for i, prod in enumerate(v.get("prl_products") or []):
@@ -122,6 +129,12 @@ def build():
                     stats["fallback"] += 1
                 else:
                     stats["normalized"] += 1
+            if normalized not in catalog_names:
+                # Truly unmapped (not in the 143-catalog, e.g. Premier Noni,
+                # Lecithin Granules). Skip so the seed stays valid; the focus area
+                # renders its remaining products. Tracked below for follow-up.
+                dropped.append((v.get("name"), pname))
+                continue
             focus_area_products.append({
                 "focus_area_id": fid, "focus_area_name": v.get("name"),
                 "prl_product_name": normalized, "rank": i})
@@ -136,6 +149,10 @@ def build():
     with open(OUT, "w") as f:
         json.dump(seed, f, indent=1, ensure_ascii=False)
     print(f"Resolution: {stats['exact']} exact, {stats['normalized']} normalized, {stats['fallback']} fallback")
+    if dropped:
+        print(f"DROPPED {len(dropped)} unmapped E4L products (not in 143-catalog; focus area renders the rest, add to catalog later):")
+        for fname, pname in dropped:
+            print(f"  - [{fname}] {pname}")
     print(f"products={len(products)} fa_products={len(focus_area_products)} "
           f"fa_items={len(focus_area_items)} -> {OUT}")
 
