@@ -1836,7 +1836,10 @@ function render(d, v){
     const toggles = {};
     app.querySelectorAll("[data-sharing-toggle]").forEach(x => { toggles[x.dataset.sharingToggle] = x.checked; });
     try {
-      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/sharing`, {
+      const memberParam = new URLSearchParams(location.search).get("member");
+      const u = `/api/portal/${encodeURIComponent(token)}/sharing`
+        + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+      const r = await fetch(u, {
         method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({toggles})
       });
