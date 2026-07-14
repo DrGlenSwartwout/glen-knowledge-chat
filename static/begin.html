@@ -601,6 +601,13 @@
   .hero-inputbar { display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,0.08); }
   .hero-inputbar textarea { flex: 1; resize: none; min-height: 44px; max-height: 120px; padding: 11px 13px; }
   .hero-send { min-width: 64px; }
+  /* Choose-your-adventure next-step chips, rendered inline in the hero chat log. */
+  .ns-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 4px; }
+  .ns-chip { border:1px solid #1F5A4D; background:#fff; color:#1F5A4D;
+             border-radius:999px; padding:7px 14px; font-size:14px; cursor:pointer; }
+  .ns-chip:hover { background:#1F5A4D; color:#fff; }
+  .ns-chip.secondary { border-color:#9aa; color:#5a6; background:transparent; }
+  .ns-prompt { margin:8px 0 2px; font-weight:600; }
   /* Hero headline name-prefix (the comma) stays hidden until a name is known. */
   .hero-head [data-name-prefix] { display: none; }
   @media (max-width: 760px) {
@@ -1112,6 +1119,7 @@
               var raw = line.slice(6).trim(); if (!raw) return;
               var evt; try { evt = JSON.parse(raw); } catch (_) { return; }
               if (evt.token) { acc += evt.token; box.textContent = acc; msgsEl.scrollTop = msgsEl.scrollHeight; }
+              if (evt.next_chips) { renderNextStep({ prompt: '', chips: evt.next_chips }); }
             });
             return pump();
           });
@@ -1156,6 +1164,53 @@
           if (typeof unfoldJourney === 'function') unfoldJourney('chat');
           if (typeof window.heroMaybeActivate === 'function') window.heroMaybeActivate(); });
     }
+
+    // ---- choose-your-adventure next-step chips (rendered under the last message) ----
+    function renderNextStep(block){
+      if (!block) return;
+      msgsEl.querySelectorAll('.ns-row, .ns-prompt').forEach(function(n){ n.remove(); });
+      if (block.prompt) {
+        var p = document.createElement('div');
+        p.className = 'ns-prompt';
+        p.textContent = block.prompt;
+        msgsEl.appendChild(p);
+      }
+      var row = document.createElement('div');
+      row.className = 'ns-row';
+      (block.chips || []).forEach(function(ch){
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ns-chip' + (ch.role === 'secondary' ? ' secondary' : '');
+        b.textContent = ch.label;
+        b.addEventListener('click', function(){
+          if (ch.action === 'style') { setStyle(ch.value); }
+          else if (ch.action === 'link') { window.location.href = ch.href; }
+          else { fillAndSend(ch.label); }   // action === 'text'
+        });
+        row.appendChild(b);
+      });
+      msgsEl.appendChild(row);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+
+    function setStyle(value){
+      fetch('/begin/travel-style', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ style: value })
+      }).then(function(r){ return r.json(); })
+        .then(function(b){ renderNextStep(b.next_step); })
+        .catch(function(){});
+    }
+
+    function fillAndSend(label){          // reuse the existing input + send() path
+      inputEl.value = label;
+      send();
+    }
+
+    // Exposed so the page-level /begin/state loader (a separate IIFE) can paint
+    // the initial next-step block without heroChat() re-fetching state itself.
+    window.heroRenderNextStep = renderNextStep;
 
     sendEl.addEventListener('click', send);
     inputEl.addEventListener('keydown', function(e){
@@ -1340,6 +1395,7 @@
         renderCards(st.surfaced_cards);
         if (typeof applyExploreGate === 'function') applyExploreGate();
         if (typeof refreshJourney === 'function') refreshJourney();
+        if (typeof window.heroRenderNextStep === 'function') window.heroRenderNextStep(st.next_step);
         var anyDone = ((st.journey_map) || []).some(function(s){ return s.status === 'done'; });
         if (anyDone && typeof unfoldJourney === 'function') unfoldJourney('reload');
         if(st.current_rung==='arrival'){ unlock('video'); } })
