@@ -92,6 +92,62 @@ def test_order_first_in_priority():
     assert na.TYPE_PRIORITY[0] == "order"
 
 
+def test_invoice_unsent_offers_send():
+    d = na.resolve_invoice({"id": 3, "name": "Acme", "email": "a@b.co",
+                            "total_cents": 30000, "item_count": 1, "status": "proposed",
+                            "pay_status": "unpaid", "invoice_sent_at": None, "age_ts": "t"})
+    assert d["actionable"] and d["state"] == "unsent"
+    assert d["label"] == "Send invoice" and d["confirm"] is True
+    assert d["action"] == {"kind": "dispatch", "keys": ["orders.send_invoice"],
+                           "body": {"order_id": 3}}
+    assert d["secondary"]["action"] == {"kind": "link", "url": "/console/orders"}
+    assert d["summary"] == "#3 · Acme · $300.00 · 1 item"
+
+
+def test_invoice_sent_unpaid_offers_record_payment_deeplink():
+    d = na.resolve_invoice({"id": 4, "name": "", "email": "a@b.co", "total_cents": 5000,
+                            "item_count": 2, "status": "confirmed", "pay_status": "unpaid",
+                            "invoice_sent_at": "2026-07-01T00:00:00", "age_ts": "t"})
+    assert d["actionable"] and d["state"] == "sent_unpaid"
+    assert d["label"] == "Record payment"
+    assert d["action"] == {"kind": "link", "url": "/console/orders"}
+    assert d["secondary"] is None
+    assert d["summary"] == "#4 · a@b.co · $50.00 · 2 items"
+
+
+def test_invoice_non_billing_status_is_done():
+    for s in ("new", "packed", "shipped", "done", "cancelled", "delivered", "paid"):
+        assert na.resolve_invoice({"id": 1, "status": s}) == {"actionable": False}, s
+
+
+def test_invoice_sent_and_paid_is_done():
+    assert na.resolve_invoice({"id": 1, "status": "proposed", "pay_status": "paid",
+                               "invoice_sent_at": "t"}) == {"actionable": False}
+
+
+def test_invoice_priority_after_order():
+    assert na.TYPE_PRIORITY[:2] == ["order", "invoice"]
+
+
+def test_aggregate_orders_before_invoices(monkeypatch):
+    import sqlite3
+    from dashboard import biofield_reveals, ff_match_drafts, orders
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    biofield_reveals.init_table(cx); ff_match_drafts.init_table(cx); orders.init_orders_table(cx)
+    # an order (status new) and an unsent invoice (status proposed) — both on the orders table
+    cx.execute("INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
+               "total_cents,status) VALUES "
+               "('2026-07-01T00:00:00','t','i1','o@b.co','O','[]',5000,'new')")
+    cx.execute("INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
+               "total_cents,status,invoice_sent_at) VALUES "
+               "('2026-07-01T00:00:00','t','i2','v@b.co','V','[]',9000,'proposed',NULL)")
+    cx.commit()
+    monkeypatch.setattr(na, "_handoff_records", lambda cx: [])
+    items = na.list_actionable(cx)
+    types = [d["type"] for d in items]
+    assert types == ["order", "invoice"]   # order sorts before invoice
+
+
 def test_aggregate_lists_open_orders_first(monkeypatch):
     import sqlite3
     from dashboard import biofield_reveals, ff_match_drafts
