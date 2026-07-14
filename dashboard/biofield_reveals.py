@@ -59,6 +59,61 @@ def _row(r):
     return d
 
 
+# Curated remedy substitutions, applied on the CLIENT read path
+# (get_by_token_hash) so a matched remedy whose product isn't purchasable is
+# swapped for the equivalent sellable SKU EVERYWHERE it renders with an order
+# button — the same row feeds display, entitlement (_biofield_visible_slugs),
+# live pricing, and checkout, so substituting once here keeps all four in sync
+# (swapping only the display would post a slug checkout then rejects).
+# "Relax" (syntropy 364-relax) has no purchasable SKU -> "Stress Release"
+# (syntropy 249-stress-release, /begin/buy/stress-release resolves). Glen 2026-07-14.
+# Keyed by lowercased slug OR lowercased trimmed name; idempotent (the swapped-in
+# slug isn't itself a key).
+REMEDY_SUBSTITUTIONS = {
+    "relax": {
+        "name": "Stress Release",
+        "slug": "stress-release",
+        "meaning": ("Stress Release is a CBD-synergy botanical formulation that supports "
+                    "a calm, balanced nervous system and multi-phase relief from everyday stress."),
+    },
+}
+
+
+def _sub_for(rem):
+    if not isinstance(rem, dict):
+        return None
+    for key in ((rem.get("slug") or "").strip().lower(), (rem.get("name") or "").strip().lower()):
+        if key and key in REMEDY_SUBSTITUTIONS:
+            return REMEDY_SUBSTITUTIONS[key]
+    return None
+
+
+def _apply_sub(rem):
+    sub = _sub_for(rem)
+    if not sub:
+        return
+    for field in ("name", "slug", "meaning"):
+        if sub.get(field):
+            rem[field] = sub[field]
+
+
+def apply_remedy_substitutions(row):
+    """Swap curated non-purchasable remedies for their sellable equivalent, in
+    row['remedies'] and each row['layers'][].remedy. Mutates and returns row
+    (passes None through). Never raises."""
+    if not isinstance(row, dict):
+        return row
+    try:
+        for rem in row.get("remedies") or []:
+            _apply_sub(rem)
+        for layer in row.get("layers") or []:
+            if isinstance(layer, dict):
+                _apply_sub(layer.get("remedy"))
+    except Exception:
+        pass
+    return row
+
+
 def upsert(cx, email, scan_date, interpretation, remedies, source, layers=None):
     """Insert or update a reveal. Content updates only while not yet approved (matcher
     re-push). Returns (id, is_new). layers defaults to [] when not provided."""
@@ -160,8 +215,10 @@ def get(cx, rid):
 
 
 def get_by_token_hash(cx, th):
-    return _row(_rows_cursor(cx).execute(
-        "SELECT * FROM biofield_reveals WHERE token_hash=?", (th,)).fetchone())
+    # Client read path: apply curated remedy substitutions so an unpurchasable
+    # matched remedy renders + orders as its sellable equivalent everywhere.
+    return apply_remedy_substitutions(_row(_rows_cursor(cx).execute(
+        "SELECT * FROM biofield_reveals WHERE token_hash=?", (th,)).fetchone()))
 
 
 # ---------------------------------------------------------------------------
