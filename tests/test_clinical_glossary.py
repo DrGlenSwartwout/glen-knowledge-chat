@@ -50,6 +50,19 @@ def test_product_name_index_and_exact_resolve():
     assert cg.remedy_product_slug(".)", idx) is None                  # noise -> None
 
 
+def test_product_name_index_slug_fallback():
+    # product display name differs from slug (Synergy->Syntropy rename); a remedy
+    # named after the slug still resolves via the slug key.
+    products = {"sleep-syntropy": {"name": "Sleep Synergy"}}
+    idx = cg.product_name_index(products)
+    assert cg.remedy_product_slug("Sleep Syntropy", idx) == "sleep-syntropy"   # slug key
+    assert cg.remedy_product_slug("Sleep Synergy", idx) == "sleep-syntropy"    # name key
+    # a real display name still wins over a slug key collision
+    p2 = {"foo-bar": {"name": "Real Name"}, "real-name": {"name": "Other"}}
+    idx2 = cg.product_name_index(p2)
+    assert cg.remedy_product_slug("Real Name", idx2) == "foo-bar"
+
+
 def test_override_resolves_non_exact():
     idx = {}
     ov = {"Bicarbonate Blend": "alkalize-bicarbonate-blend"}

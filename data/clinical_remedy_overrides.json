@@ -1,5 +1,14 @@
 {
-  "_note": "Curated remedy-name -> product-slug overrides for the clinical glossary (phase 2). Add entries here for real products whose glossary name doesn't exactly match the product catalog. Exact-name matches are resolved automatically and need no entry. Keep only confident mappings — a wrong link is worse than plain text.",
+  "_note": "Curated remedy-name -> product-slug overrides for the glossaries (clinical + E4L pattern 'what may help'). Add entries for real products whose glossary/formulation-map name doesn't exactly match the product catalog name OR slug (exact name and slug matches resolve automatically). Keep only confident mappings — a wrong link is worse than plain text.",
   "Bicarbonate Blend": "alkalize-bicarbonate-blend",
-  "TMG Powder": "tmg-syntropy-powder-trimethylglycine"
+  "TMG Powder": "tmg-syntropy-powder-trimethylglycine",
+  "Binder": "binder-complex",
+  "Iron Synergy": "iron-syntropy",
+  "B17 Synergy": "b17-syntropy",
+  "Glutathione Synergy": "glutathione-syntropy",
+  "Mercury Detox": "mercury-detox-syntropy-powder",
+  "TMG Syntropy": "tmg-syntropy-powder",
+  "Methylselenocysteine (MSC)": "methylselenocysteine",
+  "Rhythm Section": "rhythm-restore",
+  "Scar Soft": "scar-soft-drink"
 }
