@@ -1031,8 +1031,17 @@ def open_fulfillment_orders(cx):
     from dashboard.signals import request_cached
 
     def _read():
+        # An order held in an OPEN household batch is owned by that batch (it
+        # ships combined on release), so it must not also count as an
+        # individually-open fulfillment order. Released/cancelled holds no longer
+        # match, so their orders re-count. Lazily ensure the holds table exists —
+        # this read runs from the home-board signal path, which doesn't init it.
+        from dashboard import household_holds as _hh
+        _hh.init_hold_tables(cx)
         cur = cx.execute(
-            "SELECT created_at, source FROM orders WHERE status IN ('new','packed')")
+            "SELECT created_at, source FROM orders WHERE status IN ('new','packed') "
+            "AND (hold_group_id IS NULL "
+            "OR hold_group_id NOT IN (SELECT id FROM household_holds WHERE status='open'))")
         return [{"created_at": row[0], "source": row[1]} for row in cur.fetchall()]
 
     return request_cached("orders:open_fulfillment", _read)
