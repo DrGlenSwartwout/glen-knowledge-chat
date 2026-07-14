@@ -27,6 +27,13 @@ def test_pending_reward_excludes_review_source():
     assert len(rg.pending_for(cx, "a@ex.com")) == 1             # review path intact
 
 
+def test_pending_for_excludes_reward_source():
+    cx = _cx()
+    rg.add_reward_gift(cx, "a@ex.com", "GIFT-SAMPLE-3", "P", 1)   # reward-source, approved, unfulfilled
+    assert rg.pending_for(cx, "a@ex.com") == []                    # review path must NOT see it
+    assert len(rg.pending_reward_for(cx, "a@ex.com")) == 1         # reward path still does
+
+
 def test_mark_fulfilled_consumes_pending():
     cx = _cx()
     gid = rg.add_reward_gift(cx, "a@ex.com", "GIFT-SAMPLE-3", "P", 1)

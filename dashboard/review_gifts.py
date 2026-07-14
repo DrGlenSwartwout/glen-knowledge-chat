@@ -120,11 +120,11 @@ def swap_sku(cx, gift_id, sku, label):
 
 
 def pending_for(cx, email):
-    init_table(cx)
+    migrate_reward_columns(cx)
     cur = cx.cursor(); cur.row_factory = __import__("sqlite3").Row
     rows = cur.execute(
         "SELECT * FROM review_gifts WHERE email=? AND status='approved' AND fulfilled_order_id IS NULL "
-        "ORDER BY id", ((email or "").strip().lower(),)).fetchall()
+        "AND (source='review' OR source IS NULL) ORDER BY id", ((email or "").strip().lower(),)).fetchall()
     return [dict(r) for r in rows]
 
 
