@@ -55,3 +55,26 @@ def test_real_data_integrity_and_examples():
     for key, rows in d["factors"].items():
         for f in rows:
             assert f.get("category") in valid_cat and f.get("tier") and f.get("url")
+
+
+def test_for_pattern_organs_aggregates_and_dedupes(tmp_path):
+    p = tmp_path / "sf.json"
+    import json as _j
+    p.write_text(_j.dumps({
+        "factors": {
+            "heart": [{"category": "toxin", "factor": "Cadmium", "tier": "strong", "source": "S", "url": "u"}],
+            "kidney": [{"category": "toxin", "factor": "Cadmium", "tier": "strong", "source": "S", "url": "u"},
+                       {"category": "toxin", "factor": "Ochratoxin A", "tier": "moderate", "source": "T", "url": "u2"}],
+        },
+        "entry_keys": {"Heart": "heart", "Bladder": "kidney"},
+    }), encoding="utf-8")
+    data = os_.load(str(p))
+    catalog = {"dimensions": [{"key": "organs", "entries": [
+        {"name": "Heart"}, {"name": "Bladder"}]}]}
+    # pattern involves Heart + Bladder(kidney) organs; Cadmium is shared -> deduped, both organs noted
+    out = os_.for_pattern_organs(["Heart", "Bladder"], catalog, data)
+    cad = next(f for f in out if f["factor"] == "Cadmium")
+    assert set(cad["organs"]) == {"Heart", "Bladder"}
+    assert any(f["factor"] == "Ochratoxin A" for f in out)
+    # an organ with no clinical match / no factors contributes nothing
+    assert os_.for_pattern_organs(["Nonexistent Organ"], catalog, data) == []
