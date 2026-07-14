@@ -66,12 +66,18 @@ def _norm_name(s):
 
 
 def product_name_index(products):
-    """{normalised product name: slug} from a {slug: {..., name}} map (first wins)."""
+    """{normalised product name: slug} from a {slug: {..., name}} map (first wins).
+    Also indexes the normalised SLUG (deterministic fallback) so a remedy named
+    after the slug rather than the display name still resolves — e.g. product
+    "Sleep Synergy" (slug sleep-syntropy) matches a remedy called "Sleep Syntropy".
+    Display names take precedence over slug keys."""
     idx = {}
     for slug, p in (products or {}).items():
         nm = _norm_name(p.get("name") if isinstance(p, dict) else "")
         if nm:
             idx.setdefault(nm, slug)
+    for slug in (products or {}):
+        idx.setdefault(_norm_name(slug), slug)
     return idx
 
 

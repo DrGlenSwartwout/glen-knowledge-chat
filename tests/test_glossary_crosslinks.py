@@ -10,6 +10,13 @@ def test_canon_normalises_gland_and_plural():
     assert gx.canon("Muscle") == "muscle"          # not emptied
 
 
+def test_canon_organ_aliases():
+    # E4L spellings alias onto the clinical organ canonical form
+    assert gx.canon("Gallbladder") == gx.canon("Gall Bladder")
+    assert gx.canon("Ovaries") == gx.canon("Ovary")
+    assert gx.canon("Colon") == gx.canon("Mucosa of the Colon")
+
+
 @pytest.fixture
 def cx():
     c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row

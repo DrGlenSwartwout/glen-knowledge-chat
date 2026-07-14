@@ -12,14 +12,26 @@ def _norm(s):
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+# Curated aliases: E4L organ canonical form -> clinical organ canonical form, for
+# spelling/naming differences the conservative canon() can't bridge. Add confident
+# pairs only (a wrong join surfaces the wrong patterns).
+_ORGAN_ALIASES = {
+    "gallbladder": "gall bladder",       # E4L "Gallbladder" -> clinical "Gall Bladder"
+    "ovarie": "ovary",                    # E4L "Ovaries" -> clinical "Ovary"
+    "colon": "mucosa of the colon",       # E4L "Colon" -> clinical "Mucosa of the Colon"
+}
+
+
 def canon(name):
     """Conservative canonical organ name for matching. Falls back to the plain
-    normalised form if the descriptor-stripping would empty it."""
+    normalised form if the descriptor-stripping would empty it; then applies a
+    small curated alias map for spelling/naming variants."""
     n = _norm(name)
     c = re.sub(r"\bglands?\b", "", n)
     c = re.sub(r"s\b", "", c)          # crude singularise (Ducts -> Duct)
     c = re.sub(r"\s+", " ", c).strip()
-    return c or n
+    c = c or n
+    return _ORGAN_ALIASES.get(c, c)
 
 
 def organ_to_patterns(cx):
