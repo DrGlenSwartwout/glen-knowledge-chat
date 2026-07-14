@@ -1,0 +1,3911 @@
+{
+ "products": [
+  {
+   "name": "100% Organic Ginger Powder, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/100-organic-ginger-powder.html",
+   "focus_tags": [
+    "Immune Support",
+    "Inflammation Support",
+    "Liver Support",
+    "Healthy Aging",
+    "Gut Health"
+   ],
+   "product_type": "food",
+   "best_ff": "Gingerol",
+   "relation": "complement",
+   "ff_alts": [
+    "GERD Guard"
+   ]
+  },
+  {
+   "name": "Adaptogen-R3™",
+   "external_id": null,
+   "url": "https://prlabs.com/adaptogen-r3-trade.html",
+   "focus_tags": [
+    "Mood and Stress Management",
+    "Active Living",
+    "Brain Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vitality",
+   "relation": "complement",
+   "ff_alts": [
+    "Energessence",
+    "Nous Energy"
+   ]
+  },
+  {
+   "name": "AdrenaVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/adrenaven-trade.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Adrenal Syntropy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Endocrine Restore",
+    "Energessence"
+   ]
+  },
+  {
+   "name": "AllerCaps, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/allercaps.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Immune Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "AllerFree",
+   "relation": "substitute",
+   "ff_alts": [
+    "Synergy C"
+   ]
+  },
+  {
+   "name": "Allicidin®",
+   "external_id": null,
+   "url": "https://prlabs.com/allicidin-trade.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "complement",
+   "ff_alts": [
+    "Shields Up",
+    "Spleen Support"
+   ]
+  },
+  {
+   "name": "Aloe Powder-Mixed Berry Flavor, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/aloe-powder-mixed-berry-flavor-premier.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Polysaccharides (Aloe barbadensis)",
+   "relation": "complement",
+   "ff_alts": [
+    "GI Repair",
+    "Soothe"
+   ]
+  },
+  {
+   "name": "Aloe, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-aloe.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Polysaccharides (Aloe barbadensis)",
+   "relation": "complement",
+   "ff_alts": [
+    "Soothe",
+    "Spleen Support"
+   ]
+  },
+  {
+   "name": "American Ginseng, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/american-ginseng.html",
+   "focus_tags": [
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Ginsengosides",
+   "relation": "complement",
+   "ff_alts": [
+    "Energessence",
+    "Vitality"
+   ]
+  },
+  {
+   "name": "Amino hGH",
+   "external_id": null,
+   "url": "https://prlabs.com/amino-hgh.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Active Living",
+    "Men's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Muscle Mass",
+   "relation": "complement",
+   "ff_alts": [
+    "SeaAminos",
+    "Pea Protein Aminos"
+   ]
+  },
+  {
+   "name": "Aminos-FX, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/aminos-fx-unflavored-premier.html",
+   "focus_tags": [
+    "Active Living",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "SeaAminos",
+   "relation": "substitute",
+   "ff_alts": [
+    "Pea Protein Aminos",
+    "Seacure Synergy"
+   ]
+  },
+  {
+   "name": "Aminos-FX, Premier (Berry)",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-aminos-fx.html",
+   "focus_tags": [
+    "Active Living",
+    "Essential Nutrients",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "SeaAminos",
+   "relation": "substitute",
+   "ff_alts": [
+    "Pea Protein Aminos",
+    "Muscle Mass"
+   ]
+  },
+  {
+   "name": "Apple Cider Vinegar, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/acv-premier.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Blood Cleanse",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "Ashwagandha, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/fermented-ashwagandha-caps.html",
+   "focus_tags": [
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Relax",
+   "relation": "complement",
+   "ff_alts": [
+    "Stamina Plus",
+    "Vitality"
+   ]
+  },
+  {
+   "name": "Astaxanthin Complex, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/asta-complete-fx.html",
+   "focus_tags": [
+    "Brain Support",
+    "Inflammation Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Astaxanthin",
+   "relation": "substitute",
+   "ff_alts": [
+    "NeurOmega",
+    "Neuroprotect"
+   ]
+  },
+  {
+   "name": "B.P. Complex™, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/bp-complextm.html",
+   "focus_tags": [
+    "Blood Pressure and Cardiovascular Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Rhythm Section",
+   "relation": "substitute",
+   "ff_alts": [
+    "Blood Cleanse"
+   ]
+  },
+  {
+   "name": "B12-ND™ (Fermented)",
+   "external_id": null,
+   "url": "https://prlabs.com/b12-ndtm.html",
+   "focus_tags": [
+    "Brain Support",
+    "Healthy Aging",
+    "Essential Nutrients",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Methyl Cobalamin",
+   "relation": "complement",
+   "ff_alts": [
+    "Sublingual B12",
+    "Adenosyl Cobalamin"
+   ]
+  },
+  {
+   "name": "BiliVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/biliven-trade.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "substitute",
+   "ff_alts": [
+    "Stone Solvent",
+    "Spleen Support"
+   ]
+  },
+  {
+   "name": "Bone Health, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/bone-health-premier.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Bone Builder",
+   "relation": "substitute",
+   "ff_alts": [
+    "Connective Tissue Support"
+   ]
+  },
+  {
+   "name": "Calcium Magnesium Plus, Premier (300 Caps)",
+   "external_id": null,
+   "url": "https://prlabs.com/calcium-magnesium-plus-premier-300-caps.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Magnesium Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Synergy C",
+    "Bone Builder"
+   ]
+  },
+  {
+   "name": "Calcium Magnesium Plus, Premier (90 caps)",
+   "external_id": null,
+   "url": "https://prlabs.com/calcium-magnesium-plus.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Magnesium Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Synergy C",
+    "Bone Builder"
+   ]
+  },
+  {
+   "name": "Calcium Magnesium, Premier (8 oz Powder)",
+   "external_id": null,
+   "url": "https://prlabs.com/coral-legend-8oz-powder.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Synergy C",
+   "relation": "complement",
+   "ff_alts": [
+    "Bone Builder",
+    "Dental Powder"
+   ]
+  },
+  {
+   "name": "Canadian Gold Honey",
+   "external_id": null,
+   "url": "https://prlabs.com/canadian-gold-honey.html",
+   "focus_tags": [
+    "Immune Support",
+    "Active Living"
+   ],
+   "product_type": "food",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Sweet Life",
+    "Pollen Power"
+   ]
+  },
+  {
+   "name": "Cardio-ND™ (Fermented)",
+   "external_id": null,
+   "url": "https://prlabs.com/cardio-nd-trade.html",
+   "focus_tags": [
+    "Cardiovascular Support",
+    "Inflammation Support",
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Rhythm Section",
+   "relation": "complement",
+   "ff_alts": [
+    "Transform",
+    "Vitality"
+   ]
+  },
+  {
+   "name": "CardioVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/cardioventm.html",
+   "focus_tags": [
+    "Brain Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Rhythm Section",
+   "relation": "substitute",
+   "ff_alts": [
+    "CoQ10"
+   ]
+  },
+  {
+   "name": "CereVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/cereven-trade.html",
+   "focus_tags": [
+    "Brain Support",
+    "Sleep Support",
+    "Healthy Aging",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuroprotect",
+   "relation": "substitute",
+   "ff_alts": [
+    "Brain Boost Nootropic",
+    "Neuroceramides",
+    "Brain Cleanse"
+   ]
+  },
+  {
+   "name": "CircuZyme™",
+   "external_id": null,
+   "url": "https://prlabs.com/circuzyme-trade.html",
+   "focus_tags": [
+    "Circulation and Arterial Health",
+    "Cardiovascular Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Lens-Zyme",
+   "relation": "complement",
+   "ff_alts": [
+    "Blood Cleanse",
+    "Lymph Flow"
+   ]
+  },
+  {
+   "name": "CogniTropic™",
+   "external_id": null,
+   "url": "https://prlabs.com/cognitropic-trade.html",
+   "focus_tags": [
+    "Focus",
+    "Memory Support",
+    "Cognitive Support",
+    "Healthy Aging",
+    "Sleep",
+    "Mood"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "substitute",
+   "ff_alts": [
+    "Neuroprotect",
+    "Centrophenoxine"
+   ]
+  },
+  {
+   "name": "Collagen, Premier Marine",
+   "external_id": null,
+   "url": "https://prlabs.com/marine-collagen-premier.html",
+   "focus_tags": [
+    "Skin health",
+    "Joint health",
+    "Gut health",
+    "Connective tissue support",
+    "Healthy aging",
+    "Active living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Hydrolyzed Collagen",
+   "relation": "substitute",
+   "ff_alts": [
+    "Seacure Synergy",
+    "Perfect Skin"
+   ]
+  },
+  {
+   "name": "Colostrum-IgG™, Premier (Caps)",
+   "external_id": null,
+   "url": "https://prlabs.com/colostrum-iggtm-supplement.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Happy Cow Colostrum",
+   "relation": "substitute",
+   "ff_alts": [
+    "Immune Modulation",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "Colostrum-IgG™, Premier (Powder)",
+   "external_id": null,
+   "url": "https://prlabs.com/colostrum-iggtm.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Happy Cow Colostrum",
+   "relation": "substitute",
+   "ff_alts": [
+    "Immune Modulation",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "Complete B, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/complete-b-premier.html",
+   "focus_tags": [
+    "Liver support",
+    "Energy support",
+    "Brain support",
+    "Mood support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vital Energy Be",
+   "relation": "substitute",
+   "ff_alts": [
+    "Stamina Plus",
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "CoQ-10, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/coq-10-aaf9e6.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "CoQ10",
+   "relation": "substitute",
+   "ff_alts": [
+    "Rhythm Section"
+   ]
+  },
+  {
+   "name": "Cotton Flannel, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/cotton-flannel.html",
+   "focus_tags": [
+    "Castor Oil Packs",
+    "Topical Application"
+   ],
+   "product_type": "topical",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "Creatine, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/creatine-monohydrate-powder.html",
+   "focus_tags": [
+    "Active Living",
+    "Muscle Building",
+    "Brain Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "Curcumin-FX™",
+   "external_id": null,
+   "url": "https://prlabs.com/curcumin-fx.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Joint Support",
+    "Cognitive Health",
+    "Antioxidant Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Curcu Guard",
+   "relation": "substitute",
+   "ff_alts": [
+    "Curcumin",
+    "Tetrahydrocurcumin"
+   ]
+  },
+  {
+   "name": "D3 Serum, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/d3-serum.html",
+   "focus_tags": [
+    "Immune Support",
+    "Essential Nutrients",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vitamin D Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Cholecalciferol"
+   ]
+  },
+  {
+   "name": "Daily One, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/daily-one-premier.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Vital Energy Be",
+    "Stamina Plus"
+   ]
+  },
+  {
+   "name": "Deltanol™",
+   "external_id": null,
+   "url": "https://prlabs.com/deltanol.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Immune Support",
+    "Brain Support",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "d-Alpha Tocopherol Succinate",
+   "relation": "complement",
+   "ff_alts": [
+    "Rhythm Section"
+   ]
+  },
+  {
+   "name": "Detox Protocol",
+   "external_id": null,
+   "url": "https://prlabs.com/detox-protocol.html",
+   "focus_tags": [
+    "Detox/Liver Support",
+    "Hormone Balance",
+    "Digestive Health"
+   ],
+   "product_type": "bundle",
+   "best_ff": "Liver Support",
+   "relation": "complement",
+   "ff_alts": [
+    "Blood Cleanse",
+    "Chelation",
+    "Mercury Detox Syntropy Powder"
+   ]
+  },
+  {
+   "name": "DHA, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/dha.html",
+   "focus_tags": [
+    "Brain Support",
+    "Inflammation Support",
+    "Healthy Aging",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "NeurOmega",
+   "relation": "substitute",
+   "ff_alts": [
+    "Neuroprotect"
+   ]
+  },
+  {
+   "name": "DHEA, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/dhea-premier.html",
+   "focus_tags": [
+    "Men's Health Support",
+    "Women's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Endocrine Restore",
+   "relation": "complement",
+   "ff_alts": [
+    "Vitality"
+   ]
+  },
+  {
+   "name": "Digest, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/digest-c1ab5d.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Digestzymes",
+   "relation": "substitute",
+   "ff_alts": [
+    "GastroZyme"
+   ]
+  },
+  {
+   "name": "Digestase-SP™",
+   "external_id": null,
+   "url": "https://prlabs.com/digestase-sp-trade.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Digestzymes",
+   "relation": "substitute",
+   "ff_alts": [
+    "Lipid Zyme"
+   ]
+  },
+  {
+   "name": "EPA/DHA Marine (Softgels), Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/epa-dha-marine-softgels-premier.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Brain Support",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "NeurOmega",
+   "relation": "substitute",
+   "ff_alts": [
+    "Neuroprotect"
+   ]
+  },
+  {
+   "name": "EPA/DHA Marine Liquid, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/epa-dha-marine.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Healthy Aging",
+    "Brain Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "NeurOmega",
+   "relation": "substitute",
+   "ff_alts": [
+    "Seacure Synergy"
+   ]
+  },
+  {
+   "name": "ErythroPro®",
+   "external_id": null,
+   "url": "https://prlabs.com/erythropro.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Women's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Iron Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Spleen Support"
+   ]
+  },
+  {
+   "name": "Estro Flavone™",
+   "external_id": null,
+   "url": "https://prlabs.com/estro-flavone-trade.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Men's Health Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Crucifer Complex",
+   "relation": "substitute",
+   "ff_alts": [
+    "Breast Support",
+    "PMS Relief"
+   ]
+  },
+  {
+   "name": "Fem Balance-FX™",
+   "external_id": null,
+   "url": "https://prlabs.com/fem-balance-fx-trade.html",
+   "focus_tags": [
+    "Women's Health Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "PMS Relief",
+   "relation": "substitute",
+   "ff_alts": [
+    "Breast Support",
+    "ES12"
+   ]
+  },
+  {
+   "name": "Fermented Beets, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/fermented-beets-premier.html",
+   "focus_tags": [
+    "Circulatory System Support",
+    "Athletic Performance",
+    "Stamina",
+    "Endurance"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Vein Support",
+    "Stamina Plus"
+   ]
+  },
+  {
+   "name": "Fermented Gallbladder-ND™, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/gallbladder-nd-trade.html",
+   "focus_tags": [
+    "Sleep Support",
+    "Inflammation Support",
+    "Stomach Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Stone Solvent",
+   "relation": "substitute",
+   "ff_alts": [
+    "Liver Support",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "Fermented Mushroom Blend, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/qultured-trade-fermented-mushrooms.html",
+   "focus_tags": [
+    "Immune Support",
+    "Brain Support",
+    "Stomach Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Medicinal Mushrooms",
+   "relation": "substitute",
+   "ff_alts": [
+    "Immune Modulation",
+    "Transform"
+   ]
+  },
+  {
+   "name": "Fermented Turmeric/Ginger, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/fermented-turmeric-plus-premier.html",
+   "focus_tags": [
+    "Liver Support",
+    "Inflammation Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "complement",
+   "ff_alts": [
+    "GERD Guard"
+   ]
+  },
+  {
+   "name": "Galactan™",
+   "external_id": null,
+   "url": "https://prlabs.com/galactan-trade.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Transform",
+   "relation": "complement",
+   "ff_alts": [
+    "Microbiome",
+    "Gut Terrain Program"
+   ]
+  },
+  {
+   "name": "GastroVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/gastroven-trade.html",
+   "focus_tags": [
+    "Digestive Support",
+    "Stomach Support",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "Digestzymes",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "Glucose Manager™, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-glucose-manager.html",
+   "focus_tags": [
+    "Blood Sugar Support",
+    "Metabolic Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Glucose Tolerance",
+   "relation": "substitute",
+   "ff_alts": [
+    "Glucose Tolerance Program",
+    "Reverse AGE"
+   ]
+  },
+  {
+   "name": "Glutamine Powder, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-l-glutamine-powder.html",
+   "focus_tags": [
+    "Gastrointestinal Health",
+    "Muscle Recovery",
+    "Protein Synthesis",
+    "Glutathione Production"
+   ],
+   "product_type": "supplement",
+   "best_ff": "SeaAminos",
+   "relation": "complement",
+   "ff_alts": [
+    "Pea Protein Aminos",
+    "S-Acetyl Glutathione"
+   ]
+  },
+  {
+   "name": "Glutamine, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/glutamine-premier.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Glutathione Synergy",
+    "Stone Solvent"
+   ]
+  },
+  {
+   "name": "Glutathione Complex, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/glutathione-complex-premier.html",
+   "focus_tags": [
+    "Detoxification",
+    "Liver Support",
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Glutathione Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "S-Acetyl Glutathione",
+    "Clarity"
+   ]
+  },
+  {
+   "name": "Green Tea - ND™ (Fermented) (8 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/green-tea-nd-trade-2.html",
+   "focus_tags": [
+    "Active Living",
+    "Immune Support",
+    "Healthy Aging",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Man Manna",
+    "Cistus Synergy"
+   ]
+  },
+  {
+   "name": "Green Tea Extract, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/green-tea-extract-premier.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Active Living",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Polyphenols (Camellia sinensis)",
+   "relation": "complement",
+   "ff_alts": [
+    "Cistus Synergy",
+    "Man Manna"
+   ]
+  },
+  {
+   "name": "Greens Caps, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/greens-caps-3471af.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Transform",
+    "Prostate Protect"
+   ]
+  },
+  {
+   "name": "Hair/Skin/Nails, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/dermaven-trade.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Perfect Skin",
+   "relation": "substitute",
+   "ff_alts": [
+    "Hydrolyzed Collagen",
+    "Connective Tissue Support"
+   ]
+  },
+  {
+   "name": "HCL Activator, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/hcl-activator-prlabs.html",
+   "focus_tags": [
+    "Gut Health",
+    "Stomach Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair",
+    "Digestzymes"
+   ]
+  },
+  {
+   "name": "HCL, Premier (e2177)",
+   "external_id": null,
+   "url": "https://prlabs.com/hcl-e2177.html",
+   "focus_tags": [
+    "Digestive Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "HCL, Premier (270 Capsules)",
+   "external_id": null,
+   "url": "https://prlabs.com/hcl-270-capsules.html",
+   "focus_tags": [
+    "Digestive Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "HCL, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-hcl.html",
+   "focus_tags": [
+    "Digestive Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "HepatoVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/hepatoven-trade.html",
+   "focus_tags": [
+    "Liver Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "substitute",
+   "ff_alts": [
+    "Silymarin",
+    "Stone Solvent"
+   ]
+  },
+  {
+   "name": "HM-ND™ (Fermented)",
+   "external_id": null,
+   "url": "https://prlabs.com/detox-ndtm.html",
+   "focus_tags": [
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Chelation",
+   "relation": "substitute",
+   "ff_alts": [
+    "Mercury Detox Syntropy Powder",
+    "Para-Cleanse"
+   ]
+  },
+  {
+   "name": "Hyssinol™",
+   "external_id": null,
+   "url": "https://prlabs.com/hyssinoltm.html",
+   "focus_tags": [
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "substitute",
+   "ff_alts": [
+    "Cistus Synergy",
+    "VirEx"
+   ]
+  },
+  {
+   "name": "ImmunoVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/immunoven-trade.html",
+   "focus_tags": [
+    "Immune Support",
+    "Cardiovascular Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "substitute",
+   "ff_alts": [
+    "Cistus Synergy",
+    "VirEx"
+   ]
+  },
+  {
+   "name": "Inflammacidin™",
+   "external_id": null,
+   "url": "https://prlabs.com/inflammacidintm.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Healthy Aging",
+    "Stomach Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Lipid Zyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "Serrapeptase",
+    "Digestzymes"
+   ]
+  },
+  {
+   "name": "Joint & Disc, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-joint-disc.html",
+   "focus_tags": [
+    "Joint/Disc Support",
+    "Active Living",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Comfort",
+   "relation": "substitute",
+   "ff_alts": [
+    "Connective Tissue Support",
+    "Rejuvenation"
+   ]
+  },
+  {
+   "name": "L-Theanine, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/l-theanine.html",
+   "focus_tags": [
+    "Sleep Support",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Relax",
+   "relation": "complement",
+   "ff_alts": [
+    "Brain Boost Nootropic",
+    "Focus Neuro-Magnesium",
+    "Clarity"
+   ]
+  },
+  {
+   "name": "Lean Advantage™",
+   "external_id": null,
+   "url": "https://prlabs.com/lean-advantage.html",
+   "focus_tags": [
+    "Active Living",
+    "Weight Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Thermogenesis",
+   "relation": "substitute",
+   "ff_alts": [
+    "Vitality"
+   ]
+  },
+  {
+   "name": "Limonene, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-limonene-5-fl-oz.html",
+   "focus_tags": [
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Para-Cleanse",
+    "Ozonated Olive Oil"
+   ]
+  },
+  {
+   "name": "Lion's Mane",
+   "external_id": null,
+   "url": "https://prlabs.com/lion-s-mane-premier.html",
+   "focus_tags": [
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Medicinal Mushrooms",
+   "relation": "complement",
+   "ff_alts": [
+    "Nerve Repair",
+    "Brain Boost Nootropic"
+   ]
+  },
+  {
+   "name": "Liquid Zinc Ultra",
+   "external_id": null,
+   "url": "https://prlabs.com/liquid-zinc-ultra.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Immune Support",
+    "Healthy Aging",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Zinc Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Zinc Ascorbate",
+    "Zinc Taste Test"
+   ]
+  },
+  {
+   "name": "Liver-ND™ (fermented)",
+   "external_id": null,
+   "url": "https://prlabs.com/liver-ndtm.html",
+   "focus_tags": [
+    "Liver Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "substitute",
+   "ff_alts": [
+    "Silymarin",
+    "Stone Solvent"
+   ]
+  },
+  {
+   "name": "Magnesium Glycinate Caps, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/magnesium-glycinate-caps.html",
+   "focus_tags": [
+    "Sleep Support",
+    "Mood and Stress Management",
+    "Essential Nutrients",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Magnesium Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Focus Neuro-Magnesium",
+    "Magnesium Taurate",
+    "Magnesium Acetyl-Taurate"
+   ]
+  },
+  {
+   "name": "Max B-ND™ (Fermented) (2 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/max-b-nd-trade.html",
+   "focus_tags": [
+    "Brain Support",
+    "Liver Support",
+    "Mood and Stress Management",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vital Energy Be",
+   "relation": "substitute",
+   "ff_alts": [
+    "Stamina Plus",
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "Max B-ND™ (Fermented) (8 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/max-b-nd-trade-8oz.html",
+   "focus_tags": [
+    "Brain Support",
+    "Liver Support",
+    "Mood and Stress Management",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vital Energy Be",
+   "relation": "substitute",
+   "ff_alts": [
+    "Stamina Plus",
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "Medi Body Pack®",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-body-pack.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Liver Support"
+   ],
+   "product_type": "topical",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Blood Cleanse"
+   ]
+  },
+  {
+   "name": "Medi-Body Bath®",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-body-bathr.html",
+   "focus_tags": [
+    "Inflammation Support",
+    "Mood and Stress Management"
+   ],
+   "product_type": "topical",
+   "best_ff": "Bath Salt",
+   "relation": "substitute",
+   "ff_alts": [
+    "Dead Sea Salt"
+   ]
+  },
+  {
+   "name": "Medi-Chlorella-FX™",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-chlorella-fx.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Chlorella Powder",
+   "relation": "substitute",
+   "ff_alts": [
+    "Lymph Flow",
+    "Chelation"
+   ]
+  },
+  {
+   "name": "Medi-Clay-FX™",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-clay-fx-trade.html",
+   "focus_tags": [
+    "Advanced Detoxification Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Binder Complex",
+   "relation": "substitute",
+   "ff_alts": [
+    "Chelation",
+    "Mercury Detox Syntropy Powder"
+   ]
+  },
+  {
+   "name": "Medi-Detox Pack",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-detox-pack.html",
+   "focus_tags": [
+    "Advanced Detoxification Support"
+   ],
+   "product_type": "topical",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Mercury Detox Syntropy Powder"
+   ]
+  },
+  {
+   "name": "Medi-Mineral Serum™",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-mineral-serumtm.html",
+   "focus_tags": [
+    "Mood and Stress Management"
+   ],
+   "product_type": "topical",
+   "best_ff": "Perfect Skin",
+   "relation": "complement",
+   "ff_alts": [
+    "Moisturize",
+    "Dead Sea Salt"
+   ]
+  },
+  {
+   "name": "Medi-Soak® Cleanse",
+   "external_id": null,
+   "url": "https://prlabs.com/medi-soakr.html",
+   "focus_tags": [
+    "Mood and Stress Management"
+   ],
+   "product_type": "topical",
+   "best_ff": "Bath Salt",
+   "relation": "substitute",
+   "ff_alts": [
+    "Dead Sea Salt"
+   ]
+  },
+  {
+   "name": "Melatonin-ND™ (Fermented)",
+   "external_id": null,
+   "url": "https://prlabs.com/melatonin-nd-trade.html",
+   "focus_tags": [
+    "Brain Support",
+    "Sleep Support",
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Melatonin Max",
+   "relation": "substitute",
+   "ff_alts": [
+    "Sleep Synergy",
+    "Night"
+   ]
+  },
+  {
+   "name": "Men's Performance Edge",
+   "external_id": null,
+   "url": "https://prlabs.com/men-s-performance-edge.html",
+   "focus_tags": [
+    "Men's Health Support",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Man Manna",
+   "relation": "complement",
+   "ff_alts": [
+    "Prostate Protect",
+    "ES11"
+   ]
+  },
+  {
+   "name": "Microbiome Salt, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/microbiome-salt.html",
+   "focus_tags": [
+    "Immune Support",
+    "Essential Nutrients"
+   ],
+   "product_type": "food",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [
+    "Transform",
+    "Terrain Restore"
+   ]
+  },
+  {
+   "name": "MicroBiome-18™",
+   "external_id": null,
+   "url": "https://prlabs.com/microbiome-18-trade.html",
+   "focus_tags": [
+    "Immune Support",
+    "Brain Support",
+    "Gut Health",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [
+    "Transform",
+    "Gut Terrain Program"
+   ]
+  },
+  {
+   "name": "Multi-Vitamin, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/multi-vitamin-premier.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Women's Health Support",
+    "Men's Health Support",
+    "Immune Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Sustain",
+   "relation": "complement",
+   "ff_alts": [
+    "Stamina Plus",
+    "Vitamin A Synergy",
+    "Bioavailability Blend"
+   ]
+  },
+  {
+   "name": "NAC, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/nac-premier.html",
+   "focus_tags": [
+    "Liver Support",
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "N-Acetyl Cysteine",
+   "relation": "substitute",
+   "ff_alts": [
+    "Glutathione Synergy",
+    "Stone Solvent"
+   ]
+  },
+  {
+   "name": "NADH, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/nadh-premier.html",
+   "focus_tags": [
+    "Brain Support",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Longevity",
+   "relation": "complement",
+   "ff_alts": [
+    "CoQ10",
+    "ALCAR"
+   ]
+  },
+  {
+   "name": "NeuroVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/neuroven-trade.html",
+   "focus_tags": [
+    "Brain Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuroprotect",
+   "relation": "substitute",
+   "ff_alts": [
+    "Neuroceramides",
+    "Brain Boost Nootropic"
+   ]
+  },
+  {
+   "name": "Nucleo Immune™",
+   "external_id": null,
+   "url": "https://prlabs.com/nucleo-immune-trade.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "substitute",
+   "ff_alts": [
+    "Lymph Flow",
+    "VirEx"
+   ]
+  },
+  {
+   "name": "OcuVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/ocuven-trade.html",
+   "focus_tags": [
+    "Eye health support",
+    "Vision & Eye Support",
+    "Brain Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "substitute",
+   "ff_alts": [
+    "OcuFlow Daytime",
+    "Macular Wellness Astaxanthin",
+    "OcuHeal Eye Drops",
+    "Lutein"
+   ]
+  },
+  {
+   "name": "Olive Leaf Immune™",
+   "external_id": null,
+   "url": "https://prlabs.com/olive-leaf-immunetm.html",
+   "focus_tags": [
+    "Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "substitute",
+   "ff_alts": [
+    "Cistus Synergy",
+    "VirEx",
+    "Spleen Support"
+   ]
+  },
+  {
+   "name": "Organic Castor Oil, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/castor-oil-premier.html",
+   "focus_tags": [
+    "Immune Support",
+    "Healthy Aging"
+   ],
+   "product_type": "topical",
+   "best_ff": "Phytolacca Oil",
+   "relation": "complement",
+   "ff_alts": [
+    "Ozonated Olive Oil",
+    "Neem Oil Roll-On"
+   ]
+  },
+  {
+   "name": "Organic Cayenne Spice Powder",
+   "external_id": null,
+   "url": "https://prlabs.com/organic-cayenne-powder.html",
+   "focus_tags": [
+    "Healthy circulation",
+    "Digestive comfort",
+    "Metabolism"
+   ],
+   "product_type": "food",
+   "best_ff": "Thermogenesis",
+   "relation": "complement",
+   "ff_alts": [
+    "Piperine",
+    "Gingerol"
+   ]
+  },
+  {
+   "name": "Organic Coffee Sidama, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-organic-coffee-sidama.html",
+   "focus_tags": [
+    "Brain Support",
+    "Gut Health",
+    "Healthy Aging"
+   ],
+   "product_type": "food",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "Organic Ginger Spice Powder",
+   "external_id": null,
+   "url": "https://prlabs.com/organic-ginger-powder-1-4-oz.html",
+   "focus_tags": [
+    "Digestion support",
+    "Joint comfort",
+    "Inflammatory balance"
+   ],
+   "product_type": "food",
+   "best_ff": "Gingerol",
+   "relation": "complement",
+   "ff_alts": [
+    "GERD Guard",
+    "Comfort"
+   ]
+  },
+  {
+   "name": "Organic Greens, Premier (Powder)",
+   "external_id": null,
+   "url": "https://prlabs.com/greens-powder-c4179a.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "food",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Serene Blue Green"
+   ]
+  },
+  {
+   "name": "Organic Turmeric Spice Powder",
+   "external_id": null,
+   "url": "https://prlabs.com/organic-turmeric-powder.html",
+   "focus_tags": [
+    "Inflammatory balance support",
+    "Joint mobility",
+    "Liver health"
+   ],
+   "product_type": "food",
+   "best_ff": "Curcu Guard",
+   "relation": "complement",
+   "ff_alts": [
+    "Curcumin",
+    "Tetrahydrocurcumin"
+   ]
+  },
+  {
+   "name": "PancreVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/pancreven-trade.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Pancreas Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Reverse AGE",
+   "relation": "complement",
+   "ff_alts": [
+    "ED15 Pancreas Driver"
+   ]
+  },
+  {
+   "name": "ParaStat™",
+   "external_id": null,
+   "url": "https://prlabs.com/parastattm.html",
+   "focus_tags": [
+    "Gut Health",
+    "Intestinal Cleanse & Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Para-Cleanse",
+   "relation": "substitute",
+   "ff_alts": [
+    "Lipid Cleanse",
+    "Blood Cleanse"
+   ]
+  },
+  {
+   "name": "Paratosin™",
+   "external_id": null,
+   "url": "https://prlabs.com/paratosintm.html",
+   "focus_tags": [
+    "Gut Health",
+    "Gastrointestinal & Immune Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Para-Cleanse",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair",
+    "Microbiome"
+   ]
+  },
+  {
+   "name": "pH Minerals, Premier (2 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/ph-minerals-premier.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Whole Body Mineral Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Electrolyte Mineral Manna",
+   "relation": "substitute",
+   "ff_alts": [
+    "Alkalize Bicarbonate Blend",
+    "Focus Neuro-Magnesium"
+   ]
+  },
+  {
+   "name": "pH Minerals, Premier (8 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/ph-minerals-premier-8-oz.html",
+   "focus_tags": [
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Electrolyte Mineral Manna",
+   "relation": "substitute",
+   "ff_alts": [
+    "Alkalize Bicarbonate Blend"
+   ]
+  },
+  {
+   "name": "Phyto Methylate",
+   "external_id": null,
+   "url": "https://prlabs.com/phyto-methylate-premier.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Brain Support",
+    "Healthy Aging",
+    "Mood and Stress Management",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "complement",
+   "ff_alts": [
+    "Chelation"
+   ]
+  },
+  {
+   "name": "Phyto-Iron, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/phyto-iron-premier.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Essential Nutrients",
+    "Men's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Iron Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Iron Out",
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "Pink Salt, Premier (12 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/pink-salt-6b4ccc.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Stomach Support"
+   ],
+   "product_type": "food",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Electrolyte Mineral Manna"
+   ]
+  },
+  {
+   "name": "Plant Vitamin C, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/vitamin-c-6f489b.html",
+   "focus_tags": [
+    "Immune Support",
+    "Antioxidant Support",
+    "Essential Nutrients",
+    "Healthy Aging",
+    "Inflammation Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Synergy C",
+   "relation": "substitute",
+   "ff_alts": [
+    "Vitamin P",
+    "Ascorbyl Palmitate"
+   ]
+  },
+  {
+   "name": "PneumoVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/pneumoventm.html",
+   "focus_tags": [
+    "Immune Support",
+    "Lung Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "complement",
+   "ff_alts": [
+    "Lymph Flow"
+   ]
+  },
+  {
+   "name": "PQQ Complex, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/pqq-complex-with-coq10.html",
+   "focus_tags": [
+    "Brain Support",
+    "Immune Support",
+    "Inflammation Support",
+    "Healthy Aging",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Mitochondrial Biogenesis",
+   "relation": "substitute",
+   "ff_alts": [
+    "CoQ10",
+    "Rhythm Section"
+   ]
+  },
+  {
+   "name": "Pregnenolone, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/pregnenolone-premier.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Endocrine Restore",
+   "relation": "complement",
+   "ff_alts": [
+    "PMS Relief",
+    "Adrenal Syntropy"
+   ]
+  },
+  {
+   "name": "Premier Pink Salt (4 oz)",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-pink-salt-4-oz.html",
+   "focus_tags": [
+    "Lifestyle Essentials"
+   ],
+   "product_type": "food",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Electrolyte Mineral Manna"
+   ]
+  },
+  {
+   "name": "Premier Probiotic (30 Softgels)",
+   "external_id": null,
+   "url": "https://prlabs.com/probiotic-caps.html",
+   "focus_tags": [
+    "Gut Health",
+    "Immune Support",
+    "Digestion"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [
+    "Transform",
+    "Gut Terrain Program"
+   ]
+  },
+  {
+   "name": "Premier Probiotic (60 Softgels)",
+   "external_id": null,
+   "url": "https://prlabs.com/probiotic-caps-premier.html",
+   "focus_tags": [
+    "Gut Health",
+    "Immune Support",
+    "Digestion"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [
+    "Transform",
+    "Gut Terrain Program"
+   ]
+  },
+  {
+   "name": "Premier Probiotic Gummies",
+   "external_id": null,
+   "url": "https://prlabs.com/premier-probiotic-gummies.html",
+   "focus_tags": [
+    "Immune Support",
+    "Gut Health"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [
+    "Transform",
+    "GI Repair"
+   ]
+  },
+  {
+   "name": "PRL Catalog",
+   "external_id": null,
+   "url": "https://prlabs.com/prl-catalog.html",
+   "focus_tags": [],
+   "product_type": "unknown",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "Probiotic Fermented Greens, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/fermented-greens-premier.html",
+   "focus_tags": [
+    "Gut Health",
+    "Immune Support",
+    "Healthy Aging",
+    "Essential Nutrients"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Transform",
+   "relation": "complement",
+   "ff_alts": [
+    "Microbiome",
+    "Gut Terrain Program"
+   ]
+  },
+  {
+   "name": "ProstaVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/prosta-pro-blend-trade.html",
+   "focus_tags": [
+    "Men's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "QC Oil Blend, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/qc-oil-blend.html",
+   "focus_tags": [
+    "Ayurvedic wellness"
+   ],
+   "product_type": "topical",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "QRA Product Test Kit (without case)",
+   "external_id": null,
+   "url": "https://prlabs.com/prl-refurbished-test-kit.html",
+   "focus_tags": [],
+   "product_type": "equipment",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
+  },
+  {
+   "name": "Radiant Woman, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/radiant-woman.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Healthy Aging",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Breast Support",
+   "relation": "complement",
+   "ff_alts": [
+    "PMS Relief",
+    "Energessence"
+   ]
+  },
+  {
+   "name": "Reishi Immune™",
+   "external_id": null,
+   "url": "https://prlabs.com/reishi-immune-trade.html",
+   "focus_tags": [
+    "Immune Support",
+    "Liver Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "RenaVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/renaven-trade.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Kidney Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "Resveratrol-ND™",
+   "external_id": null,
+   "url": "https://prlabs.com/resveratrol-nd.html",
+   "focus_tags": [
+    "Cardiovascular support",
+    "Antioxidant support",
+    "Cognitive support",
+    "Healthy aging support",
+    "Immune support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "Taurine Blend, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/taurine-blend-premier.html",
+   "focus_tags": [
+    "Brain support",
+    "Stomach/Gut health support",
+    "Cardiovascular support",
+    "Gallbladder support",
+    "Detoxification support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": [
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "Testosterone Premium",
+   "external_id": null,
+   "url": "https://prlabs.com/testosterone-premium.html",
+   "focus_tags": [
+    "Men's Health Support",
+    "Healthy Aging",
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Man Manna",
+   "relation": "complement",
+   "ff_alts": [
+    "Prostate Protect"
+   ]
+  },
+  {
+   "name": "ThyroVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/thyroven-trade.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "Tranquinol®",
+   "external_id": null,
+   "url": "https://prlabs.com/tranquinol-trade.html",
+   "focus_tags": [
+    "Mood and Stress Management",
+    "Sleep Support",
+    "Brain Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "Turmeric, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/turmeric-32940d.html",
+   "focus_tags": [
+    "Liver Support",
+    "Inflammation Support",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Curcu Guard",
+   "relation": "substitute",
+   "ff_alts": [
+    "Curcumin",
+    "Tetrahydrocurcumin"
+   ]
+  },
+  {
+   "name": "Tyrosine Matrix",
+   "external_id": null,
+   "url": "https://prlabs.com/tyrosine-matrix.html",
+   "focus_tags": [
+    "Brain Support",
+    "Mood and Stress Management"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "complement",
+   "ff_alts": [
+    "Focus Neuro-Magnesium"
+   ]
+  },
+  {
+   "name": "UltraPollen™",
+   "external_id": null,
+   "url": "https://prlabs.com/ultrapollen-trade.html",
+   "focus_tags": [
+    "Men's Health Support",
+    "Healthy Aging",
+    "Prostate and Urinary Tract Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "UriVen™",
+   "external_id": null,
+   "url": "https://prlabs.com/uriven-trade.html",
+   "focus_tags": [
+    "Healthy Aging",
+    "Bladder Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  },
+  {
+   "name": "Vitamin D3 For KIDS, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/vitamin-d3-for-kids.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vitamin D Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Cholecalciferol"
+   ]
+  },
+  {
+   "name": "Vitamin D3+K2, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/vitamin-d3-k2.html",
+   "focus_tags": [
+    "Essential Nutrients",
+    "Healthy Aging"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Vitamin D Synergy",
+   "relation": "substitute",
+   "ff_alts": [
+    "Bone Builder"
+   ]
+  },
+  {
+   "name": "Weight Management Bundle",
+   "external_id": null,
+   "url": "https://prlabs.com/weight-management-bundle.html",
+   "focus_tags": [
+    "Weight Management"
+   ],
+   "product_type": "bundle",
+   "best_ff": "Thermogenesis",
+   "relation": "substitute",
+   "ff_alts": [
+    "Fat Metabolism"
+   ]
+  },
+  {
+   "name": "Whey Protein, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/whey-protein-premier.html",
+   "focus_tags": [
+    "Active Living"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Pea Protein Aminos",
+   "relation": "substitute",
+   "ff_alts": [
+    "SeaAminos",
+    "Hydrolyzed Collagen",
+    "Muscle Mass"
+   ]
+  },
+  {
+   "name": "XenoStat™",
+   "external_id": null,
+   "url": "https://prlabs.com/xenostat-trade.html",
+   "focus_tags": [
+    "Women's Health Support",
+    "Thyroid and Hormone Support"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": []
+  }
+ ],
+ "focus_area_products": [
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "prl_product_name": "NeuroVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "prl_product_name": "Adaptogen-R3™",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "prl_product_name": "Tranquinol®",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 10,
+   "focus_area_name": "Cardiovascular System",
+   "prl_product_name": "CardioVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 10,
+   "focus_area_name": "Cardiovascular System",
+   "prl_product_name": "Cardio-ND™ (Fermented)",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 10,
+   "focus_area_name": "Cardiovascular System",
+   "prl_product_name": "Fermented Beets, Premier",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 11,
+   "focus_area_name": "Liver",
+   "prl_product_name": "Liver-ND™ (fermented)",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 11,
+   "focus_area_name": "Liver",
+   "prl_product_name": "HepatoVen™",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 11,
+   "focus_area_name": "Liver",
+   "prl_product_name": "NAC, Premier",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 14,
+   "focus_area_name": "Intestines",
+   "prl_product_name": "MicroBiome-18™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 14,
+   "focus_area_name": "Intestines",
+   "prl_product_name": "Digestase-SP™",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 14,
+   "focus_area_name": "Intestines",
+   "prl_product_name": "Premier Probiotic (30 Softgels)",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 19,
+   "focus_area_name": "Stomach",
+   "prl_product_name": "GastroVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 19,
+   "focus_area_name": "Stomach",
+   "prl_product_name": "HCL, Premier",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 19,
+   "focus_area_name": "Stomach",
+   "prl_product_name": "HCL Activator, Premier",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 21,
+   "focus_area_name": "Lungs",
+   "prl_product_name": "PneumoVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 21,
+   "focus_area_name": "Lungs",
+   "prl_product_name": "AllerCaps, Premier",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 21,
+   "focus_area_name": "Lungs",
+   "prl_product_name": "Hyssinol™",
+   "rank": 2
+  }
+ ],
+ "focus_area_items": [
+  {
+   "focus_area_id": 9,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES2"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED5"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET1"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ES6"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 12,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "ET15"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "MB2"
+  },
+  {
+   "focus_area_id": 13,
+   "item_code": "MB3"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 15,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 15,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 15,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 15,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 15,
+   "item_code": "ES4"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED9"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET6"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "MB2"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 24,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 25,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "ES4"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 26,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 27,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 28,
+   "item_code": "ED2"
+  },
+  {
+   "focus_area_id": 28,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 28,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 28,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 29,
+   "item_code": "ET1"
+  },
+  {
+   "focus_area_id": 29,
+   "item_code": "ET2"
+  },
+  {
+   "focus_area_id": 29,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 30,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 30,
+   "item_code": "ET4"
+  },
+  {
+   "focus_area_id": 30,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 30,
+   "item_code": "MR8"
+  },
+  {
+   "focus_area_id": 30,
+   "item_code": "ET15"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 31,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 32,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 33,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 33,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "ED5"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 34,
+   "item_code": "ES6"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "ED1"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 35,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES2"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 37,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 37,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 37,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 38,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 38,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 38,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 39,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 39,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 39,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 40,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 40,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 40,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 41,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 41,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 41,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 42,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 42,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 42,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "ED9"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "ES7"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 44,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 45,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET16"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ET4"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 46,
+   "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 47,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 47,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 47,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 47,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED1"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ES4"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 50,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ET6"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ET15"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ED1"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 51,
+   "item_code": "ES5"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 52,
+   "item_code": "ES4"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "MB4"
+  }
+ ]
+}
