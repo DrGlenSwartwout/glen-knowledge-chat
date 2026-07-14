@@ -10843,6 +10843,15 @@ def _init_membership_tables():
 _init_membership_tables()
 
 
+def _init_data_sharing_tables():
+    from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
+    with sqlite3.connect(LOG_DB) as cx:
+        _ds.init_data_sharing_tables(cx)
+        _dr.init_reward_tables(cx)
+
+_init_data_sharing_tables()
+
+
 def _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_MAGIC_TTL_MIN, *, cx=None):
     """Mint a single-use magic-link token for a membership grant or return-flow.
     Returns the plaintext token; caller is responsible for emailing it.
@@ -13627,11 +13636,12 @@ def api_console_next_actions():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import (console_next_action as _na, biofield_reveals as _br,
                            ff_match_drafts as _ff, client_portal as _cp, orders as _ord,
-                           household_holds as _hh)
+                           household_holds as _hh, data_sharing_rewards as _dr)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx); _ff.init_table(cx)
         _cp.init_client_portal_table(cx); _ord.init_orders_table(cx)
         _hh.init_hold_tables(cx)
+        _dr.init_reward_tables(cx)
         cx.row_factory = sqlite3.Row
         items = _na.list_actionable(cx)
     return jsonify({"items": items})
@@ -15689,6 +15699,13 @@ def _animal_greeting_enabled():
         "1", "true", "yes", "on")
 
 
+def _data_sharing_enabled():
+    """Data-sharing opt-in rewards feature. Default OFF — when off, the reward ledger
+    and consent endpoints are inert and the portal payload never gains sharing-related keys."""
+    return (os.environ.get("DATA_SHARING_REWARD_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _client_species_for(email):
     """{"is_animal": True, "animal_name": ...} when the flag is on AND this client is an
     animal; None otherwise (flag off, human, unknown, or any error)."""
@@ -17411,6 +17428,29 @@ def api_client_portal(token):
             payload["wishlist"] = _wcards
         except Exception as _e:
             print(f"[wishlist] portal payload skipped: {_e}", flush=True)
+    # Data-sharing consent + rewards card (flag-gated). Exposed even at tier 0 (all
+    # toggles off) — that IS how a not-yet-opted-in member sees the opt-in card.
+    # email_for_reports is already re-pointed by ?member=. Tables are defensively
+    # re-initialized here since tests monkeypatch LOG_DB after import-time init ran
+    # against the real DB.
+    if _data_sharing_enabled():
+        try:
+            from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
+            with sqlite3.connect(LOG_DB) as _cxds:
+                _ds.init_data_sharing_tables(_cxds)
+                _dr.init_reward_tables(_cxds)
+                _consent = _ds.get_consent(_cxds, email_for_reports)
+                _active = {tuple(g) for g in _consent["grants"]}
+                _toggles = {k: all(tuple(g) in _active for g in spec["grants"])
+                            for k, spec in _ds.TOGGLE_MAP.items()}
+                payload["data_sharing"] = {
+                    "toggles": _toggles,
+                    "tier": _consent["tier"],
+                    "attribution": _consent["attribution"],
+                    "rewards": _dr.rewards_for_email(_cxds, email_for_reports),
+                }
+        except Exception as _e:
+            print(f"[data-sharing/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -17553,6 +17593,54 @@ def api_portal_scan_prefs(token):
         if notify in ("in", "out"):
             _ns.set_opt(cx, email, notify)
     return jsonify({"ok": True})
+
+
+def _data_sharing_free_unlock(cx, email):
+    """Best-effort: unlock the member's latest biofield reveal as the Tier-2
+    data-sharing reward. No-op (never raises) if they have no reveal yet."""
+    try:
+        from dashboard import biofield_reveals as _br
+        email = (email or "").strip().lower()
+        row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
+                         (email,)).fetchone()
+        if not row:
+            return
+        _br.init_free_unlocks(cx)
+        _br.record_free_unlock(cx, email, row[0])
+    except Exception as _e:
+        print(f"[data-sharing/unlock] {_e!r}", flush=True)
+
+
+@app.route("/api/portal/<token>/sharing", methods=["POST"])
+def api_portal_sharing(token):
+    """Token-scoped data-sharing consent write. Identity is resolved from the
+    portal token (or the ?member= re-point, gated exactly like api_client_portal)
+    — never from the request body, so a caller cannot set consent for an
+    arbitrary email by passing one in the JSON payload."""
+    if not _data_sharing_enabled():
+        return jsonify({"error": "not found"}), 404
+    body = request.get_json(silent=True) or {}
+    toggles = body.get("toggles", {})
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        from dashboard import client_portal as _cp, household as _hh, \
+            data_sharing as _ds, data_sharing_rewards as _dr
+        _cp.init_client_portal_table(cx)
+        _ds.init_data_sharing_tables(cx)
+        _dr.init_reward_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        req_member = (request.args.get("member") or "").strip().lower()
+        if req_member and req_member != email:
+            _hh.init_household_tables(cx)
+            if not _hh.can_view(cx, email, req_member):
+                return jsonify({"error": "forbidden"}), 403
+            email = req_member
+        consent = _ds.set_consent(cx, email, toggles)
+        _dr.grant_rewards_for_tier(cx, email, consent["tier"], free_unlock_fn=_data_sharing_free_unlock)
+        rewards = _dr.rewards_for_email(cx, email)
+    return jsonify({"consent": consent, "rewards": rewards})
 
 
 @app.route("/api/portal/<token>/notify-pref", methods=["POST"])
@@ -36153,6 +36241,10 @@ with sqlite3.connect(LOG_DB) as _sc_cx:
     _scstore.migrate(_sc_cx)
 _sca.configure(grant_fn=_studio_credit_grant_and_notify)
 _sca.register()
+
+# ── Data-sharing rewards: operator fulfill/dismiss actions (Phase 2) ────────────
+from dashboard import reward_actions as _rwa
+_rwa.register()
 
 # ── Related products: console editor for Glen's manual "Dr. Glen recommends" picks ──
 from dashboard import related_products_actions as _rpa

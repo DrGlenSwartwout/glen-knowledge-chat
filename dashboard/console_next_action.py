@@ -5,9 +5,10 @@ buttons and the unified /console Next Action queue. Listers + aggregate live
 below. Adding a record type = write a resolver + a lister + register both.
 """
 import json
+import os
 import urllib.parse
 
-TYPE_PRIORITY = ["order", "invoice", "household", "biofield_reveal", "handoff", "ff_match_draft"]
+TYPE_PRIORITY = ["order", "invoice", "household", "biofield_reveal", "handoff", "ff_match_draft", "reward_grant"]
 
 _DONE = {"actionable": False}
 
@@ -159,6 +160,21 @@ def resolve_handoff(rec):
     }
 
 
+def resolve_reward_grant(rec):
+    return {
+        "type": "reward_grant", "id": rec["id"], "actionable": True, "state": "pending",
+        "label": "Approve reward",
+        "action": {"kind": "dispatch", "keys": ["reward.fulfill"], "body": {"grant_id": rec["id"]}},
+        "confirm": False,
+        "secondary": {"label": "Dismiss",
+                      "action": {"kind": "dispatch", "keys": ["reward.dismiss"],
+                                 "body": {"grant_id": rec["id"]}},
+                      "confirm": True},
+        "summary": f"{rec['reward_type']} for {rec['email']} — Tier {rec['tier']} (shared attributed data)",
+        "age_ts": rec["age_ts"],
+    }
+
+
 def _order_records(cx):
     # Exclude orders currently held by an OPEN household hold-and-batch group —
     # the batch owns them and already surfaces via resolve_household_hold's
@@ -244,13 +260,28 @@ def _handoff_records(cx):
     return out
 
 
+def _data_sharing_flag_on():
+    return os.environ.get("DATA_SHARING_REWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _reward_records(cx):
+    if not _data_sharing_flag_on():   # read env directly — no app import (avoids cycle)
+        return []
+    rows = cx.execute(
+        "SELECT id, email, reward_type, tier, granted_at FROM member_reward_grants "
+        "WHERE status='pending' ORDER BY granted_at")
+    return [{"id": r["id"], "email": r["email"], "reward_type": r["reward_type"],
+             "tier": r["tier"], "age_ts": r["granted_at"]} for r in rows]
+
+
 def list_actionable(cx):
     items = ([resolve_order(r) for r in _order_records(cx)]
              + [resolve_invoice(r) for r in _invoice_records(cx)]
              + [resolve_household_hold(r) for r in _household_hold_records(cx)]
              + [resolve_biofield_reveal(r) for r in _reveal_records(cx)]
              + [resolve_handoff(r) for r in _handoff_records(cx)]
-             + [resolve_ff_match_draft(r) for r in _ff_records(cx)])
+             + [resolve_ff_match_draft(r) for r in _ff_records(cx)]
+             + [resolve_reward_grant(r) for r in _reward_records(cx)])
     items = [d for d in items if d.get("actionable")]
     prio = {t: i for i, t in enumerate(TYPE_PRIORITY)}
     items.sort(key=lambda d: (prio.get(d["type"], 99), d.get("age_ts") or ""))
