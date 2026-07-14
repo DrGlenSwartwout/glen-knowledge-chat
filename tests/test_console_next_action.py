@@ -143,6 +143,7 @@ def test_aggregate_orders_before_invoices(monkeypatch):
                "('2026-07-01T00:00:00','t','i2','v@b.co','V','[]',9000,'proposed',NULL)")
     cx.commit()
     monkeypatch.setattr(na, "_handoff_records", lambda cx: [])
+    monkeypatch.setattr(na, "_household_hold_records", lambda cx: [])
     items = na.list_actionable(cx)
     types = [d["type"] for d in items]
     assert types == ["order", "invoice"]   # order sorts before invoice
@@ -170,6 +171,7 @@ def test_aggregate_lists_open_orders_first(monkeypatch):
                "VALUES ('f@b.co','s','[]','draft','2026-07-01T00:00:00','2026-07-01T00:00:00')")
     cx.commit()
     monkeypatch.setattr(na, "_handoff_records", lambda cx: [])
+    monkeypatch.setattr(na, "_household_hold_records", lambda cx: [])
     items = na.list_actionable(cx)
     types = [d["type"] for d in items]
     assert types[0] == "order"                      # order sorts first
@@ -194,6 +196,69 @@ def _seed_cx():
     return cx
 
 
+def test_household_overdue_offers_release_now():
+    d = na.resolve_household_hold({"group_id": 8, "caregiver": "care@x.co",
+                                   "n_orders": 3, "hold_until": "2026-07-10T00:00:00+00:00",
+                                   "overdue": True, "age_ts": "2026-07-10T00:00:00+00:00"})
+    assert d["type"] == "household" and d["actionable"] and d["state"] == "overdue"
+    assert d["label"] == "Release now" and d["confirm"] is True
+    assert d["action"] == {"kind": "dispatch", "keys": ["holds.release"],
+                           "body": {"group_id": 8}}
+    assert d["secondary"]["label"] == "Extend 2 days"
+    assert d["secondary"]["action"] == {"kind": "dispatch", "keys": ["holds.extend"],
+                                        "body": {"group_id": 8, "days": 2}}
+    assert d["secondary"]["confirm"] is False
+    assert d["summary"] == "care@x.co · 3 orders · overdue"
+
+
+def test_household_holding_shows_due_date_and_singular():
+    d = na.resolve_household_hold({"group_id": 2, "caregiver": "c@x.co", "n_orders": 1,
+                                   "hold_until": "2026-08-01T12:00:00+00:00",
+                                   "overdue": False, "age_ts": "2026-08-01T12:00:00+00:00"})
+    assert d["state"] == "holding"
+    assert d["summary"] == "c@x.co · 1 order · due 2026-08-01"
+
+
+def test_household_priority_position():
+    assert na.TYPE_PRIORITY[:3] == ["order", "invoice", "household"]
+
+
+def test_household_lister_marks_overdue(monkeypatch):
+    import sqlite3
+    from dashboard import household_holds as hh
+    from dashboard import orders as _ord
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    hh.init_hold_tables(cx)
+    _ord.init_orders_table(cx)  # list_open_holds() joins member orders via orders_in_hold_group
+    # one overdue open hold (hold_until far in the past)
+    cx.execute("INSERT INTO household_holds (caregiver_email, household_key, status, "
+               "opened_at, hold_until) VALUES ('care@x.co','hh1','open',"
+               "'2026-07-01T00:00:00+00:00','2026-07-02T00:00:00+00:00')")
+    cx.commit()
+    recs = na._household_hold_records(cx)
+    assert len(recs) == 1
+    r = recs[0]
+    assert r["caregiver"] == "care@x.co" and r["overdue"] is True
+    assert r["group_id"] and r["hold_until"] == "2026-07-02T00:00:00+00:00"
+    assert r["age_ts"] == r["hold_until"]
+
+
+def test_aggregate_household_after_invoice(monkeypatch):
+    # synthetic household record so we don't need to seed the holds table here
+    monkeypatch.setattr(na, "_household_hold_records", lambda cx: [
+        {"group_id": 1, "caregiver": "c@x.co", "n_orders": 2,
+         "hold_until": "2026-07-02T00:00:00+00:00", "overdue": True,
+         "age_ts": "2026-07-02T00:00:00+00:00"}])
+    monkeypatch.setattr(na, "_order_records", lambda cx: [])
+    monkeypatch.setattr(na, "_invoice_records", lambda cx: [])
+    monkeypatch.setattr(na, "_reveal_records", lambda cx: [])
+    monkeypatch.setattr(na, "_handoff_records", lambda cx: [])
+    monkeypatch.setattr(na, "_ff_records", lambda cx: [])
+    items = na.list_actionable(None)
+    assert [d["type"] for d in items] == ["household"]
+    assert items[0]["label"] == "Release now"
+
+
 def test_aggregate_orders_by_type_then_age_and_skips_done(monkeypatch):
     cx = _seed_cx()
     now = "2026-07-01T00:00:00"; later = "2026-07-02T00:00:00"
@@ -211,6 +276,8 @@ def test_aggregate_orders_by_type_then_age_and_skips_done(monkeypatch):
     monkeypatch.setattr(na, "_handoff_records",
                         lambda cx: [{"email": "h@b.co", "biofield_status": "ai_draft",
                                      "age_ts": later}])
+    # stub the household lister to avoid needing the household_holds schema in this unit
+    monkeypatch.setattr(na, "_household_hold_records", lambda cx: [])
     items = na.list_actionable(cx)
     types = [d["type"] for d in items]
     assert types == ["biofield_reveal", "handoff", "ff_match_draft"]  # TYPE_PRIORITY order

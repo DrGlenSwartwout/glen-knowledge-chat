@@ -7,7 +7,7 @@ below. Adding a record type = write a resolver + a lister + register both.
 import json
 import urllib.parse
 
-TYPE_PRIORITY = ["order", "invoice", "biofield_reveal", "handoff", "ff_match_draft"]
+TYPE_PRIORITY = ["order", "invoice", "household", "biofield_reveal", "handoff", "ff_match_draft"]
 
 _DONE = {"actionable": False}
 
@@ -73,6 +73,27 @@ def resolve_invoice(rec):
             "summary": summary, "age_ts": age,
         }
     return dict(_DONE)
+
+
+def resolve_household_hold(rec):
+    gid = rec.get("group_id")
+    care = rec.get("caregiver", "")
+    n = rec.get("n_orders") or 0
+    due = rec.get("hold_until", "")
+    tail = "overdue" if rec.get("overdue") else (f"due {due[:10]}" if due else "due ?")
+    summary = f"{care} · {n} order{'' if n == 1 else 's'} · {tail}"
+    return {
+        "type": "household", "id": gid, "actionable": True,
+        "state": "overdue" if rec.get("overdue") else "holding",
+        "label": "Release now",
+        "action": {"kind": "dispatch", "keys": ["holds.release"], "body": {"group_id": gid}},
+        "confirm": True,
+        "secondary": {"label": "Extend 2 days",
+                      "action": {"kind": "dispatch", "keys": ["holds.extend"],
+                                 "body": {"group_id": gid, "days": 2}},
+                      "confirm": False},
+        "summary": summary, "age_ts": rec.get("age_ts", ""),
+    }
 
 
 def resolve_biofield_reveal(rec):
@@ -171,6 +192,19 @@ def _invoice_records(cx):
     return out
 
 
+def _household_hold_records(cx):
+    from dashboard import household_holds as _hh
+    now_iso = _hh._iso(_hh._now())
+    out = []
+    for h in _hh.list_open_holds(cx):
+        hu = h.get("hold_until") or ""
+        out.append({"group_id": h["id"], "caregiver": h.get("caregiver_email", ""),
+                    "n_orders": len(h.get("members") or []),
+                    "hold_until": hu, "overdue": bool(hu and hu <= now_iso),
+                    "age_ts": hu})
+    return out
+
+
 def _reveal_records(cx):
     rows = cx.execute(
         "SELECT id, email, scan_date, first_approved, notified_at, created_at "
@@ -208,6 +242,7 @@ def _handoff_records(cx):
 def list_actionable(cx):
     items = ([resolve_order(r) for r in _order_records(cx)]
              + [resolve_invoice(r) for r in _invoice_records(cx)]
+             + [resolve_household_hold(r) for r in _household_hold_records(cx)]
              + [resolve_biofield_reveal(r) for r in _reveal_records(cx)]
              + [resolve_handoff(r) for r in _handoff_records(cx)]
              + [resolve_ff_match_draft(r) for r in _ff_records(cx)])
