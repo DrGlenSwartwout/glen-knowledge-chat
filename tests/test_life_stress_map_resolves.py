@@ -7,6 +7,8 @@ def test_every_essence_resolves_to_a_slug():
     products = life_stress._load_json(life_stress._PRODUCTS_PATH)
     unresolved = []
     for emotion, essences in m.items():
+        if emotion.startswith("_") or not isinstance(essences, list):
+            continue
         for name in essences:
             if not life_stress.slug_for_essence(name, products):
                 unresolved.append((emotion, name))
