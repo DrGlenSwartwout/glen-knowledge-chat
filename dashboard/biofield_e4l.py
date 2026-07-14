@@ -17,7 +17,20 @@ import sqlite3
 
 
 def _db_path(db_path=None):
-    return db_path or os.path.expanduser(os.environ.get("E4L_DB", "~/AI-Training/e4l.db"))
+    """Resolve the e4l.db location: an explicit arg, then the E4L_DB env, then a
+    synced copy on the prod persistent disk ($DATA_DIR/e4l.db — written by the
+    owner db-sync push), then the local ~/AI-Training default."""
+    if db_path:
+        return db_path
+    env = os.environ.get("E4L_DB")
+    if env:
+        return os.path.expanduser(env)
+    d = os.environ.get("DATA_DIR")
+    if d:
+        p = os.path.join(d, "e4l.db")
+        if os.path.exists(p):
+            return p
+    return os.path.expanduser("~/AI-Training/e4l.db")
 
 
 def _connect_ro(path):
