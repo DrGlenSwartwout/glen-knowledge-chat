@@ -37,6 +37,9 @@
     .entry .tox .tier.strong{background:var(--green);color:#08130d}
     .entry .tox .tier.moderate{background:var(--gold);color:#241a05}
     .entry .tox .tier.weak{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+    .entry .tox .tier.traditional{background:#4a6b8a;color:#eaf2fb}
+    .entry .tox .tier.contested{background:#8a5a3a;color:#fbeee2}
+    .entry .tox .cat{color:var(--muted);font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin:.55rem 0 .2rem}
     .entry .tox .tox-note{color:var(--muted)}
     .entry .tox a.tox-src{color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--muted);font-size:.78rem}
     .entry .tox a.tox-src:hover{color:var(--gold);border-bottom-color:var(--gold)}
@@ -98,22 +101,29 @@
           });
           d.appendChild(pl);
         }
-        if(e.toxins && e.toxins.length){
+        if(e.stress_factors && e.stress_factors.length){
+          var CAT_LABEL={toxin:'Toxins',microbe:'Microbial',emotional:'Emotional (TCM)',physical:'Physical'};
+          var CAT_ORDER=['toxin','microbe','emotional','physical'];
+          var TIERS={strong:1,moderate:1,weak:1,traditional:1,contested:1};
           var tx=document.createElement('div'); tx.className='tox';
-          var th=document.createElement('div'); th.className='tox-h'; th.textContent='Characteristic toxins'; tx.appendChild(th);
-          var tul=document.createElement('ul');
-          e.toxins.forEach(function(t){
-            var li=document.createElement('li');
-            var badge=document.createElement('span');
-            var tier=(t.tier||'').toLowerCase();
-            badge.className='tier '+(tier==='strong'?'strong':(tier==='moderate'?'moderate':'weak'));
-            badge.textContent=t.tier||'—'; li.appendChild(badge);
-            var nm=document.createElement('span'); nm.className='tox-name'; nm.textContent=t.toxin||''; li.appendChild(nm);
-            if(t.note){ li.appendChild(document.createTextNode(' — ')); var nt=document.createElement('span'); nt.className='tox-note'; nt.textContent=t.note; li.appendChild(nt); }
-            if(t.url){ li.appendChild(document.createTextNode(' ')); var a=document.createElement('a'); a.className='tox-src'; a.href=t.url; a.target='_blank'; a.rel='noopener'; a.textContent='['+(t.source||'source')+']'; li.appendChild(a); }
-            tul.appendChild(li);
+          var th=document.createElement('div'); th.className='tox-h'; th.textContent='Common stress factors'; tx.appendChild(th);
+          CAT_ORDER.forEach(function(cat){
+            var rows=e.stress_factors.filter(function(f){return (f.category||'')===cat;});
+            if(!rows.length) return;
+            var cl=document.createElement('div'); cl.className='cat'; cl.textContent=CAT_LABEL[cat]||cat; tx.appendChild(cl);
+            var ul=document.createElement('ul');
+            rows.forEach(function(t){
+              var li=document.createElement('li');
+              var tier=(t.tier||'').toLowerCase(); if(!TIERS[tier]) tier='weak';
+              var badge=document.createElement('span'); badge.className='tier '+tier; badge.textContent=t.tier||'—'; li.appendChild(badge);
+              var nm=document.createElement('span'); nm.className='tox-name'; nm.textContent=t.factor||''; li.appendChild(nm);
+              if(t.note){ li.appendChild(document.createTextNode(' — ')); var nt=document.createElement('span'); nt.className='tox-note'; nt.textContent=t.note; li.appendChild(nt); }
+              if(t.url){ li.appendChild(document.createTextNode(' ')); var a=document.createElement('a'); a.className='tox-src'; a.href=t.url; a.target='_blank'; a.rel='noopener'; a.textContent='['+(t.source||'source')+']'; li.appendChild(a); }
+              ul.appendChild(li);
+            });
+            tx.appendChild(ul);
           });
-          tx.appendChild(tul); d.appendChild(tx);
+          d.appendChild(tx);
         }
         host.appendChild(d);
       });
