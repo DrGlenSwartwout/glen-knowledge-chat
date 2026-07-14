@@ -131,9 +131,10 @@ def test_invoice_priority_after_order():
 
 def test_aggregate_orders_before_invoices(monkeypatch):
     import sqlite3
-    from dashboard import biofield_reveals, ff_match_drafts, orders
+    from dashboard import biofield_reveals, ff_match_drafts, orders, household_holds
     cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
     biofield_reveals.init_table(cx); ff_match_drafts.init_table(cx); orders.init_orders_table(cx)
+    household_holds.init_hold_tables(cx)  # _order_records() subqueries household_holds
     # an order (status new) and an unsent invoice (status proposed) — both on the orders table
     cx.execute("INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
                "total_cents,status) VALUES "
@@ -162,7 +163,14 @@ def test_aggregate_lists_open_orders_first(monkeypatch):
     except Exception:
         cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                    "email TEXT, name TEXT, items_json TEXT, total_cents INTEGER, "
-                   "status TEXT, created_at TEXT)")
+                   "status TEXT, created_at TEXT, hold_group_id INTEGER)")
+    # _order_records() subqueries household_holds; ensure it exists here too.
+    try:
+        from dashboard import household_holds as _hh
+        _hh.init_hold_tables(cx)
+    except Exception:
+        cx.execute("CREATE TABLE household_holds (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "status TEXT)")
     cx.execute("INSERT INTO orders (source,external_ref,email,name,items_json,total_cents,status,created_at) "
                "VALUES ('test','o1','o@b.co','Ord One','[{\"name\":\"x\"}]',5000,'new','2026-07-01T00:00:00')")
     cx.execute("INSERT INTO orders (source,external_ref,email,name,items_json,total_cents,status,created_at) "
@@ -192,7 +200,14 @@ def _seed_cx():
     except Exception:
         cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                    "email TEXT, name TEXT, items_json TEXT, total_cents INTEGER, "
-                   "status TEXT, created_at TEXT)")
+                   "status TEXT, created_at TEXT, hold_group_id INTEGER)")
+    # _order_records() subqueries household_holds; ensure it exists here too.
+    try:
+        from dashboard import household_holds as _hh
+        _hh.init_hold_tables(cx)
+    except Exception:
+        cx.execute("CREATE TABLE household_holds (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "status TEXT)")
     return cx
 
 
@@ -283,3 +298,50 @@ def test_aggregate_orders_by_type_then_age_and_skips_done(monkeypatch):
     assert types == ["biofield_reveal", "handoff", "ff_match_draft"]  # TYPE_PRIORITY order
     assert "done@b.co" not in [d["summary"].split(" ")[0] for d in items]  # sent reveal skipped
     assert all(d["actionable"] for d in items)
+
+
+def test_order_records_excludes_open_held_orders():
+    # An order that joined an OPEN household hold is owned by the batch — it
+    # must not double-surface as an order "Pack" row alongside the household's
+    # "Release now" row. An order whose hold has already released stays packable.
+    import sqlite3
+    from dashboard import household_holds as hh, orders
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    hh.init_hold_tables(cx)
+    orders.init_orders_table(cx)
+
+    cur = cx.execute(
+        "INSERT INTO household_holds (caregiver_email, household_key, status, "
+        "opened_at, hold_until) VALUES ('care@x.co','hh1','open',"
+        "'2026-07-01T00:00:00+00:00','2026-07-03T00:00:00+00:00')")
+    open_hold_id = cur.lastrowid
+
+    cur = cx.execute(
+        "INSERT INTO household_holds (caregiver_email, household_key, status, "
+        "opened_at, hold_until, released_at) VALUES ('care2@x.co','hh2','released',"
+        "'2026-07-01T00:00:00+00:00','2026-07-02T00:00:00+00:00','2026-07-02T00:00:00+00:00')")
+    released_hold_id = cur.lastrowid
+
+    # plain order, no hold
+    cx.execute(
+        "INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
+        "total_cents,status) VALUES "
+        "('2026-07-01T00:00:00','test','o1','plain@b.co','Plain','[]',5000,'new')")
+    # order held by the OPEN hold group -- must be excluded
+    cx.execute(
+        "INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
+        "total_cents,status,hold_group_id) VALUES "
+        "('2026-07-01T00:00:00','test','o2','held@b.co','Held','[]',6000,'new',?)",
+        (open_hold_id,))
+    # order whose hold has already RELEASED -- must still be returned/packable
+    cx.execute(
+        "INSERT INTO orders (created_at,source,external_ref,email,name,items_json,"
+        "total_cents,status,hold_group_id) VALUES "
+        "('2026-07-01T00:00:00','test','o3','released@b.co','Released','[]',7000,'new',?)",
+        (released_hold_id,))
+    cx.commit()
+
+    recs = na._order_records(cx)
+    emails = sorted(r["email"] for r in recs)
+    assert emails == ["plain@b.co", "released@b.co"]
+    assert len(recs) == 2

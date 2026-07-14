@@ -160,9 +160,14 @@ def resolve_handoff(rec):
 
 
 def _order_records(cx):
+    # Exclude orders currently held by an OPEN household hold-and-batch group —
+    # the batch owns them and already surfaces via resolve_household_hold's
+    # "Release now" row. An order whose hold has released stays packable here.
     rows = cx.execute(
         "SELECT id, email, name, items_json, total_cents, status, created_at "
-        "FROM orders WHERE status IN ('new','packed')")
+        "FROM orders WHERE status IN ('new','packed') "
+        "AND (hold_group_id IS NULL "
+        "OR hold_group_id NOT IN (SELECT id FROM household_holds WHERE status='open'))")
     out = []
     for r in rows:
         try:
