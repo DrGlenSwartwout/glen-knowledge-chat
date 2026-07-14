@@ -42,7 +42,9 @@ def test_mark_fulfilled_consumes_pending():
 
 
 def test_reward_catalog_by_level():
-    opts3 = rg.reward_options_for_level(3)
+    cx = _cx()
+    rg.init_reward_gift_options(cx)
+    opts3 = rg.reward_options_for_level(cx, 3)
     assert all(o["level"] == 3 and o.get("active") for o in opts3)
     assert any(o["sku"] for o in opts3)   # seeded placeholders exist
 

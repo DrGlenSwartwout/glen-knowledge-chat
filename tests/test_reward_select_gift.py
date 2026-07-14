@@ -6,6 +6,7 @@ def _cx():
     cx = sqlite3.connect(":memory:")
     dr.init_reward_tables(cx); ra.init_fulfilled_column(cx)
     rg.init_table(cx); rg.migrate_reward_columns(cx)
+    rg.init_reward_gift_options(cx)
     return cx
 
 

@@ -36,9 +36,49 @@ def load_reward_catalog(path=None):
         return []
 
 
-def reward_options_for_level(level, path=None):
-    return [g for g in load_reward_catalog(path)
-            if g.get("active") and int(g.get("level", 0)) == int(level)]
+def init_reward_gift_options(cx):
+    cx.execute("CREATE TABLE IF NOT EXISTS reward_gift_options ("
+               "id INTEGER PRIMARY KEY AUTOINCREMENT, level INTEGER, sku TEXT, label TEXT, "
+               "active INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, created_at TEXT)")
+    cx.execute("CREATE TABLE IF NOT EXISTS reward_gift_catalog_seeded (seeded INTEGER)")
+    seeded = cx.execute("SELECT 1 FROM reward_gift_catalog_seeded LIMIT 1").fetchone()
+    if not seeded:
+        for g in load_reward_catalog():   # from data/reward-gifts.json
+            cx.execute("INSERT INTO reward_gift_options (level, sku, label, active, created_at) "
+                       "VALUES (?,?,?,1,?)", (int(g.get("level", 0)), g["sku"], g.get("label", ""), _now()))
+        cx.execute("INSERT INTO reward_gift_catalog_seeded (seeded) VALUES (1)")
+    cx.commit()
+
+
+def _opt_rows(cx, where="", args=()):
+    cur = cx.cursor(); cur.row_factory = __import__("sqlite3").Row
+    return [dict(r) for r in cur.execute(
+        f"SELECT * FROM reward_gift_options {where} ORDER BY level, sort, id", args).fetchall()]
+
+
+def list_gift_options(cx):
+    init_reward_gift_options(cx); return _opt_rows(cx)
+
+
+def reward_options_for_level(cx, level):   # SIGNATURE CHANGED: cx first, reads DB
+    init_reward_gift_options(cx)
+    return _opt_rows(cx, "WHERE level=? AND active=1", (int(level),))
+
+
+def add_gift_option(cx, level, sku, label):
+    init_reward_gift_options(cx)
+    cx.execute("INSERT INTO reward_gift_options (level, sku, label, active, created_at) "
+               "VALUES (?,?,?,1,?)", (int(level), sku, label, _now()))
+    cx.commit()
+    return cx.execute("SELECT id FROM reward_gift_options ORDER BY id DESC LIMIT 1").fetchone()[0]
+
+
+def delete_gift_option(cx, opt_id):
+    cx.execute("DELETE FROM reward_gift_options WHERE id=?", (opt_id,)); cx.commit()
+
+
+def set_gift_option_active(cx, opt_id, active):
+    cx.execute("UPDATE reward_gift_options SET active=? WHERE id=?", (1 if active else 0, opt_id)); cx.commit()
 
 
 def init_table(cx):

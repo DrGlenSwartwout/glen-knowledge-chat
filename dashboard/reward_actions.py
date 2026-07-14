@@ -65,7 +65,7 @@ def select_gift(cx, grant_id, sku, actor):
     if not row:
         return {"ok": False, "error": "no pending grant"}
     email, tier = row[0], row[1]
-    opt = next((o for o in _rg.reward_options_for_level(tier) if o["sku"] == sku), None)
+    opt = next((o for o in _rg.reward_options_for_level(cx, tier) if o["sku"] == sku), None)
     if not opt:
         return {"ok": False, "error": "sku not in level catalog"}
     existing = cx.execute(

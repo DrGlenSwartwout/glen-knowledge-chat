@@ -13762,7 +13762,7 @@ def api_console_rewards():
             "WHERE status='pending' ORDER BY granted_at").fetchall()
         for r in rows:
             options = [{"sku": o["sku"], "label": o["label"]}
-                       for o in _rg.reward_options_for_level(r["tier"])]
+                       for o in _rg.reward_options_for_level(cx, r["tier"])]
             items.append({"grant_id": r["id"], "email": r["email"],
                           "reward_type": r["reward_type"], "tier": r["tier"],
                           "granted_at": r["granted_at"], "options": options})
