@@ -11279,6 +11279,26 @@ def api_console_scan_recommendations_sync():
     return jsonify({"ok": True, "clients": len(client_emails), "scans": scans, "rows": rows})
 
 
+@app.route("/api/console/prl/sync", methods=["POST"])
+def api_console_prl_sync():
+    """Owner sync: (re)load the PRL reference tables (catalog + FF crosswalk,
+    focus-area->PRL map, item->focus-area map) from data/prl_seed.json into
+    chat_log.db. Idempotent full replace. Sends NOTHING. Mirror table untouched."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import prl_supplement as _prl
+    seed_path = os.path.join(os.path.dirname(__file__), "data", "prl_seed.json")
+    try:
+        with open(seed_path) as f:
+            seed = json.load(f)
+    except Exception as _e:
+        return jsonify({"error": f"seed load failed: {_e!r}"}), 500
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _prl.init_tables(cx)
+        counts = _prl.sync_from_seed(cx, seed)
+    return jsonify({"ok": True, **counts})
+
+
 @app.route("/api/console/scan-recommendations", methods=["GET"])
 def api_console_scan_recommendations_read():
     """Owner: read back what the pusher stored. Slice 1 shipped write-only, so this is
@@ -15452,6 +15472,13 @@ def _program_composer_enabled():
         "1", "true", "yes", "on")
 
 
+def _prl_supplement_enabled():
+    """The PRL Supplement portal card. Default OFF — when off the portal payload
+    never gains the `prl_supplement` key, so responses stay byte-identical."""
+    return (os.environ.get("PRL_SUPPLEMENT_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _portal_scan_history_enabled() -> bool:
     """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
     return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -17123,6 +17150,16 @@ def api_client_portal(token):
                 payload["support_program"] = _sp_block
         except Exception as _e:
             print(f"[support-program/payload] {_e!r}", flush=True)
+    # PRL Supplement flag (always present, mirrors ff_matches_enabled) + card
+    # (flag-gated, best-effort). email_for_reports is member-re-pointed.
+    payload["prl_supplement_enabled"] = _prl_supplement_enabled()
+    if _prl_supplement_enabled():
+        try:
+            _prl_block = _prl_supplement_for(email_for_reports, req_date or None)
+            if _prl_block:
+                payload["prl_supplement"] = _prl_block
+        except Exception as _e:
+            print(f"[prl-supplement/payload] {_e!r}", flush=True)
     # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
     # standing hand-composed program, distinct from the condition-driven
     # support_program card above and from the reco-card. email_for_reports is
@@ -17948,6 +17985,107 @@ def _client_facts_for(email):
             return _cf.get_facts(cx, email)
     except Exception:
         return {}
+
+
+PRL_LINK = "https://truly.vip/prl"  # Glen's practitioner ordering link (code 021a1a)
+
+
+def _prl_ff_view(best_ff, relation):
+    if not best_ff:
+        return None
+    try:
+        slug = _resolve_remedy_slug({"name": best_ff})
+    except Exception:
+        slug = None
+    return {"name": best_ff, "relation": relation or "consider", "slug": slug}
+
+
+def _prl_supplement_for(email, scan_date):
+    """The client's PRL Supplement card, or None (flag off / no scan / no coverage).
+    Best-effort — any error returns None, never raises. Uses a captured per-scan
+    mirror verbatim when present, else derives from the scan's item codes.
+
+    `focus_areas_for_items` returns ALL item-matched focus areas ranked by hit
+    count, including ones with no PRL products (uncovered) -- it does not filter
+    those out. Dropping uncovered focus areas must happen INSIDE the ranked walk,
+    not via a pre-slice to 6: a pre-slice can let uncovered focus areas that
+    out-rank a covered one consume all 6 slots and starve the card of real
+    entries. So here we rank all, then walk keeping only covered focus areas,
+    stopping once 6 covered ones are collected."""
+    if not _prl_supplement_enabled():
+        return None
+    try:
+        from dashboard import prl_supplement as _prl
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _prl.init_tables(cx)
+            email_norm = (email or "").strip().lower()
+            dates = [r[0] for r in cx.execute(
+                "SELECT DISTINCT scan_date FROM scan_recommendations "
+                "WHERE email=? AND scan_date IS NOT NULL AND scan_date<>'' "
+                "ORDER BY scan_date DESC", (email_norm,)).fetchall()]
+            if not dates:
+                return None
+            sd = (scan_date or "").strip()
+            picked = sd if (sd and sd in dates) else dates[0]
+            rows = cx.execute(
+                "SELECT scan_id, item_code, label FROM scan_recommendations "
+                "WHERE email=? AND scan_date=? ORDER BY priority_rank",
+                (email_norm, picked)).fetchall()
+            if not rows:
+                return None
+            scan_id = rows[0]["scan_id"]
+            codes = [r["item_code"] for r in rows]
+            code_labels = {}
+            for r in rows:
+                bare_c = (r["item_code"] or "").split(" - ")[0]
+                code_labels[bare_c] = r["label"] or r["item_code"]
+
+            # 1) mirror override
+            mirror = _prl.mirror_for_scan(cx, scan_id)
+            if mirror and isinstance(mirror.get("patterns"), list):
+                fas = []
+                for p in mirror["patterns"]:
+                    prods = []
+                    for pr in (p.get("PRLProducts") or []):
+                        nm = pr.get("Name")
+                        prow = cx.execute(
+                            "SELECT url, best_ff, relation FROM prl_products WHERE name=?",
+                            (nm,)).fetchone()
+                        prods.append({"name": nm,
+                                      "url": (prow["url"] if prow else None),
+                                      "ff": _prl_ff_view(prow["best_ff"], prow["relation"]) if prow else None})
+                    fas.append({"name": p.get("Name"),
+                                "items": [it.get("ScanItemName") for it in (p.get("PatternItems") or [])],
+                                "products": prods})
+                if fas:
+                    return {"source": "mirror", "prl_link": PRL_LINK, "focus_areas": fas}
+
+            # 2) derive -- rank all item-matched focus areas, keep only covered
+            # ones while walking (do NOT slice to 6 before filtering: see
+            # docstring above for why that starves the card).
+            bare = [(c or "").split(" - ")[0] for c in codes]
+            ranked = _prl.focus_areas_for_items(cx, bare)
+            fas = []
+            for fa in ranked:
+                prods = []
+                for pr in _prl.products_for_focus_area(cx, fa["focus_area_id"]):
+                    prods.append({"name": pr["name"], "url": pr.get("url"),
+                                  "ff": _prl_ff_view(pr.get("best_ff"), pr.get("relation"))})
+                if not prods:
+                    continue
+                fa_codes = {r["item_code"] for r in cx.execute(
+                    "SELECT item_code FROM prl_focus_area_items WHERE focus_area_id=?",
+                    (fa["focus_area_id"],)).fetchall()}
+                matched = [code_labels.get(bc, bc) for bc in bare if bc in fa_codes]
+                fas.append({"name": fa["focus_area_name"], "items": matched, "products": prods})
+                if len(fas) >= 6:
+                    break
+            if not fas:
+                return None
+            return {"source": "derived", "prl_link": PRL_LINK, "focus_areas": fas}
+    except Exception:
+        return None
 
 
 def _support_program_for(email):
