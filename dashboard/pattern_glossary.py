@@ -98,3 +98,28 @@ def list_patterns(cx):
     ordered = [c for c in _CATEGORY_ORDER if c in by_cat]
     ordered += [c for c in by_cat if c not in _CATEGORY_ORDER]
     return [{"category": c, "patterns": by_cat[c]} for c in ordered]
+
+
+def pattern_remedies(cx, code):
+    """The formulations mapped to an E4L pattern code ("what may help"), ordered
+    by priority then name, deduped by name (best/lowest priority wins). Each item
+    is {name, priority}. Empty list on any failure or unknown code."""
+    code = (code or "").strip()
+    if not code:
+        return []
+    try:
+        rows = cx.execute(
+            "SELECT f.name AS name, m.priority AS priority "
+            "FROM e4l_formulation_map m JOIN formulations f ON f.id = m.formulation_id "
+            "WHERE m.item_code = ? ORDER BY COALESCE(m.priority, 5), f.name", (code,)).fetchall()
+    except Exception:
+        return []
+    out, seen = [], set()
+    for r in rows:
+        nm = (r["name"] or "").strip()
+        key = nm.lower()
+        if not nm or key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": nm, "priority": r["priority"] if r["priority"] is not None else 5})
+    return out

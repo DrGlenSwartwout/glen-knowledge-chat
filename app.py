@@ -6865,6 +6865,19 @@ def learn_pattern_data(slug):
                     s["clinical_slug"] = cidx.get(_gx.canon(s.get("structure", "")))
         except Exception:
             pass
+        # "What may help": the formulations mapped to this pattern, each resolved to
+        # a product page where the name matches (exact + curated overrides; no fuzzy).
+        try:
+            from dashboard import clinical_glossary as _cg, products as _pr
+            rem = _pg.pattern_remedies(cx, p.get("code", ""))
+            if rem:
+                ridx = _cg.product_name_index(_pr.load_products())
+                rov = _cg.load_overrides()
+                for r in rem:
+                    r["product_slug"] = _cg.remedy_product_slug(r.get("name", ""), ridx, rov)
+                p["remedies"] = rem
+        except Exception:
+            pass
         return jsonify(p)
     finally:
         try:
