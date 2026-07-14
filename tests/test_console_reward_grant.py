@@ -3,6 +3,7 @@ import sqlite3
 from dashboard import console_next_action as na
 from dashboard import data_sharing_rewards as dr
 from dashboard import reward_actions as ra
+from dashboard import household_holds as hh
 
 
 def _cx():
@@ -10,6 +11,9 @@ def _cx():
     cx.row_factory = sqlite3.Row  # REQUIRED — matches prod; without it r["id"] raises
     dr.init_reward_tables(cx)
     ra.init_fulfilled_column(cx)
+    # list_actionable() runs every record-type lister; #884's household lister is
+    # the one that raises on a missing table (others tolerate it), so create it.
+    hh.init_hold_tables(cx)
     return cx
 
 
