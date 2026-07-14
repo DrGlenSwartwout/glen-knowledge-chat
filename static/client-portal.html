@@ -478,6 +478,23 @@ function supportProgramBodyHtml(sp){
   if(!rows) rows = `<p class="muted">No program items yet.</p>`;
   return `${consult}${rows}`;
 }
+// Life Stress essence card body (Task 6): essences matched to the emotional/stress
+// patterns found in this client's scan (E4L + journal), flag-gated at the card block
+// below (d.life_stress_enabled). Each essence links to its product page when a URL
+// is present; the muted note names the pattern it was matched to (e.g. "for the fear
+// pattern in your scan").
+function lifeStressBodyHtml(ls){
+  ls = ls || {};
+  const items = Array.isArray(ls.items) ? ls.items : [];
+  if(!items.length) return "";
+  let rows = items.map(it => {
+    const nm = esc(it.name || "");
+    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
+    return `<li>${nameHtml}${note}</li>`;
+  }).join("");
+  return `<p class="muted">Supportive essences matched to the stress patterns in your latest scan.</p><ul>${rows}</ul>`;
+}
 // Premier Research Labs (PRL) supplement card body (Task 6): a budget-friendly
 // direct-order option grouped by focus area, with the FF equivalent/complement
 // called out under each product when one exists. Flag-gated server-side
@@ -1369,6 +1386,14 @@ function render(d, v){
       ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
       <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
     </div>`;
+  }
+
+  // Life Stress essence card (Task 6, flag-gated server-side): essences matched to
+  // the emotional/stress patterns in this client's scan, present only when
+  // LIFE_STRESS_ENABLED is on and d.life_stress has at least one item.
+  if (d.life_stress_enabled && d.life_stress) {
+    html += '<div class="card life-stress-card"><h2>Your Life Stress Essences</h2>'
+          + lifeStressBodyHtml(d.life_stress) + '</div>';
   }
 
   // Premier Research Labs card (Task 6, flag-gated server-side): a budget-friendly
