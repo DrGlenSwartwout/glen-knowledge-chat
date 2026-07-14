@@ -133,6 +133,32 @@ def _pattern_hrefs(cx, codes):
     return out
 
 
+def emotions_for_codes(codes, *, db_path=None):
+    """{code: [emotion, ...]} for the codes that carry stype='emotion' structure
+    rows in e4l_pattern_structures, ordered by is_primary then structure. Read-only.
+    Returns {} on blank input, missing DB, or any sqlite error. Never raises."""
+    codes = [str(c).strip() for c in (codes or []) if str(c).strip()]
+    if not codes:
+        return {}
+    cx = _connect_ro(_db_path(db_path))
+    if cx is None:
+        return {}
+    out = {}
+    try:
+        ph = ",".join("?" for _ in codes)
+        rows = cx.execute(
+            f"SELECT code, structure FROM e4l_pattern_structures "
+            f"WHERE stype='emotion' AND code IN ({ph}) "
+            f"ORDER BY is_primary DESC, structure ASC", tuple(codes)).fetchall()
+        for r in rows:
+            out.setdefault(r["code"], []).append(r["structure"])
+    except sqlite3.Error:
+        return {}
+    finally:
+        cx.close()
+    return out
+
+
 def _days_ago(scan_date, today):
     """Whole days from scan_date to today (both YYYY-MM-DD). Clamped >= 0 so a future
     scan_date (data glitch) never reads as negative. None if either is unparseable."""
