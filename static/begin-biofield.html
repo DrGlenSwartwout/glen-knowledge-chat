@@ -527,7 +527,11 @@
           orderBtn.setAttribute("href", rem.buy_url || "/begin/match");
         }
         orderBtn.className = "buy-btn";
-        orderBtn.textContent = "Order";
+        // When the cart is on, this button orders ONLY this remedy — the sticky
+        // "Order my remedies" bar is what orders the whole set. Say so, so a client
+        // doesn't tap it expecting the full order (Dana T, 2026-07-13: "it only
+        // orders that one item").
+        orderBtn.textContent = (data.cart_enabled && rem.slug) ? "Order just this one" : "Order";
         container.appendChild(orderBtn);
 
         if (data.cart_enabled && rem.slug) {
@@ -535,18 +539,37 @@
           row.className = "bf-cart-row";
           var cb = document.createElement("input");
           cb.type = "checkbox"; cb.checked = true;
+          // Quantity goes down to 0. Subtracting to 0 REMOVES the remedy from the
+          // order (same as unchecking) — that is the control people reach for when
+          // they want an item gone. Previously min="1" clamped it, so a client had
+          // no way to subtract a remedy off their order (Dana T, 2026-07-13: "I hit
+          // the subtract sign, it doesn't go to zero").
           var qty = document.createElement("input");
-          qty.type = "number"; qty.min = "1"; qty.value = "1";
+          qty.type = "number"; qty.min = "0"; qty.value = "1";
           var lbl = document.createElement("span");
-          lbl.textContent = "Add to my order";
+          function setLbl() { lbl.textContent = cb.checked ? "In your order" : "Removed — check to add back"; }
           cartItems[rem.slug] = 1;
-          function sync() {
-            if (cb.checked) { cartItems[rem.slug] = Math.max(1, parseInt(qty.value || "1", 10)); }
-            else { delete cartItems[rem.slug]; }
+          function sync(fromQty) {
+            var q = parseInt(qty.value, 10);
+            if (isNaN(q)) { q = cb.checked ? 1 : 0; }
+            if (fromQty && q <= 0) { cb.checked = false; }   // subtracted to zero = remove
+            if (cb.checked) {
+              if (q < 1) { q = 1; }                          // a kept item is at least 1
+              qty.value = String(q);
+              cartItems[rem.slug] = q;
+            } else {
+              delete cartItems[rem.slug];
+              qty.value = "0";
+            }
+            setLbl();
             refreshCartBar();
           }
-          cb.addEventListener("change", sync);
-          qty.addEventListener("input", sync);
+          cb.addEventListener("change", function () {
+            if (cb.checked && parseInt(qty.value, 10) < 1) { qty.value = "1"; }
+            sync(false);
+          });
+          qty.addEventListener("input", function () { sync(true); });
+          setLbl();
           row.appendChild(cb); row.appendChild(qty); row.appendChild(lbl);
           container.appendChild(row);
         }
