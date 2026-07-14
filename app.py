@@ -11619,6 +11619,75 @@ def api_console_analysis_request_complete(req_id):
     return jsonify({"ok": True, "status": status})
 
 
+@app.route("/console/scan-trends")
+def console_scan_trends_page():
+    resp = send_from_directory(STATIC, "console-scan-trends.html")
+    return resp
+
+
+@app.route("/api/console/e4l/client-search", methods=["GET"])
+def api_console_e4l_client_search():
+    """Owner: search E4L clients by name -> [{client_id, name, n_scans, last_scan}]."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"clients": []})
+    from dashboard import pattern_glossary as _pg
+    cx = _pg.open_ro()
+    if cx is None:
+        return jsonify({"clients": []})
+    try:
+        rows = cx.execute(
+            "SELECT c.client_id, c.name, COUNT(s.scan_id) n, MAX(s.scan_date) last "
+            "FROM e4l_clients c JOIN e4l_scans s ON s.client_id=c.client_id "
+            "WHERE lower(c.name) LIKE ? GROUP BY c.client_id ORDER BY n DESC LIMIT 20",
+            ("%" + q.lower() + "%",)).fetchall()
+        return jsonify({"clients": [{"client_id": r["client_id"], "name": r["name"],
+                                     "n_scans": r["n"], "last_scan": r["last"]} for r in rows]})
+    except Exception:
+        return jsonify({"clients": []})
+    finally:
+        try:
+            cx.close()
+        except Exception:
+            pass
+
+
+@app.route("/api/console/e4l/client-trends", methods=["GET"])
+def api_console_e4l_client_trends():
+    """Owner: longitudinal trend analysis across a client's E4L scan history.
+    Reads the local e4l.db (per-client scan findings live locally, not in prod)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        client_id = int(request.args.get("client_id") or 0)
+    except (TypeError, ValueError):
+        client_id = 0
+    if not client_id:
+        return jsonify({"error": "client_id required"}), 400
+    try:
+        last_n = int(request.args.get("last_n") or 12)
+    except (TypeError, ValueError):
+        last_n = 12
+    from dashboard import pattern_glossary as _pg, scan_trends as _stn
+    cx = _pg.open_ro()
+    if cx is None:
+        return jsonify({"n_scans": 0, "items": [], "note": "e4l.db unavailable"})
+    try:
+        out = _stn.client_trends(cx, client_id, last_n=last_n if last_n > 0 else None)
+        # link each item to its glossary pattern page where one exists
+        for it in out.get("items", []):
+            slug = _pg.slug_for(it.get("code", ""))
+            it["pattern_slug"] = slug if _pg.page_exists(cx, slug) else ""
+        return jsonify(out)
+    finally:
+        try:
+            cx.close()
+        except Exception:
+            pass
+
+
 @app.route("/api/console/scan-pull-requests", methods=["POST"])
 def api_console_scan_pull_create():
     """Owner console: enqueue a 'pull this client's latest scan from E4L' request.
