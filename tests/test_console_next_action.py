@@ -59,6 +59,68 @@ def test_handoff_confirmed_is_done():
     assert na.resolve_handoff({"biofield_status": "confirmed"}) == {"actionable": False}
 
 
+def test_order_new_offers_pack_and_open_secondary():
+    d = na.resolve_order({"id": 12, "name": "Jane Doe", "email": "j@d.co",
+                          "total_cents": 14000, "item_count": 2,
+                          "status": "new", "age_ts": "2026-07-01T00:00:00"})
+    assert d["actionable"] and d["state"] == "new"
+    assert d["label"] == "Pack" and d["confirm"] is False
+    assert d["action"] == {"kind": "dispatch", "keys": ["orders.mark_packed"],
+                           "body": {"order_id": 12}}
+    assert d["secondary"]["label"] == "Open order"
+    assert d["secondary"]["action"] == {"kind": "link", "url": "/console/orders"}
+    assert d["summary"] == "#12 · Jane Doe · $140.00 · 2 items"
+
+
+def test_order_packed_deeplinks_to_ship_no_secondary():
+    d = na.resolve_order({"id": 5, "name": "", "email": "a@b.co",
+                          "total_cents": 7000, "item_count": 1,
+                          "status": "packed", "age_ts": "t"})
+    assert d["actionable"] and d["state"] == "packed"
+    assert d["label"] == "Open to ship"
+    assert d["action"] == {"kind": "link", "url": "/console/orders"}
+    assert d["secondary"] is None
+    assert d["summary"] == "#5 · a@b.co · $70.00 · 1 item"   # name falls back to email; singular
+
+
+def test_order_terminal_states_are_done():
+    for s in ("shipped", "delivered", "done", "cancelled", "proposed", "confirmed", "paid"):
+        assert na.resolve_order({"id": 1, "status": s}) == {"actionable": False}, s
+
+
+def test_order_first_in_priority():
+    assert na.TYPE_PRIORITY[0] == "order"
+
+
+def test_aggregate_lists_open_orders_first(monkeypatch):
+    import sqlite3
+    from dashboard import biofield_reveals, ff_match_drafts
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    biofield_reveals.init_table(cx); ff_match_drafts.init_table(cx)
+    # orders table: prefer the module's own initializer; fall back to a minimal
+    # table if importing dashboard.orders can't run bare in this env.
+    try:
+        from dashboard import orders as _ord
+        _ord.init_orders_table(cx)
+    except Exception:
+        cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "email TEXT, name TEXT, items_json TEXT, total_cents INTEGER, "
+                   "status TEXT, created_at TEXT)")
+    cx.execute("INSERT INTO orders (source,external_ref,email,name,items_json,total_cents,status,created_at) "
+               "VALUES ('test','o1','o@b.co','Ord One','[{\"name\":\"x\"}]',5000,'new','2026-07-01T00:00:00')")
+    cx.execute("INSERT INTO orders (source,external_ref,email,name,items_json,total_cents,status,created_at) "
+               "VALUES ('test','o2','done@b.co','Done','[]',9000,'shipped','2026-07-02T00:00:00')")
+    cx.execute("INSERT INTO ff_match_drafts (email,scan_date,items_json,status,created_at,updated_at) "
+               "VALUES ('f@b.co','s','[]','draft','2026-07-01T00:00:00','2026-07-01T00:00:00')")
+    cx.commit()
+    monkeypatch.setattr(na, "_handoff_records", lambda cx: [])
+    items = na.list_actionable(cx)
+    types = [d["type"] for d in items]
+    assert types[0] == "order"                      # order sorts first
+    assert "order" in types and "ff_match_draft" in types
+    assert all("done@b.co" not in d["summary"] for d in items)  # shipped order skipped
+
+
 def _seed_cx():
     import sqlite3
     from dashboard import biofield_reveals, ff_match_drafts
@@ -66,6 +128,13 @@ def _seed_cx():
     cx.row_factory = sqlite3.Row
     biofield_reveals.init_table(cx)
     ff_match_drafts.init_table(cx)
+    try:
+        from dashboard import orders as _ord
+        _ord.init_orders_table(cx)
+    except Exception:
+        cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                   "email TEXT, name TEXT, items_json TEXT, total_cents INTEGER, "
+                   "status TEXT, created_at TEXT)")
     return cx
 
 

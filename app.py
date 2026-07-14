@@ -13608,14 +13608,15 @@ def api_console_handoffs():
 @app.route("/api/console/next-actions", methods=["GET"])
 def api_console_next_actions():
     """Unified operator queue: one actionable descriptor per pending biofield
-    reveal, handoff, and FF match draft (dashboard/console_next_action.py).
+    reveal, handoff, FF match draft, and order (dashboard/console_next_action.py).
     Console-secret gated."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import (console_next_action as _na, biofield_reveals as _br,
-                           ff_match_drafts as _ff, client_portal as _cp)
+                           ff_match_drafts as _ff, client_portal as _cp, orders as _ord)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        _br.init_table(cx); _ff.init_table(cx); _cp.init_client_portal_table(cx)
+        _br.init_table(cx); _ff.init_table(cx)
+        _cp.init_client_portal_table(cx); _ord.init_orders_table(cx)
         cx.row_factory = sqlite3.Row
         items = _na.list_actionable(cx)
     return jsonify({"items": items})
