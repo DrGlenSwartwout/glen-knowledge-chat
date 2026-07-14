@@ -11625,6 +11625,52 @@ def console_scan_trends_page():
     return resp
 
 
+@app.route("/api/console/e4l/db-sync", methods=["POST"])
+def api_console_e4l_db_sync():
+    """Owner: receive the full e4l.db (catalog + client findings) and install it on
+    the prod persistent disk at $DATA_DIR/e4l.db, which _db_path() then serves to the
+    pattern glossary + scan-trends. Body is the raw SQLite file bytes. Validated and
+    swapped atomically. PHI travels only over this owner-authenticated TLS channel —
+    never git."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    data_dir = os.environ.get("DATA_DIR")
+    if not data_dir:
+        return jsonify({"error": "DATA_DIR not configured"}), 500
+    blob = request.get_data(cache=False)
+    if not blob or len(blob) < 1024:
+        return jsonify({"error": "empty or too-small upload"}), 400
+    tmp = os.path.join(data_dir, "e4l.db.upload")
+    dest = os.path.join(data_dir, "e4l.db")
+    try:
+        os.makedirs(data_dir, exist_ok=True)
+        with open(tmp, "wb") as f:
+            f.write(blob)
+        # validate it's a real e4l.db before swapping in
+        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+        vx.row_factory = sqlite3.Row
+        counts = {}
+        for t in ("e4l_items", "e4l_pattern_structures", "e4l_formulation_map",
+                  "e4l_scans", "e4l_scan_results", "e4l_clients"):
+            try:
+                counts[t] = vx.execute("SELECT COUNT(*) FROM %s" % t).fetchone()[0]
+            except Exception:
+                counts[t] = None
+        vx.close()
+        if not counts.get("e4l_items"):
+            os.remove(tmp)
+            return jsonify({"error": "upload is not a valid e4l.db (no e4l_items)"}), 400
+        os.replace(tmp, dest)  # atomic swap
+        return jsonify({"ok": True, "bytes": len(blob), "path": dest, "counts": counts})
+    except Exception as e:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except Exception:
+            pass
+        return jsonify({"error": "db-sync failed: %r" % e}), 500
+
+
 @app.route("/api/console/e4l/client-search", methods=["GET"])
 def api_console_e4l_client_search():
     """Owner: search E4L clients by name -> [{client_id, name, n_scans, last_scan}]."""
