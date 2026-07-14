@@ -6932,6 +6932,19 @@ def learn_clinical_glossary_dim_data(dim):
                     e["patterns"] = o2p.get(_gx.canon(e.get("name", "")), [])
         except Exception:
             pass
+    # Stress-factor layer: attach characteristic stress factors (toxin / microbe /
+    # emotional / physical) to Organ and Meridian entries (meridians inherit their
+    # organ's factors via the map).
+    if dim in ("organs", "meridians"):
+        try:
+            from dashboard import organ_stressors as _os
+            _sf = _os.load()
+            for e in d.get("entries", []):
+                sf = _os.stressors_for(e.get("name", ""), _sf)
+                if sf:
+                    e["stress_factors"] = sf
+        except Exception:
+            pass
     return jsonify(d)
 
 

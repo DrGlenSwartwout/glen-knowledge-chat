@@ -1,0 +1,154 @@
+{
+  "_note": "Evidence-tiered organ/meridian -> characteristic STRESS FACTORS for the clinical glossary, across four categories: toxin (chemical), microbe (infectious/dysbiotic), emotional (TCM correspondence), physical (radiation/EMF). Curated from a 2026-07-14 research pass. Tiers: strong (agency review/meta-analysis) / moderate / weak / traditional (classical TCM consensus, not biomedical evidence) / contested (disputed or practitioner-level). Meridians inherit their organ's factors + their TCM emotion via 'entry_keys'. A reference layer, not a diagnosis.",
+  "factors": {
+    "heart": [
+      {"category": "toxin", "factor": "Arsenic", "tier": "strong", "note": "Atherosclerosis + oxidative endothelial injury; QT prolongation/arrhythmia.", "source": "Curr Atheroscler Rep 2012", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3483370/"},
+      {"category": "toxin", "factor": "Lead (hypertension)", "tier": "strong", "note": "↓Nitric-oxide + oxidative stress → raised vascular tone (dose-response meta-analysis).", "source": "Front. Public Health 2025", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12727891/"},
+      {"category": "toxin", "factor": "Cadmium", "tier": "strong", "note": "Vascular oxidative stress/endothelial dysfunction → ↑BP/CVD (RR 1.36).", "source": "Curr Atheroscler Rep 2013", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3858820/"},
+      {"category": "toxin", "factor": "Fine particulate air pollution (PM2.5)", "tier": "strong", "note": "Systemic inflammation + autonomic imbalance → MI/stroke (+23% IHD mortality per 10 µg/m³).", "source": "JAHA 2021 (meta-analysis)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7955467/"},
+      {"category": "toxin", "factor": "Cobalt (cardiomyopathy)", "tier": "moderate", "note": "Mitochondrial dysfunction → dilated cardiomyopathy (metal-on-metal implant wear; historic beer-foam). Case-based.", "source": "Case Rep Cardiol 2017", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5563425/"},
+      {"category": "toxin", "factor": "PFAS (cholesterol)", "tier": "moderate", "note": "↑LDL/total cholesterol; hard-CVD causation unproven.", "source": "Toxicology 2021 workshop", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9048712/"},
+      {"category": "emotional", "factor": "Joy / over-excitement; shock, anxiety", "tier": "traditional", "note": "Fire — 'scatters the Qi': palpitations, insomnia, restlessness, disturbed Shen (spirit).", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "blood_vessels": [
+      {"category": "toxin", "factor": "Arsenic (blackfoot disease, atherosclerosis)", "tier": "strong", "note": "Endothelial injury + smooth-muscle proliferation → peripheral arterial occlusion (PAD RR 2.17).", "source": "Curr Atheroscler Rep 2012", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3483370/"},
+      {"category": "toxin", "factor": "Lead", "tier": "strong", "note": "Arterial stiffness, subclinical atherosclerosis, PAD (IHD RR 1.85).", "source": "AHA Statement 2023 (JAHA)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10356104/"},
+      {"category": "toxin", "factor": "Cadmium", "tier": "strong", "note": "Endothelial dysfunction, vascular inflammation → atherosclerosis, PAD (RR 1.49).", "source": "Curr Atheroscler Rep 2013", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3858820/"}
+    ],
+    "pericardium": [
+      {"category": "emotional", "factor": "Emotional protection, intimacy, joy in relationships", "tier": "traditional", "note": "Fire — the 'Heart Protector': over-guarding or over-exposing the heart in love/relationships.", "source": "Five-Element (Worsley)", "url": "https://www.pacificcollege.edu/news/blog/2019/08/09/classical-five-element-acupuncture-treatment-strategies"}
+    ],
+    "triple_warmer": [
+      {"category": "emotional", "factor": "Dysregulation / fight-or-flight overwhelm", "tier": "traditional", "note": "Fire — the social-emotional & thermal 'thermostat': hypervigilance, 'blowing hot and cold', stress-response overwhelm.", "source": "Five-Element (Worsley)", "url": "https://www.pacificcollege.edu/news/blog/2019/08/09/classical-five-element-acupuncture-treatment-strategies"}
+    ],
+    "stomach": [
+      {"category": "toxin", "factor": "Heavy metals (Cd, Pb, Hg, Cr, As)", "tier": "moderate", "note": "Mucosal-barrier disruption (Cd²⁺ displaces Ca²⁺) + raised H. pylori susceptibility. A route/acute target, not a storage organ.", "source": "Yuan 2016, BioMed Res Int", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5075591/"},
+      {"category": "microbe", "factor": "Helicobacter pylori", "tier": "strong", "note": "Chronic gastritis, peptic ulcer, ~80% of gastric adenocarcinoma; first bacterium classed IARC Group 1.", "source": "PMC4124371", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4124371/"},
+      {"category": "emotional", "factor": "Worry; over-nurturing / disgust", "tier": "traditional", "note": "Earth — disturbed 'taking in' and being satisfied (food, information, or love).", "source": "Five-Element (Worsley)", "url": "https://www.5element.com.au/The_Twelve_Meridinas.html"}
+    ],
+    "gastro_intestinal": [
+      {"category": "toxin", "factor": "Heavy metals (gut barrier, microbiota)", "tier": "moderate", "note": "Oxidative stress, altered microbiota, 'leaky gut'.", "source": "Front. Nutrition 2024", "url": "https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2024.1448388/full"},
+      {"category": "microbe", "factor": "Dysbiosis", "tier": "moderate", "note": "Loss of colonization resistance; substrate for C. difficile / Candida.", "source": "Nat. Rev. Microbiol. 2025", "url": "https://www.nature.com/articles/s41579-025-01242-2"},
+      {"category": "microbe", "factor": "Trichothecene mycotoxins (T-2)", "tier": "weak", "note": "Protein-synthesis inhibitor injuring GI tract (largely animal data).", "source": "Front. review 2017", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5464924/"}
+    ],
+    "large_intestine": [
+      {"category": "microbe", "factor": "Dysbiosis / Clostridioides difficile", "tier": "strong", "note": "Antibiotic-driven loss of colonization resistance → colitis; ~450k US cases/yr.", "source": "PMC10811429", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10811429/"},
+      {"category": "microbe", "factor": "Candida overgrowth", "tier": "moderate", "note": "Secondary to dysbiosis/antibiotics; disputed as a discrete syndrome.", "source": "PMC9147621", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9147621/"},
+      {"category": "microbe", "factor": "Parasites (Giardia, Entamoeba)", "tier": "moderate", "note": "Colonize when mucosal defense is insufficient.", "source": "PMC12468957", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12468957/"},
+      {"category": "emotional", "factor": "Letting go / guilt", "tier": "traditional", "note": "Metal — inability to release the past/'waste' (physical, mental, emotional).", "source": "Five-Element (Worsley)", "url": "https://www.5element.com.au/The_Twelve_Meridinas.html"}
+    ],
+    "small_intestine": [
+      {"category": "microbe", "factor": "SIBO (small-intestinal bacterial overgrowth)", "tier": "moderate", "note": "Bacterial excess → bloating, malabsorption; definition/diagnosis still debated.", "source": "PMC7386065", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7386065/"},
+      {"category": "microbe", "factor": "Intestinal permeability ('leaky gut')", "tier": "moderate", "note": "Zonulin-mediated tight-junction opening; strong in celiac/IBD, weaker as a standalone diagnosis.", "source": "Fasano, Clin Gastroenterol Hepatol", "url": "https://www.cghjournal.org/article/S1542-3565(12)00932-9/fulltext"},
+      {"category": "emotional", "factor": "Discernment / vulnerability", "tier": "traditional", "note": "Fire — separating 'pure from impure': clarity in decisions and relationships.", "source": "Five-Element (Worsley)", "url": "https://www.pacificcollege.edu/news/blog/2019/08/09/classical-five-element-acupuncture-treatment-strategies"}
+    ],
+    "pancreas": [
+      {"category": "toxin", "factor": "Organochlorines / POPs & PCBs (β-cell, type-2 diabetes)", "tier": "strong", "note": "Meta-analysis: p,p′-DDE OR 1.33, total PCBs OR 2.14 for T2D; POPs measured in human pancreatic tissue.", "source": "Tang 2014, PLoS One (meta-analysis)", "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0085556"},
+      {"category": "toxin", "factor": "Organophosphate pesticides (acute pancreatitis)", "tier": "moderate", "note": "ACh hyperstimulation of the acinus + ampullary obstruction. Case series.", "source": "Yoshida 2015, J Intensive Care", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4422543/"},
+      {"category": "toxin", "factor": "BPA (insulin signaling)", "tier": "moderate", "note": "Estradiol mimic disrupting islet insulin signaling; human endpoints contested.", "source": "Rev. Endocr. Metab. Disord.", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC9072519/"},
+      {"category": "emotional", "factor": "Worry / overthinking, rumination", "tier": "traditional", "note": "Earth (Spleen) — 'knots the Qi': dwelling thought, mental fog, digestive stagnation.", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "liver": [
+      {"category": "toxin", "factor": "Aflatoxin B1 (HCC)", "tier": "strong", "note": "IARC Group 1; TP53 R249S adduct; multiplicative synergy with HBV.", "source": "Kew 2003, Liver Int", "url": "https://onlinelibrary.wiley.com/doi/10.1111/j.1478-3231.2003.00869.x"},
+      {"category": "toxin", "factor": "Carbon tetrachloride (zone-3 necrosis → cirrhosis)", "tier": "strong", "note": "CYP2E1 → trichloromethyl radical → lipid peroxidation.", "source": "ATSDR CSEM", "url": "https://archive.cdc.gov/www_atsdr_cdc_gov/csem/carbon-tetrachloride/toxicological_effects.html"},
+      {"category": "toxin", "factor": "PFAS — steatosis / MASLD", "tier": "strong", "note": "PPARα activation; liver + cholesterol effects hold up best in the C8 data.", "source": "C8 Science Panel", "url": "https://www.sciencedirect.com/science/article/pii/S0160412020320808"},
+      {"category": "microbe", "factor": "Viral hepatitis (HBV / HCV)", "tier": "strong", "note": "Chronic infection → cirrhosis → hepatocellular carcinoma.", "source": "PMC5863002", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5863002/"},
+      {"category": "microbe", "factor": "Liver flukes (Opisthorchis / Clonorchis)", "tier": "strong", "note": "Biliary fibrosis → cholangiocarcinoma; IARC Group 1.", "source": "PLOS Medicine", "url": "https://journals.plos.org/plosmedicine/article?id=10.1371%2Fjournal.pmed.0040201"},
+      {"category": "emotional", "factor": "Anger, frustration, irritability", "tier": "traditional", "note": "Wood — 'makes Qi ascend': pent-up frustration, Qi stagnation, tension, feeling 'stuck'.", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "gallbladder": [
+      {"category": "microbe", "factor": "Liver flukes (cholangiocarcinoma)", "tier": "strong", "note": "Biliary-tract inflammation/fibrosis.", "source": "PLOS Medicine", "url": "https://journals.plos.org/plosmedicine/article?id=10.1371%2Fjournal.pmed.0040201"},
+      {"category": "toxin", "factor": "Hepatobiliary toxins (aflatoxin, CCl₄, PFAS)", "tier": "strong", "note": "Shared with the Liver (Wood pair).", "source": "see Liver", "url": "https://onlinelibrary.wiley.com/doi/10.1111/j.1478-3231.2003.00869.x"},
+      {"category": "emotional", "factor": "Indecision, timidity, resentment", "tier": "traditional", "note": "Wood — inability to decide/act, lack of courage to move forward; classically also fright/shock.", "source": "Five-Element (Worsley)", "url": "https://www.5element.com.au/The_Twelve_Meridinas.html"}
+    ],
+    "lung": [
+      {"category": "toxin", "factor": "Paraquat (primary target)", "tier": "strong", "note": "Active uptake via polyamine transporters → alveolar redox-cycling ROS → fibrosis.", "source": "Crit. Rev. Toxicol. 2021", "url": "https://www.tandfonline.com/doi/full/10.1080/10408444.2020.1864721"},
+      {"category": "toxin", "factor": "Nickel, chromium, arsenic, cadmium (respiratory / cancer)", "tier": "strong", "note": "Ni & Cr(VI) IARC Group 1 for lung.", "source": "IARC v49 / ATSDR", "url": "https://www.inchem.org/documents/iarc/vol49/nickel.html"},
+      {"category": "microbe", "factor": "Indoor mold / damp buildings", "tier": "moderate", "note": "Dampness→respiratory symptoms is well-supported; airborne-mycotoxin causation is 'extremely weak' (WHO).", "source": "WHO IAQ Guidelines", "url": "https://www.ncbi.nlm.nih.gov/books/NBK143940/"},
+      {"category": "microbe", "factor": "Nontuberculous mycobacteria (M. avium)", "tier": "strong", "note": "Chronic pulmonary disease; rising incidence.", "source": "PMC12277505", "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12277505/"},
+      {"category": "emotional", "factor": "Grief, sadness", "tier": "traditional", "note": "Metal — 'depletes the Qi': unresolved grief, chest tightness, low immunity, shallow breath.", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "brain": [
+      {"category": "toxin", "factor": "Lead", "tier": "strong", "note": "Critical CNS target; developmental neurotoxicity at low levels.", "source": "ATSDR ToxProfile 13", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp13.pdf"},
+      {"category": "toxin", "factor": "Mercury (vapor / methylmercury)", "tier": "strong", "note": "Crosses BBB and placenta (elemental salts spare the CNS, hit kidney).", "source": "ATSDR ToxProfile 46", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp46.pdf"},
+      {"category": "toxin", "factor": "Aluminum", "tier": "moderate", "note": "Dialysis encephalopathy established; Alzheimer's link contested.", "source": "ATSDR ToxProfile 22", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp22.pdf"},
+      {"category": "toxin", "factor": "Solvents (toluene) & organophosphates", "tier": "strong", "note": "White-matter degeneration (toluene); AChE inhibition + excitotoxicity (OPs).", "source": "ATSDR tp56 / Toxics 2023", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10611379/"},
+      {"category": "microbe", "factor": "Borrelia (Lyme neuroborreliosis)", "tier": "moderate", "note": "Neurotropic spirochete → meningoradiculoneuritis (acute LNB solid; 'chronic Lyme' CNS infection contested).", "source": "PMC8232152", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8232152/"},
+      {"category": "physical", "factor": "Non-ionizing EMF / RF", "tier": "contested", "note": "WHO does not recognize electrosensitivity; blinded provocation studies show no consistent link. RF is IARC 2B ('possibly' carcinogenic, limited glioma evidence).", "source": "IARC PR208 / WHO EHS", "url": "https://www.who.int/teams/environment-climate-change-and-health/radiation-and-health/non-ionizing/hypersensitivity"}
+    ],
+    "bone": [
+      {"category": "toxin", "factor": "Lead (reservoir, ~94% body burden)", "tier": "strong", "note": "Ca-mimic in hydroxyapatite; remobilizes in pregnancy/menopause.", "source": "ATSDR ToxProfile 13", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp13.pdf"},
+      {"category": "toxin", "factor": "Radium-226/228 (osteosarcoma)", "tier": "strong", "note": "Bone-seeking Ca-mimic; alpha-emission irradiates osteogenic tissue.", "source": "ATSDR ToxProfile 144", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp144.pdf"},
+      {"category": "toxin", "factor": "Cadmium (itai-itai osteomalacia)", "tier": "strong", "note": "Secondary to renal phosphate/calcium wasting.", "source": "ATSDR ToxProfile 5", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp5-c2.pdf"}
+    ],
+    "kidney": [
+      {"category": "toxin", "factor": "Cadmium (primary accumulation organ)", "tier": "strong", "note": "Metallothionein-bound, endocytosed via megalin:cubilin → proximal-tubule injury.", "source": "ATSDR ToxProfile 5", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp5-c2.pdf"},
+      {"category": "toxin", "factor": "Mercury (inorganic / elemental salts)", "tier": "strong", "note": "Proximal-tubule injury and autoimmune nephritis.", "source": "ATSDR ToxProfile 46", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp46.pdf"},
+      {"category": "toxin", "factor": "Trichloroethylene (renal cancer)", "tier": "strong", "note": "IARC Group 1 for kidney cancer; tubular damage.", "source": "NTP 15th RoC", "url": "https://www.ncbi.nlm.nih.gov/books/NBK590886/"},
+      {"category": "toxin", "factor": "Ochratoxin A (nephropathy)", "tier": "moderate", "note": "Balkan endemic nephropathy; IARC 2B.", "source": "PubMed 16332622", "url": "https://pubmed.ncbi.nlm.nih.gov/16332622/"},
+      {"category": "emotional", "factor": "Fear, fright; depleted willpower / burnout", "tier": "traditional", "note": "Water — 'makes Qi descend': chronic fear, exhaustion, adrenal-type depletion, Jing (essence) drain.", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "bladder": [
+      {"category": "toxin", "factor": "Cadmium, mercury, arsenic (→ bladder cancer), TCE", "tier": "strong", "note": "Shared with Kidney (Water pair); arsenic is an established bladder carcinogen.", "source": "ATSDR / NTP RoC", "url": "https://www.ncbi.nlm.nih.gov/books/NBK590886/"},
+      {"category": "emotional", "factor": "Fear, timidity; endurance", "tier": "traditional", "note": "Water — storing vital reserves; timidity, inability to persevere.", "source": "Five-Element (Worsley)", "url": "https://www.5element.com.au/The_Twelve_Meridinas.html"}
+    ],
+    "blood_marrow": [
+      {"category": "toxin", "factor": "Benzene (AML, aplastic anemia)", "tier": "strong", "note": "Hydroquinone metabolites target hematopoietic stem cells; IARC Group 1.", "source": "IARC Monograph 120", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7812544/"},
+      {"category": "physical", "factor": "Whole-body ionizing radiation (leukemia)", "tier": "strong", "note": "Marrow is highly radiosensitive; leukemia is the first and highest-RR radiation malignancy.", "source": "PMC3875218", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3875218/"},
+      {"category": "toxin", "factor": "Lead (heme synthesis → anemia)", "tier": "strong", "note": "Inhibits δ-ALAD and ferrochelatase.", "source": "ATSDR ToxProfile 13", "url": "https://www.atsdr.cdc.gov/toxprofiles/tp13.pdf"}
+    ],
+    "thymus_immune": [
+      {"category": "toxin", "factor": "TCDD / dioxin (thymic atrophy)", "tier": "strong", "note": "AhR activation drives thymic involution + skewed thymocyte development.", "source": "PMC4263666", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4263666/"},
+      {"category": "toxin", "factor": "PFAS (↓antibody response)", "tier": "strong", "note": "Suppress T-dependent antibody response → lower vaccine titers (NTP 'presumed immune hazard').", "source": "NTP Immunotoxicity Monograph", "url": "https://ntp.niehs.nih.gov/research/assessments/noncancer/completed/pfoa"},
+      {"category": "toxin", "factor": "Organochlorine pesticides (immunosuppression)", "tier": "moderate", "note": "Perturb leukocyte counts + humoral response.", "source": "Environ Health 2014 (NHANES)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4290093/"},
+      {"category": "microbe", "factor": "Chronic viral load (EBV, CMV)", "tier": "moderate", "note": "Lifelong latency in lymphocytes; immune evasion; EBV linked to autoimmunity/lymphoma.", "source": "PMC3109484", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3109484/"}
+    ],
+    "adrenal": [
+      {"category": "toxin", "factor": "DDT / DDE (adrenocorticolytic)", "tier": "strong", "note": "o,p′-DDD (mitotane) is bioactivated by adrenal CYP11B1 → destroys zona fasciculata/reticularis; the FDA adrenolytic drug.", "source": "Toxics 2021", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8539486/"},
+      {"category": "toxin", "factor": "Endocrine disruptors (HPA / steroidogenesis)", "tier": "moderate", "note": "Target StAR, P450s, 11β-hydroxylase, ACTH receptor → altered cortisol/aldosterone.", "source": "Horm Metab Res 2024", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10764154/"},
+      {"category": "emotional", "factor": "Fear / burnout (Water pair)", "tier": "traditional", "note": "In TCM the adrenals map to Kidney/Water — chronic fear and depleted reserves.", "source": "TCM Seven Emotions (Maciocia)", "url": "https://www.sacredlotus.com/go/foundations-chinese-medicine/get/causes-illness-7-emotions"}
+    ],
+    "reproductive_female": [
+      {"category": "toxin", "factor": "BPA", "tier": "strong", "note": "Estradiol mimic; early-life exposure alters mammary/ovarian/uterine estrogen signaling (NIEHS CLARITY-BPA).", "source": "NIEHS 2021", "url": "https://www.niehs.nih.gov/news/factor/2021/11/feature/2-feature-bpa-research"},
+      {"category": "toxin", "factor": "DDT / DDE (breast cancer — developmental window)", "tier": "strong", "note": "In-utero exposure predicts daughters' breast cancer (o,p′-DDT OR ≈3.7). Scoped to the developmental window; adult-exposure data mixed.", "source": "Cohn 2015, JCEM", "url": "https://academic.oup.com/jcem/article/100/8/2865/2836085"},
+      {"category": "toxin", "factor": "Dioxin (endometriosis)", "tier": "moderate", "note": "AhR → progesterone resistance + inflammatory endometrium.", "source": "EHP 2021 (systematic review)", "url": "https://pubmed.ncbi.nlm.nih.gov/34310196/"},
+      {"category": "toxin", "factor": "Atrazine (aromatase induction)", "tier": "moderate", "note": "Induces CYP19 aromatase → androgen→estrogen shift; atretic follicles.", "source": "EHP 2007", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC1867956/"}
+    ],
+    "testes": [
+      {"category": "toxin", "factor": "Phthalates (DEHP) — 'phthalate syndrome'", "tier": "strong", "note": "Anti-androgen: suppresses fetal Leydig steroidogenesis (↓anogenital distance, hypospadias, cryptorchidism).", "source": "National Academies 2017", "url": "https://www.ncbi.nlm.nih.gov/books/NBK453249/"},
+      {"category": "toxin", "factor": "BPA (reproductive/endocrine)", "tier": "moderate", "note": "Estrogenic disruption of steroidogenesis.", "source": "NTP CLARITY-BPA context", "url": "https://pubmed.ncbi.nlm.nih.gov/23796010/"}
+    ],
+    "conception_vessel": [
+      {"category": "emotional", "factor": "Yin / nourishment / fertility (Ren Mai — 'Sea of Yin')", "tier": "traditional", "note": "Regulates all Yin channels; governs conception, nourishment, uterus, menstruation, the receptive pole.", "source": "YMAA — Eight Extraordinary Vessels", "url": "https://ymaa.com/articles/the-eight-extraordinary-qi-vessels-part-1"}
+    ],
+    "governing_vessel": [
+      {"category": "emotional", "factor": "Yang / drive / vitality (Du Mai — 'Sea of Yang')", "tier": "traditional", "note": "Regulates all Yang channels; governs the brain and spinal 'sea of marrow', posture, the active pole.", "source": "YMAA — Eight Extraordinary Vessels", "url": "https://ymaa.com/articles/the-eight-extraordinary-qi-vessels-part-1"}
+    ],
+    "belt_vessel": [
+      {"category": "emotional", "factor": "Boundary / containment (Dai Mai — the Girdle)", "tier": "traditional", "note": "The only horizontal vessel; binds all vertical channels, links Gallbladder & Triple Burner; governs upper-lower relationship and 'holding things together'.", "source": "Results Acupuncture", "url": "https://www.resultsacupuncture.com.au/extraordinary-vessels/"}
+    ]
+  },
+  "entry_keys": {
+    "Heart": "heart", "Heart Rhythm": "heart", "Heart Meridian": "heart",
+    "Circulation": "blood_vessels", "Carotid Artery": "blood_vessels", "Coronary Ateries": "blood_vessels",
+    "Circulation Meridian": "pericardium",
+    "Triple Warmer Meridian": "triple_warmer",
+    "Stomach": "stomach", "Stomach Meridian": "stomach",
+    "Gastro-Intestinal": "gastro_intestinal", "Mucosa of the Colon": "gastro_intestinal",
+    "Large Intestine Meridian": "large_intestine",
+    "Small Intestine Meridian": "small_intestine",
+    "Pancreas": "pancreas", "Pancreas Cauda": "pancreas", "Spleen": "pancreas", "Spleen Meridian": "pancreas",
+    "Liver": "liver", "Liver Meridian": "liver",
+    "Gall Bladder": "gallbladder", "Bile Ducts": "gallbladder", "Gall Bladder Meridian": "gallbladder",
+    "Lung": "lung", "Lung Meridian": "lung",
+    "Brain": "brain", "Medulla": "brain", "Thalamus": "brain", "Autonomic Nervous System": "brain", "Governing Vessel": "governing_vessel",
+    "Bone": "bone",
+    "Bladder": "bladder", "Bladder Meridian": "bladder", "Kidney Meridian": "kidney",
+    "Blood": "blood_marrow",
+    "Thymus": "thymus_immune", "Tonsils": "thymus_immune",
+    "Adrenal": "adrenal",
+    "Uterus": "reproductive_female", "Ovary": "reproductive_female", "Breast": "reproductive_female",
+    "Testes": "testes",
+    "Conception Vessel": "conception_vessel", "Belt Vessel": "belt_vessel"
+  }
+}
