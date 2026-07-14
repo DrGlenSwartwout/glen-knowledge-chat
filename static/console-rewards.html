@@ -1,0 +1,137 @@
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reward Gifts</title>
+<style>
+  :root{ --bg:#0a150d; --surface:#0f1f14; --border:#21472d; --cream:#eaf3ec; --muted:#8aa594;
+         --gold:#d4a843; --green:#7fd6a0; --amber:#e0b96b; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--cream);
+        font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  h1{ margin:18px 24px 2px; font-size:22px; }
+  .sub{ margin:0 24px 14px; color:var(--muted); font-size:13px; }
+  .grid{ margin:0 24px 48px; display:grid; gap:14px; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); }
+  .dcard{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+  .dhead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+  .dhead b{ font-size:15px; } .email{ color:#9db4ff; font-size:12px; margin-left:6px; }
+  .tier{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .rtype{ color:var(--muted); font-size:12.5px; margin:4px 0 10px; }
+  select{ width:100%; padding:6px 8px; border-radius:7px; border:1px solid var(--border);
+          background:var(--bg); color:var(--cream); font-size:13px; font-family:inherit; }
+  .actions{ margin-top:12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  button.select-gift{ padding:8px 14px; border-radius:8px; border:1px solid var(--gold);
+         background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; font-size:13px; }
+  button.select-gift:hover{ filter:brightness(1.08); }
+  button.select-gift:disabled{ opacity:0.6; cursor:default; }
+  button.dismiss{ padding:8px 14px; border-radius:8px; border:1px solid var(--border);
+         background:transparent; color:var(--cream); cursor:pointer; font-size:13px; }
+  button.dismiss:hover{ border-color:#e08a8a; color:#e08a8a; }
+  button.dismiss:disabled{ opacity:0.6; cursor:default; }
+  .status{ font-size:12px; color:var(--muted); flex-basis:100%; }
+  .status.err{ color:#e08a8a; }
+  .status.ok{ color:var(--green); }
+  .empty{ margin:24px; color:var(--muted); font-size:16px; }
+  #keybox{ margin:24px; }
+  #keybox input{ padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+                 background:var(--surface); color:var(--cream); min-width:260px; }
+  #keybox button{ padding:9px 13px; border-radius:8px; border:1px solid var(--gold);
+                  background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
+</style>
+<script src="/static/op-nav.js" data-active="clinical"></script>
+<h1>Reward Gifts</h1>
+<p class="sub">Pending data-sharing reward grants awaiting a gift pick. Choose a catalog gift for the member's tier, or dismiss the grant.</p>
+<div id="content"><p class="sub">Loading&hellip;</p></div>
+<div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
+<script>
+  function key(){ return localStorage.getItem('console_key') || ''; }
+  (function(){ var u = new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
+  function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; boot(); }
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  var ITEMS = [];
+
+  function optionsHtml(opts){
+    return (opts || []).map(function(o){ return '<option value="'+esc(o.sku)+'">'+esc(o.label)+'</option>'; }).join('');
+  }
+
+  function card(it, di){
+    return '<div class="dcard" data-di="'+di+'">'
+      + '<div class="dhead"><div><b>'+esc(it.reward_type)+'</b><span class="email">'+esc(it.email)+'</span></div>'
+      + '<div class="tier">tier '+esc(it.tier)+'</div></div>'
+      + '<div class="rtype">Granted '+esc(it.granted_at||'')+'</div>'
+      + '<select class="gift-sku" data-di="'+di+'">'+optionsHtml(it.options)+'</select>'
+      + '<div class="actions">'
+      + '<button class="select-gift" data-di="'+di+'">Select gift</button>'
+      + '<button class="dismiss" data-di="'+di+'">Dismiss</button>'
+      + '<span class="status" data-di-status="'+di+'"></span>'
+      + '</div>'
+      + '</div>';
+  }
+
+  async function dispatch(actionKey, params, di, okMsg){
+    var statusEl = document.querySelector('[data-di-status="'+di+'"]');
+    var buttons = document.querySelectorAll('.dcard[data-di="'+di+'"] button');
+    buttons.forEach(function(b){ b.disabled = true; });
+    if (statusEl){ statusEl.className = 'status'; statusEl.textContent = 'Working…'; }
+    var r;
+    try {
+      r = await fetch('/api/action/'+actionKey, { method: 'POST', headers: hdr(), body: JSON.stringify(params) });
+    } catch(e){
+      if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = 'Network error.'; }
+      buttons.forEach(function(b){ b.disabled = false; });
+      return;
+    }
+    if (r.status === 401) {
+      document.getElementById('keybox').style.display = 'block';
+      buttons.forEach(function(b){ b.disabled = false; });
+      return;
+    }
+    var j = await r.json().catch(function(){ return {}; });
+    if (j && j.status === 'done' && j.result && j.result.ok !== false) {
+      if (statusEl){ statusEl.className = 'status ok'; statusEl.textContent = okMsg; }
+      boot();
+    } else {
+      if (statusEl){
+        statusEl.className = 'status err';
+        statusEl.textContent = (j && j.result && j.result.error) || (j && j.error) || 'Action failed.';
+      }
+      buttons.forEach(function(b){ b.disabled = false; });
+    }
+  }
+
+  function selectGift(di){
+    var it = ITEMS[di];
+    var sel = document.querySelector('select.gift-sku[data-di="'+di+'"]');
+    var sku = sel ? sel.value : '';
+    if (!sku){ alert('Choose a gift.'); return; }
+    dispatch('reward.select_gift', { grant_id: it.grant_id, sku: sku }, di, 'Gift selected.');
+  }
+
+  function dismiss(di){
+    var it = ITEMS[di];
+    dispatch('reward.dismiss', { grant_id: it.grant_id }, di, 'Dismissed.');
+  }
+
+  function wireButtons(){
+    document.querySelectorAll('button.select-gift').forEach(function(btn){
+      btn.addEventListener('click', function(){ selectGift(Number(btn.getAttribute('data-di'))); });
+    });
+    document.querySelectorAll('button.dismiss').forEach(function(btn){
+      btn.addEventListener('click', function(){ dismiss(Number(btn.getAttribute('data-di'))); });
+    });
+  }
+
+  async function boot(){
+    var r;
+    try { r = await fetch('/api/console/rewards', { headers: hdr() }); }
+    catch(e){ document.getElementById('content').innerHTML = '<p class="empty">Could not reach the server.</p>'; return; }
+    if (r.status === 401) { document.getElementById('content').innerHTML = ''; document.getElementById('keybox').style.display = 'block'; return; }
+    var j = await r.json();
+    ITEMS = j.items || [];
+    if (!ITEMS.length) { document.getElementById('content').innerHTML = '<p class="empty">No pending rewards awaiting a gift.</p>'; return; }
+    document.getElementById('content').innerHTML = '<div class="grid">' + ITEMS.map(card).join('') + '</div>';
+    wireButtons();
+  }
+  boot();
+</script>
