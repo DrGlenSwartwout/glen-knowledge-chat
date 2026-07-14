@@ -11256,6 +11256,26 @@ def api_console_scan_recommendations_sync():
     return jsonify({"ok": True, "clients": len(client_emails), "scans": scans, "rows": rows})
 
 
+@app.route("/api/console/prl/sync", methods=["POST"])
+def api_console_prl_sync():
+    """Owner sync: (re)load the PRL reference tables (catalog + FF crosswalk,
+    focus-area->PRL map, item->focus-area map) from data/prl_seed.json into
+    chat_log.db. Idempotent full replace. Sends NOTHING. Mirror table untouched."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import prl_supplement as _prl
+    seed_path = os.path.join(os.path.dirname(__file__), "data", "prl_seed.json")
+    try:
+        with open(seed_path) as f:
+            seed = json.load(f)
+    except Exception as _e:
+        return jsonify({"error": f"seed load failed: {_e!r}"}), 500
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _prl.init_tables(cx)
+        counts = _prl.sync_from_seed(cx, seed)
+    return jsonify({"ok": True, **counts})
+
+
 @app.route("/api/console/scan-recommendations", methods=["GET"])
 def api_console_scan_recommendations_read():
     """Owner: read back what the pusher stored. Slice 1 shipped write-only, so this is
