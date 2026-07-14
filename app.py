@@ -18060,6 +18060,35 @@ def _init_support_programs_tables(cx):
     broad_benefit.seed_if_empty(cx, seed.get("broad_benefit_slugs") or [])
 
 
+def _eye_program_public_view(prog):
+    """One stored condition program -> the public reference shape: base items +
+    ALL modifiers shown explicitly (no resolve), each item carrying a store URL."""
+    def _mod(m):
+        return {"when": m.get("when", ""), "source": m.get("source", ""),
+                "action": m.get("action", "add"),
+                "items": [_support_program_item_view(it) for it in (m.get("items") or [])]}
+    return {
+        "condition_key": prog.get("condition_key"),
+        "label": prog.get("label"),
+        "consult_recommended": bool(prog.get("consult_recommended")),
+        "items": [_support_program_item_view(it) for it in (prog.get("items") or [])],
+        "modifiers": [_mod(m) for m in (prog.get("modifiers") or [])],
+    }
+
+
+@app.route("/api/eye-programs", methods=["GET"])
+def api_eye_programs():
+    """Public, read-only reference: all authored eye condition programs at full
+    depth (all modifiers shown), in clinical order. Ungated, like the consumer
+    support-program card."""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _init_support_programs_tables(cx)
+        progs = condition_programs.all(cx)
+    progs = sorted(progs, key=lambda p: condition_programs._clinical_sort_key(p["condition_key"]))
+    return jsonify({"programs": [_eye_program_public_view(p) for p in progs]})
+
+
 @app.route("/api/console/condition-programs", methods=["GET"])
 def api_console_condition_programs_list():
     """Owner console: list all condition-support programs (seeding on first
