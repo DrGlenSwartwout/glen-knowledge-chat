@@ -47,6 +47,11 @@ def init_journey_tables(cx):
         cx.execute("ALTER TABLE journey_state ADD COLUMN last_name TEXT")
     except Exception:
         pass  # already exists
+    # Next-step chips — persisted travel style ('mission'|'adventure').
+    try:
+        cx.execute("ALTER TABLE journey_state ADD COLUMN travel_style TEXT DEFAULT 'unknown'")
+    except Exception:
+        pass  # already exists
     cx.execute("""
         CREATE TABLE IF NOT EXISTS journey_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,6 +298,29 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     return state
 
 
+def set_travel_style(cx, *, session_id, style, email=""):
+    """Persist the visitor's chosen travel style ('mission'|'adventure')."""
+    if style not in ("mission", "adventure"):
+        raise ValueError(f"bad travel_style: {style!r}")
+    cx.row_factory = sqlite3.Row
+    now = _now()
+    cur = cx.execute(
+        "SELECT id FROM journey_state WHERE session_id=? ORDER BY id DESC LIMIT 1",
+        (session_id,)).fetchone()
+    if cur is not None:
+        cx.execute("UPDATE journey_state SET travel_style=?, updated_at=? WHERE id=?",
+                   (style, now, cur["id"]))
+    else:
+        cx.execute(
+            "INSERT INTO journey_state (session_id, email, travel_style, created_at, updated_at) "
+            "VALUES (?,?,?,?,?)", (session_id, email, style, now, now))
+    cx.execute(
+        "INSERT INTO journey_events (ts, session_id, email, trigger, detail) "
+        "VALUES (?,?,?,?,?)", (now, session_id, email, "travel_style", style))
+    cx.commit()
+    return get_state(cx, session_id=session_id, email=email)
+
+
 # ---------------------------------------------------------------------------
 # get_state — non-destructive read + email aggregation
 # ---------------------------------------------------------------------------
@@ -305,6 +333,7 @@ def _default_state(session_id, email):
         "awareness_stage": "unknown", "path": "none",
         "tos_agreed_at": None, "tos_version": None,
         "reveal": reveal_for("arrival"), "surfaced_cards": [],
+        "travel_style": "unknown",
     }
 
 
@@ -337,6 +366,7 @@ def get_state(cx, session_id="", email=""):
     path = "none"
     awareness = "unknown"
     created_at = None
+    travel_style = "unknown"
     for r in rows:
         gates |= set(json.loads(r["unlocked_gates"] or "[]"))
         first_name = first_name or (r["first_name"] or "")
@@ -350,6 +380,8 @@ def get_state(cx, session_id="", email=""):
         awareness = _max_awareness(awareness, r["awareness_stage"] or "unknown")
         if created_at is None or (r["created_at"] and r["created_at"] < created_at):
             created_at = r["created_at"]
+        if (r["travel_style"] or "unknown") != "unknown":
+            travel_style = r["travel_style"]
 
     rung = compute_rung(gates, email_final, bool(tos_at))
     return {
@@ -359,6 +391,7 @@ def get_state(cx, session_id="", email=""):
         "unlocked_gates": sorted(gates), "awareness_stage": awareness,
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,
         "reveal": reveal_for(rung, awareness), "surfaced_cards": [],
+        "travel_style": travel_style,
     }
 
 
@@ -420,6 +453,37 @@ CARD_CATALOG = {
 }
 
 
+OPENING_PROMPT = ("Are you here on a mission to achieve a certain outcome? "
+                  "Or are you looking for an adventure as you explore what's possible?")
+MISSION_PROMPT = "What would you love to change?"
+SEED_OUTCOME_CHIPS = ["Sharper vision", "More energy", "Deeper sleep", "Calm", "Something else"]
+
+_STYLE_FORK_CHIPS = [
+    {"label": "I'm on a mission",   "action": "style", "role": "primary",
+     "value": "mission",   "href": None},
+    {"label": "I'm here to explore", "action": "style", "role": "primary",
+     "value": "adventure", "href": None},
+]
+_CROSSOVER_TO_MISSION = {"label": "Just tell me where to start", "action": "style",
+                         "role": "secondary", "value": "mission", "href": None}
+_CROSSOVER_TO_ADVENTURE = {"label": "Actually, let me explore instead", "action": "style",
+                           "role": "secondary", "value": "adventure", "href": None}
+
+_MISSION_LABELS = {
+    "remedy_match":       "Get your remedy match",
+    "e4l_scan":           "Start your voice scan",
+    "voice_distinctions": "Explore what your voice reveals",
+    "practitioner":       "Find a practitioner near you",
+    "product":            "See your recommended formula",
+    "founding_offer":     "See your recommended formula",
+    "ash_course":         "Begin the healing course",
+    "ash_masterclass":    "Step into the MasterClass",
+    "pay_forward":        "Lift someone else",
+    "quiz":               "Take the quick assessment",
+    "intake":             "Start your intake",
+}
+
+
 def _thread_href(base_url, ref, campaign):
     """Internal (/...) base returned as-is; external base threaded with the
     ref-based utm. Shared by card_href and journey_map so threading stays in sync."""
@@ -439,6 +503,79 @@ def card_href(key, ref=""):
 def _card(key, ref=""):
     c = CARD_CATALOG[key]
     return {"key": key, "title": c["title"], "sub": c["sub"], "href": card_href(key, ref)}
+
+
+def next_step_prompt(state, query_texts=None):
+    style = (state or {}).get("travel_style", "unknown")
+    if style == "unknown":
+        return OPENING_PROMPT
+    if style == "mission" and not _match_card_keys(state, query_texts):
+        return MISSION_PROMPT
+    return ""
+
+
+def _mission_chips(state, ref="", query_texts=None):
+    keys = _match_card_keys(state, query_texts) or []
+    gates = set((state or {}).get("unlocked_gates") or ())
+    dest_key = None
+    for k in keys:
+        if k == "remedy_match" and "purchase" in gates:   # already bought -> don't re-offer
+            continue
+        dest_key = k
+        break
+    if dest_key is None:
+        chips = [{"label": lbl, "action": "text", "role": "primary",
+                  "value": None, "href": None} for lbl in SEED_OUTCOME_CHIPS]
+        chips.append(dict(_CROSSOVER_TO_ADVENTURE))
+        return chips
+    card = _card(dest_key, ref)
+    label = _MISSION_LABELS.get(dest_key, f"See {card['title']}")
+    return [
+        {"label": label, "action": "link", "role": "primary",
+         "value": None, "href": card["href"]},
+        dict(_CROSSOVER_TO_ADVENTURE),
+    ]
+
+
+_ADVENTURE_LABELS = {
+    "scan": "Explore my biofield",
+    "find": "Explore remedies",
+    "heal": "Learn to heal",
+    "give": "Lift others",
+}
+
+
+def _adventure_chips(state, ref="", query_texts=None):
+    jmap = {c["key"]: c for c in journey_map(state, ref=ref)}
+    order = ["scan", "find", "heal"]
+    rung = (state or {}).get("current_rung", "arrival")
+    if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
+        order.append("give")
+    chips = []
+    for k in order:
+        card = jmap.get(k)
+        if not card or card.get("status") == "done":
+            continue
+        chips.append({"label": _ADVENTURE_LABELS[k], "action": "link",
+                      "role": "primary", "value": None, "href": card["href"]})
+        if len(chips) == 3:
+            break
+    if not chips:   # never dead-end: point onward to giving / paying it forward
+        give = jmap.get("give") or {}
+        chips.append({"label": _ADVENTURE_LABELS["give"], "action": "link",
+                      "role": "primary", "value": None,
+                      "href": give.get("href") or "/begin/path"})
+    chips.append(dict(_CROSSOVER_TO_MISSION))
+    return chips
+
+
+def next_step_chips(state, ref="", query_texts=None):
+    style = (state or {}).get("travel_style", "unknown")
+    if style == "mission":
+        return _mission_chips(state, ref, query_texts)
+    if style == "adventure":
+        return _adventure_chips(state, ref, query_texts)   # Task 3
+    return [dict(c) for c in _STYLE_FORK_CHIPS]
 
 
 # ---------------------------------------------------------------------------

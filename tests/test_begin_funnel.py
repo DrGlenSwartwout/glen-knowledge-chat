@@ -674,3 +674,102 @@ def test_real_trusted_links_blushield_is_partner():
     assert "Blushield" in names
     # internal-only links stay out of the partner section
     assert "E4L Bioenergetic Scan" not in names
+
+
+def test_travel_style_defaults_unknown_and_persists():
+    bf, cx = _seeded()
+    st = bf.get_state(cx, session_id="s1")
+    assert st["travel_style"] == "unknown"
+
+    bf.record_unlock(cx, session_id="s1", trigger="question")
+    out = bf.set_travel_style(cx, session_id="s1", style="mission")
+    assert out["travel_style"] == "mission"
+    assert bf.get_state(cx, session_id="s1")["travel_style"] == "mission"
+
+    row = cx.execute(
+        "SELECT trigger, detail FROM journey_events "
+        "WHERE trigger='travel_style' ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["detail"] == "mission"
+
+
+def test_travel_style_rejects_bad_value():
+    bf, cx = _seeded()
+    bf.record_unlock(cx, session_id="s1", trigger="question")
+    try:
+        bf.set_travel_style(cx, session_id="s1", style="wander")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def _state(**over):
+    base = {"session_id": "s1", "email": "", "current_rung": "arrival",
+            "unlocked_gates": [], "travel_style": "unknown"}
+    base.update(over)
+    return base
+
+
+def test_unknown_style_shows_opening_fork():
+    import begin_funnel as bf
+    st = _state(travel_style="unknown")
+    assert bf.next_step_prompt(st) == bf.OPENING_PROMPT
+    chips = bf.next_step_chips(st)
+    vals = {c["value"] for c in chips if c["action"] == "style"}
+    assert vals == {"mission", "adventure"}
+    assert all(c["role"] == "primary" for c in chips)
+
+
+def test_mission_without_outcome_shows_seed_chips_and_prompt():
+    import begin_funnel as bf
+    st = _state(travel_style="mission")
+    assert bf.next_step_prompt(st) == bf.MISSION_PROMPT
+    chips = bf.next_step_chips(st, query_texts=[])
+    texts = [c["label"] for c in chips if c["action"] == "text"]
+    assert texts == bf.SEED_OUTCOME_CHIPS
+    secondary = [c for c in chips if c["role"] == "secondary"]
+    assert len(secondary) == 1 and secondary[0]["value"] == "adventure"
+
+
+def test_mission_with_outcome_gives_one_link_and_crossover():
+    import begin_funnel as bf
+    st = _state(travel_style="mission")
+    chips = bf.next_step_chips(st, query_texts=["find me a remedy for my eyes"])
+    links = [c for c in chips if c["action"] == "link"]
+    assert len(links) == 1
+    assert links[0]["role"] == "primary" and links[0]["href"]
+    assert bf.next_step_prompt(st, query_texts=["find me a remedy for my eyes"]) == ""
+    assert sum(c["role"] == "secondary" for c in chips) == 1
+
+
+def test_adventure_first_fork_is_three_pillars_no_give():
+    bf, cx = _seeded()
+    bf.set_travel_style(cx, session_id="s1", style="adventure")
+    st = bf.get_state(cx, session_id="s1")           # rung 'arrival'
+    chips = bf.next_step_chips(st)
+    labels = [c["label"] for c in chips if c["role"] == "primary"]
+    assert labels == ["Explore my biofield", "Explore remedies", "Learn to heal"]
+    assert all(c["action"] == "link" and c["href"] for c in chips if c["role"] == "primary")
+    assert "Lift others" not in labels                # Give withheld pre-engagement
+    assert sum(c["role"] == "secondary" for c in chips) == 1
+
+
+def test_adventure_surfaces_give_after_free_tier():
+    import begin_funnel as bf
+    st = _state(travel_style="adventure", current_rung="free_tier",
+                email="a@b.co", unlocked_gates=["question", "name"])
+    chips = bf.next_step_chips(st)
+    labels = [c["label"] for c in chips if c["role"] == "primary"]
+    assert len(labels) <= 3                            # cap holds even with give eligible
+    # give is now in the candidate order; with 3 pillars still open, cap keeps first 3
+    assert labels == ["Explore my biofield", "Explore remedies", "Learn to heal"]
+
+
+def test_adventure_never_dead_ends():
+    import begin_funnel as bf
+    # every pillar done -> still returns at least one primary + one secondary
+    st = _state(travel_style="adventure", current_rung="advocate",
+                unlocked_gates=["scan", "course_ww", "question", "biofield",
+                                "intake", "masterclass"])
+    chips = bf.next_step_chips(st)
+    assert any(c["role"] == "primary" for c in chips)
+    assert sum(c["role"] == "secondary" for c in chips) == 1
