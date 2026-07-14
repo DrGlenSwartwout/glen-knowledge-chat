@@ -22,6 +22,8 @@
     .schip{background:var(--surface-2);border:1px solid var(--border);color:var(--cream);
       border-radius:13px;padding:4px 11px;font-size:.86rem}
     .schip.primary{border-color:var(--green)}
+    a.schip-link{text-decoration:none;color:var(--cream);cursor:pointer}
+    a.schip-link:hover{border-color:var(--gold);color:var(--gold)}
     .back{display:inline-block;margin-bottom:18px;color:var(--muted);text-decoration:none;font-size:.9rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -68,7 +70,15 @@
           var h = document.createElement('h3'); h.textContent = STYPE_LABELS[t] || t; g.appendChild(h);
           var chips = document.createElement('div'); chips.className='schips';
           items.forEach(function(s){
-            var c = document.createElement('span'); c.className='schip'+(s.is_primary?' primary':'');
+            var c;
+            if(s.clinical_slug){
+              // organ that exists in the clinical glossary -> deep-link to its entry
+              c = document.createElement('a');
+              c.href = '/learn/glossary/organs#' + encodeURIComponent(s.clinical_slug);
+              c.className = 'schip schip-link' + (s.is_primary?' primary':'');
+            } else {
+              c = document.createElement('span'); c.className = 'schip' + (s.is_primary?' primary':'');
+            }
             c.textContent = s.structure; chips.appendChild(c);
           });
           g.appendChild(chips); host.appendChild(g);
