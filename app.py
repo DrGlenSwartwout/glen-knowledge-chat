@@ -13769,6 +13769,83 @@ def api_console_rewards():
     return jsonify({"items": items})
 
 
+@app.route("/api/console/reward-gift-options", methods=["GET"])
+def api_console_reward_gift_options_list():
+    """Owner console: the full reward gift-option catalog (all levels, active
+    and inactive). Console-secret gated. Default OFF (REWARD_GIFTS_ENABLED)
+    -> {"options": []}, so the catalog editor stays inert until the flag
+    flips."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"options": []})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        options = _rg.list_gift_options(cx)
+    return jsonify({"options": options})
+
+
+@app.route("/api/console/reward-gift-options", methods=["POST"])
+def api_console_reward_gift_options_add():
+    """Owner console: add one gift option to the catalog. Console-secret
+    gated. Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    level = body.get("level")
+    sku = (body.get("sku") or "").strip()
+    label = (body.get("label") or "").strip()
+    if level is None or not sku or not label:
+        return jsonify({"ok": False, "error": "level, sku, and label are required"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        opt_id = _rg.add_gift_option(cx, level, sku, label)
+    return jsonify({"ok": True, "id": opt_id})
+
+
+@app.route("/api/console/reward-gift-options/delete", methods=["POST"])
+def api_console_reward_gift_options_delete():
+    """Owner console: delete one gift option from the catalog. Console-secret
+    gated. Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    opt_id = body.get("id")
+    if not opt_id:
+        return jsonify({"ok": False, "error": "id required"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _rg.delete_gift_option(cx, opt_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/reward-gift-options/toggle", methods=["POST"])
+def api_console_reward_gift_options_toggle():
+    """Owner console: flip a gift option's active flag. Console-secret gated.
+    Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    opt_id = body.get("id")
+    if not opt_id:
+        return jsonify({"ok": False, "error": "id required"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _rg.init_reward_gift_options(cx)
+        row = cx.execute("SELECT active FROM reward_gift_options WHERE id=?", (opt_id,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "not found"})
+        new_active = not bool(row[0])
+        _rg.set_gift_option_active(cx, opt_id, new_active)
+    return jsonify({"ok": True, "active": new_active})
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
