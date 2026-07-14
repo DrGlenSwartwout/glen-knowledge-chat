@@ -773,3 +773,20 @@ def test_adventure_never_dead_ends():
     chips = bf.next_step_chips(st)
     assert any(c["role"] == "primary" for c in chips)
     assert sum(c["role"] == "secondary" for c in chips) == 1
+
+
+def test_adventure_scan_href_honors_has_e4l_signal():
+    import begin_funnel as bf
+    st = _state(travel_style="adventure")
+
+    def _scan_href(chips):
+        return next(c["href"] for c in chips if c["label"] == "Explore my biofield")
+
+    # returning E4L client -> Scan chip points at the portal
+    assert _scan_href(bf.next_step_chips(st, signals={"has_e4l": True})) \
+        .startswith("https://portal.e4l.com")
+    # new visitor -> generic signup
+    assert _scan_href(bf.next_step_chips(st, signals={"has_e4l": False})) \
+        .startswith("https://truly.vip/E4L")
+    # no signals passed -> defaults to signup (back-compat with prior callers)
+    assert _scan_href(bf.next_step_chips(st)).startswith("https://truly.vip/E4L")

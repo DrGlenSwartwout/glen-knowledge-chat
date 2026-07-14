@@ -545,8 +545,8 @@ _ADVENTURE_LABELS = {
 }
 
 
-def _adventure_chips(state, ref="", query_texts=None):
-    jmap = {c["key"]: c for c in journey_map(state, ref=ref)}
+def _adventure_chips(state, ref="", query_texts=None, signals=None):
+    jmap = {c["key"]: c for c in journey_map(state, ref=ref, signals=signals)}
     order = ["scan", "find", "heal"]
     rung = (state or {}).get("current_rung", "arrival")
     if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
@@ -569,12 +569,12 @@ def _adventure_chips(state, ref="", query_texts=None):
     return chips
 
 
-def next_step_chips(state, ref="", query_texts=None):
+def next_step_chips(state, ref="", query_texts=None, signals=None):
     style = (state or {}).get("travel_style", "unknown")
     if style == "mission":
         return _mission_chips(state, ref, query_texts)
     if style == "adventure":
-        return _adventure_chips(state, ref, query_texts)   # Task 3
+        return _adventure_chips(state, ref, query_texts, signals)
     return [dict(c) for c in _STYLE_FORK_CHIPS]
 
 
