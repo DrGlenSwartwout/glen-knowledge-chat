@@ -17433,20 +17433,23 @@ def api_client_portal(token):
     # re-initialized here since tests monkeypatch LOG_DB after import-time init ran
     # against the real DB.
     if _data_sharing_enabled():
-        from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
-        with sqlite3.connect(LOG_DB) as _cxds:
-            _ds.init_data_sharing_tables(_cxds)
-            _dr.init_reward_tables(_cxds)
-            _consent = _ds.get_consent(_cxds, email_for_reports)
-            _active = {tuple(g) for g in _consent["grants"]}
-            _toggles = {k: all(tuple(g) in _active for g in spec["grants"])
-                        for k, spec in _ds.TOGGLE_MAP.items()}
-            payload["data_sharing"] = {
-                "toggles": _toggles,
-                "tier": _consent["tier"],
-                "attribution": _consent["attribution"],
-                "rewards": _dr.rewards_for_email(_cxds, email_for_reports),
-            }
+        try:
+            from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
+            with sqlite3.connect(LOG_DB) as _cxds:
+                _ds.init_data_sharing_tables(_cxds)
+                _dr.init_reward_tables(_cxds)
+                _consent = _ds.get_consent(_cxds, email_for_reports)
+                _active = {tuple(g) for g in _consent["grants"]}
+                _toggles = {k: all(tuple(g) in _active for g in spec["grants"])
+                            for k, spec in _ds.TOGGLE_MAP.items()}
+                payload["data_sharing"] = {
+                    "toggles": _toggles,
+                    "tier": _consent["tier"],
+                    "attribution": _consent["attribution"],
+                    "rewards": _dr.rewards_for_email(_cxds, email_for_reports),
+                }
+        except Exception as _e:
+            print(f"[data-sharing/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
