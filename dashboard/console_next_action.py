@@ -7,9 +7,40 @@ below. Adding a record type = write a resolver + a lister + register both.
 import json
 import urllib.parse
 
-TYPE_PRIORITY = ["biofield_reveal", "handoff", "ff_match_draft"]
+TYPE_PRIORITY = ["order", "biofield_reveal", "handoff", "ff_match_draft"]
 
 _DONE = {"actionable": False}
+
+
+def resolve_order(rec):
+    status = rec.get("status")
+    if status not in ("new", "packed"):
+        return dict(_DONE)
+    oid = rec.get("id")
+    who = rec.get("name") or rec.get("email") or "unknown"
+    total = (rec.get("total_cents") or 0) / 100
+    n = rec.get("item_count") or 0
+    summary = f"#{oid} · {who} · ${total:.2f} · {n} item{'' if n == 1 else 's'}"
+    age = rec.get("age_ts", "")
+    if status == "new":
+        return {
+            "type": "order", "id": oid, "actionable": True, "state": "new",
+            "label": "Pack",
+            "action": {"kind": "dispatch", "keys": ["orders.mark_packed"],
+                       "body": {"order_id": oid}},
+            "confirm": False,
+            "secondary": {"label": "Open order",
+                          "action": {"kind": "link", "url": "/console/orders"},
+                          "confirm": False},
+            "summary": summary, "age_ts": age,
+        }
+    return {   # packed
+        "type": "order", "id": oid, "actionable": True, "state": "packed",
+        "label": "Open to ship",
+        "action": {"kind": "link", "url": "/console/orders"},
+        "confirm": False, "secondary": None,
+        "summary": summary, "age_ts": age,
+    }
 
 
 def resolve_biofield_reveal(rec):
@@ -75,6 +106,22 @@ def resolve_handoff(rec):
     }
 
 
+def _order_records(cx):
+    rows = cx.execute(
+        "SELECT id, email, name, items_json, total_cents, status, created_at "
+        "FROM orders WHERE status IN ('new','packed')")
+    out = []
+    for r in rows:
+        try:
+            n = len(json.loads(r["items_json"] or "[]"))
+        except Exception:
+            n = 0
+        out.append({"id": r["id"], "email": r["email"], "name": r["name"],
+                    "total_cents": r["total_cents"], "item_count": n,
+                    "status": r["status"], "age_ts": r["created_at"]})
+    return out
+
+
 def _reveal_records(cx):
     rows = cx.execute(
         "SELECT id, email, scan_date, first_approved, notified_at, created_at "
@@ -110,7 +157,8 @@ def _handoff_records(cx):
 
 
 def list_actionable(cx):
-    items = ([resolve_biofield_reveal(r) for r in _reveal_records(cx)]
+    items = ([resolve_order(r) for r in _order_records(cx)]
+             + [resolve_biofield_reveal(r) for r in _reveal_records(cx)]
              + [resolve_handoff(r) for r in _handoff_records(cx)]
              + [resolve_ff_match_draft(r) for r in _ff_records(cx)])
     items = [d for d in items if d.get("actionable")]
