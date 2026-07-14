@@ -32,7 +32,10 @@ def normalize_product_name(name, catalog_names):
         "PQQ Complex with CoQ-10": "PQQ Complex, Premier",    # pqq-complex-with-coq10.html
         "Max B-ND": "Max B-ND™ (Fermented) (2 oz)",           # ™ + size in catalog name
         "Premier Magnesium": "Magnesium Glycinate Caps, Premier",  # PRL's magnesium SKU
+        "Lecithin Granules": "Sunflower Lecithin, Premier",   # E4L item 1360 = current PRL lecithin
+        "Vintage Vinegar": "Apple Cider Vinegar, Premier",    # E4L item 2933 = PRL's ACV
     }
+    # ("Premier Noni" auto-maps to "Noni, Premier" via the Premier-prefix word-swap below.)
     if name in missing_mappings:
         mapped = missing_mappings[name]
         if mapped in catalog_names:

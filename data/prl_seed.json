@@ -2274,6 +2274,32 @@
    "best_ff": null,
    "relation": null,
    "ff_alts": []
+  },
+  {
+   "name": "Sunflower Lecithin, Premier",
+   "external_id": null,
+   "url": "https://prlabs.com/sunflower-lecithin-powder.html",
+   "focus_tags": [
+    "Brain & Nervous System Support",
+    "Liver Support",
+    "Cognitive Function"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuroprotect",
+   "relation": "complement",
+   "ff_alts": [
+    "Liver Support"
+   ]
+  },
+  {
+   "name": "Noni, Premier",
+   "external_id": null,
+   "url": null,
+   "focus_tags": [],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": "consider",
+   "ff_alts": []
   }
  ],
  "focus_area_products": [
@@ -2416,10 +2442,22 @@
    "rank": 1
   },
   {
+   "focus_area_id": 23,
+   "focus_area_name": "Hearing / Audio Processing",
+   "prl_product_name": "Noni, Premier",
+   "rank": 2
+  },
+  {
    "focus_area_id": 36,
    "focus_area_name": "Memory",
    "prl_product_name": "CogniTropic™",
    "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "prl_product_name": "Sunflower Lecithin, Premier",
+   "rank": 1
   },
   {
    "focus_area_id": 36,
@@ -2456,6 +2494,12 @@
    "focus_area_name": "Pancreas",
    "prl_product_name": "Digest, Premier",
    "rank": 1
+  },
+  {
+   "focus_area_id": 53,
+   "focus_area_name": "Pancreas",
+   "prl_product_name": "Apple Cider Vinegar, Premier",
+   "rank": 2
   }
  ],
  "focus_area_items": [
