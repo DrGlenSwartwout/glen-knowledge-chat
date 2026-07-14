@@ -13568,6 +13568,22 @@ def api_console_handoffs():
     return jsonify({"ok": True, "handoffs": out})
 
 
+@app.route("/api/console/next-actions", methods=["GET"])
+def api_console_next_actions():
+    """Unified operator queue: one actionable descriptor per pending biofield
+    reveal, handoff, and FF match draft (dashboard/console_next_action.py).
+    Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import (console_next_action as _na, biofield_reveals as _br,
+                           ff_match_drafts as _ff, client_portal as _cp)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _br.init_table(cx); _ff.init_table(cx); _cp.init_client_portal_table(cx)
+        cx.row_factory = sqlite3.Row
+        items = _na.list_actionable(cx)
+    return jsonify({"items": items})
+
+
 # ── Biofield pipeline: the sequential per-client checklist (request → paid → intake
 # → analysis → invoice → fulfilled) that Glen and Rae both track from one page. ──
 _PIPELINE_STEP_KEYS = ("paid", "handed_off", "analysis_published",
