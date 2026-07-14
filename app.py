@@ -36241,6 +36241,10 @@ with sqlite3.connect(LOG_DB) as _sc_cx:
 _sca.configure(grant_fn=_studio_credit_grant_and_notify)
 _sca.register()
 
+# ── Data-sharing rewards: operator fulfill/dismiss actions (Phase 2) ────────────
+from dashboard import reward_actions as _rwa
+_rwa.register()
+
 # ── Related products: console editor for Glen's manual "Dr. Glen recommends" picks ──
 from dashboard import related_products_actions as _rpa
 _rpa.register()
