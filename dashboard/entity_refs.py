@@ -50,11 +50,14 @@ def _first_text(obj):
 
 
 def _page_content(page):
-    """Return the parsed content object from a page dict whose content_json may be
-    a dict already or a JSON string."""
+    """Return the parsed content object from a page dict. ingredient_pages and
+    topic_pages both expose the parsed content under the key "content"; accept a
+    raw "content_json" (dict or JSON string) as a fallback."""
     if not isinstance(page, dict):
         return {}
-    raw = page.get("content_json")
+    raw = page.get("content")
+    if raw is None:
+        raw = page.get("content_json")
     if isinstance(raw, str):
         try:
             return json.loads(raw)

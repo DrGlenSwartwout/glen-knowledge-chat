@@ -45,8 +45,9 @@ def test_remedy_ref_blank_name():
 
 
 def test_function_ref_uses_topic_page_and_links(monkeypatch):
+    # topic_pages.get_page exposes the parsed content under "content" (not content_json).
     page = {"slug": "detoxification", "kind": "function", "state": "approved",
-            "content_json": {"summary": "How the body clears toxins. Extra sentence here."}}
+            "content": {"summary": "How the body clears toxins. Extra sentence here."}}
     monkeypatch.setattr(er._tp, "get_page", lambda cx, slug: page if slug == "detoxification" else None)
     r = er.function_ref(_FakeCx(), "Detoxification")
     assert r["href"] == "/learn/detoxification"
@@ -60,7 +61,9 @@ def test_function_ref_unapproved_or_missing_is_plain(monkeypatch):
 
 
 def test_ingredient_ref_pulls_info_and_links(monkeypatch):
-    getter = lambda slug: {"content_json": {"what": "A magnesium form that crosses into the brain."}}
+    # ingredient_pages.get_page exposes parsed content under "content" with a
+    # "what_it_is" section — the shape entity_refs must read from real data.
+    getter = lambda slug: {"content": {"what_it_is": "A magnesium form that crosses into the brain."}}
     r = er.ingredient_ref(_FakeCx(), "Magnesium L-Threonate", "magnesium-l-threonate", page_getter=getter)
     assert r["href"] == "/begin/ingredient/magnesium-l-threonate"
     assert r["info"].startswith("A magnesium form")
