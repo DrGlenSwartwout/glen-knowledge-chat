@@ -1,0 +1,106 @@
+<!DOCTYPE html><html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scan Trends · Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; }
+    body{margin:0;background:var(--bg);color:var(--cream);font-family:'Open Sans',sans-serif;line-height:1.5}
+    .wrap{max-width:860px;margin:0 auto;padding:28px 20px 80px}
+    h1{font-family:Raleway,sans-serif;font-size:1.6rem;margin:.2rem 0 .2rem}
+    .lead{color:var(--muted);margin:0 0 1.2rem;font-size:.9rem}
+    input,select{background:var(--surface);border:1px solid var(--border);color:var(--cream);
+      border-radius:9px;padding:8px 11px;font-size:.95rem}
+    input.search{width:60%;max-width:360px}
+    .results{margin:.5rem 0 0}
+    .cres{display:block;background:var(--surface);border:1px solid var(--border);border-radius:8px;
+      padding:8px 11px;margin:5px 0;cursor:pointer;color:var(--cream)}
+    .cres:hover{border-color:var(--green)} .cres .m{color:var(--muted);font-size:.82rem;margin-left:8px}
+    .meta{color:var(--muted);font-size:.85rem;margin:1rem 0 .3rem}
+    .grp{margin-top:1.3rem}
+    .grp h2{font-family:Raleway,sans-serif;font-size:1.05rem;margin:.2rem 0 .4rem;display:flex;align-items:center;gap:8px}
+    .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+    .persistent .dot{background:var(--gold)} .emerging .dot{background:#d9534f}
+    .resolving .dot{background:var(--green)} .intermittent .dot{background:var(--muted)}
+    table{width:100%;border-collapse:collapse;font-size:.9rem}
+    td,th{text-align:left;padding:5px 8px;border-top:1px solid var(--border)}
+    th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
+    td.num{color:var(--gold);white-space:nowrap}
+    a.pl{color:var(--cream);text-decoration:none;border-bottom:1px dotted var(--muted)}
+    a.pl:hover{color:var(--gold);border-bottom-color:var(--gold)}
+    .cat{color:var(--muted);font-size:.78rem}
+    .muted{color:var(--muted)} .hidden{display:none}
+  </style>
+</head><body>
+  <div class="wrap">
+    <h1>E4L Scan Trends</h1>
+    <p class="lead">Longitudinal patterns across a client's scan history — persistently high, newly emerging, or resolving. (Reads the local e4l.db; severity/'purple level' is not yet parsed, so trends rest on appearance + recommendation rank.)</p>
+    <div>
+      <input class="search" id="q" type="text" placeholder="Search client by name…" autocomplete="off">
+      <select id="lastn">
+        <option value="12">last 12 scans</option>
+        <option value="24">last 24 scans</option>
+        <option value="0">all scans</option>
+      </select>
+    </div>
+    <div class="results" id="results"></div>
+    <div id="meta" class="meta"></div>
+    <div id="trends"></div>
+  </div>
+  <script>
+    var GROUPS=[["persistent","Persistently high"],["emerging","Newly emerging"],["resolving","Resolving"],["intermittent","Intermittent"]];
+    var curClient=null;
+    var q=document.getElementById('q'), lastn=document.getElementById('lastn');
+    var t;
+    q.addEventListener('input', function(){ clearTimeout(t); t=setTimeout(search, 300); });
+    lastn.addEventListener('change', function(){ if(curClient) loadTrends(curClient); });
+    function search(){
+      var v=q.value.trim(); if(v.length<2){ document.getElementById('results').textContent=''; return; }
+      fetch('/api/console/e4l/client-search?q='+encodeURIComponent(v),{credentials:'same-origin'})
+        .then(function(r){return r.json();}).then(function(d){
+          var host=document.getElementById('results'); host.textContent='';
+          (d.clients||[]).forEach(function(c){
+            var a=document.createElement('div'); a.className='cres';
+            a.textContent=c.name||('#'+c.client_id);
+            var m=document.createElement('span'); m.className='m'; m.textContent=c.n_scans+' scans · last '+(c.last_scan||'—'); a.appendChild(m);
+            a.addEventListener('click', function(){ curClient=c.client_id; q.value=c.name||''; host.textContent=''; loadTrends(c.client_id); });
+            host.appendChild(a);
+          });
+        });
+    }
+    function loadTrends(cid){
+      document.getElementById('trends').textContent='Loading…';
+      fetch('/api/console/e4l/client-trends?client_id='+cid+'&last_n='+lastn.value,{credentials:'same-origin'})
+        .then(function(r){return r.json();}).then(render);
+    }
+    function render(d){
+      var meta=document.getElementById('meta');
+      meta.textContent = d.n_scans ? (d.n_scans+' scans with findings · '+(d.first_date||'')+' → '+(d.last_date||'')) : 'No scans with findings for this client.';
+      var host=document.getElementById('trends'); host.textContent='';
+      var items=d.items||[];
+      GROUPS.forEach(function(g){
+        var rows=items.filter(function(i){return i.trend===g[0];});
+        if(!rows.length) return;
+        var sec=document.createElement('div'); sec.className='grp '+g[0];
+        var h=document.createElement('h2'); var dot=document.createElement('span'); dot.className='dot'; h.appendChild(dot);
+        h.appendChild(document.createTextNode(g[1]+' ('+rows.length+')')); sec.appendChild(h);
+        var tb=document.createElement('table');
+        tb.innerHTML='<tr><th>Item</th><th>Category</th><th>Frequency</th><th>Best rank</th></tr>';
+        rows.forEach(function(it){
+          var tr=document.createElement('tr');
+          var td1=document.createElement('td');
+          if(it.pattern_slug){ var a=document.createElement('a'); a.className='pl'; a.href='/learn/pattern/'+encodeURIComponent(it.pattern_slug); a.target='_blank'; a.rel='noopener'; a.textContent=it.name; td1.appendChild(a); }
+          else td1.textContent=it.name;
+          tr.appendChild(td1);
+          var td2=document.createElement('td'); td2.className='cat'; td2.textContent=it.category||''; tr.appendChild(td2);
+          var td3=document.createElement('td'); td3.className='num'; td3.textContent=it.frequency_pct+'% ('+it.appearances+')'; tr.appendChild(td3);
+          var td4=document.createElement('td'); td4.className='num'; td4.textContent=it.best_rank!=null?('#'+it.best_rank):'—'; tr.appendChild(td4);
+          tb.appendChild(tr);
+        });
+        sec.appendChild(tb); host.appendChild(sec);
+      });
+    }
+  </script>
+</body></html>
