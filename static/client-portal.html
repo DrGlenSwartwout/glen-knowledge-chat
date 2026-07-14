@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/entity-ref.css">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
@@ -275,25 +276,9 @@
   .pat-wrap{margin:.6rem 0}
   .pat-chip{display:inline-block;margin:3px 5px 3px 0;padding:4px 10px;border-radius:14px;
     background:var(--brand-soft);border:1px solid var(--line,#21472d);font-size:.85rem}
-  .pat-chip--detail{-webkit-appearance:none;appearance:none;color:inherit;font:inherit;
-    line-height:inherit;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
-  .pat-chip--detail::after{content:"";display:inline-block;width:5px;height:5px;margin-left:6px;
-    border-right:1.5px solid var(--brand);border-bottom:1.5px solid var(--brand);
-    transform:rotate(45deg) translateY(-1px);opacity:.7;transition:transform .15s ease}
-  .pat-chip--detail:hover,.pat-chip--detail:focus-visible,
-  .pat-chip--detail[aria-expanded="true"]{background:var(--brand);color:var(--btn-fg)}
-  .pat-chip--detail:hover::after,.pat-chip--detail:focus-visible::after,
-  .pat-chip--detail[aria-expanded="true"]::after{border-color:var(--btn-fg)}
-  .pat-chip--detail[aria-expanded="true"]::after{transform:rotate(-135deg) translateY(1px)}
-  .pat-chip--detail:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-  .pat-detail{margin:.15rem 0 .7rem;padding:.6rem .8rem;border-radius:10px;
-    background:var(--card2);border:1px solid var(--line);
-    box-shadow:inset 3px 0 0 var(--brand);font-size:.9rem;line-height:1.5}
-  .pat-detail .pat-detail-name{font-weight:700;font-size:.82rem;letter-spacing:.02em;
-    margin-bottom:.25rem;color:var(--brand)}
-  .pat-detail:not([hidden]){animation:patExpand .28s ease}
-  @keyframes patExpand{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-  @media (prefers-reduced-motion: reduce){.pat-detail:not([hidden]){animation:none}}
+  /* Described chips are .entity-ref; the shared hover pop-up (static/entity-ref.css)
+     supplies the interactive styling. The dotted underline signals "more info". */
+  .pat-chip.entity-ref{border-bottom-color:var(--brand)}
   @media (prefers-reduced-motion: reduce){.reveal{animation:none;opacity:1;transform:none}}
   /* Ask Dr. Glen concierge chat */
   .chat-msgs{max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:.8rem;min-height:48px}
@@ -409,6 +394,7 @@
   <!-- Print/PDF surface: filled on demand by printReport(); shown only when printing. -->
   <div id="print-root" aria-hidden="true"></div>
 
+<script src="/static/entity-ref.js"></script>
 <script>
 // The last path segment is either an emailed portal token or the literal "me"
 // (the tokenless logged-in home, authed by the rm_portal_session cookie). Tokens
@@ -751,38 +737,11 @@ function pollPending(){
   load();
 }
 
-// Stress-pattern detail: one delegated click listener bound ONCE to the
-// persistent #app container, so it survives render()'s poll re-renders. A
-// described chip (button.pat-chip--detail) toggles the single inline #patDetail
-// panel: click to open, click again (or another chip) to swap/close. Only one
-// panel is ever open. data-pname/data-pdesc are read back decoded, then re-esc()'d
-// on inject (never trust them as raw HTML).
-let _patWired = false;
-function wirePatternDetails(){
-  if(_patWired) return;
-  const app = document.getElementById("app");
-  if(!app) return;
-  _patWired = true;
-  app.addEventListener("click", (e)=>{
-    const chip = e.target.closest(".pat-chip--detail");
-    if(!chip || !app.contains(chip)) return;
-    const panel = document.getElementById("patDetail");
-    if(!panel) return;
-    const wasOpen = chip.getAttribute("aria-expanded") === "true";
-    app.querySelectorAll('.pat-chip--detail[aria-expanded="true"]')
-       .forEach(c => c.setAttribute("aria-expanded", "false"));
-    if(wasOpen){
-      panel.hidden = true;
-      panel.innerHTML = "";
-      return;
-    }
-    chip.setAttribute("aria-expanded", "true");
-    const nm = chip.getAttribute("data-pname") || "";
-    const ds = chip.getAttribute("data-pdesc") || "";
-    panel.innerHTML = `<div class="pat-detail-name">${esc(nm)}</div><div>${esc(ds)}</div>`;
-    panel.hidden = false;
-  });
-}
+// Entity hover/tap pop-ups (stress patterns, remedies, functions) + link-out are
+// wired ONCE via the shared wireEntityRefs() (static/entity-ref.js), bound to the
+// persistent #app container so it survives render()'s poll re-renders. Any
+// .entity-ref[data-info] element shows the shared #entityPop on hover/focus/tap;
+// data-name/data-info are injected as textContent (never raw HTML).
 
 // Family Plan Subscribe/Cancel: delegated once on document (buttons are injected
 // via render()'s innerHTML, so a per-render listener would stack). Uses `seg`,
@@ -1150,8 +1109,8 @@ function render(d, v){
     // Patterns block (chips). Rendered on EVERY view so a returning client (and
     // confirmed reports) can revisit their patterns — not just the first-view
     // unfold. The reveal stagger stays a first-view-only flourish (rvlCls/patDelay
-    // are empty when !firstTime). A finding WITH a description becomes a <button>
-    // that toggles the inline #patDetail panel (wired in wirePatternDetails());
+    // are empty when !firstTime). A finding WITH a description becomes an
+    // .entity-ref <span> that shows the shared hover/tap pop-up (wireEntityRefs());
     // a finding WITHOUT one stays a plain, non-interactive <span> — about half the
     // E4L catalog (ER stresses, Nutrition, Environmental) has no description.
     const anyDetail = findings.some(f => (f.description||"").trim());
@@ -1161,10 +1120,9 @@ function render(d, v){
            const nm = esc(f.name||f.code||"");
            const ds = (f.description||"").trim();
            return ds
-             ? `<button type="button" class="pat-chip pat-chip--detail${rvlCls}"${patDelay(i)} data-pname="${esc(f.name||f.code||"")}" data-pdesc="${esc(ds)}" aria-expanded="false" aria-controls="patDetail">${nm}</button>`
+             ? `<span class="pat-chip entity-ref${rvlCls}"${patDelay(i)} tabindex="0" data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}">${nm}</span>`
              : `<span class="pat-chip${rvlCls}"${patDelay(i)}>${nm}</span>`;
-         }).join("")}</div>
-         <div class="pat-detail" id="patDetail" hidden></div>`
+         }).join("")}</div>`
       : "";
     // Set the guard once, in this render pass, so the unfold does not replay on the
     // next poll/re-render. Only flips when we are actually rendering the analysis.
@@ -1209,10 +1167,20 @@ function render(d, v){
         path += `
           <div class="layer${rvlCls}"${layerDelay(i)}>
             <div class="node">${esc(L.n!=null?L.n:i+1)}</div>
-            <h3>${esc(L.title||"")}</h3>
+            <h3>${(L.function_info||L.function_href)
+                  ? (L.function_href
+                      ? `<a class="entity-ref" data-name="${esc(L.title||"")}" data-info="${esc(L.function_info||"")}" href="${esc(L.function_href)}" target="_blank" rel="noopener">${esc(L.title||"")}</a>`
+                      : `<span class="entity-ref" tabindex="0" data-name="${esc(L.title||"")}" data-info="${esc(L.function_info||"")}">${esc(L.title||"")}</span>`)
+                  : esc(L.title||"")}</h3>
             ${L.meaning?`<div class="mean">${esc(L.meaning)}</div>`:""}
             ${(L.stresses&&L.stresses.length)?`<div class="lstress">${L.stresses.map(s=>`<span class="lstress-chip">${esc(s.label||s.code||"")}</span>`).join("")}</div>`:""}
-            ${L.remedy?`<div class="rx"><b>${esc(L.remedy)}</b>${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
+            ${L.remedy?`<div class="rx">${
+              (L.remedy_info||L.remedy_href)
+                ? (L.remedy_href
+                    ? `<a class="entity-ref" data-name="${esc(L.remedy)}" data-info="${esc(L.remedy_info||"")}" href="${esc(L.remedy_href)}" target="_blank" rel="noopener"><b>${esc(L.remedy)}</b></a>`
+                    : `<span class="entity-ref" tabindex="0" data-name="${esc(L.remedy)}" data-info="${esc(L.remedy_info||"")}"><b>${esc(L.remedy)}</b></span>`)
+                : `<b>${esc(L.remedy)}</b>`
+              }${L.dosing?`<span class="dose">${esc(L.dosing)}</span>`:""}</div>`:""}
           </div>`;
       });
       let extra = "";
@@ -1722,7 +1690,7 @@ function render(d, v){
   initCoachesCard();
   initPeerCard();
   initConsultIntakeCard();
-  wirePatternDetails();
+  wireEntityRefs(document.getElementById("app") || document);
 
   var chatSendEl = document.getElementById("chatSend");
   if(chatSendEl){ chatSendEl.addEventListener("click", sendChatMessage); }

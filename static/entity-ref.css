@@ -1,0 +1,20 @@
+/* Shared hover/tap pop-up for clinical entities (stress patterns, remedies,
+   functions, ingredients) across the portal report and product/ingredient pages. */
+.entity-ref{
+  cursor:pointer; text-decoration:none; color:inherit;
+  border-bottom:1px dotted currentColor; }
+.entity-ref[href]{ border-bottom-style:dashed; }
+.entity-ref:focus-visible{ outline:2px solid var(--brand,#2f6f5e); outline-offset:2px; }
+#entityPop{
+  position:absolute; z-index:1000; max-width:320px; max-height:50vh; overflow:auto;
+  padding:10px 12px; border-radius:10px;
+  background:var(--card,#12332b); color:var(--cream,#f4efe6);
+  box-shadow:0 6px 24px rgba(0,0,0,.28); font-size:13.5px; line-height:1.45;
+  opacity:0; pointer-events:none; transition:opacity .12s ease; }
+#entityPop.show{ opacity:1; pointer-events:auto; }
+#entityPop .ep-name{ font-weight:700; margin-bottom:3px; }
+#entityPop .ep-link{ display:inline-block; margin-top:8px; font-weight:600;
+  color:var(--brand-lt,#8fd0bd); text-decoration:none; }
+/* The `hidden` attribute must win over the explicit display above (otherwise the
+   link shows on pop-up-only entities that have no destination). */
+#entityPop .ep-link[hidden]{ display:none; }

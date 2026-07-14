@@ -13,8 +13,30 @@ import json
 
 from dashboard import affiliate_dashboard as _ad
 from dashboard import client_portal as _cp
+from dashboard import entity_refs as _er
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
+
+
+def _product_exists(slug):
+    """True when `slug` is a live, non-superseded product page — the only case
+    where a remedy earns a click-through link. A catalog miss or a superseded
+    slug degrades to a pop-up only (never a wrong/dead link)."""
+    try:
+        from dashboard import products as _pr
+        return bool(slug) and slug in _pr.load_products() and not _pr.superseded_slug(slug)
+    except Exception:
+        return False
+
+
+def entity_refs_remedy(cx, name):
+    """Seam (monkeypatchable in tests): remedy -> {name, info, href}."""
+    return _er.remedy_ref(cx, name, product_exists=_product_exists)
+
+
+def entity_refs_function(cx, title):
+    """Seam (monkeypatchable in tests): layer title/function -> {name, info, href}."""
+    return _er.function_ref(cx, title)
 
 # roles → human-friendly badge labels. Roles not listed fall back to Title Case.
 _BADGE = {
@@ -82,7 +104,7 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         status = rep.get("status") or "confirmed"
         today = datetime.date.today().isoformat()
         actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
-        return _assemble_biofield(content, status, scan_date=picked,
+        return _assemble_biofield(cx, content, status, scan_date=picked,
                                   scan_dates=dates, actionable=actionable, unlocked=unlocked)
     # Legacy fallback: single confirmed report, no tabs.
     try:
@@ -94,11 +116,11 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         return {"visible": False}
     # Legacy portals (no biofield_status) are treated as confirmed → render fully.
     status = content.get("biofield_status") or "confirmed"
-    return _assemble_biofield(content, status, scan_date=None,
+    return _assemble_biofield(cx, content, status, scan_date=None,
                               scan_dates=[], actionable=False, unlocked=unlocked)
 
 
-def _assemble_biofield(content, status, *, scan_date, scan_dates, actionable, unlocked=True):
+def _assemble_biofield(cx, content, status, *, scan_date, scan_dates, actionable, unlocked=True):
     # A report's remedies un-blur only when it's confirmed AND the client has paid.
     # `status` is still reported truthfully (the report exists); only the gated
     # content and `blurred` flag depend on payment.
@@ -106,9 +128,15 @@ def _assemble_biofield(content, status, *, scan_date, scan_dates, actionable, un
     layers = []
     for L in (content.get("layers") or []):
         item = {"n": L.get("n"), "title": L.get("title", ""), "meaning": L.get("meaning", "")}
+        fn = entity_refs_function(cx, item["title"])
+        item["function_info"] = fn["info"]
+        item["function_href"] = fn["href"] or ""
         if show:  # unconfirmed OR unpaid remedies NEVER leave the server
             item["remedy"] = L.get("remedy", "")
             item["dosing"] = L.get("dosing", "")
+            rr = entity_refs_remedy(cx, item["remedy"]) if item["remedy"] else {"info": "", "href": None}
+            item["remedy_info"] = rr["info"]
+            item["remedy_href"] = rr["href"] or ""
         layers.append(item)
     return {"visible": True, "status": status, "blurred": not show,
             "actionable": actionable, "scan_date": scan_date, "scan_dates": scan_dates,

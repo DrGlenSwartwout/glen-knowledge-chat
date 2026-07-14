@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/entity-ref.css">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ingredient Deep-Dive · Dr. Glen Swartwout</title>
@@ -103,6 +104,7 @@
     }
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/entity-ref.js"></script>
 </head>
 <body>
   <div class="brandbar">
@@ -334,9 +336,11 @@
         var li = document.createElement('li');
         if (f.slug){
           var a = document.createElement('a');
-          a.className = 'form-link';
+          a.className = 'form-link entity-ref';
           a.setAttribute('target', '_blank');
           a.setAttribute('rel', 'noopener');
+          a.setAttribute('data-name', f.name || f.slug);
+          if (f.info) a.setAttribute('data-info', f.info);
           a.href = '/begin/ingredient/' + encodeURIComponent(f.slug);
           a.textContent = f.name || f.slug;
           li.appendChild(a);
@@ -381,9 +385,11 @@
       formulations.forEach(function(f){
         var li = document.createElement('li');
         var a = document.createElement('a');
-        a.className = 'form-link';
+        a.className = 'form-link entity-ref';
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener');
+        a.setAttribute('data-name', f.name || f.slug);
+        if (f.info) a.setAttribute('data-info', f.info);
         a.href = '/begin/product/' + encodeURIComponent(f.slug);
         a.textContent = f.name || f.slug;
         li.appendChild(a);
@@ -476,6 +482,9 @@
             show('ip-preparing');
           } else if (state === 'approved'){
             renderApproved(data);
+            // Bind the shared entity-ref hover pop-up once (document-level covers
+            // links revealed later when accordions expand).
+            if (window.wireEntityRefs) wireEntityRefs(document);
           } else {
             show('ip-notfound');
           }
