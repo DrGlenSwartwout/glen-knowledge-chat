@@ -2350,6 +2350,24 @@
    "rank": 2
   },
   {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "prl_product_name": "OcuVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "prl_product_name": "Astaxanthin Complex, Premier",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "prl_product_name": "DHEA, Premier",
+   "rank": 2
+  },
+  {
    "focus_area_id": 19,
    "focus_area_name": "Stomach",
    "prl_product_name": "GastroVen™",
@@ -2384,6 +2402,60 @@
    "focus_area_name": "Lungs",
    "prl_product_name": "Hyssinol™",
    "rank": 2
+  },
+  {
+   "focus_area_id": 23,
+   "focus_area_name": "Hearing / Audio Processing",
+   "prl_product_name": "Multi-Vitamin, Premier",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 23,
+   "focus_area_name": "Hearing / Audio Processing",
+   "prl_product_name": "Magnesium Glycinate Caps, Premier",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "prl_product_name": "CogniTropic™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "prl_product_name": "EPA/DHA Marine (Softgels), Premier",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 48,
+   "focus_area_name": "Energy Levels",
+   "prl_product_name": "Max B-ND™ (Fermented) (2 oz)",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 48,
+   "focus_area_name": "Energy Levels",
+   "prl_product_name": "PQQ Complex, Premier",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 48,
+   "focus_area_name": "Energy Levels",
+   "prl_product_name": "DHEA, Premier",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 53,
+   "focus_area_name": "Pancreas",
+   "prl_product_name": "PancreVen™",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 53,
+   "focus_area_name": "Pancreas",
+   "prl_product_name": "Digest, Premier",
+   "rank": 1
   }
  ],
  "focus_area_items": [
