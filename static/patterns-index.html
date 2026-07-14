@@ -1,0 +1,58 @@
+<!DOCTYPE html><html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stress Pattern Glossary · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Canonical funnel palette (dark default); theme-toggle.js redefines these same
+       names for [data-theme="light"], so the page adapts to either theme. */
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; }
+    body{margin:0;background:var(--bg);color:var(--cream);font-family:'Open Sans',sans-serif;line-height:1.5}
+    .wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px}
+    h1{font-family:Raleway,sans-serif;font-size:1.8rem;margin:.2rem 0 .3rem;color:var(--cream)}
+    .lead{color:var(--muted);margin:0 0 1.4rem}
+    .cat{font-family:Raleway,sans-serif;font-size:1.1rem;margin:1.4rem 0 .5rem;border-bottom:1px solid var(--border);padding-bottom:4px;color:var(--cream)}
+    ul.plist{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 18px}
+    ul.plist a{color:var(--cream);text-decoration:none;border-bottom:1px dashed var(--green)}
+    ul.plist li{padding:5px 0;font-size:.95rem}
+    .hint{color:var(--muted);font-size:.8rem;margin-left:6px}
+    .muted{color:var(--muted)} .hidden{display:none}
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head><body>
+  <div class="wrap">
+    <h1>Stress Pattern Glossary</h1>
+    <p class="lead">The bioenergetic stress patterns an E4L scan can identify, and the body structures and functions each one involves.</p>
+    <div id="idx-loading" class="muted">Loading…</div>
+    <div id="idx-empty" class="hidden muted">The glossary is being prepared.</div>
+    <div id="idx-body"></div>
+  </div>
+  <script>
+    function hide(id){document.getElementById(id).classList.add('hidden');}
+    fetch('/learn/patterns-data', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        hide('idx-loading');
+        var groups = (d && d.groups) || [];
+        if(!groups.length){ document.getElementById('idx-empty').classList.remove('hidden'); return; }
+        var host = document.getElementById('idx-body');
+        groups.forEach(function(g){
+          if(!g.patterns || !g.patterns.length) return;
+          var h = document.createElement('div'); h.className='cat'; h.textContent = g.category; host.appendChild(h);
+          var ul = document.createElement('ul'); ul.className='plist';
+          g.patterns.forEach(function(p){
+            var li = document.createElement('li');
+            var a = document.createElement('a');
+            a.href = '/learn/pattern/' + encodeURIComponent(p.slug);
+            a.textContent = p.name; li.appendChild(a);
+            if(p.n_structures){ var s=document.createElement('span'); s.className='hint'; s.textContent = p.n_structures + ' structures'; li.appendChild(s); }
+            ul.appendChild(li);
+          });
+          host.appendChild(ul);
+        });
+      })
+      .catch(function(){ hide('idx-loading'); document.getElementById('idx-empty').classList.remove('hidden'); });
+  </script>
+</body></html>
