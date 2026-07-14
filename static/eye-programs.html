@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eye Support Programs · Clinical Reference · Remedy Match</title>
+<meta name="description" content="Adjunctive eye-condition support protocols for practitioners: base items, dosing, alternatives, and stage-based modifiers for each condition.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBF8F3;
+    --panel:#FFFFFFee;
+    --panel-solid:#FFFFFF;
+    --ink:#1E2A2A;
+    --muted:#5F6B6B;
+    --soft:#E8DFD3;
+    --rule:#E2D9C9;
+    --rule-soft:#EFE7D9;
+    --accent:#2D7A6A;
+    --accent-deep:#1F5A4D;
+    --accent-soft:#E1EEEA;
+    --gold:#B08A3E;
+    --gold-soft:#F4ECD7;
+    --warn:#B3453A;
+    --warn-soft:#FBEAE6;
+    --shadow-card:0 1px 2px rgba(30,42,42,.05), 0 18px 50px -22px rgba(30,42,42,.22);
+    --maxw:960px;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  body{
+    font-family:'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-weight:400;
+    line-height:1.6;
+    font-size:16.5px;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, #EAF3F0 0%, transparent 60%),
+      radial-gradient(900px 500px at -5% 30%, #F3ECDE 0%, transparent 55%),
+      var(--bg);
+  }
+  a{color:var(--accent-deep); text-underline-offset:3px; text-decoration-thickness:.5px}
+  a:hover{color:var(--accent)}
+
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+  .eyebrow{
+    font-family:'Inter',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:.22em;
+    font-size:11.5px;
+    color:var(--accent);
+    font-weight:500;
+    display:flex; align-items:center; gap:14px;
+  }
+  .eyebrow::after{
+    content:""; flex:1; height:1px; background:linear-gradient(to right, var(--rule), transparent);
+  }
+
+  header.cover{
+    max-width:var(--maxw);
+    margin:0 auto;
+    padding:48px 24px 24px;
+  }
+  h1.title{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:clamp(32px, 5vw, 46px);
+    line-height:1.08;
+    letter-spacing:-.01em;
+    margin:14px 0 12px;
+  }
+  .intro{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    color:var(--muted);
+    font-size:clamp(18px, 2vw, 21px);
+    margin:0 0 10px;
+    max-width:62ch;
+    line-height:1.4;
+  }
+  .note{
+    font-size:13.5px;
+    color:var(--muted);
+    margin:0 0 8px;
+  }
+
+  main.wrap{padding:8px 24px 72px}
+
+  .program-card{
+    background:var(--panel-solid);
+    border:1px solid var(--rule);
+    border-radius:var(--radius);
+    padding:26px 26px 24px;
+    box-shadow:var(--shadow-card);
+    margin-bottom:24px;
+  }
+  .program-label{
+    font-family:'Cormorant Garamond', serif;
+    font-weight:500;
+    font-size:26px;
+    line-height:1.15;
+    margin:0 0 14px;
+    color:var(--ink);
+  }
+  .consult-banner{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    background:var(--warn-soft);
+    border-left:3px solid var(--warn);
+    border-radius:8px;
+    padding:12px 16px;
+    font-size:14px;
+    color:var(--ink);
+    margin:0 0 18px;
+  }
+  .consult-banner .icon{color:var(--warn); font-weight:700; line-height:1.4}
+
+  .section-heading{
+    font-size:11px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); margin:18px 0 8px;
+  }
+  .section-heading:first-of-type{margin-top:0}
+
+  ul.item-list{list-style:none; padding:0; margin:0}
+  ul.item-list li{
+    position:relative;
+    padding:9px 0 9px 20px;
+    font-size:15px;
+    border-bottom:1px dashed var(--rule-soft);
+  }
+  ul.item-list li:last-child{border-bottom:0}
+  ul.item-list li::before{
+    content:"›";
+    position:absolute; left:0; top:8px;
+    color:var(--accent); font-weight:600; font-size:15px;
+  }
+  .item-name{font-weight:500}
+  .item-dose{color:var(--muted)}
+  .item-note{display:block; color:var(--muted); font-size:13.5px; margin-top:2px; font-style:italic}
+  .item-alts{color:var(--muted)}
+
+  ul.modifier-list{list-style:none; padding:0; margin:0}
+  ul.modifier-list li{
+    position:relative;
+    padding:9px 0 9px 20px;
+    font-size:14.5px;
+    border-bottom:1px dashed var(--rule-soft);
+    color:var(--ink);
+  }
+  ul.modifier-list li:last-child{border-bottom:0}
+  ul.modifier-list li::before{
+    content:"›";
+    position:absolute; left:0; top:8px;
+    color:var(--gold); font-weight:600; font-size:15px;
+  }
+  .mod-when{font-weight:500}
+  .mod-source{color:var(--muted); font-style:italic}
+  .mod-action{color:var(--muted)}
+
+  .state-msg{
+    font-family:'Cormorant Garamond', serif;
+    font-style:italic;
+    color:var(--muted);
+    font-size:19px;
+    padding:32px 0;
+    text-align:center;
+  }
+
+  footer.wrap{padding:12px 24px 60px; color:var(--muted); font-size:12.5px}
+
+  @media (max-width:600px){
+    header.cover{padding-top:32px}
+    .program-card{padding:20px 18px 18px}
+  }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="eyebrow">Functional Formulations™ · Practitioner Reference</div>
+  <h1 class="title">Eye Support Programs · Clinical Reference</h1>
+  <p class="intro">Adjunctive protocols for practitioners, organized by condition, with dosing, alternatives, and stage-based adjustments.</p>
+  <p class="note">Ordering links go to the retail store.</p>
+</header>
+
+<main class="wrap" id="programs" aria-live="polite">
+  <div class="state-msg">Loading programs…</div>
+</main>
+
+<script>
+(function () {
+  var container = document.getElementById('programs');
+
+  function clear(el) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+  }
+
+  function stateMessage(text) {
+    clear(container);
+    var p = document.createElement('div');
+    p.className = 'state-msg';
+    p.textContent = text;
+    container.appendChild(p);
+  }
+
+  function itemInline(parent, item) {
+    // name (linked), dose, note, alts -- all via createElement/textContent
+    var nameLink = document.createElement('a');
+    nameLink.className = 'item-name';
+    nameLink.href = item.url || '#';
+    nameLink.textContent = item.name || '';
+    parent.appendChild(nameLink);
+
+    if (item.dose) {
+      var dose = document.createElement('span');
+      dose.className = 'item-dose';
+      dose.textContent = ' · ' + item.dose;
+      parent.appendChild(dose);
+    }
+
+    if (item.alts && item.alts.length) {
+      var altsWrap = document.createElement('span');
+      altsWrap.className = 'item-alts';
+      item.alts.forEach(function (alt, idx) {
+        altsWrap.appendChild(document.createTextNode(' or '));
+        var altLink = document.createElement('a');
+        altLink.href = alt.url || '#';
+        altLink.textContent = alt.name || '';
+        altsWrap.appendChild(altLink);
+      });
+      parent.appendChild(altsWrap);
+    }
+
+    if (item.note) {
+      var note = document.createElement('span');
+      note.className = 'item-note';
+      note.textContent = item.note;
+      parent.appendChild(note);
+    }
+  }
+
+  function buildItemList(items) {
+    var ul = document.createElement('ul');
+    ul.className = 'item-list';
+    items.forEach(function (item) {
+      var li = document.createElement('li');
+      itemInline(li, item);
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function buildModifierList(modifiers) {
+    var ul = document.createElement('ul');
+    ul.className = 'modifier-list';
+    modifiers.forEach(function (mod) {
+      var li = document.createElement('li');
+
+      var when = document.createElement('span');
+      when.className = 'mod-when';
+      when.textContent = mod.when || '';
+      li.appendChild(when);
+
+      if (mod.source) {
+        var source = document.createElement('span');
+        source.className = 'mod-source';
+        source.textContent = ' (' + mod.source + ')';
+        li.appendChild(source);
+      }
+
+      var verb = (mod.action === 'remove') ? 'skip' : 'add';
+      var action = document.createElement('span');
+      action.className = 'mod-action';
+      action.textContent = ': ' + verb + ' ';
+      li.appendChild(action);
+
+      var modItems = mod.items || [];
+      modItems.forEach(function (it, idx) {
+        if (idx > 0) li.appendChild(document.createTextNode(', '));
+        var link = document.createElement('a');
+        link.href = it.url || '#';
+        link.textContent = it.name || '';
+        if (it.dose) {
+          link.textContent = it.name + ' · ' + it.dose;
+        }
+        li.appendChild(link);
+      });
+
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function buildCard(program) {
+    var card = document.createElement('div');
+    card.className = 'program-card';
+
+    var label = document.createElement('h2');
+    label.className = 'program-label';
+    label.textContent = program.label || program.condition_key || '';
+    card.appendChild(label);
+
+    if (program.consult_recommended) {
+      var banner = document.createElement('div');
+      banner.className = 'consult-banner';
+      var icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = '⚠';
+      banner.appendChild(icon);
+      var text = document.createElement('span');
+      text.textContent = 'Sight-threatening. Book a consult or seek evaluation first; the below is adjunctive support, not a substitute for care.';
+      banner.appendChild(text);
+      card.appendChild(banner);
+    }
+
+    var items = program.items || [];
+    if (items.length) {
+      card.appendChild(buildItemList(items));
+    }
+
+    var modifiers = program.modifiers || [];
+    if (modifiers.length) {
+      var modHeading = document.createElement('div');
+      modHeading.className = 'section-heading';
+      modHeading.textContent = 'Adjust by stage';
+      card.appendChild(modHeading);
+      card.appendChild(buildModifierList(modifiers));
+    }
+
+    return card;
+  }
+
+  function render(programs) {
+    clear(container);
+    if (!programs || !programs.length) {
+      stateMessage('Programs are being finalized.');
+      return;
+    }
+    programs.forEach(function (program) {
+      container.appendChild(buildCard(program));
+    });
+  }
+
+  fetch('/api/eye-programs')
+    .then(function (res) {
+      if (!res.ok) throw new Error('bad response');
+      return res.json();
+    })
+    .then(function (data) {
+      render(data.programs || []);
+    })
+    .catch(function () {
+      stateMessage('Unable to load programs right now. Please try again shortly.');
+    });
+})();
+</script>
+
+<footer class="wrap">
+  <p>For practitioner reference only. Not a substitute for individualized clinical evaluation.</p>
+</footer>
+
+</body>
+</html>
