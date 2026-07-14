@@ -34,6 +34,8 @@ def normalize_product_name(name, catalog_names):
         "Premier Magnesium": "Magnesium Glycinate Caps, Premier",  # PRL's magnesium SKU
         "Lecithin Granules": "Sunflower Lecithin, Premier",   # E4L item 1360 = current PRL lecithin
         "Vintage Vinegar": "Apple Cider Vinegar, Premier",    # E4L item 2933 = PRL's ACV
+        "Gallbladder-ND": "Fermented Gallbladder-ND™, Premier",  # gallbladder-nd-trade.html
+        "Limonene Complex": "Limonene, Premier",              # premier-limonene
     }
     # ("Premier Noni" auto-maps to "Noni, Premier" via the Premier-prefix word-swap below.)
     if name in missing_mappings:
