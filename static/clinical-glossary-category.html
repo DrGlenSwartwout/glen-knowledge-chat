@@ -20,6 +20,8 @@
     .entry .alt{color:var(--muted);font-weight:400;font-size:.9rem;margin-left:6px}
     .entry p{margin:.2rem 0;font-size:.96rem}
     .entry .rem{color:var(--muted);font-size:.85rem;margin-top:.4rem}
+    .entry .rem a.rem-link{color:var(--green);text-decoration:none;border-bottom:1px dashed var(--green)}
+    .entry .rem a.rem-link:hover{color:var(--gold);border-bottom-color:var(--gold)}
     .count{color:var(--gold);font-size:.8rem;margin-bottom:.6rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -52,7 +54,18 @@
         if(e.description){ var p=document.createElement('p'); p.textContent = e.description; d.appendChild(p); }
         if(e.remedies && e.remedies.length){
           var r=document.createElement('div'); r.className='rem';
-          r.textContent = 'Related remedies: ' + e.remedies.map(function(x){return x.name;}).join(', ');
+          r.appendChild(document.createTextNode('Related remedies: '));
+          e.remedies.forEach(function(x, i){
+            if(i) r.appendChild(document.createTextNode(', '));
+            if(x.product_slug){
+              var a=document.createElement('a'); a.className='rem-link';
+              a.href='/begin/product/'+encodeURIComponent(x.product_slug);
+              a.target='_blank'; a.rel='noopener'; a.textContent=x.name;
+              r.appendChild(a);
+            } else {
+              r.appendChild(document.createTextNode(x.name));
+            }
+          });
           d.appendChild(r);
         }
         host.appendChild(d);

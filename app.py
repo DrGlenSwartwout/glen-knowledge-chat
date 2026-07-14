@@ -6888,6 +6888,13 @@ def learn_clinical_glossary_dim_data(dim):
     d = _cg.get_dimension(dim)
     if not d:
         return jsonify({"state": "unknown"}), 404
+    # Phase 2: attach a product_slug to each remedy (exact name match + overrides).
+    try:
+        from dashboard import products as _pr
+        idx = _cg.product_name_index(_pr.load_products())
+        d = _cg.with_product_links(d, idx, _cg.load_overrides())
+    except Exception:
+        pass
     return jsonify(d)
 
 

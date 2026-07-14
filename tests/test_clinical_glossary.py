@@ -38,3 +38,31 @@ def test_missing_file_is_empty():
     assert cat == {"dimensions": []}
     assert cg.dimensions(cat) == []
     assert cg.get_dimension("organs", cat) is None
+
+
+def test_product_name_index_and_exact_resolve():
+    products = {"liver-support": {"name": "Liver Support"},
+                "flow-ease": {"name": "Flow Ease"}}
+    idx = cg.product_name_index(products)
+    assert cg.remedy_product_slug("Liver Support", idx) == "liver-support"
+    assert cg.remedy_product_slug("flow  ease", idx) == "flow-ease"   # normalised
+    assert cg.remedy_product_slug("Nonexistent", idx) is None
+    assert cg.remedy_product_slug(".)", idx) is None                  # noise -> None
+
+
+def test_override_resolves_non_exact():
+    idx = {}
+    ov = {"Bicarbonate Blend": "alkalize-bicarbonate-blend"}
+    assert cg.remedy_product_slug("Bicarbonate Blend", idx, ov) == "alkalize-bicarbonate-blend"
+    assert cg.remedy_product_slug("Unmapped", idx, ov) is None       # no fuzzy
+
+
+def test_with_product_links_attaches_slug():
+    dim = {"key": "organs", "entries": [
+        {"slug": "adrenal", "name": "Adrenal",
+         "remedies": [{"name": "Liver Support", "url": "u"}, {"name": "Mystery", "url": "u2"}]}]}
+    idx = {"liver support": "liver-support"}
+    out = cg.with_product_links(dim, idx)
+    rem = out["entries"][0]["remedies"]
+    assert rem[0]["product_slug"] == "liver-support"
+    assert rem[1]["product_slug"] is None

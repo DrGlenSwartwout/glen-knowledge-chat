@@ -1,0 +1,5 @@
+{
+  "_note": "Curated remedy-name -> product-slug overrides for the clinical glossary (phase 2). Add entries here for real products whose glossary name doesn't exactly match the product catalog. Exact-name matches are resolved automatically and need no entry. Keep only confident mappings — a wrong link is worse than plain text.",
+  "Bicarbonate Blend": "alkalize-bicarbonate-blend",
+  "TMG Powder": "tmg-syntropy-powder-trimethylglycine"
+}
