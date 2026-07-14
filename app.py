@@ -3639,7 +3639,29 @@ def begin_state():
             "has_e4l": _has_e4l(_cx, _sig_email, state),
         }
     payload["journey_map"] = begin_funnel.journey_map(state, ref_slug, signals)
+    payload["next_step"] = {
+        "prompt": begin_funnel.next_step_prompt(state, query_texts),
+        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug, query_texts=query_texts),
+    }
     return jsonify(payload)
+
+
+@app.route("/begin/travel-style", methods=["POST"])
+def begin_travel_style():
+    style = (request.get_json(silent=True) or {}).get("style", "")
+    if style not in ("mission", "adventure"):
+        return jsonify({"ok": False, "error": "bad style"}), 400
+    session_id = (request.cookies.get("amg_session") or "").strip()
+    auth_user = get_authenticated_user(request)
+    email = auth_user["email"] if auth_user else ""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        state = begin_funnel.set_travel_style(cx, session_id=session_id, style=style, email=email)
+    ref_slug = (request.cookies.get("rm_ref") or "").strip()
+    query_texts = _recent_query_texts(session_id, email)
+    return jsonify({"ok": True, "next_step": {
+        "prompt": begin_funnel.next_step_prompt(state, query_texts),
+        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug, query_texts=query_texts),
+    }})
 
 
 @app.route("/begin/card-click", methods=["POST"])
@@ -4789,9 +4811,19 @@ def begin_match_chat():
         if match_evt and _member:
             yield sse({"match": match_evt})
 
+        try:
+            _q_texts = [m.get("content", "") for m in (history or []) if m.get("role") == "user"]
+            _q_texts.append(query)
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                _ns_state = begin_funnel.get_state(_cx, session_id=session_id, email=email)
+            _next_chips = begin_funnel.next_step_chips(_ns_state, ref="", query_texts=_q_texts)
+        except Exception as e:
+            print(f"[match] next_chips: {e!r}", flush=True)
+            _next_chips = []
+
         yield sse({"done": True, "session_id": session_id,
                    "sources": sources_list, "chunks_retrieved": len(matches),
-                   "chips": _chips})
+                   "chips": _chips, "next_chips": _next_chips})
 
     resp = Response(stream_with_context(generate()), content_type="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
