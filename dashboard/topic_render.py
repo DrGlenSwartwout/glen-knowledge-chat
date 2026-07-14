@@ -167,9 +167,16 @@ def render_index_html(topics):
         for t in (topics or [])
     )
     inner = items or "<li>New guides are on the way.</li>"
+    glossaries = (
+        '<section class="related"><h2>Reference glossaries</h2><ul>'
+        '<li><a href="/learn/glossary">Clinical Glossary &mdash; organs, meridians, miasms &amp; chemistry</a></li>'
+        '<li><a href="/learn/patterns">Stress-Pattern Glossary &mdash; the patterns an E4L scan identifies</a></li>'
+        "</ul></section>"
+    )
     body_inner = (
         "<main><h1>Wellness Topics</h1>"
-        '<section class="related"><ul>' + inner + "</ul></section></main>"
+        + glossaries
+        + '<section class="related"><ul>' + inner + "</ul></section></main>"
     )
     return _document("Wellness Topics", "Educational wellness guides from Dr. Glen Swartwout.",
                      "", body_inner)

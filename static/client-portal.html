@@ -1156,7 +1156,8 @@ function render(d, v){
            return href
              ? `<a class="pat-chip entity-ref${rvlCls}"${patDelay(i)} data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}" href="${esc(href)}" target="_blank" rel="noopener">${nm}</a>`
              : `<span class="pat-chip entity-ref${rvlCls}"${patDelay(i)} tabindex="0" data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}">${nm}</span>`;
-         }).join("")}</div>`
+         }).join("")}</div>
+         <p class="muted small${rvlCls}" style="margin:.5rem 0 0"><a href="/learn/patterns" target="_blank" rel="noopener" style="color:var(--brand,#2f6f5e);text-decoration:none;border-bottom:1px dashed var(--brand,#2f6f5e)">Explore the stress-pattern glossary &rarr;</a></p>`
       : "";
     // Set the guard once, in this render pass, so the unfold does not replay on the
     // next poll/re-render. Only flips when we are actually rendering the analysis.
