@@ -13636,11 +13636,12 @@ def api_console_next_actions():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import (console_next_action as _na, biofield_reveals as _br,
                            ff_match_drafts as _ff, client_portal as _cp, orders as _ord,
-                           household_holds as _hh)
+                           household_holds as _hh, data_sharing_rewards as _dr)
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx); _ff.init_table(cx)
         _cp.init_client_portal_table(cx); _ord.init_orders_table(cx)
         _hh.init_hold_tables(cx)
+        _dr.init_reward_tables(cx)
         cx.row_factory = sqlite3.Row
         items = _na.list_actionable(cx)
     return jsonify({"items": items})
