@@ -17127,6 +17127,16 @@ def api_client_portal(token):
                 payload["support_program"] = _sp_block
         except Exception as _e:
             print(f"[support-program/payload] {_e!r}", flush=True)
+    # PRL Supplement flag (always present, mirrors ff_matches_enabled) + card
+    # (flag-gated, best-effort). email_for_reports is member-re-pointed.
+    payload["prl_supplement_enabled"] = _prl_supplement_enabled()
+    if _prl_supplement_enabled():
+        try:
+            _prl_block = _prl_supplement_for(email_for_reports, req_date or None)
+            if _prl_block:
+                payload["prl_supplement"] = _prl_block
+        except Exception as _e:
+            print(f"[prl-supplement/payload] {_e!r}", flush=True)
     # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
     # standing hand-composed program, distinct from the condition-driven
     # support_program card above and from the reco-card. email_for_reports is
