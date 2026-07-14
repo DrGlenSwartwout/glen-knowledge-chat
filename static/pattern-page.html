@@ -24,6 +24,14 @@
     .schip.primary{border-color:var(--green)}
     a.schip-link{text-decoration:none;color:var(--cream);cursor:pointer}
     a.schip-link:hover{border-color:var(--gold);color:var(--gold)}
+    .rx-sec{margin-top:1.6rem}
+    .rx-sec h3{font-family:Raleway,sans-serif;font-size:1.05rem;margin:.2rem 0 .5rem;color:var(--cream)}
+    ul.rx{list-style:none;margin:0;padding:0}
+    ul.rx li{padding:6px 0;font-size:.95rem;border-top:1px solid var(--border)}
+    ul.rx li:first-child{border-top:none}
+    ul.rx a.rx-link{color:var(--green);text-decoration:none;border-bottom:1px dashed var(--green)}
+    ul.rx a.rx-link:hover{color:var(--gold);border-bottom-color:var(--gold)}
+    .rx-note{color:var(--muted);font-size:.8rem;margin-top:.5rem}
     .back{display:inline-block;margin-bottom:18px;color:var(--muted);text-decoration:none;font-size:.9rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -39,6 +47,7 @@
       <p id="pat-full" class="full hidden"></p>
       <p id="pat-desc" class="desc hidden"></p>
       <div id="pat-structs"></div>
+      <div id="pat-remedies"></div>
     </div>
   </div>
   <script>
@@ -87,6 +96,29 @@
           var head = document.createElement('h3'); head.style.marginTop='1.4rem';
           head.textContent = 'Body structures & functions involved';
           host.insertBefore(head, host.firstChild);
+        }
+        // "What may help": mapped formulations, product-linked where resolved.
+        var rem = d.remedies || [];
+        if(rem.length){
+          var sec = document.getElementById('pat-remedies'); sec.className = 'rx-sec';
+          var rh = document.createElement('h3'); rh.textContent = 'What may help'; sec.appendChild(rh);
+          var ul = document.createElement('ul'); ul.className = 'rx';
+          rem.forEach(function(r){
+            var li = document.createElement('li');
+            if(r.product_slug){
+              var a = document.createElement('a'); a.className = 'rx-link';
+              a.href = '/begin/product/' + encodeURIComponent(r.product_slug);
+              a.target = '_blank'; a.rel = 'noopener'; a.textContent = r.name;
+              li.appendChild(a);
+            } else {
+              li.appendChild(document.createTextNode(r.name));
+            }
+            ul.appendChild(li);
+          });
+          sec.appendChild(ul);
+          var note = document.createElement('p'); note.className = 'rx-note';
+          note.textContent = 'General support associated with this pattern — not a substitute for a personalized Biofield Analysis.';
+          sec.appendChild(note);
         }
       })
       .catch(function(){ hide('pat-loading'); show('pat-notfound'); });
