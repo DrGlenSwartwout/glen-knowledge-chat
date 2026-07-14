@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stress Pattern · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    /* Canonical funnel palette (dark default); theme-toggle.js redefines these same
+       names for [data-theme="light"], so the page adapts to either theme. */
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; }
+    body{margin:0;background:var(--bg);color:var(--cream);font-family:'Open Sans',sans-serif;line-height:1.55}
+    .wrap{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+    h1{font-family:Raleway,sans-serif;font-size:1.7rem;margin:.2rem 0;color:var(--cream)}
+    .full{color:var(--muted);font-size:1rem;margin:0 0 .6rem}
+    .badge{display:inline-block;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;
+      background:var(--green);color:#fff;border-radius:10px;padding:2px 9px;margin-bottom:14px}
+    .desc{font-size:1.02rem;margin:.4rem 0 1.4rem;color:var(--cream)}
+    .sgroup{margin:1rem 0}
+    .sgroup h3{font-family:Raleway,sans-serif;font-size:1rem;margin:.2rem 0 .5rem;color:var(--cream)}
+    .schips{display:flex;flex-wrap:wrap;gap:6px}
+    .schip{background:var(--surface-2);border:1px solid var(--border);color:var(--cream);
+      border-radius:13px;padding:4px 11px;font-size:.86rem}
+    .schip.primary{border-color:var(--green)}
+    .back{display:inline-block;margin-bottom:18px;color:var(--muted);text-decoration:none;font-size:.9rem}
+    .muted{color:var(--muted)} .hidden{display:none}
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head><body>
+  <div class="wrap">
+    <a class="back" href="/learn/patterns">← All stress patterns</a>
+    <div id="pat-loading" class="muted">Loading…</div>
+    <div id="pat-notfound" class="hidden muted">We couldn't find that stress pattern. <a href="/learn/patterns">Browse the glossary</a>.</div>
+    <div id="pat-body" class="hidden">
+      <span id="pat-badge" class="badge hidden"></span>
+      <h1 id="pat-title"></h1>
+      <p id="pat-full" class="full hidden"></p>
+      <p id="pat-desc" class="desc hidden"></p>
+      <div id="pat-structs"></div>
+    </div>
+  </div>
+  <script>
+    var STYPE_LABELS = {organ:"Organs",system:"Body systems",function:"Functions",
+      emotion:"Emotions",substance:"Substances",immune_cell:"Immune cells",other:"Other"};
+    var STYPE_ORDER = ["organ","system","function","emotion","substance","immune_cell","other"];
+    function show(id){document.getElementById(id).classList.remove('hidden');}
+    function hide(id){document.getElementById(id).classList.add('hidden');}
+    var slug = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+    fetch('/learn/pattern-data/' + encodeURIComponent(slug), {credentials:'same-origin'})
+      .then(function(r){ if(!r.ok) return null; return r.json(); })
+      .then(function(d){
+        hide('pat-loading');
+        if(!d || d.state === 'unknown'){ show('pat-notfound'); return; }
+        show('pat-body');
+        document.title = (d.name || 'Stress Pattern') + ' · Dr. Glen Swartwout';
+        document.getElementById('pat-title').textContent = d.name || d.code || '';
+        if(d.full_name && d.full_name !== d.name){ var f=document.getElementById('pat-full'); f.textContent=d.full_name; show('pat-full'); }
+        if(d.category){ var b=document.getElementById('pat-badge'); b.textContent=d.category; show('pat-badge'); }
+        if(d.description){ var p=document.getElementById('pat-desc'); p.textContent=d.description; show('pat-desc'); }
+        var byType = {};
+        (d.structures || []).forEach(function(s){ (byType[s.stype||'other']=byType[s.stype||'other']||[]).push(s); });
+        var host = document.getElementById('pat-structs');
+        var any = false;
+        STYPE_ORDER.forEach(function(t){
+          var items = byType[t]; if(!items || !items.length) return;
+          any = true;
+          var g = document.createElement('div'); g.className='sgroup';
+          var h = document.createElement('h3'); h.textContent = STYPE_LABELS[t] || t; g.appendChild(h);
+          var chips = document.createElement('div'); chips.className='schips';
+          items.forEach(function(s){
+            var c = document.createElement('span'); c.className='schip'+(s.is_primary?' primary':'');
+            c.textContent = s.structure; chips.appendChild(c);
+          });
+          g.appendChild(chips); host.appendChild(g);
+        });
+        if(any){
+          var head = document.createElement('h3'); head.style.marginTop='1.4rem';
+          head.textContent = 'Body structures & functions involved';
+          host.insertBefore(head, host.firstChild);
+        }
+      })
+      .catch(function(){ hide('pat-loading'); show('pat-notfound'); });
+  </script>
+</body></html>

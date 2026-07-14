@@ -6821,6 +6821,49 @@ def _topic_kickoff_build(slug, kind, name):
     _threading.Thread(target=_build, daemon=True).start()
 
 
+@app.route("/learn/patterns")
+def learn_patterns_index():
+    return send_from_directory(STATIC, "patterns-index.html")
+
+
+@app.route("/learn/patterns-data")
+def learn_patterns_data():
+    from dashboard import pattern_glossary as _pg
+    cx = _pg.open_ro()
+    if cx is None:
+        return jsonify({"groups": []})
+    try:
+        return jsonify({"groups": _pg.list_patterns(cx)})
+    finally:
+        try:
+            cx.close()
+        except Exception:
+            pass
+
+
+@app.route("/learn/pattern/<slug>")
+def learn_pattern_page(slug):
+    return send_from_directory(STATIC, "pattern-page.html")
+
+
+@app.route("/learn/pattern-data/<slug>")
+def learn_pattern_data(slug):
+    from dashboard import pattern_glossary as _pg
+    cx = _pg.open_ro()
+    if cx is None:
+        return jsonify({"state": "unknown"}), 404
+    try:
+        p = _pg.get_pattern(cx, slug)
+        if not p:
+            return jsonify({"state": "unknown"}), 404
+        return jsonify(p)
+    finally:
+        try:
+            cx.close()
+        except Exception:
+            pass
+
+
 @app.route("/learn/<slug>")
 def learn_topic_page(slug):
     from dashboard import topic_pages as _tp, topic_render as _tr

@@ -99,6 +99,24 @@ def _findings(cx, scan_id):
                     "name": (r["full_name"] or r["name"] or code).strip(),
                     "description": (r["e4l_description"] or "").strip(),
                     "category": cat, "group": _group_for(cat)})
+    hrefs = _pattern_hrefs(cx, [f["code"] for f in out])
+    for f in out:
+        f["pattern_href"] = hrefs.get(f["code"], "")
+    return out
+
+
+def _pattern_hrefs(cx, codes):
+    """{code: '/learn/pattern/<slug>' or ''} — link only patterns that have a
+    glossary page (a description or >=1 mapped structure). Best-effort; any error
+    on a code leaves it unlinked."""
+    from dashboard import pattern_glossary as _pg
+    out = {}
+    for code in codes:
+        try:
+            slug = _pg.slug_for(code)
+            out[code] = ("/learn/pattern/" + slug) if _pg.page_exists(cx, slug) else ""
+        except Exception:
+            out[code] = ""
     return out
 
 
