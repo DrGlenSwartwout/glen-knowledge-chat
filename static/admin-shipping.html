@@ -111,6 +111,27 @@
     </div>
   </div>
 
+  <!-- Box capacity matrix -->
+  <div class="section">
+    <h2>Box Capacity Matrix</h2>
+    <table id="matrix-table">
+      <thead>
+        <tr>
+          <th>Bottle</th>
+          <th class="col-size">Small<span style="display:block;font-weight:400;font-size:.78em;opacity:.65;margin-top:2px">50 × 150 × 230 mm</span></th>
+          <th class="col-size">Medium<span style="display:block;font-weight:400;font-size:.78em;opacity:.65;margin-top:2px">130 × 220 × 270 mm</span></th>
+          <th class="col-size">Large<span style="display:block;font-weight:400;font-size:.78em;opacity:.65;margin-top:2px">140 × 290 × 300 mm</span></th>
+        </tr>
+      </thead>
+      <tbody id="matrix-tbody"></tbody>
+    </table>
+    <div class="hint">
+      How many of each bottle fit in each USPS Flat Rate box size. Tab/click out of a cell to save.
+      Dimensions under each size are the interior box dimensions (depth × width × length) the packer fits against.
+      Mixed orders use fractional fill — e.g., 3 droppers (3/6 of Small) + 2 caps (2/4 of Small) = full Small.
+    </div>
+  </div>
+
   <!-- Bottle library -->
   <div class="section">
     <h2>Bottle Library</h2>
@@ -169,26 +190,6 @@
       <tbody id="prod-bottle-tbody"></tbody>
     </table>
     <div class="hint">Override which bottle type is used for shipping calculations per product. Products defaulting to "default" are shown first.</div>
-  </div>
-
-  <!-- Box capacity matrix -->
-  <div class="section">
-    <h2>Box Capacity Matrix</h2>
-    <table id="matrix-table">
-      <thead>
-        <tr>
-          <th>Bottle</th>
-          <th class="col-size">Small</th>
-          <th class="col-size">Medium</th>
-          <th class="col-size">Large</th>
-        </tr>
-      </thead>
-      <tbody id="matrix-tbody"></tbody>
-    </table>
-    <div class="hint">
-      How many of each bottle fit in each USPS Flat Rate box size. Tab/click out of a cell to save.
-      Mixed orders use fractional fill — e.g., 3 droppers (3/6 of Small) + 2 caps (2/4 of Small) = full Small.
-    </div>
   </div>
 </div>
 
