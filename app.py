@@ -38483,6 +38483,16 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Reward-gift attach (Phase 2 Slice 2 Task 4): show a member's earned-but-
+            # unfulfilled reward gift on the pack board for their next order, across ALL
+            # order sources, so Rae can pack it. Gated — off by default, no payload change.
+            try:
+                if _reward_gifts_enabled():
+                    from dashboard import review_gifts as _rg
+                    for o in rows:
+                        o["reward_gifts"] = _rg.pending_reward_for(cx, (o.get("email") or "").strip().lower())
+            except Exception as _e:
+                print(f"[orders] reward-gift annotate skipped: {_e!r}", flush=True)
             # Read-receipts (Task 5): additive, best-effort — whether the client
             # has opened the invoice link most recently SENT for this order
             # (orders.invoice_token, set by orders.send_invoice). Orders that

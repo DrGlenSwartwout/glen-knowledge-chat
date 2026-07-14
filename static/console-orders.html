@@ -239,8 +239,12 @@
         + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
         + (total?' &middot; '+total:'')+'</div>'
       + '</div>';
+    var giftLines = (o.reward_gifts||[]).map(function(g){
+      return '<div class="meta reward-gift">&#127873; Include: '+esc(g.gift_label||g.gift_sku||'')+'</div>';
+    }).join('');
     var body = '<div class="card-body">'
       + (items?'<div class="meta prods">'+items+'</div>':'')
+      + giftLines
       + (o.tracking_number?'<div class="meta">tracking '+esc(o.tracking_number)+'</div>':'')
       + (o.biofield_pdf_url?'<div class="meta"><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a></div>':'')
       + fulfillHtml(o)

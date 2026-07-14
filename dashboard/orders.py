@@ -569,6 +569,20 @@ from dashboard.rbac import OWNER, OPS, VA
 from dashboard.signals import signal as _signal, RED, AMBER, GREEN, GRAY
 
 
+def _attach_reward_gifts(cx, order_id):
+    """Best-effort: attach the member's pending reward gifts to the order they're packed into."""
+    if os.environ.get("REWARD_GIFTS_ENABLED", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return
+    try:
+        from dashboard import review_gifts as _rg
+        row = cx.execute("SELECT email FROM orders WHERE id=?", (order_id,)).fetchone()
+        email = (row[0] if row else "") or ""
+        for g in _rg.pending_reward_for(cx, email):
+            _rg.mark_fulfilled(cx, g["id"], order_id)
+    except Exception as _e:
+        print(f"[reward-gifts/attach] {_e!r}", flush=True)
+
+
 def _status_action(new_status, verb):
     def _exec(params, ctx):
         cx = (ctx or {}).get("cx") or (params or {}).get("cx")
@@ -577,6 +591,8 @@ def _status_action(new_status, verb):
         oid = int(params["order_id"])
         if not set_order_status(cx, oid, new_status):
             raise ValueError(f"order #{oid} not found")
+        if new_status == "packed":
+            _attach_reward_gifts(cx, oid)
         return {"order_id": oid, "status": new_status, "message": f"Order #{oid} {verb}."}
     return _exec
 
