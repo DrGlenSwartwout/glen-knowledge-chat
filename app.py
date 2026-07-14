@@ -6932,6 +6932,18 @@ def learn_clinical_glossary_dim_data(dim):
                     e["patterns"] = o2p.get(_gx.canon(e.get("name", "")), [])
         except Exception:
             pass
+    # Toxin-association layer: attach characteristic environmental toxins to Organ
+    # and Meridian entries (meridians inherit their organ's toxins via the map).
+    if dim in ("organs", "meridians"):
+        try:
+            from dashboard import organ_toxins as _ot
+            _tox = _ot.load()
+            for e in d.get("entries", []):
+                tx = _ot.toxins_for(e.get("name", ""), _tox)
+                if tx:
+                    e["toxins"] = tx
+        except Exception:
+            pass
     return jsonify(d)
 
 

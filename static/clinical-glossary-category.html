@@ -27,6 +27,19 @@
     .entry .pat a.pat-link:hover{border-bottom-color:var(--gold);color:var(--gold)}
     .entry.hl{background:var(--surface);border-radius:8px;margin:0 -10px;padding-left:10px;padding-right:10px;
       box-shadow:inset 3px 0 0 var(--green)}
+    .entry .tox{margin-top:.55rem}
+    .entry .tox .tox-h{color:var(--muted);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;margin-bottom:.3rem}
+    .entry .tox ul{list-style:none;margin:0;padding:0}
+    .entry .tox li{font-size:.86rem;padding:3px 0;line-height:1.5}
+    .entry .tox .tox-name{color:var(--cream);font-weight:600}
+    .entry .tox .tier{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+      border-radius:6px;padding:1px 6px;margin-right:7px;vertical-align:1px}
+    .entry .tox .tier.strong{background:var(--green);color:#08130d}
+    .entry .tox .tier.moderate{background:var(--gold);color:#241a05}
+    .entry .tox .tier.weak{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+    .entry .tox .tox-note{color:var(--muted)}
+    .entry .tox a.tox-src{color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--muted);font-size:.78rem}
+    .entry .tox a.tox-src:hover{color:var(--gold);border-bottom-color:var(--gold)}
     .count{color:var(--gold);font-size:.8rem;margin-bottom:.6rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -84,6 +97,23 @@
             pl.appendChild(a);
           });
           d.appendChild(pl);
+        }
+        if(e.toxins && e.toxins.length){
+          var tx=document.createElement('div'); tx.className='tox';
+          var th=document.createElement('div'); th.className='tox-h'; th.textContent='Characteristic toxins'; tx.appendChild(th);
+          var tul=document.createElement('ul');
+          e.toxins.forEach(function(t){
+            var li=document.createElement('li');
+            var badge=document.createElement('span');
+            var tier=(t.tier||'').toLowerCase();
+            badge.className='tier '+(tier==='strong'?'strong':(tier==='moderate'?'moderate':'weak'));
+            badge.textContent=t.tier||'—'; li.appendChild(badge);
+            var nm=document.createElement('span'); nm.className='tox-name'; nm.textContent=t.toxin||''; li.appendChild(nm);
+            if(t.note){ li.appendChild(document.createTextNode(' — ')); var nt=document.createElement('span'); nt.className='tox-note'; nt.textContent=t.note; li.appendChild(nt); }
+            if(t.url){ li.appendChild(document.createTextNode(' ')); var a=document.createElement('a'); a.className='tox-src'; a.href=t.url; a.target='_blank'; a.rel='noopener'; a.textContent='['+(t.source||'source')+']'; li.appendChild(a); }
+            tul.appendChild(li);
+          });
+          tx.appendChild(tul); d.appendChild(tx);
         }
         host.appendChild(d);
       });
