@@ -79,3 +79,18 @@ def test_with_product_links_attaches_slug():
     rem = out["entries"][0]["remedies"]
     assert rem[0]["product_slug"] == "liver-support"
     assert rem[1]["product_slug"] is None
+
+
+def test_supplementary_environmental_dimension_merged():
+    # load() with no path merges the curated e4l_stressor_map.json dimensions.
+    cat = cg.load()
+    env = cg.get_dimension("environmental", cat)
+    assert env is not None and len(env["entries"]) >= 20
+    lead = next(e for e in env["entries"] if e["name"] == "Lead")
+    assert lead["affects"] and lead["remedies"]
+    # an explicit path skips the merge (isolation for other tests)
+    import json, tempfile, os
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "c.json")
+        json.dump({"dimensions": [{"key": "x", "entries": []}]}, open(p, "w"))
+        assert [d["key"] for d in cg.load(p)["dimensions"]] == ["x"]

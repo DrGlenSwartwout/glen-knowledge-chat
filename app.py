@@ -6932,6 +6932,17 @@ def learn_clinical_glossary_dim_data(dim):
                     e["patterns"] = o2p.get(_gx.canon(e.get("name", "")), [])
         except Exception:
             pass
+    # 'Affects' organ cross-links: for stressor entries that list affected organs,
+    # resolve each to its clinical Organ entry slug (deep-link) where it matches.
+    try:
+        if any(e.get("affects") for e in d.get("entries", [])):
+            from dashboard import glossary_crosslinks as _gx, clinical_glossary as _cg
+            cidx = _gx.clinical_organ_index(_cg.load())
+            for e in d.get("entries", []):
+                if e.get("affects"):
+                    e["affects_links"] = [{"name": a, "slug": cidx.get(_gx.canon(a))} for a in e["affects"]]
+    except Exception:
+        pass
     # Stress-factor layer: attach characteristic stress factors (toxin / microbe /
     # emotional / physical) to Organ and Meridian entries (meridians inherit their
     # organ's factors via the map).

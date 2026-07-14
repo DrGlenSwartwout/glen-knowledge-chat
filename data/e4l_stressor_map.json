@@ -1,0 +1,1895 @@
+{
+ "_note": "Curated map of the E4L non-infoceutical ENVIRONMENTAL stress items -> target organs/systems + detox-support remedies, for the clinical glossary. Sourced from a 2026-07-14 toxicology research pass. HONESTY: most of these are cleared by normal liver Phase-II conjugation (glutathione/GST/UGT) + renal/biliary excretion, NOT by a specific product; only PFAS (bile-acid sequestrants) and fluoride (Ca/Mg gut binding) have a documented binder, and asbestos/isocyanates have no metabolic detox (avoidance only). Remedies below are framed as general elimination/conjugation support, not cures. Tiers: strong (agency/IARC) / moderate / weak. `affects` names cross-link to clinical Organ entries where they match.",
+ "dimensions": [
+  {
+   "key": "environmental",
+   "title": "Environmental Stressors",
+   "blurb": "Heavy metals and everyday chemical exposures an E4L scan can flag — their target organs and the elimination pathways that clear them.",
+   "path": "environmental",
+   "source": "e4l.db (Environmental category) + toxicology research",
+   "entries": [
+    {
+     "slug": "env-aluminum",
+     "name": "Aluminum",
+     "code": "ENV-Aluminum",
+     "subcategory": "Heavy Metals",
+     "tier": "strong",
+     "description": "Toxic mainly when the gut barrier is bypassed and renal excretion is impaired. Dialysis encephalopathy and bone osteomalacia are established; the Alzheimer's link is contested. Cleared renally; binds gut phosphate.",
+     "affects": [
+      "Brain",
+      "Bone"
+     ],
+     "remedies": [
+      {
+       "name": "ES15 Heavy Metals Energetic Star Infoceutical"
+      },
+      {
+       "name": "Chelation"
+      },
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR ToxProfile 22",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp22.pdf"
+    },
+    {
+     "slug": "env-arsenic",
+     "name": "Arsenic",
+     "code": "ENV-Arsenic",
+     "subcategory": "Heavy Metals",
+     "tier": "strong",
+     "description": "IARC Group 1. Skin keratosis is the sentinel sign; also vascular (blackfoot disease, atherosclerosis), bladder and lung. Cleared by methylation + renal excretion.",
+     "affects": [
+      "Skin",
+      "Bladder",
+      "Circulation",
+      "Lung"
+     ],
+     "remedies": [
+      {
+       "name": "ES15 Heavy Metals Energetic Star Infoceutical"
+      },
+      {
+       "name": "Chelation"
+      },
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR Arsenic CSEM",
+     "url": "https://archive.cdc.gov/www_atsdr_cdc_gov/csem/arsenic/physiologic_effects.html"
+    },
+    {
+     "slug": "env-cadmium",
+     "name": "Cadmium",
+     "code": "ENV-Cadmium",
+     "subcategory": "Heavy Metals",
+     "tier": "strong",
+     "description": "Primary target is the kidney proximal tubule (metallothionein-bound, endocytosed via megalin:cubilin); also bone (itai-itai) and lung. Very long half-life.",
+     "affects": [
+      "Bladder",
+      "Bone",
+      "Lung"
+     ],
+     "remedies": [
+      {
+       "name": "ES15 Heavy Metals Energetic Star Infoceutical"
+      },
+      {
+       "name": "Chelation"
+      },
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR ToxProfile 5",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp5-c2.pdf"
+    },
+    {
+     "slug": "env-lead",
+     "name": "Lead",
+     "code": "ENV-Lead",
+     "subcategory": "Heavy Metals",
+     "tier": "strong",
+     "description": "Bone is the reservoir (~94% of body burden, remobilizes in pregnancy/menopause); the CNS is the critical target; also kidney and heme (anemia).",
+     "affects": [
+      "Bone",
+      "Brain",
+      "Blood"
+     ],
+     "remedies": [
+      {
+       "name": "ES15 Heavy Metals Energetic Star Infoceutical"
+      },
+      {
+       "name": "Chelation"
+      },
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR ToxProfile 13",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp13.pdf"
+    },
+    {
+     "slug": "env-bpa",
+     "name": "Bisphenol A (BPA)",
+     "code": "ENV-BPA",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "Estrogen-receptor agonist (endocrine disruptor); alters reproductive/mammary/ovarian signaling and metabolism. Short half-life (~6 h); cleared by liver Phase-II glucuronidation → urine.",
+     "affects": [
+      "Uterus",
+      "Ovary",
+      "Breast",
+      "Pancreas",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "DTX-LIVER Homeopathic Complex in Terrain Restore"
+      }
+     ],
+     "source": "Env Sci Pollut Res 2021",
+     "url": "https://link.springer.com/article/10.1007/s11356-021-13071-w"
+    },
+    {
+     "slug": "env-phthalates",
+     "name": "Phthalates",
+     "code": "ENV-Phthalates",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "Anti-androgenic ('phthalate syndrome': ↓fetal testosterone → hypospadias, cryptorchidism); rodent hepatic PPARα effects. Rapidly hydrolyzed + glucuronidated → urine/feces.",
+     "affects": [
+      "Testes",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR ToxProfile 9",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp9.pdf"
+    },
+    {
+     "slug": "env-parabens",
+     "name": "Parabens",
+     "code": "ENV-Parabens",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Weakly estrogenic; mainly a skin/mucosal irritant-sensitizer. Rapidly hydrolyzed by esterases (>70% renal in 24 h) — organ-specific systemic toxicology is thin.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "J Appl Toxicol",
+     "url": "https://analyticalsciencejournals.onlinelibrary.wiley.com/doi/10.1002/jat.1358"
+    },
+    {
+     "slug": "env-flameret",
+     "name": "Flame Retardants",
+     "code": "ENV-FlameRet",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "PBDEs disrupt the thyroid (HPT axis) + liver and the developing brain; lipophilic, bioaccumulative, long half-life. Hydroxylated by CYP450 → glucuronide/sulfate → biliary/fecal.",
+     "affects": [
+      "Brain",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Fiber Cleanse"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "PMC10487835",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10487835/"
+    },
+    {
+     "slug": "env-teflon",
+     "name": "Teflon / PFAS (PTFE)",
+     "code": "ENV-Teflon",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "PFOA/PFOS are persistent and NOT metabolized (half-life ~5 yr) — liver accumulation, immune suppression, cholesterol, thyroid. Documented binder: bile-acid sequestrants interrupt enterohepatic recirculation (~38% serum drop).",
+     "affects": [
+      "Liver",
+      "Thymus"
+     ],
+     "remedies": [
+      {
+       "name": "Binder Complex"
+      },
+      {
+       "name": "Fiber Cleanse"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "ATSDR PFAS health effects",
+     "url": "https://www.atsdr.cdc.gov/pfas/about/health-effects.html"
+    },
+    {
+     "slug": "env-formaldehyde",
+     "name": "Formaldehyde",
+     "code": "ENV-Formaldehyde",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "IARC Group 1. Reactive electrophile → DNA-protein crosslinks at the point of contact (nasal/respiratory epithelium, eyes/skin); myeloid leukemia debated. Very short half-life via GSH-dependent ADH5 → formate.",
+     "affects": [
+      "Lung"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "S-Acetyl Glutathione"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "NCBI Bookshelf NBK597627",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK597627/"
+    },
+    {
+     "slug": "env-azodyes",
+     "name": "Azo Dyes",
+     "code": "ENV-AzoDyes",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Gut/hepatic azoreductase splits the azo bond → aromatic amines. Benzidine-class dyes are IARC Group 1 bladder carcinogens; common FOOD azo colorants (tartrazine, Allura Red) do NOT share that mechanism — don't treat all as one carcinogenic block.",
+     "affects": [
+      "Bladder",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Fiber Cleanse"
+      }
+     ],
+     "source": "NCBI Bookshelf NBK304402",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK304402/"
+    },
+    {
+     "slug": "env-butanols",
+     "name": "Butanols",
+     "code": "ENV-Butanols",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "weak",
+     "description": "n-Butanol is an ethanol-like CNS depressant and an eye/skin/respiratory irritant. Cleared within hours (ADH→ALDH, mostly exhaled). Little organ-specific systemic toxicity — mainly avoidance/ventilation.",
+     "affects": [
+      "Brain"
+     ],
+     "remedies": [],
+     "source": "EPA EIMS",
+     "url": "https://ordspub.epa.gov/ords/eims/eimscomm.getfile?p_download_id=504783"
+    },
+    {
+     "slug": "env-carbonyls",
+     "name": "Carbonyls",
+     "code": "ENV-Carbonyls",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Reactive aldehydes (acrolein, acetaldehyde) deplete glutathione and form protein/DNA adducts — respiratory tract, eyes, and (acetaldehyde) upper GI/liver. GSH conjugation → mercapturic acids → urine is central.",
+     "affects": [
+      "Lung",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "S-Acetyl Glutathione"
+      },
+      {
+       "name": "Acetaldehyde Detox"
+      }
+     ],
+     "source": "PMC4306719",
+     "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4306719/"
+    },
+    {
+     "slug": "env-dioxane",
+     "name": "1,4-Dioxane",
+     "code": "ENV-Dioxane",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "IARC 2B. CYP2E1-metabolized; the parent accumulates at saturating doses → hepatic redox dysregulation (liver primary; kidney, nasal). Clearance is saturable/self-inducing.",
+     "affects": [
+      "Liver",
+      "Bladder"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "ATSDR ToxProfile 187",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp187.pdf"
+    },
+    {
+     "slug": "env-bht",
+     "name": "Hydroxytoluene (BHT)",
+     "code": "ENV-BHT",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Activated to a quinone-methide/hydroperoxide → ROS, centrilobular liver damage and tumor promotion, especially under glutathione depletion (mostly rodent data). Hepatic oxidation → glucuronide → urine.",
+     "affects": [
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "INCHEM JECFA v35",
+     "url": "https://www.inchem.org/documents/jecfa/jecmono/v35je02.htm"
+    },
+    {
+     "slug": "env-isocyanate",
+     "name": "Isocyanate",
+     "code": "ENV-Isocyanate",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "Reactive N=C=O haptenates self-proteins → sensitization and occupational asthma; direct airway/skin irritant. Harm is a local immune reaction, not a circulating toxin cleared by the liver — prevention is avoidance.",
+     "affects": [
+      "Lung"
+     ],
+     "remedies": [],
+     "source": "NCBI Bookshelf NBK592298",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK592298/"
+    },
+    {
+     "slug": "env-nheptane",
+     "name": "N-heptane",
+     "code": "ENV-Nheptane",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Lipophilic solvent → nonspecific CNS narcosis and respiratory/skin irritation (weakly neurotoxic vs n-hexane). CYP450 → heptanols → glucuronide/sulfate, renal + pulmonary exhalation.",
+     "affects": [
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "EPA PPRTV",
+     "url": "https://cfpub.epa.gov/ncea/pprtv/documents/HeptaneN.pdf"
+    },
+    {
+     "slug": "env-nitrotoluene",
+     "name": "Nitrotoluene",
+     "code": "ENV-Nitrotoluene",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "CYP oxidation + nitroreduction → methemoglobinemia/anemia (blood) and liver; the ortho-isomer is a rodent liver carcinogen (IARC 2A). Human/meta-para data are thin.",
+     "affects": [
+      "Blood",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Blood Cleanse"
+      }
+     ],
+     "source": "NCBI Bookshelf NBK590762",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK590762/"
+    },
+    {
+     "slug": "env-ppd",
+     "name": "p-Phenylenediamine (PPD)",
+     "code": "ENV-PPD",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "moderate",
+     "description": "Oxidizes to Bandrowski's base → strong skin (type-IV) allergen; systemic poisoning (from ingestion) → rhabdomyolysis, myoglobinuric kidney injury, angioedema. IARC Group 3. Mostly renal clearance; no antidote.",
+     "affects": [
+      "Muscle",
+      "Bladder",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Glutathione Syntropy"
+      }
+     ],
+     "source": "NCBI Bookshelf NBK606092",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK606092/"
+    },
+    {
+     "slug": "env-petrochem",
+     "name": "Petrochemicals",
+     "code": "ENV-Petrochem",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "Volatile aromatics (benzene/toluene/xylene): acute CNS depression; benzene → bone marrow/hematopoietic (AML, IARC 1); toluene/xylene → liver, kidney. Cleared by CYP2E1 + Phase-II conjugation (GSH/glycine) → urine.",
+     "affects": [
+      "Brain",
+      "Blood",
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Blood Cleanse"
+      }
+     ],
+     "source": "NCBI Bookshelf NBK591286",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK591286/"
+    },
+    {
+     "slug": "env-smoke",
+     "name": "Smoke",
+     "code": "ENV-Smoke",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "PAHs (cigarette/wood smoke) are pro-carcinogens bioactivated by CYP1A1/1B1 → diol-epoxide DNA adducts — lung primary, also skin, bladder, GI. Cleared by GST conjugation + glucuronidation → bile/feces + urine.",
+     "affects": [
+      "Lung",
+      "Bladder"
+     ],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      },
+      {
+       "name": "Oxygen Cleanse"
+      }
+     ],
+     "source": "ATSDR ToxProfile 69 (PAHs)",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp69.pdf"
+    },
+    {
+     "slug": "env-sls",
+     "name": "Sodium Lauryl Sulphate (SLS)",
+     "code": "ENV-SLS",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "weak",
+     "description": "Anionic surfactant that denatures barrier proteins → irritant contact dermatitis (skin/eyes/mucosa); not a true sensitizer. Poorly absorbed; rinsing removes it — no systemic detox needed.",
+     "affects": [],
+     "remedies": [],
+     "source": "CIR Safety",
+     "url": "https://www.cir-safety.org/sites/default/files/imports/alerts.pdf"
+    },
+    {
+     "slug": "env-asbestos",
+     "name": "Asbestos",
+     "code": "ENV-Asbestos",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "IARC Group 1. Biopersistent fiber → frustrated phagocytosis, chronic ROS/inflammation, fibrosis (lung parenchyma, pleura/peritoneum). NOT metabolized — removed only physically; durable fibers are retained for years. No binder or metabolic detox exists; the intervention is avoidance.",
+     "affects": [
+      "Lung"
+     ],
+     "remedies": [],
+     "source": "ATSDR ToxProfile 61",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp61.pdf"
+    },
+    {
+     "slug": "env-fluoride",
+     "name": "Fluoride",
+     "code": "ENV-Fluoride",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "strong",
+     "description": "Substitutes into hydroxyapatite → skeletal/dental fluorosis; high-dose kidney and acute GI. Skeletal sequestration + renal excretion (falls with kidney impairment). Oral calcium/magnesium bind fluoride in the gut and reduce absorption.",
+     "affects": [
+      "Bone",
+      "Pineal"
+     ],
+     "remedies": [
+      {
+       "name": "Binder Complex"
+      }
+     ],
+     "source": "ATSDR ToxProfile 11",
+     "url": "https://www.atsdr.cdc.gov/toxprofiles/tp11.pdf"
+    },
+    {
+     "slug": "env-furnishings",
+     "name": "Furnishings",
+     "code": "ENV-Furnishings",
+     "subcategory": "Home, Work & Personal Care",
+     "tier": "weak",
+     "description": "An off-gassing composite (formaldehyde, flame retardants, VOCs, isocyanates from foams/finishes) rather than a single agent — see those entries for organ targets. Reduce exposure and support liver Phase-II conjugation.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Glutathione Syntropy"
+      },
+      {
+       "name": "Liver Support"
+      }
+     ],
+     "source": "see Formaldehyde / Flame Retardants / Isocyanate",
+     "url": "https://www.ncbi.nlm.nih.gov/books/NBK597627/"
+    }
+   ]
+  },
+  {
+   "key": "nutrition",
+   "title": "Nutrition",
+   "relation_label": "Supports",
+   "blurb": "The nutrient fields an E4L scan can flag as stressed — a signal of need/deficiency — with what each supports and its supplement form.",
+   "path": "nutrition",
+   "source": "e4l.db (Nutrition category) + NIH ODS / LPI",
+   "entries": [
+    {
+     "slug": "nut-boron",
+     "name": "Boron",
+     "code": "NUT-Boron",
+     "subcategory": "Mineral Fields",
+     "description": "Modulates calcium/magnesium metabolism and steroid-hormone (estrogen, testosterone) + vitamin-D activity. Not classed essential for humans; low status impairs bone metabolism and mental alertness.",
+     "affects": [
+      "Bone",
+      "Brain"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Boron-HealthProfessional/"
+    },
+    {
+     "slug": "nut-ca",
+     "name": "Calcium",
+     "code": "NUT-Ca",
+     "subcategory": "Mineral Fields",
+     "description": "The structural mineral of bone; also signals muscle contraction, nerve transmission and clotting. Deficiency → low bone mass, osteoporosis/osteomalacia, tetany.",
+     "affects": [
+      "Bone",
+      "Muscle",
+      "Heart"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Calcium-HealthProfessional/"
+    },
+    {
+     "slug": "nut-cr",
+     "name": "Chromium",
+     "code": "NUT-Cr",
+     "subcategory": "Mineral Fields",
+     "description": "Enhances insulin action and glucose uptake. Poor status → impaired glucose tolerance / insulin resistance (frank deficiency rare).",
+     "affects": [
+      "Pancreas"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Chromium-HealthProfessional/"
+    },
+    {
+     "slug": "nut-co",
+     "name": "Cobalt",
+     "code": "NUT-Co",
+     "subcategory": "Mineral Fields",
+     "description": "Its only biological role is as the central atom of vitamin B12 (cobalamin) — a cobalt 'stress' reads as B12 status (megaloblastic anemia, neuropathy).",
+     "affects": [
+      "Blood",
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "Sublingual B12"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS (B12)",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminB12-HealthProfessional/"
+    },
+    {
+     "slug": "nut-cu",
+     "name": "Copper",
+     "code": "NUT-Cu",
+     "subcategory": "Mineral Fields",
+     "description": "Cofactor for energy production, iron metabolism, connective-tissue crosslinking and antioxidant defense. Deficiency → anemia, neutropenia, neurological signs.",
+     "affects": [
+      "Blood",
+      "Brain"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Copper-HealthProfessional/"
+    },
+    {
+     "slug": "nut-i",
+     "name": "Iodine",
+     "code": "NUT-I",
+     "subcategory": "Mineral Fields",
+     "description": "The essential component of thyroid hormones (T3/T4). Deficiency → goiter, hypothyroidism, and impaired fetal neurodevelopment.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Iodine-HealthProfessional/"
+    },
+    {
+     "slug": "nut-fe",
+     "name": "Iron",
+     "code": "NUT-Fe",
+     "subcategory": "Mineral Fields",
+     "description": "Oxygen transport (hemoglobin/myoglobin), electron transport, DNA synthesis. Deficiency → anemia, fatigue, pallor, impaired immunity and cognition.",
+     "affects": [
+      "Blood",
+      "Muscle"
+     ],
+     "remedies": [
+      {
+       "name": "Iron Syntropy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Iron-HealthProfessional/"
+    },
+    {
+     "slug": "nut-mg",
+     "name": "Magnesium",
+     "code": "NUT-Mg",
+     "subcategory": "Mineral Fields",
+     "description": "Cofactor for 300+ enzymes; ATP, DNA/protein synthesis, a natural calcium-channel antagonist. Deficiency → cramps, arrhythmia, fatigue, neuromuscular hyperexcitability.",
+     "affects": [
+      "Muscle",
+      "Heart",
+      "Brain",
+      "Bone"
+     ],
+     "remedies": [
+      {
+       "name": "Magnesium Synergy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Magnesium-HealthProfessional/"
+    },
+    {
+     "slug": "nut-mn",
+     "name": "Manganese",
+     "code": "NUT-Mn",
+     "subcategory": "Mineral Fields",
+     "description": "Cofactor for the antioxidant Mn-SOD, bone formation, and carb/amino-acid metabolism. Deficiency rare in humans.",
+     "affects": [
+      "Bone",
+      "Brain",
+      "Liver"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Manganese-HealthProfessional/"
+    },
+    {
+     "slug": "nut-mo",
+     "name": "Molybdenum",
+     "code": "NUT-Mo",
+     "subcategory": "Mineral Fields",
+     "description": "Cofactor for sulfite oxidase, xanthine oxidase and aldehyde oxidase (sulfur and purine metabolism / detox). Deficiency extremely rare.",
+     "affects": [
+      "Liver"
+     ],
+     "remedies": [
+      {
+       "name": "Molybdenum Synergy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Molybdenum-HealthProfessional/"
+    },
+    {
+     "slug": "nut-p",
+     "name": "Phosphorus",
+     "code": "NUT-P",
+     "subcategory": "Mineral Fields",
+     "description": "Bone mineral (with calcium), ATP energy, phospholipid membranes and nucleic acids. Deficiency uncommon; imbalance/excess is the usual concern.",
+     "affects": [
+      "Bone"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Phosphorus-HealthProfessional/"
+    },
+    {
+     "slug": "nut-k",
+     "name": "Potassium",
+     "code": "NUT-K",
+     "subcategory": "Mineral Fields",
+     "description": "The principal intracellular cation — membrane potential, nerve/muscle function, blood-pressure regulation. Low status → weakness, cramps, arrhythmia, higher BP/stroke risk.",
+     "affects": [
+      "Heart",
+      "Muscle",
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "Potassium Citrate"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Potassium-HealthProfessional/"
+    },
+    {
+     "slug": "nut-se",
+     "name": "Selenium",
+     "code": "NUT-Se",
+     "subcategory": "Mineral Fields",
+     "description": "Component of glutathione peroxidase and thyroid deiodinases — antioxidant, thyroid and immune support. Deficiency → Keshan cardiomyopathy, impaired immunity/thyroid.",
+     "affects": [
+      "Thymus",
+      "Heart"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Selenium-HealthProfessional/"
+    },
+    {
+     "slug": "nut-si",
+     "name": "Silica",
+     "code": "NUT-Si",
+     "subcategory": "Mineral Fields",
+     "description": "As orthosilicic acid, supports collagen/glycosaminoglycan synthesis and bone-matrix mineralization (skin, hair, nails, connective tissue). No defined human deficiency syndrome.",
+     "affects": [
+      "Bone"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Nutr Metab review",
+     "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3546016/"
+    },
+    {
+     "slug": "nut-na",
+     "name": "Sodium",
+     "code": "NUT-Na",
+     "subcategory": "Mineral Fields",
+     "description": "The principal extracellular cation — fluid balance, blood pressure, nerve/muscle function. Dietary deficiency rare; excess is the public-health issue.",
+     "affects": [
+      "Heart"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/minerals/sodium"
+    },
+    {
+     "slug": "nut-zn",
+     "name": "Zinc",
+     "code": "NUT-Zn",
+     "subcategory": "Mineral Fields",
+     "description": "Catalytic/structural cofactor for 300+ enzymes — immune function, wound healing, DNA synthesis, taste/smell. Deficiency → poor immunity/healing, hair loss, dermatitis, taste loss.",
+     "affects": [
+      "Thymus",
+      "Testes"
+     ],
+     "remedies": [
+      {
+       "name": "Zinc Synergy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Zinc-HealthProfessional/"
+    },
+    {
+     "slug": "nut-chol",
+     "name": "Cholesterol",
+     "code": "NUT-Chol",
+     "subcategory": "Fat Fields",
+     "description": "A structural component of cell membranes and precursor to steroid hormones, vitamin D and bile acids. Endogenously made — a scan 'stress' signals DYSREGULATION (oxidized/LDL imbalance or impaired synthesis), not simple dietary lack.",
+     "affects": [
+      "Liver",
+      "Brain"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/health-disease/cholesterol"
+    },
+    {
+     "slug": "nut-cla",
+     "name": "Conjugated Linoleic Acid (CLA)",
+     "code": "NUT-CLA",
+     "subcategory": "Fat Fields",
+     "description": "Conjugated isomers of linoleic acid from ruminant fat/dairy; studied for body-composition and immune modulation. Not an essential nutrient — no deficiency state.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/other-nutrients/essential-fatty-acids"
+    },
+    {
+     "slug": "nut-ala",
+     "name": "Omega 3 - ALA",
+     "code": "NUT-ALA",
+     "subcategory": "Fat Fields",
+     "description": "The essential parent omega-3; a (limited, <15%) precursor to EPA/DHA and a membrane/energy source. Frank deficiency → scaly dermatitis, neuro/visual signs.",
+     "affects": [
+      "Heart",
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "WholOmega 30 gelcaps"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Omega3FattyAcids-HealthProfessional/"
+    },
+    {
+     "slug": "nut-dha",
+     "name": "Omega 3 - DHA",
+     "code": "NUT-DHA",
+     "subcategory": "Fat Fields",
+     "description": "The major structural lipid of neural and retinal membranes — critical for brain and vision. Low status → suboptimal cognition/retinal function.",
+     "affects": [
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "WholOmega 30 gelcaps"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Omega3FattyAcids-HealthProfessional/"
+    },
+    {
+     "slug": "nut-epa",
+     "name": "Omega 3 - EPA",
+     "code": "NUT-EPA",
+     "subcategory": "Fat Fields",
+     "description": "Precursor to anti-inflammatory eicosanoids/resolvins — anti-inflammatory and cardiovascular support. Imbalance → pro-inflammatory state, high triglycerides.",
+     "affects": [
+      "Heart"
+     ],
+     "remedies": [
+      {
+       "name": "WholOmega 30 gelcaps"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Omega3FattyAcids-HealthProfessional/"
+    },
+    {
+     "slug": "nut-gla",
+     "name": "Omega 6 - GLA",
+     "code": "NUT-GLA",
+     "subcategory": "Fat Fields",
+     "description": "Omega-6 derived from linoleic acid; precursor to anti-inflammatory series-1 prostaglandins (via DGLA). Useful where delta-6-desaturase conversion is impaired (dry/inflammatory skin).",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/other-nutrients/essential-fatty-acids"
+    },
+    {
+     "slug": "nut-la",
+     "name": "Omega 6 - LA",
+     "code": "NUT-LA",
+     "subcategory": "Fat Fields",
+     "description": "The essential parent omega-6 — membrane structure, skin barrier, precursor to arachidonic acid/eicosanoids. Deficiency (rare) → scaly dermatitis, impaired skin barrier.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/other-nutrients/essential-fatty-acids"
+    },
+    {
+     "slug": "nut-oa",
+     "name": "Omega 9 - OA",
+     "code": "NUT-OA",
+     "subcategory": "Fat Fields",
+     "description": "A non-essential monounsaturated fat (main fat of olive oil) — membrane fluidity and a favorable lipid profile. Body synthesizes it; valued as a saturated-fat replacement.",
+     "affects": [
+      "Heart"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/other-nutrients/essential-fatty-acids"
+    },
+    {
+     "slug": "nut-vita",
+     "name": "Vitamin A",
+     "code": "NUT-VitA",
+     "subcategory": "Vitamin Fields",
+     "description": "Vision phototransduction, cell differentiation, immune and epithelial/mucosal integrity. Deficiency → night blindness, xerophthalmia, impaired immunity, follicular hyperkeratosis.",
+     "affects": [
+      "Thymus"
+     ],
+     "remedies": [
+      {
+       "name": "Vitamin A Synergy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminA-HealthProfessional/"
+    },
+    {
+     "slug": "nut-vitbx",
+     "name": "Vitamin B Complex",
+     "code": "NUT-VitBx",
+     "subcategory": "Vitamin Fields",
+     "description": "The eight water-soluble B coenzymes driving energy metabolism, methylation and nerve function. Deficiency (varies by member) → fatigue, dermatitis, glossitis, neuropathy, anemia.",
+     "affects": [
+      "Brain",
+      "Blood"
+     ],
+     "remedies": [
+      {
+       "name": "Stamina Plus: Full B complex & C HomeoEnergetic Drops"
+      }
+     ],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/vitamins"
+    },
+    {
+     "slug": "nut-b1",
+     "name": "Vitamin B1 (Thiamine)",
+     "code": "NUT-B1",
+     "subcategory": "Vitamin Fields",
+     "description": "TPP coenzyme for carbohydrate metabolism and ATP production. Deficiency → beriberi (cardiac/neuropathic), Wernicke-Korsakoff, fatigue.",
+     "affects": [
+      "Brain",
+      "Heart",
+      "Muscle"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Thiamin-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b2",
+     "name": "Vitamin B2 (Riboflavin)",
+     "code": "NUT-B2",
+     "subcategory": "Vitamin Fields",
+     "description": "Precursor of the FAD/FMN flavin coenzymes for redox and energy metabolism. Deficiency → angular cheilitis/stomatitis, glossitis, photophobia, anemia.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Riboflavin-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b3",
+     "name": "Vitamin B3 (Niacin)",
+     "code": "NUT-B3",
+     "subcategory": "Vitamin Fields",
+     "description": "NAD/NADP coenzymes for energy metabolism, DNA repair and signaling. Deficiency → pellagra (dermatitis, diarrhea, dementia).",
+     "affects": [
+      "Brain"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Niacin-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b5",
+     "name": "Vitamin B5 (Pantothenic Acid)",
+     "code": "NUT-B5",
+     "subcategory": "Vitamin Fields",
+     "description": "Component of coenzyme A and ACP for fatty-acid, energy and adrenal steroid synthesis. Deficiency (rare) → paresthesias, 'burning feet', fatigue.",
+     "affects": [
+      "Adrenal"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/PantothenicAcid-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b6",
+     "name": "Vitamin B6 (Pyridoxine)",
+     "code": "NUT-B6",
+     "subcategory": "Vitamin Fields",
+     "description": "PLP coenzyme for amino-acid metabolism, neurotransmitter and heme synthesis. Deficiency → microcytic anemia, dermatitis, depression, peripheral neuropathy.",
+     "affects": [
+      "Brain",
+      "Blood"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminB6-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b7",
+     "name": "Vitamin B7 (Biotin)",
+     "code": "NUT-B7",
+     "subcategory": "Vitamin Fields",
+     "description": "Carboxylase coenzyme for gluconeogenesis and fatty-acid/amino-acid metabolism. Deficiency → hair loss, periorificial dermatitis, neurologic signs.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Biotin-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b8",
+     "name": "Vitamin B8 (Inositol)",
+     "code": "NUT-B8",
+     "subcategory": "Vitamin Fields",
+     "description": "Cell-membrane phospholipid component and second-messenger signaling (metabolic/insulin regulation). NOT a true vitamin — the body synthesizes it from glucose, so there's no classic deficiency.",
+     "affects": [
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "Inositol"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH DSLD",
+     "url": "https://dsld.od.nih.gov/ingredient/Inositol"
+    },
+    {
+     "slug": "nut-b9",
+     "name": "Vitamin B9 (Folate)",
+     "code": "NUT-B9",
+     "subcategory": "Vitamin Fields",
+     "description": "One-carbon/methyl transfer for DNA synthesis and amino-acid metabolism. Deficiency → megaloblastic anemia, neural-tube defects, elevated homocysteine.",
+     "affects": [
+      "Blood",
+      "Brain"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Folate-HealthProfessional/"
+    },
+    {
+     "slug": "nut-b10",
+     "name": "Vitamin B10 (PABA)",
+     "code": "NUT-B10",
+     "subcategory": "Vitamin Fields",
+     "description": "A folate building block (in bacteria) and UV-absorbing compound. NOT essential in humans — there is no human deficiency syndrome.",
+     "affects": [],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH MedlinePlus",
+     "url": "https://medlineplus.gov/ency/article/002518.htm"
+    },
+    {
+     "slug": "nut-b12",
+     "name": "Vitamin B12 (Cobalamin)",
+     "code": "NUT-B12",
+     "subcategory": "Vitamin Fields",
+     "description": "Coenzyme for methylation, DNA synthesis and myelin maintenance. Deficiency → megaloblastic/pernicious anemia, neuropathy, cognitive changes.",
+     "affects": [
+      "Blood",
+      "Brain"
+     ],
+     "remedies": [
+      {
+       "name": "Sublingual B12"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminB12-HealthProfessional/"
+    },
+    {
+     "slug": "nut-vitc",
+     "name": "Vitamin C",
+     "code": "NUT-VitC",
+     "subcategory": "Vitamin Fields",
+     "description": "Antioxidant and cofactor for collagen, carnitine and neurotransmitter synthesis. Deficiency → scurvy (bleeding gums, poor healing, bruising, fatigue).",
+     "affects": [
+      "Blood"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminC-HealthProfessional/"
+    },
+    {
+     "slug": "nut-vitd",
+     "name": "Vitamin D",
+     "code": "NUT-VitD",
+     "subcategory": "Vitamin Fields",
+     "description": "Regulates calcium/phosphate homeostasis and bone mineralization; modulates immunity. Deficiency → rickets/osteomalacia, bone pain, muscle weakness.",
+     "affects": [
+      "Bone",
+      "Thymus",
+      "Muscle"
+     ],
+     "remedies": [
+      {
+       "name": "Vitamin D Synergy"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/"
+    },
+    {
+     "slug": "nut-vite",
+     "name": "Vitamin E",
+     "code": "NUT-VitE",
+     "subcategory": "Vitamin Fields",
+     "description": "The lipid-soluble antioxidant protecting cell membranes. Deficiency → peripheral neuropathy, ataxia, myopathy, hemolytic anemia.",
+     "affects": [
+      "Brain",
+      "Blood"
+     ],
+     "remedies": [
+      {
+       "name": "Vitamin E Spectrum"
+      }
+     ],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminE-HealthProfessional/"
+    },
+    {
+     "slug": "nut-vitk",
+     "name": "Vitamin K",
+     "code": "NUT-VitK",
+     "subcategory": "Vitamin Fields",
+     "description": "Cofactor for gamma-carboxylation of clotting factors and bone proteins. Deficiency → easy bruising/bleeding, prolonged clotting.",
+     "affects": [
+      "Blood",
+      "Bone"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/VitaminK-HealthProfessional/"
+    },
+    {
+     "slug": "nut-choline",
+     "name": "Choline",
+     "code": "NUT-Choline",
+     "subcategory": "Vitamin Fields",
+     "description": "Precursor of acetylcholine and phospholipids, and a methyl donor (via betaine). A vitamin-like essential nutrient. Deficiency → fatty liver, muscle damage, elevated homocysteine.",
+     "affects": [
+      "Brain",
+      "Liver",
+      "Muscle"
+     ],
+     "remedies": [],
+     "tier": "strong",
+     "source": "NIH ODS",
+     "url": "https://ods.od.nih.gov/factsheets/Choline-HealthProfessional/"
+    },
+    {
+     "slug": "nut-betaine",
+     "name": "Betaine / TMG",
+     "code": "NUT-Betaine",
+     "subcategory": "Vitamin Fields",
+     "description": "A methyl donor that remethylates homocysteine to methionine, and a cellular osmolyte. Vitamin-like; low levels → elevated homocysteine.",
+     "affects": [
+      "Liver",
+      "Heart"
+     ],
+     "remedies": [
+      {
+       "name": "TMG Syntropy Powder"
+      }
+     ],
+     "tier": "strong",
+     "source": "Linus Pauling Institute",
+     "url": "https://lpi.oregonstate.edu/mic/other-nutrients/choline"
+    }
+   ]
+  },
+  {
+   "key": "lifejourney",
+   "title": "Life Journey (Essences)",
+   "relation_label": "Supports",
+   "blurb": "The NES 'Life Journey' consciousness and emotional themes an E4L scan can surface, each matched to supportive flower essences, gem elixirs and enhancers. Vibrational companions, not diagnosis.",
+   "path": "lifejourney",
+   "source": "E4L Life Journey screen + flower-essence/gem-elixir inventory",
+   "entries": [
+    {
+     "slug": "lj-forgiveness",
+     "name": "Forgiveness",
+     "code": "LJ-forgiveness",
+     "subcategory": "Understand Your World",
+     "description": "Releasing blame and resentment toward self and others so the heart can move on.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Forgiveness Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Willow Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-intuition",
+     "name": "Intuition",
+     "code": "LJ-intuition",
+     "subcategory": "Understand Your World",
+     "description": "Trusting inner knowing and subtle perception over outside opinion.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Intuition Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Inner Voice Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Psychic Abilities Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-endings",
+     "name": "Endings",
+     "code": "LJ-endings",
+     "subcategory": "Understand Your World",
+     "description": "Completing chapters cleanly and letting the past be past.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Honeysuckle Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Life's Transitions Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Serene Transition Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-empathy",
+     "name": "Empathy",
+     "code": "LJ-empathy",
+     "subcategory": "Understand Your World",
+     "description": "Open-hearted attunement to others without losing oneself.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Warmth Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-signs",
+     "name": "Signs",
+     "code": "LJ-signs",
+     "subcategory": "Understand Your World",
+     "description": "Noticing and reading the meaningful cues life offers.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Intuition Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Insight Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-creator",
+     "name": "Creator",
+     "code": "LJ-creator",
+     "subcategory": "Understand Your World",
+     "description": "Owning one's creative agency to shape experience.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Initiative Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-illusions",
+     "name": "Illusions",
+     "code": "LJ-illusions",
+     "subcategory": "Understand Your World",
+     "description": "Seeing through distortion to what is actually true.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Spiritual Clarity Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Insight Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-destiny",
+     "name": "Destiny",
+     "code": "LJ-destiny",
+     "subcategory": "Understand Your World",
+     "description": "Sensing and stepping toward one's larger path.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Living With Soul Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-define-your-purpose",
+     "name": "Define Your Purpose",
+     "code": "LJ-define-your-purpose",
+     "subcategory": "Align Your Purpose",
+     "description": "Clarifying the true calling behind one's actions.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Living With Soul Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "New Directions Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-align-your-purpose",
+     "name": "Align Your Purpose",
+     "code": "LJ-align-your-purpose",
+     "subcategory": "Align Your Purpose",
+     "description": "Bringing daily life into coherence with that purpose.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "New Directions Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-choice-point",
+     "name": "Choice Point",
+     "code": "LJ-choice-point",
+     "subcategory": "Align Your Purpose",
+     "description": "Resolving indecision and committing to a direction.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Scleranthus Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-wake-up",
+     "name": "Wake Up",
+     "code": "LJ-wake-up",
+     "subcategory": "Align Your Purpose",
+     "description": "Shaking off apathy/resignation and re-engaging with life.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Rose Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Clematis Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-engage-with-passion",
+     "name": "Engage With Passion",
+     "code": "LJ-engage-with-passion",
+     "subcategory": "Align Your Purpose",
+     "description": "Relighting drive, aliveness and enthusiasm.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Passion Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "VITLTY Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-wisdom",
+     "name": "Wisdom",
+     "code": "LJ-wisdom",
+     "subcategory": "Align Your Purpose",
+     "description": "The higher, discerning vantage above the immediate.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Spiritual Clarity Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Overview Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-humility",
+     "name": "Humility",
+     "code": "LJ-humility",
+     "subcategory": "Align Your Purpose",
+     "description": "Right-sized self-regard; leading without domination.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Vine Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Pride Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-lovable",
+     "name": "I am lovable",
+     "code": "LJ-i-am-lovable",
+     "subcategory": "Beliefs",
+     "description": "Knowing oneself as worthy of love exactly as one is.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Love Within Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Rose Quartz Gem Elixir in Terrain Restore"
+      },
+      {
+       "name": "Pine Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-good-enough-as-i-am",
+     "name": "I am good enough as I am",
+     "code": "LJ-i-am-good-enough-as-i-am",
+     "subcategory": "Beliefs",
+     "description": "Self-acceptance without conditions or striving.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Self-Esteem Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Worthiness Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Larch Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-feel-safe-in-the-world",
+     "name": "I feel safe in the world",
+     "code": "LJ-i-feel-safe-in-the-world",
+     "subcategory": "Beliefs",
+     "description": "Baseline felt safety, calming fear.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Mimulus Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Aspen Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Groundedness Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-can-trust",
+     "name": "I can trust",
+     "code": "LJ-i-can-trust",
+     "subcategory": "Beliefs",
+     "description": "Openness and faith in life and in others.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-my-life-is-full-of-hope",
+     "name": "My life is full of hope",
+     "code": "LJ-my-life-is-full-of-hope",
+     "subcategory": "Beliefs",
+     "description": "Renewed hope and optimism after discouragement.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Gorse Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Gentian Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Positivity Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-capable",
+     "name": "I am capable",
+     "code": "LJ-i-am-capable",
+     "subcategory": "Beliefs",
+     "description": "Confidence to attempt and succeed.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Larch Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Self Esteem Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-unaffected-by-what-others-think-of-me",
+     "name": "I am unaffected by what others think of me",
+     "code": "LJ-i-am-unaffected-by-what-others-think-of-me",
+     "subcategory": "Beliefs",
+     "description": "Standing in one's own guidance and worth.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Walnut Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Cerato Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-feel-supported-by-others",
+     "name": "I feel supported by others",
+     "code": "LJ-i-feel-supported-by-others",
+     "subcategory": "Beliefs",
+     "description": "Receiving support and not carrying it all alone.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Sweet Chestnut Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-love",
+     "name": "Love",
+     "code": "LJ-love",
+     "subcategory": "Transformation (chakras)",
+     "description": "Opening and steadying the heart.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Heart Chakra Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Rose Quartz Gem Elixir in Terrain Restore"
+      },
+      {
+       "name": "Love Within Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-focus",
+     "name": "Focus",
+     "code": "LJ-focus",
+     "subcategory": "Transformation (chakras)",
+     "description": "Quieting mental noise into clear attention.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "White Chestnut Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Clarity Himalayan Flower Enhancer in Terrain Restore"
+      },
+      {
+       "name": "Clear Thoughts Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-honesty",
+     "name": "Honesty",
+     "code": "LJ-honesty",
+     "subcategory": "Transformation (chakras)",
+     "description": "Truthfulness with oneself behind the mask.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Agrimony Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "True to Self Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-gratitude",
+     "name": "Gratitude",
+     "code": "LJ-gratitude",
+     "subcategory": "Transformation (chakras)",
+     "description": "Cultivating thankfulness and appreciation.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Gratefulness Himalayan Flower Enhancer in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-willpower",
+     "name": "Willpower",
+     "code": "LJ-willpower",
+     "subcategory": "Transformation (chakras)",
+     "description": "Reclaiming will, boundaries and resolve.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Centaury Agave Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Strength Himalayan Flower Enhancer in Terrain Restore"
+      },
+      {
+       "name": "Taking Charge Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-compassion",
+     "name": "Compassion",
+     "code": "LJ-compassion",
+     "subcategory": "Transformation (chakras)",
+     "description": "Warmth and tolerance toward self and others.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Beech Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-trust",
+     "name": "Trust",
+     "code": "LJ-trust",
+     "subcategory": "Transformation (chakras)",
+     "description": "Faith that softens guardedness.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-intention-ed1",
+     "name": "Intention (ED1)",
+     "code": "LJ-intention-ed1",
+     "subcategory": "Creative Cycle",
+     "description": "Initiating and setting a clear creative intent.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Initiative Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-communicate-ed2",
+     "name": "Communicate (ED2)",
+     "code": "LJ-communicate-ed2",
+     "subcategory": "Creative Cycle",
+     "description": "Expressing oneself clearly and being heard.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Communication Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-identity-ed3",
+     "name": "Identity (ED3)",
+     "code": "LJ-identity-ed3",
+     "subcategory": "Creative Cycle",
+     "description": "Knowing and being true to who one is.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "True to Self Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Self-Image Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-emotion-ed6",
+     "name": "Emotion (ED6)",
+     "code": "LJ-emotion-ed6",
+     "subcategory": "Creative Cycle",
+     "description": "Steadying and harmonizing the emotional field.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Harmony Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Inner Peace Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-boundary-ed10",
+     "name": "Boundary (ED10)",
+     "code": "LJ-boundary-ed10",
+     "subcategory": "Creative Cycle",
+     "description": "Holding healthy limits and protecting one's field.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Boundaries Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-transform-ed11",
+     "name": "Transform (ED11)",
+     "code": "LJ-transform-ed11",
+     "subcategory": "Creative Cycle",
+     "description": "Moving through change and shifting old patterns.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Changing Patterns Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Life Changes Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-centred-ed14",
+     "name": "Centred (ED14)",
+     "code": "LJ-centred-ed14",
+     "subcategory": "Creative Cycle",
+     "description": "Returning to a grounded, balanced center.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Inner Balance Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Groundedness Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-flow-ed5",
+     "name": "Flow (ED5)",
+     "code": "LJ-flow-ed5",
+     "subcategory": "Creative Cycle",
+     "description": "Restoring easy movement and energetic flow.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Energy Flow Flower Essence in Terrain Restore"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

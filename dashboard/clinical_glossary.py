@@ -14,6 +14,9 @@ import re
 _REPO_DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 _FILENAME = "clinical_theory_catalog.json"
 _OVERRIDES_FILENAME = "clinical_remedy_overrides.json"
+# Supplementary curated catalogs whose dimensions are appended to the glossary
+# (kept in separate files so distinct sources stay distinct).
+_EXTRA_FILENAMES = ("e4l_stressor_map.json",)
 
 
 def _path(path=None):
@@ -28,13 +31,30 @@ def _path(path=None):
 
 def load(path=None):
     p = _path(path)
-    if not p:
-        return {"dimensions": []}
-    try:
-        with open(p, encoding="utf-8") as f:
-            return json.load(f) or {"dimensions": []}
-    except Exception:
-        return {"dimensions": []}
+    base = {"dimensions": []}
+    if p:
+        try:
+            with open(p, encoding="utf-8") as f:
+                base = json.load(f) or {"dimensions": []}
+        except Exception:
+            base = {"dimensions": []}
+    if path:
+        return base  # explicit path (tests) -> no supplementary merge
+    # Append dimensions from the supplementary curated catalogs.
+    for fn in _EXTRA_FILENAMES:
+        d = os.environ.get("DATA_DIR")
+        cand = [os.path.join(d, fn)] if d else []
+        cand.append(os.path.join(_REPO_DATA, fn))
+        ep = next((c for c in cand if os.path.exists(c)), None)
+        if not ep:
+            continue
+        try:
+            with open(ep, encoding="utf-8") as f:
+                extra = json.load(f) or {}
+            base.setdefault("dimensions", []).extend(extra.get("dimensions", []))
+        except Exception:
+            pass
+    return base
 
 
 def dimensions(catalog=None):

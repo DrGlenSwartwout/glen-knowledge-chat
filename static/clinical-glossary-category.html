@@ -65,6 +65,7 @@
     function hide(id){document.getElementById(id).classList.add('hidden');}
     var dim = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
     var ALL = [];
+    var REL_LABEL = 'Affects';   // dimension-level: 'Affects' (toxins) vs 'Supports' (nutrients)
     function render(list){
       var host = document.getElementById('c-entries'); host.textContent = '';
       list.forEach(function(e){
@@ -74,21 +75,41 @@
         if(e.alt_name){ var a=document.createElement('span'); a.className='alt'; a.textContent='('+e.alt_name+')'; h.appendChild(a); }
         d.appendChild(h);
         if(e.description){ var p=document.createElement('p'); p.textContent = e.description; d.appendChild(p); }
+        if(e.affects_links && e.affects_links.length){
+          var af=document.createElement('div'); af.className='rem';
+          af.appendChild(document.createTextNode(REL_LABEL + ': '));
+          e.affects_links.forEach(function(x,i){
+            if(i) af.appendChild(document.createTextNode(', '));
+            if(x.slug){
+              var a=document.createElement('a'); a.className='rem-link';
+              a.href='/learn/glossary/organs#'+encodeURIComponent(x.slug); a.textContent=x.name;
+              af.appendChild(a);
+            } else { af.appendChild(document.createTextNode(x.name)); }
+          });
+          d.appendChild(af);
+        }
         if(e.remedies && e.remedies.length){
           var r=document.createElement('div'); r.className='rem';
           r.appendChild(document.createTextNode('Related remedies: '));
           e.remedies.forEach(function(x, i){
             if(i) r.appendChild(document.createTextNode(', '));
+            var dn=(x.name||'').replace(/ in Terrain Restore$/,'');  // trim delivery-base suffix for display
             if(x.product_slug){
               var a=document.createElement('a'); a.className='rem-link';
               a.href='/begin/product/'+encodeURIComponent(x.product_slug);
-              a.target='_blank'; a.rel='noopener'; a.textContent=x.name;
+              a.target='_blank'; a.rel='noopener'; a.textContent=dn;
               r.appendChild(a);
             } else {
-              r.appendChild(document.createTextNode(x.name));
+              r.appendChild(document.createTextNode(dn));
             }
           });
           d.appendChild(r);
+        }
+        if(e.url){
+          var sc=document.createElement('div'); sc.className='rem';
+          var sa=document.createElement('a'); sa.className='tox-src'; sa.href=e.url; sa.target='_blank'; sa.rel='noopener';
+          sa.textContent='['+(e.source||'source')+']'; sc.appendChild(sa);
+          d.appendChild(sc);
         }
         if(e.patterns && e.patterns.length){
           var pl=document.createElement('div'); pl.className='pat';
@@ -143,6 +164,7 @@
         document.title = (d.title || 'Clinical Glossary') + ' · Dr. Glen Swartwout';
         document.getElementById('c-title').textContent = d.title || '';
         if(d.blurb){ var b=document.getElementById('c-blurb'); b.textContent=d.blurb; show('c-blurb'); }
+        if(d.relation_label) REL_LABEL = d.relation_label;
         ALL = d.entries || [];
         render(ALL);
         highlightHash();
