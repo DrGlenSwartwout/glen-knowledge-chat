@@ -658,6 +658,18 @@
   .mc-row button.mc-cancel  { color: var(--high); }
   body[data-owner="rae"] .mc-cell h4 { font-size: 16px; }
   body[data-owner="rae"] .mc-cell .mc-summary { font-size: 15px; }
+  /* Next Action queue */
+  .na-row { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+            background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+            padding: 8px 10px; margin-bottom: 6px; }
+  .na-row .na-summary { font-size: 12px; color: var(--text); flex: 1; }
+  .na-row .na-buttons { display: flex; gap: 6px; flex-shrink: 0; }
+  .na-chip { font-size: 11px; border: 1px solid var(--border); background: transparent;
+             color: var(--text); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  .na-chip.na-primary { color: var(--glen); border-color: var(--glen); }
+  .na-chip.na-secondary { color: var(--muted); }
+  .na-chip:disabled { opacity: .5; cursor: default; }
+  .na-empty { color: var(--muted); font-size: 12px; padding: 6px 0; }
   @media (max-width: 600px) { .mc-grid { grid-template-columns: 1fr; } }
 </style>
 <script src="/static/theme-toggle.js"></script>
@@ -735,6 +747,14 @@
           <div id="mc-pending"></div>
         </div>
       </div>
+    </div>
+    <!-- Next Action (unified operator queue — one actionable item per pending
+         biofield reveal, handoff, and FF match draft; see dashboard/console_next_action.py) -->
+    <div id="next-action" data-goto="next-action">
+      <div class="cal-header">
+        <span class="cal-title">Next Action</span>
+      </div>
+      <div id="na-list"></div>
     </div>
     <!-- Codebase (lines of code built — total, per-repo segments, logic estimate) -->
     <div id="codebase-section" data-goto="codebase" style="margin-bottom:24px">
@@ -1124,6 +1144,77 @@ function renderMcPending(list) {
 async function mcAct(id, what) {
   await apiFetch('/api/events/' + id + '/' + what, { method: 'POST' });
   loadMissionControl();
+}
+
+// ── Next Action (unified operator queue) ─────────────────────────────────────
+// Consumes GET /api/console/next-actions ({items:[descriptor,...]}, see
+// dashboard/console_next_action.py). Each descriptor's action.kind is
+// 'dispatch' (POST each key to /api/action/<key>), 'post' (single POST to
+// action.url), or 'link' (navigate to action.url, console key appended).
+async function loadNextActions() {
+  const host = document.getElementById('na-list');
+  if (!host) return;
+  let items = [];
+  try {
+    const r = await apiFetch('/api/console/next-actions');
+    items = r.ok ? (await r.json()).items || [] : [];
+  } catch (e) { return; }
+  host.innerHTML = '';
+  if (!items.length) { host.innerHTML = '<div class="na-empty">All clear.</div>'; return; }
+  items.forEach(function (it) {
+    const row = document.createElement('div'); row.className = 'na-row';
+    const summary = document.createElement('span'); summary.className = 'na-summary';
+    summary.textContent = it.summary || '';
+    row.appendChild(summary);
+    const btns = document.createElement('span'); btns.className = 'na-buttons';
+    btns.appendChild(naButton(it.label, it.action, it.confirm, 'na-primary', row));
+    if (it.secondary) {
+      btns.appendChild(naButton(it.secondary.label, it.secondary.action, it.secondary.confirm, 'na-secondary', row));
+    }
+    row.appendChild(btns);
+    host.appendChild(row);
+  });
+}
+
+function naButton(text, action, confirmFirst, cls, row) {
+  const b = document.createElement('button');
+  b.className = 'na-chip ' + cls;
+  b.type = 'button';
+  b.textContent = text;
+  b.onclick = async function () {
+    if (confirmFirst && !window.confirm(text + '?')) return;
+    b.disabled = true;
+    const ok = await runAction(action);
+    if (ok) { row.remove(); } else { b.disabled = false; }
+  };
+  return b;
+}
+
+async function runAction(action) {
+  try {
+    if (action.kind === 'link') {
+      let url = action.url;
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + 'key=' + encodeURIComponent(consoleKey);
+      window.location.href = url;
+      return true;
+    }
+    if (action.kind === 'post') {
+      const r = await apiFetch(action.url, { method: 'POST', body: JSON.stringify(action.body || {}) });
+      return r.ok;
+    }
+    if (action.kind === 'dispatch') {
+      for (const key of action.keys) {
+        const r = await apiFetch('/api/action/' + key, {
+          method: 'POST',
+          body: JSON.stringify(Object.assign({ confirmed: true }, action.body || {})),
+        });
+        const j = await r.json().catch(function () { return {}; });
+        if (!r.ok || (j.status && j.status !== 'done')) return false;
+      }
+      return true;
+    }
+  } catch (e) { return false; }
+  return false;
 }
 
 // ── Codebase stat card ──────────────────────────────────────────────────────────
@@ -2889,12 +2980,16 @@ async function refresh(restoreScrollY) {
   // Mission Control (Business OS signals) is Glen/Rae only — hide it on Shaira's page.
   const mcSection = document.getElementById('mc-section');
   const cbSection = document.getElementById('codebase-section');
+  const naSection = document.getElementById('next-action');
   if (currentOwner === 'shaira') {
     if (mcSection) mcSection.style.display = 'none';
     if (cbSection) cbSection.style.display = 'none';
+    if (naSection) naSection.style.display = 'none';
   } else {
     if (mcSection) mcSection.style.display = '';
     loadMissionControl();   // fire-and-forget; self-renders into the banner
+    if (naSection) naSection.style.display = '';
+    loadNextActions();      // fire-and-forget; self-renders the unified Next Action queue
     if (cbSection) cbSection.style.display = '';
     loadCodebaseStats();    // fire-and-forget; renders the Codebase stat card
   }
