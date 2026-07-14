@@ -674,3 +674,29 @@ def test_real_trusted_links_blushield_is_partner():
     assert "Blushield" in names
     # internal-only links stay out of the partner section
     assert "E4L Bioenergetic Scan" not in names
+
+
+def test_travel_style_defaults_unknown_and_persists():
+    bf, cx = _seeded()
+    st = bf.get_state(cx, session_id="s1")
+    assert st["travel_style"] == "unknown"
+
+    bf.record_unlock(cx, session_id="s1", trigger="question")
+    out = bf.set_travel_style(cx, session_id="s1", style="mission")
+    assert out["travel_style"] == "mission"
+    assert bf.get_state(cx, session_id="s1")["travel_style"] == "mission"
+
+    row = cx.execute(
+        "SELECT trigger, detail FROM journey_events "
+        "WHERE trigger='travel_style' ORDER BY id DESC LIMIT 1").fetchone()
+    assert row["detail"] == "mission"
+
+
+def test_travel_style_rejects_bad_value():
+    bf, cx = _seeded()
+    bf.record_unlock(cx, session_id="s1", trigger="question")
+    try:
+        bf.set_travel_style(cx, session_id="s1", style="wander")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass

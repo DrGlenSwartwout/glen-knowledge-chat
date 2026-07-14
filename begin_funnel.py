@@ -47,6 +47,11 @@ def init_journey_tables(cx):
         cx.execute("ALTER TABLE journey_state ADD COLUMN last_name TEXT")
     except Exception:
         pass  # already exists
+    # Next-step chips — persisted travel style ('mission'|'adventure').
+    try:
+        cx.execute("ALTER TABLE journey_state ADD COLUMN travel_style TEXT DEFAULT 'unknown'")
+    except Exception:
+        pass  # already exists
     cx.execute("""
         CREATE TABLE IF NOT EXISTS journey_events (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,6 +298,29 @@ def record_unlock(cx, *, session_id, trigger, email="", detail="",
     return state
 
 
+def set_travel_style(cx, *, session_id, style, email=""):
+    """Persist the visitor's chosen travel style ('mission'|'adventure')."""
+    if style not in ("mission", "adventure"):
+        raise ValueError(f"bad travel_style: {style!r}")
+    cx.row_factory = sqlite3.Row
+    now = _now()
+    cur = cx.execute(
+        "SELECT id FROM journey_state WHERE session_id=? ORDER BY id DESC LIMIT 1",
+        (session_id,)).fetchone()
+    if cur is not None:
+        cx.execute("UPDATE journey_state SET travel_style=?, updated_at=? WHERE id=?",
+                   (style, now, cur["id"]))
+    else:
+        cx.execute(
+            "INSERT INTO journey_state (session_id, email, travel_style, created_at, updated_at) "
+            "VALUES (?,?,?,?,?)", (session_id, email, style, now, now))
+    cx.execute(
+        "INSERT INTO journey_events (ts, session_id, email, trigger, detail) "
+        "VALUES (?,?,?,?,?)", (now, session_id, email, "travel_style", style))
+    cx.commit()
+    return get_state(cx, session_id=session_id, email=email)
+
+
 # ---------------------------------------------------------------------------
 # get_state — non-destructive read + email aggregation
 # ---------------------------------------------------------------------------
@@ -305,6 +333,7 @@ def _default_state(session_id, email):
         "awareness_stage": "unknown", "path": "none",
         "tos_agreed_at": None, "tos_version": None,
         "reveal": reveal_for("arrival"), "surfaced_cards": [],
+        "travel_style": "unknown",
     }
 
 
@@ -337,6 +366,7 @@ def get_state(cx, session_id="", email=""):
     path = "none"
     awareness = "unknown"
     created_at = None
+    travel_style = "unknown"
     for r in rows:
         gates |= set(json.loads(r["unlocked_gates"] or "[]"))
         first_name = first_name or (r["first_name"] or "")
@@ -350,6 +380,8 @@ def get_state(cx, session_id="", email=""):
         awareness = _max_awareness(awareness, r["awareness_stage"] or "unknown")
         if created_at is None or (r["created_at"] and r["created_at"] < created_at):
             created_at = r["created_at"]
+        if (r["travel_style"] or "unknown") != "unknown":
+            travel_style = r["travel_style"]
 
     rung = compute_rung(gates, email_final, bool(tos_at))
     return {
@@ -359,6 +391,7 @@ def get_state(cx, session_id="", email=""):
         "unlocked_gates": sorted(gates), "awareness_stage": awareness,
         "path": path, "tos_agreed_at": tos_at, "tos_version": tos_ver,
         "reveal": reveal_for(rung, awareness), "surfaced_cards": [],
+        "travel_style": travel_style,
     }
 
 
