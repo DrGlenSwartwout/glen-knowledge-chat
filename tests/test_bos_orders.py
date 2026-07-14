@@ -121,3 +121,24 @@ def test_stripe_pi_column_and_lookup():
     found = O.find_order_by_external_ref(cx, "INV-77")
     assert found and found["id"] == oid
     assert O.find_order_by_external_ref(cx, "nope") is None
+
+
+def test_open_fulfillment_orders_excludes_open_held_orders():
+    O, cx = _db()
+    from dashboard import household_holds as HH, signals as S
+    S._REQ_CACHE = None  # avoid a stale request cache leaking across tests
+    HH.init_hold_tables(cx)
+    cur = cx.execute(
+        "INSERT INTO household_holds (caregiver_email, household_key, status, "
+        "opened_at, hold_until) VALUES ('c@x.co','hk','open',"
+        "'2026-07-01T00:00:00+00:00','2026-07-02T00:00:00+00:00')")
+    gid = cur.lastrowid
+    free = O.upsert_order(cx, source="freesrc", external_ref="f1", email="a@b.com")
+    held = O.upsert_order(cx, source="heldsrc", external_ref="h1", email="c@x.co")
+    O.set_order_status(cx, free, "new")
+    O.set_order_status(cx, held, "new")
+    O.set_order_hold_group(cx, held, gid)
+    # the open-held order is owned by its household batch, so it must NOT count as
+    # an individually-open fulfillment order (home-board orders signal).
+    rows = O.open_fulfillment_orders(cx)
+    assert [r["source"] for r in rows] == ["freesrc"]
