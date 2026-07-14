@@ -1305,6 +1305,31 @@ function render(d, v){
     html += s;
   }
 
+  // Share & Unlock card (data-sharing opt-in, Task 6): renders only when the
+  // server payload carries d.data_sharing (i.e. DATA_SHARING_REWARD_ENABLED
+  // is on) -- flag off means the key is absent and this block is a no-op, so
+  // no DOM and no dead POST handler ever reach the client.
+  if (d.data_sharing) {
+    const ds = d.data_sharing;
+    const shareItems = [
+      ["improve_ai_chat", "Help improve the AI with my chats"],
+      ["research_results", "Contribute my results to the research base (anonymous)"],
+      ["share_story", "Let Dr. Glen share my story"],
+      ["video_testimonial", "I'd record a video testimonial"],
+    ];
+    let s = `<div class="card sharing-card"><h2>Share &amp; Unlock</h2>
+      <p class="muted" style="margin:0 0 .7rem">Choose what you're comfortable sharing. You're always in control and can change this anytime.</p>`;
+    s += shareItems.map(([k, label]) =>
+      `<label style="display:block;margin:.45rem 0"><input type="checkbox" data-sharing-toggle="${k}"${ds.toggles[k] ? " checked" : ""}> ${esc(label)}</label>`
+    ).join("");
+    const unlocked = Object.keys(ds.rewards || {});
+    if (unlocked.length) {
+      s += `<p class="muted" style="margin:.7rem 0 0"><strong>Unlocked:</strong> ${unlocked.map(esc).join(", ")}</p>`;
+    }
+    s += `</div>`;
+    html += s;
+  }
+
   // FF-matches card (Slice 3b, flag-gated): with FF_MATCHES_ENABLED off, d.ff_matches_enabled
   // is falsy and NEITHER the button NOR the card render — no DOM, no handler — so a client
   // never sees a button whose POST would 404. When on, the "See my formulation matches"
@@ -1801,6 +1826,23 @@ function render(d, v){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({auto_advance: aaToggle.checked})}));
   }
+
+  // Share & Unlock toggles: any checkbox change POSTs the FULL toggle set (the
+  // endpoint replaces consent wholesale, not per-key) then reloads via load()
+  // so tier/unlocked-rewards and any newly-freed content (e.g. the biofield
+  // free-reveal unlock) re-render from the fresh payload -- same "reload +
+  // re-render" path load() already uses elsewhere in this file.
+  app.querySelectorAll("[data-sharing-toggle]").forEach(el => el.addEventListener("change", async () => {
+    const toggles = {};
+    app.querySelectorAll("[data-sharing-toggle]").forEach(x => { toggles[x.dataset.sharingToggle] = x.checked; });
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/sharing`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({toggles})
+      });
+      if (r.ok) load();
+    } catch(e) {}
+  }));
 
   // Request analysis button + states (Scan history, sub-project B).
   app.querySelectorAll(".ra-btn").forEach(b => b.addEventListener("click", async () => {
