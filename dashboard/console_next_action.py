@@ -161,10 +161,17 @@ def resolve_handoff(rec):
 
 
 def resolve_reward_grant(rec):
+    if _reward_gifts_flag_on():
+        action = {"kind": "link", "url": "/console/rewards"}
+        label = "Choose reward gift"
+    else:
+        action = {"kind": "dispatch", "keys": ["reward.fulfill"], "body": {"grant_id": rec["id"]}}
+        label = "Approve reward"
+
     return {
         "type": "reward_grant", "id": rec["id"], "actionable": True, "state": "pending",
-        "label": "Approve reward",
-        "action": {"kind": "dispatch", "keys": ["reward.fulfill"], "body": {"grant_id": rec["id"]}},
+        "label": label,
+        "action": action,
         "confirm": False,
         "secondary": {"label": "Dismiss",
                       "action": {"kind": "dispatch", "keys": ["reward.dismiss"],
@@ -262,6 +269,10 @@ def _handoff_records(cx):
 
 def _data_sharing_flag_on():
     return os.environ.get("DATA_SHARING_REWARD_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _reward_gifts_flag_on():
+    return os.environ.get("REWARD_GIFTS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _reward_records(cx):
