@@ -46,13 +46,13 @@ def test_ff_published_is_done():
     assert na.resolve_ff_match_draft({"status": "published"}) == {"actionable": False}
 
 
-def test_handoff_ai_draft_offers_publish_only_primary_and_notify_secondary():
+def test_handoff_ai_draft_offers_composer_deep_link():
     d = na.resolve_handoff({"email": "a@b.co", "biofield_status": "ai_draft", "age_ts": "t"})
     assert d["actionable"] and d["label"] == "Review & publish"
-    assert d["action"] == {"kind": "post", "url": "/api/console/biofield/publish",
-                           "body": {"email": "a@b.co", "send": False}}
-    assert d["secondary"]["label"] == "Publish & notify client"
-    assert d["secondary"]["action"]["body"] == {"email": "a@b.co", "send": True}
+    assert d["action"] == {"kind": "link",
+                           "url": "/console/biofield-portal?email=a%40b.co"}
+    assert d["confirm"] is False
+    assert d["secondary"] is None
 
 
 def test_handoff_confirmed_is_done():

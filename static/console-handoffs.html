@@ -64,7 +64,7 @@
     { k:'handed_off', label:'Intake authored &amp; handed off',
       act:function(c,s){
         if(!s.done) return '<span class="snote">awaiting Dr. Glen&rsquo;s intake app</span>';
-        if(s.awaiting_publish) return '<button type="button" class="act review-publish-btn" data-email="'+esc(c.email)+'">Review &amp; publish</button>';
+        if(s.awaiting_publish) return '<a class="act" href="'+composer(c.email)+'">Review &amp; publish</a>';
         return '';
       } },
     { k:'analysis_published', label:'Analysis published &amp; emailed',
@@ -93,44 +93,11 @@
       +'<ol class="steps">'+lis+'</ol></div>';
   }
 
-  // Review & publish: fetches the ai_draft's current content (GET returns what's
-  // already stored — same shape the composer's buildContent() produces) and
-  // republishes it AS-IS with send:false, so Rae can push a draft to "confirmed"
-  // without emailing the client. Reuses the composer's own publish endpoint
-  // (POST /api/console/biofield-portal) — there is no separate publish route.
-  async function reviewAndPublish(email, btn){
-    var orig = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Publishing…';
-    try {
-      var lr = await fetch('/api/console/biofield-portal?email='+encodeURIComponent(email), { headers: hdr() });
-      var lj = await lr.json().catch(function(){ return {}; });
-      if(!lr.ok || !lj.found){
-        btn.disabled = false; btn.textContent = orig;
-        alert('Could not load the draft to publish (' + (lj.error || ('HTTP '+lr.status)) + ').');
-        return;
-      }
-      var body = { email: email, name: lj.name || '', content: lj.content || {}, send: false };
-      if(lj.scan_date) body.scan_date = lj.scan_date;
-      var pr = await fetch('/api/console/biofield-portal', { method:'POST', headers: hdr(), body: JSON.stringify(body) });
-      var pj = await pr.json().catch(function(){ return {}; });
-      if(pr.ok){
-        btn.textContent = 'Published';
-        boot();   // refresh the pipeline so this card's next step updates
-      } else {
-        btn.disabled = false; btn.textContent = orig;
-        alert('Publish failed: ' + (pj.error || ('HTTP '+pr.status)));
-      }
-    } catch(e){
-      btn.disabled = false; btn.textContent = orig;
-      alert('Publish failed: network error.');
-    }
-  }
-  document.getElementById('content').addEventListener('click', function(e){
-    var btn = e.target.closest ? e.target.closest('.review-publish-btn') : null;
-    if(!btn) return;
-    reviewAndPublish(btn.getAttribute('data-email'), btn);
-  });
+  // "Review & publish" (handed_off, awaiting_publish) is a plain deep-link to the
+  // composer — see the `<a class="act" href="'+composer(c.email)+'">` above. The
+  // composer page itself owns loading the ai_draft content and publishing it;
+  // there is no separate one-shot publish route, so this page does not fetch or
+  // POST anything for that step.
 
   async function boot(){
     document.getElementById('toggle').textContent = showAll ? 'Hide completed' : 'Show completed';

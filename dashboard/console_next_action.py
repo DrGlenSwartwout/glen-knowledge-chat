@@ -5,6 +5,7 @@ buttons and the unified /console Next Action queue. Listers + aggregate live
 below. Adding a record type = write a resolver + a lister + register both.
 """
 import json
+import urllib.parse
 
 TYPE_PRIORITY = ["biofield_reveal", "handoff", "ff_match_draft"]
 
@@ -66,13 +67,10 @@ def resolve_handoff(rec):
     return {
         "type": "handoff", "id": None, "actionable": True, "state": "needs_publish",
         "label": "Review & publish",
-        "action": {"kind": "post", "url": "/api/console/biofield/publish",
-                   "body": {"email": email, "send": False}},
-        "confirm": True,
-        "secondary": {"label": "Publish & notify client",
-                      "action": {"kind": "post", "url": "/api/console/biofield/publish",
-                                 "body": {"email": email, "send": True}},
-                      "confirm": True},
+        "action": {"kind": "link",
+                   "url": "/console/biofield-portal?email=" + urllib.parse.quote(email)},
+        "confirm": False,
+        "secondary": None,
         "summary": f"{email}", "age_ts": rec.get("age_ts", ""),
     }
 
