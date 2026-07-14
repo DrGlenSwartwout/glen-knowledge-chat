@@ -7,7 +7,7 @@ below. Adding a record type = write a resolver + a lister + register both.
 import json
 import urllib.parse
 
-TYPE_PRIORITY = ["order", "biofield_reveal", "handoff", "ff_match_draft"]
+TYPE_PRIORITY = ["order", "invoice", "biofield_reveal", "handoff", "ff_match_draft"]
 
 _DONE = {"actionable": False}
 
@@ -41,6 +41,38 @@ def resolve_order(rec):
         "confirm": False, "secondary": None,
         "summary": summary, "age_ts": age,
     }
+
+
+def resolve_invoice(rec):
+    if rec.get("status") not in ("proposed", "confirmed"):
+        return dict(_DONE)
+    oid = rec.get("id")
+    who = rec.get("name") or rec.get("email") or "unknown"
+    total = (rec.get("total_cents") or 0) / 100
+    n = rec.get("item_count") or 0
+    summary = f"#{oid} · {who} · ${total:.2f} · {n} item{'' if n == 1 else 's'}"
+    age = rec.get("age_ts", "")
+    if not rec.get("invoice_sent_at"):
+        return {
+            "type": "invoice", "id": oid, "actionable": True, "state": "unsent",
+            "label": "Send invoice",
+            "action": {"kind": "dispatch", "keys": ["orders.send_invoice"],
+                       "body": {"order_id": oid}},
+            "confirm": True,
+            "secondary": {"label": "Open order",
+                          "action": {"kind": "link", "url": "/console/orders"},
+                          "confirm": False},
+            "summary": summary, "age_ts": age,
+        }
+    if rec.get("pay_status") != "paid":
+        return {
+            "type": "invoice", "id": oid, "actionable": True, "state": "sent_unpaid",
+            "label": "Record payment",
+            "action": {"kind": "link", "url": "/console/orders"},
+            "confirm": False, "secondary": None,
+            "summary": summary, "age_ts": age,
+        }
+    return dict(_DONE)
 
 
 def resolve_biofield_reveal(rec):
@@ -122,6 +154,23 @@ def _order_records(cx):
     return out
 
 
+def _invoice_records(cx):
+    rows = cx.execute(
+        "SELECT id, email, name, items_json, total_cents, status, pay_status, "
+        "invoice_sent_at, created_at FROM orders WHERE status IN ('proposed','confirmed')")
+    out = []
+    for r in rows:
+        try:
+            n = len(json.loads(r["items_json"] or "[]"))
+        except Exception:
+            n = 0
+        out.append({"id": r["id"], "email": r["email"], "name": r["name"],
+                    "total_cents": r["total_cents"], "item_count": n,
+                    "status": r["status"], "pay_status": r["pay_status"],
+                    "invoice_sent_at": r["invoice_sent_at"], "age_ts": r["created_at"]})
+    return out
+
+
 def _reveal_records(cx):
     rows = cx.execute(
         "SELECT id, email, scan_date, first_approved, notified_at, created_at "
@@ -158,6 +207,7 @@ def _handoff_records(cx):
 
 def list_actionable(cx):
     items = ([resolve_order(r) for r in _order_records(cx)]
+             + [resolve_invoice(r) for r in _invoice_records(cx)]
              + [resolve_biofield_reveal(r) for r in _reveal_records(cx)]
              + [resolve_handoff(r) for r in _handoff_records(cx)]
              + [resolve_ff_match_draft(r) for r in _ff_records(cx)])
