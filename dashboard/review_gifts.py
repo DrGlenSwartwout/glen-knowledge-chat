@@ -91,10 +91,11 @@ def add_reward_gift(cx, email, sku, label, reward_grant_id):
 
 
 def recent_active_gift(cx, email, days=30):
-    init_table(cx)
+    migrate_reward_columns(cx)
     cutoff = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)).isoformat()
     return cx.execute(
-        "SELECT 1 FROM review_gifts WHERE email=? AND status!='rejected' AND created_at>=? LIMIT 1",
+        "SELECT 1 FROM review_gifts WHERE email=? AND status!='rejected' AND created_at>=? "
+        "AND (source='review' OR source IS NULL) LIMIT 1",
         ((email or "").strip().lower(), cutoff)).fetchone() is not None
 
 

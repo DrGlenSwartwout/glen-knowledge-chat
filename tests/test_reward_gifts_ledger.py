@@ -45,3 +45,11 @@ def test_reward_catalog_by_level():
     opts3 = rg.reward_options_for_level(3)
     assert all(o["level"] == 3 and o.get("active") for o in opts3)
     assert any(o["sku"] for o in opts3)   # seeded placeholders exist
+
+
+def test_recent_active_gift_ignores_reward_source():
+    cx = _cx()
+    rg.add_reward_gift(cx, "a@ex.com", "GIFT-SAMPLE-3", "P", 1)   # recent, reward-source
+    assert rg.recent_active_gift(cx, "a@ex.com") is False          # review cap must NOT see it
+    rg.add_suggestion(cx, 9, "a@ex.com", "SKU", "review gift", "r")
+    assert rg.recent_active_gift(cx, "a@ex.com") is True           # a review gift still counts

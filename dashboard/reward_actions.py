@@ -2,6 +2,7 @@
 approve (fulfill) or dismiss a pending reward grant. OWNER/OPS, LOW_WRITE. Manual —
 no automated store-credit/coupon/product; the operator hands out the gift by hand."""
 import datetime
+import os
 from dashboard.actions import register_action, Action, LOW_WRITE, get_action
 from dashboard.rbac import OWNER, OPS
 
@@ -67,12 +68,24 @@ def select_gift(cx, grant_id, sku, actor):
     opt = next((o for o in _rg.reward_options_for_level(tier) if o["sku"] == sku), None)
     if not opt:
         return {"ok": False, "error": "sku not in level catalog"}
+    existing = cx.execute(
+        "SELECT id FROM review_gifts WHERE reward_grant_id=? AND source='reward'",
+        (grant_id,)).fetchone()
+    if existing:
+        set_reward_status(cx, grant_id, "fulfilled", actor)   # ensure fulfilled, but do NOT insert a 2nd gift
+        return {"ok": True, "sku": sku, "note": "already gifted"}
     _rg.add_reward_gift(cx, email, sku, opt["label"], grant_id)
     set_reward_status(cx, grant_id, "fulfilled", actor)
     return {"ok": True, "sku": sku}
 
 
+def _reward_gifts_flag_enabled():
+    return os.environ.get("REWARD_GIFTS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _exec_select_gift(params, ctx):
+    if not _reward_gifts_flag_enabled():
+        return {"ok": False, "error": "reward gifts disabled"}
     return select_gift(ctx["cx"], params.get("grant_id"), params.get("sku"), _actor_name(ctx))
 
 
