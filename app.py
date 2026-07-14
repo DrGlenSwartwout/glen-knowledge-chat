@@ -12854,6 +12854,13 @@ def practitioner_page():
     return resp
 
 
+@app.route("/practitioner/eye-programs")
+def eye_programs_reference_page():
+    resp = send_from_directory(STATIC, "eye-programs.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/practitioner-application", methods=["POST", "OPTIONS"])
 def practitioner_application():
     """Practitioner Panel application.
