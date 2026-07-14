@@ -218,18 +218,22 @@
     return null;
   }
 
+  // Gift tiers that carry a physical gift: 3 = attributed story, 4 = video testimonial.
+  var LEVEL_NAMES = { 3: 'Story', 4: 'Video' };
+  function levelLabel(l){ var n = LEVEL_NAMES[l]; return 'Level ' + l + (n ? ': ' + n : ''); }
+
   function catalogHtml(options){
     var groups = levelGroups(options);
     if (!groups.length) return '';
     var body = groups.map(function(g){
-      return '<div class="glevel"><h3>Level '+esc(g.level)+'</h3>' + g.opts.map(optionRow).join('') + '</div>';
+      return '<div class="glevel"><h3>'+esc(levelLabel(g.level))+'</h3>' + g.opts.map(optionRow).join('') + '</div>';
     }).join('');
     return '<div class="catalog-section">'
       + '<h2>Gift catalog</h2>'
       + '<p class="sub">Manage the gift options members can choose from at each tier.</p>'
       + body
       + '<form id="add-gift-form" class="add-form">'
-      + '<input type="number" id="add-level" placeholder="Level" min="0" required>'
+      + '<select id="add-level" required><option value="">Level…</option><option value="3">Level 3: Story</option><option value="4">Level 4: Video</option></select>'
       + '<input type="text" id="add-product" list="gift-product-list" placeholder="Search product…" autocomplete="off" required>'
       + '<button type="submit">Add gift</button>'
       + '<span class="status" id="add-status"></span>'
