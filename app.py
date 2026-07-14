@@ -12976,6 +12976,13 @@ def eye_programs_reference_page():
     return resp
 
 
+@app.route("/kloud")
+def kloud_page():
+    resp = send_from_directory(STATIC, "kloud.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/api/practitioner-application", methods=["POST", "OPTIONS"])
 def practitioner_application():
     """Practitioner Panel application.
