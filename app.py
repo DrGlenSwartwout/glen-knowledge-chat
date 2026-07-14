@@ -2847,6 +2847,16 @@ def begin_ascend_tier_data():
     return jsonify(tier)
 
 
+@app.route("/program-guides")
+def program_guides():
+    """Public share kit: one-page PDF overview of each program aspect, to
+    view or download and share with prospects. Static page; PDFs under
+    /static/collateral/. No flag, no auth."""
+    resp = send_from_directory(STATIC, "program-guides.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 def _ascend_reached(email, state):
     """Rungs this member has already reached (v1). A paid member or a
     biofield/paid_fork/purchase gate marks the $300 Biofield rung reached.
