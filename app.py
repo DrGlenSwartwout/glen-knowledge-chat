@@ -6878,6 +6878,17 @@ def learn_pattern_data(slug):
                 p["remedies"] = rem
         except Exception:
             pass
+        # Characteristic stress factors of the organs this pattern involves
+        # (aggregated + deduped from the organ/meridian stress-factor layer).
+        try:
+            from dashboard import organ_stressors as _os, clinical_glossary as _cg
+            organ_names = [s.get("structure", "") for s in p.get("structures", [])
+                           if s.get("stype") == "organ"]
+            sf = _os.for_pattern_organs(organ_names, _cg.load(), _os.load())
+            if sf:
+                p["stress_factors"] = sf
+        except Exception:
+            pass
         return jsonify(p)
     finally:
         try:

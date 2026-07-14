@@ -32,6 +32,23 @@
     ul.rx a.rx-link{color:var(--green);text-decoration:none;border-bottom:1px dashed var(--green)}
     ul.rx a.rx-link:hover{color:var(--gold);border-bottom-color:var(--gold)}
     .rx-note{color:var(--muted);font-size:.8rem;margin-top:.5rem}
+    .sf-sec{margin-top:1.6rem}
+    .sf-sec h3{font-family:Raleway,sans-serif;font-size:1.05rem;margin:.2rem 0 .3rem;color:var(--cream)}
+    .sf-intro{color:var(--muted);font-size:.82rem;margin:0 0 .6rem}
+    .sf-cat{color:var(--muted);font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin:.6rem 0 .2rem}
+    ul.sf{list-style:none;margin:0;padding:0}
+    ul.sf li{font-size:.86rem;padding:3px 0;line-height:1.5}
+    .sf-tier{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:6px;padding:1px 6px;margin-right:7px;vertical-align:1px}
+    .sf-tier.strong{background:var(--green);color:#08130d}
+    .sf-tier.moderate{background:var(--gold);color:#241a05}
+    .sf-tier.weak{background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+    .sf-tier.traditional{background:#4a6b8a;color:#eaf2fb}
+    .sf-tier.contested{background:#8a5a3a;color:#fbeee2}
+    .sf-name{color:var(--cream);font-weight:600}
+    .sf-organ{color:var(--gold);font-size:.76rem}
+    .sf-note{color:var(--muted)}
+    ul.sf a.sf-src{color:var(--muted);text-decoration:none;border-bottom:1px dotted var(--muted);font-size:.76rem}
+    ul.sf a.sf-src:hover{color:var(--gold);border-bottom-color:var(--gold)}
     .back{display:inline-block;margin-bottom:18px;color:var(--muted);text-decoration:none;font-size:.9rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -48,6 +65,7 @@
       <p id="pat-desc" class="desc hidden"></p>
       <div id="pat-structs"></div>
       <div id="pat-remedies"></div>
+      <div id="pat-stress"></div>
     </div>
   </div>
   <script>
@@ -119,6 +137,35 @@
           var note = document.createElement('p'); note.className = 'rx-note';
           note.textContent = 'General support associated with this pattern — not a substitute for a personalized Biofield Analysis.';
           sec.appendChild(note);
+        }
+        // Characteristic stress factors of the organs this pattern involves.
+        var sf = d.stress_factors || [];
+        if(sf.length){
+          var CAT_LABEL={toxin:'Toxins',microbe:'Microbial',emotional:'Emotional (TCM)',physical:'Physical'};
+          var CAT_ORDER=['toxin','microbe','emotional','physical'];
+          var TIERS={strong:1,moderate:1,weak:1,traditional:1,contested:1};
+          var ss=document.getElementById('pat-stress'); ss.className='sf-sec';
+          var sh=document.createElement('h3'); sh.textContent='Characteristic stress factors'; ss.appendChild(sh);
+          var si=document.createElement('p'); si.className='sf-intro';
+          si.textContent='Environmental and constitutional stressors associated with the organs this pattern involves (organ-level reference — not a claim that they cause this pattern).';
+          ss.appendChild(si);
+          CAT_ORDER.forEach(function(cat){
+            var rows=sf.filter(function(f){return (f.category||'')===cat;});
+            if(!rows.length) return;
+            var cl=document.createElement('div'); cl.className='sf-cat'; cl.textContent=CAT_LABEL[cat]||cat; ss.appendChild(cl);
+            var ul2=document.createElement('ul'); ul2.className='sf';
+            rows.forEach(function(t){
+              var li=document.createElement('li');
+              var tier=(t.tier||'').toLowerCase(); if(!TIERS[tier]) tier='weak';
+              var b=document.createElement('span'); b.className='sf-tier '+tier; b.textContent=t.tier||'—'; li.appendChild(b);
+              var nm=document.createElement('span'); nm.className='sf-name'; nm.textContent=t.factor||''; li.appendChild(nm);
+              if(t.organs && t.organs.length){ var og=document.createElement('span'); og.className='sf-organ'; og.textContent=' (via '+t.organs.join(', ')+')'; li.appendChild(og); }
+              if(t.note){ li.appendChild(document.createTextNode(' — ')); var nt=document.createElement('span'); nt.className='sf-note'; nt.textContent=t.note; li.appendChild(nt); }
+              if(t.url){ li.appendChild(document.createTextNode(' ')); var a2=document.createElement('a'); a2.className='sf-src'; a2.href=t.url; a2.target='_blank'; a2.rel='noopener'; a2.textContent='['+(t.source||'source')+']'; li.appendChild(a2); }
+              ul2.appendChild(li);
+            });
+            ss.appendChild(ul2);
+          });
         }
       })
       .catch(function(){ hide('pat-loading'); show('pat-notfound'); });
