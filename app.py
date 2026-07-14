@@ -17996,15 +17996,27 @@ def _prl_supplement_for(email, scan_date):
         with sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _prl.init_tables(cx)
+            email_norm = (email or "").strip().lower()
+            dates = [r[0] for r in cx.execute(
+                "SELECT DISTINCT scan_date FROM scan_recommendations "
+                "WHERE email=? AND scan_date IS NOT NULL AND scan_date<>'' "
+                "ORDER BY scan_date DESC", (email_norm,)).fetchall()]
+            if not dates:
+                return None
+            sd = (scan_date or "").strip()
+            picked = sd if (sd and sd in dates) else dates[0]
             rows = cx.execute(
-                "SELECT scan_id, item_code FROM scan_recommendations "
+                "SELECT scan_id, item_code, label FROM scan_recommendations "
                 "WHERE email=? AND scan_date=? ORDER BY priority_rank",
-                ((email or "").strip().lower(), (scan_date or "").strip())).fetchall()
+                (email_norm, picked)).fetchall()
             if not rows:
                 return None
             scan_id = rows[0]["scan_id"]
             codes = [r["item_code"] for r in rows]
-            code_labels = {(r["item_code"] or "").split(" - ")[0]: r["item_code"] for r in rows}
+            code_labels = {}
+            for r in rows:
+                bare_c = (r["item_code"] or "").split(" - ")[0]
+                code_labels[bare_c] = r["label"] or r["item_code"]
 
             # 1) mirror override
             mirror = _prl.mirror_for_scan(cx, scan_id)

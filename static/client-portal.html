@@ -501,9 +501,11 @@ function prlSupplementBodyHtml(sp){
   const fas = Array.isArray(sp.focus_areas) ? sp.focus_areas : [];
   const relLabel = {substitute:"your equivalent", complement:"complements", consider:"or consider"};
   let blocks = fas.map(fa => {
+    const prods = Array.isArray(fa.products) ? fa.products : [];
+    if (!prods.length) return "";   // mirror can carry zero-product focus areas; don't render a bare heading
     const items = Array.isArray(fa.items) && fa.items.length
       ? `<div class="muted" style="font-size:.85em;margin:.1rem 0 .4rem">${fa.items.map(esc).join(" · ")}</div>` : "";
-    const rows = (fa.products||[]).map(p => {
+    const rows = prods.map(p => {
       const nm = p.url ? `<a href="${esc(p.url)}">${esc(p.name||"")}</a>` : esc(p.name||"");
       const ff = p.ff && p.ff.name
         ? `<div class="muted" style="font-size:.9em">${esc(relLabel[p.ff.relation]||"related")}: ${esc(p.ff.name)}</div>` : "";
