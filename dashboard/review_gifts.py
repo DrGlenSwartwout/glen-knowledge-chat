@@ -3,6 +3,7 @@ import os
 import datetime
 
 _DEFAULT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "review-gifts.json")
+_REWARD_CATALOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "reward-gifts.json")
 
 
 def _now():
@@ -26,6 +27,20 @@ def valid_sku(sku, path=None):
     return sku in catalog_by_sku(path)
 
 
+def load_reward_catalog(path=None):
+    try:
+        with open(path or _REWARD_CATALOG_PATH) as fh:
+            data = json.load(fh)
+        return [g for g in data if g.get("sku")]
+    except Exception:
+        return []
+
+
+def reward_options_for_level(level, path=None):
+    return [g for g in load_reward_catalog(path)
+            if g.get("active") and int(g.get("level", 0)) == int(level)]
+
+
 def init_table(cx):
     cx.execute(
         "CREATE TABLE IF NOT EXISTS review_gifts ("
@@ -33,6 +48,16 @@ def init_table(cx):
         "gift_sku TEXT, gift_label TEXT, reason TEXT, status TEXT DEFAULT 'suggested', "
         "created_at TEXT, approved_by TEXT DEFAULT '', approved_at TEXT DEFAULT '', "
         "fulfilled_order_id INTEGER, fulfilled_at TEXT DEFAULT '')")
+    cx.commit()
+
+
+def migrate_reward_columns(cx):
+    init_table(cx)
+    cols = [r[1] for r in cx.execute("PRAGMA table_info(review_gifts)").fetchall()]
+    if "source" not in cols:
+        cx.execute("ALTER TABLE review_gifts ADD COLUMN source TEXT DEFAULT 'review'")
+    if "reward_grant_id" not in cols:
+        cx.execute("ALTER TABLE review_gifts ADD COLUMN reward_grant_id INTEGER")
     cx.commit()
 
 
@@ -51,6 +76,18 @@ def add_suggestion(cx, review_id, email, sku, label, reason):
     cx.commit()
     return cx.execute("SELECT id FROM review_gifts WHERE review_id=? ORDER BY id DESC LIMIT 1",
                       (review_id,)).fetchone()[0]
+
+
+def add_reward_gift(cx, email, sku, label, reward_grant_id):
+    migrate_reward_columns(cx)
+    cx.execute(
+        "INSERT INTO review_gifts (review_id, email, gift_sku, gift_label, reason, status, "
+        "created_at, approved_by, approved_at, source, reward_grant_id) "
+        "VALUES (NULL, ?, ?, ?, 'data-sharing reward', 'approved', ?, 'system', ?, 'reward', ?)",
+        ((email or "").strip().lower(), sku, label, _now(), _now(), reward_grant_id))
+    cx.commit()
+    return cx.execute("SELECT id FROM review_gifts WHERE reward_grant_id=? ORDER BY id DESC LIMIT 1",
+                      (reward_grant_id,)).fetchone()[0]
 
 
 def recent_active_gift(cx, email, days=30):
@@ -88,6 +125,15 @@ def pending_for(cx, email):
     rows = cur.execute(
         "SELECT * FROM review_gifts WHERE email=? AND status='approved' AND fulfilled_order_id IS NULL "
         "ORDER BY id", ((email or "").strip().lower(),)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def pending_reward_for(cx, email):
+    migrate_reward_columns(cx)
+    cur = cx.cursor(); cur.row_factory = __import__("sqlite3").Row
+    rows = cur.execute(
+        "SELECT * FROM review_gifts WHERE email=? AND source='reward' AND status='approved' "
+        "AND fulfilled_order_id IS NULL ORDER BY id", ((email or "").strip().lower(),)).fetchall()
     return [dict(r) for r in rows]
 
 
