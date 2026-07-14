@@ -44,6 +44,7 @@
   { "title": "Biofield Intake (local portal)", "page": "Biofield", "url": "/console/biofield-intake", "keywords": ["biofield", "intake", "testing", "voice", "narrate", "causal chain", "authoring", "local", "portal", "deepgram", "vegatest", "muscle test"] },
 
   { "title": "Remedy meanings", "page": "Biofield", "url": "/console/remedy-meanings", "keywords": ["remedy", "remedies", "meaning", "meanings", "canonical", "biofield", "curate", "propose", "functions"] },
+  { "title": "Scan Trends", "page": "Biofield", "url": "/console/scan-trends", "keywords": ["scan", "scans", "trends", "longitudinal", "e4l", "history", "persistent", "emerging", "resolving", "client", "over time", "pattern", "trajectory"] },
 
   { "title": "Ingredient pages", "page": "Products", "url": "/console/ingredient-pages", "keywords": ["ingredient", "ingredients", "page", "pages", "approve", "generate", "gauge"] },
 

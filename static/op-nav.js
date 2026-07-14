@@ -47,7 +47,7 @@
                        {id:"invite-queue",label:"Invite Queue",href:"/console/testimonial-invites"+qs}, {id:"top-products",label:"Top Products",href:"/console/top-products"+qs} ],
       clinical:      [ {id:"biofield",label:"Biofield",href:"/console/biofield-portal"+qs}, {id:"reveals",label:"Reveals",href:"/console/biofield-reveals"+qs},
                        {id:"intake",label:"Intake",href:"/console/biofield-intake"+qs}, {id:"tags",label:"Tags",href:"/console/clinical-tags"+qs},
-                       {id:"remedy-meanings",label:"Remedy Meanings",href:"/console/remedy-meanings"+qs} ],
+                       {id:"scan-trends",label:"Scan Trends",href:"/console/scan-trends"+qs}, {id:"remedy-meanings",label:"Remedy Meanings",href:"/console/remedy-meanings"+qs} ],
       sales:         [ {id:"orders",label:"Orders",href:"/console/orders"+qs}, {id:"new-order",label:"New Order",href:"/orders/new"+qs},
                        {id:"client-orders",label:"Client Orders",href:"/console/client-orders"+qs} ],
       fulfillment:   [ {id:"shipping",label:"Shipping",href:"/admin/shipping"+qs}, {id:"household",label:"Household",href:"/console/household"+qs} ],
