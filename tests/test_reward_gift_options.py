@@ -24,6 +24,10 @@ def test_seed_once_not_resurrected_after_delete():
     assert rg.list_gift_options(cx) == []        # marker present -> NOT re-seeded
 
 
+def test_delete_on_virgin_db_does_not_raise():
+    rg.delete_gift_option(sqlite3.connect(":memory:"), 999)   # no init_table call first; must self-init
+
+
 def test_add_delete_toggle():
     cx = _cx()
     oid = rg.add_gift_option(cx, 3, "GIFT-NEW", "New gift")

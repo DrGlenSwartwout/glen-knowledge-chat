@@ -36,11 +36,36 @@
                  background:var(--surface); color:var(--cream); min-width:260px; }
   #keybox button{ padding:9px 13px; border-radius:8px; border:1px solid var(--gold);
                   background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
+  .catalog-section{ margin:0 24px 48px; }
+  .catalog-section h2{ font-size:18px; margin:0 0 4px; }
+  .catalog-section .sub{ margin:0 0 14px; padding:0; }
+  .glevel{ background:var(--surface); border:1px solid var(--border); border-radius:12px;
+            padding:12px 16px; margin-bottom:12px; }
+  .glevel h3{ margin:0 0 8px; font-size:14px; color:var(--gold); }
+  .gopt{ display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .gopt:first-of-type{ border-top:none; }
+  .gopt.inactive{ opacity:0.5; }
+  .gopt .gsku{ font-weight:600; min-width:140px; }
+  .gopt .glabel{ color:var(--muted); flex:1; min-width:140px; }
+  .gopt .gflags em{ color:var(--amber); font-style:normal; font-size:12px; }
+  .gopt button{ padding:5px 10px; border-radius:7px; border:1px solid var(--border);
+                background:transparent; color:var(--cream); cursor:pointer; font-size:12.5px; }
+  .gopt button.gdelete:hover{ border-color:#e08a8a; color:#e08a8a; }
+  .gopt button.gtoggle:hover{ border-color:var(--gold); color:var(--gold); }
+  .add-form{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+  .add-form input{ padding:8px 10px; border-radius:7px; border:1px solid var(--border);
+                    background:var(--bg); color:var(--cream); font-size:13px; font-family:inherit; }
+  .add-form input#add-level{ width:70px; }
+  .add-form input#add-sku{ width:160px; }
+  .add-form input#add-label{ width:220px; flex:1; min-width:160px; }
+  .add-form button{ padding:8px 14px; border-radius:8px; border:1px solid var(--gold);
+         background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; font-size:13px; }
 </style>
 <script src="/static/op-nav.js" data-active="clinical"></script>
 <h1>Reward Gifts</h1>
 <p class="sub">Pending data-sharing reward grants awaiting a gift pick. Choose a catalog gift for the member's tier, or dismiss the grant.</p>
 <div id="content"><p class="sub">Loading&hellip;</p></div>
+<div id="catalog"></div>
 <div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
 <script>
   function key(){ return localStorage.getItem('console_key') || ''; }
@@ -133,5 +158,107 @@
     document.getElementById('content').innerHTML = '<div class="grid">' + ITEMS.map(card).join('') + '</div>';
     wireButtons();
   }
+
+  // ---- Gift catalog editor ----
+
+  function levelGroups(options){
+    var map = {};
+    (options || []).forEach(function(o){
+      var lv = o.level;
+      if (!map[lv]) map[lv] = [];
+      map[lv].push(o);
+    });
+    return Object.keys(map).map(Number).sort(function(a,b){ return a-b; })
+      .map(function(lv){ return { level: lv, opts: map[lv] }; });
+  }
+
+  function optionRow(o){
+    return '<div class="gopt'+(o.active ? '' : ' inactive')+'" data-oid="'+o.id+'">'
+      + '<span class="gsku">'+esc(o.sku)+'</span>'
+      + '<span class="glabel">'+esc(o.label)+'</span>'
+      + '<span class="gflags">'+(o.active ? '' : '<em>inactive</em>')+'</span>'
+      + '<button class="gtoggle" data-oid="'+o.id+'">'+(o.active ? 'Deactivate' : 'Activate')+'</button>'
+      + '<button class="gdelete" data-oid="'+o.id+'">Delete</button>'
+      + '</div>';
+  }
+
+  function catalogHtml(options){
+    var groups = levelGroups(options);
+    if (!groups.length) return '';
+    var body = groups.map(function(g){
+      return '<div class="glevel"><h3>Level '+esc(g.level)+'</h3>' + g.opts.map(optionRow).join('') + '</div>';
+    }).join('');
+    return '<div class="catalog-section">'
+      + '<h2>Gift catalog</h2>'
+      + '<p class="sub">Manage the gift options members can choose from at each tier.</p>'
+      + body
+      + '<form id="add-gift-form" class="add-form">'
+      + '<input type="number" id="add-level" placeholder="Level" min="0" required>'
+      + '<input type="text" id="add-sku" placeholder="SKU" required>'
+      + '<input type="text" id="add-label" placeholder="Label" required>'
+      + '<button type="submit">Add gift</button>'
+      + '<span class="status" id="add-status"></span>'
+      + '</form>'
+      + '</div>';
+  }
+
+  async function postCatalog(suffix, body){
+    var r;
+    try {
+      r = await fetch('/api/console/reward-gift-options'+suffix, { method: 'POST', headers: hdr(), body: JSON.stringify(body) });
+    } catch(e){ return { ok: false, error: 'Network error.' }; }
+    if (r.status === 401) { document.getElementById('keybox').style.display = 'block'; return { ok: false, error: 'unauthorized' }; }
+    return await r.json().catch(function(){ return {}; });
+  }
+
+  async function deleteOption(id){
+    await postCatalog('/delete', { id: id });
+    fetchCatalog();
+  }
+
+  async function toggleOption(id){
+    await postCatalog('/toggle', { id: id });
+    fetchCatalog();
+  }
+
+  async function addOption(){
+    var lvl = document.getElementById('add-level').value;
+    var sku = document.getElementById('add-sku').value.trim();
+    var label = document.getElementById('add-label').value.trim();
+    var statusEl = document.getElementById('add-status');
+    if (lvl === '' || !sku || !label) {
+      if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = 'Level, SKU, and label are required.'; }
+      return;
+    }
+    var j = await postCatalog('', { level: Number(lvl), sku: sku, label: label });
+    if (j && j.ok) {
+      fetchCatalog();
+    } else {
+      if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = (j && j.error) || 'Add failed.'; }
+    }
+  }
+
+  function wireCatalog(){
+    document.querySelectorAll('button.gdelete').forEach(function(btn){
+      btn.addEventListener('click', function(){ deleteOption(Number(btn.getAttribute('data-oid'))); });
+    });
+    document.querySelectorAll('button.gtoggle').forEach(function(btn){
+      btn.addEventListener('click', function(){ toggleOption(Number(btn.getAttribute('data-oid'))); });
+    });
+    var form = document.getElementById('add-gift-form');
+    if (form) form.addEventListener('submit', function(ev){ ev.preventDefault(); addOption(); });
+  }
+
+  async function fetchCatalog(){
+    var r;
+    try { r = await fetch('/api/console/reward-gift-options', { headers: hdr() }); }
+    catch(e){ return; }
+    if (r.status === 401) { document.getElementById('catalog').innerHTML = ''; return; }
+    var j = await r.json();
+    document.getElementById('catalog').innerHTML = catalogHtml(j.options || []);
+    wireCatalog();
+  }
+
   boot();
+  fetchCatalog();
 </script>

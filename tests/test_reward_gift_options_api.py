@@ -63,6 +63,15 @@ def test_add_option_validates_required_fields(monkeypatch, tmp_db):
     assert r.get_json()["ok"] is False
 
 
+def test_console_rewards_html_has_catalog_editor_markup():
+    repo = Path(__file__).resolve().parent.parent
+    html = (repo / "static" / "console-rewards.html").read_text()
+    assert "/api/console/reward-gift-options" in html
+    assert "/delete" in html
+    assert "/toggle" in html
+    assert 'id="add-sku"' in html   # add-form sku input
+
+
 def test_reward_gift_options_requires_console_auth(monkeypatch, tmp_db):
     monkeypatch.setenv("REWARD_GIFTS_ENABLED", "1")
     monkeypatch.setenv("CONSOLE_SECRET", "s3cret")

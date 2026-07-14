@@ -74,6 +74,7 @@ def add_gift_option(cx, level, sku, label):
 
 
 def delete_gift_option(cx, opt_id):
+    init_reward_gift_options(cx)
     cx.execute("DELETE FROM reward_gift_options WHERE id=?", (opt_id,)); cx.commit()
 
 
