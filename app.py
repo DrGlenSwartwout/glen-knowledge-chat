@@ -6856,6 +6856,15 @@ def learn_pattern_data(slug):
         p = _pg.get_pattern(cx, slug)
         if not p:
             return jsonify({"state": "unknown"}), 404
+        # Phase 3: link each organ structure to its clinical-glossary Organs entry.
+        try:
+            from dashboard import glossary_crosslinks as _gx, clinical_glossary as _cg
+            cidx = _gx.clinical_organ_index(_cg.load())
+            for s in p.get("structures", []):
+                if s.get("stype") == "organ":
+                    s["clinical_slug"] = cidx.get(_gx.canon(s.get("structure", "")))
+        except Exception:
+            pass
         return jsonify(p)
     finally:
         try:
@@ -6895,6 +6904,21 @@ def learn_clinical_glossary_dim_data(dim):
         d = _cg.with_product_links(d, idx, _cg.load_overrides())
     except Exception:
         pass
+    # Phase 3: for the Organs dimension, attach the E4L stress patterns involving
+    # each organ (bidirectional cross-link with the pattern glossary).
+    if dim == "organs":
+        try:
+            from dashboard import glossary_crosslinks as _gx, pattern_glossary as _pg
+            cxe = _pg.open_ro()
+            if cxe is not None:
+                try:
+                    o2p = _gx.organ_to_patterns(cxe)
+                finally:
+                    cxe.close()
+                for e in d.get("entries", []):
+                    e["patterns"] = o2p.get(_gx.canon(e.get("name", "")), [])
+        except Exception:
+            pass
     return jsonify(d)
 
 

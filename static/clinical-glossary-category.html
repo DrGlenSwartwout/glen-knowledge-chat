@@ -22,6 +22,11 @@
     .entry .rem{color:var(--muted);font-size:.85rem;margin-top:.4rem}
     .entry .rem a.rem-link{color:var(--green);text-decoration:none;border-bottom:1px dashed var(--green)}
     .entry .rem a.rem-link:hover{color:var(--gold);border-bottom-color:var(--gold)}
+    .entry .pat{color:var(--muted);font-size:.85rem;margin-top:.35rem}
+    .entry .pat a.pat-link{color:var(--cream);text-decoration:none;border-bottom:1px dotted var(--muted)}
+    .entry .pat a.pat-link:hover{border-bottom-color:var(--gold);color:var(--gold)}
+    .entry.hl{background:var(--surface);border-radius:8px;margin:0 -10px;padding-left:10px;padding-right:10px;
+      box-shadow:inset 3px 0 0 var(--green)}
     .count{color:var(--gold);font-size:.8rem;margin-bottom:.6rem}
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
@@ -48,6 +53,7 @@
       var host = document.getElementById('c-entries'); host.textContent = '';
       list.forEach(function(e){
         var d = document.createElement('div'); d.className='entry';
+        if(e.slug) d.id = e.slug;
         var h = document.createElement('h3'); h.textContent = e.name || '';
         if(e.alt_name){ var a=document.createElement('span'); a.className='alt'; a.textContent='('+e.alt_name+')'; h.appendChild(a); }
         d.appendChild(h);
@@ -68,9 +74,25 @@
           });
           d.appendChild(r);
         }
+        if(e.patterns && e.patterns.length){
+          var pl=document.createElement('div'); pl.className='pat';
+          pl.appendChild(document.createTextNode('Stress patterns: '));
+          e.patterns.forEach(function(p, i){
+            if(i) pl.appendChild(document.createTextNode(', '));
+            var a=document.createElement('a'); a.className='pat-link';
+            a.href='/learn/pattern/'+encodeURIComponent(p.slug); a.textContent=p.name;
+            pl.appendChild(a);
+          });
+          d.appendChild(pl);
+        }
         host.appendChild(d);
       });
       document.getElementById('c-count').textContent = list.length + ' of ' + ALL.length;
+    }
+    function highlightHash(){
+      if(!location.hash) return;
+      var el=document.getElementById(decodeURIComponent(location.hash.slice(1)));
+      if(el){ el.scrollIntoView({block:'center'}); el.classList.add('hl'); }
     }
     fetch('/learn/glossary-data/' + encodeURIComponent(dim), {credentials:'same-origin'})
       .then(function(r){ if(!r.ok) return null; return r.json(); })
@@ -83,6 +105,7 @@
         if(d.blurb){ var b=document.getElementById('c-blurb'); b.textContent=d.blurb; show('c-blurb'); }
         ALL = d.entries || [];
         render(ALL);
+        highlightHash();
         var f = document.getElementById('c-filter');
         f.addEventListener('input', function(){
           var q = f.value.trim().toLowerCase();
