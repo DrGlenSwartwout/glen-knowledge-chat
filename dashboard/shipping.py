@@ -320,12 +320,21 @@ def _caps_ok(box_size, names, placed_idx, caps):
 
 
 def pick_boxes(bottles_by_type, db_path: Optional[str] = None):
-    """Geometric box selection. Returns a list of box sizes, or None.
+    """Box selection. Returns a list of box sizes, or None.
 
-    - If every requested type has dimensions -> geometric split (multi-box),
+    Precedence — the capacity matrix is authoritative wherever Rae has filled it
+    in (app.py documents the catalog as taking precedence):
+
+    - If every requested type has a capacity-matrix row -> use those counts
+      (fractional fill, multi-box for large loads). This wins even for a type
+      that ALSO has dimensions. Why it must: a 30-cap FF bottle is Ø51, wider
+      than the Small box's 50 mm interior, so geometric packing places 0 in
+      Small and over-boxes every 1-6 bottle order to Medium — but the matrix
+      (S=6) is the operator's ground truth.
+    - Else if every requested type has dimensions -> geometric split (multi-box),
       honouring any (type, box) override caps from box_capacity.
-    - Otherwise -> fall back to the legacy fractional pick_box (single box),
-      returned as a one-element list, or None.
+    - Else (a mix with no full coverage either way) -> legacy single-box
+      fractional.
     Raises UnknownBottleType if a type is in neither the dims set nor the
     capacity matrix.
     """
@@ -339,6 +348,18 @@ def pick_boxes(bottles_by_type, db_path: Optional[str] = None):
         if name not in dims and name not in caps:
             raise UnknownBottleType(name)
 
+    # Matrix first for the common single-box case: if every requested type has a
+    # matrix row AND the whole load fits one box by Rae's counts, use that box —
+    # even for a type that also has dims. This is the fix: a 30-cap bottle is Ø51,
+    # wider than the Small box's 50mm interior, so geometry places 0 in Small and
+    # over-boxes 1-6 bottle orders to Medium, but the matrix (S=6) is ground truth.
+    # A load too big for a single matrix box falls through to geometry (correct
+    # multi-box split for dimmed types) / the legacy caps-only path, unchanged.
+    if all(name in caps for name in bottles_by_type):
+        single = _pick_box_fractional(bottles_by_type, caps)
+        if single:
+            return [single]
+
     if all(name in dims for name in bottles_by_type):
         settings = get_packing_settings(db_path=db_path)
         wrap, margin = settings["wrap_mm"], settings["box_margin_mm"]
@@ -351,7 +372,9 @@ def pick_boxes(bottles_by_type, db_path: Optional[str] = None):
             return boxes
         return _split_with_caps(items, names, caps, wrap, margin)
 
-    # Legacy fractional fallback (dimensionless types present)
+    # Mixed: some type has dims but no matrix row, and not all are capped.
+    # Legacy single-box fractional (raises UnknownBottleType for an uncapped
+    # type, caught upstream -> qty rule), exactly as before this change.
     legacy = _pick_box_fractional(bottles_by_type, caps)
     return [legacy] if legacy else None
 
