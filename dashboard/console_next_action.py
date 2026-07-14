@@ -4,6 +4,7 @@ Pure resolvers (normalized record dict -> descriptor) shared by the per-page
 buttons and the unified /console Next Action queue. Listers + aggregate live
 below. Adding a record type = write a resolver + a lister + register both.
 """
+import json
 
 TYPE_PRIORITY = ["biofield_reveal", "handoff", "ff_match_draft"]
 
@@ -74,3 +75,47 @@ def resolve_handoff(rec):
                       "confirm": True},
         "summary": f"{email}", "age_ts": rec.get("age_ts", ""),
     }
+
+
+def _reveal_records(cx):
+    rows = cx.execute(
+        "SELECT id, email, scan_date, first_approved, notified_at, created_at "
+        "FROM biofield_reveals "
+        "WHERE first_approved=0 OR (first_approved=1 AND (notified_at IS NULL OR notified_at=''))")
+    return [{"id": r["id"], "email": r["email"], "scan_date": r["scan_date"],
+             "first_approved": r["first_approved"], "notified_at": r["notified_at"],
+             "age_ts": r["created_at"]} for r in rows]
+
+
+def _ff_records(cx):
+    rows = cx.execute(
+        "SELECT email, scan_date, status, created_at FROM ff_match_drafts WHERE status='draft'")
+    return [{"email": r["email"], "scan_date": r["scan_date"], "status": r["status"],
+             "age_ts": r["created_at"]} for r in rows]
+
+
+def _handoff_records(cx):
+    # Mirror api_console_handoffs (app.py:13534-13551): a handoff = a client_portals
+    # row whose content_json.biofield_status == 'ai_draft'. Confirmed columns on
+    # client_portals (dashboard/client_portal.py:25-40): id, token_hash, email, name,
+    # content_json, created_at, updated_at. age_ts uses the real updated_at column.
+    out = []
+    for r in cx.execute("SELECT email, content_json, updated_at FROM client_portals"):
+        try:
+            st = (json.loads(r["content_json"] or "{}") or {}).get("biofield_status")
+        except Exception:
+            st = None
+        if st == "ai_draft":
+            out.append({"email": r["email"], "biofield_status": st,
+                        "age_ts": r["updated_at"] or ""})
+    return out
+
+
+def list_actionable(cx):
+    items = ([resolve_biofield_reveal(r) for r in _reveal_records(cx)]
+             + [resolve_handoff(r) for r in _handoff_records(cx)]
+             + [resolve_ff_match_draft(r) for r in _ff_records(cx)])
+    items = [d for d in items if d.get("actionable")]
+    prio = {t: i for i, t in enumerate(TYPE_PRIORITY)}
+    items.sort(key=lambda d: (prio.get(d["type"], 99), d.get("age_ts") or ""))
+    return items

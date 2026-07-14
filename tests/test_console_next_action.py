@@ -57,3 +57,37 @@ def test_handoff_ai_draft_offers_publish_only_primary_and_notify_secondary():
 
 def test_handoff_confirmed_is_done():
     assert na.resolve_handoff({"biofield_status": "confirmed"}) == {"actionable": False}
+
+
+def _seed_cx():
+    import sqlite3
+    from dashboard import biofield_reveals, ff_match_drafts
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    biofield_reveals.init_table(cx)
+    ff_match_drafts.init_table(cx)
+    return cx
+
+
+def test_aggregate_orders_by_type_then_age_and_skips_done(monkeypatch):
+    cx = _seed_cx()
+    now = "2026-07-01T00:00:00"; later = "2026-07-02T00:00:00"
+    # two reveals: one draft (older) + one sent (done); one ff draft; one handoff
+    cx.execute("INSERT INTO biofield_reveals (email,scan_date,interpretation_json,"
+               "remedies_json,first_approved,notified_at,created_at,updated_at) "
+               "VALUES ('r@b.co','s1','{}','[]',0,NULL,?,?)", (now, now))
+    cx.execute("INSERT INTO biofield_reveals (email,scan_date,interpretation_json,"
+               "remedies_json,first_approved,notified_at,created_at,updated_at) "
+               "VALUES ('done@b.co','s2','{}','[]',1,?,?,?)", (later, later, later))
+    cx.execute("INSERT INTO ff_match_drafts (email,scan_date,items_json,status,"
+               "created_at,updated_at) VALUES ('f@b.co','s3','[]','draft',?,?)", (now, now))
+    cx.commit()
+    # stub the handoff lister to avoid needing the client_portals schema in this unit
+    monkeypatch.setattr(na, "_handoff_records",
+                        lambda cx: [{"email": "h@b.co", "biofield_status": "ai_draft",
+                                     "age_ts": later}])
+    items = na.list_actionable(cx)
+    types = [d["type"] for d in items]
+    assert types == ["biofield_reveal", "handoff", "ff_match_draft"]  # TYPE_PRIORITY order
+    assert "done@b.co" not in [d["summary"].split(" ")[0] for d in items]  # sent reveal skipped
+    assert all(d["actionable"] for d in items)
