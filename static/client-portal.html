@@ -492,6 +492,30 @@ function supportProgramBodyHtml(sp){
   if(!rows) rows = `<p class="muted">No program items yet.</p>`;
   return `${consult}${rows}`;
 }
+// Premier Research Labs (PRL) supplement card body (Task 6): a budget-friendly
+// direct-order option grouped by focus area, with the FF equivalent/complement
+// called out under each product when one exists. Flag-gated server-side
+// (PRL_SUPPLEMENT_ENABLED) — see d.prl_supplement_enabled at the card block below.
+function prlSupplementBodyHtml(sp){
+  sp = sp || {};
+  const fas = Array.isArray(sp.focus_areas) ? sp.focus_areas : [];
+  const relLabel = {substitute:"your equivalent", complement:"complements", consider:"or consider"};
+  let blocks = fas.map(fa => {
+    const items = Array.isArray(fa.items) && fa.items.length
+      ? `<div class="muted" style="font-size:.85em;margin:.1rem 0 .4rem">${fa.items.map(esc).join(" · ")}</div>` : "";
+    const rows = (fa.products||[]).map(p => {
+      const nm = p.url ? `<a href="${esc(p.url)}">${esc(p.name||"")}</a>` : esc(p.name||"");
+      const ff = p.ff && p.ff.name
+        ? `<div class="muted" style="font-size:.9em">${esc(relLabel[p.ff.relation]||"related")}: ${esc(p.ff.name)}</div>` : "";
+      return `<p style="margin:.35rem 0"><strong>${nm}</strong>${ff}</p>`;
+    }).join("");
+    return `<div style="margin:.2rem 0 .8rem"><h3 style="margin:.2rem 0;font-size:1em">${esc(fa.name||"")}</h3>${items}${rows}</div>`;
+  }).join("");
+  if(!blocks) blocks = `<p class="muted">No PRL matches yet.</p>`;
+  const btn = `<a class="btn" href="${esc(sp.prl_link||"https://truly.vip/prl")}" target="_blank" rel="noopener" style="background:#2f6f5e;color:#fff;margin-top:.5rem">Go to Premier Research Labs</a>`;
+  const micro = `<p class="small muted" style="margin-top:.4rem">Budget-friendly option — order these directly from PRL, or use your matched formulas above.</p>`;
+  return `${blocks}${btn}${micro}`;
+}
 // Practitioner-composed program card body (Task 5): a standing program your
 // practitioner hand-composed for you (distinct from the condition support-program
 // above and from the one-shot reco-card below). Reuses supportProgramBodyHtml for
@@ -1340,6 +1364,16 @@ function render(d, v){
       ${supportProgramBodyHtml(sp)}
       ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
       <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
+    </div>`;
+  }
+
+  // Premier Research Labs card (Task 6, flag-gated server-side): a budget-friendly
+  // direct-order option grouped by focus area, present only when PRL_SUPPLEMENT_ENABLED
+  // is on and this client's scan resolved to at least one covered focus area.
+  if (d.prl_supplement_enabled && d.prl_supplement) {
+    html += `<div class="card prl-supplement-card">
+      <h2>Premier Research Labs options</h2>
+      ${prlSupplementBodyHtml(d.prl_supplement)}
     </div>`;
   }
 
