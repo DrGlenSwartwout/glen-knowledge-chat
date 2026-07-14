@@ -21,6 +21,8 @@ def normalize_product_name(name, catalog_names):
         return name
 
     # Hardcoded mappings for known missing products (data quality issues in source)
+    # "Probiotic Caps" mapped to 30-softgel variant by product URL slug (probiotic-caps.html).
+    # UNCONFIRMED — Glen to verify which softgel count E4L's "Probiotic Caps" actually refers to.
     missing_mappings = {
         "Probiotic Caps": "Premier Probiotic (30 Softgels)",
     }
@@ -56,11 +58,20 @@ def normalize_product_name(name, catalog_names):
         if name + sym + " (Fermented)" in catalog_names:
             return name + sym + " (Fermented)"
     # Try to find a variant by checking if there's a match without parenthetical info
+    # Iterate sorted catalog_names for deterministic fallback; collect all base-name matches.
     base = name.split('(')[0].strip()
-    for cat_name in catalog_names:
+    candidates = []
+    for cat_name in sorted(catalog_names):
         cat_base = cat_name.split('(')[0].strip()
         if base.lower() == cat_base.lower():
-            return cat_name
+            candidates.append(cat_name)
+
+    if candidates:
+        if len(candidates) > 1:
+            # Multiple base-name collisions found; warn and pick sorted-first deterministically.
+            print(f"WARNING: Ambiguous fallback match for '{name}' -> {len(candidates)} catalog candidates: {candidates}")
+        return candidates[0]
+
     # Return original; will fail validation in test if truly missing
     return name
 
@@ -70,6 +81,10 @@ def build():
     xwalk = {r["prl"]: r for r in json.load(open(CROSSWALK))["rows"]}
     fa = json.load(open(FA_MAP))["focus_areas"]
     catalog_names = set(catalog.keys())
+
+    # Print all hardcoded assumptions at build time for auditability.
+    print("WARNING: Hardcoded/assumed mappings (please verify):")
+    print("  'Probiotic Caps' -> 'Premier Probiotic (30 Softgels)' [URL slug probiotic-caps.html, UNCONFIRMED]")
 
     products = []
     for name, p in catalog.items():
@@ -86,11 +101,26 @@ def build():
         })
 
     focus_area_products, focus_area_items = [], []
+    stats = {"exact": 0, "normalized": 0, "fallback": 0}
     for fid, v in fa.items():
         fid = int(fid)
         for i, prod in enumerate(v.get("prl_products") or []):
             pname = prod["name"] if isinstance(prod, dict) else prod
             normalized = normalize_product_name(pname, catalog_names)
+            # Track resolution method for auditability
+            if normalized == pname:
+                stats["exact"] += 1
+            elif pname in catalog_names:
+                stats["exact"] += 1
+            else:
+                # If normalized != pname, it went through some normalization strategy or fallback
+                base = pname.split('(')[0].strip()
+                fallback_candidates = [cn for cn in catalog_names
+                                      if base.lower() == cn.split('(')[0].strip().lower()]
+                if fallback_candidates:
+                    stats["fallback"] += 1
+                else:
+                    stats["normalized"] += 1
             focus_area_products.append({
                 "focus_area_id": fid, "focus_area_name": v.get("name"),
                 "prl_product_name": normalized, "rank": i})
@@ -104,6 +134,7 @@ def build():
             "focus_area_items": focus_area_items}
     with open(OUT, "w") as f:
         json.dump(seed, f, indent=1, ensure_ascii=False)
+    print(f"Resolution: {stats['exact']} exact, {stats['normalized']} normalized, {stats['fallback']} fallback")
     print(f"products={len(products)} fa_products={len(focus_area_products)} "
           f"fa_items={len(focus_area_items)} -> {OUT}")
 
