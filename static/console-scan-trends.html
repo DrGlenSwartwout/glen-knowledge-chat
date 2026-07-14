@@ -32,11 +32,18 @@
     a.pl:hover{color:var(--gold);border-bottom-color:var(--gold)}
     .cat{color:var(--muted);font-size:.78rem}
     .muted{color:var(--muted)} .hidden{display:none}
+    /* severity: band pill + trajectory arrow. 'top' = the report's red/purple end. */
+    .sev{white-space:nowrap}
+    .band{display:inline-block;font-size:.72rem;font-weight:600;padding:1px 7px;border-radius:10px;text-transform:capitalize}
+    .band.top{background:#5b3a8c;color:#f0e6ff} .band.high{background:#5a4a1e;color:var(--gold)}
+    .band.moderate{background:var(--surface-2);color:var(--muted)} .band.low{background:#1d3a26;color:var(--green)}
+    .arrow{margin-left:5px;font-weight:700}
+    .arrow.wors,.wors{color:#d9534f} .arrow.easi,.easi{color:var(--green)} .arrow.stdy{color:var(--muted)}
   </style>
 </head><body>
   <div class="wrap">
     <h1>E4L Scan Trends</h1>
-    <p class="lead">Longitudinal patterns across a client's scan history — persistently high, newly emerging, or resolving. (Reads the local e4l.db; severity/'purple level' is not yet parsed, so trends rest on appearance + recommendation rank.)</p>
+    <p class="lead">Longitudinal patterns across a client's scan history — persistently high, newly emerging, or resolving. <b>Severity</b> is the recommendation rank normalized within each scan (rank 1 = top, the report's red/purple end); the arrow shows whether an item is climbing toward the top (<span class="wors">worsening ↑</span>) or easing off (<span class="easi">easing ↓</span>) across the window.</p>
     <div>
       <input class="search" id="q" type="text" placeholder="Search client by name…" autocomplete="off">
       <select id="lastn">
@@ -75,6 +82,18 @@
       fetch('/api/console/e4l/client-trends?client_id='+cid+'&last_n='+lastn.value,{credentials:'same-origin'})
         .then(function(r){return r.json();}).then(render);
     }
+    function sevCell(it){
+      var td=document.createElement('td'); td.className='sev';
+      if(it.severity_band){
+        var b=document.createElement('span'); b.className='band '+it.severity_band; b.textContent=it.severity_band;
+        td.appendChild(b);
+        var glyph={worsening:['↑','wors'],easing:['↓','easi'],steady:['→','stdy']}[it.severity_trend];
+        if(glyph){ var ar=document.createElement('span'); ar.className='arrow '+glyph[1];
+          ar.textContent=glyph[0]; ar.title=it.severity_trend+(it.severity_delta!=null?(' ('+(it.severity_delta>0?'+':'')+it.severity_delta+')'):'');
+          td.appendChild(ar); }
+      } else { td.className='sev muted'; td.textContent='—'; }
+      return td;
+    }
     function render(d){
       var meta=document.getElementById('meta');
       meta.textContent = d.n_scans ? (d.n_scans+' scans with findings · '+(d.first_date||'')+' → '+(d.last_date||'')) : 'No scans with findings for this client.';
@@ -87,7 +106,7 @@
         var h=document.createElement('h2'); var dot=document.createElement('span'); dot.className='dot'; h.appendChild(dot);
         h.appendChild(document.createTextNode(g[1]+' ('+rows.length+')')); sec.appendChild(h);
         var tb=document.createElement('table');
-        tb.innerHTML='<tr><th>Item</th><th>Category</th><th>Frequency</th><th>Best rank</th></tr>';
+        tb.innerHTML='<tr><th>Item</th><th>Category</th><th>Severity</th><th>Frequency</th><th>Best rank</th></tr>';
         rows.forEach(function(it){
           var tr=document.createElement('tr');
           var td1=document.createElement('td');
@@ -95,6 +114,7 @@
           else td1.textContent=it.name;
           tr.appendChild(td1);
           var td2=document.createElement('td'); td2.className='cat'; td2.textContent=it.category||''; tr.appendChild(td2);
+          tr.appendChild(sevCell(it));
           var td3=document.createElement('td'); td3.className='num'; td3.textContent=it.frequency_pct+'% ('+it.appearances+')'; tr.appendChild(td3);
           var td4=document.createElement('td'); td4.className='num'; td4.textContent=it.best_rank!=null?('#'+it.best_rank):'—'; tr.appendChild(td4);
           tb.appendChild(tr);

@@ -57,3 +57,72 @@ def test_last_n_limits_window(cx):
     assert out["n_scans"] == 2
     codes = {it["code"] for it in out["items"]}
     assert "ER5" not in codes and "ED1" in codes
+
+
+# --- severity (rank normalized within each scan; 1.0 = rank 1 = "purple"/top) ---
+
+def test_severity_normalization():
+    assert st._severity(None, 5) is None
+    assert st._severity(1, 5) == 1.0        # top of the list = most severe
+    assert st._severity(5, 5) == 0.0        # bottom of the list = least severe
+    assert st._severity(3, 5) == 0.5        # middle
+    assert st._severity(1, 1) == 1.0        # a lone ranked item is top by definition
+    # rank beyond the ranked count clamps to 0, never negative
+    assert st._severity(9, 5) == 0.0
+
+
+def test_severity_bands():
+    assert st._severity_band(0.90) == "top"
+    assert st._severity_band(0.60) == "high"
+    assert st._severity_band(0.30) == "moderate"
+    assert st._severity_band(0.10) == "low"
+    assert st._severity_band(None) is None
+
+
+def test_severity_trend_helper():
+    assert st._severity_trend(0.80, 0.20) == "worsening"   # climbing toward the top
+    assert st._severity_trend(0.20, 0.80) == "easing"      # dropping down the list
+    assert st._severity_trend(0.50, 0.50) == "steady"
+    assert st._severity_trend(None, 0.50) == "na"          # can't compare one half
+
+
+@pytest.fixture
+def sev_cx():
+    """4 scans, oldest(1)->newest(5), each with exactly 5 ranked items (ranks 1-5),
+    so severity denominators are clean. Three tracked items:
+      WORSEN climbs 5->4->2->1 (severity up), EASE drops 1->2->4->5, STEADY sits at 3."""
+    c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row
+    c.executescript(
+        "CREATE TABLE e4l_scans (scan_id INTEGER PRIMARY KEY, client_id INTEGER, scan_date TEXT);"
+        "CREATE TABLE e4l_scan_results (scan_id INTEGER, item_code TEXT, priority_rank INTEGER);"
+        "CREATE TABLE e4l_items (code TEXT PRIMARY KEY, name TEXT, full_name TEXT, category TEXT);"
+    )
+    c.executemany("INSERT INTO e4l_scans VALUES (?,?,?)", [
+        (1, 7, "2026-01-01"), (2, 7, "2026-02-01"),
+        (3, 7, "2026-03-01"), (4, 7, "2026-04-01")])
+    c.executemany("INSERT INTO e4l_items VALUES (?,?,?,?)", [
+        ("WORSEN", "W", "W", "X"), ("EASE", "E", "E", "X"), ("STEADY", "S", "S", "X"),
+        ("FZ1", "F", "F", "X"), ("FZ2", "G", "G", "X")])
+    # each scan uses ranks {1,2,3,4,5} exactly once -> n_ranked = 5 per scan
+    c.executemany("INSERT INTO e4l_scan_results VALUES (?,?,?)", [
+        (1, "WORSEN", 5), (1, "EASE", 1), (1, "STEADY", 3), (1, "FZ1", 2), (1, "FZ2", 4),
+        (2, "WORSEN", 4), (2, "EASE", 2), (2, "STEADY", 3), (2, "FZ1", 1), (2, "FZ2", 5),
+        (3, "WORSEN", 2), (3, "EASE", 4), (3, "STEADY", 3), (3, "FZ1", 1), (3, "FZ2", 5),
+        (4, "WORSEN", 1), (4, "EASE", 5), (4, "STEADY", 3), (4, "FZ1", 2), (4, "FZ2", 4)])
+    c.commit()
+    return c
+
+
+def test_client_trends_severity_fields(sev_cx):
+    by = {it["code"]: it for it in st.client_trends(sev_cx, 7)["items"]}
+    # WORSEN: latest appearance is rank 1 -> severity 1.0, band top, climbing
+    assert by["WORSEN"]["severity"] == 1.0
+    assert by["WORSEN"]["severity_band"] == "top"
+    assert by["WORSEN"]["severity_trend"] == "worsening"
+    # EASE: latest appearance rank 5 -> severity 0.0, band low, dropping
+    assert by["EASE"]["severity"] == 0.0
+    assert by["EASE"]["severity_band"] == "low"
+    assert by["EASE"]["severity_trend"] == "easing"
+    # STEADY: rank 3 throughout -> severity 0.5, band high, no movement
+    assert by["STEADY"]["severity"] == 0.5
+    assert by["STEADY"]["severity_trend"] == "steady"

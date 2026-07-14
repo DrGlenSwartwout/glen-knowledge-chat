@@ -1,9 +1,59 @@
 """Longitudinal trend analysis across a client's E4L scan history. Pure reader
 over e4l.db; for each stress item, how it behaves across the client's scans over
 time — persistent, emerging, resolving, or intermittent — using appearance and
-priority-rank (severity/'purple level' is not in the parsed data, so trends rest
-on recommendation rank + presence). Never raises into callers."""
+priority-rank. Severity is derived from that rank: the report's own legend states
+the dot colour ('red/purple being the highest priority') encodes relative
+priority, which is exactly the recommendation order we store as priority_rank.
+The literal dot colour is not in the parsed text (pdftotext discards it), so we
+reconstruct severity by normalizing each item's rank within its own scan — rank 1
+= 1.0 ('purple'/top), the last ranked item = 0.0 — and track whether that
+normalized severity is climbing (worsening) or falling (easing) over the window.
+Never raises into callers."""
 import math
+
+# A per-half difference in normalized severity below this is treated as no real
+# movement (noise), so an item only reads worsening/easing on a clear shift.
+SEVERITY_TREND_MIN_DELTA = 0.15
+
+
+def _severity(rank, n_ranked):
+    """Normalize a within-scan priority rank to 0..1, where 1.0 = rank 1 = the
+    top ('purple') priority and 0.0 = the last ranked item. Normalizing per scan
+    makes ranks comparable across scans of different lengths. None if unranked."""
+    if rank is None:
+        return None
+    if n_ranked is None or n_ranked <= 1:
+        return 1.0
+    v = (n_ranked - rank) / float(n_ranked - 1)
+    return max(0.0, min(1.0, v))
+
+
+def _severity_band(sev):
+    """Coarse label for a normalized severity: top / high / moderate / low.
+    'top' is the red/purple end of the report's own priority colouring."""
+    if sev is None:
+        return None
+    if sev >= 0.75:
+        return "top"
+    if sev >= 0.5:
+        return "high"
+    if sev >= 0.25:
+        return "moderate"
+    return "low"
+
+
+def _severity_trend(recent_sev, older_sev):
+    """Compare mean severity in the newer vs older half of the appearances.
+    worsening = severity climbing toward the top; easing = falling away; steady =
+    little change. 'na' when either half has no ranked appearance to compare."""
+    if recent_sev is None or older_sev is None:
+        return "na"
+    delta = recent_sev - older_sev
+    if delta >= SEVERITY_TREND_MIN_DELTA:
+        return "worsening"
+    if delta <= -SEVERITY_TREND_MIN_DELTA:
+        return "easing"
+    return "steady"
 
 
 def client_scans(cx, client_id, last_n=None, with_findings_only=True):
@@ -43,8 +93,11 @@ def _classify(n_appear, n_scans, recent_count, older_count):
 
 def client_trends(cx, client_id, last_n=None):
     """{n_scans, first_date, last_date, items:[{code, name, category, appearances,
-    frequency_pct, best_rank, latest_rank, first_date, last_date, trend}]}, sorted
-    persistent → emerging → resolving → intermittent, then by frequency/best rank."""
+    frequency_pct, best_rank, latest_rank, first_date, last_date, trend, severity,
+    severity_band, severity_trend, severity_delta}]}, sorted persistent → emerging
+    → resolving → intermittent, then by frequency/best rank. severity is the
+    normalized rank (0..1) at the item's most recent appearance; severity_trend is
+    worsening/easing/steady/na across the window (see module docstring)."""
     scans = client_scans(cx, client_id, last_n)
     n = len(scans)
     if n == 0:
@@ -63,6 +116,11 @@ def client_trends(cx, client_id, last_n=None):
             "WHERE r.scan_id IN (%s)" % qmarks, scan_ids).fetchall()
     except Exception:
         return {"n_scans": n, "first_date": scans[-1][1], "last_date": scans[0][1], "items": []}
+    # ranked-item count per scan = the denominator for normalizing rank -> severity
+    scan_ranked = {}
+    for r in rows:
+        if r["rank"] is not None:
+            scan_ranked[r["sid"]] = scan_ranked.get(r["sid"], 0) + 1
     agg = {}
     for r in rows:
         code = (r["code"] or "").strip()
@@ -86,11 +144,26 @@ def client_trends(cx, client_id, last_n=None):
         older_count = n_appear - recent_count
         appt_dates = sorted(date_of[sid] for _, sid, _ in appts)
         trend = _classify(n_appear, n, recent_count, older_count)
+        # severity from normalized rank: current level = the most recent (lowest
+        # pos) appearance; trend = mean severity of the newer vs older half.
+        sev_by_pos = [(p, _severity(rk, scan_ranked.get(sid)))
+                      for p, sid, rk in appts]
+        latest_sev = min(sev_by_pos, key=lambda t: t[0])[1] if sev_by_pos else None
+        recent_sevs = [s for p, s in sev_by_pos if s is not None and p < n / 2.0]
+        older_sevs = [s for p, s in sev_by_pos if s is not None and p >= n / 2.0]
+        recent_mean = sum(recent_sevs) / len(recent_sevs) if recent_sevs else None
+        older_mean = sum(older_sevs) / len(older_sevs) if older_sevs else None
+        sev_trend = _severity_trend(recent_mean, older_mean)
+        sev_delta = (round(recent_mean - older_mean, 2)
+                     if recent_mean is not None and older_mean is not None else None)
         items.append({
             "code": code, "name": a["name"], "category": a["category"],
             "appearances": n_appear, "frequency_pct": round(100.0 * n_appear / n),
             "best_rank": best_rank, "latest_rank": latest_rank,
             "first_date": appt_dates[0], "last_date": appt_dates[-1], "trend": trend,
+            "severity": round(latest_sev, 2) if latest_sev is not None else None,
+            "severity_band": _severity_band(latest_sev),
+            "severity_trend": sev_trend, "severity_delta": sev_delta,
         })
     items.sort(key=lambda it: (order.get(it["trend"], 9), -it["frequency_pct"],
                                it["best_rank"] if it["best_rank"] is not None else 9999))
