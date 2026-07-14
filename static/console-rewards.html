@@ -66,6 +66,7 @@
 <p class="sub">Pending data-sharing reward grants awaiting a gift pick. Choose a catalog gift for the member's tier, or dismiss the grant.</p>
 <div id="content"><p class="sub">Loading&hellip;</p></div>
 <div id="catalog"></div>
+<datalist id="gift-product-list"></datalist>
 <div id="keybox" style="display:none"><input id="key-input" type="text" placeholder="console key"> <button onclick="unlock()">Unlock</button></div>
 <script>
   function key(){ return localStorage.getItem('console_key') || ''; }
@@ -182,6 +183,41 @@
       + '</div>';
   }
 
+  // ---- Product lookup (add-gift field is a catalog search, like console-related-products) ----
+  var PRODUCTS_BY_SLUG = {}, PRODUCTS_NAME_TO_SLUG = {}, PRODUCTS_LOADED = false;
+  async function loadProductCatalog(){
+    if (PRODUCTS_LOADED) return;
+    try {
+      var r = await fetch('/api/products?all=1', { headers: hdr() });
+      if (!r.ok) return;
+      var j = await r.json();
+      var list = j.data || j.products || j || [];
+      var dl = document.getElementById('gift-product-list');
+      var opts = '';
+      (list || []).forEach(function(p){
+        var slug = p.slug, name = p.name || slug;
+        if (!slug) return;
+        PRODUCTS_BY_SLUG[slug] = name;
+        PRODUCTS_NAME_TO_SLUG[String(name).toLowerCase()] = slug;
+        opts += '<option value="'+esc(name)+' — '+esc(slug)+'"></option>';
+      });
+      if (dl) dl.innerHTML = opts;
+      PRODUCTS_LOADED = true;
+    } catch(e){ /* leave unloaded; resolveProduct will reject until retried */ }
+  }
+  // Resolve whatever the operator typed (product name, slug, or "name — slug") to a real
+  // catalog product; returns {slug, name} or null so we never save a non-catalog gift.
+  function resolveProduct(input){
+    input = (input || '').trim();
+    if (!input) return null;
+    var slug = input.split('—').pop().trim();               // "Name — slug" -> slug
+    if (PRODUCTS_BY_SLUG[slug]) return { slug: slug, name: PRODUCTS_BY_SLUG[slug] };
+    if (PRODUCTS_BY_SLUG[input]) return { slug: input, name: PRODUCTS_BY_SLUG[input] };   // bare slug
+    var bySlug = PRODUCTS_NAME_TO_SLUG[input.toLowerCase()];                              // bare name
+    if (bySlug) return { slug: bySlug, name: PRODUCTS_BY_SLUG[bySlug] };
+    return null;
+  }
+
   function catalogHtml(options){
     var groups = levelGroups(options);
     if (!groups.length) return '';
@@ -194,8 +230,7 @@
       + body
       + '<form id="add-gift-form" class="add-form">'
       + '<input type="number" id="add-level" placeholder="Level" min="0" required>'
-      + '<input type="text" id="add-sku" placeholder="SKU" required>'
-      + '<input type="text" id="add-label" placeholder="Label" required>'
+      + '<input type="text" id="add-product" list="gift-product-list" placeholder="Search product…" autocomplete="off" required>'
       + '<button type="submit">Add gift</button>'
       + '<span class="status" id="add-status"></span>'
       + '</form>'
@@ -223,15 +258,16 @@
 
   async function addOption(){
     var lvl = document.getElementById('add-level').value;
-    var sku = document.getElementById('add-sku').value.trim();
-    var label = document.getElementById('add-label').value.trim();
+    var typed = document.getElementById('add-product').value;
     var statusEl = document.getElementById('add-status');
-    if (lvl === '' || !sku || !label) {
-      if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = 'Level, SKU, and label are required.'; }
+    var prod = resolveProduct(typed);
+    if (lvl === '' || !prod) {
+      if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = prod ? 'Level is required.' : 'Pick a product from the list.'; }
       return;
     }
-    var j = await postCatalog('', { level: Number(lvl), sku: sku, label: label });
+    var j = await postCatalog('', { level: Number(lvl), sku: prod.slug, label: prod.name });
     if (j && j.ok) {
+      document.getElementById('add-product').value = '';
       fetchCatalog();
     } else {
       if (statusEl){ statusEl.className = 'status err'; statusEl.textContent = (j && j.error) || 'Add failed.'; }
@@ -257,6 +293,7 @@
     var j = await r.json();
     document.getElementById('catalog').innerHTML = catalogHtml(j.options || []);
     wireCatalog();
+    loadProductCatalog();
   }
 
   boot();
