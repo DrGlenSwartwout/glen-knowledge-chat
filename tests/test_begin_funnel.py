@@ -739,3 +739,37 @@ def test_mission_with_outcome_gives_one_link_and_crossover():
     assert links[0]["role"] == "primary" and links[0]["href"]
     assert bf.next_step_prompt(st, query_texts=["find me a remedy for my eyes"]) == ""
     assert sum(c["role"] == "secondary" for c in chips) == 1
+
+
+def test_adventure_first_fork_is_three_pillars_no_give():
+    bf, cx = _seeded()
+    bf.set_travel_style(cx, session_id="s1", style="adventure")
+    st = bf.get_state(cx, session_id="s1")           # rung 'arrival'
+    chips = bf.next_step_chips(st)
+    labels = [c["label"] for c in chips if c["role"] == "primary"]
+    assert labels == ["Explore my biofield", "Explore remedies", "Learn to heal"]
+    assert all(c["action"] == "link" and c["href"] for c in chips if c["role"] == "primary")
+    assert "Lift others" not in labels                # Give withheld pre-engagement
+    assert sum(c["role"] == "secondary" for c in chips) == 1
+
+
+def test_adventure_surfaces_give_after_free_tier():
+    import begin_funnel as bf
+    st = _state(travel_style="adventure", current_rung="free_tier",
+                email="a@b.co", unlocked_gates=["question", "name"])
+    chips = bf.next_step_chips(st)
+    labels = [c["label"] for c in chips if c["role"] == "primary"]
+    assert len(labels) <= 3                            # cap holds even with give eligible
+    # give is now in the candidate order; with 3 pillars still open, cap keeps first 3
+    assert labels == ["Explore my biofield", "Explore remedies", "Learn to heal"]
+
+
+def test_adventure_never_dead_ends():
+    import begin_funnel as bf
+    # every pillar done -> still returns at least one primary + one secondary
+    st = _state(travel_style="adventure", current_rung="advocate",
+                unlocked_gates=["scan", "course_ww", "question", "biofield",
+                                "intake", "masterclass"])
+    chips = bf.next_step_chips(st)
+    assert any(c["role"] == "primary" for c in chips)
+    assert sum(c["role"] == "secondary" for c in chips) == 1

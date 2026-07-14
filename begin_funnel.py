@@ -537,8 +537,36 @@ def _mission_chips(state, ref="", query_texts=None):
     ]
 
 
+_ADVENTURE_LABELS = {
+    "scan": "Explore my biofield",
+    "find": "Explore remedies",
+    "heal": "Learn to heal",
+    "give": "Lift others",
+}
+
+
 def _adventure_chips(state, ref="", query_texts=None):
-    return []  # Task 3 replaces this stub with real adventure-mode chip logic
+    jmap = {c["key"]: c for c in journey_map(state, ref=ref)}
+    order = ["scan", "find", "heal"]
+    rung = (state or {}).get("current_rung", "arrival")
+    if RUNG_INDEX.get(rung, 0) >= RUNG_INDEX["free_tier"]:
+        order.append("give")
+    chips = []
+    for k in order:
+        card = jmap.get(k)
+        if not card or card.get("status") == "done":
+            continue
+        chips.append({"label": _ADVENTURE_LABELS[k], "action": "link",
+                      "role": "primary", "value": None, "href": card["href"]})
+        if len(chips) == 3:
+            break
+    if not chips:   # never dead-end: point onward to giving / paying it forward
+        give = jmap.get("give") or {}
+        chips.append({"label": _ADVENTURE_LABELS["give"], "action": "link",
+                      "role": "primary", "value": None,
+                      "href": give.get("href") or "/begin/path"})
+    chips.append(dict(_CROSSOVER_TO_MISSION))
+    return chips
 
 
 def next_step_chips(state, ref="", query_texts=None):
