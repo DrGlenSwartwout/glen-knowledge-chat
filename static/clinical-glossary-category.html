@@ -74,6 +74,19 @@
         if(e.alt_name){ var a=document.createElement('span'); a.className='alt'; a.textContent='('+e.alt_name+')'; h.appendChild(a); }
         d.appendChild(h);
         if(e.description){ var p=document.createElement('p'); p.textContent = e.description; d.appendChild(p); }
+        if(e.affects_links && e.affects_links.length){
+          var af=document.createElement('div'); af.className='rem';
+          af.appendChild(document.createTextNode('Affects: '));
+          e.affects_links.forEach(function(x,i){
+            if(i) af.appendChild(document.createTextNode(', '));
+            if(x.slug){
+              var a=document.createElement('a'); a.className='rem-link';
+              a.href='/learn/glossary/organs#'+encodeURIComponent(x.slug); a.textContent=x.name;
+              af.appendChild(a);
+            } else { af.appendChild(document.createTextNode(x.name)); }
+          });
+          d.appendChild(af);
+        }
         if(e.remedies && e.remedies.length){
           var r=document.createElement('div'); r.className='rem';
           r.appendChild(document.createTextNode('Related remedies: '));
