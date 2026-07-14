@@ -700,3 +700,42 @@ def test_travel_style_rejects_bad_value():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def _state(**over):
+    base = {"session_id": "s1", "email": "", "current_rung": "arrival",
+            "unlocked_gates": [], "travel_style": "unknown"}
+    base.update(over)
+    return base
+
+
+def test_unknown_style_shows_opening_fork():
+    import begin_funnel as bf
+    st = _state(travel_style="unknown")
+    assert bf.next_step_prompt(st) == bf.OPENING_PROMPT
+    chips = bf.next_step_chips(st)
+    vals = {c["value"] for c in chips if c["action"] == "style"}
+    assert vals == {"mission", "adventure"}
+    assert all(c["role"] == "primary" for c in chips)
+
+
+def test_mission_without_outcome_shows_seed_chips_and_prompt():
+    import begin_funnel as bf
+    st = _state(travel_style="mission")
+    assert bf.next_step_prompt(st) == bf.MISSION_PROMPT
+    chips = bf.next_step_chips(st, query_texts=[])
+    texts = [c["label"] for c in chips if c["action"] == "text"]
+    assert texts == bf.SEED_OUTCOME_CHIPS
+    secondary = [c for c in chips if c["role"] == "secondary"]
+    assert len(secondary) == 1 and secondary[0]["value"] == "adventure"
+
+
+def test_mission_with_outcome_gives_one_link_and_crossover():
+    import begin_funnel as bf
+    st = _state(travel_style="mission")
+    chips = bf.next_step_chips(st, query_texts=["find me a remedy for my eyes"])
+    links = [c for c in chips if c["action"] == "link"]
+    assert len(links) == 1
+    assert links[0]["role"] == "primary" and links[0]["href"]
+    assert bf.next_step_prompt(st, query_texts=["find me a remedy for my eyes"]) == ""
+    assert sum(c["role"] == "secondary" for c in chips) == 1

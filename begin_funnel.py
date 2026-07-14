@@ -453,6 +453,37 @@ CARD_CATALOG = {
 }
 
 
+OPENING_PROMPT = ("Are you here on a mission to achieve a certain outcome? "
+                  "Or are you looking for an adventure as you explore what's possible?")
+MISSION_PROMPT = "What would you love to change?"
+SEED_OUTCOME_CHIPS = ["Sharper vision", "More energy", "Deeper sleep", "Calm", "Something else"]
+
+_STYLE_FORK_CHIPS = [
+    {"label": "I'm on a mission",   "action": "style", "role": "primary",
+     "value": "mission",   "href": None},
+    {"label": "I'm here to explore", "action": "style", "role": "primary",
+     "value": "adventure", "href": None},
+]
+_CROSSOVER_TO_MISSION = {"label": "Just tell me where to start", "action": "style",
+                         "role": "secondary", "value": "mission", "href": None}
+_CROSSOVER_TO_ADVENTURE = {"label": "Actually, let me explore instead", "action": "style",
+                           "role": "secondary", "value": "adventure", "href": None}
+
+_MISSION_LABELS = {
+    "remedy_match":       "Get your remedy match",
+    "e4l_scan":           "Start your voice scan",
+    "voice_distinctions": "Explore what your voice reveals",
+    "practitioner":       "Find a practitioner near you",
+    "product":            "See your recommended formula",
+    "founding_offer":     "See your recommended formula",
+    "ash_course":         "Begin the healing course",
+    "ash_masterclass":    "Step into the MasterClass",
+    "pay_forward":        "Lift someone else",
+    "quiz":               "Take the quick assessment",
+    "intake":             "Start your intake",
+}
+
+
 def _thread_href(base_url, ref, campaign):
     """Internal (/...) base returned as-is; external base threaded with the
     ref-based utm. Shared by card_href and journey_map so threading stays in sync."""
@@ -472,6 +503,51 @@ def card_href(key, ref=""):
 def _card(key, ref=""):
     c = CARD_CATALOG[key]
     return {"key": key, "title": c["title"], "sub": c["sub"], "href": card_href(key, ref)}
+
+
+def next_step_prompt(state, query_texts=None):
+    style = (state or {}).get("travel_style", "unknown")
+    if style == "unknown":
+        return OPENING_PROMPT
+    if style == "mission" and not _match_card_keys(state, query_texts):
+        return MISSION_PROMPT
+    return ""
+
+
+def _mission_chips(state, ref="", query_texts=None):
+    keys = _match_card_keys(state, query_texts) or []
+    gates = set((state or {}).get("unlocked_gates") or ())
+    dest_key = None
+    for k in keys:
+        if k == "remedy_match" and "purchase" in gates:   # already bought -> don't re-offer
+            continue
+        dest_key = k
+        break
+    if dest_key is None:
+        chips = [{"label": lbl, "action": "text", "role": "primary",
+                  "value": None, "href": None} for lbl in SEED_OUTCOME_CHIPS]
+        chips.append(dict(_CROSSOVER_TO_ADVENTURE))
+        return chips
+    card = _card(dest_key, ref)
+    label = _MISSION_LABELS.get(dest_key, f"See {card['title']}")
+    return [
+        {"label": label, "action": "link", "role": "primary",
+         "value": None, "href": card["href"]},
+        dict(_CROSSOVER_TO_ADVENTURE),
+    ]
+
+
+def _adventure_chips(state, ref="", query_texts=None):
+    return []  # Task 3 replaces this stub with real adventure-mode chip logic
+
+
+def next_step_chips(state, ref="", query_texts=None):
+    style = (state or {}).get("travel_style", "unknown")
+    if style == "mission":
+        return _mission_chips(state, ref, query_texts)
+    if style == "adventure":
+        return _adventure_chips(state, ref, query_texts)   # Task 3
+    return [dict(c) for c in _STYLE_FORK_CHIPS]
 
 
 # ---------------------------------------------------------------------------
