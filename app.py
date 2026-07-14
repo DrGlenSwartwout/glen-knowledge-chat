@@ -965,6 +965,17 @@ def _has_e4l(cx, email, state):
         return False
 
 
+def _begin_signals(cx, sig_email, state):
+    """Journey signals for a visitor (drives Scan href portal-vs-signup + Give
+    predicate done-detection). Shared by /begin/state, /begin/travel-style, and
+    the /begin/match/chat done-event so all three resolve chip hrefs identically."""
+    return {
+        "ambassador": _is_ambassador(cx, sig_email),
+        "referred_friend": _has_referred_friend(cx, sig_email),
+        "has_e4l": _has_e4l(cx, sig_email, state),
+    }
+
+
 # The line is education vs. recommendation. Education is open to everyone;
 # anything that individualizes (advice about the user's own body/situation) or
 # recommends a specific product/remedy for a health condition is GATED behind
@@ -3633,15 +3644,12 @@ def begin_state():
     payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
     _sig_email = state.get("email") or email
     with sqlite3.connect(LOG_DB) as _cx:
-        signals = {
-            "ambassador": _is_ambassador(_cx, _sig_email),
-            "referred_friend": _has_referred_friend(_cx, _sig_email),
-            "has_e4l": _has_e4l(_cx, _sig_email, state),
-        }
+        signals = _begin_signals(_cx, _sig_email, state)
     payload["journey_map"] = begin_funnel.journey_map(state, ref_slug, signals)
     payload["next_step"] = {
         "prompt": begin_funnel.next_step_prompt(state, query_texts),
-        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug, query_texts=query_texts),
+        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug,
+                                               query_texts=query_texts, signals=signals),
     }
     return jsonify(payload)
 
@@ -3658,9 +3666,13 @@ def begin_travel_style():
         state = begin_funnel.set_travel_style(cx, session_id=session_id, style=style, email=email)
     ref_slug = (request.cookies.get("rm_ref") or "").strip()
     query_texts = _recent_query_texts(session_id, email)
+    _sig_email = state.get("email") or email
+    with sqlite3.connect(LOG_DB) as _cx:
+        signals = _begin_signals(_cx, _sig_email, state)
     return jsonify({"ok": True, "next_step": {
         "prompt": begin_funnel.next_step_prompt(state, query_texts),
-        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug, query_texts=query_texts),
+        "chips":  begin_funnel.next_step_chips(state, ref=ref_slug,
+                                               query_texts=query_texts, signals=signals),
     }})
 
 
@@ -4816,7 +4828,9 @@ def begin_match_chat():
             _q_texts.append(query)
             with _db_lock, sqlite3.connect(LOG_DB) as _cx:
                 _ns_state = begin_funnel.get_state(_cx, session_id=session_id, email=email)
-            _next_chips = begin_funnel.next_step_chips(_ns_state, ref="", query_texts=_q_texts)
+                _ns_signals = _begin_signals(_cx, _ns_state.get("email") or email, _ns_state)
+            _next_chips = begin_funnel.next_step_chips(_ns_state, ref="",
+                                                       query_texts=_q_texts, signals=_ns_signals)
         except Exception as e:
             print(f"[match] next_chips: {e!r}", flush=True)
             _next_chips = []

@@ -57,3 +57,19 @@ def test_travel_style_route_rejects_bad_value(monkeypatch, tmp_path):
     c.set_cookie("amg_session", "ns-route-test-3")
     r = c.post("/begin/travel-style", json={"style": "wander"})
     assert r.status_code == 400
+
+
+def test_travel_style_route_threads_has_e4l_to_scan_href(monkeypatch, tmp_path):
+    app_module = _load_app()
+    c = _client(app_module, monkeypatch, tmp_path)
+    # Force the has_e4l signal (a returning client known by email) WITHOUT
+    # unlocking this session's scan gate, so voice_scan is still the first
+    # undone step and its href is chosen by the signal. This asserts the route
+    # actually threads signals into next_step_chips (regression guard).
+    monkeypatch.setattr(app_module, "_has_e4l", lambda cx, email, state: True)
+    c.set_cookie("amg_session", "ns-route-e4l")
+    r = c.post("/begin/travel-style", json={"style": "adventure"})
+    assert r.status_code == 200
+    scan = next(ch for ch in r.get_json()["next_step"]["chips"]
+                if ch["label"] == "Explore my biofield")
+    assert scan["href"].startswith("https://portal.e4l.com")
