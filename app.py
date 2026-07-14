@@ -13741,6 +13741,122 @@ def console_related_products_page():
     return resp
 
 
+@app.route("/console/rewards")
+def console_rewards_page():
+    resp = send_from_directory(STATIC, "console-rewards.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/console/rewards", methods=["GET"])
+def api_console_rewards():
+    """Operator gift picker: every PENDING data-sharing reward grant, each carrying
+    its tier's active gift-catalog options (dashboard/review_gifts.reward_options_for_level).
+    Console-secret gated. Default OFF (REWARD_GIFTS_ENABLED) -> {"items": []}, so the
+    picker page is inert until the flag flips."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"items": []})
+    from dashboard import data_sharing_rewards as _dr, review_gifts as _rg
+    items = []
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _dr.init_reward_tables(cx)
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute(
+            "SELECT id, email, reward_type, tier, granted_at FROM member_reward_grants "
+            "WHERE status='pending' ORDER BY granted_at").fetchall()
+        for r in rows:
+            options = [{"sku": o["sku"], "label": o["label"]}
+                       for o in _rg.reward_options_for_level(cx, r["tier"])]
+            items.append({"grant_id": r["id"], "email": r["email"],
+                          "reward_type": r["reward_type"], "tier": r["tier"],
+                          "granted_at": r["granted_at"], "options": options})
+    return jsonify({"items": items})
+
+
+@app.route("/api/console/reward-gift-options", methods=["GET"])
+def api_console_reward_gift_options_list():
+    """Owner console: the full reward gift-option catalog (all levels, active
+    and inactive). Console-secret gated. Default OFF (REWARD_GIFTS_ENABLED)
+    -> {"options": []}, so the catalog editor stays inert until the flag
+    flips."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"options": []})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        options = _rg.list_gift_options(cx)
+    return jsonify({"options": options})
+
+
+@app.route("/api/console/reward-gift-options", methods=["POST"])
+def api_console_reward_gift_options_add():
+    """Owner console: add one gift option to the catalog. Console-secret
+    gated. Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    level = body.get("level")
+    sku = (body.get("sku") or "").strip()
+    label = (body.get("label") or "").strip()
+    if level is None or not sku or not label:
+        return jsonify({"ok": False, "error": "level, sku, and label are required"})
+    try:
+        level = int(level)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "level must be a number"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        opt_id = _rg.add_gift_option(cx, level, sku, label)
+    return jsonify({"ok": True, "id": opt_id})
+
+
+@app.route("/api/console/reward-gift-options/delete", methods=["POST"])
+def api_console_reward_gift_options_delete():
+    """Owner console: delete one gift option from the catalog. Console-secret
+    gated. Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    opt_id = body.get("id")
+    if not opt_id:
+        return jsonify({"ok": False, "error": "id required"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _rg.delete_gift_option(cx, opt_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/reward-gift-options/toggle", methods=["POST"])
+def api_console_reward_gift_options_toggle():
+    """Owner console: flip a gift option's active flag. Console-secret gated.
+    Flag off -> no write, {"ok": False, "error": "disabled"}."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if not _reward_gifts_enabled():
+        return jsonify({"ok": False, "error": "disabled"})
+    body = request.get_json(silent=True) or {}
+    opt_id = body.get("id")
+    if not opt_id:
+        return jsonify({"ok": False, "error": "id required"})
+    from dashboard import review_gifts as _rg
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _rg.init_reward_gift_options(cx)
+        row = cx.execute("SELECT active FROM reward_gift_options WHERE id=?", (opt_id,)).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "not found"})
+        new_active = not bool(row[0])
+        _rg.set_gift_option_active(cx, opt_id, new_active)
+    return jsonify({"ok": True, "active": new_active})
+
+
 @app.route("/api/console/handoffs", methods=["GET"])
 def api_console_handoffs():
     """Rae's inbox: portals handed off (content biofield_status=='ai_draft') awaiting
@@ -15854,6 +15970,13 @@ def _data_sharing_enabled():
     """Data-sharing opt-in rewards feature. Default OFF — when off, the reward ledger
     and consent endpoints are inert and the portal payload never gains sharing-related keys."""
     return (os.environ.get("DATA_SHARING_REWARD_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _reward_gifts_enabled():
+    """Catalog-gift fulfillment for data-sharing reward grants. Default OFF — when off, the
+    reward.select_gift action and gift-catalog surfaces stay inert."""
+    return (os.environ.get("REWARD_GIFTS_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes", "on")
 
 
@@ -38448,6 +38571,16 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Reward-gift attach (Phase 2 Slice 2 Task 4): show a member's earned-but-
+            # unfulfilled reward gift on the pack board for their next order, across ALL
+            # order sources, so Rae can pack it. Gated — off by default, no payload change.
+            try:
+                if _reward_gifts_enabled():
+                    from dashboard import review_gifts as _rg
+                    for o in rows:
+                        o["reward_gifts"] = _rg.pending_reward_for(cx, (o.get("email") or "").strip().lower())
+            except Exception as _e:
+                print(f"[orders] reward-gift annotate skipped: {_e!r}", flush=True)
             # Read-receipts (Task 5): additive, best-effort — whether the client
             # has opened the invoice link most recently SENT for this order
             # (orders.invoice_token, set by orders.send_invoice). Orders that
