@@ -17594,6 +17594,22 @@ def api_portal_scan_prefs(token):
     return jsonify({"ok": True})
 
 
+def _data_sharing_free_unlock(cx, email):
+    """Best-effort: unlock the member's latest biofield reveal as the Tier-2
+    data-sharing reward. No-op (never raises) if they have no reveal yet."""
+    try:
+        from dashboard import biofield_reveals as _br
+        email = (email or "").strip().lower()
+        row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
+                         (email,)).fetchone()
+        if not row:
+            return
+        _br.init_free_unlocks(cx)
+        _br.record_free_unlock(cx, email, row[0])
+    except Exception as _e:
+        print(f"[data-sharing/unlock] {_e!r}", flush=True)
+
+
 @app.route("/api/portal/<token>/sharing", methods=["POST"])
 def api_portal_sharing(token):
     """Token-scoped data-sharing consent write. Identity is resolved from the
@@ -17621,7 +17637,7 @@ def api_portal_sharing(token):
                 return jsonify({"error": "forbidden"}), 403
             email = req_member
         consent = _ds.set_consent(cx, email, toggles)
-        _dr.grant_rewards_for_tier(cx, email, consent["tier"], free_unlock_fn=None)
+        _dr.grant_rewards_for_tier(cx, email, consent["tier"], free_unlock_fn=_data_sharing_free_unlock)
         rewards = _dr.rewards_for_email(cx, email)
     return jsonify({"consent": consent, "rewards": rewards})
 
