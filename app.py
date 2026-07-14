@@ -420,6 +420,34 @@ def send_magic_link_email(to_email: str, name: str, magic_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def _send_token_alert(subject: str, body: str) -> bool:
+    """One-off operational alert over SMTP (independent of the Gmail token).
+    Recipient = ALERT_EMAIL env, else SMTP_USER. Returns whether it sent."""
+    to_email = os.environ.get("ALERT_EMAIL") or os.environ.get("SMTP_USER")
+    host = os.environ.get("SMTP_HOST")
+    user = os.environ.get("SMTP_USER")
+    pw = os.environ.get("SMTP_PASS")
+    frm = os.environ.get("SMTP_FROM", user)
+    if not (to_email and host and user and pw):
+        print(f"[token-alert] SMTP not configured; would send: {subject}", flush=True)
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(body, "plain")
+        msg["Subject"] = subject
+        msg["From"] = frm
+        msg["To"] = to_email
+        with smtplib.SMTP(host, int(os.environ.get("SMTP_PORT", "587")), timeout=10) as s:
+            s.starttls()
+            s.login(user, pw)
+            s.sendmail(frm, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"[token-alert] SMTP send failed: {e}", flush=True)
+        return False
+
+
 def send_evox_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
     """Send the EVOX setup link. Mirrors send_magic_link_email's 3-tier cascade
     (GHL workflow -> SMTP -> console-log). The setup_url carries the client's
@@ -23338,9 +23366,22 @@ def cron_reply_watch():
         max_messages = 50
     max_messages = max(1, max_messages)  # 0/negative would silently scan nothing or 400 Gmail
     from reply_watcher import process_inbox_replies
+    from dashboard import gmail_token as _gt
+    from google.auth.exceptions import RefreshError
     try:
         counts = process_inbox_replies(db_path=str(LOG_DB), dry_run=dry_run,
                                        max_messages=max_messages)
+    except (_gt.GmailTokenMissing, RefreshError) as e:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if _gt.should_send_alert(str(LOG_DB), "inbox_gmail", now_iso):
+            _send_token_alert(
+                "Gmail token needs re-auth (reply-watcher down)",
+                "The reply-watcher could not load its Gmail token from the DB or "
+                "disk. Re-run '~/AI-Training/02 Skills/google-auth.py' and PUT it to "
+                f"/api/tokens/inbox_gmail.\n\nDetail: {e}",
+            )
+            _gt.record_alert(str(LOG_DB), "inbox_gmail", now_iso)
+        return jsonify({"ok": False, "error": str(e), "token_missing": True}), 500
     except Exception as e:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(e)}), 500
     # Drop the per-message `details` blob to keep the cron response small.

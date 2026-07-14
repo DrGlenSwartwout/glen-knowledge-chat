@@ -22,14 +22,14 @@ import os
 import re
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
-from pathlib import Path
 from typing import Optional
 
+from dashboard import gmail_token as _gmail_token
 
-# Granted scopes the local OAuth flow asks for. Operations needing label
-# modification (archive/star/mark-unread) will require gmail.modify added
-# to google-auth.py and a re-auth — the current token doesn't include it,
-# so those API calls will return 403 until Glen re-authorizes.
+
+# Scopes requested for the console inbox. Scope intersection against what the
+# stored token actually has is handled inside gmail_token._build_creds, so
+# this list is simply what we would like, not what is guaranteed granted.
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
@@ -37,50 +37,20 @@ GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
 ]
 
-# Token-path resolution: env var override → Render persistent disk →
-# local home-dir convention. First file that exists wins.
-_TOKEN_PATH_CANDIDATES = [
-    "/data/google-token.json",                                     # Render persistent disk
-    str(Path.home() / ".config" / "google" / "token.json"),        # local dev
-]
 
-
-def _resolve_token_path() -> Path:
-    """Return the first existing token path among env override + known locations."""
-    env_override = os.environ.get("GMAIL_TOKEN_PATH")
-    candidates = ([env_override] if env_override else []) + _TOKEN_PATH_CANDIDATES
-    for c in candidates:
-        if c and Path(c).exists():
-            return Path(c)
-    raise RuntimeError(
-        f"No Gmail token at any of: {[c for c in candidates if c]}. "
-        f"Run '~/AI-Training/02 Skills/google-auth.py' locally then POST it to "
-        f"/admin/upload-gmail-token to land it on the Render disk."
-    )
+def _build_service(creds):
+    from googleapiclient.discovery import build
+    return build("gmail", "v1", credentials=creds)
 
 
 def _get_gmail_service():
-    """Build a Gmail API service client.
-
-    Critical: passes the intersection of requested scopes and what the token
-    was actually granted. If we ask for a scope the token doesn't have (e.g.,
-    gmail.modify when the token was issued for read+send only), the SDK
-    requests it on token refresh and Google returns `invalid_scope: Bad
-    Request`. Reading the file's `scopes` field and intersecting avoids that.
-    """
-    from googleapiclient.discovery import build
-    from google.oauth2.credentials import Credentials
-    import json as _json
-
-    token_path = _resolve_token_path()
-    with open(token_path) as f:
-        granted = set((_json.load(f) or {}).get("scopes") or [])
-    # Use granted scopes only (intersection with what we'd want), else all granted
-    effective = list(set(GMAIL_SCOPES) & granted) if granted else list(GMAIL_SCOPES)
-    if not effective:
-        effective = list(granted) or list(GMAIL_SCOPES)
-    creds = Credentials.from_authorized_user_file(str(token_path), scopes=effective)
-    return build("gmail", "v1", credentials=creds)
+    """Durable Gmail service for the console inbox: DB-first token (name
+    'inbox_gmail'), file fallback, self-heal. Scope intersection is handled
+    inside gmail_token._build_creds."""
+    loaded = _gmail_token.load_gmail_credentials(
+        _gmail_token.default_db_path(), name="inbox_gmail", scopes=GMAIL_SCOPES,
+    )
+    return _build_service(loaded.creds)
 
 
 # ── Decoding helpers (pure — testable) ────────────────────────────────────────
