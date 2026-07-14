@@ -72,6 +72,16 @@ def test_console_rewards_html_has_catalog_editor_markup():
     assert 'id="add-sku"' in html   # add-form sku input
 
 
+def test_add_option_rejects_nonnumeric_level(monkeypatch, tmp_db):
+    monkeypatch.setenv("REWARD_GIFTS_ENABLED", "1")
+    app = _app(monkeypatch, tmp_db)
+    c = app.app.test_client()
+    r = c.post("/api/console/reward-gift-options",
+               json={"level": "abc", "sku": "X", "label": "Y"})
+    assert r.status_code != 500
+    assert r.get_json()["ok"] is False
+
+
 def test_reward_gift_options_requires_console_auth(monkeypatch, tmp_db):
     monkeypatch.setenv("REWARD_GIFTS_ENABLED", "1")
     monkeypatch.setenv("CONSOLE_SECRET", "s3cret")

@@ -13799,6 +13799,10 @@ def api_console_reward_gift_options_add():
     label = (body.get("label") or "").strip()
     if level is None or not sku or not label:
         return jsonify({"ok": False, "error": "level, sku, and label are required"})
+    try:
+        level = int(level)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "level must be a number"})
     from dashboard import review_gifts as _rg
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         opt_id = _rg.add_gift_option(cx, level, sku, label)
