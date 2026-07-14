@@ -1145,9 +1145,11 @@ function render(d, v){
          <div class="pat-wrap">${findings.map((f,i)=>{
            const nm = esc(f.name||f.code||"");
            const ds = (f.description||"").trim();
-           return ds
-             ? `<span class="pat-chip entity-ref${rvlCls}"${patDelay(i)} tabindex="0" data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}">${nm}</span>`
-             : `<span class="pat-chip${rvlCls}"${patDelay(i)}>${nm}</span>`;
+           if(!ds) return `<span class="pat-chip${rvlCls}"${patDelay(i)}>${nm}</span>`;
+           const href = (f.pattern_href||"").trim();
+           return href
+             ? `<a class="pat-chip entity-ref${rvlCls}"${patDelay(i)} data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}" href="${esc(href)}" target="_blank" rel="noopener">${nm}</a>`
+             : `<span class="pat-chip entity-ref${rvlCls}"${patDelay(i)} tabindex="0" data-name="${esc(f.name||f.code||"")}" data-info="${esc(ds)}">${nm}</span>`;
          }).join("")}</div>`
       : "";
     // Set the guard once, in this render pass, so the unfold does not replay on the

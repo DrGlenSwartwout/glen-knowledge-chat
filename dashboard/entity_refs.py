@@ -66,9 +66,11 @@ def _page_content(page):
     return raw or {}
 
 
-def pattern_ref(name, description):
-    """Stress pattern: pop-up only — no detail page exists yet."""
-    return {"name": (name or "").strip(), "info": clip(description, sentences=3), "href": None}
+def pattern_ref(name, description, href=""):
+    """Stress pattern: pop-up + optional link-out to its glossary page
+    (`/learn/pattern/<slug>`). Defaults to pop-up only when no href is given."""
+    return {"name": (name or "").strip(), "info": clip(description, sentences=3),
+            "href": href or None}
 
 
 def remedy_ref(cx, spoken, product_exists=None, slug=None):
