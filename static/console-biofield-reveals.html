@@ -659,6 +659,14 @@ function buildCard(d){
   }
   row.appendChild(approveBtn);
 
+  if(!d.first_approved){
+    var approveOnlyBtn = document.createElement('button');
+    approveOnlyBtn.className = 'btn ghost';
+    approveOnlyBtn.textContent = 'Approve only, don\'t email';
+    approveOnlyBtn.onclick = function(){ doApproveOnly(wrap, d.id, approveOnlyBtn); };
+    row.appendChild(approveOnlyBtn);
+  }
+
   var deleteBtn = document.createElement('button');
   deleteBtn.className = 'btn ghost';
   deleteBtn.textContent = 'Delete';
@@ -872,6 +880,33 @@ async function doApprove(card, id, btn){
     statusEl.textContent = 'Approved, but link NOT sent' + reason + ' — use “Send reveal link” to retry.';
   }
   // Reload so the card moves into the Top Remedy Live column with its sent state.
+  setTimeout(loadList, 1100);
+}
+
+async function doApproveOnly(card, id, btn){
+  // Mirrors the first half of doApprove(): save edits, then approve (un-blur the
+  // top remedy) but do NOT call .send — the client is never emailed. Used when
+  // the owner wants the reveal ready without notifying the client yet.
+  var statusEl = card.querySelector('.status');
+  btn.disabled = true;
+  statusEl.textContent = 'Saving edits…';
+  var e = await persistEdit(card, id);
+  if(!(e.ok && e.json.status === 'done')){
+    btn.disabled = false;
+    statusEl.textContent = 'Save failed — not approved. Fix your edits and retry.';
+    return;
+  }
+  statusEl.textContent = 'Approving...';
+  var r = await api('POST', '/api/action/biofield_reveal.approve', { id: id });
+  if(!(r.ok && r.json.status === 'done')){
+    btn.disabled = false;
+    statusEl.textContent = 'Approve failed (HTTP ' + r.status + '). Try re-opening the page with your console key.';
+    return;
+  }
+  btn.className = 'btn approved';
+  btn.textContent = 'Approved (not sent)';
+  statusEl.textContent = 'Approved. Not emailed to the client.';
+  // Reload so the card moves into the Top Remedy Live column with its approved state.
   setTimeout(loadList, 1100);
 }
 

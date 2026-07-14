@@ -27,6 +27,10 @@
   a.act{ color:#0a150d; background:var(--gold); padding:3px 9px; border-radius:7px;
          text-decoration:none; font-weight:600; font-size:12px; white-space:nowrap; }
   a.act:hover{ filter:brightness(1.08); }
+  button.act{ color:#0a150d; background:var(--gold); padding:3px 9px; border-radius:7px;
+              border:none; font-weight:600; font-size:12px; white-space:nowrap; cursor:pointer; }
+  button.act:hover{ filter:brightness(1.08); }
+  button.act:disabled{ opacity:.6; cursor:default; }
   a.lnk{ color:#9db4ff; font-size:12px; text-decoration:none; white-space:nowrap; }
   .empty{ margin:24px; color:var(--muted); font-size:16px; }
   #keybox{ margin:24px; }
@@ -58,7 +62,11 @@
     { k:'paid', label:'Paid — $300 Biofield Analysis',
       act:function(c,s){ return s.done && s.order_id ? '<a class="lnk" href="'+ordersLink(s.order_id)+'">Orders &rarr;</a>' : ''; } },
     { k:'handed_off', label:'Intake authored &amp; handed off',
-      act:function(c,s){ return s.done ? '' : '<span class="snote">awaiting Dr. Glen&rsquo;s intake app</span>'; } },
+      act:function(c,s){
+        if(!s.done) return '<span class="snote">awaiting Dr. Glen&rsquo;s intake app</span>';
+        if(s.awaiting_publish) return '<button type="button" class="act review-publish-btn" data-email="'+esc(c.email)+'">Review &amp; publish</button>';
+        return '';
+      } },
     { k:'analysis_published', label:'Analysis published &amp; emailed',
       act:function(c,s){ return s.done ? '' : '<a class="act" href="'+composer(c.email)+'">Publish &amp; email &rarr;</a>'; } },
     { k:'invoice_published', label:'Invoice published',
@@ -84,6 +92,45 @@
       +'<div class="prog">'+(c.complete?'complete':done+'/6')+'</div></div>'
       +'<ol class="steps">'+lis+'</ol></div>';
   }
+
+  // Review & publish: fetches the ai_draft's current content (GET returns what's
+  // already stored — same shape the composer's buildContent() produces) and
+  // republishes it AS-IS with send:false, so Rae can push a draft to "confirmed"
+  // without emailing the client. Reuses the composer's own publish endpoint
+  // (POST /api/console/biofield-portal) — there is no separate publish route.
+  async function reviewAndPublish(email, btn){
+    var orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Publishing…';
+    try {
+      var lr = await fetch('/api/console/biofield-portal?email='+encodeURIComponent(email), { headers: hdr() });
+      var lj = await lr.json().catch(function(){ return {}; });
+      if(!lr.ok || !lj.found){
+        btn.disabled = false; btn.textContent = orig;
+        alert('Could not load the draft to publish (' + (lj.error || ('HTTP '+lr.status)) + ').');
+        return;
+      }
+      var body = { email: email, name: lj.name || '', content: lj.content || {}, send: false };
+      if(lj.scan_date) body.scan_date = lj.scan_date;
+      var pr = await fetch('/api/console/biofield-portal', { method:'POST', headers: hdr(), body: JSON.stringify(body) });
+      var pj = await pr.json().catch(function(){ return {}; });
+      if(pr.ok){
+        btn.textContent = 'Published';
+        boot();   // refresh the pipeline so this card's next step updates
+      } else {
+        btn.disabled = false; btn.textContent = orig;
+        alert('Publish failed: ' + (pj.error || ('HTTP '+pr.status)));
+      }
+    } catch(e){
+      btn.disabled = false; btn.textContent = orig;
+      alert('Publish failed: network error.');
+    }
+  }
+  document.getElementById('content').addEventListener('click', function(e){
+    var btn = e.target.closest ? e.target.closest('.review-publish-btn') : null;
+    if(!btn) return;
+    reviewAndPublish(btn.getAttribute('data-email'), btn);
+  });
 
   async function boot(){
     document.getElementById('toggle').textContent = showAll ? 'Hide completed' : 'Show completed';
