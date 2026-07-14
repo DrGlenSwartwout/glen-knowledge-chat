@@ -6864,6 +6864,33 @@ def learn_pattern_data(slug):
             pass
 
 
+@app.route("/learn/glossary")
+def learn_clinical_glossary():
+    return send_from_directory(STATIC, "clinical-glossary-index.html")
+
+
+@app.route("/learn/glossary-data")
+def learn_clinical_glossary_data():
+    from dashboard import clinical_glossary as _cg
+    cat = _cg.load()
+    return jsonify({"source": cat.get("source", ""), "synced": cat.get("synced", ""),
+                    "dimensions": _cg.dimensions(cat)})
+
+
+@app.route("/learn/glossary/<dim>")
+def learn_clinical_glossary_dim(dim):
+    return send_from_directory(STATIC, "clinical-glossary-category.html")
+
+
+@app.route("/learn/glossary-data/<dim>")
+def learn_clinical_glossary_dim_data(dim):
+    from dashboard import clinical_glossary as _cg
+    d = _cg.get_dimension(dim)
+    if not d:
+        return jsonify({"state": "unknown"}), 404
+    return jsonify(d)
+
+
 @app.route("/learn/<slug>")
 def learn_topic_page(slug):
     from dashboard import topic_pages as _tp, topic_render as _tr

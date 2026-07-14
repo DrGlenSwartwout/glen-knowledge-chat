@@ -1,0 +1,84 @@
+<!DOCTYPE html><html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Glossary · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; }
+    body{margin:0;background:var(--bg);color:var(--cream);font-family:'Open Sans',sans-serif;line-height:1.6}
+    .wrap{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+    .back{display:inline-block;margin-bottom:16px;color:var(--muted);text-decoration:none;font-size:.9rem}
+    h1{font-family:Raleway,sans-serif;font-size:1.8rem;margin:.2rem 0 .3rem;color:var(--cream)}
+    .lead{color:var(--muted);margin:0 0 1rem;max-width:640px}
+    .filter{width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);
+      color:var(--cream);border-radius:10px;padding:9px 12px;font-size:.95rem;margin:.4rem 0 1.4rem}
+    .filter::placeholder{color:var(--muted)}
+    .entry{border-top:1px solid var(--border);padding:14px 0}
+    .entry h3{font-family:Raleway,sans-serif;font-size:1.05rem;margin:0 0 .3rem;color:var(--cream)}
+    .entry .alt{color:var(--muted);font-weight:400;font-size:.9rem;margin-left:6px}
+    .entry p{margin:.2rem 0;font-size:.96rem}
+    .entry .rem{color:var(--muted);font-size:.85rem;margin-top:.4rem}
+    .count{color:var(--gold);font-size:.8rem;margin-bottom:.6rem}
+    .muted{color:var(--muted)} .hidden{display:none}
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head><body>
+  <div class="wrap">
+    <a class="back" href="/learn/glossary">← Clinical Glossary</a>
+    <div id="c-loading" class="muted">Loading…</div>
+    <div id="c-notfound" class="hidden muted">We couldn't find that section. <a href="/learn/glossary">Back to the glossary</a>.</div>
+    <div id="c-body" class="hidden">
+      <h1 id="c-title"></h1>
+      <p id="c-blurb" class="lead hidden"></p>
+      <input id="c-filter" class="filter" type="text" placeholder="Filter…" autocomplete="off">
+      <div id="c-count" class="count"></div>
+      <div id="c-entries"></div>
+    </div>
+  </div>
+  <script>
+    function show(id){document.getElementById(id).classList.remove('hidden');}
+    function hide(id){document.getElementById(id).classList.add('hidden');}
+    var dim = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');
+    var ALL = [];
+    function render(list){
+      var host = document.getElementById('c-entries'); host.textContent = '';
+      list.forEach(function(e){
+        var d = document.createElement('div'); d.className='entry';
+        var h = document.createElement('h3'); h.textContent = e.name || '';
+        if(e.alt_name){ var a=document.createElement('span'); a.className='alt'; a.textContent='('+e.alt_name+')'; h.appendChild(a); }
+        d.appendChild(h);
+        if(e.description){ var p=document.createElement('p'); p.textContent = e.description; d.appendChild(p); }
+        if(e.remedies && e.remedies.length){
+          var r=document.createElement('div'); r.className='rem';
+          r.textContent = 'Related remedies: ' + e.remedies.map(function(x){return x.name;}).join(', ');
+          d.appendChild(r);
+        }
+        host.appendChild(d);
+      });
+      document.getElementById('c-count').textContent = list.length + ' of ' + ALL.length;
+    }
+    fetch('/learn/glossary-data/' + encodeURIComponent(dim), {credentials:'same-origin'})
+      .then(function(r){ if(!r.ok) return null; return r.json(); })
+      .then(function(d){
+        hide('c-loading');
+        if(!d || d.state === 'unknown'){ show('c-notfound'); return; }
+        show('c-body');
+        document.title = (d.title || 'Clinical Glossary') + ' · Dr. Glen Swartwout';
+        document.getElementById('c-title').textContent = d.title || '';
+        if(d.blurb){ var b=document.getElementById('c-blurb'); b.textContent=d.blurb; show('c-blurb'); }
+        ALL = d.entries || [];
+        render(ALL);
+        var f = document.getElementById('c-filter');
+        f.addEventListener('input', function(){
+          var q = f.value.trim().toLowerCase();
+          if(!q){ render(ALL); return; }
+          render(ALL.filter(function(e){
+            return (e.name||'').toLowerCase().indexOf(q) >= 0 || (e.description||'').toLowerCase().indexOf(q) >= 0;
+          }));
+        });
+      })
+      .catch(function(){ hide('c-loading'); show('c-notfound'); });
+  </script>
+</body></html>

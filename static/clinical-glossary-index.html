@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="en"><head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clinical Glossary · Dr. Glen Swartwout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+      --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52; }
+    body{margin:0;background:var(--bg);color:var(--cream);font-family:'Open Sans',sans-serif;line-height:1.55}
+    .wrap{max-width:840px;margin:0 auto;padding:32px 20px 80px}
+    h1{font-family:Raleway,sans-serif;font-size:1.85rem;margin:.2rem 0 .3rem;color:var(--cream)}
+    .lead{color:var(--muted);margin:0 0 1.6rem;max-width:640px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+    a.card{display:block;background:var(--surface);border:1px solid var(--border);border-radius:12px;
+      padding:16px 18px;text-decoration:none;color:var(--cream);transition:border-color .15s ease}
+    a.card:hover{border-color:var(--green)}
+    .card .t{font-family:Raleway,sans-serif;font-weight:700;font-size:1.1rem;margin-bottom:4px}
+    .card .b{color:var(--muted);font-size:.9rem;line-height:1.5}
+    .card .n{color:var(--gold);font-size:.78rem;margin-top:8px;letter-spacing:.03em}
+    .sec{font-family:Raleway,sans-serif;font-size:1.05rem;margin:2rem 0 .7rem;color:var(--cream)}
+    .muted{color:var(--muted)} .hidden{display:none}
+    .synced{color:var(--muted);font-size:.78rem;margin-top:2rem}
+  </style>
+  <script src="/static/theme-toggle.js"></script>
+</head><body>
+  <div class="wrap">
+    <h1>Clinical Glossary</h1>
+    <p class="lead">A reference to the stress patterns behind a Biofield Analysis — the organs, meridians, miasms, and biochemistry each one can involve.</p>
+    <div id="g-loading" class="muted">Loading…</div>
+    <div id="g-empty" class="hidden muted">The glossary is being prepared.</div>
+
+    <div id="g-dims" class="grid"></div>
+
+    <div class="sec">Also see</div>
+    <div class="grid">
+      <a class="card" href="/learn/patterns">
+        <div class="t">E4L Stress Patterns</div>
+        <div class="b">The bioenergetic stress patterns an E4L scan identifies, and the structures/functions each involves.</div>
+      </a>
+    </div>
+    <div id="g-synced" class="synced"></div>
+  </div>
+  <script>
+    function hide(id){document.getElementById(id).classList.add('hidden');}
+    fetch('/learn/glossary-data', {credentials:'same-origin'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        hide('g-loading');
+        var dims = (d && d.dimensions) || [];
+        if(!dims.length){ document.getElementById('g-empty').classList.remove('hidden'); return; }
+        var host = document.getElementById('g-dims');
+        dims.forEach(function(dim){
+          var a = document.createElement('a'); a.className='card';
+          a.href = '/learn/glossary/' + encodeURIComponent(dim.key);
+          var t = document.createElement('div'); t.className='t'; t.textContent = dim.title; a.appendChild(t);
+          if(dim.blurb){ var b=document.createElement('div'); b.className='b'; b.textContent=dim.blurb; a.appendChild(b); }
+          var n = document.createElement('div'); n.className='n'; n.textContent = dim.entry_count + ' entries'; a.appendChild(n);
+          host.appendChild(a);
+        });
+        if(d.synced){ document.getElementById('g-synced').textContent = 'Source: clinicaltheory.com · snapshot ' + d.synced; }
+      })
+      .catch(function(){ hide('g-loading'); document.getElementById('g-empty').classList.remove('hidden'); });
+  </script>
+</body></html>

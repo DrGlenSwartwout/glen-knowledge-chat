@@ -1,0 +1,1953 @@
+{
+ "source": "clinicaltheory.com",
+ "synced": "2026-07-14",
+ "note": "Curated snapshot. Manual re-sync when the source pages change. Remedy-link -> product-page mapping is deferred to phase 2.",
+ "dimensions": [
+  {
+   "key": "organs",
+   "title": "Organs",
+   "blurb": "Body organs and tissues, the physical structures a stress pattern can involve.",
+   "path": "organs",
+   "entry_count": 49,
+   "entries": [
+    {
+     "slug": "adrenal",
+     "name": "Adrenal",
+     "alt_name": "",
+     "description": "Our top Adrenal remedy is Adrenal Repair: Sublingual 7-Keto. 7-Keto DHEA is a natural metabolite of the adrenal gland's over-the-counter (in the States) Dehydroepiandrosterone (DHEA). While it delivers the same anti-inflammatory benefits, reducing the need for prescription steroids, and easing tapering off the Rx forms, it support restoration of the adrenals' anti-inflammatory function without affecting other hormone levels such as Estrogen and Testosterone for which DHEA is a precursor",
+     "remedies": [
+      {
+       "name": "Adrenal Repair: Sublingual 7-Keto",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/adrenals/109-sublingual-7-keto"
+      }
+     ]
+    },
+    {
+     "slug": "anus",
+     "name": "Anus",
+     "alt_name": "",
+     "description": "Anal stress factors can include hemmorhoids typically due to underlying Liver stress balanced with Liver Support.Itching in the anal area can be related to parasites that respond to Para-Cleanse",
+     "remedies": [
+      {
+       "name": "Liver Support",
+       "url": "https://remedymatch.com/body-systems/system-3-process/liver/60-liver-support"
+      },
+      {
+       "name": "Para-Cleanse",
+       "url": "https://remedymatch.com/terrain-phases/phase-2-rejuvenate/parasite-terrain/89-paracleanse"
+      }
+     ]
+    },
+    {
+     "slug": "appendix",
+     "name": "Appendix",
+     "alt_name": "",
+     "description": "(Appendix Vermiformis) The Appendix functions as a Lymph Node for the gut, and secretes immune compounds to regulate growth of bacteria in the colon and prevent colonic bacteria from invading the Small Intestine.Microbiome and Lymph Flow provide excellent support for the Appendix.In case of parasite involvement with the Appendix, consider Para-Cleanse",
+     "remedies": [
+      {
+       "name": "Microbiome",
+       "url": "https://remedymatch.com/body-systems/system-3-process/colon/73-microbiome"
+      },
+      {
+       "name": "Lymph Flow",
+       "url": "https://remedymatch.com/body-systems/system-2-support/immune/lymph/314-lymph-flow"
+      },
+      {
+       "name": "Para-Cleanse",
+       "url": "https://app.groove.cm/groovepages/builder/remedymatch.com/terrain-phases/phase-2-rejuvenate/parasite-terrain/89-paracleanse"
+      }
+     ]
+    },
+    {
+     "slug": "aqueous-humor",
+     "name": "Aqueous Humor",
+     "alt_name": "",
+     "description": "The Aqueous Humor is the fluid in the interior front part of the eye called the Anterior Chamber.The fluid is produced by the Ciliary Body and is similar to the Cerebrospinal Fluid in the Brain and Spinal Cord.In Glaucoma, the pressure gradient relationship between these two fluids at the Optic Nerve Head is thought to be one of the crucial factors in pathological change.In Glaucoma there is typically a much greater variance between daytime and nighttime IOP.Our OcuFlow Daytime and OcuFlow Bedtime are formulated to support healthy regulation of Intracular Pressure (IOP) throughout the diurnal",
+     "remedies": [
+      {
+       "name": "OcuFlow Daytime",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/eye-vision/optic-nerve/243-ocuflow-daytime"
+      },
+      {
+       "name": "OcuFlow Bedtime",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/eye-vision/optic-nerve/244-ocuflow-bedtime"
+      }
+     ]
+    },
+    {
+     "slug": "autonomic-nervous-system",
+     "name": "Autonomic Nervous System",
+     "alt_name": "",
+     "description": "(Autonomic) The ANS regulates the function of most cells via the Parasympathetic and Sympathetic division.Parasympathetic nerves carry instructions to Rest and Digest.The Sympathetic Nervous System is an alert system for Fright, Fight, or Flight.Popular remedies for stress reduction include our Stress Release capsules and NES's ESR Infoceutical for Emotional Stress Release",
+     "remedies": [
+      {
+       "name": "Stress Release",
+       "url": "https://remedymatch.com/terrain-phases/phase-5-balance/stress-terrain/249-stress-release--cbd-synergy"
+      },
+      {
+       "name": "ESR Infoceutical",
+       "url": "https://remedymatch.com/remedies/infoceuticals/207-mb-5--esr-the-emotional-stress-release-esr"
+      }
+     ]
+    },
+    {
+     "slug": "bile-ducts",
+     "name": "Bile Ducts",
+     "alt_name": "",
+     "description": "(Ductuli Biliferi) The Bile Ducts are the microscopic tubules in the Liver that collect bile.Bile flow is enhanced by TMG Powder and Liver Support helps the liver with its complex multitasking at the Bile Ducts, excreting toxins and preparing to finish the digestion of fats, proteins, and carbohydrates",
+     "remedies": [
+      {
+       "name": "TMG Powder",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/muscle/228-tmg-powder-trimethylglycine"
+      },
+      {
+       "name": "Liver Support",
+       "url": "https://app.groove.cm/groovepages/builder/remedymatch.com/body-systems/system-3-process/liver/60-liver-support"
+      }
+     ]
+    },
+    {
+     "slug": "bladder",
+     "name": "Bladder",
+     "alt_name": "",
+     "description": "(Urinary) Our Flow Ease formula makes a pleasant drink that is very soothing and healing for the Urinary Tract.It was inspired by clients with chronic Interstitial Cystitis, which means inflammation in the bladder",
+     "remedies": [
+      {
+       "name": "Flow Ease",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/urinary-tract/36-flow-ease"
+      }
+     ]
+    },
+    {
+     "slug": "blood",
+     "name": "Blood",
+     "alt_name": "",
+     "description": "(RBC)",
+     "remedies": []
+    },
+    {
+     "slug": "bone",
+     "name": "Bone",
+     "alt_name": "",
+     "description": "(Skeletal)]",
+     "remedies": []
+    },
+    {
+     "slug": "brain",
+     "name": "Brain",
+     "alt_name": "",
+     "description": "(Cerebrum)",
+     "remedies": []
+    },
+    {
+     "slug": "breast",
+     "name": "Breast",
+     "alt_name": "",
+     "description": "(Mamma Dextra, Mamma Sinistra) Bronchi",
+     "remedies": []
+    },
+    {
+     "slug": "carotid-artery",
+     "name": "Carotid Artery",
+     "alt_name": "",
+     "description": "(Art. Carotis Interna)",
+     "remedies": []
+    },
+    {
+     "slug": "cervical",
+     "name": "Cervical",
+     "alt_name": "",
+     "description": "(Vertebra Cervicalis) Ciliary Body",
+     "remedies": []
+    },
+    {
+     "slug": "circulation",
+     "name": "Circulation",
+     "alt_name": "",
+     "description": "(Glomus Caroticus) Colon Cornea",
+     "remedies": []
+    },
+    {
+     "slug": "coronary-ateries",
+     "name": "Coronary Ateries",
+     "alt_name": "",
+     "description": "(Ateria Coronaria)",
+     "remedies": []
+    },
+    {
+     "slug": "dental",
+     "name": "Dental",
+     "alt_name": "",
+     "description": "(Ostitis) Duodenum",
+     "remedies": []
+    },
+    {
+     "slug": "ear",
+     "name": "Ear",
+     "alt_name": "",
+     "description": "(Auricular)",
+     "remedies": []
+    },
+    {
+     "slug": "extra-ocular-muscles",
+     "name": "Extra-ocular Muscles",
+     "alt_name": "",
+     "description": "(Musculi Oculi)",
+     "remedies": []
+    },
+    {
+     "slug": "gall-bladder",
+     "name": "Gall Bladder",
+     "alt_name": "",
+     "description": "(Vesica Fellea)",
+     "remedies": []
+    },
+    {
+     "slug": "gastro-intestinal",
+     "name": "Gastro-Intestinal",
+     "alt_name": "",
+     "description": "(Intestinal)",
+     "remedies": []
+    },
+    {
+     "slug": "heart",
+     "name": "Heart",
+     "alt_name": "",
+     "description": "(Cor) Heart Function",
+     "remedies": []
+    },
+    {
+     "slug": "heart-rhythm",
+     "name": "Heart Rhythm",
+     "alt_name": "",
+     "description": "(Fasciculus Atrioventriculus) Ileum Jejunum",
+     "remedies": []
+    },
+    {
+     "slug": "joints",
+     "name": "Joints",
+     "alt_name": "",
+     "description": "(Articular) Kidney",
+     "remedies": []
+    },
+    {
+     "slug": "lens",
+     "name": "Lens",
+     "alt_name": "",
+     "description": "(Crystalline Lens)",
+     "remedies": []
+    },
+    {
+     "slug": "liver",
+     "name": "Liver",
+     "alt_name": "",
+     "description": "(Hepatic)",
+     "remedies": []
+    },
+    {
+     "slug": "lumbar",
+     "name": "Lumbar",
+     "alt_name": "",
+     "description": "(Vertebra Lumbalis)",
+     "remedies": []
+    },
+    {
+     "slug": "lung",
+     "name": "Lung",
+     "alt_name": "",
+     "description": "(Pulmonary)",
+     "remedies": []
+    },
+    {
+     "slug": "medulla",
+     "name": "Medulla",
+     "alt_name": "",
+     "description": "(Medulla Spinalis)",
+     "remedies": []
+    },
+    {
+     "slug": "mucosa-of-the-colon",
+     "name": "Mucosa of the Colon",
+     "alt_name": "",
+     "description": "(Tunica Mucosa Coli)",
+     "remedies": []
+    },
+    {
+     "slug": "muscle",
+     "name": "Muscle",
+     "alt_name": "",
+     "description": "(Muscular) Myelin Sheath Optic Nerve",
+     "remedies": []
+    },
+    {
+     "slug": "ovary",
+     "name": "Ovary",
+     "alt_name": "",
+     "description": "(Gonad)",
+     "remedies": []
+    },
+    {
+     "slug": "pancreas",
+     "name": "Pancreas",
+     "alt_name": "",
+     "description": "(Pancreatic)",
+     "remedies": []
+    },
+    {
+     "slug": "pancreas-cauda",
+     "name": "Pancreas Cauda",
+     "alt_name": "",
+     "description": "(test for Sugar Regulation) Parathyroid",
+     "remedies": []
+    },
+    {
+     "slug": "pineal",
+     "name": "Pineal",
+     "alt_name": "",
+     "description": "(Epiphysis) Pituitary Pylorus Rectum Retina",
+     "remedies": []
+    },
+    {
+     "slug": "sacrum",
+     "name": "Sacrum",
+     "alt_name": "",
+     "description": "(Vertebra Sacralis)",
+     "remedies": []
+    },
+    {
+     "slug": "salivary-glands",
+     "name": "Salivary Glands",
+     "alt_name": "",
+     "description": "(Salivary)",
+     "remedies": []
+    },
+    {
+     "slug": "sciatic-nerve",
+     "name": "Sciatic Nerve",
+     "alt_name": "",
+     "description": "(Nervus Ischiaticus) Sinus Skin",
+     "remedies": []
+    },
+    {
+     "slug": "spleen",
+     "name": "Spleen",
+     "alt_name": "",
+     "description": "(Lien)",
+     "remedies": []
+    },
+    {
+     "slug": "stomach",
+     "name": "Stomach",
+     "alt_name": "",
+     "description": "(Gastric)",
+     "remedies": []
+    },
+    {
+     "slug": "tempero-mandibular-joint",
+     "name": "Tempero-Mandibular Joint",
+     "alt_name": "",
+     "description": "(TMJ)",
+     "remedies": []
+    },
+    {
+     "slug": "testes",
+     "name": "Testes",
+     "alt_name": "",
+     "description": "(Gonad)",
+     "remedies": []
+    },
+    {
+     "slug": "thalamus",
+     "name": "Thalamus",
+     "alt_name": "",
+     "description": "(test for Autonomic Dysfunction)",
+     "remedies": []
+    },
+    {
+     "slug": "thoracic",
+     "name": "Thoracic",
+     "alt_name": "",
+     "description": "(Vertebra Thoracica)",
+     "remedies": []
+    },
+    {
+     "slug": "thymus",
+     "name": "Thymus",
+     "alt_name": "",
+     "description": "(Thymus Glandula) Thyroid",
+     "remedies": []
+    },
+    {
+     "slug": "tonsils",
+     "name": "Tonsils",
+     "alt_name": "",
+     "description": "(Tonsilae Palatinae)",
+     "remedies": []
+    },
+    {
+     "slug": "trigeminal-nerve",
+     "name": "Trigeminal Nerve",
+     "alt_name": "",
+     "description": "(Nervus Trigeminus)",
+     "remedies": []
+    },
+    {
+     "slug": "uterus",
+     "name": "Uterus",
+     "alt_name": "",
+     "description": "(Genital)",
+     "remedies": []
+    },
+    {
+     "slug": "visual-cortex",
+     "name": "Visual Cortex",
+     "alt_name": "",
+     "description": "(Cerebrum Occipitalis)",
+     "remedies": []
+    },
+    {
+     "slug": "vitreous-humor",
+     "name": "Vitreous Humor",
+     "alt_name": "",
+     "description": "(Corpus Vitreum) © Copyclaim 2023Remedy Match LLC, DBA Healing Oasis[email protected]PO Box 126 Hilo, Hawai'i-Kingdom [96721]+1 (808) 217-9647 Community Terms and Conditions Privacy Policy [*\"The statements herein have not been evaluated by the Food and Drug Administration. This is not intended to diagnose, treat, cure, or prevent any disease.\"] T.D.C",
+     "remedies": []
+    }
+   ]
+  },
+  {
+   "key": "meridians",
+   "title": "Meridians",
+   "blurb": "The acupuncture meridians and vessels of Oriental medicine.",
+   "path": "meridians",
+   "entry_count": 15,
+   "entries": [
+    {
+     "slug": "belt-vessel",
+     "name": "Belt Vessel",
+     "alt_name": "",
+     "description": "(Meridian Komplex 15)The Belt Vessel is the first meridian to form, when the fertilized egg divides into two cells defining the cephalo-caudal dimension of the body",
+     "remedies": []
+    },
+    {
+     "slug": "bladder-meridian",
+     "name": "Bladder Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 12)The Bladder Meridian is a Yang Vessel in the Water Element complementary to the Yin Kidney Meridian.This pattern is also related to Chakra 2 in the Kern-Pharma system.Consider Microbiome and Flow Ease for Bladder Meridian support",
+     "remedies": [
+      {
+       "name": "Microbiome",
+       "url": "https://remedymatch.com/body-systems/system-3-process/colon/73-microbiome"
+      },
+      {
+       "name": "Flow Ease",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/urinary-tract/36-flow-ease"
+      }
+     ]
+    },
+    {
+     "slug": "circulation-meridian",
+     "name": "Circulation Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 10)The Circulation Meridian is also called the Heart Protector, or the Circulation/Sex Meridian.The Circulation Meridian is a Yin Vessel in the Fire Element complementary to the Yang Triple Warmer Meridian.This pattern is also related to Chakras 5 & 7 in the Kern-Pharma system.Consider Spike Shield and Chelation for Circulation Meridian support",
+     "remedies": [
+      {
+       "name": "Spike Shield",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/viral-terrain/283-spike-shield"
+      },
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      }
+     ]
+    },
+    {
+     "slug": "conception-vessel",
+     "name": "Conception Vessel",
+     "alt_name": "",
+     "description": "(Meridian Komplex 14)The Yang Conception Vessel on the anterior midline of the body, paired with the Yin Governing Vessel on the posterior midline, are the second set of Meridians to form, when the zygote's cells divide mitotically a second time, defining the axis of bilateral symmetry of the body",
+     "remedies": []
+    },
+    {
+     "slug": "gall-bladder-meridian",
+     "name": "Gall Bladder Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 8)The Gall Bladder Meridian is a Yang Vessel in the Wood Element complementary to the Yin Liver Meridian.This pattern is also related to Chakras 3, 4 & 7 in the Kern-Pharma system.Consider TMG Powder and Stone Solvent for Gall Bladder Meridian support",
+     "remedies": [
+      {
+       "name": "TMG Powder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      },
+      {
+       "name": "Stone Solvent",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/kidney/354-stone-solvent--kidney--gall-bladder"
+      }
+     ]
+    },
+    {
+     "slug": "governing-vessel",
+     "name": "Governing Vessel",
+     "alt_name": "",
+     "description": "(Meridian Komplex 13)The Yin Governing Vessel Vessel on the posterior midline of the body, paired with the Yang Conception Vessel on the anterior midline, are the second set of Meridians to form, when the zygote's cells divide mitotically a second time, defining the axis of bilateral symmetry of the body",
+     "remedies": []
+    },
+    {
+     "slug": "heart-meridian",
+     "name": "Heart Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 2)The Heart Meridian is a Yin Vessel in the Fire Element complementary to the Yang Small Intestine Meridian.This pattern is also related to Chakras 4, 5 & 7 in the Kern-Pharma system.Consider Heart Health and Rhythm Restore for Heart Meridian support",
+     "remedies": [
+      {
+       "name": "Heart Health",
+       "url": "https://remedymatch.com/body-systems/system-2-support/cardiovascular/100-heart-health"
+      },
+      {
+       "name": "Rhythm Restore",
+       "url": "https://remedymatch.com/body-systems/system-2-support/99-rhythm-restore"
+      }
+     ]
+    },
+    {
+     "slug": "kidney-meridian",
+     "name": "Kidney Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 11)The Kidney Meridian is a Yin Vessel in the Water Element complementary to the Yang Bladder Meridian.This pattern is also related to Chakra 1 in the Kern-Pharma system.Consider Microbiome and Flow Ease for Kidney Meridian support",
+     "remedies": [
+      {
+       "name": "Microbiome",
+       "url": "https://app.groove.cm/groovepages/builder/remedymatch.com/body-systems/system-3-process/colon/73-microbiome"
+      },
+      {
+       "name": "Flow Ease",
+       "url": "https://app.groove.cm/groovepages/builder/remedymatch.com/body-systems/system-1-flow/urinary-tract/36-flow-ease"
+      }
+     ]
+    },
+    {
+     "slug": "large-intestine-meridian",
+     "name": "Large Intestine Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 5)The Large Intestine Meridian is a Yang Vessel in the Metal Element complementary to the Yin Lung Meridian.This pattern is also related to Chakras 1 & 2 in the Kern-Pharma system.Consider Terrain Restore and Soothe for Large Intestine Meridian support",
+     "remedies": [
+      {
+       "name": "Terrain Restore",
+       "url": "https://remedymatch.com/body-systems/system-3-process/113-terrain-restore"
+      },
+      {
+       "name": "Soothe",
+       "url": "https://remedymatch.com/body-systems/system-3-process/colon/140-soothe"
+      }
+     ]
+    },
+    {
+     "slug": "liver-meridian",
+     "name": "Liver Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 7)The Liver Meridian is a Yin Vessel in the Wood Element complementary to the Yang Gall Bladder Meridian.This pattern is also related to Chakras 3 & 6 in the Kern-Pharma system.Consider Liver Support and Free & Easy for Liver Meridian support",
+     "remedies": []
+    },
+    {
+     "slug": "lung-meridian",
+     "name": "Lung Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 6)The Lung Meridian is a Yin Vessel in the Metal Element complementary to the Yang Large Intestine Meridian.This pattern is also related to Chakra 4 in the Kern-Pharma system.Consider Oxygen Therapy and Lymph Flow for Lung Meridian support",
+     "remedies": []
+    },
+    {
+     "slug": "small-intestine-meridian",
+     "name": "Small Intestine Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 1)The Small Intestine Meridian is a Yang Vessel in the Fire Element complementary to the Yin Heart Meridian.This pattern is also related to Chakras 1 & 6 in the Kern-Pharma system.Consider Microbiome and Terrain Restore for Small Intestine Meridian support",
+     "remedies": []
+    },
+    {
+     "slug": "spleen-meridian",
+     "name": "Spleen Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 3)The Spleen Meridian is a Yin Vessel in the Earth Element complementary to the Yang Stomach Meridian.In German Diagnostic Electroacupuncture the Spleen Meridian on the right side of the body is termed the Pancreas Meridian.This pattern is also related to Chakras 2 & 3 in the Kern-Pharma system.Consider Spleen Support and Glucose Tolerance for Spleen/Pancreas Meridian support",
+     "remedies": []
+    },
+    {
+     "slug": "stomach-meridian",
+     "name": "Stomach Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 4)The Stomach Meridian is a Yang Vessel in the Earth Element complementary to the Yin Spleen Meridian.Consider GastroZyme, GERD Guard and GI Repair for Stomach Meridian support",
+     "remedies": []
+    },
+    {
+     "slug": "triple-warmer-meridian",
+     "name": "Triple Warmer Meridian",
+     "alt_name": "",
+     "description": "(Meridian Komplex 9)The Triple Warmer Meridian is also called the Triple Cavity, Three Heater, or Triple Burner Meridian, and we also refer to it as the Endocrine Meridian.The Triple Warmer Meridian is a Yang Vessel in the Fire Element complementary to the Yin Circulation Meridian.This pattern is also related to Chakra 6 in the Kern-Pharma system.Consider formulas including Endocrine Repair, Adrenal Repair: Sublingual 7-Keto, Stress Release, and Sleep Synergy for Endocrine Meridian support. Learn More © Copyclaim 2023Remedy Match LLC, DBA Healing Oasis[email protected]PO Box 126 Hilo, Hawai'i-",
+     "remedies": []
+    }
+   ]
+  },
+  {
+   "key": "miasms",
+   "title": "Miasms",
+   "blurb": "Inherited and acquired constitutional stress patterns (miasms) and their nosodes.",
+   "path": "miasms",
+   "entry_count": 16,
+   "entries": [
+    {
+     "slug": "arsenicum",
+     "name": "Arsenicum",
+     "alt_name": "",
+     "description": "Arsenicum is the Viral Miasm, related to low energy terrain identified in our Clinical Theory as Phase 1: Energize.The Arsenic Miasm is related to the Syphilinum Miasm.Arsenic was used as a treatment for Syphilis.Arsenic can produce the unusual combination of sensations of burning that are relieved by heat",
+     "remedies": []
+    },
+    {
+     "slug": "aurum",
+     "name": "Aurum",
+     "alt_name": "",
+     "description": "Aurum identifies the Emotional Miasm.The Aurum Miasm represents the epigenetic pattern related to the mineral Gold.Gold is an antidote to Mercury, and is used in Oligoelement trace mineral therapy along with Silver and Copper for healing the low energy terrain of Phase 1: Energize.Excess Gold can cause depression",
+     "remedies": []
+    },
+    {
+     "slug": "carcinosinum",
+     "name": "Carcinosinum",
+     "alt_name": "",
+     "description": "Carcinosinum represents the classical Cancer Miasm, which is associated with the terrain of viral infection, cancer and degenerative disease that we call Phase 1: Energize.Key symptoms of the Cancer miasm can include headache, weakened immunity, and extreme cravings for sugar and chocolate.Keynotes also may include emotional sensitivity as well as resignation, and emotional repression of anger, fear, and aggression. (See also Scirrhinum)",
+     "remedies": []
+    },
+    {
+     "slug": "luesinum",
+     "name": "Luesinum",
+     "alt_name": "",
+     "description": "(See Syphilinum)",
+     "remedies": []
+    },
+    {
+     "slug": "medorrhinum",
+     "name": "Medorrhinum",
+     "alt_name": "",
+     "description": "(See Sycosis)",
+     "remedies": []
+    },
+    {
+     "slug": "mercurius",
+     "name": "Mercurius",
+     "alt_name": "",
+     "description": "Mercury identifies the Heavy Metal Miasm as Mercury is the most symptomatic of all the heavy metals.Mercury is known as the great masquerader of the mineral kingdom, capable of producing any symptom depending on its location.This is similar to Syphilis, the great masquerader of the bacterial realm, and Mercury was a primary medicine used to treat Syphilis",
+     "remedies": []
+    },
+    {
+     "slug": "petroleum",
+     "name": "Petroleum",
+     "alt_name": "",
+     "description": "The Petroleum Miasm is a relatively new Petrochemical Miasm triggered by exposure to petrochemicals.About two thirds of modern pharmaceutical medicines are produced from petrochemical sources",
+     "remedies": []
+    },
+    {
+     "slug": "phosphorus",
+     "name": "Phosphorus",
+     "alt_name": "",
+     "description": "Phosphorus identifies the Radiation Miasm.Phosphorus is a very fiery and high energy mineral.Cellular energy from oxidative metabolism of sugars, fats, and amino acids is stored in high energy phosphate bonds in Adenosine Triphosphate (ATP).The Phosphorus Miasm can include heightened sensitivity and quick perceptions",
+     "remedies": []
+    },
+    {
+     "slug": "psorinum",
+     "name": "Psorinum",
+     "alt_name": "",
+     "description": "Psora means itch, and the classical Psoric Miasm is identified by resonance with the homeopathic preparation made from the scabies parasite.The Psora Miasm is related to Allergy & Toxicity Terrain which we identify as Phase 4: Cleanse.The cleansing reaction in this miasmatic pattern can include any route of elimination including the skin.In this state, the body reacts to stimuli producing functional disturbances and uncomfortable symptoms.Keynote symptoms of Psora can include mild functional disturbances, lung problems, skin issues like dryness, itching and eruptions, deficiencies, lack, and p",
+     "remedies": []
+    },
+    {
+     "slug": "scirrhinum",
+     "name": "Scirrhinum",
+     "alt_name": "",
+     "description": "Scirrhinum represents the terrain or diathesis of the Cancer Miasm, which we identify with Phase 1: Energize in the Five Phases of Health model.(See also Carcinosinum)",
+     "remedies": []
+    },
+    {
+     "slug": "syphilinum",
+     "name": "Syphilinum",
+     "alt_name": "",
+     "description": "The Syphilinum Miasm is a destructive epigenetic pattern.It is a deeper response than the Sycotic Miasm.Keynote symptoms can include ulceration, destruction, degeneration and contraction of tissues leading to deformity, bone diseases, such as bone cancer, and conditions beginning with the prefix \"Dys\".Key symptoms also can include feelings of revulsion and disgust, and fear of going crazy.(Alternate Name: Luesinum)",
+     "remedies": []
+    },
+    {
+     "slug": "sulphur",
+     "name": "Sulphur",
+     "alt_name": "",
+     "description": "Sulphur identifies the Immune System Miasm related to allergy and toxicity.Sulphur is associated with Phase 4: Cleansing Terrain, as Sulphur is the most detoxifying mineral and the most centrifugal homeopathic remedy.Homeopathic Sulphur is a primary remedy for the Psora Miasm",
+     "remedies": []
+    },
+    {
+     "slug": "sycosis",
+     "name": "Sycosis",
+     "alt_name": "",
+     "description": "Sycosis sounds like Psychosis, but the meaning is not the same...It typically relates to the suppression of gonorrheal infections in our ancestry.The Sycotic Miasm is a hypersensitive and hypertrophic epigenetic pattern from suppressive treatments resulting in accumulation of stored toxins in the body tissues.Keynote symptoms of this miasm can include warts and skin tags, mucus and other discharges, benign growths and tumors, digestive, joint and blood disorders, inflammation, and asthma.Keynotes can also include bi-polar extremes of energy, and a tendency toward feelings of guilt, suspicion,",
+     "remedies": []
+    },
+    {
+     "slug": "thuja",
+     "name": "Thuja",
+     "alt_name": "",
+     "description": "The Thuja occidentalis tree is also known as Arbor vitae, which means the tree of life.Thuja identifies the Focal Disturbance Miasm related to the Sycosis Miasm, as the Thuja state is the effect of Sycosis such as from suppression of gonorrhea.Thuja keynote symptoms include fluid retention, warts and tumors, and bad effects of vaccination, as well as delusions and fears",
+     "remedies": []
+    },
+    {
+     "slug": "tuberculinum",
+     "name": "Tuberculinum",
+     "alt_name": "",
+     "description": "The classical Tubercular Miasm is related to Fungal Terrain, which we identify with Phase 3: Regeneration.It can relate to hyperactivity, lung function, weakness, and swollen glands.Keynote symptoms can include digestive and urinary issues, allergies, sensitivity to the cold, as well as lung, respiratory and breathing problems, and frequent coughs and colds.Keynotes can also include a sense of restlessness, and feeling trapped, leading to vindictive behavior",
+     "remedies": []
+    },
+    {
+     "slug": "vaccininum",
+     "name": "Vaccininum",
+     "alt_name": "",
+     "description": "Some vaccines cause Miasms as a side effect, and all vaccines tend to put the body into low energy terrain as documented by Bioelectronics of Vincent measurements on hundreds of thousands of patients over many decades.The Vaccination Miasm identifies with Anergic or Low Energy Terrain, which we call Phase 1: Energize in our model of the Five Phases of Health. References:New Miasms:radionicsspectrocom.wordpress.com/2017/09/10/miasms-and-radionics/ © Copyclaim 2023Remedy Match LLC, DBA Healing Oasis[email protected]PO Box 126 Hilo, Hawai'i-Kingdom [96721]+1 (808) 217-9647 Community Terms and Con",
+     "remedies": []
+    }
+   ]
+  },
+  {
+   "key": "chemistry",
+   "title": "Chemistry",
+   "blurb": "The biochemical and terrain layers, from biophysics through the phases of terrain.",
+   "path": "chemistry",
+   "entry_count": 114,
+   "entries": [
+    {
+     "slug": "biophysics",
+     "name": "Biophysics",
+     "alt_name": "",
+     "description": "The most fundamental level of analysis is Biophysics. We draw on Professor Vincent's Bioelectronics of Vincent (BEV) system of analysis of energy level and balance in the biological fluid milieu. Learn More The energy content of an aqueous medium is defined by the Nernst Equation of Physics. We label the Terrains of Health and Disease according to the sequence in which they tend to appear in the healing process. (The Oligo Element Therapy contents of the test vials we use to evaluate the Phase of the terrain that the body is focused on healing are in parentheses)",
+     "remedies": []
+    },
+    {
+     "slug": "phase-1-energize",
+     "name": "Phase 1: Energize",
+     "alt_name": "",
+     "description": "(Oligo Elements Cu, Au, and Ag) Phase 1 terrain relates to susceptibility to viral activity, degenerative changes and cancer.Phase 1 healing is the most foundational step in recovering health as without energy, a cell can do nothing.Cellular energy comes from a combination of oxidative respiration in the mitochondria as well as photonic light energy",
+     "remedies": []
+    },
+    {
+     "slug": "phase-2-rejuvenate",
+     "name": "Phase 2: Rejuvenate",
+     "alt_name": "",
+     "description": "(Oligo Elements Mn and Co)Phase 2 terrain relates to susceptibility to overgrowth of pathogenic bacteria and parasites as well as rapid aging.In healing Phase 2, the metabolic enzymes are being repaired to restore cellular function",
+     "remedies": []
+    },
+    {
+     "slug": "phase-3-regenerate",
+     "name": "Phase 3: Regenerate",
+     "alt_name": "",
+     "description": "(Oligo Elements Mn and Cu)Phase 3 terrain is susceptible to slow metabolism and fungal activity.In healing Phase 3, new cells can be made through mitosis and through stem cell activation",
+     "remedies": []
+    },
+    {
+     "slug": "phase-4-cleanse",
+     "name": "Phase 4: Cleanse",
+     "alt_name": "",
+     "description": "(Oligo Element Mn)Phase 4 terrain is susceptible to symptoms of allergy and toxicity.In Phase 4 healing, the connective tissue matrix in which the cells live is being cleared of wastes and toxins",
+     "remedies": []
+    },
+    {
+     "slug": "phase-5-balance",
+     "name": "Phase 5: Balance",
+     "alt_name": "",
+     "description": "(Oligo Elements Zn, Ni, Co, Cu)Phase 5 deals with balancing life stresses as well as hormonal regulation",
+     "remedies": []
+    },
+    {
+     "slug": "biochemistry",
+     "name": "Biochemistry",
+     "alt_name": "",
+     "description": "",
+     "remedies": []
+    },
+    {
+     "slug": "minerals",
+     "name": "Minerals",
+     "alt_name": "",
+     "description": "Minerals are the most fundamental of all nutrients.Each Mineral has its own personality and relationships within the living organism.We think of a Mineral's nucleus as a coherent geometric structure of a community of protons built on the resonance forms of the Platonic Solids, along the lines first proposed by Professor Moon of the Manhattan Project in his Moon Model of the Nucleus which I describe in more detail on the linked page.The electron orbital fields interact with those of other minerals to produce the bonding relationships of organic chemistry.Light is the resonant energetic communic",
+     "remedies": []
+    },
+    {
+     "slug": "nutrient-minerals",
+     "name": "Nutrient Minerals",
+     "alt_name": "",
+     "description": "",
+     "remedies": []
+    },
+    {
+     "slug": "boron",
+     "name": "Boron",
+     "alt_name": "",
+     "description": "Boron helps strengthen the bones, as in our Bone Builder formulation",
+     "remedies": [
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      }
+     ]
+    },
+    {
+     "slug": "calcium",
+     "name": "Calcium",
+     "alt_name": "",
+     "description": "There are two channels for absorption of Calcium in the gut.One is passive and always available.The second channel is active and is turned on by the presence of the mineral form of Calcium found in bone.This doubles the Calcium absorption when the second channel is activated.That's why we include Nano-Crystalline Hydroxyapatite in our Bone Builder formula",
+     "remedies": [
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      }
+     ]
+    },
+    {
+     "slug": "chromium",
+     "name": "Chromium",
+     "alt_name": "",
+     "description": "Chromium is the only essential mineral that the kidneys cannot retain.It is also the first mineral to be lost in food processing.Eating refined sugars and carbohydrates also use up more of this precious mineral.Restoring healthy Chromium levels with remedies like Glucose Tolerance adds 5 years to longevity",
+     "remedies": [
+      {
+       "name": "Glucose Tolerance",
+       "url": "https://remedymatch.com/body-systems/system-3-process/pancreas/47-glucose-tolerance"
+      }
+     ]
+    },
+    {
+     "slug": "cobalt",
+     "name": "Cobalt",
+     "alt_name": "",
+     "description": "Cobalt is an essential trace mineral found in Vitamin B12: Cobalamin.There are two coenzyme forms of Vitamin B12: Methylcobalamin and Adenosylcobalamin.We include both in many formulas including Sublingual B12",
+     "remedies": [
+      {
+       "name": "Sublingual B12",
+       "url": "https://remedymatch.com/terrain-phases/phase-2-rejuvenate/enzyme-function/133-sublingual-b12"
+      }
+     ]
+    },
+    {
+     "slug": "copper",
+     "name": "Copper",
+     "alt_name": "",
+     "description": "Copper is an essential mineral in balance with Zinc.Because Copper excess promotes oxidation, it is wise to minimize Copper supplementation unless you are deficient in Copper, or are taking a lot of Zinc over time.If you are Copper deficient, consider Copper Synergy",
+     "remedies": [
+      {
+       "name": "Copper Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/fungal-terrain/321-copper-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "gold",
+     "name": "Gold",
+     "alt_name": "",
+     "description": "Gold is an antidote to Mercury.In the Condensate state, Gold is an important Spirit Mineral™.Terrain Restore and Nous Energy are great ways to supplement the Spirit Minerals",
+     "remedies": [
+      {
+       "name": "Terrain Restore",
+       "url": "https://remedymatch.com/body-systems/system-3-process/113-terrain-restore"
+      },
+      {
+       "name": "Nous Energy",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/central-nervous-system/85-nous-energy"
+      }
+     ]
+    },
+    {
+     "slug": "hydrogen",
+     "name": "Hydrogen",
+     "alt_name": "",
+     "description": "Hydrogen is the most abundant atom in the body being 2/3 of the atomic structure of bulk water and 60% of Living Water, as well as a major constituent of Carbohydrates and Oils.Molecular Hydrogen (H2) is the measure of electrons in an aqueous medium such as the blood in the Bioelectronics of Vincent (BEV) system that is the foundation of our Five Phases of Health and Disease model of biological terrain.That is because two electrons combine with two protons to form a diatomic hydrogen molecule.Molecular Hydrogen (H2) is the perfect antioxidant, quenching free radicals to prevent oxidation of ce",
+     "remedies": [
+      {
+       "name": "water systems",
+       "url": "https://remedymatch.com/search?search_query=water"
+      },
+      {
+       "name": "water bottles",
+       "url": "https://remedymatch.com/emf-environment/61-living-water-bottle"
+      }
+     ]
+    },
+    {
+     "slug": "iodine",
+     "name": "Iodine",
+     "alt_name": "",
+     "description": "Iodine is essential for Thyroid function.Thyroid Support is an excellent source",
+     "remedies": [
+      {
+       "name": "Thyroid Support",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/thyroid/117-thyroid-support"
+      }
+     ]
+    },
+    {
+     "slug": "iron",
+     "name": "Iron",
+     "alt_name": "",
+     "description": "Iron is better not to supplement unless you know you are deficient.As with Copper, excess Iron is an oxidizing agent.People with below average Iron levels live longer than those with above average levels.If you are Iron deficient, Iron Synergy is the ideal source",
+     "remedies": [
+      {
+       "name": "Iron Synergy",
+       "url": "https://remedymatch.com/body-systems/system-2-support/cardiovascular/319-iron-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "lithium",
+     "name": "Lithium",
+     "alt_name": "",
+     "description": "A nutritional dosage of Lithium is very beneficial.The optimum dosage is much lower than what is used medically.Neuroceramides supplies nutritionally bioavailable Lithium to help support repair of the Myelin Sheath",
+     "remedies": [
+      {
+       "name": "Neuroceramides",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/81-neuroceramides"
+      }
+     ]
+    },
+    {
+     "slug": "magnesium",
+     "name": "Magnesium",
+     "alt_name": "",
+     "description": "Most of us are deficient in Magnesium because it is not added back to the soil in modern agricultural methods.Magnesium is an essential cofactor for over 2000 enzymes including in the central nervous system.We supply Magnesium Threonate in Neuro Magnesium because the Threonate moiety transports Magnesium across the Blood-Brain Barrier and the Blood-Eye Barrier",
+     "remedies": [
+      {
+       "name": "Neuro Magnesium",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/80-neuro-magnesium"
+      }
+     ]
+    },
+    {
+     "slug": "manganese",
+     "name": "Manganese",
+     "alt_name": "",
+     "description": "Manganese is an essential trace mineral.It is also the Oligo Element therapy for Phase 4: Cleansing, and included in the mineral combinations for Phases 2 and 3.Our highest dosage of Manganese is in Bone Builder",
+     "remedies": [
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      }
+     ]
+    },
+    {
+     "slug": "molybdenum",
+     "name": "Molybdenum",
+     "alt_name": "",
+     "description": "Molybdenum is important for endocrine regulation.You can find Molybdenum in Sulfur Synergy and Thyroid Support as well as Molybdenum Synergy",
+     "remedies": [
+      {
+       "name": "Sulfur Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/110-sulfur-synergy"
+      },
+      {
+       "name": "Thyroid Support",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/thyroid/117-thyroid-support"
+      },
+      {
+       "name": "Molybdenum Synergy",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/322-molybdenum-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "oxygen",
+     "name": "Oxygen",
+     "alt_name": "",
+     "description": "; Hypoxia (Sulfur D200)We certainly need oxygen to survive, and the mitochondria in our cells need it to support respiration for ATP energy production.Oxygen therapy with intermittent oxygen deprivation can be even more effective than hyperbaric oxygen.Visit our page on Oxygen Therapies, and ask us for a referral to learn more.For oral Oxygen delivery to the intestinal tract, see Oxygen Cleanse",
+     "remedies": [
+      {
+       "name": "Oxygen Cleanse",
+       "url": "https://remedymatch.com/body-systems/system-3-process/colon/88-oxygen-cleanse"
+      }
+     ]
+    },
+    {
+     "slug": "phosphorus",
+     "name": "Phosphorus",
+     "alt_name": "",
+     "description": "Phosphorus forms very high energy bonds which are used to store metabolic energy in Adenosine Triphosphate (ATP).Phosphorus is abundant in animal foods, grains, and nuts, and is inflammatory in excess.Most of the body's Phosphorus is bound in the bones in the mineral form Hydroxyapatite, which is supplied in Bone Builder.ATP Synergy supplies Phosphorus in the energy storage form Adenosine Triphosphate",
+     "remedies": [
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      },
+      {
+       "name": "ATP Synergy",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/muscle/320-atp-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "potassium",
+     "name": "Potassium",
+     "alt_name": "",
+     "description": "Potassium is high in fruits and vegetables, so that is the best source to assure adequate intake.For alkalizing pH, we include Potassium in balanced ratio with Magnesium and Sodium in our Bicarbonate Blend.Excipient-free Potassium Chloride is also synergistic with our Stone Solvent formula",
+     "remedies": [
+      {
+       "name": "Bicarbonate Blend",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/9-bicarbonate-blend"
+      },
+      {
+       "name": "Stone Solvent",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/kidney/354-stone-solvent--kidney--gall-bladder"
+      }
+     ]
+    },
+    {
+     "slug": "selenium",
+     "name": "Selenium",
+     "alt_name": "",
+     "description": "Maps of Selenium levels in the soil parallel those of breast cancer incidence.Selenium is an essential trace mineral for anti-oxidant protection.Many supplements use the inorganic mineral Selenite, but organic forms are more effective.We use Methylselenocysteine (MSC) in more than 20 of our formulations, such as Glutathione Synergy, for the best results",
+     "remedies": [
+      {
+       "name": "Methylselenocysteine (MSC)",
+       "url": "https://remedymatch.com/search?search_query=selenium"
+      },
+      {
+       "name": "Glutathione Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/48-glutathione-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "silicon",
+     "name": "Silicon",
+     "alt_name": "",
+     "description": "Silicon in the form of Silica is important for connective tissue health.Many health products source Silica from Horsetail herb (Equisetum arvense) but Equisetum also has kidney stimulating properties we would rather avoid in most cases, so we source our Silica from Bamboo (Bambusa spp.).Formulations include Perfect Skin, Bone Builder, Connective Tissue Support, and Dental Powder",
+     "remedies": [
+      {
+       "name": "Silica from Bamboo (",
+       "url": "https://remedymatch.com/search?search_query=silica"
+      },
+      {
+       "name": "Bambusa spp",
+       "url": "https://remedymatch.com/search?search_query=silica"
+      },
+      {
+       "name": ".)",
+       "url": "https://remedymatch.com/search?search_query=silica"
+      },
+      {
+       "name": "Perfect Skin",
+       "url": "https://remedymatch.com/body-systems/system-5-integrity/skin/90-perfect-skin"
+      },
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      },
+      {
+       "name": "Connective Tissue Support",
+       "url": "https://remedymatch.com/body-systems/system-2-support/connective/22-connective-tissue-support"
+      },
+      {
+       "name": "Dental Powder",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/regenerate/29-dental-powder"
+      }
+     ]
+    },
+    {
+     "slug": "silver",
+     "name": "Silver",
+     "alt_name": "",
+     "description": "Silver in its ionic or protein-bound states as a metal has a long history of use as a broad spectrum anti-microbial.We include ionic Silver in our Eye Drop formulations to support stability.Silver is also used in its non-ordinary state as a Condensate (aka ORMUS, M-State, Monatomic Mineral).We also supply our Silver Lining Clothing line for protection from harmful EMF including 5G radiation",
+     "remedies": [
+      {
+       "name": "Eye Drop",
+       "url": "https://remedymatch.com/search?search_query=eye+drops"
+      },
+      {
+       "name": "Silver Lining Clothing",
+       "url": "https://remedymatch.com/search?search_query=silver"
+      }
+     ]
+    },
+    {
+     "slug": "sodium",
+     "name": "Sodium",
+     "alt_name": "",
+     "description": "Sodium is an essential mineral for cellular activities such as energy production and nerve function.Sodium has been falsely demonized in Western science due to its association with Chloride in table salt.Japanese research with Chitosan demonstrates that the potentially negative effects of salt such as post-prandial hypertension are eliminated with Chitosan, which binds Chloride in the gut, but allows Sodium to be absorbed.We include Sodium in balanced ratio with Potassium and Magnesium in our alkalizing Bicarbonate Blend",
+     "remedies": [
+      {
+       "name": "Bicarbonate Blend",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/9-bicarbonate-blend"
+      }
+     ]
+    },
+    {
+     "slug": "sulfur",
+     "name": "Sulfur",
+     "alt_name": "",
+     "description": "In Homeopathy, Sulfur is seen as the most centrifugal or detoxifying mineral.It is a key remedy associated with Phase 4: Cleansing terrain.Sulfur is one of our essential Macrominerals, and we need it in organic forms.A broad spectrum of beneficial organic forms of Sulfur compounds are included in Sulfur Synergy.Glutathione Synergy, Rescue, SAMe Synergy and Glucoraphanin Synergy are also excellent sources of organic Sulfur",
+     "remedies": [
+      {
+       "name": "Sulfur Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/110-sulfur-synergy"
+      },
+      {
+       "name": "Glutathione Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/48-glutathione-synergy"
+      },
+      {
+       "name": "Rescue",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/232-rescue"
+      },
+      {
+       "name": "SAMe Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/102-same-synergy"
+      },
+      {
+       "name": "Glucoraphanin Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/cancer-terrain/46-glucoraphanin-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "zinc",
+     "name": "Zinc",
+     "alt_name": "",
+     "description": "Zinc is essential for many body functions including all the special senses: vision, hearing, taste, and smell as well as immunity.Because of this, low Zinc can cause craving for salty and spicy foods.Over 300 enzymes are zinc dependent.Low Zinc levels can be detected, repleted and monitored by our liquid Zinc Taste Test.Zinc can be supplemented with Zinc Synergy.Toxic Minerals",
+     "remedies": [
+      {
+       "name": "Zinc Taste Test",
+       "url": "https://remedymatch.com/body-systems/system-2-support/immune/126-zinc-taste-test"
+      },
+      {
+       "name": "Zinc Synergy",
+       "url": "https://remedymatch.com/body-systems/system-2-support/immune/263-zinc-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "aluminum",
+     "name": "Aluminum",
+     "alt_name": "",
+     "description": "Aluminum is bound in the intestines by our Binder Complex so that it is eliminated rather than being reabsorbed with water in the colon and sent back to the liver to be detoxified over and over...Aluminum is detoxified from our tissues by the same pathway as other heavy metals, so when any metal is blocking that pathway, the others build up behind it...We are typically exposed to more Aluminum than other heavy metals, so even though it is less toxic than the others, high levels of Aluminum, e.g. in the brain in Alzheimer's, is a marker of heavy metal issues.Avoid Aluminum cookware and deodoran",
+     "remedies": [
+      {
+       "name": "Binder Complex",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/10-binder-complex"
+      },
+      {
+       "name": "Perfect Skin",
+       "url": "https://remedymatch.com/body-systems/system-5-integrity/skin/90-perfect-skin"
+      },
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      },
+      {
+       "name": "Connective Tissue Support",
+       "url": "https://remedymatch.com/body-systems/system-2-support/connective/22-connective-tissue-support"
+      },
+      {
+       "name": "Dental Powder",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/regenerate/29-dental-powder"
+      },
+      {
+       "name": "Para-Cleanse",
+       "url": "https://remedymatch.com/terrain-phases/phase-2-rejuvenate/parasite-terrain/89-paracleanse"
+      }
+     ]
+    },
+    {
+     "slug": "arsenic",
+     "name": "Arsenic",
+     "alt_name": "",
+     "description": "Seafood can contain Arsenic, but it is mostly in an organic form that is less toxic than inorganic Arsenic.Avoid imported rice that can be high in inorganic Arsenic.Organically grown domestic rice is better, and soaking in water for a few hours and then rinsing prior to cooking can remove about 45% of the Arsenic.Sources:https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5502079/https://pubmed.ncbi.nlm.nih.gov/19137137/Support Arsenic detox with Chelation and fiber-based remedies like Binder Complex",
+     "remedies": [
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      },
+      {
+       "name": "Binder Complex",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/10-binder-complex"
+      }
+     ]
+    },
+    {
+     "slug": "cadmium",
+     "name": "Cadmium",
+     "alt_name": "",
+     "description": "Avoid cigarette smoke, since it is the major source of Cadmium inhalation, and we absorb 40 to 60% of the Cadmium we inhale.Cadmium causes pain in the joints and spine, leading to the name of the toxicity condition in Japan being \"Itai-Itai\" which means \"It hurts, It hurts\".Cadmium tends to replace Zinc, interfering with its many coenzyme functions.Consider Chelation for Cadmium detoxification",
+     "remedies": [
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      }
+     ]
+    },
+    {
+     "slug": "chlorine",
+     "name": "Chlorine",
+     "alt_name": "",
+     "description": "Chlorine and Chloride are toxic forms of this halogen mineral.The biggest exposure to toxic Chlorine gas is when taking hot showers in unfiltered municipal water treated with Chlorine.Avoid showering in unfiltered water, and avoid drinking unfiltered tap water.Check out our water filtering technologies for the shower and for turning tap water into healing Living Water",
+     "remedies": [
+      {
+       "name": "water filtering technologies",
+       "url": "https://remedymatch.com/search?search_query=filter&amp;controller=search&amp;orderby=position&amp;orderway=desc&amp;submit_search="
+      }
+     ]
+    },
+    {
+     "slug": "lead",
+     "name": "Lead",
+     "alt_name": "",
+     "description": "Lead impairs energy metabolism, and stores in the brain and the bones.When it is being pulled out of accumulated stores, it can produce itchiness when being eliminated through the skin.Consider Chelation to support getting the Lead out...Since Lead and Calcium tend to replace each other, Bone Builder is also a good support for Lead detox",
+     "remedies": [
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      },
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      }
+     ]
+    },
+    {
+     "slug": "mercury",
+     "name": "Mercury",
+     "alt_name": "",
+     "description": "Mercury is the most symptomatic of all the heavy metals.It can produce any symptom, just depending on where it is located in the body.That is why Mercury is known as the Great Masquerader of the Mineral Kingdom.Mercury can be inherited through prenatal exposure, since it concentrates in fetal tissues at 24 times the level in maternal tissues.That also means that the first born often has the highest exposure.Dental Mercury from amalgam fillings stores at the highest concentration in the thyroid gland contributing to abnormal function and autoimmune issues, and stays longest in the crystalline l",
+     "remedies": [
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      },
+      {
+       "name": "Glutathione Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/48-glutathione-synergy"
+      },
+      {
+       "name": "Sulfur Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/110-sulfur-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "nickel",
+     "name": "Nickel",
+     "alt_name": "",
+     "description": "Nickel is only needed in minute amounts by the body.Most commonly it is seen clinically as a trigger of atopic dermatitis, with discoloration and inflammation of the skin in reaction to costume jewelry.Vitamins & Coenzymes:Vitamins are essential nutrient compounds that the body cannot produce, and therefore must ingest in the diet.There are also many additional nutrients which were considered Vitamins by their discoverers, and we include many of them in our Functional Formulations™.These include many additional B Vitamins such as Vitamin B17: Amygdalin.Vitamin P: Polyphenols is another example",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-a-retinol",
+     "name": "Vitamin A: Retinol",
+     "alt_name": "",
+     "description": "Vitamin A is essential for all epithelial tissues as well as for vision.We supply a strong dose of Vitamin A in Vitamin A Synergy for short term use in Phase 1 terrain.B Complex:The B Complex Vitamins are synergistic as a group, and their metabolism varies with the diurnal cycle, so we have formulated a different B complex for each meal",
+     "remedies": [
+      {
+       "name": "Vitamin A Synergy",
+       "url": "https://remedymatch.com/body-systems/system-5-integrity/skin/327-vitamin-a-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "breakfast",
+     "name": "Breakfast",
+     "alt_name": "",
+     "description": "Rise & Shine",
+     "remedies": [
+      {
+       "name": "Rise & Shine",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/energize/101-rise--shine"
+      }
+     ]
+    },
+    {
+     "slug": "lunch",
+     "name": "Lunch",
+     "alt_name": "",
+     "description": "Vital Energy Be",
+     "remedies": [
+      {
+       "name": "Vital Energy Be",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/122-vital-energy-be"
+      }
+     ]
+    },
+    {
+     "slug": "supper",
+     "name": "Supper",
+     "alt_name": "",
+     "description": "Sustain",
+     "remedies": [
+      {
+       "name": "Sustain",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/energize/111-sustain"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-b1-thiamine",
+     "name": "Vitamin B1: Thiamine",
+     "alt_name": "",
+     "description": "Instead of USP Thiamine HCl, we use the more therapeutic forms Allithiamine, Benfotiamine, or Sulbutiamine",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b2-riboflavin",
+     "name": "Vitamin B2: Riboflavin",
+     "alt_name": "",
+     "description": "Instead of USP Riboflavin, we use the active co-enzyme form Riboflavin 5-Phosphate",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b3-niacin",
+     "name": "Vitamin B3: Niacin",
+     "alt_name": "",
+     "description": "Niacin increases circulation, so we use small amounts in many formulations to help deliver more therapeutic substances to the body tissues.We also use anti-aging forms of B3 like Nicotinamide Riboside (NR) and Nicotinamide Mononucleotide (NMN) in formulas including our Longevity.We also use Picamilon, which is Nicotinoyl-GABA a combination of Niacin and GABA",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b5-pantethine",
+     "name": "Vitamin B5: Pantethine",
+     "alt_name": "",
+     "description": "We use Calcium Pantothenate instead of acidic Pantethine HCl",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b6-pyridoxine",
+     "name": "Vitamin B6: Pyridoxine",
+     "alt_name": "",
+     "description": "We use the active coenzyme form Pyridoxal 5-Phosphate (P5P) or the therapeutic form Pyridoxamine instead of the acidic USP form Pyridoxine HCl",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b7-biotin",
+     "name": "Vitamin B7: Biotin",
+     "alt_name": "",
+     "description": "Biotin is important in fat, carbohydrate, and amino acid utilization",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b8-coenzyme-a-adenosine-monophosphate",
+     "name": "Vitamin B8: Coenzyme A: Adenosine Monophosphate",
+     "alt_name": "AMP",
+     "description": "AMP regulates metabolism in ratio with Adenosine Triphosphate (ATP) by activating the enzyme AMPK, an important pathway in the science of longevity",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b9-folate",
+     "name": "Vitamin B9: Folate",
+     "alt_name": "",
+     "description": "We use the active form Methyltetrahydrofolate (MTHF) instead of the USP form Folic Acid",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b10-para-aminobenzoic-acid",
+     "name": "Vitamin B10: Para-aminobenzoic Acid",
+     "alt_name": "PABA",
+     "description": "PABA supports healthy skin, hair, and digestive function.PABA is not classified as a vitamin by regulatory agencies of earthly governments because it can be produced by bacteria in the gut",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b12-cobalamin",
+     "name": "Vitamin B12: Cobalamin",
+     "alt_name": "",
+     "description": "We use a combination of the two active co-enzyme forms of Vitamin B12: Methyl Cobalamin and Adenosyl Cobalamin)Adenosyl Cobalamin is the form used by the Mitochondria, which produce ATP for cellular energy.We use a minimal amount of the essential Methyl form because it turns out to be the catalyst that methylates Mercury, making it about 1000 times more toxic than the metallic form.Sublingual B12 Powder supplies both active forms under the tongue, bypassing the need for Intrinsic Factor",
+     "remedies": [
+      {
+       "name": "Sublingual B12 Powder",
+       "url": "https://remedymatch.com/terrain-phases/phase-2-rejuvenate/enzyme-function/133-sublingual-b12"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-b13-choline",
+     "name": "Vitamin B13: Choline",
+     "alt_name": "",
+     "description": "Choline is a precursor for the neurotransmitter AcetylCholine (Ach) which is crucial for sensation, learning, and memory.Choline can be supplied in several different forms including Choline Bitratrate, Dimethylethanolamine (DMAE), Centrophenoxine, Citicoline (CDP Choline), Lecithin, Alpha Glycerylphosphorylcholine (Alpha-GPC), and Phosphatidyl Choline (PC).While Choline sources are not regulated as a Vitamin by governments, they were considered as such by the scientists who discovered them",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b15-trimethylglycine",
+     "name": "Vitamin B15: Trimethylglycine",
+     "alt_name": "TMG",
+     "description": "TMG has three methyl groups it can donate, so it is the best methyl donor.It is derived from beets, and must be extracted and purified to avoid getting an excess of Iron when taking a therapeutic dose.Researchers use up to 4 grams a day, and we often recommend 500 milligrams of TMG Powder dissolved in the mouth or in water up to 3 times a day",
+     "remedies": [
+      {
+       "name": "TMG Powder",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/muscle/228-tmg-powder-trimethylglycine"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-b16-dimethylglycine",
+     "name": "Vitamin B16: Dimethylglycine",
+     "alt_name": "DMG",
+     "description": "When TMG donates its first methyl group, it becomes DMG.DMG is known for enhancing cellular Oxygen utilization",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b17-amygdalin",
+     "name": "Vitamin B17: Amygdalin",
+     "alt_name": "",
+     "description": "Amygdalin was identified by its scientific discoverers as Vitamin B17 with the associated deficiency condition being Cancer.Cancer is not recognized by governments as a Vitamin deficiency disease, so Amygdalin is not regulated as a Vitamin by governments.B17 Synergy provides a comprehensive Amygdalin support system",
+     "remedies": [
+      {
+       "name": "B17 Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/cancer-terrain/12-b17-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-b20-acetyl-l-carnitine",
+     "name": "Vitamin B20: Acetyl L-Carnitine",
+     "alt_name": "ALCAR",
+     "description": "(See also Acetyl L-Carnitine in the section on Amines)",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-b21-inositol",
+     "name": "Vitamin B21: Inositol",
+     "alt_name": "",
+     "description": "Inositol (also sometimes called Vitamin B8) is important for transduction of cellular signaling in response to hormones, neurotransmitters and growth factors.It has important benefits related to serotonin, weight management, peripheral nerve pain, anxiety, cholesterol and blood pressure regulation, sleep, cancer susceptibility, mood, memory, attention, autism, hair and skin health",
+     "remedies": []
+    },
+    {
+     "slug": "vitamin-c-ascorbate",
+     "name": "Vitamin C: Ascorbate",
+     "alt_name": "",
+     "description": "Most animal species make their own Ascorbate from blood sugar.Guinea pigs are like humans in that Vitamin C is a Vitamin for them like it is for us.They can only get it from their diet.That's why they make good 'guinea pigs' for animal experimentation.Vitamin C comes in acid, alkaline and fat soluble forms.Ascorbic Acid can be either natural source L-Ascorbic Acid, or synthetic Ascorbic Acid which has both D and L enantiomer shapes, half of which are twisted the wrong way.Alkaline mineral ascorbates can come with a variety of mineral moieties.We use Magnesium, Zinc, Manganese and Boron.We avoi",
+     "remedies": [
+      {
+       "name": "Synergy C",
+       "url": "https://remedymatch.com/body-systems/system-2-support/112-synergy-c"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-d3-calciferol",
+     "name": "Vitamin D3: Calciferol",
+     "alt_name": "",
+     "description": "Vitamin D is not only a Vitamin but also a Hormone.It is essential for Calcium metabolism, for brain function and immunity...We include both botanical and nutritional synergists in Vitamin D Synergy",
+     "remedies": [
+      {
+       "name": "Vitamin D Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/123-vitamin-d-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-e-tocopherols",
+     "name": "Vitamin E: Tocopherols",
+     "alt_name": "",
+     "description": "Vitamin E is a complex of Tocopherols.In some formulations, we use the natural dry form of Vitamin E, D-Alpha Tocopherol Succinate.When there is more room in the capsule, we prefer the natural Vitamin E complex with additional Tocopherol forms.Our Vitamin E Spectrum provides the full spectrum of Vitamin E unaltered and undiluted by other oils, which is most Vitamin E oils must be refrigerated to prevent rancidity.Ours is stable at room temperature",
+     "remedies": [
+      {
+       "name": "Vitamin E Spectrum",
+       "url": "https://remedymatch.com/body-systems/system-2-support/124-vitamin-e-spectrum"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-k-menaquinone",
+     "name": "Vitamin K: Menaquinone",
+     "alt_name": "",
+     "description": "Vitamin K2 in the MK-4 form is the most biologically active form of Vitamin K, and the natural form is the trans form, so that is the most important form.The MK-7 form of K2 is the most bioavailable form for the liver and the bones, so including some of that is also a benefit.Some formulations may include the food form we get from eating vegetables, Vitamin K1, as well as the two forms of K2 (MK-4 and MK-7) that are the most important to supplement, even though few of us are deficient in K1.Vitamin K is synergistic with Vitamin D, so you'll find a good dose in our Vitamin D Synergy.For a high",
+     "remedies": [
+      {
+       "name": "Vitamin D Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/123-vitamin-d-synergy"
+      },
+      {
+       "name": "Bone Builder",
+       "url": "https://remedymatch.com/body-systems/system-2-support/bone/13-bone-builder"
+      }
+     ]
+    },
+    {
+     "slug": "vitamin-p-polyphenols",
+     "name": "Vitamin P: Polyphenols",
+     "alt_name": "",
+     "description": "Polyphenols are phytonutrients with multiple phenol rings.These compounds provide many of the colors, flavors and therapeutic qualities of botanicals.In our Clinical Theory™, we propose that the electrons in these conjugated double bond rings act as a Farraday shield, producing a sanctuary effect at the center of the ring that attracts Spirit Minerals, also known as ORMUS or M-state minerals, and scientifically may be Bose-Einstein Condensates (BECs) of Transition Minerals.We use many Bioflavonoids in our formulas, such as the dozens in our Vitamin P Polyphenols",
+     "remedies": [
+      {
+       "name": "Vitamin P Polyphenols",
+       "url": "https://remedymatch.com/terrain-phases/phase-1-energize/125-vitamin-p"
+      }
+     ]
+    },
+    {
+     "slug": "coenzyme-q10-ubiquinol",
+     "name": "Coenzyme Q10: Ubiquinol",
+     "alt_name": "",
+     "description": "CoQ10 is important for Mitochondrial health.We use water soluble Ultra Absorption CoQ10 for maximum bioavailability.Check out our Mitochondrial Biogenesis to support oxidative metabolism by sustaining the mitochondria and even supporting their reproduction!Fatty Acids:Essential Fatty Acids (EFAs) must be obtained through the diet as they cannot be synthesized de novo in the body",
+     "remedies": [
+      {
+       "name": "Mitochondrial Biogenesis",
+       "url": "https://remedymatch.com/terrain-phases/phase-2-rejuvenate/rejuvenate/74-mitochondrial-biogenesis"
+      }
+     ]
+    },
+    {
+     "slug": "omega-3-essential-fatty-acids",
+     "name": "Omega 3 Essential Fatty Acids",
+     "alt_name": "",
+     "description": "DHA is the most essential Omega 3 Fatty Acid, as it is the dominant fatty acid in the retina and the brain.We source DHA from whole algae oil in our NeurOmega capsules because it is the cleanest source, being the original source at the foundation of the food chain, allowing us to use the whole oil which also includes Phytoceramides",
+     "remedies": [
+      {
+       "name": "NeurOmega",
+       "url": "https://remedymatch.com/search?search_query=NeurOmega"
+      }
+     ]
+    },
+    {
+     "slug": "phytoceramides",
+     "name": "Phytoceramides",
+     "alt_name": "",
+     "description": "Phytoceramides are waxy fats that we lose the ability to make with aging.We include them in our Perfect Skin and Moisturize formulations.They are needed to keep the skin youthful, but also essential in every cell membrane, to repair the myelin sheath, and for regulation of metabolism, such as metabolic syndrome.Amines:Amino Acids make up functional proteins like enzymes and structural proteins like collagen, elastin and glycosaminoglycans (GAGs) in our connective tissue.Some of those Amino Acids are essential because they cannot be made from other materials in the body",
+     "remedies": [
+      {
+       "name": "Perfect Skin",
+       "url": "https://remedymatch.com/body-systems/system-5-integrity/skin/90-perfect-skin"
+      },
+      {
+       "name": "Moisturize",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/eye-vision/dry-eye/76-moisturize"
+      }
+     ]
+    },
+    {
+     "slug": "5-hydroxytryptophan",
+     "name": "5-Hydroxytryptophan",
+     "alt_name": "5-HTP",
+     "description": "5-HTP provides a precursor for production of Serotonin which supports emotional health, optimism and self confidence.This also supports sleep via Melatonin which is produced from Serotonin",
+     "remedies": []
+    },
+    {
+     "slug": "acetyl-l-carnitine",
+     "name": "Acetyl L-Carnitine",
+     "alt_name": "ALCAR",
+     "description": "Also identified as Vitamin B20, ALCAR is important for the brain as a nootropic for focus and cognition, being a precursor of Acetylcholine, as well as providing neuroprotection and mitochondrial support.ALCAR can help with anti-aging, slowing memory loss, while supporting appetite, energy, tingling extremeties, and cholesterol regulation",
+     "remedies": []
+    },
+    {
+     "slug": "alanine",
+     "name": "Alanine",
+     "alt_name": "",
+     "description": "Alanine is an alternate energy source because it can be converted to Pyruvate in the Liver, which then can be turned into Glucose via Gluconeogenesis.Alanine is also used for muscle repair and helps the gastrointestinal tract",
+     "remedies": []
+    },
+    {
+     "slug": "arginine",
+     "name": "Arginine",
+     "alt_name": "",
+     "description": "Arginine can increase circulation and lower blood pressure by stimulating Nitric Oxide production, so it can be useful in erectile dysfunction as well as for the brain.Application for the heart has shown mixed results.We minimize the use of Arginine in our remedies because it can also trigger Herpes outbreaks",
+     "remedies": []
+    },
+    {
+     "slug": "asparagine",
+     "name": "Asparagine",
+     "alt_name": "",
+     "description": "Asparagine is important for the nervous system",
+     "remedies": []
+    },
+    {
+     "slug": "aspartic-acid",
+     "name": "Aspartic Acid",
+     "alt_name": "",
+     "description": "Aspartic Acid can be therapeutic for the brain",
+     "remedies": []
+    },
+    {
+     "slug": "citrulline",
+     "name": "Citrulline",
+     "alt_name": "",
+     "description": "Citrulline helps cardiovascular and liver functions.Citrulline is also a key nutrient for supporting the Vagus Nerve (Cranial Nerve X).It is found in abundance in watermelon and in our Vagus Nerve Support",
+     "remedies": [
+      {
+       "name": "Vagus Nerve Support",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/autonomic/252-vagus-nerve-support"
+      }
+     ]
+    },
+    {
+     "slug": "cysteine",
+     "name": "Cysteine",
+     "alt_name": "",
+     "description": "Cysteine is a Sulfur-bearing amino acid which is supportive for Liver and Lung functions.Sulfur-Sulfur bridges between pairs of Cysteine components of proteins are crucial in giving proteins their 3-dimensional conformation (shape) and their structural properties.We typically provide Cysteine in the highly bioavailable form N-Acetyl Cysteine (see below)",
+     "remedies": []
+    },
+    {
+     "slug": "gamma-aminobutyric-acid",
+     "name": "Gamma Aminobutyric Acid",
+     "alt_name": "GABA",
+     "description": "GABA is a neurotransmitter that supports relaxation, sleep and relief of muscular pain.GABA is synergistic with Taurine and Theanine.Glutamine can be made into Glutamic Acid which is a precursor of GABA",
+     "remedies": []
+    },
+    {
+     "slug": "glutamic-acid",
+     "name": "Glutamic Acid",
+     "alt_name": "",
+     "description": "Glutamic Acid is a precursor of GABA.We minimize the addition of Glutamic Acid since Glutamate is the key neurotoxin in many neurodegenerative conditions including Glaucoma, and Alzheimer's",
+     "remedies": []
+    },
+    {
+     "slug": "glutamine",
+     "name": "Glutamine",
+     "alt_name": "",
+     "description": "Glutamine helps keep the brain balanced by providing a backup source of metabolic energy.Glutamine can be made into Glutamic Acid which is a precursor of GABA.Glutamine supports healing of the gut lining, but we use other means of achieving this worthy goal, since Glutamine is also a precursor of the excitotoxin Glutamate",
+     "remedies": []
+    },
+    {
+     "slug": "glutathione",
+     "name": "Glutathione",
+     "alt_name": "GSH",
+     "description": "Glutathione is a tripeptide that is extremely important for both anti-oxidant protection and cellular detoxification.We include many precursors and synergists along with Glutathione and S-Acetyl Glutathione in our Glutathione Synergy",
+     "remedies": [
+      {
+       "name": "Glutathione Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/48-glutathione-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "glycine",
+     "name": "Glycine",
+     "alt_name": "",
+     "description": "The naturally sweet taste of Glycine gives it the origin of its name, since the root \"glyc\" means sugar.Glycine has a calming effect on the brain, and benefits the muscles, liver, heart, and bones as well.It is the main amino acid in the alpha helix that makes collagen.We see Collagen as a key fiber optic communication pathway in addition to being a key structural protein",
+     "remedies": []
+    },
+    {
+     "slug": "histidine",
+     "name": "Histidine",
+     "alt_name": "",
+     "description": "Histidine has anti-inflammatory effects and benefits for the cardiovascular system, weight management, sugar regulation, and the brain",
+     "remedies": []
+    },
+    {
+     "slug": "hydroxyproline",
+     "name": "Hydroxyproline",
+     "alt_name": "Hyp",
+     "description": "Hydroxyproline stabilizes Collagen's triple helix.Increased levels in blood or urine are used as an indicator of connective tissue degeneration",
+     "remedies": []
+    },
+    {
+     "slug": "isoleucine",
+     "name": "Isoleucine",
+     "alt_name": "",
+     "description": "Isoleucine is an essential amino acid that helps sugar regulation, as well as recovery from exercise and muscle injury",
+     "remedies": []
+    },
+    {
+     "slug": "leucine",
+     "name": "Leucine",
+     "alt_name": "",
+     "description": "Leucine is an essential amino acid that supports muscle mass, sugar regulation, weight management, and production of Human Growth Hormone (HGH)",
+     "remedies": []
+    },
+    {
+     "slug": "lysine",
+     "name": "Lysine",
+     "alt_name": "",
+     "description": "Lysine is an essential amino acid that helps block stress responses to reduce anxiety.Lysine helps prevent Herpes family viral cold sores.Lysine supports Calcium metabolism and collagen production.Lysine may also help prevent Cataracts.We use Lysine in our Chelation formula because Cholesterol binds reversibly with Lysine in the vascular endothelium",
+     "remedies": [
+      {
+       "name": "Chelation",
+       "url": "https://remedymatch.com/body-systems/system-2-support/18-chelation"
+      }
+     ]
+    },
+    {
+     "slug": "methionine",
+     "name": "Methionine",
+     "alt_name": "",
+     "description": "Methionine is an essential Sulfur-bearing amino acid that is important for detoxification and anti-aging. In some cases, a low Methionine intake can be beneficial, since certain cancer cells are dependent on Methionine",
+     "remedies": []
+    },
+    {
+     "slug": "n-acetyl-cysteine",
+     "name": "N-Acetyl Cysteine",
+     "alt_name": "NAC",
+     "description": "NAC liquefies the Lymph and boosts cellular production of Glutathione.You'll find a good dose along with synergists in formulations including Lymph Flow and Glutathione Synergy",
+     "remedies": [
+      {
+       "name": "Lymph Flow",
+       "url": "https://remedymatch.com/body-systems/system-2-support/immune/lymph/314-lymph-flow"
+      },
+      {
+       "name": "Glutathione Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-4-cleanse/toxicity-terrain/48-glutathione-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "ornithine",
+     "name": "Ornithine",
+     "alt_name": "",
+     "description": "Ornithine is used to support athletic performance and recovery from exercise, injury and alcohol toxicity.L-Ornithine L-Aspartate (LOLA) is very helpful in chronic liver conditions",
+     "remedies": []
+    },
+    {
+     "slug": "para-aminobenzoic-acid",
+     "name": "Para-Aminobenzoic Acid",
+     "alt_name": "PABA",
+     "description": "PABA helps rejuvenate hair and skin and supports red blood cell production.It is important in protein metabolism.It also supports maintenance of a healthy microbiome.(see also Vitamin B10)",
+     "remedies": []
+    },
+    {
+     "slug": "phenylalanine",
+     "name": "Phenylalanine",
+     "alt_name": "",
+     "description": "Phenylalanine is an essential amino acid that supports memory and learning.It is essential for the brain and the thyroid gland",
+     "remedies": []
+    },
+    {
+     "slug": "dl-phenylalanine",
+     "name": "DL-Phenylalanine",
+     "alt_name": "",
+     "description": "The DL form is synthetic, so half of the molecules twist the wrong way to be effective in the body's metabolic pathways.This form is used to reduce pain, and synergizes with Endorphins that support pleasant and loving feelings as well as relief from both physical and emotional pain",
+     "remedies": []
+    },
+    {
+     "slug": "proline",
+     "name": "Proline",
+     "alt_name": "",
+     "description": "Proline supports skin, joints, connective tissue and digestive function.It also supports the heart and manages inflammation and stress",
+     "remedies": []
+    },
+    {
+     "slug": "s-adenosyl-methionine",
+     "name": "S-Adenosyl Methionine",
+     "alt_name": "SAMe",
+     "description": "SAMe elevates mood, helps repair serious liver damage, and regenerates cartilage.SAMe becomes Homocysteine when it donates its Methyl group.Homocysteine is strongly linked to atherosclerosis, so our SAMe Synergy includes a full range of Methyl donors to recycle Homocysteine back to the beneficial SAMe form.That way the dosage of SAMe also keeps working longer and better",
+     "remedies": [
+      {
+       "name": "SAMe Synergy",
+       "url": "https://remedymatch.com/terrain-phases/phase-3-regenerate/102-same-synergy"
+      }
+     ]
+    },
+    {
+     "slug": "serine",
+     "name": "Serine",
+     "alt_name": "",
+     "description": "Serine supports brain function and helps fibromyalgia, stress, sleep, and immunity as well as showing some benefits in diabetes and cancer",
+     "remedies": []
+    },
+    {
+     "slug": "taurine",
+     "name": "Taurine",
+     "alt_name": "",
+     "description": "Taurine provides important support for the retina, the liver, circulation, and the heart",
+     "remedies": []
+    },
+    {
+     "slug": "threonine",
+     "name": "Threonine",
+     "alt_name": "",
+     "description": "Threonine transports Magnesium across the Blood-Brain and Blood-Eye Barriers",
+     "remedies": []
+    },
+    {
+     "slug": "trimethylglycine",
+     "name": "Trimethylglycine",
+     "alt_name": "TMG",
+     "description": "TMG is the most powerful nutritional methyl donor.It is purified from beets so that a therapeutic dose can be achieved without taking in a toxic level of Iron.For a high dose of yummy TMG, check out our TMG Powder",
+     "remedies": [
+      {
+       "name": "TMG Powder",
+       "url": "https://remedymatch.com/body-systems/system-1-flow/muscle/228-tmg-powder-trimethylglycine"
+      }
+     ]
+    },
+    {
+     "slug": "tryptophan",
+     "name": "Tryptophan",
+     "alt_name": "",
+     "description": "Tryptophan is an essential amino acid that can be converted into 5-Hydroxytryptophan, the precursor for Serotonin and then Melatonin.Tryptophan has a ring structure, so it can carry a Spirit Mineral of the conscious body according to the Clinical Theory of Everything",
+     "remedies": []
+    },
+    {
+     "slug": "tyrosine",
+     "name": "Tyrosine",
+     "alt_name": "",
+     "description": "Tyrosine is a precursor for Thyroid hormone production.Tyrosine also provides a precursor for production of Catecholamine neurotransmitters that support mental focus and drive.Tyrosine can be made into L-DOPA, which converts into Dopamine, the precursor for Norepinephrine and then Epinephrine",
+     "remedies": []
+    },
+    {
+     "slug": "valine",
+     "name": "Valine",
+     "alt_name": "",
+     "description": "Valine is an essential amino acid with benefits for muscles, sleep, stress, immunity and appetite.Enzymes:Several types of enzymes are important including food enzymes, digestive enzymes, and most of all cellular metabolic enzymes",
+     "remedies": []
+    },
+    {
+     "slug": "amylase",
+     "name": "Amylase",
+     "alt_name": "",
+     "description": "Salivary Amylase digests carbohydrates in the mouth and Pancreatic Amylase continues that digestion in the small intestine.Both areas have an alkaline pH",
+     "remedies": []
+    },
+    {
+     "slug": "lipase",
+     "name": "Lipase",
+     "alt_name": "",
+     "description": "Lipase enzymes digest fats in the stomach and small intestine",
+     "remedies": []
+    },
+    {
+     "slug": "protease",
+     "name": "Protease",
+     "alt_name": "",
+     "description": "Protease enzymes digest proteins in the stomach and small intestine.We also use several proteolytic enzymes for systemic enzyme therapies.These include Lumbrokinase, Serrapeptase, and Nattokinase.Hormones:Hormones are circulating biocommunication molecules",
+     "remedies": []
+    },
+    {
+     "slug": "7-keto-dehydroepiandrosterone",
+     "name": "7-Keto Dehydroepiandrosterone",
+     "alt_name": "7-Keto DHEA",
+     "description": "7-Keto is a metabolite of DHEA that retains its benefits for supporting adrenal recovery from chronic stress and Rx steroid treatments, without converting into the sex hormones, so it preserves the hormonal status quo otherwise.We supply a gentle, sustainable dose of 7-Keto in Adrenal Repair: Sublingual 7-Keto",
+     "remedies": [
+      {
+       "name": "Adrenal Repair: Sublingual 7-Keto",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/adrenals/109-sublingual-7-keto"
+      }
+     ]
+    },
+    {
+     "slug": "cortisol",
+     "name": "Cortisol",
+     "alt_name": "",
+     "description": "Cortisol is a stress hormone.Considerations for balancing high Cortisol include Stress Release, and Adrenal Repair: Sublingual 7-Keto",
+     "remedies": [
+      {
+       "name": "Stress Release",
+       "url": "https://remedymatch.com/terrain-phases/phase-5-balance/stress-terrain/249-stress-release--cbd-synergy"
+      },
+      {
+       "name": "Adrenal Repair: Sublingual 7-Keto",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/adrenals/109-sublingual-7-keto"
+      }
+     ]
+    },
+    {
+     "slug": "dehydroepiandrosterone",
+     "name": "Dehydroepiandrosterone",
+     "alt_name": "DHEA",
+     "description": "DHEA is a natural adrenal steroid hormone that reduces inflammation.In controlled studies, doctors prescribed lower doses of Rx steroid medications when subjects received supplemental DHEA.We support the function of DHEA with either Endocrine Restore or Adrenal Repair: Sublingual 7-Keto",
+     "remedies": [
+      {
+       "name": "Endocrine Restore",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/34-endocrine-restore"
+      },
+      {
+       "name": "Adrenal Repair: Sublingual 7-Keto",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/adrenals/109-sublingual-7-keto"
+      }
+     ]
+    },
+    {
+     "slug": "dihydrotestosterone",
+     "name": "Dihydrotestosterone",
+     "alt_name": "DHT",
+     "description": "DHT is a metabolite of Testosterone that contributes to male pattern baldness and head hair loss in both males and females, as well as Prostate issues.We designed DHT Blocker to help solve these issues",
+     "remedies": [
+      {
+       "name": "DHT Blocker",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/279-dht-blocker"
+      }
+     ]
+    },
+    {
+     "slug": "estrogen",
+     "name": "Estrogen",
+     "alt_name": "",
+     "description": "Estrogen is produced in the Ovaries and helps regulate reproductive maturation and the menstrual cycle.It is made from DHEA which we supply along with Progesterone in Endocrine Restore",
+     "remedies": [
+      {
+       "name": "Endocrine Restore",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/34-endocrine-restore"
+      }
+     ]
+    },
+    {
+     "slug": "ghrelin",
+     "name": "Ghrelin",
+     "alt_name": "",
+     "description": "Ghrelin is the hunger hormone produced mainly by the Stomach, with a little bit also made by the brain, the small intestine, and the pancreas.We make Appestat to help regulate Ghrelin and hunger",
+     "remedies": [
+      {
+       "name": "Appestat",
+       "url": "https://remedymatch.com/body-systems/system-2-support/adipose-tissue-fat-metabolism/347-appestat"
+      }
+     ]
+    },
+    {
+     "slug": "leptin",
+     "name": "Leptin",
+     "alt_name": "",
+     "description": "Leptin is the satiety hormone released by fat cells to communicate to the hunger center in the brain",
+     "remedies": []
+    },
+    {
+     "slug": "melatonin",
+     "name": "Melatonin",
+     "alt_name": "",
+     "description": "Melatonin is produced in the daytime in the Mitochondria and serves as a primary antioxidant to protect these intracellular symbionts.This Mitochondrial Melatonin is produced in response to the Infrared radiation that is the majority of energy in sunlight.Most modern indoor lighting is completely devoid of Infrared energy output.At night Melatonin is produced by the Pineal gland and released into the blood.Melatonin is the only hormone that communicates to every cell in the body, coordinating our diurnal rhythms so all of our organs, meridians, and systems can coordinate their functions proper",
+     "remedies": [
+      {
+       "name": "Sleep Synergy",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/pineal/107-sleep-synergy"
+      },
+      {
+       "name": "Brain Cleanse",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/pineal/138-brain-cleanse"
+      },
+      {
+       "name": "Melatonin Max",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/pineal/272-melatonin-max"
+      },
+      {
+       "name": "OcuFlow Bedtime",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/eye-vision/optic-nerve/244-ocuflow-bedtime"
+      }
+     ]
+    },
+    {
+     "slug": "pregnenolone",
+     "name": "Pregnenolone",
+     "alt_name": "",
+     "description": "Pregnenolone is made from Cholesterol.Cholesterol is made by the liver and has many functions, including cellular protection against toxicity, cellular regeneration, and production of hormones and Vitamin D.We include a gentle, sustainable dose of Pregnenolone in Endocrine Restore",
+     "remedies": [
+      {
+       "name": "Endocrine Restore",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/34-endocrine-restore"
+      }
+     ]
+    },
+    {
+     "slug": "progesterone",
+     "name": "Progesterone",
+     "alt_name": "",
+     "description": "Progesterone is produced in the Ovaries and helps regulate the menstrual cycle.It is made from DHEA which we supply along with Progesterone in Endocrine Restore",
+     "remedies": [
+      {
+       "name": "Endocrine Restore",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/34-endocrine-restore"
+      }
+     ]
+    },
+    {
+     "slug": "testosterone",
+     "name": "Testosterone",
+     "alt_name": "",
+     "description": "",
+     "remedies": []
+    },
+    {
+     "slug": "thyroxine",
+     "name": "Thyroxine",
+     "alt_name": "",
+     "description": "Thyroid hormones Thyroxine (T4) and Triiodothyronine (T3) regulate the basal metabolic rate.The Thyroid also make Calcitonin which regulates Calcium metabolism and bone formation.Since the adrenals regulate short term boosts in metabolic rate, the two work in tandem.If there are deficiencies in one, it puts more stress on the other to compensate...Our Thyroid Support combines precursors and co-factors for Thyroid hormone production along with synergistic botanicals. © Copyclaim 2023Remedy Match LLC, DBA Healing Oasis[email protected]PO Box 126 Hilo, Hawai'i-Kingdom [96721]+1 (808) 217-9647 Com",
+     "remedies": [
+      {
+       "name": "Thyroid Support",
+       "url": "https://remedymatch.com/body-systems/system-4-communicate/endocrine/thyroid/117-thyroid-support"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
