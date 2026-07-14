@@ -71,30 +71,34 @@ def pattern_ref(name, description):
     return {"name": (name or "").strip(), "info": clip(description, sentences=3), "href": None}
 
 
-def remedy_ref(cx, spoken, product_exists=None):
-    """Remedy -> product page + curated meaning. href only when the resolved name
-    maps to a slug that product_exists() confirms; else pop-up only. product_exists
-    is required to emit any href (None => always pop-up only, the safe default)."""
+def remedy_ref(cx, spoken, product_exists=None, slug=None):
+    """Remedy -> product page + curated meaning. When `slug` is given (the caller
+    already knows the product slug), the meaning/href use it directly; otherwise the
+    spoken name is fuzzy-resolved to a catalog slug. href only when that slug passes
+    product_exists() — required to emit any href (None => pop-up only, the safe
+    default)."""
     name = (spoken or "").strip()
-    if not name:
+    use_slug = (slug or "").strip()
+    if not name and not use_slug:
         return {"name": name, "info": "", "href": None}
+    if not use_slug:
+        try:
+            resolved = _ba.resolve_remedy_name(cx, name) or name
+        except Exception:
+            resolved = name
+        use_slug = _slugify(resolved)
     try:
-        resolved = _ba.resolve_remedy_name(cx, name) or name
-    except Exception:
-        resolved = name
-    slug = _slugify(resolved)
-    try:
-        meaning = _bm.get_map(cx).get(slug, "")
+        meaning = _bm.get_map(cx).get(use_slug, "")
     except Exception:
         meaning = ""
     href = None
-    if slug and callable(product_exists):
+    if use_slug and callable(product_exists):
         try:
-            if product_exists(slug):
-                href = f"/begin/product/{slug}"
+            if product_exists(use_slug):
+                href = f"/begin/product/{use_slug}"
         except Exception:
             href = None
-    return {"name": name, "info": clip(meaning, sentences=2), "href": href}
+    return {"name": name or use_slug, "info": clip(meaning, sentences=2), "href": href}
 
 
 def function_ref(cx, title):

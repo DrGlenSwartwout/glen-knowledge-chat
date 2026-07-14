@@ -6255,15 +6255,24 @@ def begin_product_page_data(slug):
     card = _product_card(p) if not p.get("info_only") else {}
     how = "" if p.get("info_only") else _product_how(p)
     from dashboard.ingredients import slugify as _slugify
+    from dashboard import entity_refs as _er
     _raw_ingredients = p.get("ingredients") or card.get("ingredients", [])
     ingredients = []
     for _ing in _raw_ingredients:
         if isinstance(_ing, dict):
             _ing = dict(_ing)
             _ing["slug"] = _slugify(_ing.get("name") or "")
-            ingredients.append(_ing)
         else:
-            ingredients.append({"name": str(_ing), "dose": "", "slug": _slugify(str(_ing))})
+            _ing = {"name": str(_ing), "dose": "", "slug": _slugify(str(_ing))}
+        ingredients.append(_ing)
+    # Attach a short 'basic info' string per ingredient for the hover pop-up on the
+    # product page. Best-effort: any failure leaves info absent -> plain link.
+    try:
+        with sqlite3.connect(LOG_DB) as _icx:
+            for _ing in ingredients:
+                _ing["info"] = _er.ingredient_ref(_icx, _ing.get("name", ""), _ing.get("slug", "")).get("info", "")
+    except Exception:
+        pass
     intro = p.get("intro") or (card.get("description", "") or "").split(". ")[0]
     # Formulation-only surfaces (ingredient list, the formula comparison table + its Miron
     # rotator/story, the Miron educational video) are misleading on a device/book/service
@@ -6658,16 +6667,30 @@ def begin_ingredient_page_data(slug):
         if page and page.get("state") == "approved":
             sections = [{"id": s, "text": (page.get("content") or {}).get(s, "")}
                         for s in ("what_it_is", "research")]
+            _related_forms = page.get("related_forms") or []
+            _formulations = _ing.formulations_with(name)
+            # Short 'basic info' per related link for the hover pop-up: related forms
+            # are ingredients; formulations are products (meaning looked up by slug).
+            try:
+                from dashboard import entity_refs as _er
+                for _f in _related_forms:
+                    if isinstance(_f, dict) and _f.get("slug"):
+                        _f["info"] = _er.ingredient_ref(cx, _f.get("name", ""), _f.get("slug", "")).get("info", "")
+                for _fm in _formulations:
+                    if isinstance(_fm, dict) and _fm.get("slug"):
+                        _fm["info"] = _er.remedy_ref(cx, _fm.get("name", ""), slug=_fm.get("slug", "")).get("info", "")
+            except Exception:
+                pass
             return jsonify({
                 "slug": slug, "name": name, "state": "approved",
                 "sections": sections,
                 "research_score": page.get("research_score"),
                 "traditional_score": page.get("traditional_score"),
                 "traditional_use": page.get("traditional_use") or [],
-                "related_forms": page.get("related_forms") or [],
+                "related_forms": _related_forms,
                 "research_studies": _ing.research_studies(name),
                 "fmp": info.get("fmp") or {},
-                "formulations": _ing.formulations_with(name),
+                "formulations": _formulations,
             })
         # paid, not approved -> record request + kick off build, show preparing
         if email:

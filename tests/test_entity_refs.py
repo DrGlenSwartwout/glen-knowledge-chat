@@ -44,6 +44,18 @@ def test_remedy_ref_blank_name():
     assert er.remedy_ref(_FakeCx(), "")["href"] is None
 
 
+def test_remedy_ref_direct_slug_skips_name_resolution(monkeypatch):
+    # When the caller already knows the slug, meaning is looked up by it directly
+    # and resolve_remedy_name is never consulted.
+    def _should_not_run(cx, s):
+        raise AssertionError("resolve_remedy_name must not run when slug is given")
+    monkeypatch.setattr(er._ba, "resolve_remedy_name", _should_not_run)
+    monkeypatch.setattr(er._bm, "get_map", lambda cx: {"immune-support": "A daily formula. Two."})
+    r = er.remedy_ref(_FakeCx(), "Immune Support", slug="immune-support")
+    assert r["info"] == "A daily formula. Two."
+    assert r["href"] is None  # no product_exists passed -> pop-up only
+
+
 def test_function_ref_uses_topic_page_and_links(monkeypatch):
     # topic_pages.get_page exposes the parsed content under "content" (not content_json).
     page = {"slug": "detoxification", "kind": "function", "state": "approved",

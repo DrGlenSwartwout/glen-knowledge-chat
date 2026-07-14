@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="stylesheet" href="/static/entity-ref.css">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Product · Dr. Glen Swartwout</title>
@@ -231,6 +232,7 @@
     }
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/entity-ref.js"></script>
 </head>
 <body>
   <div class="brandbar">
@@ -407,7 +409,9 @@
           a.setAttribute('href', '/begin/ingredient/' + ingSlug);
           a.setAttribute('target', '_blank');
           a.setAttribute('rel', 'noopener');
-          a.className = 'sp-ing-link';
+          a.className = 'sp-ing-link entity-ref';
+          a.setAttribute('data-name', ingName);
+          if (ing.info) a.setAttribute('data-info', ing.info);
           var nm = document.createElement('span');
           nm.className = 'sp-ing-name';
           nm.textContent = ingName;
@@ -1489,6 +1493,9 @@
       .then(function(data){
         if (!data) return;
         renderProduct(data);
+        // Bind the shared entity-ref hover pop-up once, at the document level, so
+        // ingredient links revealed later (accordion expand) are covered too.
+        if (window.wireEntityRefs) wireEntityRefs(document);
       })
       .catch(function(){
         hide('sp-loading');
