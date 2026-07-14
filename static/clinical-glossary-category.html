@@ -93,13 +93,14 @@
           r.appendChild(document.createTextNode('Related remedies: '));
           e.remedies.forEach(function(x, i){
             if(i) r.appendChild(document.createTextNode(', '));
+            var dn=(x.name||'').replace(/ in Terrain Restore$/,'');  // trim delivery-base suffix for display
             if(x.product_slug){
               var a=document.createElement('a'); a.className='rem-link';
               a.href='/begin/product/'+encodeURIComponent(x.product_slug);
-              a.target='_blank'; a.rel='noopener'; a.textContent=x.name;
+              a.target='_blank'; a.rel='noopener'; a.textContent=dn;
               r.appendChild(a);
             } else {
-              r.appendChild(document.createTextNode(x.name));
+              r.appendChild(document.createTextNode(dn));
             }
           });
           d.appendChild(r);

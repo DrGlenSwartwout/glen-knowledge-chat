@@ -1254,6 +1254,642 @@
      "url": "https://lpi.oregonstate.edu/mic/other-nutrients/choline"
     }
    ]
+  },
+  {
+   "key": "lifejourney",
+   "title": "Life Journey (Essences)",
+   "relation_label": "Supports",
+   "blurb": "The NES 'Life Journey' consciousness and emotional themes an E4L scan can surface, each matched to supportive flower essences, gem elixirs and enhancers. Vibrational companions, not diagnosis.",
+   "path": "lifejourney",
+   "source": "E4L Life Journey screen + flower-essence/gem-elixir inventory",
+   "entries": [
+    {
+     "slug": "lj-forgiveness",
+     "name": "Forgiveness",
+     "code": "LJ-forgiveness",
+     "subcategory": "Understand Your World",
+     "description": "Releasing blame and resentment toward self and others so the heart can move on.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Forgiveness Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Willow Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-intuition",
+     "name": "Intuition",
+     "code": "LJ-intuition",
+     "subcategory": "Understand Your World",
+     "description": "Trusting inner knowing and subtle perception over outside opinion.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Intuition Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Inner Voice Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Psychic Abilities Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-endings",
+     "name": "Endings",
+     "code": "LJ-endings",
+     "subcategory": "Understand Your World",
+     "description": "Completing chapters cleanly and letting the past be past.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Honeysuckle Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Life's Transitions Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Serene Transition Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-empathy",
+     "name": "Empathy",
+     "code": "LJ-empathy",
+     "subcategory": "Understand Your World",
+     "description": "Open-hearted attunement to others without losing oneself.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Warmth Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-signs",
+     "name": "Signs",
+     "code": "LJ-signs",
+     "subcategory": "Understand Your World",
+     "description": "Noticing and reading the meaningful cues life offers.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Intuition Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Insight Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-creator",
+     "name": "Creator",
+     "code": "LJ-creator",
+     "subcategory": "Understand Your World",
+     "description": "Owning one's creative agency to shape experience.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Initiative Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-illusions",
+     "name": "Illusions",
+     "code": "LJ-illusions",
+     "subcategory": "Understand Your World",
+     "description": "Seeing through distortion to what is actually true.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Spiritual Clarity Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Insight Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-destiny",
+     "name": "Destiny",
+     "code": "LJ-destiny",
+     "subcategory": "Understand Your World",
+     "description": "Sensing and stepping toward one's larger path.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Living With Soul Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-define-your-purpose",
+     "name": "Define Your Purpose",
+     "code": "LJ-define-your-purpose",
+     "subcategory": "Align Your Purpose",
+     "description": "Clarifying the true calling behind one's actions.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Living With Soul Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "New Directions Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-align-your-purpose",
+     "name": "Align Your Purpose",
+     "code": "LJ-align-your-purpose",
+     "subcategory": "Align Your Purpose",
+     "description": "Bringing daily life into coherence with that purpose.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "New Directions Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-choice-point",
+     "name": "Choice Point",
+     "code": "LJ-choice-point",
+     "subcategory": "Align Your Purpose",
+     "description": "Resolving indecision and committing to a direction.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Scleranthus Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Wild Oats Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-wake-up",
+     "name": "Wake Up",
+     "code": "LJ-wake-up",
+     "subcategory": "Align Your Purpose",
+     "description": "Shaking off apathy/resignation and re-engaging with life.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Wild Rose Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Clematis Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-engage-with-passion",
+     "name": "Engage With Passion",
+     "code": "LJ-engage-with-passion",
+     "subcategory": "Align Your Purpose",
+     "description": "Relighting drive, aliveness and enthusiasm.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Passion Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "VITLTY Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-wisdom",
+     "name": "Wisdom",
+     "code": "LJ-wisdom",
+     "subcategory": "Align Your Purpose",
+     "description": "The higher, discerning vantage above the immediate.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Spiritual Clarity Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Overview Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-humility",
+     "name": "Humility",
+     "code": "LJ-humility",
+     "subcategory": "Align Your Purpose",
+     "description": "Right-sized self-regard; leading without domination.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Vine Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Pride Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-lovable",
+     "name": "I am lovable",
+     "code": "LJ-i-am-lovable",
+     "subcategory": "Beliefs",
+     "description": "Knowing oneself as worthy of love exactly as one is.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Love Within Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Rose Quartz Gem Elixir in Terrain Restore"
+      },
+      {
+       "name": "Pine Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-good-enough-as-i-am",
+     "name": "I am good enough as I am",
+     "code": "LJ-i-am-good-enough-as-i-am",
+     "subcategory": "Beliefs",
+     "description": "Self-acceptance without conditions or striving.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Self-Esteem Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Worthiness Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Larch Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-feel-safe-in-the-world",
+     "name": "I feel safe in the world",
+     "code": "LJ-i-feel-safe-in-the-world",
+     "subcategory": "Beliefs",
+     "description": "Baseline felt safety, calming fear.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Mimulus Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Aspen Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Groundedness Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-can-trust",
+     "name": "I can trust",
+     "code": "LJ-i-can-trust",
+     "subcategory": "Beliefs",
+     "description": "Openness and faith in life and in others.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-my-life-is-full-of-hope",
+     "name": "My life is full of hope",
+     "code": "LJ-my-life-is-full-of-hope",
+     "subcategory": "Beliefs",
+     "description": "Renewed hope and optimism after discouragement.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Gorse Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Gentian Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Positivity Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-capable",
+     "name": "I am capable",
+     "code": "LJ-i-am-capable",
+     "subcategory": "Beliefs",
+     "description": "Confidence to attempt and succeed.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Larch Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Self Esteem Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-am-unaffected-by-what-others-think-of-me",
+     "name": "I am unaffected by what others think of me",
+     "code": "LJ-i-am-unaffected-by-what-others-think-of-me",
+     "subcategory": "Beliefs",
+     "description": "Standing in one's own guidance and worth.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Walnut Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Cerato Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-i-feel-supported-by-others",
+     "name": "I feel supported by others",
+     "code": "LJ-i-feel-supported-by-others",
+     "subcategory": "Beliefs",
+     "description": "Receiving support and not carrying it all alone.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Sweet Chestnut Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-love",
+     "name": "Love",
+     "code": "LJ-love",
+     "subcategory": "Transformation (chakras)",
+     "description": "Opening and steadying the heart.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Heart Chakra Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Rose Quartz Gem Elixir in Terrain Restore"
+      },
+      {
+       "name": "Love Within Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-focus",
+     "name": "Focus",
+     "code": "LJ-focus",
+     "subcategory": "Transformation (chakras)",
+     "description": "Quieting mental noise into clear attention.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "White Chestnut Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Clarity Himalayan Flower Enhancer in Terrain Restore"
+      },
+      {
+       "name": "Clear Thoughts Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-honesty",
+     "name": "Honesty",
+     "code": "LJ-honesty",
+     "subcategory": "Transformation (chakras)",
+     "description": "Truthfulness with oneself behind the mask.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Agrimony Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "True to Self Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-gratitude",
+     "name": "Gratitude",
+     "code": "LJ-gratitude",
+     "subcategory": "Transformation (chakras)",
+     "description": "Cultivating thankfulness and appreciation.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Gratefulness Himalayan Flower Enhancer in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-willpower",
+     "name": "Willpower",
+     "code": "LJ-willpower",
+     "subcategory": "Transformation (chakras)",
+     "description": "Reclaiming will, boundaries and resolve.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Centaury Agave Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Strength Himalayan Flower Enhancer in Terrain Restore"
+      },
+      {
+       "name": "Taking Charge Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-compassion",
+     "name": "Compassion",
+     "code": "LJ-compassion",
+     "subcategory": "Transformation (chakras)",
+     "description": "Warmth and tolerance toward self and others.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Holly Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Beech Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-trust",
+     "name": "Trust",
+     "code": "LJ-trust",
+     "subcategory": "Transformation (chakras)",
+     "description": "Faith that softens guardedness.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Trust Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-intention-ed1",
+     "name": "Intention (ED1)",
+     "code": "LJ-intention-ed1",
+     "subcategory": "Creative Cycle",
+     "description": "Initiating and setting a clear creative intent.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Creative Energy Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Initiative Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-communicate-ed2",
+     "name": "Communicate (ED2)",
+     "code": "LJ-communicate-ed2",
+     "subcategory": "Creative Cycle",
+     "description": "Expressing oneself clearly and being heard.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Communication Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-identity-ed3",
+     "name": "Identity (ED3)",
+     "code": "LJ-identity-ed3",
+     "subcategory": "Creative Cycle",
+     "description": "Knowing and being true to who one is.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "True to Self Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Self-Image Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-emotion-ed6",
+     "name": "Emotion (ED6)",
+     "code": "LJ-emotion-ed6",
+     "subcategory": "Creative Cycle",
+     "description": "Steadying and harmonizing the emotional field.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Harmony Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Inner Peace Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-boundary-ed10",
+     "name": "Boundary (ED10)",
+     "code": "LJ-boundary-ed10",
+     "subcategory": "Creative Cycle",
+     "description": "Holding healthy limits and protecting one's field.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Boundaries Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-transform-ed11",
+     "name": "Transform (ED11)",
+     "code": "LJ-transform-ed11",
+     "subcategory": "Creative Cycle",
+     "description": "Moving through change and shifting old patterns.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Changing Patterns Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Life Changes Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-centred-ed14",
+     "name": "Centred (ED14)",
+     "code": "LJ-centred-ed14",
+     "subcategory": "Creative Cycle",
+     "description": "Returning to a grounded, balanced center.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Inner Balance Flower Essence in Terrain Restore"
+      },
+      {
+       "name": "Groundedness Flower Essence in Terrain Restore"
+      }
+     ]
+    },
+    {
+     "slug": "lj-flow-ed5",
+     "name": "Flow (ED5)",
+     "code": "LJ-flow-ed5",
+     "subcategory": "Creative Cycle",
+     "description": "Restoring easy movement and energetic flow.",
+     "affects": [],
+     "remedies": [
+      {
+       "name": "Energy Flow Flower Essence in Terrain Restore"
+      }
+     ]
+    }
+   ]
   }
  ]
 }
