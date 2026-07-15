@@ -39192,6 +39192,26 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Ledger paid/balance annotation: attach ledger_paid_cents/ledger_balance_cents
+            # ONLY to orders that have active order_payments rows (a payment or refund
+            # recorded), so pre-ledger / legacy-paid orders keep their pay_status badge
+            # without a misleading "balance = full total". One grouped query — no
+            # per-order round-trips. Raw SQL (NOT the _op module: this handler locally
+            # rebinds `_op` to dashboard.opens further down, which would shadow it).
+            try:
+                _led = {}
+                for e in cx.execute(
+                        "SELECT order_id, kind, COALESCE(SUM(amount_cents),0) FROM order_payments "
+                        "WHERE status='active' GROUP BY order_id, kind").fetchall():
+                    _led.setdefault(int(e[0]), {"payment": 0, "refund": 0})[e[1]] = int(e[2] or 0)
+                for o in rows:
+                    led = _led.get(int(o.get("id")))
+                    if led:
+                        paid = led["payment"] - led["refund"]
+                        o["ledger_paid_cents"] = paid
+                        o["ledger_balance_cents"] = int(o.get("total_cents") or 0) - paid
+            except Exception as _e:
+                print(f"[orders] ledger balance annotate skipped: {_e!r}", flush=True)
             # Reward-gift attach (Phase 2 Slice 2 Task 4): show a member's earned-but-
             # unfulfilled reward gift on the pack board for their next order, across ALL
             # order sources, so Rae can pack it. Gated — off by default, no payload change.
