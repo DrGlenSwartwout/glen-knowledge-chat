@@ -18965,6 +18965,34 @@ def api_portal_life_stress_selection(token):
         return jsonify({"ok": True, "saved": filtered})
 
 
+@app.route("/api/practitioner/life-stress-selection/<path:patient_email>", methods=["GET"])
+def api_practitioner_life_stress_selection(patient_email):
+    """Read-only view of a client's saved Life Stress essence selection, for the
+    practitioner (Glen/Rae). Returns the full pool + which slugs the client picked.
+    Same guard order as the condition-program composer GET: flag off -> 404,
+    no pid -> 401, not authorized -> 403 (checked before any patient data read)."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    email = (patient_email or "").strip().lower()
+    from dashboard import continuity_view as _cv
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        selected = life_stress_selection.get(cx, email)
+        row = cx.execute("SELECT updated_at FROM life_stress_selections WHERE email=?",
+                         (email,)).fetchone()
+    block = _life_stress_for(email) or {}
+    pool = [{"slug": it.get("slug"), "name": it.get("name"),
+             "pattern": (it.get("note") or "")} for it in block.get("items", [])]
+    return jsonify({"ok": True, "pool": pool, "selected": selected,
+                    "updated_at": (row["updated_at"] if row else None)})
+
+
 @app.route("/api/console/client-condition", methods=["GET"])
 def api_console_client_condition_get():
     """Owner console: how a client's eye-condition support-program key
