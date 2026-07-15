@@ -151,6 +151,42 @@ def test_refund_reduces_paid_and_guards_overrefund(cx, monkeypatch):
         op.add_refund(cx, oid, 9000, "Zelle", refunds_payment_id=pay["id"])
 
 
+def test_standalone_refund_reduces_paid_and_caps_at_net_paid(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    oid = _oid(cx)
+    op.add_payment(cx, oid, 10000, "Zelle")
+    # standalone refund — no refunds_payment_id — reduces net paid
+    op.add_refund(cx, oid, 4000, "Zelle")
+    b = op.balance(cx, oid)
+    assert b["refunded_cents"] == 4000
+    assert b["paid_cents"] == 10000
+    # net paid is now 6000 — a further standalone refund is capped there
+    with pytest.raises(ValueError):
+        op.add_refund(cx, oid, 7000, "Zelle")
+
+
+def test_mixed_standalone_and_payment_tied_refund_respects_net_paid(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    oid = _oid(cx)
+    # $100 payment A
+    pay_a = op.add_payment(cx, oid, 10000, "Zelle")
+    # a $50 standalone refund succeeds — net paid drops to $50
+    op.add_refund(cx, oid, 5000, "Zelle")
+    assert op.balance(cx, oid)["refunded_cents"] == 5000
+    # a payment-tied refund of $80 against A would need $80 of net paid, but
+    # only $50 remains — must be blocked even though A itself has $100 un-refunded
+    with pytest.raises(ValueError):
+        op.add_refund(cx, oid, 8000, "Zelle", refunds_payment_id=pay_a["id"])
+
+
 def test_card_refund_calls_stripe_noncard_does_not(cx, monkeypatch):
     from dashboard import qbo_billing, stripe_pay
     monkeypatch.setattr(qbo_billing, "get_invoice",
@@ -180,9 +216,14 @@ def test_void_refund_reapplies_paid(cx, monkeypatch):
                         lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
     monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
     monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
-    monkeypatch.setattr(qbo_billing, "void_payment", lambda txn: None)
+    voided_refunds = {}
+    monkeypatch.setattr(qbo_billing, "void_refund",
+                        lambda txn: voided_refunds.update(txn=txn))
     oid = _oid(cx)
     pay = op.add_payment(cx, oid, 13100, "Zelle")
     ref = op.add_refund(cx, oid, 5000, "Zelle", refunds_payment_id=pay["id"])
     op.void(cx, ref["id"], "issued in error")
     assert op.balance(cx, oid)["refunded_cents"] == 0
+    # a refund row's qbo_txn_id is a RefundReceipt — must dispatch to void_refund,
+    # never void_payment (wrong QBO endpoint)
+    assert voided_refunds == {"txn": "R1"}

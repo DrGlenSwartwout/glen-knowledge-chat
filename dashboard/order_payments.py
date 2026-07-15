@@ -2,10 +2,13 @@
 balances are always derived, never stored. Functions take a sqlite connection
 for testability. QBO/Stripe sync lives in this module (Tasks 2-3) and is called
 as module functions so tests can monkeypatch them."""
+import logging
 import sqlite3
 from datetime import datetime, timezone
 
 from dashboard import orders, qbo_billing, stripe_pay
+
+log = logging.getLogger(__name__)
 
 _METHODS = ("Credit card (Stripe)", "eProcessing", "Check", "Cash",
             "Venmo", "PayPal", "Zelle", "Wise")
@@ -141,8 +144,12 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
 
 
 def refundable_cents(cx, order_id, refunds_payment_id=None):
-    """How much can still be refunded. Against a specific payment: that payment's
-    amount minus active refunds pointing at it. Otherwise: order net paid."""
+    """How much can still be refunded. Against a specific payment: the lesser of
+    that payment's un-refunded remainder and the order's net paid (a standalone
+    refund already reduces net paid, so a payment-tied refund must not be able to
+    jointly drive it negative). Otherwise (standalone): order net paid."""
+    b = balance(cx, order_id)
+    order_net_paid = max(0, b["paid_cents"] - b["refunded_cents"])
     if refunds_payment_id is not None:
         pay = _row(cx, refunds_payment_id)
         if not pay or pay["kind"] != "payment" or pay["status"] != "active":
@@ -151,9 +158,9 @@ def refundable_cents(cx, order_id, refunds_payment_id=None):
             "SELECT COALESCE(SUM(amount_cents),0) FROM order_payments "
             "WHERE refunds_payment_id=? AND kind='refund' AND status='active'",
             (refunds_payment_id,)).fetchone()[0]
-        return int(pay["amount_cents"]) - int(used or 0)
-    b = balance(cx, order_id)
-    return b["paid_cents"] - b["refunded_cents"]
+        remainder = int(pay["amount_cents"]) - int(used or 0)
+        return min(remainder, order_net_paid)
+    return order_net_paid
 
 
 def _push_refund(cx, pid):
@@ -183,10 +190,20 @@ def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
     if src_pay and src_pay.get("source") == "stripe" and src_pay.get("external_ref"):
         sr = stripe_pay.refund(src_pay["external_ref"], amount_cents=amt)
         external_ref = sr.get("id")
-    row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
-                  source=("stripe" if external_ref else "manual"),
-                  external_ref=external_ref, refunds_payment_id=refunds_payment_id,
-                  paid_at=None, note=note, actor=actor)
+    try:
+        row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
+                      source=("stripe" if external_ref else "manual"),
+                      external_ref=external_ref, refunds_payment_id=refunds_payment_id,
+                      paid_at=None, note=note, actor=actor)
+    except Exception:
+        if external_ref:
+            # Stripe already moved the money — this row is the only trace of it.
+            # Losing the insert here means an unrecorded refund; log a breadcrumb
+            # for manual reconciliation and re-raise (never swallow).
+            log.error("Stripe refund %s succeeded for order %s but the ledger "
+                      "insert failed — refund is unrecorded, needs manual "
+                      "reconciliation", external_ref, order_id)
+        raise
     _push_refund(cx, row["id"])
     return _row(cx, row["id"])
 
@@ -198,7 +215,10 @@ def void(cx, payment_id, reason, *, actor=None):
         return row
     if row.get("qbo_txn_id"):
         try:
-            qbo_billing.void_payment(row["qbo_txn_id"])
+            if row["kind"] == "refund":
+                qbo_billing.void_refund(row["qbo_txn_id"])
+            else:
+                qbo_billing.void_payment(row["qbo_txn_id"])
             sync_state = "void_synced"
         except Exception:
             # keep the app void; row stays flagged for resync/repair
@@ -221,7 +241,10 @@ def resync(cx, payment_id):
         # never permanently stranded as 'void_error'.
         if row.get("qbo_sync") == "void_error" and row.get("qbo_txn_id"):
             try:
-                qbo_billing.void_payment(row["qbo_txn_id"])
+                if row["kind"] == "refund":
+                    qbo_billing.void_refund(row["qbo_txn_id"])
+                else:
+                    qbo_billing.void_payment(row["qbo_txn_id"])
                 _mark_sync(cx, payment_id, state="void_synced")
             except Exception:
                 pass  # still void_error; another resync can retry later
