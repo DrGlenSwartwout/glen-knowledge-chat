@@ -3,15 +3,11 @@ balances are always derived, never stored. Functions take a sqlite connection
 for testability. QBO/Stripe sync lives in this module (Tasks 2-3) and is called
 as module functions so tests can monkeypatch them."""
 import logging
-import sqlite3
 from datetime import datetime, timezone
 
 from dashboard import orders, qbo_billing, stripe_pay
 
 log = logging.getLogger(__name__)
-
-_METHODS = ("Credit card (Stripe)", "eProcessing", "Check", "Cash",
-            "Venmo", "PayPal", "Zelle", "Wise")
 
 
 def _now():

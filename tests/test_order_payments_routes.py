@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from dashboard import rbac as _rbac
+
 
 def _client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
@@ -40,9 +42,33 @@ def test_add_payment_requires_actor(tmp_path, monkeypatch):
     assert r.status_code == 401
 
 
+def test_va_actor_rejected_on_write_routes_but_allowed_to_read(tmp_path, monkeypatch):
+    """A VA-role actor (e.g. Shaira) must be rejected on all four money-write
+    routes, but the GET list route (read-only) must still allow VA access."""
+    appmod, client = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role="va", name="shaira"))
+
+    r1 = client.post("/api/orders/1/payments", json={"amount": 131, "method": "Zelle"})
+    assert r1.status_code == 401
+
+    r2 = client.post("/api/orders/1/refunds", json={"amount": 31, "method": "Zelle"})
+    assert r2.status_code == 401
+
+    r3 = client.post("/api/orders/payments/1/void", json={"reason": "duplicate"})
+    assert r3.status_code == 401
+
+    r4 = client.post("/api/orders/payments/1/resync")
+    assert r4.status_code == 401
+
+    g = client.get("/api/orders/1/payments")
+    assert g.status_code == 200
+
+
 def test_add_payment_and_balance(tmp_path, monkeypatch):
     appmod, client = _client(tmp_path, monkeypatch)
-    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role="owner", name="owner"))
     r = client.post("/api/orders/1/payments", json={"amount": 131.00, "method": "Zelle"})
     assert r.status_code == 200 and r.get_json()["ok"] is True
     g = client.get("/api/orders/1/payments").get_json()
@@ -51,7 +77,8 @@ def test_add_payment_and_balance(tmp_path, monkeypatch):
 
 def test_add_refund_and_void_and_resync(tmp_path, monkeypatch):
     appmod, client = _client(tmp_path, monkeypatch)
-    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role="owner", name="owner"))
     pay = client.post("/api/orders/1/payments",
                        json={"amount": 131.00, "method": "Zelle"}).get_json()
     pid = pay["row"]["id"]
@@ -137,7 +164,8 @@ def test_client_invoice_shows_payments_and_balance(tmp_path, monkeypatch):
     a payments list, and balance_due_cents net of what's been paid. A voided
     payment must never appear in the payments list."""
     appmod, client = _client(tmp_path, monkeypatch)
-    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role="owner", name="owner"))
 
     from dashboard import practitioner_portal as PP
     # The invoice-token lookup (_pp.order_id_from_invoice_token) uses PP's own
@@ -183,7 +211,8 @@ def test_payments_list_includes_manual_payments(tmp_path, monkeypatch):
     charges, not just live in the per-order ledger. A voided manual payment
     must never leak into the view."""
     appmod, client = _client(tmp_path, monkeypatch)
-    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role="owner", name="owner"))
 
     pay = client.post("/api/orders/1/payments",
                        json={"amount": 75.00, "method": "Zelle"}).get_json()

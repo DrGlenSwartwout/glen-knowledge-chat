@@ -37243,7 +37243,7 @@ def api_order_payments_list(oid):
 @app.route("/api/orders/<int:oid>/payments", methods=["POST"])
 def api_order_payments_add(oid):
     actor = _bos_actor()
-    if actor is None:
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
@@ -37253,7 +37253,7 @@ def api_order_payments_add(oid):
             cx, oid, round(float(b.get("amount") or 0) * 100),
             b.get("method") or "", source=b.get("source") or "manual",
             external_ref=b.get("external_ref"), paid_at=b.get("paid_at"),
-            note=b.get("note"), actor=str(actor))
+            note=b.get("note"), actor=actor.name)
         return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -37264,7 +37264,7 @@ def api_order_payments_add(oid):
 @app.route("/api/orders/<int:oid>/refunds", methods=["POST"])
 def api_order_refunds_add(oid):
     actor = _bos_actor()
-    if actor is None:
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
@@ -37274,7 +37274,7 @@ def api_order_refunds_add(oid):
             cx, oid, round(float(b.get("amount") or 0) * 100),
             b.get("method") or "",
             refunds_payment_id=b.get("refunds_payment_id"),
-            note=b.get("note"), actor=str(actor))
+            note=b.get("note"), actor=actor.name)
         return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -37285,13 +37285,13 @@ def api_order_refunds_add(oid):
 @app.route("/api/orders/payments/<int:pid>/void", methods=["POST"])
 def api_order_payment_void(pid):
     actor = _bos_actor()
-    if actor is None:
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
-        row = _op.void(cx, pid, b.get("reason") or "", actor=str(actor))
+        row = _op.void(cx, pid, b.get("reason") or "", actor=actor.name)
         oid = row["order_id"] if row else None
         return jsonify({"ok": True, "row": row,
                         "balance": _op.balance(cx, oid) if oid else None})
@@ -37301,7 +37301,8 @@ def api_order_payment_void(pid):
 
 @app.route("/api/orders/payments/<int:pid>/resync", methods=["POST"])
 def api_order_payment_resync(pid):
-    if _bos_actor() is None:
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
