@@ -18983,6 +18983,7 @@ def api_practitioner_life_stress_selection(patient_email):
         return jsonify({"ok": False, "error": "not signed in"}), 401
     email = (patient_email or "").strip().lower()
     from dashboard import continuity_view as _cv
+    from dashboard import life_stress_curation
     with sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _continuity_cx(cx)
@@ -18991,11 +18992,45 @@ def api_practitioner_life_stress_selection(patient_email):
         selected = life_stress_selection.get(cx, email)
         row = cx.execute("SELECT updated_at FROM life_stress_selections WHERE email=?",
                          (email,)).fetchone()
+        cur = life_stress_curation.get(cx, email)
     block = _life_stress_for(email) or {}
     pool = [{"slug": it.get("slug"), "name": it.get("name"),
              "pattern": (it.get("note") or "")} for it in block.get("items", [])]
     return jsonify({"ok": True, "pool": pool, "selected": selected,
-                    "updated_at": (row["updated_at"] if row else None)})
+                    "updated_at": (row["updated_at"] if row else None),
+                    "curation": cur})
+
+
+@app.route("/api/practitioner/life-stress-curation/<path:patient_email>", methods=["POST"])
+def api_practitioner_life_stress_curation(patient_email):
+    """Practitioner saves a curated essence list for a client (the prescription that
+    replaces the auto-pool). Empty slugs -> clears the curation. Same guard order as
+    the life-stress-selection read: flag off -> 404, no pid -> 401, not authorized ->
+    403 (checked before any write). No money path -- writes only life_stress_curations."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    email = (patient_email or "").strip().lower()
+    body = request.get_json(silent=True) or {}
+    submitted = [str(s).strip() for s in (body.get("slugs") or []) if str(s).strip()]
+    note = str(body.get("note") or "")
+    # keep only slugs that resolve to a real product
+    prods = (_PRODUCTS.get("products") or {})
+    valid = [s for s in submitted if s in prods or life_stress.slug_for_essence(s, _PRODUCTS)]
+    from dashboard import continuity_view as _cv
+    from dashboard import life_stress_curation
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        if valid:
+            life_stress_curation.set(cx, email, pid, valid, note)
+        else:
+            life_stress_curation.clear(cx, email)
+    return jsonify({"ok": True, "saved": valid})
 
 
 @app.route("/api/console/client-condition", methods=["GET"])
