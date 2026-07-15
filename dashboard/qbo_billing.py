@@ -290,6 +290,51 @@ def record_payment(customer_id, amount_cents, invoice_id, method=None):
     return _post("/payment", body).get("Payment")
 
 
+def void_payment(qbo_txn_id):
+    """Delete a QBO Payment (used when a console payment row is voided). QBO
+    'delete' requires the entity's CURRENT SyncToken (optimistic concurrency),
+    so fetch the Payment first — mirrors get_invoice's fetch-then-act pattern.
+    Raises if the payment can't be fetched or the delete is rejected."""
+    tok = money.qb_refresh()
+    payment = money.qb_get(tok, f"/payment/{qbo_txn_id}",
+                           {"minorversion": MINOR}).get("Payment")
+    if not payment:
+        raise RuntimeError(f"payment {qbo_txn_id} not found")
+    _post("/payment?operation=delete",
+         {"Id": str(qbo_txn_id), "SyncToken": str(payment["SyncToken"])})
+
+
+def void_refund(qbo_txn_id):
+    """Delete a QBO RefundReceipt (used when a console refund row is voided). A
+    refund's qbo_txn_id is a RefundReceipt Id, not a Payment Id — this targets
+    the correct endpoint. QBO 'delete' requires the entity's CURRENT SyncToken
+    (optimistic concurrency), so fetch the RefundReceipt first — mirrors
+    void_payment's fetch-then-act pattern. Raises if the refund receipt can't
+    be fetched or the delete is rejected."""
+    tok = money.qb_refresh()
+    refund = money.qb_get(tok, f"/refundreceipt/{qbo_txn_id}",
+                          {"minorversion": MINOR}).get("RefundReceipt")
+    if not refund:
+        raise RuntimeError(f"refund receipt {qbo_txn_id} not found")
+    _post("/refundreceipt?operation=delete",
+         {"Id": str(qbo_txn_id), "SyncToken": str(refund["SyncToken"])})
+
+
+def record_refund(customer_id, amount_cents, invoice_id, method=None):
+    """Record money-out against the customer for a refund on an invoice, as a QBO
+    RefundReceipt. Amount in cents. `method` is memoed for traceability."""
+    amt = round(int(amount_cents) / 100.0, 2)
+    body = {
+        "CustomerRef": {"value": str(customer_id)},
+        "TotalAmt": amt,
+        "Line": [{"Amount": amt, "DetailType": "SalesItemLineDetail",
+                  "SalesItemLineDetail": {}}],
+        "PrivateNote": "Console refund — invoice " + str(invoice_id)
+                       + (" — method: " + str(method) if method else ""),
+    }
+    return _post("/refundreceipt", body).get("RefundReceipt")
+
+
 def get_invoice_pay_link(invoice):
     """Shareable hosted-payment link. Present (InvoiceLink) only when the invoice
     was created with online payment enabled AND QuickBooks Payments is active."""

@@ -120,7 +120,7 @@
 
   <div id="panel-payments" class="money-panel">
     <h1>Payments</h1>
-    <div class="sub">Stripe charges — one-time checkouts and subscription renewals. Read-only.</div>
+    <div class="sub">Stripe charges plus manually-recorded Zelle/check/cash/other payments. Read-only.</div>
 
     <div class="fail-banner" id="p-failBanner"></div>
 
@@ -132,6 +132,7 @@
       <button data-src="membership" onclick="MoneyPayments.setFilter(this)">Coaching</button>
       <button data-src="biofield_trial" onclick="MoneyPayments.setFilter(this)">Trials</button>
       <button data-src="funnel" onclick="MoneyPayments.setFilter(this)">Funnel</button>
+      <button data-src="manual" onclick="MoneyPayments.setFilter(this)">Manual</button>
     </div>
 
     <table id="p-tbl" style="display:none">
@@ -141,7 +142,7 @@
       <tbody id="p-board"></tbody>
     </table>
     <div id="p-err"></div>
-    <div id="p-empty">No Stripe payments yet.</div>
+    <div id="p-empty">No payments yet.</div>
   </div>
 
   <div id="panel-receivables" class="money-panel" style="display:none">

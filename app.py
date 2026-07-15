@@ -9002,6 +9002,12 @@ def begin_checkout_return():
                         try:
                             _oih = _bos_orders.find_order_by_external_ref(_cxih, inv)
                             if _oih:
+                                _op.ensure_table(_cxih)
+                                _op.add_payment(
+                                    _cxih, _oih["id"],
+                                    int(sess.get("amount_total") or 0),
+                                    "Credit card (Stripe)", source="stripe",
+                                    external_ref=pi_id)
                                 _bos_orders.set_order_payment(
                                     _cxih, _oih["id"], method="card",
                                     amount_cents=int(sess.get("amount_total") or 0))
@@ -9015,11 +9021,12 @@ def begin_checkout_return():
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 if inv and cid:
-                    try:
-                        from dashboard import qbo_billing as _qb_ret
-                        _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                    except Exception as e:
-                        print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
+                    if _kind != "in-house":
+                        try:
+                            from dashboard import qbo_billing as _qb_ret
+                            _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                        except Exception as e:
+                            print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id:
                         _o_for_points = None
                         try:
@@ -36149,6 +36156,7 @@ import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (ho
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
+from dashboard import order_payments as _op
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
@@ -36206,6 +36214,7 @@ def _init_bos_orders():
     try:
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
+        _op.ensure_table(cx)
         _stripe_alerts.init_stripe_alerts_table(cx)
         _tracking.init_tracking_schema(cx)
         _tracking.migrate_add_delivery_columns(cx)
@@ -37424,6 +37433,92 @@ def api_orders_price_preview():
                     "subtotal_cents": subtotal, "lines": out_lines})
 
 
+@app.route("/api/orders/<int:oid>/payments", methods=["GET"])
+def api_order_payments_list(oid):
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        return jsonify({"ok": True, "rows": _op.list_payments(cx, oid),
+                        "balance": _op.balance(cx, oid)})
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/<int:oid>/payments", methods=["POST"])
+def api_order_payments_add(oid):
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.add_payment(
+            cx, oid, round(float(b.get("amount") or 0) * 100),
+            b.get("method") or "", source=b.get("source") or "manual",
+            external_ref=b.get("external_ref"), paid_at=b.get("paid_at"),
+            note=b.get("note"), actor=actor.name)
+        return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/<int:oid>/refunds", methods=["POST"])
+def api_order_refunds_add(oid):
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.add_refund(
+            cx, oid, round(float(b.get("amount") or 0) * 100),
+            b.get("method") or "",
+            refunds_payment_id=b.get("refunds_payment_id"),
+            note=b.get("note"), actor=actor.name)
+        return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/payments/<int:pid>/void", methods=["POST"])
+def api_order_payment_void(pid):
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.void(cx, pid, b.get("reason") or "", actor=actor.name)
+        oid = row["order_id"] if row else None
+        return jsonify({"ok": True, "row": row,
+                        "balance": _op.balance(cx, oid) if oid else None})
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/payments/<int:pid>/resync", methods=["POST"])
+def api_order_payment_resync(pid):
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.resync(cx, pid)
+        return jsonify({"ok": True, "row": row})
+    finally:
+        cx.close()
+
+
 @app.route("/api/console/customers/rename", methods=["POST"])
 def api_console_customer_rename():
     """Owner: correct a customer's display name across their people record and all
@@ -37988,12 +38083,31 @@ def api_invoice_get(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     summary = _invoice_summary(order)
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    oid = order.get("id")
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        _bal = _op.balance(cx, oid)
+        _pays = [p for p in _op.list_payments(cx, oid)
+                 if p["status"] == "active"]
+        summary["payments"] = [
+            {"date": (p["paid_at"] or "")[:10], "method": p["method"],
+             "kind": p["kind"], "amount_cents": p["amount_cents"]} for p in _pays]
+        summary["balance_due_cents"] = _bal["balance_cents"]
+        summary["refunded_cents"] = _bal["refunded_cents"]
+    finally:
+        cx.close()
     if _read_receipts_enabled():
         try:
-            from dashboard import opens as _op
+            # NOTE: aliased _opens (not _op) — a local `as _op` here would shadow
+            # the module-level order_payments `_op` used above for the whole
+            # function scope (Python's static scoping), raising UnboundLocalError
+            # on every call regardless of whether this branch runs.
+            from dashboard import opens as _opens
             with sqlite3.connect(LOG_DB) as _cxo:
-                _op.init_opens_table(_cxo)
-                summary["opened"] = _op.get_open(_cxo, "invoice", _op.invoice_key(token))
+                _opens.init_opens_table(_cxo)
+                summary["opened"] = _opens.get_open(_cxo, "invoice", _opens.invoice_key(token))
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
     return jsonify({"ok": True, "order": summary})
@@ -38480,8 +38594,24 @@ def bos_payments_list():
             limit = min(int(request.args.get("limit", 200) or 200), 1000)
         except (TypeError, ValueError):
             limit = 200
-        rows = _bos_payments.list_payments(
-            cx, source=request.args.get("source"), limit=limit)
+        src = request.args.get("source")
+        # Union in the manual ledger (Zelle/check/cash/etc. recorded via
+        # order_payments) so they show alongside Stripe charges — only for the
+        # unfiltered/"All" view or the "manual" filter; a Stripe `source` value
+        # (subscription/membership/funnel/biofield_trial) has no manual analog.
+        # ensure_table is a no-op CREATE TABLE IF NOT EXISTS — boot already
+        # creates it, but some callers point LOG_DB at a fresh db post-import.
+        _op.ensure_table(cx)
+        if src == "manual":
+            rows = _op.ledger_rows_for_payments_view(cx, limit=limit)
+        else:
+            rows = _bos_payments.list_payments(cx, source=src, limit=limit)
+            if not src:
+                manual_rows = _op.ledger_rows_for_payments_view(cx, limit=limit)
+                rows = rows + manual_rows
+                rows.sort(key=lambda r: r.get("paid_at") or r.get("created_at") or "",
+                          reverse=True)
+                rows = rows[:limit]
         summary = _bos_payments.payments_summary(cx)
         failures = _bos_payments.recent_failures(cx)
     finally:
