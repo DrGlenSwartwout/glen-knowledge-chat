@@ -307,7 +307,8 @@ def resync(cx, payment_id):
 def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):
     """Create one source='legacy' payment row per PAID pre-ledger order so it shows
     correctly in the ledger/panel/board. Candidates: orders with paid_cents>0, source
-    != 'biofield_trial' (trials skipped), that have NO ledger rows yet, minus any
+    != 'biofield_trial' (trials skipped), status != 'cancelled' (a cancelled order
+    must never get a "paid" ledger row), that have NO ledger rows yet, minus any
     skip_order_ids. Amount = the order's legacy paid_cents; method = its pay_method.
 
     NO QBO push — these payments already exist in QBO from the pre-ledger flow, so we
@@ -327,6 +328,7 @@ def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):
         "FROM orders o "
         "WHERE COALESCE(o.paid_cents,0) > 0 "
         "AND COALESCE(o.source,'') != 'biofield_trial' "
+        "AND COALESCE(o.status,'') != 'cancelled' "
         "AND o.id NOT IN (SELECT DISTINCT order_id FROM order_payments) "
         "ORDER BY o.id").fetchall()
     plan = []

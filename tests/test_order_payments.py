@@ -277,10 +277,15 @@ def test_backfill_legacy_payments(cx):
                "'synced', '2026-01-01')", (o3,))
     # #4 unpaid -> excluded
     O.upsert_order(cx, source="qbo", external_ref="U-1", email="u@e.com", total_cents=9999)
+    # #5 PAID but CANCELLED -> excluded (a cancelled order must never get a "paid" row)
+    O.upsert_order(cx, source="qbo", external_ref="X-1", email="x@e.com", total_cents=8000)
+    cx.execute("UPDATE orders SET paid_cents=8000, pay_method='card', pay_status='paid', "
+               "status='cancelled' WHERE external_ref='X-1'")
     cx.commit()
 
     plan = op.backfill_legacy_payments(cx, dry_run=True)
-    assert [p["order_id"] for p in plan["candidates"]] == [1]   # only the paid non-trial no-ledger order
+    # only the paid, non-trial, non-cancelled, no-ledger order (#1) is a candidate
+    assert [p["order_id"] for p in plan["candidates"]] == [1]
     assert plan["written"] == 0
     assert cx.execute("SELECT COUNT(*) FROM order_payments WHERE source='legacy'").fetchone()[0] == 0
 
