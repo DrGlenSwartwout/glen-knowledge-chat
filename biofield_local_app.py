@@ -167,6 +167,29 @@ def _default_fetch_recent_comms(email):
     except Exception:
         return {}
 
+
+def _fetch_life_stress_curation(email):
+    """Best-effort: pull a client's Life Stress curation from the prod console
+    endpoint (built in Task 2). Returns the curation dict, or None on any failure
+    (blank email, missing CONSOLE_SECRET, non-200, timeout, exception, or no
+    curation on file) -- never blocks the report."""
+    import json as _json
+    import urllib.parse
+    import urllib.request
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    try:
+        key = os.environ["CONSOLE_SECRET"]
+        base = os.environ.get("PUBLIC_BASE_URL", "https://illtowell.com").rstrip("/")
+        url = (f"{base}/api/console/life-stress-curation/" + urllib.parse.quote(email)
+               + "?key=" + urllib.parse.quote(key))
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        data = _json.load(urllib.request.urlopen(req, timeout=20))
+        return data.get("curation")
+    except Exception:
+        return None
+
 DEFAULT_DB = os.environ.get(
     "BIOFIELD_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "chat_log.db"))
 
@@ -755,6 +778,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             rep = _report_for(cx, test_id)
             narrative = get_narrative(cx, test_id)
+        rep["life_stress_curation"] = _fetch_life_stress_curation(
+            ((rep.get("client") or {}).get("email") or ""))
         return Response(render_present(rep, narrative), mimetype="text/html")
 
     @app.route("/test/<test_id>/report.pdf")
@@ -763,6 +788,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(db_path) as cx:
             rep = _report_for(cx, test_id)
             narrative = get_narrative(cx, test_id)
+        rep["life_stress_curation"] = _fetch_life_stress_curation(
+            ((rep.get("client") or {}).get("email") or ""))
         html = render_present(rep, narrative)
         reports_dir = os.environ.get("BIOFIELD_REPORTS_DIR",
                                      os.path.join(os.path.expanduser("~"), "biofield-reports"))
@@ -1648,6 +1675,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         key = os.environ.get("CONSOLE_SECRET", "")
         if not base:
             raise RuntimeError("PORTAL_PUBLISH_BASE_URL not set")
+        rep["life_stress_curation"] = _fetch_life_stress_curation(
+            ((rep.get("client") or {}).get("email") or ""))
         pdf_bytes = report_pdf_bytes(render_present(rep, narrative))
         pdf_url = _bpp.upload_asset(pdf_bytes, _bpp._asset_name("pdf"), base_url=base, console_key=key)
         audio_url = None
