@@ -109,6 +109,8 @@ def _life_stress(report):
         email = ((report or {}).get("client") or {}).get("email") or ""
         day = (report or {}).get("date") or _dt.date.today().isoformat()
         ls = _ls_recommend(email, day)
+        from dashboard import life_stress_curation as _lsc
+        ls = _lsc.apply_data((report or {}).get("life_stress_curation"), ls, None)
         if not ls or not ls.get("items"):
             return ""
         lis = "".join(
