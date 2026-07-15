@@ -131,3 +131,58 @@ def test_resync_repairs_a_flagged_void(cx, monkeypatch):
     repaired = op.resync(cx, row["id"])
     assert repaired["status"] == "void"
     assert repaired["qbo_sync"] == "void_synced"
+
+
+def test_refund_reduces_paid_and_guards_overrefund(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    oid = _oid(cx)
+    pay = op.add_payment(cx, oid, 13100, "Zelle")
+    op.add_refund(cx, oid, 5000, "Zelle", refunds_payment_id=pay["id"])
+    b = op.balance(cx, oid)
+    assert b["refunded_cents"] == 5000
+    assert b["paid_cents"] == 13100
+    assert b["balance_cents"] == 41282 - (13100 - 5000)
+    # cannot refund more than the payment's un-refunded remainder (8100 left)
+    with pytest.raises(ValueError):
+        op.add_refund(cx, oid, 9000, "Zelle", refunds_payment_id=pay["id"])
+
+
+def test_card_refund_calls_stripe_noncard_does_not(cx, monkeypatch):
+    from dashboard import qbo_billing, stripe_pay
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    sr = {}
+    monkeypatch.setattr(stripe_pay, "refund",
+                        lambda pi, amount_cents=None: sr.update(pi=pi, amt=amount_cents)
+                        or {"id": "re_1", "status": "succeeded", "amount": amount_cents})
+    oid = _oid(cx)
+    card = op.add_payment(cx, oid, 22291, "Credit card (Stripe)",
+                          source="stripe", external_ref="pi_9")
+    zelle = op.add_payment(cx, oid, 13100, "Zelle")
+    r1 = op.add_refund(cx, oid, 10000, "Credit card (Stripe)",
+                       refunds_payment_id=card["id"])
+    assert sr == {"pi": "pi_9", "amt": 10000}
+    assert r1["external_ref"] == "re_1"
+    sr.clear()
+    op.add_refund(cx, oid, 5000, "Zelle", refunds_payment_id=zelle["id"])
+    assert sr == {}   # non-card refund did not touch Stripe
+
+
+def test_void_refund_reapplies_paid(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    monkeypatch.setattr(qbo_billing, "void_payment", lambda txn: None)
+    oid = _oid(cx)
+    pay = op.add_payment(cx, oid, 13100, "Zelle")
+    ref = op.add_refund(cx, oid, 5000, "Zelle", refunds_payment_id=pay["id"])
+    op.void(cx, ref["id"], "issued in error")
+    assert op.balance(cx, oid)["refunded_cents"] == 0

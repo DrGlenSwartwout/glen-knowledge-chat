@@ -5,7 +5,7 @@ as module functions so tests can monkeypatch them."""
 import sqlite3
 from datetime import datetime, timezone
 
-from dashboard import orders, qbo_billing
+from dashboard import orders, qbo_billing, stripe_pay
 
 _METHODS = ("Credit card (Stripe)", "eProcessing", "Check", "Cash",
             "Venmo", "PayPal", "Zelle", "Wise")
@@ -137,6 +137,57 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                   refunds_payment_id=None, paid_at=paid_at, note=note,
                   actor=actor)
     _push_payment(cx, row["id"])
+    return _row(cx, row["id"])
+
+
+def refundable_cents(cx, order_id, refunds_payment_id=None):
+    """How much can still be refunded. Against a specific payment: that payment's
+    amount minus active refunds pointing at it. Otherwise: order net paid."""
+    if refunds_payment_id is not None:
+        pay = _row(cx, refunds_payment_id)
+        if not pay or pay["kind"] != "payment" or pay["status"] != "active":
+            return 0
+        used = cx.execute(
+            "SELECT COALESCE(SUM(amount_cents),0) FROM order_payments "
+            "WHERE refunds_payment_id=? AND kind='refund' AND status='active'",
+            (refunds_payment_id,)).fetchone()[0]
+        return int(pay["amount_cents"]) - int(used or 0)
+    b = balance(cx, order_id)
+    return b["paid_cents"] - b["refunded_cents"]
+
+
+def _push_refund(cx, pid):
+    row = _row(cx, pid)
+    if row.get("qbo_txn_id"):
+        return
+    try:
+        cid, inv_id = _qbo_ctx(cx, row["order_id"])
+        if not cid or not inv_id:
+            raise RuntimeError("no QBO invoice/customer for order")
+        res = qbo_billing.record_refund(cid, row["amount_cents"], inv_id,
+                                        method=row["method"])
+        _mark_sync(cx, pid, qbo_txn_id=(res or {}).get("Id"), state="synced")
+    except Exception:
+        _mark_sync(cx, pid, state="error")
+
+
+def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
+               note=None, actor=None):
+    amt = int(amount_cents)
+    if amt <= 0:
+        raise ValueError("amount_cents must be positive")
+    if amt > refundable_cents(cx, order_id, refunds_payment_id):
+        raise ValueError("refund exceeds refundable amount")
+    external_ref = None
+    src_pay = _row(cx, refunds_payment_id) if refunds_payment_id else None
+    if src_pay and src_pay.get("source") == "stripe" and src_pay.get("external_ref"):
+        sr = stripe_pay.refund(src_pay["external_ref"], amount_cents=amt)
+        external_ref = sr.get("id")
+    row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
+                  source=("stripe" if external_ref else "manual"),
+                  external_ref=external_ref, refunds_payment_id=refunds_payment_id,
+                  paid_at=None, note=note, actor=actor)
+    _push_refund(cx, row["id"])
     return _row(cx, row["id"])
 
 

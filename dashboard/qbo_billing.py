@@ -304,6 +304,21 @@ def void_payment(qbo_txn_id):
          {"Id": str(qbo_txn_id), "SyncToken": str(payment["SyncToken"])})
 
 
+def record_refund(customer_id, amount_cents, invoice_id, method=None):
+    """Record money-out against the customer for a refund on an invoice, as a QBO
+    RefundReceipt. Amount in cents. `method` is memoed for traceability."""
+    amt = round(int(amount_cents) / 100.0, 2)
+    body = {
+        "CustomerRef": {"value": str(customer_id)},
+        "TotalAmt": amt,
+        "Line": [{"Amount": amt, "DetailType": "SalesItemLineDetail",
+                  "SalesItemLineDetail": {}}],
+        "PrivateNote": "Console refund — invoice " + str(invoice_id)
+                       + (" — method: " + str(method) if method else ""),
+    }
+    return _post("/refundreceipt", body).get("RefundReceipt")
+
+
 def get_invoice_pay_link(invoice):
     """Shareable hosted-payment link. Present (InvoiceLink) only when the invoice
     was created with online payment enabled AND QuickBooks Payments is active."""
