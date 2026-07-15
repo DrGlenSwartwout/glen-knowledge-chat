@@ -1402,7 +1402,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             codes = [(r["code"], r["name"], _fm.mappings_for(cx, r["code"])) for r in items]
         try:
             with sqlite3.connect(db_path) as cxp:
-                names = remedy_catalog(cxp, "", 600)
+                # Whole catalog for the datalist — a low cap silently hides every
+                # product past the alphabetical cutoff (see loadLists in biofield_report_html).
+                names = remedy_catalog(cxp, "", 5000)
         except Exception:
             names = []
         def _nm(n):

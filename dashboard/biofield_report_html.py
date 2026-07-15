@@ -681,10 +681,14 @@ try{
   else { astat((j&&j.reason)||'Import failed.'); }
 }catch(e){ astat('Import failed.'); }
 }
+// A <datalist> filters client-side over the options already loaded; it never re-queries
+// on input. So these fetches must return the WHOLE list — a low cap silently drops every
+// term past it (a remedy/stress alphabetically beyond the cutoff just never appears).
+// Keep the limit well above the catalog (1190) and vocab (511) sizes.
 async function loadLists(){
- try{const v=await (await fetch('/api/vocab?limit=500')).json();
+ try{const v=await (await fetch('/api/vocab?limit=5000')).json();
   document.getElementById('vocab').innerHTML=(v.vocab||[]).map(opt).join('')}catch(e){}
- try{const c=await (await fetch('/api/catalog?limit=800')).json();
+ try{const c=await (await fetch('/api/catalog?limit=5000')).json();
   document.getElementById('catalog').innerHTML=(c.catalog||[]).map(function(x){return opt(x.name||'')}).join('')}catch(e){}
 }
 function setPhase(p){window._phase=p;
