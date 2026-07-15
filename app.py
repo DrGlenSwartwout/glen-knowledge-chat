@@ -17814,6 +17814,53 @@ def api_portal_program(token):
     })
 
 
+_PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp")
+_PHOTO_MAX = 5 * 1024 * 1024
+
+
+@app.route("/api/portal/<token>/photo", methods=["POST"])
+def api_portal_photo_upload(token):
+    """Client self-uploads their portal photo. Token-scoped: writes only the token
+    owner's email. source='portal-self' (highest precedence — overwrites FMP/GHL)."""
+    from dashboard import client_photos as _cph
+    f = request.files.get("photo")
+    blob = f.read() if f else b""
+    if not blob:
+        return jsonify({"ok": False, "error": "no image uploaded"}), 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    if ctype not in _PHOTO_TYPES:
+        return jsonify({"ok": False, "error": "use a JPG, PNG, or WEBP image"}), 400
+    if len(blob) > _PHOTO_MAX:
+        return jsonify({"ok": False, "error": "image too large (max 5 MB)"}), 400
+    from dashboard import client_portal as _cp
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cph.put(cx, email, blob, ctype, source="portal-self")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/photo", methods=["GET"])
+def api_portal_photo_serve(token):
+    """Serve the token owner's OWN photo (token-scoped). 404 when none so the
+    portal <img> hides cleanly."""
+    from dashboard import client_photos as _cph
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        rec = _cph.get(cx, email) if email else None
+    if not rec:
+        return Response("", status=404)
+    resp = Response(rec["blob"], mimetype=rec["content_type"])
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
 @app.route("/api/portal/<token>/share-consent", methods=["POST"])
 def api_portal_share_consent(token):
     """The MEMBER sets whether they share their info+comms with a caregiver. Token-scoped:
