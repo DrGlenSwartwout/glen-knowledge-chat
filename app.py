@@ -5173,6 +5173,7 @@ _REVIEWS_GIFTS = os.environ.get("REVIEWS_GIFTS", "").strip().lower() in ("1", "t
 _REFERRALS = os.environ.get("REFERRALS", "").strip().lower() in ("1", "true", "yes")
 INGREDIENT_PAGES_PAID_ONLY = os.environ.get("INGREDIENT_PAGES_PAID_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
 TOPIC_PAGES_ENABLED = os.environ.get("TOPIC_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
+MENTOR_PAGES_ENABLED = os.environ.get("MENTOR_PAGES_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_PAGE_LINKS_ENABLED = os.environ.get("CHAT_PAGE_LINKS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 CHAT_TOPIC_OFFER_ENABLED = os.environ.get("CHAT_TOPIC_OFFER_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on")
 
@@ -7058,6 +7059,102 @@ def learn_sitemap():
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
     xml = _tr.render_sitemap_xml(rows, PUBLIC_BASE_URL)
     return Response(xml, mimetype="application/xml")
+
+
+# ── Mentor pages (/mentors) — public, server-rendered lineage pages ──────────
+def _mentor_retriever(query):
+    """Grounding context from the Pinecone `mentors` namespace for page generation.
+    Returns joined chunk text (best-effort, never raises)."""
+    try:
+        vec = embed(query)
+        matches = query_ns(vec, "mentors", 6)
+        chunks = []
+        for m in matches:
+            md = getattr(m, "metadata", None) or {}
+            t = md.get("text") or ""
+            if t:
+                chunks.append(t)
+        return "\n\n".join(chunks)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[mentor-retriever] {exc}", flush=True)
+        return ""
+
+
+def _mentor_kickoff_build(slug, name):
+    """Best-effort, non-blocking build of a mentor page (seed or grounded). Never raises."""
+    import threading as _threading
+    from dashboard import mentor_copy as _mc, mentor_pages as _mp
+
+    def _build():
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _mp.init_table(cx)
+                page = _mp.get_page(cx, slug)
+                if page and (page.get("content") or {}):
+                    return  # already built
+                _mc.build_page(cx, slug, name, client=_cl,
+                               retriever=_mentor_retriever, strip=_strip_dash)
+        except Exception as exc:  # noqa: BLE001 - background build must never raise
+            print(f"[mentor-build] {slug}: {exc}", flush=True)
+
+    _threading.Thread(target=_build, daemon=True).start()
+
+
+@app.route("/mentors")
+def mentors_index():
+    from dashboard import mentor_pages as _mp, mentor_render as _mr
+    if not MENTOR_PAGES_ENABLED:
+        return ("Not found", 404)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        rows = _mp.list_public(cx)
+    return Response(_mr.render_index_html(rows), mimetype="text/html")
+
+
+@app.route("/mentors/sitemap.xml")
+def mentors_sitemap():
+    from dashboard import mentor_pages as _mp, mentor_render as _mr
+    if not MENTOR_PAGES_ENABLED:
+        return ("Not found", 404)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        rows = _mp.list_public(cx)
+    xml = _mr.render_sitemap_xml(rows, PUBLIC_BASE_URL)
+    return Response(xml, mimetype="application/xml")
+
+
+@app.route("/mentors/<slug>")
+def mentor_page(slug):
+    from dashboard import mentor_pages as _mp, mentor_render as _mr, mentor_seed as _ms
+    if not MENTOR_PAGES_ENABLED:
+        return ("Not found", 404)
+    slug = (slug or "").strip().lower()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        page = _mp.get_page(cx, slug)
+    if _mr.is_public(page):
+        return Response(_mr.render_page_html(page, base_url=PUBLIC_BASE_URL), mimetype="text/html")
+    seed = _ms.get_seed(slug)
+    name = (page or {}).get("name") or (seed or {}).get("name") or slug.replace("-", " ").title()
+    # A known seed with no page yet can be built on first view.
+    if seed and not (page or {}).get("content"):
+        _mentor_kickoff_build(slug, name)
+    return Response(_mr.render_pending_html(slug, name), mimetype="text/html", status=200)
+
+
+@app.route("/mentors/<slug>/request", methods=["POST"])
+def mentor_page_request(slug):
+    from dashboard import mentor_pages as _mp, mentor_seed as _ms
+    if not MENTOR_PAGES_ENABLED:
+        return ("Not found", 404)
+    slug = (slug or "").strip().lower()
+    email = (request.form.get("email") or request.values.get("email") or "").strip()
+    seed = _ms.get_seed(slug)
+    name = (seed or {}).get("name") or slug.replace("-", " ").title()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _mp.init_table(cx)
+        if email:
+            _mp.record_request(cx, slug, email)
+        _mp.set_name(cx, slug, name)
+    _mentor_kickoff_build(slug, name)
+    return jsonify({"ok": True, "state": "preparing"})
 
 
 @app.route("/<key>.txt")
@@ -14315,6 +14412,48 @@ def api_console_topic_suggestions_list():
     with sqlite3.connect(LOG_DB) as cx:
         rows = _tp.list_suggestions(cx)
     return jsonify({"ok": True, "suggestions": rows})
+
+
+@app.route("/console/mentor-pages")
+def console_mentor_pages_page():
+    return redirect("/console/pages#mentor", code=302)
+
+
+@app.route("/api/console/mentor-pages", methods=["GET"])
+def api_console_mentor_pages_list():
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import mentor_pages as _mp
+    with sqlite3.connect(LOG_DB) as cx:
+        pages = _mp.list_pages(cx)
+    return jsonify({"ok": True, "pages": pages})
+
+
+@app.route("/api/console/mentor-page/<slug>", methods=["GET"])
+def api_console_mentor_page_load(slug):
+    bad = _sales_console_ok()
+    if bad:
+        return bad
+    from dashboard import mentor_pages as _mp, mentor_copy as _mc
+    slug = (slug or "").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        page = _mp.get_page(cx, slug)
+    content = (page or {}).get("content") or {}
+    sections = [{"id": s, "text": content.get(s, "")} for s in _mc.NARRATIVE_SECTIONS]
+    return jsonify({
+        "ok": True, "slug": slug,
+        "name": (page or {}).get("name", slug),
+        "state": (page or {}).get("state", "none"),
+        "field": (page or {}).get("field", ""),
+        "lifespan": (page or {}).get("lifespan", ""),
+        "vital_status": (page or {}).get("vital_status", ""),
+        "sections": sections,
+        "lineage": (page or {}).get("lineage") or [],
+        "sources": (page or {}).get("sources") or [],
+        "seo": (page or {}).get("seo") or {},
+        "live_url": f"/mentors/{slug}",
+    })
 
 
 @app.route("/console/reviews")
@@ -36826,6 +36965,12 @@ try:
     _tpa.configure(ingredient_slugs=_tpa_ing, product_slugs=_tpa_prods, topic_slugs=_tpa_topics)
 except Exception as _tpa_e:  # noqa: BLE001
     print(f"[topic-pages] catalog inject skipped: {_tpa_e}", flush=True)
+
+# ── Mentor-page console actions (edit / approve + notify / rebuild / dismiss) ──
+from dashboard import mentor_page_actions as _mpa
+_mpa.register()
+_mpa.configure(client=_cl, send=_inbox.send_email, strip=_strip_dash,
+               base_url=PUBLIC_BASE_URL, retriever=_mentor_retriever)
 
 # ── Begin #4a: Biofield reveal console actions (edit / approve + magic link) ──
 from dashboard import biofield_reveal_actions as _bra
