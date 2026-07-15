@@ -55,6 +55,9 @@
   .pay-badge.unpaid { color:#b04a2f; }
   .pay-badge.claimed { color:#8a6d2f; }
   .pay-badge.credit { color:#1F5A4D; background:#e7f3ee; }
+  .led-bal { font-weight:600; }
+  .led-bal.owed { color:var(--gold); }      /* ledger balance still owed */
+  .led-bal.settled { color:var(--green); }   /* fully paid / overpaid (credit) */
   details.fulfill { margin-top:8px; font-size:12px; border-top:1px solid var(--border); padding-top:7px; }
   details.fulfill summary { cursor:pointer; color:var(--muted); font-size:11px; }
   .ffline { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--cream); }
@@ -237,7 +240,12 @@
       + '<div class="meta"><span class="onum">#'+Number(o.id)+'</span>'
         + (o.external_ref?' &middot; '+esc(o.external_ref):'')
         + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
-        + (total?' &middot; '+total:'')+'</div>'
+        + (total?' &middot; '+total:'')
+        + (o.ledger_balance_cents!=null
+            ? ' &middot; <span class="led-bal '+(o.ledger_balance_cents>0?'owed':'settled')+'">Paid $'
+              +((o.ledger_paid_cents||0)/100).toFixed(2)+' &middot; Bal $'+(o.ledger_balance_cents/100).toFixed(2)+'</span>'
+            : '')
+        +'</div>'
       + '</div>';
     var giftLines = (o.reward_gifts||[]).map(function(g){
       return '<div class="meta reward-gift">&#127873; Include: '+esc(g.gift_label||g.gift_sku||'')+'</div>';
