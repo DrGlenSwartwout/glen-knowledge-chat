@@ -3034,6 +3034,7 @@ def _biofield_remedy_payload(r):
         buy_url = f"/begin/buy/{slug}" if slug else "/begin/match"
         page_url = f"/begin/product/{slug}" if slug else "/begin/match"
         return {"name": r.get("name", ""), "meaning": r.get("meaning", ""),
+                "dosing": (r.get("dosing") or "").strip(),
                 "slug": slug, "buy_url": buy_url, "page_url": page_url}
     except Exception:
         return None

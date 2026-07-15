@@ -175,6 +175,12 @@
       font-size: 16px;
       margin-bottom: 22px;
     }
+    .remedy-dosing {
+      color: var(--cream);
+      font-size: 15px;
+      font-weight: 600;
+      margin: -12px 0 22px;
+    }
     .buy-btn {
       display: inline-block;
       background: var(--gold);
@@ -512,6 +518,14 @@
           meaningEl.className = "remedy-meaning";
           meaningEl.textContent = rem.meaning;
           container.appendChild(meaningEl);
+        }
+
+        // Standard dosage (only present on an un-blurred remedy that carries one).
+        if (rem.dosing) {
+          var doseEl = document.createElement("p");
+          doseEl.className = "remedy-dosing";
+          doseEl.textContent = "How to take: " + rem.dosing;
+          container.appendChild(doseEl);
         }
 
         // Order routes through the in-app review (items + shipping) before Stripe —
