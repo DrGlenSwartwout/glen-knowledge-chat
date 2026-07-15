@@ -36775,7 +36775,13 @@ def console_membership_enroll():
     import datetime as _dt
     today = _now_utc().date()
     days = _mp.grant_days(tier["key"], today)
-    src = (data.get("source") or tier["source"]).strip()
+    src_override = data.get("source")
+    if src_override:
+        src = src_override.strip()
+        if not src.startswith("membership_"):
+            return jsonify({"ok": False, "error": "source must start with membership_"}), 400
+    else:
+        src = tier["source"]
     cx = _sqlite3.connect(LOG_DB)
     try:
         init_membership_tables(cx)
