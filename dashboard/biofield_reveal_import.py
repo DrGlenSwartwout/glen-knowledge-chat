@@ -45,7 +45,10 @@ def _run_synthesis(email, scan_id, e4l_db, catalog, today):
         patterns = E.pull_patterns(cx, scan["scan_id"], limit=12)
         label_map = {p["item_code"]: (p.get("full_name") or p.get("name") or p["item_code"])
                      for p in patterns if p.get("item_code")}
-        cat = E.load_catalog(catalog)
+        # FF-only enforcement (Glen 2026-07-14): restrict the pool to curated
+        # Functional Formulations so the LLM pick, map fallback, and alternatives
+        # can only resolve to an FF (mirrors 02 Skills/e4l-reveal-push.py).
+        cat = E.ff_only_catalog(E.load_catalog(catalog))
         synth = E.synthesize(patterns, history="", rules=E.load_rules(),
                              ff_names=E.curated_ff_names(cat), layer_count=6)
         synth["layers"] = E.order_layers_by_pattern_count(synth.get("layers") or [])
