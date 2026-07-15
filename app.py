@@ -35943,6 +35943,7 @@ import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (ho
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
 import dashboard.payments as _bos_payments  # noqa: F401 (Stripe payments ledger — read-only)
+from dashboard import order_payments as _op
 import dashboard.crm as _bos_crm  # noqa: F401 (registers the CRM home signal)
 import dashboard.module_signals as _bos_module_signals  # noqa: F401 (registers 5 cell signals)
 import dashboard.products as _bos_products  # noqa: F401 (registers products signal + action; replaces module_signals' products signal)
@@ -37216,6 +37217,91 @@ def api_orders_price_preview():
             "savings_cents": max(0, list_cents - unit)})
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines})
+
+
+@app.route("/api/orders/<int:oid>/payments", methods=["GET"])
+def api_order_payments_list(oid):
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        return jsonify({"ok": True, "rows": _op.list_payments(cx, oid),
+                        "balance": _op.balance(cx, oid)})
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/<int:oid>/payments", methods=["POST"])
+def api_order_payments_add(oid):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.add_payment(
+            cx, oid, round(float(b.get("amount") or 0) * 100),
+            b.get("method") or "", source=b.get("source") or "manual",
+            external_ref=b.get("external_ref"), paid_at=b.get("paid_at"),
+            note=b.get("note"), actor=str(actor))
+        return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/<int:oid>/refunds", methods=["POST"])
+def api_order_refunds_add(oid):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.add_refund(
+            cx, oid, round(float(b.get("amount") or 0) * 100),
+            b.get("method") or "",
+            refunds_payment_id=b.get("refunds_payment_id"),
+            note=b.get("note"), actor=str(actor))
+        return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/payments/<int:pid>/void", methods=["POST"])
+def api_order_payment_void(pid):
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    b = request.get_json(silent=True) or {}
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.void(cx, pid, b.get("reason") or "", actor=str(actor))
+        oid = row["order_id"] if row else None
+        return jsonify({"ok": True, "row": row,
+                        "balance": _op.balance(cx, oid) if oid else None})
+    finally:
+        cx.close()
+
+
+@app.route("/api/orders/payments/<int:pid>/resync", methods=["POST"])
+def api_order_payment_resync(pid):
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        row = _op.resync(cx, pid)
+        return jsonify({"ok": True, "row": row})
+    finally:
+        cx.close()
 
 
 @app.route("/api/console/customers/rename", methods=["POST"])
