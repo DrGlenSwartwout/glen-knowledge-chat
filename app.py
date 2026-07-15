@@ -3866,7 +3866,7 @@ def journey_quest_state():
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
-BEGIN_TOS_VERSION = "rm-e4l-tc-2026-07-01"
+BEGIN_TOS_VERSION = "rm-e4l-tc-2026-07-15"
 
 
 @app.route("/begin/unlock", methods=["POST", "OPTIONS"])
@@ -21843,6 +21843,21 @@ def api_console_portal_link_resend():
         f"anytime at {login} with this email.\n\n— Dr. Glen Swartwout")
     return jsonify({"ok": bool(sent_via), "sent_via": sent_via, "error": err,
                     "link": link, "reissued": reissued})
+
+
+@app.route("/api/console/affiliate/backfill", methods=["POST"])
+def api_console_affiliate_backfill():
+    """One-time (idempotent, re-runnable) backfill: ensure every existing
+    client-portal holder has an approved affiliate row."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import affiliate_dashboard as _ad
+    if not _ad.autoenroll_enabled():
+        return jsonify({"error": "AFFILIATE_AUTOENROLL_ENABLED is off"}), 409
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        n = _ad.backfill_affiliates_from_people(cx)
+        cx.commit()
+    return jsonify({"ok": True, "created": n})
 
 
 @app.route("/api/console/portal/backfill-findings", methods=["POST"])
