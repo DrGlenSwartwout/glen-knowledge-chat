@@ -9001,6 +9001,12 @@ def begin_checkout_return():
                         try:
                             _oih = _bos_orders.find_order_by_external_ref(_cxih, inv)
                             if _oih:
+                                _op.ensure_table(_cxih)
+                                _op.add_payment(
+                                    _cxih, _oih["id"],
+                                    int(sess.get("amount_total") or 0),
+                                    "Credit card (Stripe)", source="stripe",
+                                    external_ref=pi_id)
                                 _bos_orders.set_order_payment(
                                     _cxih, _oih["id"], method="card",
                                     amount_cents=int(sess.get("amount_total") or 0))
