@@ -37876,12 +37876,31 @@ def api_invoice_get(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     summary = _invoice_summary(order)
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    oid = order.get("id")
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        _bal = _op.balance(cx, oid)
+        _pays = [p for p in _op.list_payments(cx, oid)
+                 if p["status"] == "active"]
+        summary["payments"] = [
+            {"date": (p["paid_at"] or "")[:10], "method": p["method"],
+             "kind": p["kind"], "amount_cents": p["amount_cents"]} for p in _pays]
+        summary["balance_due_cents"] = _bal["balance_cents"]
+        summary["refunded_cents"] = _bal["refunded_cents"]
+    finally:
+        cx.close()
     if _read_receipts_enabled():
         try:
-            from dashboard import opens as _op
+            # NOTE: aliased _opens (not _op) — a local `as _op` here would shadow
+            # the module-level order_payments `_op` used above for the whole
+            # function scope (Python's static scoping), raising UnboundLocalError
+            # on every call regardless of whether this branch runs.
+            from dashboard import opens as _opens
             with sqlite3.connect(LOG_DB) as _cxo:
-                _op.init_opens_table(_cxo)
-                summary["opened"] = _op.get_open(_cxo, "invoice", _op.invoice_key(token))
+                _opens.init_opens_table(_cxo)
+                summary["opened"] = _opens.get_open(_cxo, "invoice", _opens.invoice_key(token))
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
     return jsonify({"ok": True, "order": summary})

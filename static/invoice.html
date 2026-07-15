@@ -111,6 +111,11 @@
     <div class="totals" id="totals"></div>
   </div>
 
+  <div class="card" id="payments-card" style="display:none">
+    <h2>Payments received</h2>
+    <div class="totals" id="payments-list"></div>
+  </div>
+
   <div id="savings" style="display:none"></div>
 
   <!-- Pay sits directly under the total so it's the first thing after the amount,
@@ -193,7 +198,7 @@ async function load() {
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
   }
-  renderLines(); renderTotals(); setupPay(); renderSavings();
+  renderLines(); renderTotals(); renderPayments(); setupPay(); renderSavings();
   if (ORDER.invoice_note){ $('note-text').textContent = ORDER.invoice_note; $('note-card').style.display=''; }
   $('print-btn').style.display = 'inline-block';
   // Console "Print invoice" deep-links here with ?print=1 to auto-open the dialog.
@@ -362,6 +367,20 @@ function renderTotals() {
     + (Number(t.member_credit_cents||0)>0
         ? '<div style="margin-top:12px;background:#fffbf3;border:1px solid #f0c987;border-radius:6px;padding:9px 11px;color:#7a4a00;font-size:13px">Start Continuous Care and get <strong>'+money(t.member_credit_cents)+'</strong> back toward your next order.</div>'
         : '');
+}
+// Ledger — active payments only (voided rows never reach this payload). Shows
+// each received payment, a "Refunded" line when any refund is active, and the
+// running balance due (invoice total net of payments minus refunds). Hidden
+// entirely when there's nothing to show (no payments yet, no refunds).
+function renderPayments(){
+  const pays = (ORDER.payments||[]).filter(p=>p.kind==='payment');
+  const refunded = Number(ORDER.refunded_cents||0);
+  if(!pays.length && !refunded){ $('payments-card').style.display='none'; return; }
+  $('payments-card').style.display='';
+  let html = pays.map(p=>row((p.date||'')+(p.method?' · '+p.method:''), p.amount_cents)).join('');
+  if(refunded>0) html += row('Refunded','-'+money(refunded),true);
+  html += '<div class="row grand"><span>Balance due</span><span>'+money(ORDER.balance_due_cents)+'</span></div>';
+  $('payments-list').innerHTML = html;
 }
 async function applyPoints(){
   const cents = Math.max(0, Math.round(parseFloat(($('pts-in')||{}).value||'0')*100));

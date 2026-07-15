@@ -130,3 +130,48 @@ def test_boot_creates_order_payments_table(tmp_path, monkeypatch):
         "AND name='order_payments'").fetchone()
     cx.close()
     assert row is not None, "boot did not create order_payments table"
+
+
+def test_client_invoice_shows_payments_and_balance(tmp_path, monkeypatch):
+    """GET /api/invoice/<token> must surface the active-only payment ledger:
+    a payments list, and balance_due_cents net of what's been paid. A voided
+    payment must never appear in the payments list."""
+    appmod, client = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+
+    from dashboard import practitioner_portal as PP
+    # The invoice-token lookup (_pp.order_id_from_invoice_token) uses PP's own
+    # module-level db path by default — point it at the same chat_log.db the
+    # _client fixture just seeded (order id=1), so the token resolves.
+    db_path = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(PP, "_LOG_DB", Path(db_path))
+    token = PP.create_order_invoice_token(1)
+
+    # One active payment.
+    pay = client.post("/api/orders/1/payments",
+                       json={"amount": 131.00, "method": "Zelle"}).get_json()
+    assert pay["ok"] is True
+
+    # A second payment that gets voided — must be excluded from the client view.
+    voided = client.post("/api/orders/1/payments",
+                          json={"amount": 50.00, "method": "Cash"}).get_json()
+    vpid = voided["row"]["id"]
+    v = client.post(f"/api/orders/payments/{vpid}/void", json={"reason": "duplicate"})
+    assert v.status_code == 200 and v.get_json()["row"]["status"] == "void"
+
+    r = client.get(f"/api/invoice/{token}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    order = body["order"]
+
+    payments = order["payments"]
+    assert len(payments) == 1, f"expected only the active payment, got {payments}"
+    assert payments[0]["amount_cents"] == 13100
+    assert payments[0]["kind"] == "payment"
+    assert all(p["amount_cents"] != 5000 for p in payments), \
+        "voided payment leaked into the client-facing payments list"
+
+    # order total_cents=41282 (seeded by _client) minus the one active payment.
+    assert order["balance_due_cents"] == 41282 - 13100
+    assert order["refunded_cents"] == 0
