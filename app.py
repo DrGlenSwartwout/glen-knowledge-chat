@@ -84,7 +84,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # vector space). With no fallback set it behaves as a single client. See
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
-from dashboard.people import set_person_tags, distinct_tags
+from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
@@ -26021,6 +26021,8 @@ def _upsert_person_additive(cx, person, ts=None):
             except Exception:
                 ex = set()
             merged = sorted(ex | set(arrays[jf]))
+            if jf == "tags":
+                merged = dedupe_tags_ci(merged)  # collapse GHL-echoed case twins
             if merged != sorted(ex):
                 upd[jf] = json.dumps(merged)
         if dnd:  # force the consent flip on the tags column (a removal, so the union check above misses it)
@@ -26028,7 +26030,7 @@ def _upsert_person_additive(cx, person, ts=None):
                 ex_tags = set(json.loads(existing["tags"] or "[]"))
             except Exception:
                 ex_tags = set()
-            upd["tags"] = json.dumps(sorted(_apply_dnd(ex_tags | set(arrays.get("tags", [])))))
+            upd["tags"] = json.dumps(dedupe_tags_ci(sorted(_apply_dnd(ex_tags | set(arrays.get("tags", []))))))
         if order_count > int(existing["order_count"] or 0):
             upd["order_count"] = order_count
         if session_count > int(existing["session_count"] or 0):
@@ -26044,7 +26046,7 @@ def _upsert_person_additive(cx, person, ts=None):
     ins = dict(scalars)
     for jf in _PERSON_UPSERT_JSON:
         ins[jf] = json.dumps(sorted(set(arrays[jf])))
-    ins["tags"] = json.dumps(sorted(_apply_dnd(set(arrays.get("tags", [])))))
+    ins["tags"] = json.dumps(dedupe_tags_ci(sorted(_apply_dnd(set(arrays.get("tags", []))))))
     ins["email"] = email
     ins["order_count"] = order_count
     ins["session_count"] = session_count
@@ -28674,6 +28676,42 @@ def update_person_tags_route(person_id):
         cx.execute("UPDATE people SET tags=? WHERE id=?", (json.dumps(new_tags), person_id))
         cx.commit()
     return jsonify({"ok": True, "tags": new_tags})
+
+
+@app.route("/admin/dedupe-people-tags", methods=["POST"])
+def admin_dedupe_people_tags():
+    """One-time cleanup: collapse case-duplicate tags (e.g. `terrain:Aging` +
+    GHL-echoed `terrain:aging`) already stored across the people table. The
+    additive upsert now prevents new ones; this heals rows written before the
+    fix. `?dry_run=1` reports without writing."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    scanned = changed = removed = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("SELECT id, tags FROM people").fetchall()
+        for r in rows:
+            scanned += 1
+            try:
+                cur = json.loads(r["tags"] or "[]")
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(cur, list):
+                continue
+            new = dedupe_tags_ci(cur)
+            if new != cur:
+                changed += 1
+                removed += len(cur) - len(new)
+                if not dry:
+                    cx.execute("UPDATE people SET tags=? WHERE id=?",
+                               (json.dumps(new), r["id"]))
+        if not dry:
+            cx.commit()
+    return jsonify({"ok": True, "scanned": scanned, "rows_changed": changed,
+                    "tags_removed": removed, "dry_run": dry})
 
 
 # ── Household endpoints ────────────────────────────────────────────────────────
