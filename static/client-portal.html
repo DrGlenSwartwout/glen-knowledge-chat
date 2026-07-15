@@ -487,13 +487,17 @@ function lifeStressBodyHtml(ls){
   ls = ls || {};
   const items = Array.isArray(ls.items) ? ls.items : [];
   if(!items.length) return "";
+  const selected = Array.isArray(ls.selected) ? ls.selected : [];
   let rows = items.map(it => {
+    const slug = esc(it.slug || "");
+    const checked = selected.indexOf(it.slug) !== -1 ? " checked" : "";
     const nm = esc(it.name || "");
-    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const nameHtml = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${nm}</a>` : nm;
     const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
-    return `<li>${nameHtml}${note}</li>`;
+    return `<li><label><input type="checkbox" class="ls-pick" data-slug="${slug}"${checked}> ${nameHtml}</label>${note}</li>`;
   }).join("");
-  return `<p class="muted">Supportive essences matched to the stress patterns in your latest scan.</p><ul>${rows}</ul>`;
+  return `<p class="muted">Choose the essences that resonate — your picks are saved for Dr. Glen and Rae.</p><ul>${rows}</ul>`
+       + `<button type="button" id="lsSaveBtn">Save my selections</button> <span id="lsSaveMsg" class="muted" hidden></span>`;
 }
 // Premier Research Labs (PRL) supplement card body (Task 6): a budget-friendly
 // direct-order option grouped by focus area, with the FF equivalent/complement
@@ -2109,6 +2113,25 @@ function render(d, v){
       }
       spAddBtn.disabled = false;
     }
+  });
+
+  // Life Stress essence selection save (Task 5). Gathers the checked .ls-pick
+  // slugs and POSTs them to the selection endpoint; carries ?member= so a
+  // caregiver viewing a member's tab saves THAT member's selection. Persistence
+  // itself is automatic on reload — the payload's d.life_stress.selected comes
+  // back from the server and lifeStressBodyHtml() re-checks the boxes.
+  const lsSaveBtn = document.getElementById("lsSaveBtn");
+  if(lsSaveBtn) lsSaveBtn.addEventListener("click", async ()=>{
+    const lsMsg = document.getElementById("lsSaveMsg");
+    const slugs = Array.from(document.querySelectorAll(".ls-pick:checked")).map(c=>c.getAttribute("data-slug"));
+    const memberParam = new URLSearchParams(location.search).get("member");
+    const u = `/api/portal/${encodeURIComponent(token)}/life-stress/selection`
+      + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+    try{
+      const r = await fetch(u, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({slugs})});
+      const j = await r.json().catch(()=>null);
+      if(lsMsg){ lsMsg.textContent = (r.ok && j && j.ok) ? "Saved — Dr. Glen and Rae can see your picks." : "Something went wrong — please try again."; lsMsg.hidden = false; }
+    } catch(e){ if(lsMsg){ lsMsg.textContent = "Something went wrong — please try again."; lsMsg.hidden = false; } }
   });
 }
 
