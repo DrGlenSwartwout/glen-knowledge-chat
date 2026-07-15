@@ -1,6 +1,10 @@
 """Affiliate/ambassador dashboard data — shared by the standalone /affiliate/portal-data
 route and the personal portal's Ambassador section. Pure, LOG_DB-based, none-raising."""
 
+import os
+import re
+import secrets
+
 from datetime import datetime, timezone
 from dashboard import customers as _customers
 
@@ -107,3 +111,59 @@ def backfill_affiliate_people(cx):
         except Exception:
             continue
     return created
+
+
+def autoenroll_enabled():
+    """True when AFFILIATE_AUTOENROLL_ENABLED is set truthy. Default off."""
+    return (os.environ.get("AFFILIATE_AUTOENROLL_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _mint_affiliate_slug(cx, name, email):
+    """A unique, url-safe slug from name (else email local-part), collision-safe."""
+    src = (name or (email.split("@")[0] if email and "@" in email else email) or "").lower()
+    base = re.sub(r"[^a-z0-9]+", "-", src).strip("-")[:30] or "friend"
+    token = secrets.token_urlsafe(24)
+    slug = base
+    if cx.execute("SELECT 1 FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
+        slug = f"{base}-{token[:6]}"
+    if cx.execute("SELECT 1 FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
+        slug = token[:10]
+    return slug, token
+
+
+def ensure_affiliate(cx, email, name="", referred_by=None):
+    """Idempotently ensure an APPROVED affiliate_signups row exists for `email`.
+    Returns the row dict, or None if email is empty. Never raises. Mints
+    short_url='' (Rebrandly is minted lazily elsewhere, not here)."""
+    try:
+        em = (email or "").strip().lower()
+        if not em:
+            return None
+        row = cx.execute(
+            "SELECT id, email, slug, token, status, short_url FROM affiliate_signups "
+            "WHERE lower(email)=? LIMIT 1", (em,)).fetchone()
+        if row:
+            return {"id": row[0], "email": row[1], "slug": row[2], "token": row[3],
+                    "status": row[4], "short_url": row[5] or ""}
+        slug, token = _mint_affiliate_slug(cx, name, em)
+        ts = datetime.now(timezone.utc).isoformat()
+        cx.execute(
+            "INSERT INTO affiliate_signups "
+            "(created_at, name, email, organization, website, promo_method, slug, token, "
+            " status, referred_by, short_url) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (ts, (name or "").strip(), em, "", "", "auto", slug, token,
+             "approved", (referred_by or ""), ""))
+        cx.execute(
+            "INSERT OR IGNORE INTO referral_sources "
+            "(created_at, name, slug, description, utm_source, utm_medium, utm_campaign) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (ts, (name or em), slug, f"Auto-enrolled: {name or em}", slug, "affiliate",
+             "scoreapp-quiz"))
+        new_id = cx.execute("SELECT id FROM affiliate_signups WHERE lower(email)=?",
+                            (em,)).fetchone()[0]
+        return {"id": new_id, "email": em, "slug": slug, "token": token,
+                "status": "approved", "short_url": ""}
+    except Exception as e:  # noqa: BLE001
+        print(f"[ensure_affiliate] {e!r}", flush=True)
+        return None

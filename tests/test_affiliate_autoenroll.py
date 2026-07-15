@@ -1,0 +1,49 @@
+import sqlite3
+from dashboard import affiliate_dashboard as ad
+
+def _db():
+    cx = sqlite3.connect(":memory:")
+    cx.execute("""CREATE TABLE affiliate_signups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE, organization TEXT DEFAULT '', website TEXT DEFAULT '',
+        promo_method TEXT DEFAULT '', slug TEXT NOT NULL UNIQUE, token TEXT NOT NULL UNIQUE,
+        status TEXT DEFAULT 'approved', notes TEXT DEFAULT '', referred_by TEXT DEFAULT '',
+        short_url TEXT DEFAULT '', gifting_activated_at TEXT)""")
+    cx.execute("""CREATE TABLE referral_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE, description TEXT DEFAULT '', utm_source TEXT NOT NULL,
+        utm_medium TEXT DEFAULT 'referral', utm_campaign TEXT DEFAULT '', active INTEGER DEFAULT 1)""")
+    return cx
+
+def test_ensure_affiliate_creates_approved_row_once():
+    cx = _db()
+    r1 = ad.ensure_affiliate(cx, "Jo@Example.com", name="Jo Rae")
+    assert r1["status"] == "approved"
+    assert r1["slug"] and r1["short_url"] == ""
+    assert r1["email"] == "jo@example.com"
+    r2 = ad.ensure_affiliate(cx, "jo@example.com", name="Jo Rae")
+    assert r2["slug"] == r1["slug"]
+    assert cx.execute("SELECT COUNT(*) FROM affiliate_signups").fetchone()[0] == 1
+    assert cx.execute("SELECT COUNT(*) FROM referral_sources WHERE slug=?", (r1["slug"],)).fetchone()[0] == 1
+
+def test_ensure_affiliate_empty_email_returns_none():
+    cx = _db()
+    assert ad.ensure_affiliate(cx, "", name="x") is None
+
+def test_ensure_affiliate_slug_collision_suffixes():
+    cx = _db()
+    cx.execute("INSERT INTO affiliate_signups (created_at,name,email,slug,token,status) "
+               "VALUES ('t','x','x@x.com','jo-rae','tok0','approved')")
+    r = ad.ensure_affiliate(cx, "jo2@example.com", name="Jo Rae")
+    assert r["slug"] != "jo-rae" and r["slug"].startswith("jo-rae-")
+
+def test_ensure_affiliate_no_name_uses_email_localpart():
+    cx = _db()
+    r = ad.ensure_affiliate(cx, "solo@example.com")
+    assert r["slug"] == "solo"
+
+def test_autoenroll_flag(monkeypatch):
+    monkeypatch.delenv("AFFILIATE_AUTOENROLL_ENABLED", raising=False)
+    assert ad.autoenroll_enabled() is False
+    monkeypatch.setenv("AFFILIATE_AUTOENROLL_ENABLED", "true")
+    assert ad.autoenroll_enabled() is True
