@@ -39,6 +39,35 @@ def test_plan_price_is_147_with_a_197_value_anchor():
     assert fp.PLAN["value_cents"] == 19700
 
 
+def test_activate_with_special_amount_sets_that_price(cx):
+    # A special per-household price (mirrors Biofield-test special pricing).
+    fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09", amount_cents=9900)
+    assert fp.get(cx, CAREGIVER)["amount_cents"] == 9900
+
+
+def test_activate_without_amount_uses_standard_plan_price(cx):
+    fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
+    assert fp.get(cx, CAREGIVER)["amount_cents"] == fp.PLAN["amount_cents"]
+
+
+def test_special_amount_is_what_falls_due_for_the_cron(cx):
+    # The charge cron bills sub["amount_cents"], so the special price is what recurs.
+    fp.activate(cx, CAREGIVER, next_charge_at="2026-01-01", amount_cents=9900)
+    due = fp.due(cx, "2026-06-01")
+    assert due and due[0]["amount_cents"] == 9900
+
+
+def test_comped_household_can_carry_a_special_price_but_never_bills(cx):
+    fp.activate(cx, CAREGIVER, next_charge_at=None, source="comp", amount_cents=9900)
+    assert fp.get(cx, CAREGIVER)["amount_cents"] == 9900
+    assert fp.due(cx, "2026-12-01") == []
+
+
+def test_negative_special_amount_is_rejected(cx):
+    with pytest.raises(ValueError):
+        fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09", amount_cents=-1)
+
+
 def test_caregiver_without_a_plan_covers_nobody(cx):
     _link(cx, PET)
     assert fp.is_active(cx, CAREGIVER) is False

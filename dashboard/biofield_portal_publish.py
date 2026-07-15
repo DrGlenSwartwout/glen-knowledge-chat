@@ -9,7 +9,7 @@ import requests
 
 from dashboard.practitioner_portal import name_to_slug
 from dashboard import wholesale_pricing as _pricing
-from dashboard.biofield_authoring import authored_report
+from dashboard.biofield_authoring import authored_report, remedy_dosing, merge_dosing
 from dashboard.biofield_narrative import get_narrative
 
 # Protocol wordings that differ from the catalog. Keyed by alphanumeric-only,
@@ -118,12 +118,19 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
     layers, reorder, seen, unresolved = [], [], set(), []
     for i, L in enumerate(raw_layers):
         remedy = (L.get("remedy") or "").strip()
+        # Standard-dosage fallback: fill any dose field the practitioner left blank
+        # from the product catalog default (remedy_dosing -> fmp_snap_products), so
+        # every unblurred recommendation carries its standard schedule. merge_dosing
+        # fills per-field, so an authored value (a manual biofield test) always wins
+        # over the standard.
+        dose = merge_dosing(L.get("dosage"), L.get("frequency"), L.get("timing"),
+                            remedy_dosing(cx, remedy) if remedy else None)
         layers.append({
             "n": L.get("layer"),
             "title": (L.get("head") or "").strip(),
             "meaning": meanings[i] if i < len(meanings) else "",
             "remedy": remedy,
-            "dosing": _dosing(L),
+            "dosing": _dosing(dose),
         })
         if not remedy:
             continue

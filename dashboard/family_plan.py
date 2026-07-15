@@ -61,9 +61,17 @@ def init_family_plan_table(cx):
 
 
 def activate(cx, caregiver_email, *, next_charge_at, customer_id=None,
-             payment_method_id=None, source="stripe"):
+             payment_method_id=None, source="stripe", amount_cents=None):
     """Start (or restart) a caregiver's plan. A comped plan passes source='comp'
-    with no card and no next_charge_at — same entitlement, never billed."""
+    with no card and no next_charge_at — same entitlement, never billed.
+
+    `amount_cents` sets a special per-household price (mirrors the per-client
+    special pricing we give on Biofield tests); it defaults to PLAN['amount_cents'].
+    The charge cron bills this stored amount, so a special price recurs at that
+    rate. Negative amounts are rejected."""
+    amt = int(amount_cents) if amount_cents is not None else PLAN["amount_cents"]
+    if amt < 0:
+        raise ValueError("amount_cents must be non-negative")
     cx.execute(
         "INSERT INTO family_subscriptions (caregiver_email,amount_cents,stripe_customer_id,"
         "payment_method_id,status,source,started_at,next_charge_at,fail_count) "
@@ -72,7 +80,7 @@ def activate(cx, caregiver_email, *, next_charge_at, customer_id=None,
         "amount_cents=excluded.amount_cents, stripe_customer_id=excluded.stripe_customer_id, "
         "payment_method_id=excluded.payment_method_id, status='active', "
         "source=excluded.source, next_charge_at=excluded.next_charge_at, fail_count=0",
-        (_lc(caregiver_email), PLAN["amount_cents"], customer_id, payment_method_id,
+        (_lc(caregiver_email), amt, customer_id, payment_method_id,
          source, _now(), next_charge_at))
     cx.commit()
 
