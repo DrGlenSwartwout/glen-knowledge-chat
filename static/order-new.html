@@ -168,6 +168,7 @@ const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edi
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
 let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
 let previewTimer = null;
+let PAY_ROWS = {};         // payments ledger rows keyed by id, for lookup from inline handlers (avoids interpolating free text into onclick)
 
 function toast(msg, kind="ok"){ const t=document.getElementById("toast"); t.textContent=msg; t.className="show "+kind; setTimeout(()=>t.className=kind,2200); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -431,6 +432,8 @@ async function loadOrderForEdit(oid){
   reloadPayments();
 }
 function renderPayments(rows, bal){
+  PAY_ROWS = {};
+  (rows||[]).forEach(r => PAY_ROWS[r.id] = r);
   const box=$("pay-rows");
   box.innerHTML = (rows||[]).map(r=>{
     const amt=(r.kind==='refund'?'-':'')+'$'+(r.amount_cents/100).toFixed(2);
@@ -440,7 +443,7 @@ function renderPayments(rows, bal){
     const sync=needsSync?` <button class="mini" onclick="resyncPay(${r.id})">resync</button>`:'';
     const act=voided?` <em>void: ${esc(r.void_reason||'')}</em>`
       :` <button class="mini" onclick="voidPay(${r.id})">void</button>`
-       +(r.kind==='payment'?` <button class="mini" onclick="refundPay(${r.id},${r.amount_cents},'${esc(r.method||'')}',${r.source==='stripe'})">refund</button>`:'');
+       +(r.kind==='payment'?` <button class="mini" onclick="refundPay(${r.id})">refund</button>`:'');
     return `<div style="${voided?'text-decoration:line-through;opacity:.6':''}">`
       +`${esc((r.paid_at||'').slice(0,10))} · ${esc(r.method||'')} · ${amt}${badge} `
       +`<small>[${esc(r.source)}]</small>${sync}${act}</div>`;
@@ -464,7 +467,9 @@ async function voidPay(pid){
   const r=await fetch(`/api/orders/payments/${pid}/void`,{method:"POST",headers:HEADERS,body:JSON.stringify({reason})});
   if((await r.json()).ok){toast("Voided");reloadPayments();}
 }
-async function refundPay(pid,amtCents,method,isCard){
+async function refundPay(pid){
+  const r0=PAY_ROWS[pid]||{};
+  const amtCents=r0.amount_cents, method=r0.method, isCard=r0.source==='stripe';
   const def=(amtCents/100).toFixed(2);
   const v=prompt((isCard?"Refund to card via Stripe":"Record refund")+" — amount $",def); if(v===null)return;
   const amount=parseFloat(v); if(isNaN(amount)||amount<=0){toast("Bad amount","error");return;}
