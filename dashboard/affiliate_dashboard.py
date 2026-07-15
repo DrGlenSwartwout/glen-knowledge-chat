@@ -113,6 +113,27 @@ def backfill_affiliate_people(cx):
     return created
 
 
+def backfill_affiliates_from_people(cx):
+    """Ensure every existing client-portal holder has an approved affiliate row.
+    Idempotent; returns count created. None-raising per email. (Practitioners are
+    covered lazily on portal load; add their source table here if a proactive
+    backfill is needed.)"""
+    try:
+        rows = cx.execute("SELECT DISTINCT lower(email), name FROM client_portals "
+                          "WHERE email IS NOT NULL AND email != ''").fetchall()
+    except Exception as e:  # noqa: BLE001
+        print(f"[backfill_affiliates] source read failed: {e!r}", flush=True)
+        return 0
+    created = 0
+    for email, name in rows:
+        before = cx.execute("SELECT 1 FROM affiliate_signups WHERE lower(email)=?", (email,)).fetchone()
+        if before:
+            continue
+        if ensure_affiliate(cx, email, name=(name or "").strip()):
+            created += 1
+    return created
+
+
 def autoenroll_enabled():
     """True when AFFILIATE_AUTOENROLL_ENABLED is set truthy. Default off."""
     return (os.environ.get("AFFILIATE_AUTOENROLL_ENABLED", "") or "").strip().lower() in (

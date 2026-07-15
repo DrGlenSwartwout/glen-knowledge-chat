@@ -21845,6 +21845,19 @@ def api_console_portal_link_resend():
                     "link": link, "reissued": reissued})
 
 
+@app.route("/api/console/affiliate/backfill", methods=["POST"])
+def api_console_affiliate_backfill():
+    """One-time (idempotent, re-runnable) backfill: ensure every existing
+    client-portal holder has an approved affiliate row."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import affiliate_dashboard as _ad
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        n = _ad.backfill_affiliates_from_people(cx)
+        cx.commit()
+    return jsonify({"ok": True, "created": n})
+
+
 @app.route("/api/console/portal/backfill-findings", methods=["POST"])
 def api_console_portal_backfill_findings():
     """Surgically set content.findings on an EXISTING portal (or one of its

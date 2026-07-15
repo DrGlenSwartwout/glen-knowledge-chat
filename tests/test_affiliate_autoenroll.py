@@ -86,3 +86,13 @@ def test_ambassador_block_shows_cta_when_flag_off(monkeypatch):
     assert block["status"] == "none"
     assert block["signup_url"] == "https://illtowell.com/affiliate/apply-form"
     assert cx.execute("SELECT COUNT(*) FROM affiliate_signups").fetchone()[0] == 0
+
+def test_backfill_from_people_and_portals_idempotent():
+    cx = _db()
+    cx.execute("CREATE TABLE client_portals (id INTEGER PRIMARY KEY, email TEXT, name TEXT)")
+    cx.execute("INSERT INTO client_portals (email, name) VALUES ('a@x.com','A'),('b@x.com','B'),('a@x.com','A2')")
+    n1 = ad.backfill_affiliates_from_people(cx)
+    assert n1 == 2
+    n2 = ad.backfill_affiliates_from_people(cx)
+    assert n2 == 0
+    assert cx.execute("SELECT COUNT(*) FROM affiliate_signups").fetchone()[0] == 2
