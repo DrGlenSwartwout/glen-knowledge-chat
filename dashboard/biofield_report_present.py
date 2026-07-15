@@ -116,9 +116,14 @@ def _life_stress(report):
         lis = "".join(
             f"<li>{_e(it.get('name'))} <span class=\"food\">— {_e(it.get('note',''))}</span></li>"
             for it in ls["items"])
+        # When the practitioner has curated (prescribed) these essences, credit Dr. Glen;
+        # otherwise they're the scan-matched auto-pool suggestions.
+        intro = ("Chosen for you by Dr. Glen, available in Terrain Restore."
+                 if ls.get("curated") else
+                 "Vibrational companions matched to the stress patterns in "
+                 "your voice scan, available in Terrain Restore.")
         return ("<h2>Supportive Life Stress Essences</h2>"
-                "<p class=\"food\">Vibrational companions matched to the stress patterns in "
-                "your voice scan, available in Terrain Restore.</p>"
+                f"<p class=\"food\">{intro}</p>"
                 f"<ul>{lis}</ul>")
     except Exception:
         return ""
