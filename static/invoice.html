@@ -377,7 +377,7 @@ function renderPayments(){
   const refunded = Number(ORDER.refunded_cents||0);
   if(!pays.length && !refunded){ $('payments-card').style.display='none'; return; }
   $('payments-card').style.display='';
-  let html = pays.map(p=>row((p.date||'')+(p.method?' · '+p.method:''), p.amount_cents)).join('');
+  let html = pays.map(p=>row(esc((p.date||'')+(p.method?' · '+p.method:'')), p.amount_cents)).join('');
   if(refunded>0) html += row('Refunded','-'+money(refunded),true);
   html += '<div class="row grand"><span>Balance due</span><span>'+money(ORDER.balance_due_cents)+'</span></div>';
   $('payments-list').innerHTML = html;
