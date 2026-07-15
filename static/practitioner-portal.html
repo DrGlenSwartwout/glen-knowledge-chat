@@ -804,22 +804,152 @@ function renderProgramCandidates(candidates, checkedSlugs){
   });
   return html;
 }
-// Read-only: full Life Stress essence pool with the client's own picks checked
-// (disabled inputs -- no save/edit here). Renders alongside the condition-program
-// composer for the same patient; degrades to an empty container on any failure,
-// flag-off, or no-picks-yet case so it never throws.
+// Editable Life Stress curation editor: Glen toggles the auto-pool and/or adds an
+// off-pool essence, then saves a curation that overrides what the client sees
+// everywhere (portal + report). Independent of the condition-program composer --
+// separate DOM (#life-stress-picks), separate fetches, own module state (LS_*) --
+// so a failure here never affects the composer and vice versa.
+var LS_EMAIL = null;          // patient email captured for the open panel's save/clear
+var LS_CAT_BY_SLUG = {};      // Terrain Restore catalog: slug -> name (Add + off-pool display)
+var LS_CAT_NAME_TO_SLUG = {}; // lowercased name -> slug, for resolving the Add input
+var LS_CAT_LOADED = false;    // fetch the catalog at most once per page load
+function lsCatalogOptionsHtml(){
+  var opts = '';
+  for(var slug in LS_CAT_BY_SLUG){ opts += '<option value="'+escapeHtml(LS_CAT_BY_SLUG[slug])+'">'; }
+  return opts;
+}
+function loadLifeStressCatalog(){
+  if(LS_CAT_LOADED) return;
+  LS_CAT_LOADED = true;  // set eagerly -- a failed fetch still shouldn't retry forever
+  fetch('/api/practitioner/terrain-restore-catalog?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d || !d.ok || !d.products) return;
+      d.products.forEach(function(p){
+        if(!p.slug) return;
+        LS_CAT_BY_SLUG[p.slug] = p.name || p.slug;
+        LS_CAT_NAME_TO_SLUG[(p.name || p.slug).toLowerCase()] = p.slug;
+      });
+      var dl = document.getElementById('ls-cat-list');
+      if(dl) dl.innerHTML = lsCatalogOptionsHtml();
+    })
+    .catch(function(){ /* catalog fetch failed; Add just won't resolve names until retried */ });
+}
+function lsRowHtml(slug, name, pattern, checked, clientPicked){
+  return '<li data-slug="'+escapeHtml(slug)+'" style="padding:4px 0">'
+    + '<label><input type="checkbox" class="ls-item" data-slug="'+escapeHtml(slug)+'"'+(checked?' checked':'')+'> '
+    + escapeHtml(name || slug) + '</label>'
+    + (pattern ? ' <span class="muted">'+escapeHtml(pattern)+'</span>' : '')
+    + (clientPicked ? ' <span class="muted" style="font-size:11px">(client picked)</span>' : '')
+    + '</li>';
+}
+function lsHasSlug(rowsEl, slug){
+  var boxes = rowsEl.querySelectorAll('input.ls-item');
+  for(var i=0; i<boxes.length; i++){ if(boxes[i].getAttribute('data-slug') === slug) return true; }
+  return false;
+}
 function renderLifeStressPicks(data){
   var el = document.getElementById('life-stress-picks'); if(!el) return;
-  if(!data || !data.ok || !data.pool || !data.pool.length){ el.innerHTML = ''; return; }
+  if(!data || !data.ok || !data.pool){ el.innerHTML = ''; return; }
+  var curation = data.curation || null;
+  var curatedHasItems = !!(curation && curation.slugs && curation.slugs.length);
+  if(!data.pool.length && !curatedHasItems){ el.innerHTML = ''; return; }
+  LS_EMAIL = PGM_EMAIL;  // capture the patient email for this panel's save/clear handlers
   var sel = data.selected || [];
+  var curatedSlugs = null;
+  if(curatedHasItems){
+    curatedSlugs = {};
+    curation.slugs.forEach(function(s){ curatedSlugs[s] = true; });
+  }
+  var poolSlugs = {};
   var rows = data.pool.map(function(p){
-    var on = sel.indexOf(p.slug) !== -1 ? ' checked' : '';
-    return '<li><label><input type="checkbox" disabled'+on+'> '+escapeHtml(p.name||'')+'</label> '
-         + '<span class="muted">'+escapeHtml(p.pattern||'')+'</span></li>';
-  }).join('');
+    poolSlugs[p.slug] = true;
+    // No curation yet -> pre-check the full pool (Glen edits down). Curation present
+    // -> pre-check exactly its slugs.
+    var checked = curatedSlugs ? !!curatedSlugs[p.slug] : true;
+    return lsRowHtml(p.slug, p.name, p.pattern, checked, sel.indexOf(p.slug) !== -1);
+  });
+  // Curated slugs outside the auto-pool (a substitution) still render as extra
+  // checked rows, resolved via the catalog map when it's loaded.
+  if(curatedSlugs){
+    curation.slugs.forEach(function(s){
+      if(poolSlugs[s]) return;
+      rows.push(lsRowHtml(s, LS_CAT_BY_SLUG[s] || s, '', true, sel.indexOf(s) !== -1));
+    });
+  }
   el.innerHTML = '<h3>Life Stress essence picks</h3>'
     + (data.updated_at ? '<p class="muted">Client last updated: '+escapeHtml(data.updated_at)+'</p>' : '')
-    + '<ul>'+rows+'</ul>';
+    + (curation && curation.updated_at ? '<p class="muted">Curated: '+escapeHtml(curation.updated_at)+'</p>' : '')
+    + '<ul id="ls-rows" style="list-style:none;padding:0;margin:0">'+rows.join('')+'</ul>'
+    + '<div class="row" style="margin-top:8px">'
+    + '<input id="ls-add-input" list="ls-cat-list" placeholder="Add essence by name…" style="flex:1">'
+    + '<datalist id="ls-cat-list">'+lsCatalogOptionsHtml()+'</datalist>'
+    + '<button type="button" class="ghost" id="ls-add-btn">Add</button>'
+    + '</div>'
+    + '<textarea id="ls-note" placeholder="Note (optional)…" style="width:100%;margin-top:8px;min-height:50px;background:var(--surface-2);color:inherit;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:inherit;font-size:13px">'
+    + escapeHtml(curation ? curation.note : '') + '</textarea>'
+    + '<div style="margin-top:8px">'
+    + '<button type="button" id="ls-save-btn">Save curation</button> '
+    + '<button type="button" class="ghost" id="ls-clear-btn">Clear</button>'
+    + '<span id="ls-status" style="margin-left:10px;font-size:13px"></span>'
+    + '</div>';
+  $('ls-add-btn').addEventListener('click', lsAddEssence);
+  $('ls-save-btn').addEventListener('click', lsSaveCuration);
+  $('ls-clear-btn').addEventListener('click', lsClearCuration);
+  loadLifeStressCatalog();  // no-op after the first successful load
+}
+function lsAddEssence(){
+  var input = $('ls-add-input'); if(!input) return;
+  var typed = (input.value || '').trim();
+  if(!typed) return;
+  var slug = Object.prototype.hasOwnProperty.call(LS_CAT_BY_SLUG, typed) ? typed
+    : LS_CAT_NAME_TO_SLUG[typed.toLowerCase()];
+  var st = $('ls-status');
+  if(!slug){
+    if(st){ st.style.color = 'var(--gold)'; st.textContent = 'Not found in catalog.'; }
+    return;
+  }
+  var rowsEl = $('ls-rows'); if(!rowsEl) return;
+  if(lsHasSlug(rowsEl, slug)){ input.value = ''; return; }  // dup guard: already shown
+  var li = document.createElement('li');
+  li.setAttribute('data-slug', slug);
+  li.style.padding = '4px 0';
+  li.innerHTML = '<label><input type="checkbox" class="ls-item" data-slug="'+escapeHtml(slug)+'" checked> '
+    + escapeHtml(LS_CAT_BY_SLUG[slug] || slug) + '</label>';
+  rowsEl.appendChild(li);
+  input.value = '';
+  if(st){ st.textContent = ''; }
+}
+function lsCollectCheckedSlugs(){
+  var boxes = document.querySelectorAll('#ls-rows input.ls-item:checked');
+  return Array.prototype.map.call(boxes, function(cb){ return cb.getAttribute('data-slug'); });
+}
+function lsPostCuration(slugs, note, savingLabel, doneLabel){
+  var st = $('ls-status');
+  if(st){ st.style.color = 'var(--muted)'; st.textContent = savingLabel; }
+  fetch('/api/practitioner/life-stress-curation/' + encodeURIComponent(LS_EMAIL) + '?token=' + encodeURIComponent(TOKEN), {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slugs: slugs, note: note || ''})
+  })
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      if(res.status === 200 && res.body.ok){
+        if(st){ st.style.color = '#8fd6a3'; st.textContent = doneLabel; }
+        setTimeout(function(){ openProgramPatient(LS_EMAIL); }, 800);  // defer so status renders first
+      } else {
+        if(st){ st.style.color = 'var(--gold)'; st.textContent = (res.body && res.body.error) || 'Could not save.'; }
+      }
+    })
+    .catch(function(){ if(st){ st.style.color = 'var(--gold)'; st.textContent = 'Network error.'; } });
+}
+function lsSaveCuration(){
+  if(!LS_EMAIL) return;
+  var note = (($('ls-note') || {}).value || '').trim();
+  lsPostCuration(lsCollectCheckedSlugs(), note, 'Saving…', 'Saved.');
+}
+function lsClearCuration(){
+  if(!LS_EMAIL) return;
+  lsPostCuration([], '', 'Clearing…', 'Cleared.');
 }
 function renderProgramComposerDetail(d){
   var box = $('pgm-detail');
