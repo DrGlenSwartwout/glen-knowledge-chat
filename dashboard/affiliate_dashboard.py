@@ -160,6 +160,7 @@ def ensure_affiliate(cx, email, name="", referred_by=None):
             "VALUES (?,?,?,?,?,?,?)",
             (ts, (name or em), slug, f"Auto-enrolled: {name or em}", slug, "affiliate",
              "scoreapp-quiz"))
+        cx.commit()
         new_id = cx.execute("SELECT id FROM affiliate_signups WHERE lower(email)=?",
                             (em,)).fetchone()[0]
         return {"id": new_id, "email": em, "slug": slug, "token": token,

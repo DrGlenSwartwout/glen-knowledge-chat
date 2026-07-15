@@ -47,3 +47,22 @@ def test_autoenroll_flag(monkeypatch):
     assert ad.autoenroll_enabled() is False
     monkeypatch.setenv("AFFILIATE_AUTOENROLL_ENABLED", "true")
     assert ad.autoenroll_enabled() is True
+
+def test_ensure_affiliate_persists_across_connections(tmp_path):
+    import sqlite3
+    dbp = str(tmp_path / "aff.db")
+    cx = sqlite3.connect(dbp)
+    cx.execute("""CREATE TABLE affiliate_signups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE, organization TEXT DEFAULT '', website TEXT DEFAULT '',
+        promo_method TEXT DEFAULT '', slug TEXT NOT NULL UNIQUE, token TEXT NOT NULL UNIQUE,
+        status TEXT DEFAULT 'approved', notes TEXT DEFAULT '', referred_by TEXT DEFAULT '',
+        short_url TEXT DEFAULT '', gifting_activated_at TEXT)""")
+    cx.execute("""CREATE TABLE referral_sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE, description TEXT DEFAULT '', utm_source TEXT NOT NULL,
+        utm_medium TEXT DEFAULT 'referral', utm_campaign TEXT DEFAULT '', active INTEGER DEFAULT 1)""")
+    cx.commit()
+    ad.ensure_affiliate(cx, "p@x.com", name="P")
+    cx2 = sqlite3.connect(dbp)  # separate connection: only sees COMMITTED rows
+    assert cx2.execute("SELECT COUNT(*) FROM affiliate_signups WHERE email='p@x.com'").fetchone()[0] == 1
