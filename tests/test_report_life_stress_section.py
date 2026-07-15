@@ -50,6 +50,8 @@ def test_curation_present_overrides_auto_pool(monkeypatch):
     assert "Forsythia Flower Essence" in html          # curated essence shown
     assert "Mimulus Flower Essence" not in html         # auto-pool item replaced
     assert "ER3" not in html and "Adrenal Stress Marker" not in html   # boundary still holds
+    assert "Chosen for you by Dr. Glen" in html         # curated intro copy
+    assert "matched to the stress patterns" not in html # not the auto-pool intro
 
 
 def test_curation_absent_keeps_auto_pool(monkeypatch):
@@ -63,3 +65,5 @@ def test_curation_absent_keeps_auto_pool(monkeypatch):
     report = {"client": {"email": "a@b.com"}, "date": "2026-07-14"}
     html = pres._life_stress(report)
     assert "Mimulus Flower Essence" in html
+    assert "matched to the stress patterns" in html      # auto-pool intro copy
+    assert "Chosen for you by Dr. Glen" not in html       # not the curated intro
