@@ -892,6 +892,14 @@ function render(d, v){
   const badges = (v && v.account && v.account.role_badges) || [];
   let html = `
     <div class="hero">
+      <div class="client-photo-box" style="display:flex;gap:14px;align-items:center;margin:0 0 14px">
+        <img id="client-photo" alt="" style="width:88px;height:88px;object-fit:cover;border-radius:12px;display:none">
+        <label class="btn" style="cursor:pointer;display:inline-block">
+          <span id="client-photo-label">Add your photo</span>
+          <input id="client-photo-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none">
+        </label>
+        <span id="client-photo-stat" class="dose"></span>
+      </div>
       <div class="hello">${d.is_animal
           ? 'Give our Aloha to ' + esc(d.animal_name || first)
           : 'Aloha ' + esc(first)}</div>
@@ -1798,6 +1806,31 @@ function render(d, v){
   initCoachesCard();
   initPeerCard();
   initConsultIntakeCard();
+  (function initClientPhoto(){
+    const img = document.getElementById("client-photo");
+    const file = document.getElementById("client-photo-file");
+    const label = document.getElementById("client-photo-label");
+    const stat = document.getElementById("client-photo-stat");
+    if (!img || !file) return;
+    function show(){
+      img.onload = function(){ img.style.display = "block"; if (label) label.textContent = "Change photo"; };
+      img.onerror = function(){ img.style.display = "none"; };
+      img.src = "/api/portal/" + encodeURIComponent(token) + "/photo?t=" + Date.now();
+    }
+    show();
+    file.addEventListener("change", async function(){
+      if (!file.files || !file.files[0]) return;
+      stat.textContent = "Uploading…";
+      const fd = new FormData(); fd.append("photo", file.files[0]);
+      try {
+        const r = await fetch("/api/portal/" + encodeURIComponent(token) + "/photo",
+                              {method: "POST", body: fd, credentials: "same-origin"});
+        const j = await r.json();
+        if (j.ok) { stat.textContent = "Saved."; show(); }
+        else { stat.textContent = j.error || "Upload failed"; }
+      } catch (e) { stat.textContent = "Upload failed"; }
+    });
+  })();
   wireEntityRefs(document.getElementById("app") || document);
 
   var chatSendEl = document.getElementById("chatSend");
