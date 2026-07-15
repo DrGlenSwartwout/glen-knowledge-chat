@@ -4,6 +4,9 @@ When present, it replaces the auto-pool everywhere the client sees it. Pure sqli
 import json
 import datetime
 
+from dashboard.life_stress import slug_for_essence, _load_json, _PRODUCTS_PATH
+from dashboard import order_destination
+
 
 def init_table(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS life_stress_curations (
@@ -58,3 +61,41 @@ def clear(cx, email):
     init_table(cx)
     cx.execute("DELETE FROM life_stress_curations WHERE patient_email=?", (e,))
     cx.commit()
+
+
+def _resolve(entry, products):
+    """A stored curation entry (slug or name) -> (slug, display_name) or (None, None)."""
+    slug = slug_for_essence(entry, products)
+    prods = (products or {}).get("products") or {}
+    if not slug and entry in prods:
+        slug = entry
+    if not slug:
+        return None, None
+    name = ((prods.get(slug) or {}).get("name")) or entry
+    return slug, name
+
+
+def apply(cx, email, block, products=None):
+    """Override `block`'s items with the client's curation, if one exists. Returns a
+    new block with curated items + curated=True, or `block` unchanged. Never raises."""
+    try:
+        c = get(cx, email)
+        if not c:
+            return block
+        if products is None:
+            products = _load_json(_PRODUCTS_PATH)
+        items = []
+        for entry in c["slugs"]:
+            slug, name = _resolve(entry, products)
+            if not slug:
+                continue
+            items.append({"slug": slug, "name": name,
+                          "url": order_destination.destination_for(slug),
+                          "note": c.get("note") or ""})
+        if not items:
+            return block
+        label = (block or {}).get("label", "Life Stress")
+        return {"label": label, "patterns": (block or {}).get("patterns", []),
+                "items": items, "curated": True}
+    except Exception:
+        return block
