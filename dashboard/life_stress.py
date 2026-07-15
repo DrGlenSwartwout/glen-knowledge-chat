@@ -75,7 +75,8 @@ def recommend(email, today, *, db_path=None, products=None, emotion_map=None, ma
                 if not slug or slug in seen:
                     continue
                 seen.add(slug)
-                items.append({"name": name,
+                items.append({"slug": slug,
+                              "name": name,
                               "url": order_destination.destination_for(slug),
                               "note": f"for the {emo.lower()} pattern in your scan"})
         if not items:

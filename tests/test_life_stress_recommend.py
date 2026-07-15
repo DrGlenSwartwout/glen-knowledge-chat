@@ -39,3 +39,11 @@ def test_no_emotions_returns_none(monkeypatch):
 def test_never_raises_on_bad_scan(monkeypatch):
     monkeypatch.setattr(life_stress.biofield_e4l, "scan_context", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     assert life_stress.recommend("a@b.com", "2026-07-14", products=PRODUCTS, emotion_map=MAP) is None
+
+def test_items_carry_slug(monkeypatch):
+    monkeypatch.setattr(life_stress.biofield_e4l, "scan_context", lambda *a, **k: FINDINGS)
+    monkeypatch.setattr(life_stress.biofield_e4l, "emotions_for_codes", lambda *a, **k: EMO)
+    out = life_stress.recommend("a@b.com", "2026-07-14", products=PRODUCTS, emotion_map=MAP)
+    item = next(i for i in out["items"] if i["name"] == "Mimulus Flower Essence")
+    assert item["slug"] == "mimulus-flower-essence-in-terrain-restore"
+    assert item["url"] == "/begin/product/" + item["slug"]
