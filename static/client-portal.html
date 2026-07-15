@@ -487,6 +487,15 @@ function lifeStressBodyHtml(ls){
   ls = ls || {};
   const items = Array.isArray(ls.items) ? ls.items : [];
   if(!items.length) return "";
+  if(ls.curated){
+    const rows = items.map(it => {
+      const nm = esc(it.name || "");
+      const nameHtml = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${nm}</a>` : nm;
+      const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
+      return `<li>${nameHtml}${note}</li>`;
+    }).join("");
+    return `<p class="muted">Recommended for you by Dr. Glen.</p><ul>${rows}</ul>`;
+  }
   const selected = Array.isArray(ls.selected) ? ls.selected : [];
   let rows = items.map(it => {
     const slug = esc(it.slug || "");
