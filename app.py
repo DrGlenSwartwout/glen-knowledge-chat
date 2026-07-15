@@ -11683,6 +11683,22 @@ def api_console_e4l_db_sync():
         return jsonify({"error": "db-sync failed: %r" % e}), 500
 
 
+@app.route("/api/console/life-stress-curation/<path:email>", methods=["GET"])
+def api_console_life_stress_curation(email):
+    """Console-key read of a client's Life Stress curation, for the LOCAL biofield
+    report renderer (which fetches over X-Console-Key at render time). Read-only."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    e = (email or "").strip().lower()
+    from dashboard import life_stress_curation
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        cur = life_stress_curation.get(cx, e)
+    return jsonify({"ok": True, "curation": cur})
+
+
 @app.route("/api/console/e4l/client-search", methods=["GET"])
 def api_console_e4l_client_search():
     """Owner: search E4L clients by name -> [{client_id, name, n_scans, last_scan}]."""
