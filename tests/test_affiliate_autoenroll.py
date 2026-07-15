@@ -66,3 +66,23 @@ def test_ensure_affiliate_persists_across_connections(tmp_path):
     ad.ensure_affiliate(cx, "p@x.com", name="P")
     cx2 = sqlite3.connect(dbp)  # separate connection: only sees COMMITTED rows
     assert cx2.execute("SELECT COUNT(*) FROM affiliate_signups WHERE email='p@x.com'").fetchone()[0] == 1
+
+from dashboard import portal_view as pv
+
+def test_ambassador_block_autoenrolls_when_flag_on(monkeypatch):
+    cx = _db()
+    monkeypatch.setenv("AFFILIATE_AUTOENROLL_ENABLED", "true")
+    block = pv._ambassador_block(cx, "new@example.com", "https://q.example/quiz", "https://illtowell.com")
+    assert block["status"] == "enrolled"
+    assert block["slug"]
+    assert block["referral_url"].startswith("https://q.example/quiz?utm_source=")
+    assert block["recruit_url"] == f"https://illtowell.com/affiliate?ref={block['slug']}"
+    assert cx.execute("SELECT COUNT(*) FROM affiliate_signups WHERE lower(email)='new@example.com'").fetchone()[0] == 1
+
+def test_ambassador_block_shows_cta_when_flag_off(monkeypatch):
+    cx = _db()
+    monkeypatch.delenv("AFFILIATE_AUTOENROLL_ENABLED", raising=False)
+    block = pv._ambassador_block(cx, "new@example.com", "https://q.example/quiz", "https://illtowell.com")
+    assert block["status"] == "none"
+    assert block["signup_url"] == "https://illtowell.com/affiliate/apply-form"
+    assert cx.execute("SELECT COUNT(*) FROM affiliate_signups").fetchone()[0] == 0

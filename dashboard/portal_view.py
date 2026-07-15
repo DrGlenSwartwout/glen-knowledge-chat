@@ -172,7 +172,12 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     except Exception:
         return signup
     if not row:
-        return signup
+        if _ad.autoenroll_enabled():
+            made = _ad.ensure_affiliate(cx, em, name="")
+            if made and made.get("slug"):
+                row = (made["slug"], made.get("status") or "approved")
+        if not row:
+            return signup
     slug, status = row[0], (row[1] or "")
     if status != "approved":
         return {"status": "pending"}
