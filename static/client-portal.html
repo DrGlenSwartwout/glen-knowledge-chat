@@ -494,7 +494,7 @@ function lifeStressBodyHtml(ls){
     const nm = esc(it.name || "");
     const nameHtml = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${nm}</a>` : nm;
     const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
-    return `<li><label><input type="checkbox" class="ls-pick" data-slug="${slug}"${checked}> ${nameHtml}</label>${note}</li>`;
+    return `<li><input type="checkbox" class="ls-pick" data-slug="${slug}"${checked}> ${nameHtml}${note}</li>`;
   }).join("");
   return `<p class="muted">Choose the essences that resonate — your picks are saved for Dr. Glen and Rae.</p><ul>${rows}</ul>`
        + `<button type="button" id="lsSaveBtn">Save my selections</button> <span id="lsSaveMsg" class="muted" hidden></span>`;
