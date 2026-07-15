@@ -1,0 +1,3 @@
+## Referral and Affiliate Program
+
+Every member with a Remedy Match portal is given a personal referral link. Sharing it is optional. If you choose to share it, you agree to share it honestly and ethically, only with people who may genuinely benefit, and never through spam, misrepresentation, or unsolicited bulk messaging. When someone you refer becomes a customer, you may earn a referral commission as described in your portal. Remedy Match may adjust commission terms, or suspend a referral account for abuse, at its discretion. This section is part of, and appended to, the Terms and Conditions above.

@@ -3866,7 +3866,7 @@ def journey_quest_state():
 # ToS version stamp for the /begin free-tier gate. The live T&C page at
 # remedymatch.com/info/terms-and-conditions carries no version string, so we
 # date-stamp agreement here. Bump when the T&C content materially changes.
-BEGIN_TOS_VERSION = "rm-e4l-tc-2026-07-01"
+BEGIN_TOS_VERSION = "rm-e4l-tc-2026-07-15"
 
 
 @app.route("/begin/unlock", methods=["POST", "OPTIONS"])
