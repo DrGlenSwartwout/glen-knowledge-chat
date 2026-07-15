@@ -147,9 +147,9 @@ def _mint_affiliate_slug(cx, name, email):
     token = secrets.token_urlsafe(24)
     slug = base
     if cx.execute("SELECT 1 FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
-        slug = f"{base}-{token[:6]}"
+        slug = f"{base}-{secrets.token_hex(3)}"
     if cx.execute("SELECT 1 FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
-        slug = token[:10]
+        slug = f"{base}-{secrets.token_hex(5)}"
     return slug, token
 
 

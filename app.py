@@ -21852,6 +21852,8 @@ def api_console_affiliate_backfill():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import affiliate_dashboard as _ad
+    if not _ad.autoenroll_enabled():
+        return jsonify({"error": "AFFILIATE_AUTOENROLL_ENABLED is off"}), 409
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         n = _ad.backfill_affiliates_from_people(cx)
         cx.commit()
