@@ -37742,6 +37742,29 @@ def api_order_payment_resync(pid):
         cx.close()
 
 
+@app.route("/api/console/backfill-legacy-payments", methods=["POST"])
+def api_backfill_legacy_payments():
+    """Owner/OPS: one-time backfill of pre-ledger PAID orders into the order_payments
+    ledger as source='legacy' rows (amount = the order's legacy paid_cents; NO QBO
+    push). Default is a DRY RUN (reports the plan, writes nothing); ?dry_run=0 applies.
+    Body {"skip":[order_id,...]} excludes orders (e.g. one under active QBO
+    reconciliation whose legacy paid_cents is wrong). Idempotent (orders that already
+    have a ledger row are excluded); biofield trials excluded."""
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "1").strip().lower() not in ("0", "false", "no")
+    body = request.get_json(silent=True) or {}
+    skip = body.get("skip") or []
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        res = _op.backfill_legacy_payments(cx, dry_run=dry, skip_order_ids=skip)
+        return jsonify({"ok": True, "dry_run": dry, **res})
+    finally:
+        cx.close()
+
+
 @app.route("/api/console/customers/rename", methods=["POST"])
 def api_console_customer_rename():
     """Owner: correct a customer's display name across their people record and all

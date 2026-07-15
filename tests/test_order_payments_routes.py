@@ -267,3 +267,24 @@ def test_orders_list_annotates_ledger_balance_only_when_activity(tmp_path, monke
     # order #2 has no ledger rows -> NOT annotated
     assert "ledger_paid_cents" not in o2
     assert "ledger_balance_cents" not in o2
+
+
+def test_backfill_legacy_payments_endpoint(tmp_path, monkeypatch):
+    appmod, client = _client(tmp_path, monkeypatch)
+    import sqlite3 as _s
+    cx = _s.connect(appmod.LOG_DB)
+    cx.execute("UPDATE orders SET paid_cents=41282, pay_method='card', pay_status='paid' WHERE id=1")
+    cx.commit()
+    cx.close()
+    # VA is rejected (money-touching route, OWNER/OPS only)
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: _rbac.Actor(role="va", name="shaira"))
+    assert client.post("/api/console/backfill-legacy-payments?dry_run=1").status_code == 401
+    # owner DRY RUN reports the plan and writes nothing
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: _rbac.Actor(role="owner", name="owner"))
+    j = client.post("/api/console/backfill-legacy-payments?dry_run=1").get_json()
+    assert j["ok"] and j["dry_run"] is True and j["written"] == 0
+    assert any(c["order_id"] == 1 for c in j["candidates"])
+    cx = _s.connect(appmod.LOG_DB)
+    n = cx.execute("SELECT COUNT(*) FROM order_payments WHERE source='legacy'").fetchone()[0]
+    cx.close()
+    assert n == 0   # dry run never writes

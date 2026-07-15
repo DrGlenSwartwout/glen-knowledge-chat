@@ -300,3 +300,52 @@ def resync(cx, payment_id):
     else:
         _push_refund(cx, payment_id)   # defined in Task 3
     return _row(cx, payment_id)
+
+
+def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):
+    """Create one source='legacy' payment row per PAID pre-ledger order so it shows
+    correctly in the ledger/panel/board. Candidates: orders with paid_cents>0, source
+    != 'biofield_trial' (trials skipped), that have NO ledger rows yet, minus any
+    skip_order_ids. Amount = the order's legacy paid_cents; method = its pay_method.
+
+    NO QBO push — these payments already exist in QBO from the pre-ledger flow, so we
+    insert directly (never via add_payment/record_payment); qbo_sync='synced' and
+    qbo_txn_id stays NULL, so a later void() won't touch QBO. Idempotent: an order
+    that already has ANY ledger row is excluded (re-runs write nothing, and orders
+    under active reconciliation aren't disturbed). Provenance-neutral timestamps: the
+    row's paid_at/created_at come from the order's own paid_at (never now()).
+
+    dry_run=True returns the plan without writing. Returns
+    {"candidates": [...], "count": N, "written": M}."""
+    skip = {int(x) for x in (skip_order_ids or [])}
+    rows = cx.execute(
+        "SELECT o.id, o.email, o.name, COALESCE(o.paid_cents,0) AS paid, "
+        "COALESCE(o.pay_method,'') AS method, o.paid_at, o.created_at, "
+        "COALESCE(o.total_cents,0) AS total "
+        "FROM orders o "
+        "WHERE COALESCE(o.paid_cents,0) > 0 "
+        "AND COALESCE(o.source,'') != 'biofield_trial' "
+        "AND o.id NOT IN (SELECT DISTINCT order_id FROM order_payments) "
+        "ORDER BY o.id").fetchall()
+    plan = []
+    for r in rows:
+        if int(r["id"]) in skip:
+            continue
+        plan.append({
+            "order_id": int(r["id"]), "email": r["email"] or "", "name": r["name"] or "",
+            "amount_cents": int(r["paid"]), "method": (r["method"] or "legacy"),
+            "total_cents": int(r["total"]), "paid_at": r["paid_at"] or r["created_at"],
+        })
+    written = 0
+    if not dry_run:
+        for p in plan:
+            ts = p["paid_at"]
+            cx.execute(
+                "INSERT INTO order_payments (order_id, kind, amount_cents, method, source, "
+                "status, qbo_sync, note, paid_at, created_at, updated_at, created_by) "
+                "VALUES (?, 'payment', ?, ?, 'legacy', 'active', 'synced', "
+                "'legacy pay_status backfill', ?, ?, ?, 'backfill')",
+                (p["order_id"], p["amount_cents"], p["method"], ts, ts, ts))
+            written += 1
+        cx.commit()
+    return {"candidates": plan, "count": len(plan), "written": written}
