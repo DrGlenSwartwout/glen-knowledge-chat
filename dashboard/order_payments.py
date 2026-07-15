@@ -157,8 +157,10 @@ def _mark_sync(cx, pid, *, qbo_txn_id=None, state):
 
 def _push_payment(cx, pid):
     row = _row(cx, pid)
-    if row.get("qbo_txn_id"):
-        return  # already synced — idempotent
+    if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
+        return  # already synced — idempotent. Honor qbo_sync too, not just txn_id:
+                # a legacy-backfill row is synced with a NULL txn_id and must NEVER
+                # be pushed (its payment already exists in QBO — pushing = double-count).
     try:
         cid, inv_id = _qbo_ctx(cx, row["order_id"])
         if not cid or not inv_id:
@@ -211,8 +213,8 @@ def refundable_cents(cx, order_id, refunds_payment_id=None):
 
 def _push_refund(cx, pid):
     row = _row(cx, pid)
-    if row.get("qbo_txn_id"):
-        return
+    if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
+        return  # already synced (incl. legacy backfill: synced, NULL txn_id) — never re-push
     try:
         cid, inv_id = _qbo_ctx(cx, row["order_id"])
         if not cid or not inv_id:

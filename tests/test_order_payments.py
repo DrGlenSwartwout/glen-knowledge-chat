@@ -296,3 +296,23 @@ def test_backfill_legacy_payments(cx):
     cx.execute("DELETE FROM order_payments WHERE source='legacy'"); cx.commit()
     skipped = op.backfill_legacy_payments(cx, dry_run=True, skip_order_ids=[1])
     assert [p["order_id"] for p in skipped["candidates"]] == []   # skip list honored
+
+
+def test_resync_never_pushes_a_legacy_backfill_row(cx, monkeypatch):
+    """A legacy-backfill row is qbo_sync='synced' with a NULL qbo_txn_id. resync()
+    must NOT push it to QBO — its payment already exists there, so a push would be a
+    duplicate. (The _push guard now honors qbo_sync, not just qbo_txn_id presence.)"""
+    from dashboard import qbo_billing
+    cx.execute("UPDATE orders SET paid_cents=41282, pay_method='card', pay_status='paid' WHERE id=1")
+    cx.commit()
+    op.backfill_legacy_payments(cx, dry_run=False)
+    legacy = cx.execute("SELECT id FROM order_payments WHERE order_id=1 AND source='legacy'").fetchone()[0]
+    calls = {"n": 0}
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "999"})
+    monkeypatch.setattr(qbo_billing, "record_payment",
+                        lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or {"Id": "P9"})
+    op.resync(cx, legacy)
+    assert calls["n"] == 0   # NEVER pushed — no double-count
+    row = cx.execute("SELECT qbo_sync, qbo_txn_id FROM order_payments WHERE id=?", (legacy,)).fetchone()
+    assert row["qbo_sync"] == "synced" and row["qbo_txn_id"] is None
