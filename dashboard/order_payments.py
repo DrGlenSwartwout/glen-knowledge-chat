@@ -5,7 +5,7 @@ as module functions so tests can monkeypatch them."""
 import sqlite3
 from datetime import datetime, timezone
 
-from dashboard import orders
+from dashboard import orders, qbo_billing
 
 _METHODS = ("Credit card (Stripe)", "eProcessing", "Check", "Cash",
             "Venmo", "PayPal", "Zelle", "Wise")
@@ -86,6 +86,41 @@ def _insert(cx, order_id, *, kind, amount_cents, method, source, external_ref,
     return _row(cx, cur.lastrowid)
 
 
+def _qbo_ctx(cx, order_id):
+    """Resolve (customer_id, qbo_invoice_id) for an order via its stored QBO
+    invoice ref (orders.external_ref). Returns (None, None) if unresolvable."""
+    o = orders.get_order(cx, order_id) or {}
+    inv_id = o.get("external_ref")
+    if not inv_id:
+        return None, None
+    inv = qbo_billing.get_invoice(inv_id)
+    if not inv:
+        return None, inv_id
+    return (inv.get("CustomerRef") or {}).get("value"), inv_id
+
+
+def _mark_sync(cx, pid, *, qbo_txn_id=None, state):
+    cx.execute("UPDATE order_payments SET qbo_txn_id=COALESCE(?, qbo_txn_id), "
+               "qbo_sync=?, updated_at=? WHERE id=?",
+               (qbo_txn_id, state, _now(), pid))
+    cx.commit()
+
+
+def _push_payment(cx, pid):
+    row = _row(cx, pid)
+    if row.get("qbo_txn_id"):
+        return  # already synced — idempotent
+    try:
+        cid, inv_id = _qbo_ctx(cx, row["order_id"])
+        if not cid or not inv_id:
+            raise RuntimeError("no QBO invoice/customer for order")
+        res = qbo_billing.record_payment(cid, row["amount_cents"], inv_id,
+                                         method=row["method"])
+        _mark_sync(cx, pid, qbo_txn_id=(res or {}).get("Id"), state="synced")
+    except Exception:
+        _mark_sync(cx, pid, state="error")
+
+
 def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                 external_ref=None, paid_at=None, note=None, actor=None):
     if int(amount_cents) <= 0:
@@ -97,7 +132,36 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
             (order_id, external_ref)).fetchone()
         if dup:
             return _row(cx, dup[0])
-    return _insert(cx, order_id, kind="payment", amount_cents=amount_cents,
-                   method=method, source=source, external_ref=external_ref,
-                   refunds_payment_id=None, paid_at=paid_at, note=note,
-                   actor=actor)
+    row = _insert(cx, order_id, kind="payment", amount_cents=amount_cents,
+                  method=method, source=source, external_ref=external_ref,
+                  refunds_payment_id=None, paid_at=paid_at, note=note,
+                  actor=actor)
+    _push_payment(cx, row["id"])
+    return _row(cx, row["id"])
+
+
+def void(cx, payment_id, reason, *, actor=None):
+    row = _row(cx, payment_id)
+    if not row or row["status"] == "void":
+        return row
+    if row.get("qbo_txn_id"):
+        try:
+            qbo_billing.void_payment(row["qbo_txn_id"])
+        except Exception:
+            pass  # keep the app void; row stays flagged for resync/repair
+    cx.execute("UPDATE order_payments SET status='void', void_reason=?, "
+               "voided_at=?, updated_at=? WHERE id=?",
+               (reason, _now(), _now(), payment_id))
+    cx.commit()
+    return _row(cx, payment_id)
+
+
+def resync(cx, payment_id):
+    row = _row(cx, payment_id)
+    if not row or row["status"] == "void":
+        return row
+    if row["kind"] == "payment":
+        _push_payment(cx, payment_id)
+    else:
+        _push_refund(cx, payment_id)   # defined in Task 3
+    return _row(cx, payment_id)

@@ -290,6 +290,12 @@ def record_payment(customer_id, amount_cents, invoice_id, method=None):
     return _post("/payment", body).get("Payment")
 
 
+def void_payment(qbo_txn_id):
+    """Delete a QBO Payment (used when a console payment row is voided). QBO
+    'delete' operation on the Payment entity. Best-effort; raises on API error."""
+    _post("/payment?operation=delete", {"Id": str(qbo_txn_id), "SyncToken": "0"})
+
+
 def get_invoice_pay_link(invoice):
     """Shareable hosted-payment link. Present (InvoiceLink) only when the invoice
     was created with online payment enabled AND QuickBooks Payments is active."""
