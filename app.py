@@ -36008,6 +36008,7 @@ def _init_bos_orders():
     try:
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
+        _op.ensure_table(cx)
         _stripe_alerts.init_stripe_alerts_table(cx)
         _tracking.init_tracking_schema(cx)
         _tracking.migrate_add_delivery_columns(cx)

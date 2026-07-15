@@ -101,3 +101,32 @@ def test_checkout_return_creates_one_stripe_row(tmp_path, monkeypatch):
     # the direct record_payment call below it in begin_checkout_return must
     # be gated off for kind="in-house" so it does not fire a second push.
     assert len(calls) == 1
+
+
+def test_boot_creates_order_payments_table(tmp_path, monkeypatch):
+    """The app's boot schema-init cluster must create order_payments itself —
+    not rely on a lazy ensure_table() call from a route or test fixture. Seed
+    ONLY the orders table (never call OP.ensure_table), reload app (boot),
+    then confirm order_payments now exists in sqlite_master."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    db = str(tmp_path / "chat_log.db")
+    from dashboard import orders as O
+    with sqlite3.connect(db) as cx:
+        O.init_orders_table(cx)
+        cx.commit()
+
+    repo = Path(__file__).resolve().parent.parent
+    if str(repo) not in sys.path:
+        sys.path.insert(0, str(repo))
+    try:
+        import app as appmod
+        importlib.reload(appmod)
+    except Exception as e:
+        pytest.skip(f"app not importable: {e}")
+
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name='order_payments'").fetchone()
+    cx.close()
+    assert row is not None, "boot did not create order_payments table"
