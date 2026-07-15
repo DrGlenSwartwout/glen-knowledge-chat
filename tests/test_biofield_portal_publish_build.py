@@ -28,6 +28,35 @@ def _seed_karin(cx):
                   dosage="10 drops", frequency="3 times a day", timing="before meals")
     return aid
 
+def _make_fmp_products(cx, rows):
+    """Seed the local product catalog remedy_dosing() reads standard doses from."""
+    cx.execute("CREATE TABLE fmp_snap_products "
+               "(product_name TEXT, dosage TEXT, dosage_freq TEXT, dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products "
+                   "(product_name,dosage,dosage_freq,dosage_timing) VALUES (?,?,?,?)", rows)
+    cx.commit()
+
+
+def test_build_fills_blank_dosing_from_catalog_standard():
+    cx = sqlite3.connect(":memory:")
+    tid = create_test(cx, "Desi Test", "desi@example.com", "2026-07-14")
+    aid = f"a{tid}"
+    # Layer 1: practitioner left the dose blank -> the standard must fill it in.
+    add_chain_row(cx, aid, layer=1, head="ED6 Heart", most_affected="Heart",
+                  remedy="Vitality", dosage="", frequency="", timing="")
+    # Layer 2: authored dose -> a manual biofield test overrides the standard.
+    add_chain_row(cx, aid, layer=2, head="EI6 Kidney", most_affected="Kidney",
+                  remedy="Chelation", dosage="2 capsules", frequency="daily", timing="with lunch")
+    _make_fmp_products(cx, [
+        ("Vitality", "1 capsule", "daily", "between meals"),
+        ("Chelation", "1 capsule", "daily", "on rising"),
+    ])
+    out = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)
+    layers = {L["n"]: L for L in out["content"]["layers"]}
+    assert layers[1]["dosing"] == "1 capsule daily between meals"   # standard applied
+    assert layers[2]["dosing"] == "2 capsules daily with lunch"     # authored wins
+
+
 def test_build_maps_layers_dedups_and_prices(tmp_path):
     cx = sqlite3.connect(":memory:")
     aid = _seed_karin(cx)

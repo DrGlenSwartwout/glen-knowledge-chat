@@ -22203,12 +22203,23 @@ def api_console_family_plan():
         return jsonify({"error": "email required"}), 400
     source = (body.get("source") or "stripe").strip().lower()
     next_charge_at = (body.get("next_charge_at") or "").strip() or None
+    # Optional special per-household price (cents). Absent -> the standard PLAN price.
+    amount_cents = body.get("amount_cents")
+    try:
+        amount_cents = int(amount_cents) if amount_cents is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "amount_cents must be an integer number of cents"}), 400
+    if amount_cents is not None and amount_cents < 0:
+        return jsonify({"error": "amount_cents must be non-negative"}), 400
     with _db_lock:
         with sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _fp.init_family_plan_table(cx)
-            _fp.activate(cx, email, next_charge_at=next_charge_at, source=source)
-    return jsonify({"ok": True, "email": email, "source": source})
+            _fp.activate(cx, email, next_charge_at=next_charge_at, source=source,
+                         amount_cents=amount_cents)
+    return jsonify({"ok": True, "email": email, "source": source,
+                    "amount_cents": (amount_cents if amount_cents is not None
+                                     else _fp.PLAN["amount_cents"])})
 
 
 @app.route("/api/console/family-plan/cancel", methods=["POST"])
