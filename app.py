@@ -3863,9 +3863,9 @@ def journey_quest_state():
         return jsonify({"ok": True, "state": fallback})
 
 
-# ToS version stamp for the /begin free-tier gate. The live T&C page at
-# remedymatch.com/info/terms-and-conditions carries no version string, so we
-# date-stamp agreement here. Bump when the T&C content materially changes.
+# ToS version stamp for the /begin free-tier gate. The in-app T&C page at
+# /terms (static/terms.html) carries no version string, so we date-stamp
+# agreement here. Bump when the T&C content materially changes.
 BEGIN_TOS_VERSION = "rm-e4l-tc-2026-07-15"
 
 
