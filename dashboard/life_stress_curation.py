@@ -75,12 +75,13 @@ def _resolve(entry, products):
     return slug, name
 
 
-def apply(cx, email, block, products=None):
-    """Override `block`'s items with the client's curation, if one exists. Returns a
-    new block with curated items + curated=True, or `block` unchanged. Never raises."""
+def apply_data(curation, block, products=None):
+    """Pure curation override: given a curation dict ({"slugs","note",...}) or None,
+    return `block` with items replaced by the curated essences (+ curated=True), or
+    `block` unchanged. Never raises. (apply() is the cx-reading wrapper.)"""
     try:
-        c = get(cx, email)
-        if not c:
+        c = curation
+        if not c or not c.get("slugs"):
             return block
         if products is None:
             products = _load_json(_PRODUCTS_PATH)
@@ -97,5 +98,13 @@ def apply(cx, email, block, products=None):
         label = (block or {}).get("label", "Life Stress")
         return {"label": label, "patterns": (block or {}).get("patterns", []),
                 "items": items, "curated": True}
+    except Exception:
+        return block
+
+
+def apply(cx, email, block, products=None):
+    """cx-reading wrapper: read the client's curation, then apply_data. Never raises."""
+    try:
+        return apply_data(get(cx, email), block, products)
     except Exception:
         return block
