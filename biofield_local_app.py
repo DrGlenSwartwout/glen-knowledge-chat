@@ -702,6 +702,54 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                                            notes_updated=notes_updated),
                         mimetype="text/html")
 
+    @app.route("/client-photo/<path:email>")
+    def client_photo(email):
+        """Serve a client's photo (local store). Gated by the console cookie like the
+        rest of the intake app. 404 when absent so <img onerror> hides cleanly."""
+        from dashboard import client_photos as _cph
+        with sqlite3.connect(db_path) as cx:
+            rec = _cph.get(cx, email)
+        if not rec:
+            return Response("", status=404)
+        resp = Response(rec["blob"], mimetype=rec["content_type"])
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.route("/test/<test_id>/photo", methods=["POST"])
+    def upload_client_photo(test_id):
+        """Operator upload on the Biofield Intake page: save the photo to the local
+        store keyed by the test's client email, then best-effort push it to prod so
+        console/reveal thumbnails can show it too."""
+        from dashboard import client_photos as _cph
+        f = request.files.get("photo")
+        blob = f.read() if f else b""
+        if not blob:
+            return jsonify({"ok": False, "error": "no image uploaded"}), 400
+        ctype = (getattr(f, "mimetype", "") or "image/jpeg")
+        with sqlite3.connect(db_path) as cx:
+            rep = (authored_report(cx, test_id) if str(test_id).startswith("a")
+                   else causal_chain_report(cx, test_id))
+            email = ((rep.get("client") or {}).get("email") or "").strip().lower()
+            if not email:
+                return jsonify({"ok": False, "error": "this test has no client email"}), 400
+            _cph.put(cx, email, blob, ctype, source="fmp-intake-upload")
+        prod_pushed = False
+        base = os.environ.get("PORTAL_PUBLISH_BASE_URL", "")
+        key = os.environ.get("CONSOLE_SECRET", "")
+        if base:
+            try:
+                import base64 as _b64, json as _json, urllib.request as _u
+                body = _json.dumps({"email": email, "content_type": ctype,
+                                    "source": "fmp-intake-upload",
+                                    "image": _b64.b64encode(blob).decode()}).encode()
+                r = _u.Request(base.rstrip("/") + "/api/console/client-photo", data=body,
+                               method="POST", headers={"X-Console-Key": key,
+                               "Content-Type": "application/json"})
+                prod_pushed = bool(_json.load(_u.urlopen(r, timeout=30)).get("ok"))
+            except Exception as e:
+                print(f"[client-photo] prod push failed: {e}", flush=True)
+        return jsonify({"ok": True, "email": email, "prod_pushed": prod_pushed})
+
     @app.route("/test/<test_id>/report")
     def report_present(test_id):
         with sqlite3.connect(db_path) as cx:

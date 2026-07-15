@@ -300,6 +300,25 @@ def render_invoice_page(report, fee_state):
     return _page(f"Invoice — {c.get('name') or ''}", body)
 
 
+_PHOTO_JS = """<script>
+async function uploadPhoto(tid, eq){
+  var f=document.getElementById('photofile');
+  if(!f||!f.files||!f.files[0])return;
+  var stat=document.getElementById('photostat'); stat.textContent='Uploading\\u2026';
+  var fd=new FormData(); fd.append('photo', f.files[0]);
+  try{
+    var r=await fetch('/test/'+tid+'/photo',{method:'POST',body:fd});
+    var j=await r.json();
+    if(j.ok){
+      var img=document.getElementById('clientphoto');
+      img.src='/client-photo/'+eq+'?t='+Date.now(); img.style.display='block';
+      stat.textContent = j.prod_pushed ? 'Saved.' : 'Saved locally (prod push pending).';
+    } else { stat.textContent='Error: '+(j.error||'failed'); }
+  }catch(e){ stat.textContent='Error: '+e; }
+}
+</script>"""
+
+
 def render_report_html(report, notes="", narrative="", video_script="", stresses=None,
                        notes_updated=""):
     c = report.get("client") or {}
@@ -311,6 +330,22 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
             f"<h1>{name}</h1>"
             f"<p class=sub>{email} &nbsp;&middot;&nbsp; {date} "
             f"&nbsp;&middot;&nbsp; test {_e(report.get('test_id') or '')}</p>")
+    import urllib.parse as _up
+    _email_raw = (c.get("email") or "").strip()
+    if _email_raw:
+        _eq = _up.quote(_email_raw, safe="")
+        _tidp = _e(report.get("test_id") or "")
+        head += (
+            "<div class=photobox style='display:flex;gap:14px;align-items:flex-start;margin:4px 0 16px'>"
+            "<img id=clientphoto alt='' "
+            "style='width:180px;height:180px;object-fit:cover;border-radius:10px;"
+            "border:1px solid var(--line);background:#0c0e12;display:block' "
+            f"src='/client-photo/{_eq}' onerror=\"this.style.display='none'\">"
+            "<div><label class=btn style='cursor:pointer;display:inline-block'>Upload photo"
+            f"<input id=photofile type=file accept='image/*' style='display:none' "
+            f"onchange=\"uploadPhoto('{_tidp}','{_eq}')\"></label>"
+            "<div id=photostat class=food style='margin-top:6px'></div></div></div>"
+            + _PHOTO_JS)
     tid_link = _e(report.get("test_id") or "")
     head += (f'<p class=sub><a href="/test/{tid_link}/report" target="_blank">Open clean report</a>'
              f' &nbsp;·&nbsp; <a href="/test/{tid_link}/report.pdf" target="_blank">Print/Download PDF</a></p>')

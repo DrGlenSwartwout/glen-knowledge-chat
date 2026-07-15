@@ -21829,6 +21829,48 @@ def api_console_portal_links():
     return jsonify({"ok": True, "portals": portals})
 
 
+@app.route("/api/console/client-photo", methods=["POST"])
+def api_console_client_photo():
+    """Store a client's photo (base64), keyed by email. Pushed from the local intake
+    app's upload or a console upload. Console-key gated. See client-photos Slice 1."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    import base64 as _b64
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    img_b64 = body.get("image") or ""
+    if not email or "@" not in email or not img_b64:
+        return jsonify({"ok": False, "error": "email and image required"}), 400
+    try:
+        blob = _b64.b64decode(img_b64)
+    except Exception:
+        return jsonify({"ok": False, "error": "bad base64 image"}), 400
+    if not blob:
+        return jsonify({"ok": False, "error": "empty image"}), 400
+    from dashboard import client_photos as _cph
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cph.put(cx, email, blob, (body.get("content_type") or "image/jpeg"),
+                 source=(body.get("source") or "console"))
+    return jsonify({"ok": True, "email": email})
+
+
+@app.route("/client-photo/<path:email>")
+def serve_client_photo(email):
+    """Serve a client's photo for console/reveal surfaces. Owner/console gated
+    (portal-token-scoped read comes with Slice 2). 404 when absent so <img onerror>
+    hides cleanly."""
+    if not (_portal_console_ok() or _portal_open_is_owner()):
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import client_photos as _cph
+    with sqlite3.connect(LOG_DB) as cx:
+        rec = _cph.get(cx, email)
+    if not rec:
+        return Response("", status=404)
+    resp = Response(rec["blob"], mimetype=rec["content_type"])
+    resp.headers["Cache-Control"] = "private, max-age=300"
+    return resp
+
+
 @app.route("/api/console/portal-link", methods=["GET"])
 def api_console_portal_link():
     """Return the /portal/<token> link for one client by email (reuses the stable
