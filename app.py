@@ -19033,6 +19033,22 @@ def api_practitioner_life_stress_curation(patient_email):
     return jsonify({"ok": True, "saved": valid})
 
 
+@app.route("/api/practitioner/terrain-restore-catalog", methods=["GET"])
+def api_practitioner_terrain_restore_catalog():
+    """All Terrain Restore products (essences + tinctures + gemmos), for the
+    practitioner's Life Stress substitution search. Signed-in practitioner only;
+    not per-patient (it's a catalog, not patient data)."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    if not _practitioner_session_pid():
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    out = [{"slug": slug, "name": (e or {}).get("name", "")}
+           for slug, e in (_PRODUCTS.get("products") or {}).items()
+           if "in terrain restore" in str((e or {}).get("name", "")).lower()]
+    out.sort(key=lambda p: p["name"])
+    return jsonify({"ok": True, "products": out})
+
+
 @app.route("/api/console/client-condition", methods=["GET"])
 def api_console_client_condition_get():
     """Owner console: how a client's eye-condition support-program key
