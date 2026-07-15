@@ -13,7 +13,7 @@
 (function () {
   if (window.OptinGate) return;
 
-  var TERMS_URL = 'https://remedymatch.com/info/terms-and-conditions';
+  var TERMS_URL = 'https://illtowell.com/terms';
   var _open = false;
 
   function _injectStyles() {
