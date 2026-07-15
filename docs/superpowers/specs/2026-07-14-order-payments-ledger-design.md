@@ -39,6 +39,12 @@ order card, the client-facing invoice, and the orders/money boards.
    build creates the table and handles new + Dana orders only.
 7. **Client visibility:** the client invoice shows only `active` rows; voided
    rows are hidden from the client (visible in the console).
+8. **Refunds (in v1):** a refund is a ledger entry (`kind='refund'`) that
+   reduces "paid" and raises the balance. For **card** payments the app calls
+   the Stripe API to actually refund the charge (full or partial), then records
+   the ledger + a matching QBO refund. **Non-card** refunds (Zelle/check/etc.)
+   are record + QBO only; the operator returns the money through the original
+   channel. Refunds are correctable by the same void + re-add rule.
 
 ## Data model — `order_payments` (in `chat_log.db` / `LOG_DB`)
 
@@ -48,47 +54,68 @@ Balance is always derived, never stored.
 |---|---|---|
 | `id` | INTEGER PK | |
 | `order_id` | INTEGER | links to the order |
-| `amount_cents` | INTEGER | positive |
+| `kind` | TEXT | `payment` · `refund` |
+| `amount_cents` | INTEGER | always positive; sign is carried by `kind` |
 | `method` | TEXT | existing dropdown set: Credit card (Stripe), eProcessing, Check, Cash, Venmo, PayPal, Zelle, Wise |
 | `source` | TEXT | `stripe` (auto) · `manual` (hand-keyed) · `legacy` (future backfill) |
-| `external_ref` | TEXT | Stripe PI id or Zelle/check memo; idempotency key for auto rows (nullable) |
+| `external_ref` | TEXT | Stripe PI id (payment) / Stripe Refund id (refund) / Zelle-check memo; idempotency key for auto rows (nullable) |
+| `refunds_payment_id` | INTEGER | for a refund, the payment row it reverses (nullable — a refund may be standalone) |
 | `paid_at` | TEXT | ISO date, editable (backdated Zelle records on the correct day) |
 | `note` | TEXT | optional |
 | `status` | TEXT | `active` · `void` |
 | `void_reason` | TEXT | filled on void |
 | `voided_at` | TEXT | filled on void |
-| `qbo_payment_id` | TEXT | QBO Payment.Id this row created; the idempotency anchor |
+| `qbo_txn_id` | TEXT | QBO transaction id this row created — a Payment.Id (payment) or Refund/RefundReceipt.Id (refund); the idempotency anchor |
 | `qbo_sync` | TEXT | `synced` · `pending` · `error` |
 | `created_at` | TEXT | |
 | `updated_at` | TEXT | |
 | `created_by` | TEXT | actor |
 
-**Balance** = order invoice total − SUM(`amount_cents` WHERE `status='active'`).
-Negative balance is displayed as a credit / overpayment.
+**Paid** = SUM(`amount_cents` WHERE `kind='payment'` AND `status='active'`)
+− SUM(`amount_cents` WHERE `kind='refund'` AND `status='active'`).
+**Balance** = order invoice total − Paid. Negative balance is displayed as a
+credit / overpayment.
 
 ## Backend — `dashboard/order_payments.py` (pure functions)
 
-- `list_payments(cx, order_id)` → rows (active + void), newest first
+- `list_payments(cx, order_id)` → rows (payments + refunds, active + void), newest first
 - `add_payment(cx, order_id, amount_cents, method, source, external_ref, paid_at, note, actor)`
-  → inserts row, then pushes one QBO payment via `qbo_billing.record_payment`
-  (store returned Id in `qbo_payment_id`, set `qbo_sync='synced'`); on exception
-  set `qbo_sync='error'` and keep the app row. Idempotent when `external_ref`
-  matches an existing non-void row of the same order (returns the existing row).
-- `void_payment(cx, payment_id, reason, actor)` → set `status='void'`; call QBO
-  void/delete on `qbo_payment_id`. **No-op against QBO if `qbo_payment_id` is
-  null.** Idempotent (voiding an already-void row is a no-op).
-- `balance(cx, order_id)` → `{invoice_cents, paid_cents, balance_cents}`
+  → inserts `kind='payment'` row, then pushes one QBO payment via
+  `qbo_billing.record_payment` (store returned Id in `qbo_txn_id`, set
+  `qbo_sync='synced'`); on exception set `qbo_sync='error'` and keep the app
+  row. Idempotent when `external_ref` matches an existing non-void row of the
+  same order (returns the existing row).
+- `add_refund(cx, order_id, amount_cents, method, refunds_payment_id, note, actor)`
+  → validates `amount_cents` ≤ net-refundable (paid minus prior active refunds,
+  and, if `refunds_payment_id` given, ≤ that payment's un-refunded remainder);
+  inserts `kind='refund'` row. If the refunded payment is a **card**
+  (`source='stripe'`), first call `stripe_pay.refund(payment_intent_id,
+  amount_cents)` and store the Stripe Refund id in `external_ref`; then post a
+  matching QBO refund via `qbo_billing.record_refund` (store id in `qbo_txn_id`).
+  Non-card refunds skip the Stripe call. On QBO exception set `qbo_sync='error'`.
+- `void_payment(cx, payment_id, reason, actor)` → set `status='void'` (works for
+  a payment or a refund row); call QBO void/delete on `qbo_txn_id`. **No-op
+  against QBO if `qbo_txn_id` is null.** Idempotent (voiding an already-void row
+  is a no-op). Voiding a card **refund** does NOT re-charge the card — it only
+  corrects the record; re-charging is a fresh payment.
+- `balance(cx, order_id)` → `{invoice_cents, paid_cents, refunded_cents, balance_cents}`
 - `resync(cx, payment_id)` → for `pending`/`error` rows, re-attempt the QBO
-  push (or void) using `qbo_payment_id` presence to avoid double-posting.
+  push/void using `qbo_txn_id` presence to avoid double-posting.
 
-New helper in `dashboard/qbo_billing.py`: `void_payment(qbo_payment_id)`
-(delete/void a QBO Payment), mirroring the existing `record_payment`.
+New helpers:
+- `dashboard/qbo_billing.py`: `void_payment(qbo_txn_id)` and
+  `record_refund(customer_id, amount_cents, invoice_id, method=None)`,
+  mirroring `record_payment`.
+- `dashboard/stripe_pay.py`: `refund(payment_intent_id, amount_cents)` → calls
+  the Stripe Refunds API (partial when `amount_cents` < original), returns the
+  Refund object.
 
 ## Routes (console-auth, MONEY_SEND / OWNER·OPS — same tier as `finance.record_payment`)
 
 - `GET  /api/orders/<oid>/payments` → `{rows, balance}`
-- `POST /api/orders/<oid>/payments` → add `{amount, method, paid_at?, external_ref?, note?}`
-- `POST /api/orders/payments/<pid>/void` → `{reason}`
+- `POST /api/orders/<oid>/payments` → add payment `{amount, method, paid_at?, external_ref?, note?}`
+- `POST /api/orders/<oid>/refunds` → add refund `{amount, method, refunds_payment_id?, note?}`
+- `POST /api/orders/payments/<pid>/void` → `{reason}` (payment or refund)
 - `POST /api/orders/payments/<pid>/resync` → idempotent QBO repair
 
 ## Stripe integration (fixes the Dana double-count)
@@ -100,15 +127,25 @@ ledger owns the single QBO push. Because `add_payment` is idempotent on the PI
 id, a re-hit of `checkout-return` (retry, refresh) can never create a duplicate
 payment. `checkout-return` no longer calls QBO directly.
 
+**Card refunds** reverse this path: `add_refund` on a `source='stripe'` payment
+calls `stripe_pay.refund(<PI id>, amount_cents)` (partial supported), records
+the Stripe Refund id on the refund row, and posts a matching QBO refund. The
+refund amount is guarded to the payment's un-refunded remainder so the same
+charge can never be over-refunded.
+
 ## UI
 
 ### Console order card (`static/order-new.html`, edit mode)
 Replace the single method/amount line with a **payments panel**:
-- table: date · method · amount · source badge · status (voided rows struck
-  through with reason)
-- **Paid / Balance** running line (credit shown if overpaid)
+- table: date · type (payment/refund) · method · amount (refunds shown negative
+  with a refund badge) · source badge · status (voided rows struck through with
+  reason)
+- **Paid / Refunded / Balance** running line (credit shown if overpaid)
 - **Add payment** mini-form: amount, method dropdown, date, ref, note
-- per-row **Void** (prompts for reason)
+- per-payment-row **Refund** action → amount pre-filled to that payment's
+  un-refunded remainder, editable down for a partial; card rows note "refunds to
+  card via Stripe", non-card note "record only"
+- per-row **Void** (prompts for reason; applies to payments and refunds)
 - `pending`/`error` rows show a "needs resync" badge + **Resync** button
 
 The order's legacy `pay_method` field remains for back-compat but the panel is
@@ -116,7 +153,8 @@ the real record. `pay_status` derives: `unpaid` (0 paid) · `partial`
 (0 < paid < total) · `paid` (balance ≤ 0).
 
 ### Client invoice (`/invoice/<token>`)
-Read-only "Payments received" list (active rows only) + "Balance due".
+Read-only "Payments received" list (active rows only), refunds shown as a
+"Refunded" line, + "Balance due" (net of refunds). Voided rows hidden.
 
 ### Orders board / money (`/console/orders`, `/console/money`)
 Paid-vs-balance per order. `/api/payments` extended to union manual
@@ -137,13 +175,21 @@ Unit (`tests/test_order_payments.py`):
 - add → balance decreases; overpayment → negative balance (credit)
 - same PI id added twice → exactly one row (idempotency)
 - void → excluded from balance; voiding twice is a no-op
-- void with null `qbo_payment_id` → no QBO call, still marks void
-- resync repairs a `pending` row without double-posting (uses `qbo_payment_id`)
+- void with null `qbo_txn_id` → no QBO call, still marks void
+- resync repairs a `pending` row without double-posting (uses `qbo_txn_id`)
+- **refund** reduces paid / raises balance; partial refund allowed
+- **card refund** calls `stripe_pay.refund` with the right cents; **non-card
+  refund does NOT** call Stripe
+- refund guarded: cannot exceed the payment's un-refunded remainder (or order
+  net paid for a standalone refund)
+- voiding a refund re-applies its amount to paid and does not re-charge the card
 
 Route (`tests/test_order_payments_routes.py`):
-- auth: non-OWNER/OPS rejected
+- auth: non-OWNER/OPS rejected on payments **and** refunds (both MONEY_SEND)
 - `checkout-return` with a captured PI creates exactly one ledger row; a second
   call creates none
+- `POST /refunds` on a card payment triggers a (mocked) Stripe refund; on a
+  Zelle payment does not
 
 Honor the `PYTEST_CURRENT_TEST` email guard so the suite does not send live
 mail.
@@ -152,5 +198,5 @@ mail.
 
 - Bulk backfill of all historical orders' single `pay_method` into `legacy`
   rows (provenance-neutral, no new QBO posts).
-- Refund handling (negative payments) — separate concern.
 - Payment-plan / scheduled-installment automation.
+- Auto-refund for non-card methods (Zelle/PayPal/Wise APIs) — record-only in v1.
