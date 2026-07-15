@@ -5373,18 +5373,26 @@ def _qty_eligible(p):
     return bool(p.get("qty_pricing")) and not p.get("info_only")
 
 
-def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings, *, program_member=False, line_qty=1):
     """Effective in-house unit price (cents) for a $69.97 functional-formulation
-    capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
-    capsule quantity (1 bottle = 1 month). OPEN TO ALL. Clamped at the wholesale
-    discount floor. Non-FF products return list price."""
+    capsule (_qty_eligible): a linear volume rate. Clamped at the wholesale
+    discount floor. Non-FF products return list price.
+
+    Glen policy (2026-07): the order-wide MIX/MATCH aggregation (rate driven by
+    the TOTAL FF quantity across every different FF SKU in the order) is a paid-
+    member perk only. A non-paid/$1-trial member still keeps the SAME-SKU
+    quantity discount (rate driven by just THIS line's own qty) — they just don't
+    get credit for other SKUs in the cart. program_member selects which quantity
+    the rate is computed on; the rate curve itself (volume_pct/volume_anchors) is
+    unchanged either way."""
     if not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
     # Base the volume math on the product's OWN price, not a hardcoded $69.97, so
     # changing FF pricing flows through instead of breaking the discount.
     base = int(p.get("price_cents") or 0)
-    pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
+    qty_for_rate = int(total_ff_qty or 0) if program_member else max(1, int(line_qty or 1))
+    pct = _pricing.volume_pct(qty_for_rate, settings)
     # Clamp to the canonical discount floor (unit_floor_cents), which also enforces the
     # FF minimum unit price ($50) — keeping the in-house builder identical to compute().
     floor = _pricing.unit_floor_cents(p, base, settings, "discount")
@@ -5401,9 +5409,12 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None):
-    """Explicit owner override wins; else FF capsules get the order-wide volume rate
-    (open to all), everything else its list price.
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None,
+                             program_member=False, line_qty=1):
+    """Explicit owner override wins; else FF capsules get a volume rate — the
+    order-wide mix/match rate for a paid member (program_member=True), or the
+    same-SKU (this line's own qty) rate for a non-member (Glen 2026-07 policy;
+    see _inhouse_ff_unit_cents) — everything else its list price.
 
     repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
     checkout by the caller (see _resolve_repertoire_slugs) — already FF-filtered
@@ -5415,10 +5426,13 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slu
     the SAME pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
     uses for the identical case (Task 3/5's display path), so the two paths agree
     to the cent. Never stacked with the FF volume rate — the lower of the two
-    (best-of) wins, matching compute()'s max(...) non-additive rule."""
+    (best-of) wins, matching compute()'s max(...) non-additive rule.
+    (repertoire_slugs is only ever non-empty for a paid member already — see
+    _resolve_repertoire_slugs — so it never conflicts with the program_member gate.)"""
     if override not in (None, ""):
         return int(override)
-    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings,
+                                  program_member=program_member, line_qty=line_qty)
     if repertoire_slugs and _qty_eligible(p):
         slug = (p.get("slug") or "").strip().lower()
         if slug in repertoire_slugs:
@@ -16594,17 +16608,21 @@ def _enabled_offer_keys() -> set:
 
 def _portal_priced_lines(items, email=None):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
-    per-item ``price_cents`` override (the practitioner-special price); else the
-    order-wide volume rate (open to all), with a paid member's repertoire SKUs at
-    their flat reorder rate (Task 5b — this is the ACTUAL checkout charge path, so
-    it must match what the portal displays). Returns (lines, items_rec, subtotal_cents).
+    per-item ``price_cents`` override (the practitioner-special price); else a
+    volume rate — the order-wide mix/match rate for a paid member, the same-SKU
+    (this line's own qty) rate for a non-member (Glen 2026-07 policy; see
+    _inhouse_ff_unit_cents) — with a paid member's repertoire SKUs at their flat
+    reorder rate (Task 5b — this is the ACTUAL checkout charge path, so it must
+    match what the portal displays). Returns (lines, items_rec, subtotal_cents).
 
     email (optional): the portal token's client email — passed straight through to
-    _resolve_repertoire_slugs, resolved ONCE for the whole cart (not per line)."""
+    _resolve_repertoire_slugs AND _is_paid_member, each resolved ONCE for the
+    whole cart (not per line)."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(items or [])
     rep_slugs = _resolve_repertoire_slugs(email)
+    program_member = _is_paid_member(email)
     lines, items_rec, subtotal_cents = [], [], 0
     for it in (items or []):
         slug = (it.get("slug") or "").strip()
@@ -16616,7 +16634,8 @@ def _portal_priced_lines(items, email=None):
         except Exception:
             qty = 1
         unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings,
-                                              repertoire_slugs=rep_slugs)
+                                              repertoire_slugs=rep_slugs,
+                                              program_member=program_member, line_qty=qty)
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
@@ -36960,14 +36979,19 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None,
                            adjustment_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
-    console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
-    order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
-    shipping); a manual order discount; points capped to the customer's real balance.
+    console invoice editor. Honors per-line unit_cents overrides; FF capsules get a
+    volume rate — the order-wide mix/match rate for a paid member, the same-SKU
+    (per-line qty) rate for a non-member (Glen 2026-07 policy; see
+    _inhouse_ff_unit_cents); shipping/GET via _price_cart (pickup → no shipping);
+    a manual order discount; points capped to the customer's real balance.
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    # Paid membership gates the order-wide mix/match volume rate (Glen 2026-07):
+    # resolved ONCE for the whole order, same as repertoire below.
+    program_member = _is_paid_member(email)
     # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
     # this also makes the owner in-house INVOICE honor repertoire pricing for members,
     # not just the portal checkout). Only ever consulted below when a line has no
@@ -37010,14 +37034,18 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _explicit = ln.get("unit_cents")
         _is_override = _explicit not in (None, "")
         if _is_override:
-            unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         elif _cprices.get(slug) is not None:
-            unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         elif _ff_flat is not None and _qty_eligible(p):
-            unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         else:
             unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings,
-                                                  repertoire_slugs=rep_slugs)  # volume/list/repertoire
+                                                  repertoire_slugs=rep_slugs,
+                                                  program_member=program_member, line_qty=qty)  # volume/list/repertoire
             _is_ff = _qty_eligible(p)
             _lc = int(p.get("price_cents") or 0)
             for _cand in (
@@ -37362,8 +37390,10 @@ def api_orders_manual():
 @app.route("/api/orders/price-preview", methods=["POST"])
 def api_orders_price_preview():
     """OWNER: live per-line pricing for the order-entry form. Same authority as
-    /api/orders/manual — FF capsules get the order-wide volume rate, others list
-    price, owner overrides honored. Server is the single source of truth."""
+    /api/orders/manual — FF capsules get a volume rate (the order-wide mix/match
+    rate for a paid member, else the same-SKU per-line-qty rate — Glen 2026-07
+    policy; see _inhouse_ff_unit_cents), others list price, owner overrides
+    honored. Server is the single source of truth."""
     actor = _bos_actor()
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -37372,11 +37402,15 @@ def api_orders_price_preview():
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
+    _pemail = (_body.get("email") or "").strip().lower()
+    _ppm = _is_paid_member(_pemail)
+    # The order-wide mix/match rate — a paid-member-only perk (Glen 2026-07); a
+    # non-member's per-line vol_pct is computed inside the loop below, off that
+    # line's own qty (same-SKU rate), since it isn't a single order-wide number.
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2) if _ppm else 0
     # Reflect this client's saved special prices in the live preview too (same
     # precedence as the pricer: explicit line edit > client price > volume/list).
     _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
-    _pemail = (_body.get("email") or "").strip().lower()
     if _pemail:
         try:
             from dashboard import client_prices as _cp_mod
@@ -37415,7 +37449,8 @@ def api_orders_price_preview():
             _eff_ov = _ff_flat
         else:
             _eff_ov = None
-        unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
+        unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings,
+                                        program_member=_ppm, line_qty=qty)
         if _eff_ov is None:   # cohort + earned loyalty compete with volume/list (lowest wins)
             for _cand in (_cohort_best_price(_cohorts, slug, list_cents, is_ff),
                           _cohort_loyalty_price(_loyalty, slug, is_ff, _earned)):
@@ -37424,10 +37459,14 @@ def api_orders_price_preview():
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
+        # Non-member vol_pct is the same-SKU rate off THIS line's own qty (there's
+        # no single order-wide number to show — see _inhouse_ff_unit_cents).
+        _line_vol_pct = (vol_pct if _ppm else
+                         round(float(_pricing.volume_pct(qty, settings) or 0), 2))
         out_lines.append({
             "slug": slug, "qty": qty, "is_ff": is_ff, "list_cents": list_cents,
             "effective_unit_cents": unit, "line_cents": line_cents,
-            "vol_pct": (vol_pct if (is_ff and not overridden) else 0),
+            "vol_pct": (_line_vol_pct if (is_ff and not overridden) else 0),
             "savings_cents": max(0, list_cents - unit)})
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines})
