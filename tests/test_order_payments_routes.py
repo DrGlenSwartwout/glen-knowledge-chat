@@ -70,7 +70,15 @@ def test_add_refund_and_void_and_resync(tmp_path, monkeypatch):
 
 def test_checkout_return_creates_one_stripe_row(tmp_path, monkeypatch):
     appmod, client = _client(tmp_path, monkeypatch)
-    from dashboard import stripe_pay, order_payments
+    from dashboard import stripe_pay, order_payments, qbo_billing
+
+    calls = []
+
+    def _counting_record_payment(*a, **k):
+        calls.append((a, k))
+        return {"Id": "P1"}
+
+    monkeypatch.setattr(qbo_billing, "record_payment", _counting_record_payment)
 
     monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
         "payment_status": "paid", "payment_intent": "pi_777",
@@ -89,3 +97,7 @@ def test_checkout_return_creates_one_stripe_row(tmp_path, monkeypatch):
             if r["kind"] == "payment" and r["source"] == "stripe"]
     cx.close()
     assert len(rows) == 1 and rows[0]["amount_cents"] == 22291
+    # The ledger (add_payment) owns the single QBO push for in-house orders;
+    # the direct record_payment call below it in begin_checkout_return must
+    # be gated off for kind="in-house" so it does not fire a second push.
+    assert len(calls) == 1

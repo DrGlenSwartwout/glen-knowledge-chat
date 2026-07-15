@@ -9020,11 +9020,12 @@ def begin_checkout_return():
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 if inv and cid:
-                    try:
-                        from dashboard import qbo_billing as _qb_ret
-                        _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                    except Exception as e:
-                        print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
+                    if _kind != "in-house":
+                        try:
+                            from dashboard import qbo_billing as _qb_ret
+                            _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
+                        except Exception as e:
+                            print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id:
                         _o_for_points = None
                         try:
