@@ -36754,6 +36754,48 @@ def console_client_invoice():
         "edit_url": edit_url, "lines": lines}, **biofield_paid})
 
 
+@app.route("/api/console/membership/enroll", methods=["POST"])
+def console_membership_enroll():
+    """Owner-only manual enroll: grants the membership entitlement (member
+    pricing + group access) without a Stripe round-trip, for cases where
+    payment is collected separately (e.g. a Payment Link). The recurring_capped
+    tier only grants the entitlement window here -- it does not create a
+    subscriptions row, since there is no vaulted card to charge automatically."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import membership_products as _mp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tier = _mp.get_tier((data.get("tier") or "").strip())
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not tier:
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    import datetime as _dt
+    today = _now_utc().date()
+    days = _mp.grant_days(tier["key"], today)
+    src_override = data.get("source")
+    if src_override:
+        src = src_override.strip()
+        if not src.startswith("membership_"):
+            return jsonify({"ok": False, "error": "source must start with membership_"}), 400
+    else:
+        src = tier["source"]
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        init_membership_tables(cx)
+        _grant_membership(cx, email, days, src)
+        cx.commit()
+    finally:
+        cx.close()
+    out = {"ok": True, "tier": tier["key"], "billing": tier["billing"],
+           "expires_at": (today + _dt.timedelta(days=days)).isoformat()}
+    if tier["billing"] == "recurring_capped":
+        out["note"] = "no auto-billing; bill monthly by hand or use /membership/checkout"
+    return jsonify(out)
+
+
 @app.route("/api/console/shipments/suggestions", methods=["GET"])
 def console_shipment_suggestions():
     """Owner/ops: the combined-shipment feature flag + clusters of ungrouped
