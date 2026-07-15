@@ -852,14 +852,14 @@ function renderLifeStressPicks(data){
   var el = document.getElementById('life-stress-picks'); if(!el) return;
   if(!data || !data.ok || !data.pool){ el.innerHTML = ''; return; }
   var curation = data.curation || null;
-  var curatedHasItems = !!(curation && curation.slugs && curation.slugs.length);
-  if(!data.pool.length && !curatedHasItems){ el.innerHTML = ''; return; }
+  var hasCuration = (curation !== null && curation !== undefined);
+  if(!data.pool.length && !hasCuration){ el.innerHTML = ''; return; }
   LS_EMAIL = PGM_EMAIL;  // capture the patient email for this panel's save/clear handlers
   var sel = data.selected || [];
   var curatedSlugs = null;
-  if(curatedHasItems){
+  if(hasCuration){
     curatedSlugs = {};
-    curation.slugs.forEach(function(s){ curatedSlugs[s] = true; });
+    (curation.slugs || []).forEach(function(s){ curatedSlugs[s] = true; });
   }
   var poolSlugs = {};
   var rows = data.pool.map(function(p){
@@ -872,7 +872,7 @@ function renderLifeStressPicks(data){
   // Curated slugs outside the auto-pool (a substitution) still render as extra
   // checked rows, resolved via the catalog map when it's loaded.
   if(curatedSlugs){
-    curation.slugs.forEach(function(s){
+    (curation.slugs || []).forEach(function(s){
       if(poolSlugs[s]) return;
       rows.push(lsRowHtml(s, LS_CAT_BY_SLUG[s] || s, '', true, sel.indexOf(s) !== -1));
     });
