@@ -5,6 +5,34 @@ import json
 MAX_TAG_LEN = 64
 
 
+def dedupe_tags_ci(tags):
+    """Collapse tags that differ only in case into a single tag.
+
+    GoHighLevel lowercases every tag it stores, and the console_push GHL->people
+    sync unions those lowercased tags back into people.tags — so an app-authored
+    `terrain:Aging/Rejuvenation` ends up next to a GHL-echoed
+    `terrain:aging/rejuvenation`. This collapses such pairs, PREFERRING the
+    mixed-case variant (the richer, app-authored form) over an all-lowercase one.
+    Non-str / blank entries are dropped. Order = first appearance of each
+    case-folded key.
+    """
+    chosen = {}
+    order = []
+    for t in tags:
+        if not isinstance(t, str):
+            continue
+        t = t.strip()
+        if not t:
+            continue
+        k = t.lower()
+        if k not in chosen:
+            chosen[k] = t
+            order.append(k)
+        elif chosen[k] == chosen[k].lower() and t != t.lower():
+            chosen[k] = t  # upgrade an all-lowercase pick to a mixed-case variant
+    return [chosen[k] for k in order]
+
+
 def set_person_tags(current_tags, add=None, remove=None):
     """Apply remove-then-add to current_tags and return the new list.
 
