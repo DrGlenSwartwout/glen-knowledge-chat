@@ -93,6 +93,7 @@ from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
 from dashboard import condition_programs, broad_benefit
+from dashboard import life_stress
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -15945,6 +15946,14 @@ def _support_programs_enabled():
         "1", "true", "yes", "on")
 
 
+def _life_stress_enabled():
+    """The Life Stress essence-recommendation portal card. Default OFF — mirrors
+    _support_programs_enabled exactly: when off, the portal payload never gains the
+    `life_stress` key, so responses stay byte-identical to pre-life-stress behavior."""
+    return os.environ.get("LIFE_STRESS_ENABLED", "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _program_composer_enabled():
     """Practitioner condition-program composer + its client card. Default OFF."""
     return (os.environ.get("PROGRAM_COMPOSER_ENABLED", "") or "").strip().lower() in (
@@ -17643,6 +17652,18 @@ def api_client_portal(token):
                 payload["support_program"] = _sp_block
         except Exception as _e:
             print(f"[support-program/payload] {_e!r}", flush=True)
+    # Life Stress flag (always present, mirrors ff_matches_enabled/support_programs_enabled):
+    # lets the frontend gate the card without a separate flag call. email_for_reports is
+    # already re-pointed by ?member=, so a member's card matches THEIR scan, not the
+    # caregiver's.
+    payload["life_stress_enabled"] = _life_stress_enabled()
+    if _life_stress_enabled():
+        try:
+            _ls_block = _life_stress_for(email_for_reports)
+            if _ls_block:
+                payload["life_stress"] = _ls_block
+        except Exception as _e:
+            print(f"[life-stress/payload] {_e!r}", flush=True)
     # PRL Supplement flag (always present, mirrors ff_matches_enabled) + card
     # (flag-gated, best-effort). email_for_reports is member-re-pointed.
     payload["prl_supplement_enabled"] = _prl_supplement_enabled()
@@ -18705,6 +18726,18 @@ def _support_program_for(email):
             "consult_recommended": bool(prog["consult_recommended"]),
             "items": [_support_program_item_view(it) for it in resolved],
         }
+    except Exception:
+        return None
+
+
+def _life_stress_for(email):
+    """The client's Life Stress essence recommendation (E4L scan emotion patterns
+    matched to supportive Terrain Restore essences), or None when there's no scan,
+    no matched emotions, or no resolvable essence. Best-effort — any error returns
+    None, never raises."""
+    try:
+        import datetime as _dt_ls
+        return life_stress.recommend(email, _dt_ls.date.today().isoformat())
     except Exception:
         return None
 

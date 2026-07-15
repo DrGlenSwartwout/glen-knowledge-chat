@@ -3,6 +3,10 @@ Shared renderer for the print/PDF (and later portal) skins. Pure function:
 takes the report dict + narrative text, returns a complete print-styled HTML doc.
 Section order is schedule-forward (the printed sheet ships with the bottles)."""
 
+import os as _os
+import datetime as _dt
+from dashboard.life_stress import recommend as _ls_recommend
+
 WORDMARK = "Accelerated Self Healing™"
 FOOTER = "In wellness, Dr. Glen & Rae · illtowell.com"
 
@@ -94,6 +98,30 @@ def _narrative(narrative):
     return f'<h2>Narrative</h2><div class="narrative">{paras}</div>'
 
 
+def _life_stress(report):
+    """Supportive Life Stress essence line for the PATIENT letter. Lists essences
+    only (a new supportive category) — never the raw ER/MR stresses, which stay off
+    the patient report (see biofield_narrative._narrative_findings). '' when disabled
+    or empty. Never raises. Plain text, no buy-links in the letter."""
+    if _os.environ.get("LIFE_STRESS_ENABLED", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return ""
+    try:
+        email = ((report or {}).get("client") or {}).get("email") or ""
+        day = (report or {}).get("date") or _dt.date.today().isoformat()
+        ls = _ls_recommend(email, day)
+        if not ls or not ls.get("items"):
+            return ""
+        lis = "".join(
+            f"<li>{_e(it.get('name'))} <span class=\"food\">— {_e(it.get('note',''))}</span></li>"
+            for it in ls["items"])
+        return ("<h2>Supportive Life Stress Essences</h2>"
+                "<p class=\"food\">Vibrational companions matched to the stress patterns in "
+                "your voice scan, available in Terrain Restore.</p>"
+                f"<ul>{lis}</ul>")
+    except Exception:
+        return ""
+
+
 def _chain(report):
     from dashboard.biofield_report_html import render_chain_table
     # Grouped by layer (Head/Tail span their remedies) to match the editor + viewer.
@@ -102,7 +130,7 @@ def _chain(report):
 
 def render_present(report, narrative=""):
     body = (_masthead(report) + _schedule(report) + _narrative(narrative)
-            + _chain(report) + f'<div class="footer">{_e(FOOTER)}</div>')
+            + _life_stress(report) + _chain(report) + f'<div class="footer">{_e(FOOTER)}</div>')
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<title>Biofield Analysis</title><style>{_CSS}</style></head>"
             f"<body>{body}</body></html>")
