@@ -256,3 +256,63 @@ def test_payments_view_shows_card_refund_but_not_card_payment(cx, monkeypatch):
     cr = [r for r in rows if r["source"] == "card:refund"][0]
     assert cr["amount_cents"] == -5000 and cr["external_ref"] == "re_1"
     assert any(r["source"].startswith("manual:") for r in rows)   # the Zelle still shows
+
+
+def test_backfill_legacy_payments(cx):
+    """Dry-run reports the plan without writing; apply creates source='legacy' rows
+    (no QBO push); trials, already-ledgered, unpaid, and skip_order_ids are excluded;
+    re-run is idempotent."""
+    from dashboard import orders as O
+    # order #1 (fixture, total 41282) -> a PAID non-trial legacy order (a candidate)
+    cx.execute("UPDATE orders SET paid_cents=41282, pay_method='card', pay_status='paid' WHERE id=1")
+    # #2 paid biofield_trial -> excluded (trial)
+    O.upsert_order(cx, source="biofield_trial", external_ref="T-1", email="t@e.com", total_cents=100)
+    cx.execute("UPDATE orders SET paid_cents=100, pay_method='card', pay_status='paid' WHERE external_ref='T-1'")
+    # #3 paid non-trial that ALREADY has a ledger row -> excluded (idempotency guard)
+    O.upsert_order(cx, source="qbo", external_ref="L-1", email="l@e.com", total_cents=5000)
+    o3 = cx.execute("SELECT id FROM orders WHERE external_ref='L-1'").fetchone()[0]
+    cx.execute("UPDATE orders SET paid_cents=5000, pay_method='Zelle', pay_status='paid' WHERE id=?", (o3,))
+    cx.execute("INSERT INTO order_payments (order_id, kind, amount_cents, method, source, status, "
+               "qbo_sync, created_at) VALUES (?, 'payment', 5000, 'Zelle', 'manual', 'active', "
+               "'synced', '2026-01-01')", (o3,))
+    # #4 unpaid -> excluded
+    O.upsert_order(cx, source="qbo", external_ref="U-1", email="u@e.com", total_cents=9999)
+    cx.commit()
+
+    plan = op.backfill_legacy_payments(cx, dry_run=True)
+    assert [p["order_id"] for p in plan["candidates"]] == [1]   # only the paid non-trial no-ledger order
+    assert plan["written"] == 0
+    assert cx.execute("SELECT COUNT(*) FROM order_payments WHERE source='legacy'").fetchone()[0] == 0
+
+    res = op.backfill_legacy_payments(cx, dry_run=False)
+    assert res["written"] == 1
+    row = cx.execute("SELECT * FROM order_payments WHERE order_id=1 AND source='legacy'").fetchone()
+    assert row["amount_cents"] == 41282 and row["method"] == "card"
+    assert row["kind"] == "payment" and row["status"] == "active"
+    assert row["qbo_sync"] == "synced" and row["qbo_txn_id"] is None   # NEVER pushed to QBO
+
+    assert op.backfill_legacy_payments(cx, dry_run=False)["written"] == 0   # idempotent re-run
+
+    cx.execute("DELETE FROM order_payments WHERE source='legacy'"); cx.commit()
+    skipped = op.backfill_legacy_payments(cx, dry_run=True, skip_order_ids=[1])
+    assert [p["order_id"] for p in skipped["candidates"]] == []   # skip list honored
+
+
+def test_resync_never_pushes_a_legacy_backfill_row(cx, monkeypatch):
+    """A legacy-backfill row is qbo_sync='synced' with a NULL qbo_txn_id. resync()
+    must NOT push it to QBO — its payment already exists there, so a push would be a
+    duplicate. (The _push guard now honors qbo_sync, not just qbo_txn_id presence.)"""
+    from dashboard import qbo_billing
+    cx.execute("UPDATE orders SET paid_cents=41282, pay_method='card', pay_status='paid' WHERE id=1")
+    cx.commit()
+    op.backfill_legacy_payments(cx, dry_run=False)
+    legacy = cx.execute("SELECT id FROM order_payments WHERE order_id=1 AND source='legacy'").fetchone()[0]
+    calls = {"n": 0}
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "999"})
+    monkeypatch.setattr(qbo_billing, "record_payment",
+                        lambda *a, **k: calls.__setitem__("n", calls["n"] + 1) or {"Id": "P9"})
+    op.resync(cx, legacy)
+    assert calls["n"] == 0   # NEVER pushed — no double-count
+    row = cx.execute("SELECT qbo_sync, qbo_txn_id FROM order_payments WHERE id=?", (legacy,)).fetchone()
+    assert row["qbo_sync"] == "synced" and row["qbo_txn_id"] is None
