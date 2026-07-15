@@ -18993,7 +18993,11 @@ def api_practitioner_life_stress_selection(patient_email):
         row = cx.execute("SELECT updated_at FROM life_stress_selections WHERE email=?",
                          (email,)).fetchone()
         cur = life_stress_curation.get(cx, email)
-    block = _life_stress_for(email) or {}
+    import datetime as _dt_lsp
+    try:
+        block = life_stress.recommend(email, _dt_lsp.date.today().isoformat()) or {}
+    except Exception:
+        block = {}
     pool = [{"slug": it.get("slug"), "name": it.get("name"),
              "pattern": (it.get("note") or "")} for it in block.get("items", [])]
     return jsonify({"ok": True, "pool": pool, "selected": selected,

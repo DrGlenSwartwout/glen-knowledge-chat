@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from dashboard import life_stress_selection
+from dashboard import life_stress, life_stress_curation, life_stress_selection
 
 PID = "doc1"
 EMAIL = "pat@x.com"
@@ -55,6 +55,7 @@ def wired(monkeypatch, tmp_path):
     from dashboard import continuity_view as cv
     monkeypatch.setattr(cv, "authorized_patient", lambda cx, pid, email: True)
     monkeypatch.setattr(app_module, "_life_stress_for", lambda email: dict(POOL_BLOCK))
+    monkeypatch.setattr(life_stress, "recommend", lambda email, today: dict(POOL_BLOCK))
     return app_module, db_path
 
 
@@ -115,3 +116,42 @@ def test_200_no_selection_yet(wired):
     assert body["ok"] is True
     assert body["selected"] == []
     assert body["updated_at"] is None
+
+
+def test_200_pool_is_raw_auto_pool_even_when_curated(monkeypatch, wired):
+    """P2 review fix regression guard: `_life_stress_for` is curation-AWARE --
+    once a curation exists for a client, it collapses to the curated subset
+    (that's correct for the client-facing card). But this practitioner GET's
+    `pool` must always reflect the FULL raw auto-pool from
+    `life_stress.recommend`, uncollapsed, so the editor can be edited DOWN
+    from the algorithm's full suggestion set. `curation` (from
+    life_stress_curation.get) stays the separate pre-check source and still
+    carries only the curated slugs. Pre-fix, `pool` came from
+    `_life_stress_for` and would have wrongly collapsed to just
+    ["grief-release"] here."""
+    app_module, db_path = wired
+    auto_pool = {
+        "items": [
+            {"slug": "grief-release", "name": "Grief Release", "note": "grief pattern"},
+            {"slug": "calm-clarity", "name": "Calm & Clarity", "note": "anxiety pattern"},
+            {"slug": "steady-ground", "name": "Steady Ground", "note": "overwhelm pattern"},
+        ]
+    }
+    monkeypatch.setattr(life_stress, "recommend", lambda email, today: dict(auto_pool))
+
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        life_stress_curation.set(cx, EMAIL, PID, ["grief-release"], "practitioner note")
+
+    client = app_module.app.test_client()
+    r = client.get(f"/api/practitioner/life-stress-selection/{EMAIL}")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["pool"] == [
+        {"slug": "grief-release", "name": "Grief Release", "pattern": "grief pattern"},
+        {"slug": "calm-clarity", "name": "Calm & Clarity", "pattern": "anxiety pattern"},
+        {"slug": "steady-ground", "name": "Steady Ground", "pattern": "overwhelm pattern"},
+    ]
+    assert body["curation"] is not None
+    assert body["curation"]["slugs"] == ["grief-release"]
