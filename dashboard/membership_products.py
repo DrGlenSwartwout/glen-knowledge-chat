@@ -48,3 +48,20 @@ def grant_days(key, today):
     t = TIERS[key]
     end = _add_months(today, t["grant_months"])
     return (end - today).days + GRACE_DAYS
+
+def _tier_sources():
+    return tuple(t["source"] for t in TIERS.values())
+
+def owns_group(cx, email):
+    """True iff the email holds an active membership-tier grant. Namespaced to the
+    tier sources so prepay/continuous-care/founding grants are unaffected."""
+    if not email:
+        return False
+    now = datetime.datetime.utcnow().isoformat()
+    srcs = _tier_sources()
+    ph = ",".join("?" * len(srcs))
+    row = cx.execute(
+        f"SELECT 1 FROM memberships WHERE lower(email)=lower(?) "
+        f"AND expires_at > ? AND source IN ({ph}) LIMIT 1",
+        (email, now, *srcs)).fetchone()
+    return row is not None
