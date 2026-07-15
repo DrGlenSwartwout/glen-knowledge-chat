@@ -7,6 +7,11 @@ Mirrors tests/test_support_program_payload.py's shape:
   - flag on + reco        -> `life_stress` present, verbatim from _life_stress_for
                               plus a `selected` key (Task 4: saved slugs, or [] if none)
   - best-effort             a builder error never breaks the rest of the payload
+
+Task 3 (curation override, portal only): a practitioner's curation for this client
+replaces the auto-pool inside `_life_stress_for` itself (block gets curated=True).
+Those tests exercise the REAL `_life_stress_for` / `life_stress_curation.apply` --
+only `life_stress.recommend` is monkeypatched, to make the base pool deterministic.
 """
 import importlib
 import sqlite3
@@ -16,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from dashboard import client_portal as cp
+from dashboard import life_stress_curation
 from dashboard import life_stress_selection
 
 EMAIL = "lscaregiver@example.com"
@@ -149,3 +155,39 @@ def test_no_saved_selection_selected_is_empty(app_env, monkeypatch):
     j = client.get(f"/api/portal/{token}").get_json()
     assert "life_stress" in j
     assert j["life_stress"]["selected"] == []
+
+
+def test_curated_client_gets_prescription_not_pool(app_env, monkeypatch):
+    """Task 3: a practitioner curation for this client overrides the auto-pool inside
+    the REAL `_life_stress_for` -- the portal payload shows the curated items with
+    curated=True. Only `life_stress.recommend` is monkeypatched (deterministic pool);
+    `life_stress_curation.apply` runs for real against the seeded curation."""
+    app, client, token = app_env
+    monkeypatch.setenv("LIFE_STRESS_ENABLED", "1")
+    monkeypatch.setattr(app.life_stress, "recommend", lambda email, today: dict(POOL))
+
+    with sqlite3.connect(app.LOG_DB) as cx:
+        life_stress_curation.set(cx, EMAIL, "pract-1",
+                                  ["honeysuckle-flower-essence-in-terrain-restore"],
+                                  "practitioner's note")
+
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert "life_stress" in j
+    block = j["life_stress"]
+    assert block["curated"] is True
+    assert [it["slug"] for it in block["items"]] == ["honeysuckle-flower-essence-in-terrain-restore"]
+    assert block["items"][0]["note"] == "practitioner's note"
+
+
+def test_uncurated_client_keeps_phase1_shape(app_env, monkeypatch):
+    """No curation row for this client -> the real `_life_stress_for` returns the
+    recommend() block unchanged: no `curated` key (Phase 1 shape preserved)."""
+    app, client, token = app_env
+    monkeypatch.setenv("LIFE_STRESS_ENABLED", "1")
+    monkeypatch.setattr(app.life_stress, "recommend", lambda email, today: dict(POOL))
+
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert "life_stress" in j
+    assert "curated" not in j["life_stress"]
+    assert [it["slug"] for it in j["life_stress"]["items"]] == \
+        [it["slug"] for it in POOL["items"]]

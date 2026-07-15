@@ -18740,10 +18740,15 @@ def _life_stress_for(email):
     """The client's Life Stress essence recommendation (E4L scan emotion patterns
     matched to supportive Terrain Restore essences), or None when there's no scan,
     no matched emotions, or no resolvable essence. Best-effort — any error returns
-    None, never raises."""
+    None, never raises. When the practitioner has curated this client's essences,
+    the curation replaces the auto-pool (block gets curated=True)."""
     try:
         import datetime as _dt_ls
-        return life_stress.recommend(email, _dt_ls.date.today().isoformat())
+        block = life_stress.recommend(email, _dt_ls.date.today().isoformat())
+        from dashboard import life_stress_curation
+        with sqlite3.connect(LOG_DB) as _cx_lsc:
+            block = life_stress_curation.apply(_cx_lsc, email, block, _PRODUCTS)
+        return block
     except Exception:
         return None
 
