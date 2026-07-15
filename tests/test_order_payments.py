@@ -227,3 +227,32 @@ def test_void_refund_reapplies_paid(cx, monkeypatch):
     # a refund row's qbo_txn_id is a RefundReceipt — must dispatch to void_refund,
     # never void_payment (wrong QBO endpoint)
     assert voided_refunds == {"txn": "R1"}
+
+
+def test_payments_view_shows_card_refund_but_not_card_payment(cx, monkeypatch):
+    """The money view (ledger_rows_for_payments_view) must surface a CARD refund
+    (source='stripe', kind='refund' — it has no row in the Stripe charge ledger)
+    while still excluding the card PAYMENT (source='stripe', kind='payment' — that
+    charge already appears via dashboard.payments)."""
+    from dashboard import qbo_billing, stripe_pay
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "999"})
+    monkeypatch.setattr(qbo_billing, "record_payment", lambda *a, **k: {"Id": "P1"})
+    monkeypatch.setattr(qbo_billing, "record_refund", lambda *a, **k: {"Id": "R1"})
+    monkeypatch.setattr(stripe_pay, "refund",
+                        lambda pi, amount_cents=None: {"id": "re_1", "status": "succeeded",
+                                                       "amount": amount_cents})
+    oid = _oid(cx)
+    card = op.add_payment(cx, oid, 22291, "Credit card (Stripe)",
+                          source="stripe", external_ref="pi_9")
+    op.add_payment(cx, oid, 13100, "Zelle")                       # manual payment
+    op.add_refund(cx, oid, 5000, "Credit card (Stripe)",
+                  refunds_payment_id=card["id"])                  # card refund (source='stripe')
+
+    rows = op.ledger_rows_for_payments_view(cx)
+    refs = [r["external_ref"] for r in rows]
+    assert "pi_9" not in refs                    # card PAYMENT excluded (it's in the charge ledger)
+    assert "re_1" in refs                        # card REFUND included (its only appearance)
+    cr = [r for r in rows if r["source"] == "card:refund"][0]
+    assert cr["amount_cents"] == -5000 and cr["external_ref"] == "re_1"
+    assert any(r["source"].startswith("manual:") for r in rows)   # the Zelle still shows

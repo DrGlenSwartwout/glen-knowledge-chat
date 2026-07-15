@@ -59,15 +59,21 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
     /api/payments money view can render Stripe charges and manual payments in
     one uniform list. Refunds are represented as a negative amount_cents.
     Newest first (paid_at, falling back to created_at). Voided/pending rows
-    (status != 'active') and Stripe-sourced rows are excluded — Stripe already
-    has its own row in the ledger via dashboard.payments. Read-only; caller
-    sets cx.row_factory = sqlite3.Row."""
+    (status != 'active') are excluded. Stripe-sourced PAYMENTS are excluded —
+    they already appear via dashboard.payments' charge ledger — but Stripe-sourced
+    REFUNDS ARE included (a card refund has no row in the charge ledger, so this is
+    its only appearance), tagged 'card:refund'. Read-only; caller sets
+    cx.row_factory = sqlite3.Row."""
     rows = cx.execute(
-        "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, "
+        "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, op.source AS op_source, "
         "op.external_ref AS op_ref, op.paid_at, op.created_at, "
         "o.email, o.name, o.channel "
         "FROM order_payments op JOIN orders o ON o.id = op.order_id "
-        "WHERE op.status='active' AND op.source != 'stripe' "
+        # Non-Stripe rows (manual payments + refunds) PLUS Stripe REFUNDS. A card
+        # refund is source='stripe' but has NO row in the Stripe charge ledger
+        # (dashboard.payments tracks charges, not refunds), so include it here.
+        # Stripe PAYMENTS (card charges) stay excluded — they're already there.
+        "WHERE op.status='active' AND (op.source != 'stripe' OR op.kind='refund') "
         "AND op.kind IN ('payment','refund') "
         "ORDER BY COALESCE(op.paid_at, op.created_at) DESC, op.id DESC "
         "LIMIT ?", (int(limit),)).fetchall()
@@ -77,7 +83,10 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
         if r["kind"] == "refund":
             amt = -amt
         method = (r["method"] or "other").strip()
-        tag = "manual:" + (method.lower().replace(" ", "-") or "other")
+        if (r["op_source"] or "") == "stripe":
+            tag = "card:refund"   # a Stripe-issued card refund (money out, shown negative)
+        else:
+            tag = "manual:" + (method.lower().replace(" ", "-") or "other")
         out.append({
             "id": f"op-{r['op_id']}",
             "created_at": r["created_at"],
