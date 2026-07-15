@@ -94,3 +94,40 @@ def test_void_null_txn_skips_qbo(cx, monkeypatch):
     assert row["qbo_sync"] == "error" and row["qbo_txn_id"] is None
     op.void(cx, row["id"], "typo")
     assert called["n"] == 0
+
+
+def test_void_qbo_failure_is_flagged_not_swallowed(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment",
+                        lambda *a, **k: {"Id": "P9"})
+    monkeypatch.setattr(qbo_billing, "void_payment",
+                        lambda txn: (_ for _ in ()).throw(RuntimeError("QBO down")))
+    oid = _oid(cx)
+    row = op.add_payment(cx, oid, 13100, "Zelle")
+    voided = op.void(cx, row["id"], "keyed wrong amount")
+    assert voided["status"] == "void"
+    assert voided["qbo_sync"] == "void_error"
+    # local status still flips even though QBO reversal failed — balance excludes it
+    assert op.balance(cx, oid)["paid_cents"] == 0
+
+
+def test_resync_repairs_a_flagged_void(cx, monkeypatch):
+    from dashboard import qbo_billing
+    monkeypatch.setattr(qbo_billing, "get_invoice",
+                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
+    monkeypatch.setattr(qbo_billing, "record_payment",
+                        lambda *a, **k: {"Id": "P9"})
+    monkeypatch.setattr(qbo_billing, "void_payment",
+                        lambda txn: (_ for _ in ()).throw(RuntimeError("QBO down")))
+    oid = _oid(cx)
+    row = op.add_payment(cx, oid, 13100, "Zelle")
+    voided = op.void(cx, row["id"], "keyed wrong amount")
+    assert voided["qbo_sync"] == "void_error"
+
+    # QBO is back up — resync() should repair the flagged row without raising
+    monkeypatch.setattr(qbo_billing, "void_payment", lambda txn: None)
+    repaired = op.resync(cx, row["id"])
+    assert repaired["status"] == "void"
+    assert repaired["qbo_sync"] == "void_synced"

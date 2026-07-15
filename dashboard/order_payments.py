@@ -141,25 +141,40 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
 
 
 def void(cx, payment_id, reason, *, actor=None):
+    # actor: reserved for a future voided_by column; not persisted yet
     row = _row(cx, payment_id)
     if not row or row["status"] == "void":
         return row
     if row.get("qbo_txn_id"):
         try:
             qbo_billing.void_payment(row["qbo_txn_id"])
+            sync_state = "void_synced"
         except Exception:
-            pass  # keep the app void; row stays flagged for resync/repair
+            # keep the app void; row stays flagged for resync/repair
+            sync_state = "void_error"
+    else:
+        sync_state = "void_synced"   # nothing to reverse in QBO
     cx.execute("UPDATE order_payments SET status='void', void_reason=?, "
-               "voided_at=?, updated_at=? WHERE id=?",
-               (reason, _now(), _now(), payment_id))
+               "voided_at=?, updated_at=?, qbo_sync=? WHERE id=?",
+               (reason, _now(), _now(), sync_state, payment_id))
     cx.commit()
     return _row(cx, payment_id)
 
 
 def resync(cx, payment_id):
     row = _row(cx, payment_id)
-    if not row or row["status"] == "void":
+    if not row:
         return row
+    if row["status"] == "void":
+        # a void whose QBO reversal previously failed is repairable here —
+        # never permanently stranded as 'void_error'.
+        if row.get("qbo_sync") == "void_error" and row.get("qbo_txn_id"):
+            try:
+                qbo_billing.void_payment(row["qbo_txn_id"])
+                _mark_sync(cx, payment_id, state="void_synced")
+            except Exception:
+                pass  # still void_error; another resync can retry later
+        return _row(cx, payment_id)
     if row["kind"] == "payment":
         _push_payment(cx, payment_id)
     else:

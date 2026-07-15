@@ -292,8 +292,16 @@ def record_payment(customer_id, amount_cents, invoice_id, method=None):
 
 def void_payment(qbo_txn_id):
     """Delete a QBO Payment (used when a console payment row is voided). QBO
-    'delete' operation on the Payment entity. Best-effort; raises on API error."""
-    _post("/payment?operation=delete", {"Id": str(qbo_txn_id), "SyncToken": "0"})
+    'delete' requires the entity's CURRENT SyncToken (optimistic concurrency),
+    so fetch the Payment first — mirrors get_invoice's fetch-then-act pattern.
+    Raises if the payment can't be fetched or the delete is rejected."""
+    tok = money.qb_refresh()
+    payment = money.qb_get(tok, f"/payment/{qbo_txn_id}",
+                           {"minorversion": MINOR}).get("Payment")
+    if not payment:
+        raise RuntimeError(f"payment {qbo_txn_id} not found")
+    _post("/payment?operation=delete",
+         {"Id": str(qbo_txn_id), "SyncToken": str(payment["SyncToken"])})
 
 
 def get_invoice_pay_link(invoice):
