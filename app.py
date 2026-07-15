@@ -36706,9 +36706,10 @@ def console_client_invoice():
                           "amount_dollars": f"{(cents or 0) / 100:.2f}" if cents is not None else ""})
     except Exception:
         lines = []
-    import urllib.parse as _up
-    key = request.args.get("key") or ""
-    edit_url = f"/orders/new?edit_order={r['id']}" + (f"&key={_up.quote(key)}" if key else "")
+    # edit_url carries NO console key — the console UI (console-biofield-portal.html)
+    # appends its own key() client-side. Reflecting the caller's key here leaked the
+    # CONSOLE_SECRET into the JSON response body.
+    edit_url = f"/orders/new?edit_order={r['id']}"
     return jsonify({"ok": True, "order": {
         "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
