@@ -94,6 +94,7 @@ import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
 from dashboard import condition_programs, broad_benefit
 from dashboard import life_stress
+from dashboard import life_stress_selection
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -17662,6 +17663,11 @@ def api_client_portal(token):
             _ls_block = _life_stress_for(email_for_reports)
             if _ls_block:
                 payload["life_stress"] = _ls_block
+                try:
+                    with sqlite3.connect(LOG_DB) as _cx_ls:
+                        _ls_block["selected"] = life_stress_selection.get(_cx_ls, email_for_reports)
+                except Exception as _e:
+                    print(f"[life-stress/selected] {_e!r}", flush=True)
         except Exception as _e:
             print(f"[life-stress/payload] {_e!r}", flush=True)
     # PRL Supplement flag (always present, mirrors ff_matches_enabled) + card
@@ -18920,6 +18926,71 @@ def api_portal_support_program_add_to_invoice(token):
             invoice_note=f"{sp['label']} support program — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
+def api_portal_life_stress_selection(token):
+    """Save the client's Life Stress essence SELECTION (a preference, not an order).
+    No invoice/Stripe/QBO is written — only life_stress_selections. Only slugs in the
+    client's current pool are kept (a client can only prefer what they were offered)."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as the support-program endpoint (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[life-stress/selection] household {_e!r}", flush=True)
+        # pool-filter: keep only slugs the client was actually offered
+        block = _life_stress_for(email) or {}
+        pool = {it.get("slug") for it in block.get("items", []) if it.get("slug")}
+        submitted = [str(s).strip() for s in ((request.get_json(silent=True) or {}).get("slugs") or []) if str(s).strip()]
+        filtered = [s for s in submitted if s in pool]
+        life_stress_selection.set(cx, email, filtered)
+        return jsonify({"ok": True, "saved": filtered})
+
+
+@app.route("/api/practitioner/life-stress-selection/<path:patient_email>", methods=["GET"])
+def api_practitioner_life_stress_selection(patient_email):
+    """Read-only view of a client's saved Life Stress essence selection, for the
+    practitioner (Glen/Rae). Returns the full pool + which slugs the client picked.
+    Same guard order as the condition-program composer GET: flag off -> 404,
+    no pid -> 401, not authorized -> 403 (checked before any patient data read)."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    email = (patient_email or "").strip().lower()
+    from dashboard import continuity_view as _cv
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _continuity_cx(cx)
+        if not _cv.authorized_patient(cx, pid, email):
+            return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
+        selected = life_stress_selection.get(cx, email)
+        row = cx.execute("SELECT updated_at FROM life_stress_selections WHERE email=?",
+                         (email,)).fetchone()
+    block = _life_stress_for(email) or {}
+    pool = [{"slug": it.get("slug"), "name": it.get("name"),
+             "pattern": (it.get("note") or "")} for it in block.get("items", [])]
+    return jsonify({"ok": True, "pool": pool, "selected": selected,
+                    "updated_at": (row["updated_at"] if row else None)})
 
 
 @app.route("/api/console/client-condition", methods=["GET"])

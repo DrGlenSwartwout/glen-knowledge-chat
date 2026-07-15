@@ -1,9 +1,11 @@
-"""GET /api/portal/<token> — the `life_stress` payload key (Task 5).
+"""GET /api/portal/<token> — the `life_stress` payload key (Task 5) and the
+saved-selection pre-check attachment (Task 4).
 
 Mirrors tests/test_support_program_payload.py's shape:
   - flag off              -> no `life_stress` key; `life_stress_enabled` falsy
   - flag on, no reco      -> no `life_stress` key; `life_stress_enabled` present
   - flag on + reco        -> `life_stress` present, verbatim from _life_stress_for
+                              plus a `selected` key (Task 4: saved slugs, or [] if none)
   - best-effort             a builder error never breaks the rest of the payload
 """
 import importlib
@@ -14,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from dashboard import client_portal as cp
+from dashboard import life_stress_selection
 
 EMAIL = "lscaregiver@example.com"
 
@@ -23,6 +26,19 @@ RECO = {
     "items": [{"name": "Mimulus Flower Essence",
                "url": "/begin/product/mimulus-flower-essence-in-terrain-restore",
                "note": "for the fear pattern in your scan"}],
+}
+
+POOL = {
+    "label": "Life Stress",
+    "patterns": [{"emotion": "Fear", "score": 1.0}, {"emotion": "Grief", "score": 0.6}],
+    "items": [{"slug": "mimulus-flower-essence-in-terrain-restore",
+               "name": "Mimulus Flower Essence",
+               "url": "/begin/product/mimulus-flower-essence-in-terrain-restore",
+               "note": "for the fear pattern in your scan"},
+              {"slug": "honeysuckle-flower-essence-in-terrain-restore",
+               "name": "Honeysuckle Flower Essence",
+               "url": "/begin/product/honeysuckle-flower-essence-in-terrain-restore",
+               "note": "for the grief pattern in your scan"}],
 }
 
 
@@ -74,7 +90,8 @@ def test_flag_on_with_recommendation_returns_block(app_env, monkeypatch):
 
     j = client.get(f"/api/portal/{token}").get_json()
     assert "life_stress" in j
-    assert j["life_stress"] == RECO
+    # verbatim from _life_stress_for, plus Task 4's "selected" (empty: no saved selection)
+    assert j["life_stress"] == {**RECO, "selected": []}
 
 
 def test_flag_on_no_recommendation_no_key(app_env, monkeypatch):
@@ -100,3 +117,35 @@ def test_builder_error_does_not_break_payload(app_env, monkeypatch):
     assert j["life_stress_enabled"] is True
     # rest of the payload still present
     assert "email" in j or "practitioner_brand" in j
+
+
+def test_saved_selection_attached_for_precheck(app_env, monkeypatch):
+    """Task 4: a client with a stored selection gets payload["life_stress"]["selected"]
+    equal to the stored slugs, and each items[*] carries a slug (for the card to match
+    against)."""
+    app, client, token = app_env
+    monkeypatch.setenv("LIFE_STRESS_ENABLED", "1")
+    monkeypatch.setattr(app, "_life_stress_for", lambda email: dict(POOL))
+
+    stored = ["mimulus-flower-essence-in-terrain-restore"]
+    with sqlite3.connect(app.LOG_DB) as cx:
+        life_stress_selection.set(cx, EMAIL, stored)
+
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert "life_stress" in j
+    assert j["life_stress"]["selected"] == stored
+    for item in j["life_stress"]["items"]:
+        assert item.get("slug")
+
+
+def test_no_saved_selection_selected_is_empty(app_env, monkeypatch):
+    """No stored selection -> selected is [] (present key, nothing pre-checked), and a
+    builder-error path never sets it (covered by test_builder_error_does_not_break_payload
+    where life_stress is absent entirely)."""
+    app, client, token = app_env
+    monkeypatch.setenv("LIFE_STRESS_ENABLED", "1")
+    monkeypatch.setattr(app, "_life_stress_for", lambda email: dict(POOL))
+
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert "life_stress" in j
+    assert j["life_stress"]["selected"] == []

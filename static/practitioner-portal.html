@@ -328,6 +328,7 @@
     <div style="margin:4px 0 10px;font-size:13px"><a href="/practitioner/eye-programs" style="color:var(--gold)">Eye Support Programs · clinical reference &rarr;</a></div>
     <div id="pgm-roster" style="display:flex;flex-wrap:wrap;gap:8px"></div>
     <div id="pgm-detail" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:14px"></div>
+    <div id="life-stress-picks"></div>
   </div>
 
   <div class="panel reco" id="reco-ffs" style="display:none"></div>
@@ -760,6 +761,16 @@ function openProgramPatient(email){
       renderProgramComposerDetail(res.body);
     })
     .catch(function(){ box.innerHTML = '<div class="warn">Network error loading this patient.</div>'; });
+  // Life Stress picks are independent of the condition-program fetch above -- a
+  // failure here (flag off, no picks, network error) must not affect the program
+  // composer render, so this has its own .then/.catch and never throws.
+  fetch('/api/practitioner/life-stress-selection/' + encodeURIComponent(email) + '?token=' + encodeURIComponent(TOKEN))
+    .then(function(r){ return r.json().then(function(d){ return {status:r.status, body:d}; }); })
+    .then(function(res){
+      if(res.status !== 200 || !res.body.ok){ renderLifeStressPicks(null); return; }
+      renderLifeStressPicks(res.body);
+    })
+    .catch(function(){ renderLifeStressPicks(null); });
 }
 function pgmCandItemHtml(c, i, checked){
   var doseHtml = c.dose ? ' <span class="muted" style="font-size:12px">' + escapeHtml(c.dose) + '</span>' : '';
@@ -792,6 +803,23 @@ function renderProgramCandidates(candidates, checkedSlugs){
     html += pgmCandItemHtml(c, i, checked);
   });
   return html;
+}
+// Read-only: full Life Stress essence pool with the client's own picks checked
+// (disabled inputs -- no save/edit here). Renders alongside the condition-program
+// composer for the same patient; degrades to an empty container on any failure,
+// flag-off, or no-picks-yet case so it never throws.
+function renderLifeStressPicks(data){
+  var el = document.getElementById('life-stress-picks'); if(!el) return;
+  if(!data || !data.ok || !data.pool || !data.pool.length){ el.innerHTML = ''; return; }
+  var sel = data.selected || [];
+  var rows = data.pool.map(function(p){
+    var on = sel.indexOf(p.slug) !== -1 ? ' checked' : '';
+    return '<li><label><input type="checkbox" disabled'+on+'> '+escapeHtml(p.name||'')+'</label> '
+         + '<span class="muted">'+escapeHtml(p.pattern||'')+'</span></li>';
+  }).join('');
+  el.innerHTML = '<h3>Life Stress essence picks</h3>'
+    + (data.updated_at ? '<p class="muted">Client last updated: '+escapeHtml(data.updated_at)+'</p>' : '')
+    + '<ul>'+rows+'</ul>';
 }
 function renderProgramComposerDetail(d){
   var box = $('pgm-detail');
