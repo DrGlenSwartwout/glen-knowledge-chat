@@ -17663,6 +17663,11 @@ def api_client_portal(token):
             _ls_block = _life_stress_for(email_for_reports)
             if _ls_block:
                 payload["life_stress"] = _ls_block
+                try:
+                    with sqlite3.connect(LOG_DB) as _cx_ls:
+                        _ls_block["selected"] = life_stress_selection.get(_cx_ls, email_for_reports)
+                except Exception as _e:
+                    print(f"[life-stress/selected] {_e!r}", flush=True)
         except Exception as _e:
             print(f"[life-stress/payload] {_e!r}", flush=True)
     # PRL Supplement flag (always present, mirrors ff_matches_enabled) + card
