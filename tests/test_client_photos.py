@@ -71,3 +71,12 @@ def test_force_true_default_always_writes():
     # a deliberate operator upload (default force=True) overwrites even portal-self
     assert cp.put(cx, "a@b.com", b"operator", "image/png", source="console") == "a@b.com"
     assert cp.get(cx, "a@b.com")["blob"] == b"operator"
+
+
+def test_would_skip_precedence():
+    cx = _cx()
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is False        # absent -> no skip
+    cp.put(cx, "a@b.com", b"x", "image/png", source="ghl")
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is False        # fmp(2) > ghl(1)
+    cp.put(cx, "a@b.com", b"y", "image/png", source="portal-self")
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is True         # portal-self(4) > fmp(2)

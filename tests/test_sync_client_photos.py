@@ -69,3 +69,17 @@ def test_sync_folder_dry_does_not_write(tmp_path):
     res = s.sync_folder(cx, str(tmp_path), push_fn=None, write=False)
     assert res[0]["action"] == "would-sync"
     assert cp.get(cx, "jc@x.com") is None                            # nothing written
+
+
+def test_sync_folder_dry_reflects_precedence(tmp_path):
+    cx = _db_with_client("21459", "jc@x.com")
+    cp.put(cx, "jc@x.com", b"client-own", "image/png", source="portal-self")
+    (tmp_path / "21459.jpg").write_bytes(JPEG)
+    res = s.sync_folder(cx, str(tmp_path), push_fn=None, write=False)
+    assert res[0]["action"] == "would-skip:precedence"
+
+
+def test_push_body_sends_force_false():
+    import json
+    body = json.loads(s._push_body("a@b.com", JPEG, "image/jpeg").decode())
+    assert body["force"] is False and body["source"] == "fmp"

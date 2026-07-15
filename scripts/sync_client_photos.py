@@ -39,11 +39,16 @@ def resolve_email(cx, key):
     return (row[0] or "").strip().lower() if row and row[0] else None
 
 
+def _push_body(email, blob, ctype):
+    return json.dumps({"email": email, "content_type": ctype, "source": "fmp",
+                       "force": False,
+                       "image": base64.b64encode(blob).decode()}).encode()
+
+
 def push_prod(email, blob, ctype):
     if not BASE:
         return False
-    body = json.dumps({"email": email, "content_type": ctype, "source": "fmp",
-                       "image": base64.b64encode(blob).decode()}).encode()
+    body = _push_body(email, blob, ctype)
     req = urllib.request.Request(BASE.rstrip("/") + "/api/console/client-photo", data=body,
                                  method="POST", headers={"X-Console-Key": KEY,
                                  "Content-Type": "application/json"})
@@ -68,7 +73,9 @@ def sync_folder(cx, folder, push_fn=None, write=True):
                 rec["action"] = "skip:no-email"; results.append(rec); continue
             rec["email"] = email
             if not write:
-                rec["action"] = "would-sync"; results.append(rec); continue
+                rec["action"] = ("would-skip:precedence"
+                                 if cph.would_skip_precedence(cx, email, "fmp") else "would-sync")
+                results.append(rec); continue
             if cph.put(cx, email, blob, ctype, source="fmp", force=False) is None:
                 rec["action"] = "skip:precedence"; results.append(rec); continue
             pushed = push_fn(email, blob, ctype) if push_fn else False

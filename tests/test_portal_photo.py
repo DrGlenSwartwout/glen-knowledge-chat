@@ -73,3 +73,24 @@ def test_unknown_token_404(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     assert c.get("/api/portal/nope/photo").status_code == 404
     assert _upload(c, "nope").status_code == 404
+
+
+def test_console_photo_endpoint_respects_force(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import client_photos as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cp.put(cx, "c@x.com", b"client-own", "image/png", source="portal-self")
+    c = appmod.app.test_client()
+    b64 = base64.b64encode(b"from-fmp").decode()
+    # force=False must NOT overwrite portal-self
+    r = c.post("/api/console/client-photo",
+               json={"email": "c@x.com", "image": b64, "content_type": "image/jpeg",
+                     "source": "fmp", "force": False})
+    assert r.status_code == 200
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.get(cx, "c@x.com")["blob"] == b"client-own"      # untouched
+    # default (force omitted -> True) overwrites
+    c.post("/api/console/client-photo",
+           json={"email": "c@x.com", "image": b64, "content_type": "image/jpeg", "source": "console"})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.get(cx, "c@x.com")["blob"] == b"from-fmp"

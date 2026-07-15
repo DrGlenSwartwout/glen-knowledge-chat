@@ -22044,7 +22044,8 @@ def api_console_client_photo():
     from dashboard import client_photos as _cph
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cph.put(cx, email, blob, (body.get("content_type") or "image/jpeg"),
-                 source=(body.get("source") or "console"))
+                 source=(body.get("source") or "console"),
+                 force=bool(body.get("force", True)))
     return jsonify({"ok": True, "email": email})
 
 
