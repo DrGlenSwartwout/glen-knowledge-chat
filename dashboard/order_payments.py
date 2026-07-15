@@ -57,6 +57,47 @@ def list_payments(cx, order_id):
     return [dict(r) for r in rows]
 
 
+def ledger_rows_for_payments_view(cx, *, limit=200):
+    """Active non-Stripe order_payments entries (Zelle/check/cash/etc.), mapped
+    into the same dict shape as dashboard.payments._row_to_payment so the
+    /api/payments money view can render Stripe charges and manual payments in
+    one uniform list. Refunds are represented as a negative amount_cents.
+    Newest first (paid_at, falling back to created_at). Voided/pending rows
+    (status != 'active') and Stripe-sourced rows are excluded — Stripe already
+    has its own row in the ledger via dashboard.payments. Read-only; caller
+    sets cx.row_factory = sqlite3.Row."""
+    rows = cx.execute(
+        "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, "
+        "op.external_ref AS op_ref, op.paid_at, op.created_at, "
+        "o.email, o.name, o.channel "
+        "FROM order_payments op JOIN orders o ON o.id = op.order_id "
+        "WHERE op.status='active' AND op.source != 'stripe' "
+        "AND op.kind IN ('payment','refund') "
+        "ORDER BY COALESCE(op.paid_at, op.created_at) DESC, op.id DESC "
+        "LIMIT ?", (int(limit),)).fetchall()
+    out = []
+    for r in rows:
+        amt = int(r["amount_cents"] or 0)
+        if r["kind"] == "refund":
+            amt = -amt
+        method = (r["method"] or "other").strip()
+        tag = "manual:" + (method.lower().replace(" ", "-") or "other")
+        out.append({
+            "id": f"op-{r['op_id']}",
+            "created_at": r["created_at"],
+            "paid_at": r["paid_at"],
+            "email": r["email"] or "",
+            "name": r["name"] or "",
+            "source": tag,
+            "channel": r["channel"] or "",
+            "amount_cents": amt,
+            "pay_status": "refunded" if r["kind"] == "refund" else "paid",
+            "stripe_payment_intent": "",
+            "external_ref": r["op_ref"] or "",
+        })
+    return out
+
+
 def _sum(cx, order_id, kind):
     v = cx.execute(
         "SELECT COALESCE(SUM(amount_cents),0) FROM order_payments "

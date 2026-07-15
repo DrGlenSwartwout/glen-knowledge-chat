@@ -38387,8 +38387,24 @@ def bos_payments_list():
             limit = min(int(request.args.get("limit", 200) or 200), 1000)
         except (TypeError, ValueError):
             limit = 200
-        rows = _bos_payments.list_payments(
-            cx, source=request.args.get("source"), limit=limit)
+        src = request.args.get("source")
+        # Union in the manual ledger (Zelle/check/cash/etc. recorded via
+        # order_payments) so they show alongside Stripe charges — only for the
+        # unfiltered/"All" view or the "manual" filter; a Stripe `source` value
+        # (subscription/membership/funnel/biofield_trial) has no manual analog.
+        # ensure_table is a no-op CREATE TABLE IF NOT EXISTS — boot already
+        # creates it, but some callers point LOG_DB at a fresh db post-import.
+        _op.ensure_table(cx)
+        if src == "manual":
+            rows = _op.ledger_rows_for_payments_view(cx, limit=limit)
+        else:
+            rows = _bos_payments.list_payments(cx, source=src, limit=limit)
+            if not src:
+                manual_rows = _op.ledger_rows_for_payments_view(cx, limit=limit)
+                rows = rows + manual_rows
+                rows.sort(key=lambda r: r.get("paid_at") or r.get("created_at") or "",
+                          reverse=True)
+                rows = rows[:limit]
         summary = _bos_payments.payments_summary(cx)
         failures = _bos_payments.recent_failures(cx)
     finally:

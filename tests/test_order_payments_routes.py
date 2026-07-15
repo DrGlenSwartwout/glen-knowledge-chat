@@ -175,3 +175,35 @@ def test_client_invoice_shows_payments_and_balance(tmp_path, monkeypatch):
     # order total_cents=41282 (seeded by _client) minus the one active payment.
     assert order["balance_due_cents"] == 41282 - 13100
     assert order["refunded_cents"] == 0
+
+
+def test_payments_list_includes_manual_payments(tmp_path, monkeypatch):
+    """Zelle/check/cash payments recorded in order_payments (the manual ledger)
+    must show up in GET /api/payments — the money view — alongside Stripe
+    charges, not just live in the per-order ledger. A voided manual payment
+    must never leak into the view."""
+    appmod, client = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: {"role": "owner"})
+
+    pay = client.post("/api/orders/1/payments",
+                       json={"amount": 75.00, "method": "Zelle"}).get_json()
+    assert pay["ok"] is True
+
+    # A second, voided payment must NOT leak into the money view.
+    voided = client.post("/api/orders/1/payments",
+                          json={"amount": 20.00, "method": "Cash"}).get_json()
+    vpid = voided["row"]["id"]
+    v = client.post(f"/api/orders/payments/{vpid}/void", json={"reason": "dup"})
+    assert v.status_code == 200
+
+    r = client.get("/api/payments")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+
+    manual_rows = [row for row in body["data"]
+                   if str(row.get("source", "")).startswith("manual:")]
+    assert any(row["amount_cents"] == 7500 and "zelle" in row["source"].lower()
+               for row in manual_rows), manual_rows
+    assert all(row["amount_cents"] != 2000 for row in manual_rows), \
+        "voided manual payment leaked into /api/payments"
