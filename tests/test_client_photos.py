@@ -40,3 +40,43 @@ def test_put_without_email_or_blob_is_noop():
     assert cp.put(cx, "", b"x", "image/png") is None
     assert cp.put(cx, "a@b.com", b"", "image/png") is None
     assert cx.execute("SELECT COUNT(*) FROM client_photos").fetchone()[0] == 0
+
+
+def test_precedence_fmp_does_not_overwrite_portal_self():
+    cx = _cx()
+    cp.put(cx, "a@b.com", b"client-chosen", "image/png", source="portal-self")
+    # bulk fmp write must NOT clobber the client's own photo
+    assert cp.put(cx, "a@b.com", b"from-fmp", "image/jpeg", source="fmp", force=False) is None
+    got = cp.get(cx, "a@b.com")
+    assert got["blob"] == b"client-chosen" and got["content_type"] == "image/png"
+
+
+def test_precedence_fmp_overwrites_lower_and_equal():
+    cx = _cx()
+    cp.put(cx, "a@b.com", b"ghl-img", "image/png", source="ghl")
+    assert cp.put(cx, "a@b.com", b"fmp-img", "image/jpeg", source="fmp", force=False) == "a@b.com"
+    assert cp.get(cx, "a@b.com")["blob"] == b"fmp-img"          # fmp(2) > ghl(1)
+    assert cp.put(cx, "a@b.com", b"fmp-2", "image/jpeg", source="fmp", force=False) == "a@b.com"
+    assert cp.get(cx, "a@b.com")["blob"] == b"fmp-2"            # fmp == fmp, still writes
+
+
+def test_precedence_fmp_writes_when_absent():
+    cx = _cx()
+    assert cp.put(cx, "a@b.com", b"fmp-img", "image/jpeg", source="fmp", force=False) == "a@b.com"
+
+
+def test_force_true_default_always_writes():
+    cx = _cx()
+    cp.put(cx, "a@b.com", b"client", "image/png", source="portal-self")
+    # a deliberate operator upload (default force=True) overwrites even portal-self
+    assert cp.put(cx, "a@b.com", b"operator", "image/png", source="console") == "a@b.com"
+    assert cp.get(cx, "a@b.com")["blob"] == b"operator"
+
+
+def test_would_skip_precedence():
+    cx = _cx()
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is False        # absent -> no skip
+    cp.put(cx, "a@b.com", b"x", "image/png", source="ghl")
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is False        # fmp(2) > ghl(1)
+    cp.put(cx, "a@b.com", b"y", "image/png", source="portal-self")
+    assert cp.would_skip_precedence(cx, "a@b.com", "fmp") is True         # portal-self(4) > fmp(2)
