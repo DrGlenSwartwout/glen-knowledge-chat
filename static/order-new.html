@@ -139,6 +139,19 @@
     </div>
     <div id="cprices-note" class="muted" style="margin-top:6px"></div>
   </div>
+
+  <div id="pay-panel" style="display:none;margin-top:18px">
+    <h2>Payments</h2>
+    <div id="pay-rows"></div>
+    <div id="pay-balance" style="margin:10px 0;font-weight:600"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end">
+      <div><label>Amount $</label><input id="pay-amt" type="number" step="0.01" style="width:90px"></div>
+      <div><label>Method</label>
+        <select id="pay-method"><option>Credit card (Stripe)</option><option>eProcessing</option><option>Check</option><option>Cash</option><option>Venmo</option><option>PayPal</option><option>Zelle</option><option>Wise</option></select></div>
+      <div><label>Date</label><input id="pay-date" type="date"></div>
+      <button class="ghost" onclick="addPayment()">Add payment</button>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -412,6 +425,56 @@ async function loadOrderForEdit(oid){
   setMethod(o.pay_method);          // restore this order's own recorded method (edit mode)
   renderLines();
   loadPickupDefault(o.email||"");   // shows the client's default; EDIT_OID keeps it from overriding this order
+  // Payments ledger: not part of the /api/orders list payload, so load it separately.
+  $("pay-panel").style.display = "block";
+  $("pay-date").value = new Date().toISOString().slice(0,10);
+  reloadPayments();
+}
+function renderPayments(rows, bal){
+  const box=$("pay-rows");
+  box.innerHTML = (rows||[]).map(r=>{
+    const amt=(r.kind==='refund'?'-':'')+'$'+(r.amount_cents/100).toFixed(2);
+    const voided=r.status==='void';
+    const badge=r.kind==='refund'?' <span style="color:#c0392b">refund</span>':'';
+    const needsSync=!['synced','void_synced'].includes(r.qbo_sync);
+    const sync=needsSync?` <button class="mini" onclick="resyncPay(${r.id})">resync</button>`:'';
+    const act=voided?` <em>void: ${esc(r.void_reason||'')}</em>`
+      :` <button class="mini" onclick="voidPay(${r.id})">void</button>`
+       +(r.kind==='payment'?` <button class="mini" onclick="refundPay(${r.id},${r.amount_cents},'${esc(r.method||'')}',${r.source==='stripe'})">refund</button>`:'');
+    return `<div style="${voided?'text-decoration:line-through;opacity:.6':''}">`
+      +`${esc((r.paid_at||'').slice(0,10))} · ${esc(r.method||'')} · ${amt}${badge} `
+      +`<small>[${esc(r.source)}]</small>${sync}${act}</div>`;
+  }).join('') || '<em>No payments recorded yet.</em>';
+  $("pay-balance").textContent =
+    `Paid $${(bal.paid_cents/100).toFixed(2)} · Refunded $${(bal.refunded_cents/100).toFixed(2)} · Balance $${(bal.balance_cents/100).toFixed(2)}`;
+}
+async function reloadPayments(){
+  const r=await fetch(`/api/orders/${EDIT_OID}/payments`,{headers:HEADERS});
+  const j=await r.json(); if(j.ok) renderPayments(j.rows,j.balance);
+}
+async function addPayment(){
+  const amt=parseFloat($("pay-amt").value); if(isNaN(amt)||amt<=0){toast("Enter an amount","error");return;}
+  const r=await fetch(`/api/orders/${EDIT_OID}/payments`,{method:"POST",headers:HEADERS,
+    body:JSON.stringify({amount:amt,method:$("pay-method").value,paid_at:$("pay-date").value||null})});
+  const j=await r.json(); if(!j.ok){toast(j.error||"Failed","error");return;}
+  $("pay-amt").value=""; reloadPayments(); toast("Payment recorded");
+}
+async function voidPay(pid){
+  const reason=prompt("Reason for voiding this payment?"); if(reason===null)return;
+  const r=await fetch(`/api/orders/payments/${pid}/void`,{method:"POST",headers:HEADERS,body:JSON.stringify({reason})});
+  if((await r.json()).ok){toast("Voided");reloadPayments();}
+}
+async function refundPay(pid,amtCents,method,isCard){
+  const def=(amtCents/100).toFixed(2);
+  const v=prompt((isCard?"Refund to card via Stripe":"Record refund")+" — amount $",def); if(v===null)return;
+  const amount=parseFloat(v); if(isNaN(amount)||amount<=0){toast("Bad amount","error");return;}
+  const r=await fetch(`/api/orders/${EDIT_OID}/refunds`,{method:"POST",headers:HEADERS,
+    body:JSON.stringify({amount,method,refunds_payment_id:pid})});
+  const j=await r.json(); if(!j.ok){toast(j.error||"Failed","error");return;}
+  toast("Refund recorded"); reloadPayments();
+}
+async function resyncPay(pid){
+  await fetch(`/api/orders/payments/${pid}/resync`,{method:"POST",headers:HEADERS}); reloadPayments();
 }
 async function editInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
