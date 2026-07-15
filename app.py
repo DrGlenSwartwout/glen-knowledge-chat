@@ -94,6 +94,7 @@ import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
 from dashboard import condition_programs, broad_benefit
 from dashboard import life_stress
+from dashboard import life_stress_selection
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
 _idx = _pc.Index(PINECONE_INDEX)
@@ -18920,6 +18921,43 @@ def api_portal_support_program_add_to_invoice(token):
             invoice_note=f"{sp['label']} support program — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
+def api_portal_life_stress_selection(token):
+    """Save the client's Life Stress essence SELECTION (a preference, not an order).
+    No invoice/Stripe/QBO is written — only life_stress_selections. Only slugs in the
+    client's current pool are kept (a client can only prefer what they were offered)."""
+    if not _life_stress_enabled():
+        return ("", 404)
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import client_portal as _cp
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        # same ?member= household resolution as the support-program endpoint (fail-closed)
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                with sqlite3.connect(LOG_DB) as _cxh:
+                    _hh.init_household_tables(_cxh)
+                    _m = (request.args.get("member")
+                          or (request.get_json(silent=True) or {}).get("member")
+                          or "").strip().lower()
+                    if _m and _hh.can_view(_cxh, email, _m):
+                        email = _m
+            except Exception as _e:
+                print(f"[life-stress/selection] household {_e!r}", flush=True)
+        # pool-filter: keep only slugs the client was actually offered
+        block = _life_stress_for(email) or {}
+        pool = {it.get("slug") for it in block.get("items", []) if it.get("slug")}
+        submitted = [str(s).strip() for s in ((request.get_json(silent=True) or {}).get("slugs") or []) if str(s).strip()]
+        filtered = [s for s in submitted if s in pool]
+        life_stress_selection.set(cx, email, filtered)
+        return jsonify({"ok": True, "saved": filtered})
 
 
 @app.route("/api/console/client-condition", methods=["GET"])
