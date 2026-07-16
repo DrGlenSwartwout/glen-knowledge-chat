@@ -150,11 +150,16 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
     items: [{"slug","name","qty","product","unit_cents","months","volume_eligible"}]
     Returns a dict with per-line breakdown + order totals.
 
+    subscriber_tier_pct may be an int|None (applied uniformly to every line, back-compat)
+    or a callable(item)->int|None applied per line (e.g. a richer loyalty ladder for
+    bundle lines vs. single-SKU lines within the same subscription/order).
+
     Points are allocated greedily in item-list order; the first item consumes points first.
     """
-    base_pct = coupon_pct or 0
-    if subscriber_tier_pct is not None:
-        base_pct = subscriber_tier_pct      # subscriber tier wins whenever present, even 0
+    def _sub_pct(it):
+        v = subscriber_tier_pct(it) if callable(subscriber_tier_pct) else subscriber_tier_pct
+        return v
+
     total_months = sum(int(it.get("months") or 0) for it in items if it.get("volume_eligible"))
     open_pct = open_total_pct(total_months, settings)
     prog_pct = program_total_pct(total_months, settings, program_member)
@@ -167,6 +172,10 @@ def compute(items, *, settings, subscriber_tier_pct=None, coupon_pct=None,
         unit_list = int(it["unit_cents"])
         line_list = unit_list * qty
         eligible = bool(it.get("volume_eligible"))
+        sub_pct = _sub_pct(it)
+        base_pct = coupon_pct or 0
+        if sub_pct is not None:
+            base_pct = sub_pct              # subscriber tier wins whenever present, even 0
         t1 = same_sku_pct(qty, settings) if eligible else 0.0       # type1: this line's SKU qty
         order_pct = max(prog_pct, open_pct) if eligible else 0.0     # type2 (gated) / type3
         rep_pct = 0.0

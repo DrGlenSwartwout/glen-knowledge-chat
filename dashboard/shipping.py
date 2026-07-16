@@ -661,7 +661,8 @@ class UnknownBundleComponent(Exception):
 
 
 def bundle_component_products(product, catalog):
-    """A bundle's `bundle_components` names -> the catalog product dicts they name.
+    """A bundle's `bundle_component_slugs` (or, as fallback, `bundle_components`
+    names) -> the catalog product dicts they name.
 
     A bundle is ONE catalog line holding several physical bottles, and carries no
     `bottle_type` of its own. Packing it as a single item counts one bottle instead
@@ -677,6 +678,27 @@ def bundle_component_products(product, catalog):
     p = product or {}
     if not p.get("bundle"):
         return []
+    # Prefer explicit slug+qty components (the money-path source of truth): resolve
+    # each {slug, qty} by slug and expand to qty copies so the packer counts the right
+    # number of bottles. Falls back to name-based bundle_components for bundles authored
+    # before slugs existed. Catalog includes inactive records on purpose (a bundle must
+    # stay packable after a component is retired), so slug lookup uses the catalog as-is.
+    slug_comps = p.get("bundle_component_slugs")
+    if slug_comps:
+        by_slug = {}
+        for item in catalog or []:
+            s = item.get("slug")
+            if s:
+                by_slug.setdefault(s, item)
+        out = []
+        for comp in slug_comps:
+            hit = by_slug.get(comp.get("slug"))
+            if hit is None:
+                raise UnknownBundleComponent(
+                    f"bundle {p.get('slug') or p.get('name')!r} names an unknown "
+                    f"component slug: {comp.get('slug')!r}")
+            out.extend([hit] * max(1, int(comp.get("qty", 1))))
+        return out
     names = p.get("bundle_components") or []
     if not names:
         raise UnknownBundleComponent(

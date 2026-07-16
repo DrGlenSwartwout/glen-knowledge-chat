@@ -248,10 +248,17 @@ def test_product_order_discount_requires_active_membership(monkeypatch):
     }
 
     # ── Part A: no active membership → tier must be 0 ──────────────────────────
+    # The cron now passes subscriber_order_count/subscriber_active and lets
+    # _price_cart build the per-line resolver; capture those and resolve the
+    # effective tier for a standard (non-bundle) line the same way _price_cart does.
     seen_no_member = {}
     monkeypatch.setattr(
         appmod, "_price_cart",
-        lambda items, **kw: seen_no_member.update(tier=kw.get("subscriber_tier_pct")) or _FAKE_PRICED,
+        lambda items, **kw: seen_no_member.update(
+            tier=appmod._subscription_tier_resolver(
+                kw.get("subscriber_order_count"), kw.get("subscriber_active", True)
+            )({"product": {}})
+        ) or _FAKE_PRICED,
     )
     monkeypatch.setattr(
         appmod.stripe_pay, "charge_off_session",
@@ -302,7 +309,11 @@ def test_product_order_discount_requires_active_membership(monkeypatch):
     seen_with_member = {}
     monkeypatch.setattr(
         appmod, "_price_cart",
-        lambda items, **kw: seen_with_member.update(tier=kw.get("subscriber_tier_pct")) or _FAKE_PRICED,
+        lambda items, **kw: seen_with_member.update(
+            tier=appmod._subscription_tier_resolver(
+                kw.get("subscriber_order_count"), kw.get("subscriber_active", True)
+            )({"product": {}})
+        ) or _FAKE_PRICED,
     )
 
     # Insert an active membership grant for this email (expires far in the future)
