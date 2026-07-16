@@ -841,7 +841,7 @@
       clearInlineMsg();
       var qty = parseInt(document.getElementById('qty').value, 10); if (!qty || qty < 1) qty = 1;
       var payload = {
-        items: [{ slug: slug, qty: qty }],
+        items: [{ slug: slug, qty: qty, format: chosenFormat }],
         cadence_months: parseInt(document.getElementById('sub-cadence').value, 10) || 1,
         address: { name: (document.getElementById('name').value || '').trim(),
                    street: _street, city: _city, state: _state, zip: _zip, country: 'US' }

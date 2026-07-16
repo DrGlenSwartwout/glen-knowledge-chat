@@ -5509,6 +5509,9 @@ _FORMATS = [
     {"id": "larger", "label": "Larger bottle", "note": "90, 180, or 360 capsules in one bottle (quantity 3, 6, or 12)"},
     {"id": "refill", "label": "Cellophane refill packs", "note": "Capsules only, no bottle"},
 ]
+# id -> label for the non-default packaging formats. "bottle" (the default) is omitted
+# on purpose: only a non-standard choice becomes a fulfillment note on the order line.
+_FORMAT_LABELS = {f["id"]: f["label"] for f in _FORMATS if f["id"] != "bottle"}
 
 
 def _qty_eligible(p):
@@ -5882,8 +5885,14 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         it = _engine_item(p, qty)
         items.append(it)
         subtotal_list += it["unit_cents"] * qty
+        # A non-default packaging format (larger bottle / refill packs) becomes a
+        # fulfillment note folded into the display name (kanban) and QBO line description
+        # (invoice). "bottle"/unset -> plain product name. Keeps the QBO line NAME clean
+        # for item mapping; only the description is decorated.
+        _fmt_label = _FORMAT_LABELS.get((c.get("format") or "").strip().lower(), "")
+        _disp_name = f'{p["name"]} — {_fmt_label}' if _fmt_label else p["name"]
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
-                          "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
+                          "qty": qty, "item_id": p.get("qbo_item_id"), "description": _disp_name})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
         # Use the RESOLVED slug: a retired duplicate redirects to its live twin, and the
         # stored order line + bottle lookup must both name the survivor, not the dead slug.
@@ -5891,7 +5900,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # Persist per-line LIST pricing on the stored order (cart-level discounts ride
         # the order's discount_cents, which the invoice renders separately, so
         # subtotal − discount still reconciles to the total).
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
+        items_rec.append({"name": _disp_name, "qty": qty, "desc": _disp_name,
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
         # Services / digital goods carry no bottle: counting them would push the
         # "default" placeholder into quote(), which raises UnknownBottleType and
@@ -8535,7 +8544,7 @@ def begin_checkout(slug):
         _gift_pct, _gift_coupon = 0, None
     _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
     try:
-        pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
+        pc = _price_cart([{"slug": slug, "qty": qty, "format": fmt}], ship=ship,
                          coupon_pct=_eff_pct,
                          points_to_redeem_cents=redeem,
                          program_member=_is_paid_member(email), email=email)
