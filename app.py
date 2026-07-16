@@ -25246,46 +25246,64 @@ def begin_founding_status(slug):
 # ── Founding charge-on-ship ───────────────────────────────────────────────────
 
 def _ship_founding_reservation(cx, sub):
-    """Charge the vaulted card for the founding bottle (charge-on-ship), ingest a
-    qualifying product order, and activate the autoship. Returns a result dict."""
+    """Charge the vaulted card for the founding bottle (charge-on-ship, paid-only:
+    no QBO invoice/customer before payment -- the exact line payload rides in
+    qbo_lines_json for a line-faithful Sales Receipt booked inline right after the
+    charge succeeds), ingest a qualifying product order, and activate the
+    autoship. Returns a result dict."""
     from dashboard import subscriptions as _subs
+    from dashboard import qbo_sale as _qsale
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
     pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
                      program_member=_is_paid_member(sub["email"]),
                      email=sub["email"])
-    cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=False,
-        email_to=sub["email"],
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"],
-    )
-    total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents.
+    charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                    + int(pc["shipping_cents"]))
     res = stripe_pay.charge_off_session(
-        sub["stripe_customer_id"], sub["stripe_payment_method_id"], total_cents,
+        sub["stripe_customer_id"], sub["stripe_payment_method_id"], charge_cents,
         description="Remedy Match founding bottle",
         metadata={"sub": str(sub["id"]), "kind": "founding_ship"},
     )
     if res.get("status") != "succeeded":
         _subs.bump_failed_count(cx, sub["id"])
-        return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
+        return {"charged": False, "sub_id": sub["id"], "amount_cents": charge_cents}
     today = _now_utc().strftime("%Y-%m-%d")
     _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    external_ref = res.get("id") or ""
     try:
         _ingest_order(
             source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
-            external_ref=res.get("id") or inv.get("Id") or "",
+            external_ref=external_ref,
             email=sub["email"],
             items=items,
-            total_cents=total_cents,
+            total_cents=charge_cents,
             address=ship,
             channel="retail",
         )
     except Exception as e:
         print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")
-    return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
+    # Book ONE line-faithful QBO Sales Receipt now that payment is confirmed
+    # (paid-only: no invoice was ever created for this charge). Best-effort +
+    # idempotent (book_sale_on_payment atomically claims the booking slot) so this
+    # can never break the charge/ship path above.
+    try:
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0,
+        }
+        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+        order = _bos_orders.find_order_by_external_ref(cx, external_ref)
+        if order:
+            _qsale.book_sale_on_payment(cx, dict(order))
+    except Exception as e:
+        print(f"[founding-ship] qbo sale booking failed sub={sub['id']}: {e!r}")
+    return {"charged": True, "sub_id": sub["id"], "amount_cents": charge_cents}
 
 
 @app.route("/api/founding/ship", methods=["POST"])
