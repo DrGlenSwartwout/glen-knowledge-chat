@@ -146,12 +146,15 @@ def resolve_program_items(program, audience="client", client_facts=None):
                 source:"diagnosis-implied"|"clinician-measured"|"client-reported",
                 client_default:bool}
     A modifier is ACTIVE when:
-      - diagnosis-implied: client_default is True
+      - diagnosis-implied: client_default is True; for audience="practitioner",
+        composer_default when the modifier sets it, else client_default
       - client-reported:   client_facts[when] is truthy
       - clinician-measured: never (client suppresses; the practitioner surface
         handles these as explicit toggles, not via this resolver)
-    `audience` is accepted for forward-compat; client and practitioner resolve
-    the same auto-applied default set today. add de-dupes against present slugs;
+    `audience` selects the default set: "client" uses client_default throughout
+    (the money path); "practitioner" additionally honors a modifier's optional
+    composer_default for diagnosis-implied modifiers, falling back to
+    client_default when it is absent. add de-dupes against present slugs;
     remove drops by slug."""
     client_facts = client_facts or {}
     base = [dict(it) for it in (program.get("items") or [])]
