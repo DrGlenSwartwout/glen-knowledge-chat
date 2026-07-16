@@ -15,6 +15,7 @@ import os
 import re
 import json
 import uuid
+import uuid as _uuid
 import time
 import secrets
 import sqlite3
@@ -8334,30 +8335,33 @@ def biofield_checkout():
     charged_cents = pc["priced"]["total_cents"]
     redeemed = pc["points_redeemed_cents"]
 
-    from dashboard import qbo_billing as qb
-    cust = qb.find_or_create_customer(email, name)
-    inv = qb.create_invoice(cust, pc["qbo_lines"], allow_online_pay=_QBO_PAYMENTS_ACTIVE,
-                            email_to=email,
-                            discount_cents=pc["discount_cents"] + redeemed)
-    out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {"lines": pc["qbo_lines"],
+                   "discount_cents": pc["discount_cents"] + redeemed, "tax_cents": 0}
+    out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(charged_cents / 100.0, 2)}
 
-    _ingest_order(source="biofield", external_ref=inv.get("Id"), email=email, name=name,
+    _ingest_order(source="biofield", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"], total_cents=charged_cents, channel="retail",
                   get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
                   points_redeemed_cents=redeemed, shipping_cents=0)
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[biofield] persist qbo_lines failed: {_e!r}", flush=True)
     try:
         from dashboard import stripe_pay
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         metadata = {"kind": "biofield", "email": email,
-                    "invoice_id": inv.get("Id") or "",
-                    "customer_id": cust.get("Id") or "",
+                    "invoice_id": checkout_ref,
+                    "customer_id": "",
                     "points_redeemed_cents": str(int(redeemed)),
                     "tier": tier}
         sess = stripe_pay.create_checkout_session(
             charged_cents, customer_email=email,
-            description=f"{PROGRAM_TIERS[tier]['name']} #{inv.get('DocNumber') or ''}",
+            description=f"{PROGRAM_TIERS[tier]['name']}",
             metadata=metadata, success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin")
         out["stripe_url"] = sess.get("url") or ""
@@ -9400,7 +9404,7 @@ def begin_checkout_return():
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 if inv and cid:
-                    if _kind != "in-house":
+                    if _kind != "in-house" and _kind not in ("biofield",):
                         try:
                             from dashboard import qbo_billing as _qb_ret
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
@@ -9626,6 +9630,20 @@ def begin_checkout_return():
                                     _settle_order_points(_bo, order_ref=bf_inv)
                             except Exception as _bpe:
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
+                                      flush=True)
+                            # Book ONE line-faithful QBO Sales Receipt now that payment is
+                            # confirmed (paid-only; idempotent via qbo_sales_receipt_id).
+                            try:
+                                from dashboard import qbo_sale as _qsale
+                                _bcxo2 = _sqlite3.connect(LOG_DB); _bcxo2.row_factory = _sqlite3.Row
+                                try:
+                                    _bo2 = _bos_orders.find_order_by_external_ref(_bcxo2, bf_inv)
+                                    if _bo2:
+                                        _qsale.book_sale_on_payment(_bcxo2, dict(_bo2))
+                                finally:
+                                    _bcxo2.close()
+                            except Exception as _bqe:
+                                print(f"[biofield] qbo sale booking failed inv={bf_inv}: {_bqe!r}",
                                       flush=True)
                             # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
                             # Shared with the Stripe webhook (below) so a closed tab still

@@ -54,12 +54,15 @@ def test_biofield_checkout_creates_300_session(monkeypatch, tmp_path):
     md = cap["stripe_metadata"]
     assert md["kind"] == "biofield"
     assert md["email"] == "buyer@x.com"
-    assert md.get("invoice_id") == "INVB"
+    # paid-only: invoice_id now carries the checkout_ref token (frontend compat),
+    # not a real QBO invoice Id — no invoice is created at checkout.
+    assert md.get("invoice_id")
+    assert md.get("invoice_id") == body["invoice_id"]
     assert cap["stripe_success"].endswith("/begin/checkout-return?session_id={CHECKOUT_SESSION_ID}")
-    # one QBO line, the service item
-    assert len(cap["lines"]) == 1
-    assert "Biofield" in cap["lines"][0]["name"]
-    assert abs(cap["lines"][0]["amount"] - 300.0) < 0.01
+    # one QBO line, the service item (persisted via qbo_lines payload, not create_invoice)
+    assert len(cap["order"]["items"]) == 1
+    assert "Biofield" in cap["order"]["items"][0]["name"]
+    assert abs(cap["order"]["total_cents"] - 30000) < 1
     # recorded order, no shipping for a service item
     assert cap["order"]["source"] == "biofield"
     assert cap["order"]["shipping_cents"] == 0
