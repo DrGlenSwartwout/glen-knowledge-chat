@@ -79,6 +79,27 @@ def test_year_monthly_creates_capped_sub(appmod, monkeypatch):
     assert appmod.membership_category("a@x.com") == "full"
 
 
+def test_year_monthly_grants_rolling_month_not_full_year(appmod, monkeypatch):
+    """The recurring_capped (year_monthly) tier is billed monthly, so the initial
+    access grant off the month-1 charge should roll ~1 month at a time (mirroring
+    _fulfill_continuous_care_monthly) -- NOT the full 12-month window up front.
+    The charge cron extends the grant on each successful monthly charge (see
+    _extend_membership_grant call sites), so access rolls forward with payment
+    and stops if payment stops."""
+    _mock_stripe(appmod, monkeypatch, tier="year_monthly")
+    assert appmod._fulfill_membership_product("cs_7") == "ok"
+    assert appmod._is_paid_member("a@x.com") is True
+    cx = sqlite3.connect(appmod.LOG_DB); cx.row_factory = sqlite3.Row
+    row = cx.execute(
+        "SELECT expires_at FROM memberships WHERE email='a@x.com' "
+        "ORDER BY granted_at DESC LIMIT 1").fetchone()
+    assert row is not None
+    expires = datetime.datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    days_left = (expires - now).days
+    assert days_left < 45, f"expected a rolling ~1-month grant, got {days_left} days"
+
+
 def test_year_monthly_requires_card(appmod, monkeypatch):
     _mock_stripe(appmod, monkeypatch, tier="year_monthly", with_card=False)
     assert appmod._fulfill_membership_product("cs_3") == "no_card"
