@@ -3511,6 +3511,17 @@ def _membership_checkout_session(email, tier_key):
         save_card=(tier["billing"] == "recurring_capped"))
 
 
+@app.route("/membership", methods=["GET"])
+def membership_choose_page():
+    """Customer-facing choose-your-membership page (month / year_monthly /
+    year_prepay). Dark-launched: 404s unless MEMBERSHIP_PRODUCTS_ENABLED."""
+    if not MEMBERSHIP_PRODUCTS_ENABLED:
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "membership-choose.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/membership/checkout", methods=["POST"])
 def membership_checkout():
     """Start a Stripe Checkout for a membership product tier (month / year_monthly /
