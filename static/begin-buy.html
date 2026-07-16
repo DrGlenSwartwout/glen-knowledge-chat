@@ -685,7 +685,11 @@
     }
 
     function refreshBuyState(){
-      var ready = emailValid() && !!chosenMethod && !ordering;
+      // Subscribe is card-only (Stripe vaulting) with identity from the signed-in
+      // cookie — it needs neither the one-time email field nor a pay-method radio.
+      var ready = subscribeMode()
+        ? !ordering
+        : (emailValid() && !!chosenMethod && !ordering);
       document.getElementById('buy-btn').disabled = !ready;
     }
 
@@ -791,9 +795,16 @@
         // Toggle: show cadence when Subscribe is chosen; retitle the buy button.
         document.querySelectorAll('input[name="purchase-mode"]').forEach(function(el){
           el.addEventListener('change', function(){
-            document.getElementById('sub-options').classList.toggle('hidden', !subscribeMode());
-            var b = document.getElementById('buy-btn');
-            b.textContent = subscribeMode() ? 'Start my subscription' : 'Place your order';
+            var sub = subscribeMode();
+            document.getElementById('sub-options').classList.toggle('hidden', !sub);
+            document.getElementById('buy-btn').textContent = sub ? 'Start my subscription' : 'Place your order';
+            // Subscribe is card-only via Stripe; the one-time pay-method picker and its
+            // "simple one-time purchase" copy don't apply, so hide them in Subscribe mode.
+            var payField = document.getElementById('methods').closest('.field');
+            if (payField) payField.classList.toggle('hidden', sub);
+            var reassure = document.querySelector('.reassure');
+            if (reassure) reassure.classList.toggle('hidden', sub);
+            refreshBuyState();
           });
         });
       } else {
