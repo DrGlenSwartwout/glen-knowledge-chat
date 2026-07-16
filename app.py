@@ -5064,6 +5064,26 @@ def qbo_test_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/test-sales-receipt", methods=["POST"])
+def qbo_test_sales_receipt():
+    """Create ONE test Sales Receipt for a clearly-named test customer to verify the
+    paid-only write layer against live QBO. Void/delete it afterward in QBO."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer("zztest+remedymatch@example.com", "ZZ Test DeleteMe")
+        sr = qb.create_sales_receipt(
+            cust,
+            [{"name": "TEST RemedyMatch Product", "amount": 1.0, "qty": 1,
+              "description": "TEST — verifying QBO paid-only write layer, please delete"}])
+        return jsonify({"ok": True, "id": sr.get("Id"),
+                        "doc_number": sr.get("DocNumber"), "total": sr.get("TotalAmt"),
+                        "customer": cust.get("DisplayName")})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/qbo/void-invoice", methods=["POST"])
 def qbo_void_invoice():
     if not _qbo_auth_ok():
