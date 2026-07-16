@@ -156,11 +156,14 @@ _STANDARD_BOTTLES = [
     # Medium. Created in prod 2026-07-11 (id 24). Shared by both nightlight SKUs.
     ("nightlight", "Therapeutic / Biocompatible nightlight — 5 x 5 x 6 cm → USPS Medium", 50, 60),
 ]
-# Live prod values (GET /api/shipping/packing-settings, 2026-07-09). The default was
-# 10mm, which no deployment uses — and it silently changed the geometry of every
-# LOCAL check: a 50 ml dropper (35x135 +6 wrap = 41x141) misses Small's 50x150x230
-# interior by 1mm on each axis at margin 10, but fits comfortably at 5 (5 per box).
-_PACKING_DEFAULTS = {"wrap_mm": 6, "box_margin_mm": 5}
+# Live prod values (GET /api/shipping/packing-settings). wrap_mm set to 5 on
+# 2026-07-16: at wrap 6 the Ø40 glass droppers (30ml infoceutical, 30roll) came to
+# 46mm and missed Small's 45mm usable width by 1mm → bumped to Medium (inflated
+# shipping). Glen confirmed they physically fit Small; wrap 5 (40+5=45) resolves
+# them to Small. Audit: ONLY 30ml + 30roll change (M→S); all caps/jars/devices
+# unchanged. Bottle dims are left as measured (glass — real sizes). Prod DB value
+# is authoritative at runtime; this is the dev/fresh-DB fallback.
+_PACKING_DEFAULTS = {"wrap_mm": 5, "box_margin_mm": 5}
 _PACKING_KEYS = ("wrap_mm", "box_margin_mm")
 
 
