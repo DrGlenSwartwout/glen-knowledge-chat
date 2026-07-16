@@ -375,7 +375,8 @@
       ],
       "ingredients_source": "manual",
       "description": "Brain Boost Nootropic . Brain Boost Nootropic Brain Boost Brain Boost is a nootropic formulation that includes Coluracetam, which enhances color vision and other brain functions. Vision provides 2/3 of all the nerve current entering the brain, so increasing vision helps energize many other brain, endocrine and immune functions as well. The pathways from the eyes to the biological clock in the hypothalamus that regulates these other systemic functions are specifically color sensitive, so enhancing color vision can light up your life and your wellness in surprising ways. Brain Boost Nootropic ....",
-      "enrichment_note": "Section A: appended confirmed Bioavailability-Factors extras (Centrophenoxine, Citicoline, Fulvic Acid, 11 Spirit Minerals); removed Coluracetam per Glen; DHA intentionally NOT added. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section A: appended confirmed Bioavailability-Factors extras (Centrophenoxine, Citicoline, Fulvic Acid, 11 Spirit Minerals); removed Coluracetam per Glen; DHA intentionally NOT added. Source: Glen's Products-Worklist.md.",
+      "bottle_type": "30 Caps"
     },
     "brain-cleanse": {
       "name": "Brain Cleanse",
@@ -9984,7 +9985,8 @@
       "price_cents": 6997,
       "pinecone_title": "Terrain Restore",
       "url": "https://remedymatch.com/remedies/syntropy/113-terrain-restore",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "bottle_type": "Dropper 50 mL"
     },
     "et6-cfi": {
       "name": "ET6 CFI: Colds Flu Immunity",

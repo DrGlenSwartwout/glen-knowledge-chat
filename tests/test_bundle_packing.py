@@ -73,8 +73,16 @@ def test_real_catalog_bundles_all_resolve():
     bundles = [dict(p, slug=s) for s, p in P.items() if p.get("bundle")]
     assert bundles, "expected bundle products in the catalog"
     for b in bundles:
-        comps = bundle_component_products(b, catalog)
-        assert len(comps) == len(b["bundle_components"]), b["slug"]
+        comps = bundle_component_products(b, catalog)  # raises loudly on any unresolvable component
+        assert comps, b["slug"]  # every bundle resolves to at least one packable bottle
+        # comps is qty-expanded (one entry per physical bottle). The declared bottle count is
+        # the sum of slug quantities for slug-based bundles (the money-path source of truth),
+        # else the legacy name-list length.
+        if b.get("bundle_component_slugs"):
+            expected = sum(int(c.get("qty", 1)) for c in b["bundle_component_slugs"])
+        else:
+            expected = len(b.get("bundle_components") or [])
+        assert len(comps) == expected, b["slug"]
 
 
 # ── bottle types for WholOmega (Glen: "2 common sizes: 30 caps and 120 caps") ──
