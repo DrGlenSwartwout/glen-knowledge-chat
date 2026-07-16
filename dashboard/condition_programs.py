@@ -159,7 +159,10 @@ def resolve_program_items(program, audience="client", client_facts=None):
     for mod in (program.get("modifiers") or []):
         source = mod.get("source")
         if source == "diagnosis-implied":
-            active = bool(mod.get("client_default"))
+            if audience == "practitioner" and "composer_default" in mod:
+                active = bool(mod.get("composer_default"))
+            else:
+                active = bool(mod.get("client_default"))
         elif source == "client-reported":
             active = bool(client_facts.get(mod.get("when")))
         else:
