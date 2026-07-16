@@ -5090,9 +5090,18 @@ def qbo_void_invoice():
     if not _qbo_auth_ok():
         return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
+    inv_id = data.get("id")
     try:
         from dashboard import qbo_billing as qb
-        out = qb.void_invoice(data.get("id"), data.get("sync_token"))
+        # Fetch the CURRENT SyncToken when the caller didn't pass one (or passed
+        # "auto"), so a void never fails with a Stale Object Error just because
+        # the invoice was edited in QBO since. A passed token still wins.
+        st = data.get("sync_token")
+        if st in (None, "", "auto"):
+            inv = qb.get_invoice(inv_id)
+            i = inv.get("Invoice", inv) if isinstance(inv, dict) else inv
+            st = (i or {}).get("SyncToken")
+        out = qb.void_invoice(inv_id, st)
         return jsonify({"ok": True, "voided": out.get("Invoice", {}).get("Id")})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
