@@ -509,15 +509,26 @@ def merge_dosing(dosage, frequency, timing, defaults):
 
 
 def stress_vocab(cx, q="", limit=20):
-    """Distinct stress-factor terms Glen has actually used (autocomplete)."""
-    if not _has(cx, "fmp_snap_client_active_main_stress"):
-        return []
+    """Stress-factor terms for autocomplete: FMP snapshot terms UNION custom
+    (glen-added) terms, deduped case-insensitively, filtered by q."""
     like = f"%{(q or '').strip()}%"
-    rows = cx.execute(
-        "SELECT DISTINCT main_stress FROM fmp_snap_client_active_main_stress "
-        "WHERE TRIM(COALESCE(main_stress,''))<>'' AND main_stress LIKE ? "
-        "ORDER BY main_stress LIMIT ?", (like, limit)).fetchall()
-    return [r[0] for r in rows]
+    have_fmp = _has(cx, "fmp_snap_client_active_main_stress")
+    have_custom = _has(cx, "custom_stress_vocab")
+    if not have_fmp and not have_custom:
+        return []
+    parts, params = [], []
+    if have_fmp:
+        parts.append("SELECT main_stress AS term FROM fmp_snap_client_active_main_stress "
+                     "WHERE TRIM(COALESCE(main_stress,''))<>'' AND main_stress LIKE ?")
+        params.append(like)
+    if have_custom:
+        parts.append("SELECT term FROM custom_stress_vocab "
+                     "WHERE TRIM(COALESCE(term,''))<>'' AND term LIKE ?")
+        params.append(like)
+    sql = ("SELECT term FROM (" + " UNION ".join(parts) + ") "
+           "GROUP BY LOWER(term) ORDER BY term LIMIT ?")
+    params.append(limit)
+    return [r[0] for r in cx.execute(sql, params).fetchall()]
 
 
 def stress_suggestions(cx, stress, limit=8):

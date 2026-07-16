@@ -59,6 +59,53 @@ def init_stress_tables(cx):
     cx.commit()
 
 
+def init_custom_vocab(cx):
+    """Durable, reusable stress terms Glen coins in the picker. Kept separate from the
+    FMP snapshot (which is overwritten on every re-import)."""
+    cx.execute("""CREATE TABLE IF NOT EXISTS custom_stress_vocab(
+        term       TEXT PRIMARY KEY,
+        created_at TEXT,
+        created_by TEXT DEFAULT 'glen')""")
+    cx.commit()
+
+
+def _table_exists(cx, name):
+    return cx.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                      (name,)).fetchone() is not None
+
+
+def add_custom_vocab(cx, term):
+    """Persist a stress term to the reusable custom vocabulary. Idempotent and
+    case-insensitive. Returns True if a new row was inserted."""
+    init_custom_vocab(cx)
+    t = (term or "").strip()
+    if not t:
+        return False
+    if cx.execute("SELECT 1 FROM custom_stress_vocab WHERE LOWER(term)=LOWER(?)", (t,)).fetchone():
+        return False
+    cx.execute("INSERT INTO custom_stress_vocab(term,created_at,created_by) VALUES(?,?,?)",
+               (t, _now(), "glen"))
+    cx.commit()
+    return True
+
+
+def vocab_has(cx, term):
+    """True if term is already a known stress vocabulary term — in the FMP snapshot
+    or the custom table (case-insensitive). Blank counts as known (never persist blank)."""
+    t = (term or "").strip()
+    if not t:
+        return True
+    if _table_exists(cx, "fmp_snap_client_active_main_stress") and cx.execute(
+            "SELECT 1 FROM fmp_snap_client_active_main_stress "
+            "WHERE LOWER(TRIM(main_stress))=LOWER(?) LIMIT 1", (t,)).fetchone():
+        return True
+    if _table_exists(cx, "custom_stress_vocab") and cx.execute(
+            "SELECT 1 FROM custom_stress_vocab WHERE LOWER(term)=LOWER(?) LIMIT 1",
+            (t,)).fetchone():
+        return True
+    return False
+
+
 def seed_from_scan(cx, tid, findings, coverage):
     init_stress_tables(cx)
     t = _num(tid)
