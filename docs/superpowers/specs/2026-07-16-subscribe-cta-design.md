@@ -11,7 +11,7 @@ Surface a shopper-facing **"Subscribe & save — save more each time"** option o
 
 ## Scope
 
-- **All autoship-eligible products** — bundles (ladder 12→29) AND single SKUs (ladder 3→25). Device bundles (`autoship_eligible: false`) and `info_only` products show no CTA.
+- **Autoship-eligible products** — bundles with `autoship_eligible: true` (ladder 12→29) AND single-SKU **Functional Formulations** (`_qty_eligible` = `qty_pricing` and not `info_only`; ladder 3→25). Device bundles, non-FF single SKUs (ionizers/nightlights), and `info_only` show no CTA.
 - **Paid-member benefit (model A):** the subscribe flow is for paid members; non-paid visitors get a "join to unlock" route to `/membership`.
 
 ## Background (what already exists — no change needed)
