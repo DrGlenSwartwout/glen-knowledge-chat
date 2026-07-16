@@ -106,3 +106,21 @@ def build_module_order(practitioner: dict, module_slug: str, *, today,
         "tuition_cents": tuition_cents,
         "credit_redeemed_cents": redeemed,
     }
+
+
+def quote_module(practitioner: dict, module_slug: str,
+                 *, tuition_cents: int = wallet.MODULE_TUITION_CENTS) -> dict:
+    """Paid-only quote for one certification module: what the coach owes, WITHOUT
+    creating a QBO invoice or redeeming credit. Credit is previewed read-only and
+    actually redeemed only when the payment is recorded (a Sales Receipt), matching
+    the QBO paid-only policy of no A/R invoices at signup. practitioner needs: id."""
+    balance = wallet.get_balance_cents(practitioner["id"])
+    redeemable = wallet.redeem_amount_for_module_cents(balance, tuition_cents)
+    due = tuition_cents - redeemable
+    return {
+        "ok": True,
+        "tuition_cents": tuition_cents,
+        "credit_available_cents": redeemable,
+        "amount_due_cents": due,
+        "total": round(due / 100.0, 2),
+    }

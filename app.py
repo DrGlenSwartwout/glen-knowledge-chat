@@ -5098,6 +5098,52 @@ def qbo_void_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/open-invoices", methods=["GET"])
+def qbo_open_invoices():
+    """Owner read-only: list every QBO invoice with an outstanding balance
+    (Balance > 0). Runs on prod where QBO auth is live (the local token is stale).
+    Used to review the A/R backlog before a MANUAL void sweep — never blanket-void,
+    some open invoices are real receivables. ?limit caps results (default 200)."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import qbo_billing as qb
+    try:
+        limit = max(1, min(int(request.args.get("limit") or 200), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    try:
+        rs = qb._query(
+            "SELECT Id, DocNumber, TxnDate, DueDate, TotalAmt, Balance, CustomerRef "
+            f"FROM Invoice WHERE Balance > '0' ORDERBY TxnDate DESC MAXRESULTS {limit}")
+        invs = (rs or {}).get("QueryResponse", {}).get("Invoice", []) or []
+        out = [{"id": i.get("Id"), "doc_number": i.get("DocNumber"),
+                "txn_date": i.get("TxnDate"), "due_date": i.get("DueDate"),
+                "total": i.get("TotalAmt"), "balance": i.get("Balance"),
+                "customer": (i.get("CustomerRef") or {}).get("name")} for i in invs]
+        total_balance = round(sum(float(i.get("balance") or 0) for i in out), 2)
+        return jsonify({"ok": True, "count": len(out),
+                        "total_balance": total_balance, "invoices": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:400]}), 500
+
+
+@app.route("/api/console/practitioner-order/remove", methods=["POST"])
+def api_console_practitioner_order_remove():
+    """Owner: remove a persisted practitioner order row by invoice_id (e.g. a
+    voided/erroneous certification-module order). Local portal-history display
+    only — does NOT touch QBO. Body: {invoice_id}."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "unauthorized"}), 401
+    inv = ((request.get_json(silent=True) or {}).get("invoice_id") or "").strip()
+    if not inv:
+        return jsonify({"ok": False, "error": "invoice_id required"}), 400
+    from dashboard import practitioner_portal as _ppx
+    removed = _ppx.delete_order(inv)
+    return jsonify({"ok": True, "removed": removed})
+
+
 # ── Recurring membership subscriptions (Group Coaching) ───────────────────────
 @app.route("/admin/membership")
 def admin_membership_page():
@@ -13706,24 +13752,22 @@ def api_practitioner_register():
     module_pay = None
     if clean["portal_role"] == "coach":
         try:
-            mo = _wc.build_module_order(
+            q = _wc.quote_module(
                 {"id": pid, "email": clean["email"], "name": clean["name"]},
-                "module-1", today=datetime.now(timezone.utc))
+                "module-1")
             module_pay = {
-                "invoice_id": mo.get("invoice_id"), "total": mo.get("total"),
-                "doc_number": mo.get("doc_number"),
+                "total": q.get("total"),
+                "tuition_cents": q.get("tuition_cents"),
+                "credit_available_cents": q.get("credit_available_cents"),
+                "amount_due_cents": q.get("amount_due_cents"),
                 "pay_instructions": [
                     {"label": _ALT_PAY["zelle"]["label"], "to": _ALT_PAY["zelle"]["to"]},
                     {"label": _ALT_PAY["wise"]["label"], "to": _ALT_PAY["wise"]["to"]},
                 ],
             }
-            try:
-                _pp.record_order(pid, invoice_id=mo.get("invoice_id"),
-                                 doc_number=mo.get("doc_number"),
-                                 total_cents=int(round((mo.get("total") or 0) * 100)),
-                                 credit_cents=mo.get("credit_redeemed_cents", 0))
-            except Exception:
-                pass
+            # PAID-ONLY: no QBO invoice and no order row are created at signup.
+            # The coach pays via Zelle/Wise; a Sales Receipt (and any credit
+            # redemption) is recorded only when the payment actually arrives.
             # NOTE: coaches no longer auto-unlock reselling here. Reselling
             # (drop-ship + wholesale ordering) is now gated behind a resale
             # license: a coach submits one via /api/practitioner/resale-apply,
@@ -13731,7 +13775,7 @@ def api_practitioner_register():
             # register_practitioner returned it (False for coaches; licensed
             # registrants are unlocked there, independent of this branch).
         except Exception as e:
-            print(f"[practitioner-register] module invoice failed: {e!r}", flush=True)
+            print(f"[practitioner-register] module quote failed: {e!r}", flush=True)
     try:
         magic = _pp.create_magic_link_token(pid, clean["email"])
         _send_practitioner_magic_link(
