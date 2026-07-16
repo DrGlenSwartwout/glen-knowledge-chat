@@ -108,6 +108,13 @@ def init_orders_table(cx):
         # console "Print invoice" reprint path does not touch this column —
         # only the customer-facing send does.
         "ALTER TABLE orders ADD COLUMN invoice_token TEXT",
+        # Stage 2 (QBO paid-only): the exact QBO line payload captured at checkout
+        # ({"lines":[...],"discount_cents":N,"tax_cents":N}) so a line-faithful
+        # Sales Receipt can be booked when payment confirms.
+        "ALTER TABLE orders ADD COLUMN qbo_lines_json TEXT",
+        # The QBO SalesReceipt Id booked for this order (paid-only). NULL until
+        # payment books it; presence is the idempotency marker (never re-book).
+        "ALTER TABLE orders ADD COLUMN qbo_sales_receipt_id TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -421,6 +428,23 @@ def orders_in_hold_group(cx, hold_group_id):
 def set_order_stripe_pi(cx, order_id, payment_intent):
     cur = cx.execute("UPDATE orders SET stripe_payment_intent=?, updated_at=? WHERE id=?",
                      (payment_intent, _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_qbo_lines(cx, external_ref, payload):
+    """Store the exact QBO line payload for the order with this external_ref, so the
+    paid handler can book a line-faithful Sales Receipt. Returns False if no such row."""
+    cur = cx.execute("UPDATE orders SET qbo_lines_json=?, updated_at=? WHERE external_ref=?",
+                     (json.dumps(payload), _now(), str(external_ref)))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_sales_receipt_id(cx, order_id, sales_receipt_id):
+    """Stamp the booked QBO SalesReceipt Id onto an order (idempotency marker)."""
+    cur = cx.execute("UPDATE orders SET qbo_sales_receipt_id=?, updated_at=? WHERE id=?",
+                     (str(sales_receipt_id), _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
 
