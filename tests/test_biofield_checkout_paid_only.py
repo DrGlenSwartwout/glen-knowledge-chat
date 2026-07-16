@@ -46,6 +46,48 @@ def test_biofield_checkout_creates_no_qbo_invoice(monkeypatch, tmp_path):
     assert body.get("invoice_id")
 
 
+def test_biofield_checkout_charges_subtotal_drops_get(monkeypatch, tmp_path):
+    """Money-path fix: biofield is a service line (shipping_cents=0), so the corrected
+    charge = total_cents - get_cents + shipping_cents must equal the bare subtotal --
+    any GET the pricing engine computed must never be charged to the customer, only
+    recorded for remittance. _price_biofield hardcodes ship_to_state=None so the real
+    engine never actually produces a nonzero get_cents here; stub a crafted pc so the
+    checkout route's own arithmetic is what's under test, not the engine's tax gate."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app, "_biofield_enabled", lambda: True)
+    monkeypatch.setattr(app, "_STRIPE_ACTIVE", True)
+
+    fake_pc = {
+        "priced": {"total_cents": 31000, "get_cents": 1000},
+        "qbo_lines": [{"name": "Biofield Analysis (Premium)", "amount": 300.0,
+                       "qty": 1, "description": "Biofield Analysis (Premium)"}],
+        "items_rec": [{"name": "Biofield Analysis (Premium)", "qty": 1,
+                       "desc": "Biofield Analysis (Premium)"}],
+        "discount_cents": 0,
+        "points_redeemed_cents": 0,
+        "shipping_cents": 0,
+    }
+    monkeypatch.setattr(app, "_price_biofield", lambda **kw: fake_pc)
+
+    cap = {}
+    import dashboard.stripe_pay as sp
+    def fake_session(amount_cents, **kw):
+        cap["amount_cents"] = amount_cents
+        return {"url": "https://stripe.test/s"}
+    monkeypatch.setattr(sp, "create_checkout_session", fake_session)
+
+    r = _client().post("/biofield/checkout", json={"email": "hi@b.com", "name": "H"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    # 31000 total - 1000 get + 0 shipping = 30000 (bare subtotal); GET must be dropped.
+    assert cap["amount_cents"] == 30000
+    assert body["total"] == 300.0
+
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = _orders_mod.find_order_by_external_ref(cx, body["invoice_id"])
+    assert row["total_cents"] == 30000
+
+
 def test_biofield_checkout_persists_qbo_lines(monkeypatch, tmp_path):
     db = _isolate_db(monkeypatch, tmp_path)
     monkeypatch.setattr(qbo_billing, "create_invoice",
