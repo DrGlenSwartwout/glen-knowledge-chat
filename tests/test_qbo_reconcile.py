@@ -59,3 +59,25 @@ def test_one_bad_invoice_does_not_stop_the_rest():
 
     out = reconcile_qbo_payments(cx, get_invoice=flaky_get_invoice, mark_paid=lambda *a, **k: None)
     assert [r["order_id"] for r in out] == [7]        # 24435 error skipped, 24437 still reconciled
+
+
+def test_poller_excludes_token_external_refs():
+    """Token-based external_refs (32-char hex, may start with digit) must be excluded.
+    Only all-numeric QBO invoice ids (short, all digits) should be included."""
+    cx = sqlite3.connect(":memory:")
+    cx.execute("""CREATE TABLE orders (
+        id INTEGER PRIMARY KEY, source TEXT, external_ref TEXT, total_cents INTEGER,
+        status TEXT, pay_status TEXT)""")
+    cx.executemany(
+        "INSERT INTO orders (id, source, external_ref, total_cents, status, pay_status) VALUES (?,?,?,?,?,?)",
+        [
+            (100, "reorder", "24767", 100, "new", "unpaid"),                       # legacy numeric invoice id -> INCLUDE
+            (101, "reorder", "3f6721cddeef4a1b9c0a1", 100, "new", "unpaid"),       # token starting with digit -> EXCLUDE
+            (102, "portal-reorder", "c95ef29a9ccf4c55b5a3", 100, "new", "unpaid"), # token starting with letter -> EXCLUDE
+        ])
+    cx.commit()
+    rows = list_open_qbo_orders(cx)
+    refs = {r["external_ref"] for r in rows}
+    assert "24767" in refs
+    assert "3f6721cddeef4a1b9c0a1" not in refs
+    assert "c95ef29a9ccf4c55b5a3" not in refs

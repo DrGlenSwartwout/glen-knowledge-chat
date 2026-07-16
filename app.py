@@ -9530,24 +9530,34 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                # NOTE: retail/funnel checkout (begin_checkout) is paid-only as of the QBO
-                # Stage 2 migration -- it sets metadata customer_id="" (no QBO customer/
-                # invoice exists at checkout time), so `cid` is always falsy for kind=="retail".
-                # The outer gate is therefore `inv` alone (not `inv and cid`), and each inner
-                # side effect is individually scoped: record_payment (invoice-apply) requires
-                # a real `cid` and excludes biofield/retail (paid-only, nothing to apply to);
-                # the stripe-pi/points/referral/booking block fires whenever there's a real
-                # `cid` (unaffected kinds, e.g. reorder) OR kind=="retail" (paid-only funnel).
+                # NOTE: retail/funnel checkout (begin_checkout) AND cart checkout
+                # (_checkout_cart) are paid-only as of the QBO Stage 2/3 migration --
+                # each sets metadata customer_id="" (no QBO customer/invoice exists at
+                # checkout time), so `cid` is always falsy for these kinds. reorder/
+                # portal-reorder/subscribe are NOT yet converted (pending Stages 3/4)
+                # and still create_invoice with a REAL cid -- they need record_payment
+                # just like any other invoice-based kind, so they are NOT excluded here;
+                # the leading `if cid` guard already makes this a no-op for the
+                # paid-only kinds (their cid is ""), so listing them here would only
+                # ever break the not-yet-converted flows without protecting anything.
+                # The outer gate is therefore `inv` alone (not `inv and cid`), and each
+                # inner side effect is individually scoped: record_payment (invoice-
+                # apply) requires a real `cid` and excludes only biofield/retail
+                # (paid-only / has its own path, nothing to apply to); the stripe-pi/
+                # points/referral/booking block fires whenever there's a real `cid`
+                # (any remaining invoice-based kind) OR kind is one of the paid-only
+                # kinds (retail/reorder/portal-reorder/subscribe).
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
                 if inv:
-                    if cid and _kind != "in-house" and _kind not in ("biofield", "retail"):
+                    if cid and _kind != "in-house" and _kind not in (
+                            "biofield", "retail"):
                         try:
                             from dashboard import qbo_billing as _qb_ret
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id and (cid or _kind in ("retail",)):
+                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -20450,13 +20460,12 @@ def api_client_portal_checkout(token):
                 items = _merge_accepted_recommendation_items(_rcx, email, base_items)
         except Exception:
             items = base_items  # merge failure must never break checkout
-    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
+    lines, items_rec, subtotal_cents = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
         return jsonify({"error": "Card checkout is temporarily unavailable. Please reach out and we'll help."}), 503
     try:
-        from dashboard import qbo_billing as _qb_local
         ship = {}
         try:
             with sqlite3.connect(LOG_DB) as cx:
@@ -20466,14 +20475,24 @@ def api_client_portal_checkout(token):
                 ship = prior[0].get("address") or {}
         except Exception:
             ship = {}  # no prior order / address on file — proceed; collected at checkout
-        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-        _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="reorder", set by _stripe_checkout_url_for_reorder below) to book a
+        # line-faithful QBO Sales Receipt once the customer actually pays.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {"lines": lines, "discount_cents": 0, "tax_cents": 0}
+        out = {"invoice_id": checkout_ref, "customer_id": "",
+               "doc_number": "", "total": round(subtotal_cents / 100.0, 2)}
+        _ingest_order(source="portal-reorder", external_ref=checkout_ref, email=email,
                       name=ship.get("name", ""), items=items_rec,
-                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      total_cents=int(subtotal_cents),
                       address=ship, channel="retail")
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[portal-reorder] persist qbo_lines failed: {_e!r}", flush=True)
         stripe_url = _stripe_checkout_url_for_reorder(out, email)
         if not stripe_url:
             return jsonify({"error": _CARD_UNAVAILABLE}), 502
@@ -25241,9 +25260,11 @@ def _resolve_ship_address(email, body_address):
 
 
 def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code=None):
-    """Price a cart through the engine, create the QBO invoice, ingest the order, and mint the
-    Stripe URL (metadata kind=reorder -> recorded by /begin/checkout-return). Returns
-    {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty priced cart."""
+    """Price a cart through the engine, ingest the order (paid-only: no QBO invoice/customer
+    at checkout time), and mint the Stripe URL (metadata kind=reorder -> recorded by
+    /begin/checkout-return, which books the line-faithful QBO Sales Receipt on payment).
+    Returns {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty
+    priced cart."""
     requested_redeem = int(points_to_redeem_cents or 0)
     if requested_redeem > 0:
         from dashboard import points as _pts_co
@@ -25260,25 +25281,34 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
     # customer's ship_credit balance (bounded by net product + shipping) into the
     # invoice discount; the ledger is debited at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
-    cust = qb.find_or_create_customer(email, ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=True,
-        email_to=email,
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
-    _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {
+        "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
+        "tax_cents": 0}
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents.
+    _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                     + int(pc["shipping_cents"]))
+    _ingest_order(source="reorder", external_ref=checkout_ref, email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  total_cents=_charge_cents,
                   address=ship, channel="retail",
                   get_cents=pc["priced"].get("get_cents", 0),
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
-    _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-    out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[reorder] persist qbo_lines failed: {_e!r}", flush=True)
+    _record_referral_if_any(_ref_ctx, email, checkout_ref)
+    out = {"invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(_charge_cents / 100.0, 2)}
     stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
     return {"out": out, "stripe_url": stripe_url}
 
@@ -25393,46 +25423,65 @@ def begin_founding_status(slug):
 # ── Founding charge-on-ship ───────────────────────────────────────────────────
 
 def _ship_founding_reservation(cx, sub):
-    """Charge the vaulted card for the founding bottle (charge-on-ship), ingest a
-    qualifying product order, and activate the autoship. Returns a result dict."""
+    """Charge the vaulted card for the founding bottle (charge-on-ship, paid-only:
+    no QBO invoice/customer before payment -- the exact line payload rides in
+    qbo_lines_json for a line-faithful Sales Receipt booked inline right after the
+    charge succeeds), ingest a qualifying product order, and activate the
+    autoship. Returns a result dict."""
     from dashboard import subscriptions as _subs
+    from dashboard import qbo_sale as _qsale
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
     pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
                      program_member=_is_paid_member(sub["email"]),
                      email=sub["email"])
-    cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=False,
-        email_to=sub["email"],
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"],
-    )
-    total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents.
+    charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                    + int(pc["shipping_cents"]))
     res = stripe_pay.charge_off_session(
-        sub["stripe_customer_id"], sub["stripe_payment_method_id"], total_cents,
+        sub["stripe_customer_id"], sub["stripe_payment_method_id"], charge_cents,
         description="Remedy Match founding bottle",
         metadata={"sub": str(sub["id"]), "kind": "founding_ship"},
     )
     if res.get("status") != "succeeded":
         _subs.bump_failed_count(cx, sub["id"])
-        return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
+        return {"charged": False, "sub_id": sub["id"], "amount_cents": charge_cents}
     today = _now_utc().strftime("%Y-%m-%d")
     _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    external_ref = res.get("id") or ""
     try:
         _ingest_order(
             source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
-            external_ref=res.get("id") or inv.get("Id") or "",
+            external_ref=external_ref,
             email=sub["email"],
             items=items,
-            total_cents=total_cents,
+            total_cents=charge_cents,
             address=ship,
             channel="retail",
+            get_cents=int(pc["priced"]["get_cents"]),
         )
     except Exception as e:
         print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")
-    return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
+    # Book ONE line-faithful QBO Sales Receipt now that payment is confirmed
+    # (paid-only: no invoice was ever created for this charge). Best-effort +
+    # idempotent (book_sale_on_payment atomically claims the booking slot) so this
+    # can never break the charge/ship path above.
+    try:
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0,
+        }
+        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+        order = _bos_orders.find_order_by_external_ref(cx, external_ref)
+        if order:
+            _qsale.book_sale_on_payment(cx, dict(order))
+    except Exception as e:
+        print(f"[founding-ship] qbo sale booking failed sub={sub['id']}: {e!r}")
+    return {"charged": True, "sub_id": sub["id"], "amount_cents": charge_cents}
 
 
 @app.route("/api/founding/ship", methods=["POST"])
@@ -25470,9 +25519,11 @@ def _subscriptions_enabled() -> bool:
 
 @app.route("/reorder/subscribe", methods=["POST"])
 def reorder_subscribe():
-    """POST /reorder/subscribe — price the first subscription order, create a QBO invoice,
-    then create a Stripe checkout session with save_card=True so the card is vaulted.
-    On return, /begin/checkout-return writes the subscription row."""
+    """POST /reorder/subscribe — price the first subscription order, ingest it as a
+    paid-only order (no QBO invoice/customer at checkout time; the exact line
+    payload rides in qbo_lines_json for a line-faithful Sales Receipt on payment),
+    then create a Stripe checkout session with save_card=True so the card is
+    vaulted. On return, /begin/checkout-return writes the subscription row."""
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
@@ -25517,13 +25568,37 @@ def reorder_subscribe():
             return jsonify({"ok": False,
                             "error": "Your cart is empty or those items are no longer available."}), 400
 
-        cust = qb.find_or_create_customer(email, ship.get("name", ""))
-        inv = qb.create_invoice(
-            cust,
-            pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-            allow_online_pay=True,
-            email_to=email,
-            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="subscribe") to book a line-faithful QBO Sales Receipt once the
+        # customer actually pays. The SEPARATE subscribe block there (vaults the
+        # card + writes the subscription row) keys off metadata (items/ship/
+        # cadence/email), not this invoice_id, so it is unaffected by this change.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0}
+        # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+        # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal +
+        # GET, so the correct charge (and stored order total) is subtotal +
+        # shipping = total_cents - get_cents + shipping_cents.
+        _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                         + int(pc["shipping_cents"]))
+        _ingest_order(source="subscribe", external_ref=checkout_ref, email=email,
+                      name=ship.get("name", ""), items=pc["items_rec"],
+                      total_cents=_charge_cents,
+                      address=ship, channel="retail",
+                      get_cents=pc["priced"].get("get_cents", 0),
+                      discount_cents=pc["discount_cents"],
+                      points_redeemed_cents=pc["points_redeemed_cents"],
+                      shipping_cents=pc["shipping_cents"])
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[subscribe] persist qbo_lines failed: {_e!r}", flush=True)
 
         # Build metadata; stash items+ship in pending_subscriptions if too long
         items_json = json.dumps(cart)
@@ -25532,8 +25607,8 @@ def reorder_subscribe():
             "kind": "subscribe",
             "cadence_months": str(cadence),
             "email": email,
-            "invoice_id": inv.get("Id") or "",
-            "customer_id": cust.get("Id") or "",
+            "invoice_id": checkout_ref,
+            "customer_id": "",
         }
         if len(items_json) + len(ship_json) <= 450:
             metadata["items"] = items_json
@@ -25552,13 +25627,12 @@ def reorder_subscribe():
                 _cx.commit()
             metadata["stash_key"] = stash_key
 
-        total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         sess = stripe_pay.create_checkout_session(
-            total_cents,
+            _charge_cents,
             customer_email=email,
-            description=f"Remedy Match subscription setup #{inv.get('DocNumber') or ''}",
+            description="Remedy Match subscription setup",
             metadata=metadata,
             success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/reorder",
@@ -33089,20 +33163,28 @@ def cron_charge_subscriptions():
                         amount_cents, description=_charge_label,
                         metadata={"sub": str(sid), "kind": "membership"})
                     if res.get("status") == "succeeded":
-                        try:
-                            cust = qb.find_or_create_customer(sub["email"], "")
-                            inv = qb.create_invoice(
-                                cust,
-                                [{"name": _line_label, "amount": amount_cents / 100.0,
-                                  "qty": 1, "description": f"{_line_label} (monthly)"}],
-                                allow_online_pay=False, email_to=sub["email"])
-                            inv_id = inv.get("Id", "")
-                        except Exception as qe:
-                            print(f"[sub-cron] membership QBO sub={sid}: {qe!r}", flush=True)
-                            inv_id = ""
-                        _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
+                        external_ref = res.get("id") or ""
+                        _ingest_order(source="membership", external_ref=external_ref,
                                       email=sub["email"], items=[], total_cents=amount_cents,
                                       address={}, channel="retail")
+                        # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                        # book ONE line-faithful Sales Receipt inline now that payment is
+                        # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                        # the booking slot atomically), so this can never break the charge/
+                        # subscription-bookkeeping path below.
+                        try:
+                            from dashboard import qbo_sale as _qsale
+                            qbo_payload = {
+                                "lines": [{"name": _line_label,
+                                          "amount": round(amount_cents / 100.0, 2), "qty": 1}],
+                                "discount_cents": 0, "tax_cents": 0}
+                            _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                            _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                            if _o:
+                                _qsale.book_sale_on_payment(cx, dict(_o))
+                        except Exception as qe:
+                            print(f"[sub-cron] membership qbo sale booking failed sid={sid}: {qe!r}",
+                                  flush=True)
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
@@ -33126,7 +33208,7 @@ def cron_charge_subscriptions():
                             print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
-                                "total_cents": amount_cents, "invoice_id": inv_id,
+                                "total_cents": amount_cents, "invoice_id": "",
                                 "kind": "membership", "product": _product,
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
@@ -33187,25 +33269,12 @@ def cron_charge_subscriptions():
                 )
 
                 if res.get("status") == "succeeded":
-                    # Build QBO invoice
-                    try:
-                        cust = qb.find_or_create_customer(sub["email"], "")
-                        inv = qb.create_invoice(
-                            cust,
-                            pc["qbo_lines"] + _shipping_line(shipping_cents),
-                            allow_online_pay=False,
-                            email_to=sub["email"],
-                            discount_cents=discount_cents + points_redeemed_cents,
-                        )
-                        inv_id = inv.get("Id", "")
-                    except Exception as qe:
-                        print(f"[sub-cron] QBO invoice sub={sid}: {qe!r}", flush=True)
-                        inv_id = ""
+                    external_ref = res.get("id") or ""
 
                     # Record the order
                     _ingest_order(
                         source="subscription",
-                        external_ref=res.get("id") or inv_id,
+                        external_ref=external_ref,
                         email=sub["email"],
                         items=pc.get("items_rec") or [],
                         total_cents=total_cents,
@@ -33217,6 +33286,25 @@ def cron_charge_subscriptions():
                         shipping_cents=shipping_cents,
                     )
 
+                    # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                    # book ONE line-faithful Sales Receipt inline now that payment is
+                    # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                    # the booking slot atomically), so this can never break the charge/
+                    # subscription-bookkeeping path below.
+                    try:
+                        from dashboard import qbo_sale as _qsale
+                        qbo_payload = {
+                            "lines": pc["qbo_lines"] + _shipping_line(shipping_cents),
+                            "discount_cents": discount_cents + points_redeemed_cents,
+                            "tax_cents": 0,
+                        }
+                        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                        _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                        if _o:
+                            _qsale.book_sale_on_payment(cx, dict(_o))
+                    except Exception as qe:
+                        print(f"[sub-cron] qbo sale booking failed sid={sid}: {qe!r}", flush=True)
+
                     _subs.advance_after_charge(cx, sid)
                     _subs.reset_failed_count(cx, sid)
 
@@ -33225,7 +33313,7 @@ def cron_charge_subscriptions():
                     _maybe_extend_founding_membership(cx, sub, updated)
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
-                        "invoice_id": inv_id,
+                        "invoice_id": "",
                         "kind": sub.get("kind", "product"),
                         "next_charge_date": updated["next_charge_date"] if updated else "",
                     })
