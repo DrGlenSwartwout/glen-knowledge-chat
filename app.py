@@ -5064,6 +5064,26 @@ def qbo_test_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/test-sales-receipt", methods=["POST"])
+def qbo_test_sales_receipt():
+    """Create ONE test Sales Receipt for a clearly-named test customer to verify the
+    paid-only write layer against live QBO. Void/delete it afterward in QBO."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer("zztest+remedymatch@example.com", "ZZ Test DeleteMe")
+        sr = qb.create_sales_receipt(
+            cust,
+            [{"name": "TEST RemedyMatch Product", "amount": 1.0, "qty": 1,
+              "description": "TEST — verifying QBO paid-only write layer, please delete"}])
+        return jsonify({"ok": True, "id": sr.get("Id"),
+                        "doc_number": sr.get("DocNumber"), "total": sr.get("TotalAmt"),
+                        "customer": cust.get("DisplayName")})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/qbo/void-invoice", methods=["POST"])
 def qbo_void_invoice():
     if not _qbo_auth_ok():
@@ -9077,20 +9097,20 @@ def _fulfill_continuous_care_monthly(session_id):
 
 
 def _book_membership_qbo(email, tier):
-    """Record a paid QBO invoice for a one-time membership tier (month /
-    year_prepay) purchase: find_or_create_customer -> create_invoice ->
-    record_payment. Best-effort — a QBO failure must never break the
-    membership grant, which is already committed on the caller's connection
-    by the time this runs. Never raises."""
+    """Record a paid one-time membership purchase (month / year_prepay) as a QBO
+    SalesReceipt — paid-only, no A/R invoice. Best-effort — a QBO failure must never
+    break the membership grant, which is already committed by the time this runs.
+    Never raises."""
     try:
         from dashboard import qbo_billing as qb
         cust = qb.find_or_create_customer(email, "")
-        inv = qb.create_invoice(
-            cust, [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
-            allow_online_pay=False, email_to=email)
-        qb.record_payment(cust.get("Id"), tier["price_cents"], inv.get("Id"), method="card")
+        qb.create_sales_receipt(
+            cust,
+            [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
+            email_to=email)
     except Exception as e:
-        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}", flush=True)
+        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}",
+              flush=True)
 
 
 def _record_membership_reconcile_alert(cx, session_id, email, tier):
