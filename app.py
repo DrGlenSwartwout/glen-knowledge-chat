@@ -3571,6 +3571,24 @@ def continuous_care_return():
     return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?care={'ok' if ok else 'err'}")
 
 
+@app.route("/membership/return", methods=["GET"])
+def membership_return():
+    """Stripe return for a membership-product checkout (month / year_monthly /
+    year_prepay). Re-fetches the session + PaymentIntent via the shared fulfiller
+    (the security guarantee) and honors any paid session regardless of the
+    MEMBERSHIP_PRODUCTS_ENABLED flag — fulfillment is idempotent + self-verifying,
+    and the webhook is the safety net for a closed tab. Never raises."""
+    sid = (request.args.get("session_id") or "").strip()
+    status = "err"
+    if sid:
+        try:
+            status = ("ok" if _fulfill_membership_product(sid)
+                      in ("ok", "duplicate_member", "already") else "err")
+        except Exception as e:
+            print(f"[membership] return fulfill error: {e!r}", flush=True)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/?membership={status}")
+
+
 @app.route("/membership/cancel/<token>", methods=["GET"])
 def membership_cancel(token):
     """One-click cancel via a tokened link minted at biofield-trial grant time."""
@@ -9047,6 +9065,109 @@ def _fulfill_continuous_care_monthly(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _book_membership_qbo(email, tier):
+    """Record a paid QBO invoice for a one-time membership tier (month /
+    year_prepay) purchase: find_or_create_customer -> create_invoice ->
+    record_payment. Best-effort — a QBO failure must never break the
+    membership grant, which is already committed on the caller's connection
+    by the time this runs. Never raises."""
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer(email, "")
+        inv = qb.create_invoice(
+            cust, [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
+            allow_online_pay=False, email_to=email)
+        qb.record_payment(cust.get("Id"), tier["price_cents"], inv.get("Id"), method="card")
+    except Exception as e:
+        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}", flush=True)
+
+
+def _fulfill_membership_product(session_id):
+    """Fulfill a /membership/checkout Stripe session for a membership-product
+    tier (month / year_monthly / year_prepay from dashboard.membership_products),
+    idempotently. Callable from the /membership/return redirect AND the Stripe
+    webhook, so a closed tab / dropped redirect still gets fulfilled (money
+    captured => membership granted). Re-fetches the session + PaymentIntent (the
+    security guarantee). Self-dispatching: no-ops unless metadata
+    kind == 'membership_product'. Claim-then-create on
+    membership_product_grants(session_id) makes the redirect and webhook race
+    safely. Never raises. Returns a status string: "ok" | "duplicate_member" |
+    "no_card" | "not_paid" | "already" | "skip"."""
+    from dashboard import membership_products as _mp
+    from dashboard import subscriptions as _subs
+    from datetime import date as _date
+    try:
+        sess = stripe_pay.get_session(session_id)
+    except Exception as e:
+        print(f"[membership] get_session failed sid={session_id}: {e!r}", flush=True)
+        return "skip"
+    md = sess.get("metadata") or {}
+    if md.get("kind") != "membership_product":
+        return "skip"
+    tier = _mp.get_tier(md.get("tier") or "")
+    email = (md.get("email") or "").strip().lower()
+    if not (tier and email):
+        return "skip"
+    pi_id = sess.get("payment_intent")
+    pi = stripe_pay.get_payment_intent(pi_id) if pi_id else {}
+    status = pi.get("status") or sess.get("payment_status")
+    if status not in ("succeeded", "paid"):
+        return "not_paid"
+    today = _date.today()
+    today_s = today.isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        init_membership_tables(cx)
+        try:
+            cx.execute(
+                "INSERT INTO membership_product_grants (session_id, email, tier, created_at) "
+                "VALUES (?,?,?,?)",
+                (session_id, email, tier["key"], datetime.utcnow().isoformat() + "Z"))
+            cx.commit()
+        except sqlite3.IntegrityError:
+            return "already"
+        days = _mp.grant_days(tier["key"], today)
+        if tier["billing"] == "recurring_capped":
+            customer, pm = pi.get("customer"), pi.get("payment_method")
+            if not (customer and pm):
+                # No vaulted card => the cron could never bill months 2..N off of
+                # it. Unwind the claim so a retry (e.g. with a card added) is not
+                # blocked by this session's own idempotency row.
+                cx.execute("DELETE FROM membership_product_grants WHERE session_id=?",
+                           (session_id,))
+                cx.commit()
+                print(f"[membership] no vaulted card on {session_id} — skipping", flush=True)
+                return "no_card"
+            if _subs.active_memberships_by_email(cx, email):
+                # Never create a SECOND active membership for an email that
+                # already has one — the charge cron bills every active
+                # membership row, so a duplicate row = double $99/mo. Still
+                # extend the access grant for the month just paid.
+                until = (today + timedelta(days=days)).isoformat() + "Z"
+                _extend_membership_grant(cx, email, until, tier["source"])
+                cx.commit()
+                print(f"[membership] {email} already has an active membership; "
+                      f"NOT creating a 2nd sub (session={session_id}) — reconcile "
+                      f"the duplicate month-1 charge manually", flush=True)
+                return "duplicate_member"
+            # order_count=1 records the month-1 charge just taken at checkout, so
+            # membership_category reads 'full' (member pricing) immediately.
+            # Capped at term_charges (the charge cron self-cancels there).
+            _subs.create_membership(
+                cx, email=email, stripe_customer_id=customer,
+                stripe_payment_method_id=pm, amount_cents=tier["price_cents"],
+                next_charge_date=_subs.add_months(today_s, 1),
+                cadence_months=tier["cadence_months"],
+                term_charges_total=tier["term_charges"], initial_order_count=1)
+            _grant_membership(cx, email, days, tier["source"])
+            cx.commit()
+        else:  # one_time (month, year_prepay) — grant-only, never billed again
+            _grant_membership(cx, email, days, tier["source"])
+            cx.commit()
+            _book_membership_qbo(email, tier)
+        return "ok"
+
+
 def _fulfill_biofield_program(session_id):
     """Grant the 30-day Continuous Care taster from a paid biofield PROGRAM purchase,
     idempotently. Callable from the /begin/checkout-return redirect AND the Stripe
@@ -11022,6 +11143,13 @@ def init_membership_tables(cx):
           email       TEXT NOT NULL,
           studio_ref  TEXT,
           notes       TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS membership_product_grants (
+          session_id  TEXT PRIMARY KEY,
+          email       TEXT,
+          tier        TEXT,
+          created_at  TEXT
         );
     """)
 
@@ -26697,6 +26825,7 @@ def webhook_stripe():
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
+                _fulfill_membership_product(session_id)     # kind == "membership_product"
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
                 _fulfill_family_plan(session_id)
