@@ -478,6 +478,31 @@ function supportProgramBodyHtml(sp){
   if(!rows) rows = `<p class="muted">No program items yet.</p>`;
   return `${consult}${rows}`;
 }
+// Full support-program card (Task 3): wraps supportProgramBodyHtml with the card
+// chrome, the client-reported facts checklist (e.g. on_areds2 — sp.client_facts,
+// added by the server alongside the resolved program), and the add-to-invoice
+// button. Factored into its own builder so the delegated .cf-toggle change
+// handler below can re-render the whole card in place from the server's
+// re-resolved program, without touching the rest of the page.
+function supportProgramCardHtml(sp){
+  sp = sp || {};
+  const facts = Array.isArray(sp.client_facts) ? sp.client_facts : [];
+  const factRows = facts.map(f => `
+    <label class="cf-row" style="display:flex;gap:.5rem;align-items:flex-start;margin:.5rem 0">
+      <input type="checkbox" class="cf-toggle" data-key="${esc(f.key)}"${f.value ? " checked" : ""}>
+      <span><span>${esc(f.label||"")}</span>${f.hint ? `<span class="muted" style="display:block;font-size:.9em">${esc(f.hint)}</span>` : ""}</span>
+    </label>`).join("");
+  const factMsg = factRows ? `<p class="small cf-msg" style="margin:.3rem 0 0" hidden></p>` : "";
+  const addBtn = sp.consult_recommended ? "" :
+    `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
+     <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`;
+  return `<div class="card support-program-card">
+      <h2>Your ${esc(sp.label || "")} Support Program</h2>
+      ${supportProgramBodyHtml(sp)}
+      ${factRows}${factMsg}
+      ${addBtn}
+    </div>`;
+}
 // Life Stress essence card body (Task 6): essences matched to the emotional/stress
 // patterns found in this client's scan (E4L + journal), flag-gated at the card block
 // below (d.life_stress_enabled). Each essence links to its product page when a URL
@@ -829,6 +854,29 @@ document.addEventListener("click", async (e) => {
       window.location.reload();
     }catch(_){ cxl.disabled = false; }
   }
+});
+
+// on_areds2 (and future client-reported facts): POST the toggle, re-render the
+// support-program card from the returned re-resolved program so items update live.
+// Delegated once on document, same reasoning as the Family Plan listener above —
+// the checkboxes are injected via render()'s innerHTML (and re-injected by this
+// handler's own outerHTML swap), so a per-render listener would stack.
+document.addEventListener("change", function(ev){
+  const cb = ev.target;
+  if (!cb || !cb.classList || !cb.classList.contains("cf-toggle")) return;
+  const card = cb.closest(".support-program-card");
+  const msg = card && card.querySelector(".cf-msg");
+  if (msg){ msg.hidden = false; msg.textContent = "Saving…"; }
+  fetch(`/api/portal/${encodeURIComponent(token)}/client-fact`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({key: cb.getAttribute("data-key"), value: cb.checked})
+  }).then(r => r.json()).then(res => {
+    if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
+    if (card && res.support_program) card.outerHTML = supportProgramCardHtml(res.support_program);
+  }).catch(() => {
+    cb.checked = !cb.checked;  // revert
+    if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
+  });
 });
 
 function render(d, v){
@@ -1400,13 +1448,7 @@ function render(d, v){
   // gated on coverage/review — the server endpoint is open to any tagged client,
   // so the button always shows alongside the card.
   if (d.support_programs_enabled && d.support_program) {
-    const sp = d.support_program;
-    html += `<div class="card support-program-card">
-      <h2>Your ${esc(sp.label || "")} Support Program</h2>
-      ${supportProgramBodyHtml(sp)}
-      ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
-      <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
-    </div>`;
+    html += supportProgramCardHtml(d.support_program);
   }
 
   // Life Stress essence card (Task 6, flag-gated server-side): essences matched to
