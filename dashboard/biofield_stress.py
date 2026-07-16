@@ -404,14 +404,20 @@ def add_voice_stress(cx, tid, label):
 
 
 def stress_id_for(cx, tid, label):
-    """id of the test's stress whose normalized code matches label, or None."""
+    """id of the test's stress whose label normalizes to `label` (any source), or None.
+    Matches by normalized label — mirrors add_stress's dedup — so it also finds a stress
+    that add_stress merged into an existing row (incl. scan-sourced rows whose `code`
+    column holds the raw E4L finding code rather than the normalized label)."""
     init_stress_tables(cx)
     n = _norm(label)
     if not n:
         return None
-    r = cx.execute("SELECT id FROM biofield_auth_stress WHERE test_id=? AND code=? "
-                   "ORDER BY id LIMIT 1", (_num(tid), n)).fetchone()
-    return r[0] if r else None
+    for rid, lbl in cx.execute(
+            "SELECT id, label FROM biofield_auth_stress WHERE test_id=? ORDER BY id",
+            (_num(tid),)).fetchall():
+        if _norm(lbl) == n:
+            return rid
+    return None
 
 
 def layer_chain_rids(cx, tid, layer):

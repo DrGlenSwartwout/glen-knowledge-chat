@@ -1404,7 +1404,10 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                     _st.cover_stress(cx, test_id, sid, rids)
                 else:
                     _st.set_manual_balanced(cx, test_id, sid, True)
-                balanced_layer = int(layer)
+                try:
+                    balanced_layer = int(layer)
+                except (TypeError, ValueError):
+                    balanced_layer = None
         return {"ok": sid is not None, "sid": sid, "label": label, "layer": balanced_layer}
 
     @app.route("/api/catalog")
