@@ -116,10 +116,10 @@ $('form').addEventListener('submit', function(e){
       if(!d.ok){ show('err', d.error || 'Something went wrong.'); return; }
       show('ok', d.message || 'Check your email for a sign-in link.');
       var mp = d.module_pay;
-      if(mp && mp.invoice_id){
-        var h = '<div class="msg ok" style="margin-top:10px"><b>Your first certification module — Invoice #'+mp.doc_number+' — $'+Number(mp.total||297).toFixed(2)+'</b><br>Pay by:';
+      if(mp && mp.total != null){
+        var h = '<div class="msg ok" style="margin-top:10px"><b>Your first certification module — $'+Number(mp.total||297).toFixed(2)+'</b><br>Pay by:';
         (mp.pay_instructions||[]).forEach(function(p){ h += '<br>'+p.label+': <b>'+p.to+'</b>'; });
-        h += '<br><span style="font-size:13px;color:var(--muted)">Use invoice #'+mp.doc_number+' as the memo. Wholesale ordering is already unlocked, and you can see this invoice in your portal under Order history.</span></div>';
+        h += '<br><span style="font-size:13px;color:var(--muted)">Use your name and email as the memo, and we\'ll confirm your enrollment once payment arrives. Wholesale ordering is already unlocked.</span></div>';
         $('msg').insertAdjacentHTML('beforeend', h);
       }
     })

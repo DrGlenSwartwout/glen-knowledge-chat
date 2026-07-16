@@ -169,3 +169,27 @@ def test_build_module_order_redeems_up_to_full_tuition(env):
     assert out["credit_redeemed_cents"] == 29700        # full $297 covered
     assert env["qb"].discounts == [("INV1", 29700)]
     assert env["wallet"].get_balance_cents(PID) == 70300
+
+
+# ── quote_module (paid-only: no QBO invoice at signup) ─────────────────────────
+
+def test_quote_module_is_paid_only_no_invoice(env):
+    """A coach's module quote computes what's owed WITHOUT creating a QBO invoice
+    or redeeming credit (that happens only when payment is recorded)."""
+    out = env["wc"].quote_module(env["prac"], "module-1")
+    assert out["ok"] is True
+    assert out["tuition_cents"] == 29700
+    assert out["amount_due_cents"] == out["tuition_cents"] - out["credit_available_cents"]
+    assert out["total"] == round(out["amount_due_cents"] / 100.0, 2)
+    assert env["qb"].created == []      # invariant: no A/R invoice minted
+    assert env["qb"].discounts == []
+
+
+def test_quote_module_previews_credit_without_spending(env):
+    env["wallet"].earn_dropship(PID, 50)               # +$1000 credit balance
+    before = env["wallet"].get_balance_cents(PID)
+    out = env["wc"].quote_module(env["prac"], "module-1")
+    assert out["credit_available_cents"] > 0           # some credit previewed
+    assert out["amount_due_cents"] == 29700 - out["credit_available_cents"]
+    assert env["wallet"].get_balance_cents(PID) == before   # NOT redeemed
+    assert env["qb"].created == []                     # still no invoice
