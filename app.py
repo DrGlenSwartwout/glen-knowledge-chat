@@ -9406,24 +9406,27 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                # NOTE: retail/funnel checkout (begin_checkout) is paid-only as of the QBO
-                # Stage 2 migration -- it sets metadata customer_id="" (no QBO customer/
-                # invoice exists at checkout time), so `cid` is always falsy for kind=="retail".
+                # NOTE: retail/funnel checkout (begin_checkout) AND reorder/portal-reorder/
+                # subscribe checkouts (_checkout_cart et al) are paid-only as of the QBO
+                # Stage 2 migration -- each sets metadata customer_id="" (no QBO customer/
+                # invoice exists at checkout time), so `cid` is always falsy for these kinds.
                 # The outer gate is therefore `inv` alone (not `inv and cid`), and each inner
                 # side effect is individually scoped: record_payment (invoice-apply) requires
-                # a real `cid` and excludes biofield/retail (paid-only, nothing to apply to);
-                # the stripe-pi/points/referral/booking block fires whenever there's a real
-                # `cid` (unaffected kinds, e.g. reorder) OR kind=="retail" (paid-only funnel).
+                # a real `cid` and excludes biofield/retail/reorder/portal-reorder/subscribe
+                # (paid-only, nothing to apply to); the stripe-pi/points/referral/booking
+                # block fires whenever there's a real `cid` (any remaining invoice-based kind)
+                # OR kind is one of the paid-only kinds above.
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
                 if inv:
-                    if cid and _kind != "in-house" and _kind not in ("biofield", "retail"):
+                    if cid and _kind != "in-house" and _kind not in (
+                            "biofield", "retail", "reorder", "portal-reorder", "subscribe"):
                         try:
                             from dashboard import qbo_billing as _qb_ret
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id and (cid or _kind in ("retail",)):
+                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -25064,9 +25067,11 @@ def _resolve_ship_address(email, body_address):
 
 
 def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code=None):
-    """Price a cart through the engine, create the QBO invoice, ingest the order, and mint the
-    Stripe URL (metadata kind=reorder -> recorded by /begin/checkout-return). Returns
-    {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty priced cart."""
+    """Price a cart through the engine, ingest the order (paid-only: no QBO invoice/customer
+    at checkout time), and mint the Stripe URL (metadata kind=reorder -> recorded by
+    /begin/checkout-return, which books the line-faithful QBO Sales Receipt on payment).
+    Returns {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty
+    priced cart."""
     requested_redeem = int(points_to_redeem_cents or 0)
     if requested_redeem > 0:
         from dashboard import points as _pts_co
@@ -25083,25 +25088,28 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
     # customer's ship_credit balance (bounded by net product + shipping) into the
     # invoice discount; the ledger is debited at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
-    cust = qb.find_or_create_customer(email, ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=True,
-        email_to=email,
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
-    _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {
+        "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
+        "tax_cents": 0}
+    _ingest_order(source="reorder", external_ref=checkout_ref, email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  total_cents=int(pc["priced"]["total_cents"]),
                   address=ship, channel="retail",
                   get_cents=pc["priced"].get("get_cents", 0),
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
-    _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-    out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[reorder] persist qbo_lines failed: {_e!r}", flush=True)
+    _record_referral_if_any(_ref_ctx, email, checkout_ref)
+    out = {"invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(int(pc["priced"]["total_cents"]) / 100.0, 2)}
     stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
     return {"out": out, "stripe_url": stripe_url}
 

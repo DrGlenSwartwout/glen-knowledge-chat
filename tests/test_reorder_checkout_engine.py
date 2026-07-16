@@ -13,12 +13,16 @@ def _setup(monkeypatch):
         lambda s: {"slug":s,"name":"Brain Boost","price_cents":7000,"qty_pricing":True,"qbo_item_id":"27"} if s=="brain-boost" else None)
     monkeypatch.setattr(appmod._shipping, "quote", lambda b: {"shipping_cents": 2295})
     captured = {}
-    def fake_invoice(cust, lines, **kw):
-        captured["lines"] = lines; captured["kw"] = kw
-        return {"Id": "INV9", "TotalAmt": 100.0}
+    def boom(*a, **k):
+        raise AssertionError("_checkout_cart must not call create_invoice (paid-only)")
     monkeypatch.setattr(appmod.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
-    monkeypatch.setattr(appmod.qb, "create_invoice", fake_invoice)
+    monkeypatch.setattr(appmod.qb, "create_invoice", boom)
     monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: captured.setdefault("order", kw))
+    # _checkout_cart is paid-only (QBO Stage 2): it no longer calls create_invoice, so
+    # the QBO line/discount payload is persisted via set_order_qbo_lines instead --
+    # capture it the same way `order` is captured above.
+    monkeypatch.setattr(appmod._bos_orders, "set_order_qbo_lines",
+                        lambda cx, ref, payload: captured.setdefault("qbo_payload", payload))
     monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder", lambda *a, **k: "https://stripe/x")
     monkeypatch.setenv("PRICING_ENGINE_CHECKOUT", "true")
     return captured
@@ -30,11 +34,11 @@ def test_reorder_checkout_uses_engine_discount(monkeypatch):
                                           "address":{"state":"CA","country":"US","name":"A"}})
     assert r.status_code == 200
     # engine discount (LINEAR 13.1818% off 42000 -> 42000-36464=5536) passed to QBO
-    assert captured["kw"]["discount_cents"] == 5536
+    assert captured["qbo_payload"]["discount_cents"] == 5536
     assert captured["order"]["discount_cents"] == 5536
     assert captured["order"]["shipping_cents"] == 2295
-    # customer_id must be echoed so /begin/checkout-return can record the QBO payment
-    assert r.get_json()["customer_id"] == "C1"
+    # paid-only: no real QBO customer exists at checkout time
+    assert r.get_json()["customer_id"] == ""
 
 
 def test_reorder_checkout_card_failure_surfaces_payment_error(monkeypatch):

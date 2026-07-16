@@ -46,16 +46,23 @@ def app_db(monkeypatch, tmp_path):
     # stub network: QBO + Stripe + tax + shipping
     from dashboard import qbo_billing as qb, stripe_pay, tax as taxmod
     monkeypatch.setattr(qb, "find_or_create_customer", lambda email, name="": {"Id": "C1"})
-    def _create_invoice(cust, lines, **k):
-        total = round(sum(float(l["amount"]) * int(l["qty"]) for l in lines), 2)
-        _create_invoice.last_lines = lines
-        return {"Id": "INV1", "DocNumber": "D1", "TotalAmt": total}
-    monkeypatch.setattr(qb, "create_invoice", _create_invoice)
+    def boom(*a, **k):
+        raise AssertionError("_checkout_cart must not call create_invoice (paid-only)")
+    monkeypatch.setattr(qb, "create_invoice", boom)
+    # _checkout_cart is paid-only (QBO Stage 2): no invoice is created at checkout time --
+    # the exact QBO line/discount payload is persisted via set_order_qbo_lines instead.
+    # last_payload mirrors the old mk.last_lines capture point (a plain function attr, so
+    # callers can read it back the same way after the checkout POST).
+    captured = {}
+    def _capture_qbo_lines(cx, ref, payload):
+        captured["payload"] = payload
+        _capture_qbo_lines.last_payload = payload
+    monkeypatch.setattr(app._bos_orders, "set_order_qbo_lines", _capture_qbo_lines)
     monkeypatch.setattr(taxmod, "compute_get_cents", lambda *a, **k: 0)
     monkeypatch.setattr(stripe_pay, "create_checkout_session",
                         lambda *a, **k: {"id": "cs_1", "url": "https://stripe.test/pay"})
     monkeypatch.setattr(app, "_shipping_for_cart", lambda *a, **k: 0)
-    return app, db, _create_invoice
+    return app, db, _capture_qbo_lines
 
 
 def _seed_order(app, db, email, items, created_at):
@@ -143,15 +150,22 @@ def test_checkout_builds_invoice_and_records(app_db):
                                           {"slug": "brain-cleanse", "qty": 1}])
     d = r.get_json()
     assert d["ok"] and d["stripe_url"] == "https://stripe.test/pay"
-    # invoice built with both lines + correct quantities, at LIST price
-    lines = {l["name"]: l for l in mk.last_lines}
+    # paid-only: no real QBO customer/invoice at checkout time
+    assert d["customer_id"] == ""
+    # QBO line payload built with both lines + correct quantities, at LIST price
+    lines = {l["name"]: l for l in mk.last_payload["lines"]}
     assert lines["Terrain Restore"]["qty"] == 2 and lines["Terrain Restore"]["amount"] == 69.97
     assert lines["Brain Cleanse"]["qty"] == 1 and lines["Brain Cleanse"]["amount"] == 59.97
-    # order recorded as a reorder
+    # order recorded as a reorder, keyed on the checkout token
     with sqlite3.connect(db) as cx:
         cx.row_factory = sqlite3.Row
         o = cx.execute("SELECT * FROM orders WHERE source='reorder'").fetchone()
-    assert o and o["total_cents"] == int((69.97 * 2 + 59.97) * 100)
+    assert o and o["external_ref"] == d["invoice_id"]
+    # total_cents now reflects the engine-priced total (list minus the real volume
+    # discount) rather than the old invoice-mock's naive undiscounted line sum.
+    # (set_order_qbo_lines itself is mocked above to capture the payload without
+    # touching the DB, so qbo_lines_json on the row is not asserted here.)
+    assert o["total_cents"] == int(round(d["total"] * 100))
 
 
 def test_checkout_empty_or_unavailable_400(app_db):

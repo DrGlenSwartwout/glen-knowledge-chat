@@ -114,17 +114,27 @@ def test_checkout_cart_builds_invoice_and_stripe(monkeypatch, tmp_path):
         "subtotal_list_cents": 5000, "discount_cents": 0,
         "points_redeemed_cents": 0, "shipping_cents": 1300})
     monkeypatch.setattr(app_module, "_resolve_checkout_coupon_pct", lambda code, email: (None, None))
+    def boom(*a, **k):
+        raise AssertionError("_checkout_cart must not call create_invoice (paid-only)")
     monkeypatch.setattr(app_module.qb, "find_or_create_customer", lambda email, name: {"Id": "C1"})
-    monkeypatch.setattr(app_module.qb, "create_invoice",
-        lambda cust, lines, **kw: {"Id": "INV1", "DocNumber": "1001", "TotalAmt": 63.0})
+    monkeypatch.setattr(app_module.qb, "create_invoice", boom)
     monkeypatch.setattr(app_module, "_ingest_order", lambda **kw: None)
+    captured = {}
+    monkeypatch.setattr(app_module._bos_orders, "set_order_qbo_lines",
+                        lambda cx, ref, payload: captured.setdefault("payload", payload))
     monkeypatch.setattr(app_module, "_record_referral_if_any", lambda *a, **k: None)
     monkeypatch.setattr(app_module, "_stripe_checkout_url_for_reorder",
         lambda out, email: "https://stripe.test/sess")
     res = app_module._checkout_cart("t@x.com", [{"slug": "top", "qty": 1}], ship={"name": "T", "country": "US"})
     assert res["stripe_url"] == "https://stripe.test/sess"
-    assert res["out"] == {"invoice_id": "INV1", "doc_number": "1001",
-                          "customer_id": "C1", "total": 63.0}
+    # paid-only: invoice_id is now a correlation token, customer_id is "" (no real
+    # QBO customer/invoice at checkout time); total mirrors the engine-priced total.
+    out = res["out"]
+    assert out["doc_number"] == "" and out["customer_id"] == "" and out["total"] == 50.0
+    assert out["invoice_id"] and out["invoice_id"] != "INV1"
+    assert captured["payload"]["lines"] == [
+        {"name": "Top", "amount": 50.0, "qty": 1},
+        {"name": "Shipping (USPS)", "amount": 13.0, "qty": 1, "description": "USPS shipping"}]
 
 
 def test_checkout_cart_empty_raises(monkeypatch, tmp_path):
