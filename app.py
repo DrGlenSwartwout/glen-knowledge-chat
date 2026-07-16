@@ -6426,6 +6426,24 @@ def begin_product_data(slug):
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
     }
+    _viewer_email = (((get_authenticated_user(request) or {}).get("email", "")
+                      or request.cookies.get("rm_reorder_email", "")).strip().lower())
+    # Autoship eligibility: a bundle must carry autoship_eligible (device bundles are
+    # false); a single SKU must be a Functional Formulation (_qty_eligible = qty_pricing
+    # and not info_only), which excludes devices (ionizers/nightlights) and services.
+    _autoship_ok = (bool(p.get("autoship_eligible")) if p.get("bundle")
+                    else _qty_eligible(p))
+    data["autoship_eligible"] = _autoship_ok
+    data["bundle"] = bool(p.get("bundle"))
+    data["is_paid_member"] = _is_paid_member(_viewer_email)
+    if _autoship_ok:
+        from dashboard import subscriptions as _subs
+        if p.get("bundle"):
+            data["autoship"] = {"first_pct": _subs.tier_for_bundle(0),
+                                "cap_pct": _subs.tier_for_bundle(99)}
+        else:
+            data["autoship"] = {"first_pct": _subs.tier_for(0),
+                                "cap_pct": _subs.tier_for(99)}
     try:
         from dashboard import founding as _founding
         _launch = _founding.get_launch(slug)
