@@ -414,7 +414,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
         "<button class=btn onclick=publishPortal()>Publish to portal</button>"
         "<span id=portal-url></span></div>"
         "<script>\nasync function publishPortal(){\n"
-        "  var cents=parseInt(prompt('Courtesy price per bottle, in cents (e.g. 5000 = $50)','5000'),10);\n"
+        "  var cents=parseInt(prompt('Courtesy price per bottle, in cents (e.g. 5000 = $50)',''),10);\n"
         "  if(!cents)return;\n"
         "  var r=await fetch('/test/__TID__/publish-portal',{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:JSON.stringify({special_price_cents:cents})});\n"
