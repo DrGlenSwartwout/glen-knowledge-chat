@@ -28,6 +28,18 @@ def tier_for(n: int) -> int:
     return SUBSCRIBE_TIERS[idx]
 
 
+# Bundle-scoped loyalty ladder: bundles start richer (12%) and climb +2%/month to a
+# 29% cap. Applied PER LINE (a bundle line only) — single SKUs use SUBSCRIBE_TIERS.
+BUNDLE_SUBSCRIBE_TIERS = [12, 14, 16, 18, 20, 22, 24, 26, 28, 29]
+
+
+def tier_for_bundle(n: int) -> int:
+    """Bundle-line subscriber discount % for *n* completed active months
+    (order_count). Clamped at the top step (29%)."""
+    idx = min(int(n), len(BUNDLE_SUBSCRIBE_TIERS) - 1)
+    return BUNDLE_SUBSCRIBE_TIERS[idx]
+
+
 # ---------------------------------------------------------------------------
 # Date helper (no external deps)
 # ---------------------------------------------------------------------------
