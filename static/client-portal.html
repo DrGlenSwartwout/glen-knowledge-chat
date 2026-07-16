@@ -484,6 +484,12 @@ function supportProgramBodyHtml(sp){
 // button. Factored into its own builder so the delegated .cf-toggle change
 // handler below can re-render the whole card in place from the server's
 // re-resolved program, without touching the rest of the page.
+// Whether the client has already queued their program onto an invoice this page
+// load. Tracked at module scope so the .cf-toggle live re-render (which rebuilds
+// the card via outerHTML) preserves the added state instead of resetting the
+// button to enabled and dropping the confirmation.
+const SP_INVOICE_ADDED_MSG = "Added to your next invoice — Rae will finalize it.";
+let spInvoiceAdded = false;
 function supportProgramCardHtml(sp){
   sp = sp || {};
   const facts = Array.isArray(sp.client_facts) ? sp.client_facts : [];
@@ -494,8 +500,8 @@ function supportProgramCardHtml(sp){
     </label>`).join("");
   const factMsg = factRows ? `<p class="small cf-msg" style="margin:.3rem 0 0" hidden></p>` : "";
   const addBtn = sp.consult_recommended ? "" :
-    `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
-     <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`;
+    `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem"${spInvoiceAdded ? " disabled" : ""}>Add my program to my invoice</button>
+     <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem"${spInvoiceAdded ? "" : " hidden"}>${spInvoiceAdded ? SP_INVOICE_ADDED_MSG : ""}</p>`;
   return `<div class="card support-program-card">
       <h2>Your ${esc(sp.label || "")} Support Program</h2>
       ${supportProgramBodyHtml(sp)}
@@ -872,7 +878,11 @@ document.addEventListener("change", function(ev){
     body: JSON.stringify({key: cb.getAttribute("data-key"), value: cb.checked})
   }).then(r => r.json()).then(res => {
     if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
-    if (card && res.support_program) card.outerHTML = supportProgramCardHtml(res.support_program);
+    if (card && res.support_program) {
+      card.outerHTML = supportProgramCardHtml(res.support_program);
+    } else if (msg) {
+      msg.hidden = true; msg.textContent = "";  // nothing to re-render; clear "Saving…"
+    }
   }).catch(() => {
     cb.checked = !cb.checked;  // revert
     if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
@@ -896,7 +906,8 @@ document.addEventListener("click", async (ev) => {
     const r = await fetch(u, {method:"POST"});
     const j = await r.json().catch(()=>null);
     if (r.ok && j && j.ok) {
-      if (spAddMsg){ spAddMsg.textContent = "Added to your next invoice — Rae will finalize it."; spAddMsg.hidden = false; }
+      spInvoiceAdded = true;
+      if (spAddMsg){ spAddMsg.textContent = SP_INVOICE_ADDED_MSG; spAddMsg.hidden = false; }
     } else {
       if (spAddMsg){ spAddMsg.textContent = "Something went wrong — please try again."; spAddMsg.hidden = false; }
       btn.disabled = false;
