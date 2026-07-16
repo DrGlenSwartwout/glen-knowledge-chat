@@ -128,6 +128,7 @@
     </div>
     <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button>
       <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button>
+      <button id="grant-member-btn" class="ghost" style="display:none;margin-left:8px" onclick="grantMemberAccess()" title="Grant this client a 30-day member-access window and reprice this invoice at member pricing">Grant 30-day member access + reprice</button>
       <button id="save-cprices-btn" class="ghost" style="margin-left:8px" onclick="saveClientPrices()">Save line prices as this client's standard</button></div>
     <div style="margin-top:8px;font-size:13px">
       Special price for <b>ALL</b> this client's FFs $<input id="ff-flat-in" type="number" step="0.01" placeholder="e.g. 45.00" style="width:90px">
@@ -407,6 +408,7 @@ async function loadOrderForEdit(oid){
   // (turns green + "Invoice Sent" once it's already gone out).
   var _sib = $("send-inv-btn");
   _sib.style.display = "inline-block";
+  $("grant-member-btn").style.display = "inline-block";
   if (o.invoice_sent_at){ _sib.textContent = "Invoice Sent "+invSentStr(o.invoice_sent_at)+" (re-send)"; _sib.classList.add("inv-sent"); }
   // Prefill customer (read-only context — pricing/membership keyed off email).
   $("person_id").value = o.person_id||""; $("c-name").value = o.name||""; $("c-email").value = o.email||""; $("c-phone").value = o.phone||"";
@@ -501,6 +503,30 @@ async function editInvoice(){
     toast(msg, (j.warning||q.warning)?"error":"ok");
     if (j.warning) alert(j.warning);  // paid-order edit: make the reconcile notice impossible to miss
   }catch(e){ toast(e.message,"error"); }
+}
+
+// One click: grant this client 30 days of member access, then reprice this invoice at
+// member pricing. The server preserves override lines (e.g. a courtesy Biofield price)
+// and drops auto-priced FF lines to the member rate. Reloads so the editor reflects the
+// saved prices + the now-active membership.
+async function grantMemberAccess(){
+  const email = $("c-email").value.trim();
+  if (!email){ toast("This order has no client email","error"); return; }
+  if (!confirm("Grant "+email+" a 30-day member-access window and reprice this invoice at member pricing?")) return;
+  const btn = $("grant-member-btn"); btn.disabled = true;
+  try{
+    const r = await fetch("/api/orders/"+encodeURIComponent(EDIT_OID)+"/grant-member-access",
+                          {method:"POST", headers:HEADERS, body:"{}"});
+    const j = await r.json();
+    if (!j.ok){ toast(j.error||"failed","error"); btn.disabled=false; return; }
+    const saved = (j.old_total_cents||0) - (j.new_total_cents||0);
+    let msg = (j.granted ? "Member access granted through "+(j.membership_expires||"")
+                         : "Client was already a member")
+              + " — invoice repriced (saved "+dollars(saved)+")";
+    toast(msg, "ok");
+    if (j.warning) alert(j.warning);
+    setTimeout(()=>location.reload(), 900);   // re-fetch the order at its saved member prices
+  }catch(e){ toast(e.message,"error"); btn.disabled=false; }
 }
 
 // ── create / lifecycle ──
