@@ -454,6 +454,11 @@ async function loadE4L(){try{setE4L(await (await fetch('/author/__TID__/e4l')).j
 function setStress(j){if(j&&j.html!==undefined)document.getElementById('stresspanel').innerHTML=j.html}
 async function loadStress(){try{setStress(await (await fetch('/author/__TID__/stresses')).json())}catch(e){}}
 async function balanceStress(sid,val){await post('/author/__TID__/stress/'+sid+'/balance',{value:val});loadStress()}
+async function addStress(label,layer){label=(label||'').trim();if(!label)return;
+ astat('Adding stress…');
+ const body=(layer==null?{label:label}:{label:label,layer:layer});
+ const j=await post('/author/__TID__/stress/add',body);
+ astat(j&&j.ok?'Stress added.':((j&&j.error)||'Add failed.'));loadStress()}
 async function assignStress(sid){astat('Assigning…');const j=await post('/author/__TID__/stress/'+sid+'/assign',{});astat(j&&j.ok?('Assigned to its layer.'):((j&&j.error)||'Assign failed.'));setStress(j)}
 async function assignAllStresses(){astat('Assigning all…');const j=await post('/author/__TID__/stresses/assign-all',{});astat(j&&j.ok?('Assigned '+(j.assigned||0)+' stress(es).'):((j&&j.error)||'Assign failed.'));setStress(j)}
 async function saveHeader(){const j=await post('/author/__TID__/header',
@@ -1328,10 +1333,13 @@ def render_stress_panel(data):
             items = _list(L.get("stresses"))
             body = (f"<ul style='margin:4px 0;padding-left:18px'>{items}</ul>" if items
                     else "<div class=food style='margin:2px 0 6px'>No stresses on this layer.</div>")
+            add_in = (f"<input class=stress-add list=vocab placeholder='add balanced stress…' "
+                      f"onkeydown=\"if(event.key==='Enter'){{addStress(this.value,{int(L.get('layer'))});this.value=''}}\" "
+                      f"style='width:100%;margin:2px 0 8px;font-size:12px'>")
             parts.append(f"<div class=food style='font-weight:600;margin-top:6px'>"
                          f"Layer {_e(str(L.get('layer')))}"
                          + (f" <span style='font-weight:400'>&mdash; {sub}</span>" if sub else "")
-                         + "</div>" + body)
+                         + "</div>" + body + add_in)
         un = _list(data.get("unassigned"), drag=True)
         if un:
             parts.append("<div class=food style='font-weight:600;margin-top:6px'>"
@@ -1340,6 +1348,10 @@ def render_stress_panel(data):
                          "onclick='assignAllStresses()'>Assign all</button>"
                          " <span style='font-weight:400'>&mdash; or drag one onto a layer</span></div>"
                          f"<ul style='margin:4px 0;padding-left:18px'>{un}</ul>")
+        parts.append("<div class=food style='font-weight:600;margin-top:8px'>Add active stress</div>"
+                     "<input class=stress-add list=vocab placeholder='add active stress…' "
+                     "onkeydown=\"if(event.key==='Enter'){addStress(this.value,null);this.value=''}\" "
+                     "style='width:100%;margin:2px 0 6px;font-size:12px'>")
         inner = "".join(parts) or "<div class=food style='margin-top:6px'>No stresses yet.</div>"
         return ("<div class=card><div class=food style='text-transform:uppercase;font-size:11px;"
                 "letter-spacing:.08em'>Stresses by layer</div>" + inner + "</div>")
