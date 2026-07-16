@@ -32982,20 +32982,28 @@ def cron_charge_subscriptions():
                         amount_cents, description=_charge_label,
                         metadata={"sub": str(sid), "kind": "membership"})
                     if res.get("status") == "succeeded":
-                        try:
-                            cust = qb.find_or_create_customer(sub["email"], "")
-                            inv = qb.create_invoice(
-                                cust,
-                                [{"name": _line_label, "amount": amount_cents / 100.0,
-                                  "qty": 1, "description": f"{_line_label} (monthly)"}],
-                                allow_online_pay=False, email_to=sub["email"])
-                            inv_id = inv.get("Id", "")
-                        except Exception as qe:
-                            print(f"[sub-cron] membership QBO sub={sid}: {qe!r}", flush=True)
-                            inv_id = ""
-                        _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
+                        external_ref = res.get("id") or ""
+                        _ingest_order(source="membership", external_ref=external_ref,
                                       email=sub["email"], items=[], total_cents=amount_cents,
                                       address={}, channel="retail")
+                        # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                        # book ONE line-faithful Sales Receipt inline now that payment is
+                        # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                        # the booking slot atomically), so this can never break the charge/
+                        # subscription-bookkeeping path below.
+                        try:
+                            from dashboard import qbo_sale as _qsale
+                            qbo_payload = {
+                                "lines": [{"name": _line_label,
+                                          "amount": round(amount_cents / 100.0, 2), "qty": 1}],
+                                "discount_cents": 0, "tax_cents": 0}
+                            _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                            _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                            if _o:
+                                _qsale.book_sale_on_payment(cx, dict(_o))
+                        except Exception as qe:
+                            print(f"[sub-cron] membership qbo sale booking failed sid={sid}: {qe!r}",
+                                  flush=True)
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
@@ -33019,7 +33027,7 @@ def cron_charge_subscriptions():
                             print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
-                                "total_cents": amount_cents, "invoice_id": inv_id,
+                                "total_cents": amount_cents, "invoice_id": "",
                                 "kind": "membership", "product": _product,
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
@@ -33079,25 +33087,12 @@ def cron_charge_subscriptions():
                 )
 
                 if res.get("status") == "succeeded":
-                    # Build QBO invoice
-                    try:
-                        cust = qb.find_or_create_customer(sub["email"], "")
-                        inv = qb.create_invoice(
-                            cust,
-                            pc["qbo_lines"] + _shipping_line(shipping_cents),
-                            allow_online_pay=False,
-                            email_to=sub["email"],
-                            discount_cents=discount_cents + points_redeemed_cents,
-                        )
-                        inv_id = inv.get("Id", "")
-                    except Exception as qe:
-                        print(f"[sub-cron] QBO invoice sub={sid}: {qe!r}", flush=True)
-                        inv_id = ""
+                    external_ref = res.get("id") or ""
 
                     # Record the order
                     _ingest_order(
                         source="subscription",
-                        external_ref=res.get("id") or inv_id,
+                        external_ref=external_ref,
                         email=sub["email"],
                         items=pc.get("items_rec") or [],
                         total_cents=total_cents,
@@ -33109,6 +33104,25 @@ def cron_charge_subscriptions():
                         shipping_cents=shipping_cents,
                     )
 
+                    # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                    # book ONE line-faithful Sales Receipt inline now that payment is
+                    # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                    # the booking slot atomically), so this can never break the charge/
+                    # subscription-bookkeeping path below.
+                    try:
+                        from dashboard import qbo_sale as _qsale
+                        qbo_payload = {
+                            "lines": pc["qbo_lines"] + _shipping_line(shipping_cents),
+                            "discount_cents": discount_cents + points_redeemed_cents,
+                            "tax_cents": 0,
+                        }
+                        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                        _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                        if _o:
+                            _qsale.book_sale_on_payment(cx, dict(_o))
+                    except Exception as qe:
+                        print(f"[sub-cron] qbo sale booking failed sid={sid}: {qe!r}", flush=True)
+
                     _subs.advance_after_charge(cx, sid)
                     _subs.reset_failed_count(cx, sid)
 
@@ -33117,7 +33131,7 @@ def cron_charge_subscriptions():
                     _maybe_extend_founding_membership(cx, sub, updated)
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
-                        "invoice_id": inv_id,
+                        "invoice_id": "",
                         "kind": sub.get("kind", "product"),
                         "next_charge_date": updated["next_charge_date"] if updated else "",
                     })
