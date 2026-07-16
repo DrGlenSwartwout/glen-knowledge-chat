@@ -24,7 +24,8 @@ def list_open_qbo_orders(cx, sources=QBO_SOURCES):
         f"FROM orders WHERE source IN ({ph}) "
         "AND COALESCE(pay_status,'unpaid') != 'paid' "
         "AND status NOT IN ('cancelled', 'done') "
-        "AND external_ref GLOB '[0-9]*'",
+        "AND external_ref NOT GLOB '*[^0-9]*' "
+        "AND length(external_ref) < 20 ",
         tuple(sources)).fetchall()
     return [dict(r) for r in rows]
 
