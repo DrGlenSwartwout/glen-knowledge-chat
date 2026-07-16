@@ -82,6 +82,11 @@ def test_year_monthly_creates_capped_sub(appmod, monkeypatch):
 def test_year_monthly_requires_card(appmod, monkeypatch):
     _mock_stripe(appmod, monkeypatch, tier="year_monthly", with_card=False)
     assert appmod._fulfill_membership_product("cs_3") == "no_card"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    n = cx.execute(
+        "SELECT COUNT(*) FROM membership_product_grants WHERE session_id=?",
+        ("cs_3",)).fetchone()[0]
+    assert n == 0  # claim row unwound, so a retry is not permanently blocked
 
 
 def test_idempotent_replay(appmod, monkeypatch):
@@ -101,3 +106,7 @@ def test_duplicate_member_no_second_sub(appmod, monkeypatch):
         "metadata": {"kind": "membership_product", "tier": "year_monthly", "email": "a@x.com"},
         "payment_intent": "pi_2", "customer": "cus_1"})
     assert appmod._fulfill_membership_product("cs_6") == "duplicate_member"
+    cx = sqlite3.connect(appmod.LOG_DB)
+    n = cx.execute(
+        "SELECT COUNT(*) FROM subscriptions WHERE email=?", ("a@x.com",)).fetchone()[0]
+    assert n == 1  # no double sub — the duplicate-member guard held

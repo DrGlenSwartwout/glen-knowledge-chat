@@ -9109,7 +9109,11 @@ def _fulfill_membership_product(session_id):
     if not (tier and email):
         return "skip"
     pi_id = sess.get("payment_intent")
-    pi = stripe_pay.get_payment_intent(pi_id) if pi_id else {}
+    try:
+        pi = stripe_pay.get_payment_intent(pi_id) if pi_id else {}
+    except Exception as e:
+        print(f"[membership] get_payment_intent failed sid={session_id}: {e!r}", flush=True)
+        return "skip"
     status = pi.get("status") or sess.get("payment_status")
     if status not in ("succeeded", "paid"):
         return "not_paid"
@@ -9127,44 +9131,80 @@ def _fulfill_membership_product(session_id):
         except sqlite3.IntegrityError:
             return "already"
         days = _mp.grant_days(tier["key"], today)
-        if tier["billing"] == "recurring_capped":
-            customer, pm = pi.get("customer"), pi.get("payment_method")
-            if not (customer and pm):
-                # No vaulted card => the cron could never bill months 2..N off of
-                # it. Unwind the claim so a retry (e.g. with a card added) is not
-                # blocked by this session's own idempotency row.
+        # From here on the idempotency claim is committed. Any exception below
+        # (e.g. from create_membership, which commits internally before
+        # _grant_membership runs) must not leave a billable subscription with
+        # no access grant AND a permanently-blocking "already" retry — so the
+        # whole post-claim body is guarded: on ANY exception, unwind the claim
+        # row and return "error". A subsequent retry then re-enters cleanly:
+        # if create_membership already committed, the duplicate-member guard
+        # below finds it and self-heals by extending the grant instead of
+        # creating a second subscription.
+        try:
+            if tier["billing"] == "recurring_capped":
+                customer, pm = pi.get("customer"), pi.get("payment_method")
+                if not (customer and pm):
+                    # No vaulted card => the cron could never bill months 2..N off of
+                    # it. Unwind the claim so a retry (e.g. with a card added) is not
+                    # blocked by this session's own idempotency row.
+                    cx.execute("DELETE FROM membership_product_grants WHERE session_id=?",
+                               (session_id,))
+                    cx.commit()
+                    print(f"[membership] no vaulted card on {session_id} — skipping", flush=True)
+                    return "no_card"
+                # Subscriptions-table migrations — every other subscriptions call
+                # site runs these first; init_membership_tables above does NOT
+                # create/migrate the subscriptions table. Mirrors the exact
+                # bootstrap _fulfill_continuous_care_monthly runs.
+                _subs.init_subscriptions_table(cx)
+                _subs.migrate_add_membership_columns(cx)
+                _subs.migrate_add_term_cap_column(cx)
+                _subs.migrate_add_attribution_column(cx)
+                _subs.migrate_add_consent_column(cx)
+                if _subs.active_memberships_by_email(cx, email):
+                    # Never create a SECOND active membership for an email that
+                    # already has one — the charge cron bills every active
+                    # membership row, so a duplicate row = double $99/mo. Still
+                    # extend the access grant for the month just paid.
+                    until = datetime.combine(
+                        today + timedelta(days=days), datetime.min.time()).isoformat() + "Z"
+                    _extend_membership_grant(cx, email, until, tier["source"])
+                    cx.commit()
+                    print(f"[membership] {email} already has an active membership; "
+                          f"NOT creating a 2nd sub (session={session_id}) — reconcile "
+                          f"the duplicate month-1 charge manually", flush=True)
+                    return "duplicate_member"
+                # order_count=1 records the month-1 charge just taken at checkout, so
+                # membership_category reads 'full' (member pricing) immediately.
+                # Capped at term_charges (the charge cron self-cancels there).
+                _subs.create_membership(
+                    cx, email=email, stripe_customer_id=customer,
+                    stripe_payment_method_id=pm, amount_cents=tier["price_cents"],
+                    next_charge_date=_subs.add_months(today_s, 1),
+                    cadence_months=tier["cadence_months"],
+                    term_charges_total=tier["term_charges"], initial_order_count=1)
+                _grant_membership(cx, email, days, tier["source"])
+                cx.commit()
+            else:  # one_time (month, year_prepay) — grant-only, never billed again
+                _grant_membership(cx, email, days, tier["source"])
+                cx.commit()
+                _book_membership_qbo(email, tier)
+        except Exception as e:
+            print(f"[membership] fulfill failed after claim sid={session_id}: {e!r}",
+                  flush=True)
+            try:
+                # Discard any uncommitted work from the failed attempt FIRST (e.g.
+                # a _grant_membership insert that hadn't reached its cx.commit()
+                # yet) — otherwise the delete+commit below would inadvertently
+                # commit it alongside the claim-row delete.
+                cx.rollback()
                 cx.execute("DELETE FROM membership_product_grants WHERE session_id=?",
                            (session_id,))
                 cx.commit()
-                print(f"[membership] no vaulted card on {session_id} — skipping", flush=True)
-                return "no_card"
-            if _subs.active_memberships_by_email(cx, email):
-                # Never create a SECOND active membership for an email that
-                # already has one — the charge cron bills every active
-                # membership row, so a duplicate row = double $99/mo. Still
-                # extend the access grant for the month just paid.
-                until = (today + timedelta(days=days)).isoformat() + "Z"
-                _extend_membership_grant(cx, email, until, tier["source"])
-                cx.commit()
-                print(f"[membership] {email} already has an active membership; "
-                      f"NOT creating a 2nd sub (session={session_id}) — reconcile "
-                      f"the duplicate month-1 charge manually", flush=True)
-                return "duplicate_member"
-            # order_count=1 records the month-1 charge just taken at checkout, so
-            # membership_category reads 'full' (member pricing) immediately.
-            # Capped at term_charges (the charge cron self-cancels there).
-            _subs.create_membership(
-                cx, email=email, stripe_customer_id=customer,
-                stripe_payment_method_id=pm, amount_cents=tier["price_cents"],
-                next_charge_date=_subs.add_months(today_s, 1),
-                cadence_months=tier["cadence_months"],
-                term_charges_total=tier["term_charges"], initial_order_count=1)
-            _grant_membership(cx, email, days, tier["source"])
-            cx.commit()
-        else:  # one_time (month, year_prepay) — grant-only, never billed again
-            _grant_membership(cx, email, days, tier["source"])
-            cx.commit()
-            _book_membership_qbo(email, tier)
+            except Exception as _de:
+                print(f"[membership] claim-unwind failed sid={session_id}: {_de!r}",
+                      flush=True)
+            return "error"
         return "ok"
 
 
