@@ -19462,7 +19462,7 @@ def api_practitioner_condition_program_get(patient_email):
         return jsonify({"ok": True, "condition_key": key, "label": None,
                         "candidates": [], "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
     resolved = {(it.get("slug") or "") for it in condition_programs.resolve_program_items(
-        prog, audience="client", client_facts=_client_facts_for(email))}
+        prog, audience="practitioner", client_facts=_client_facts_for(email))}
     candidates = []
     for it in (prog.get("items") or []):
         candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
