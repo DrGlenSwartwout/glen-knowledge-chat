@@ -403,6 +403,29 @@ def add_voice_stress(cx, tid, label):
     return add_stress(cx, tid, label, source="voice", balance="required")
 
 
+def stress_id_for(cx, tid, label):
+    """id of the test's stress whose normalized code matches label, or None."""
+    init_stress_tables(cx)
+    n = _norm(label)
+    if not n:
+        return None
+    r = cx.execute("SELECT id FROM biofield_auth_stress WHERE test_id=? AND code=? "
+                   "ORDER BY id LIMIT 1", (_num(tid), n)).fetchone()
+    return r[0] if r else None
+
+
+def layer_chain_rids(cx, tid, layer):
+    """Remedy-bearing chain-row ids on a given layer of a test (inputs to cover_stress)."""
+    try:
+        ln = int(layer)
+    except (TypeError, ValueError):
+        return []
+    rows = cx.execute("SELECT id FROM biofield_auth_chain "
+                      "WHERE test_id=? AND layer=? AND TRIM(COALESCE(remedy,''))<>''",
+                      (_num(tid), ln)).fetchall()
+    return [r[0] for r in rows]
+
+
 def _remedy_context(cx, tid, chain_rows):
     """Set-cover inputs: active required tokens, token->label, remedy->codes coverage.
     Cover token = E4L code (scan) or _norm(label) (non-scan)."""
