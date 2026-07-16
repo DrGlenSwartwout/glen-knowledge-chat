@@ -5780,6 +5780,16 @@ def _subscription_tier_resolver(order_count, active=True):
     return _resolve
 
 
+def _cart_has_noautoship_bundle(cart):
+    """True if any cart line is a bundle explicitly barred from autoship
+    (autoship_eligible False) — device bundles are one-time purchase only."""
+    for c in (cart or []):
+        p = _get_product((c.get("slug") or "").strip())
+        if p and p.get("bundle") and not p.get("autoship_eligible", False):
+            return True
+    return False
+
+
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                 subscriber_order_count=None, subscriber_active=True,
                 points_to_redeem_cents=0, channel="retail", program_member=False,
@@ -25398,6 +25408,10 @@ def reorder_subscribe():
 
     cart = body.get("items") or []
     ship = body.get("address") or {}
+
+    if _cart_has_noautoship_bundle(cart):
+        return jsonify({"ok": False,
+                        "error": "This item is available for one-time purchase only, not autoship."}), 400
 
     # ── Pricing-engine path (required for subscribe) ──────────────────────────
     if not os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
