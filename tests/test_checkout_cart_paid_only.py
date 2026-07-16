@@ -135,6 +135,82 @@ def test_checkout_cart_charges_subtotal_plus_shipping_not_get(monkeypatch, tmp_p
     assert qbo_total_cents == expected_cents
 
 
+def test_checkout_cart_applies_ship_credit_to_charge_not_just_receipt(monkeypatch, tmp_path):
+    """Money-path fix: a ship-credit balance auto-applied at checkout must reduce the
+    Stripe CHARGE, not just the QBO Sales-Receipt discount. Policy: charge == booked
+    receipt total == subtotal + shipping - ship_credit (floored at 0)."""
+    db = _prep(monkeypatch, tmp_path, email="sccart@b.com")
+    monkeypatch.setattr(app, "_STRIPE_ACTIVE", True)
+    monkeypatch.setenv("SHIP_CREDIT_AUTOAPPLY_ENABLED", "1")
+
+    from dashboard import points as P
+    from dashboard import ship_credit as SC
+    email = "sccart@b.com"
+    cx = sqlite3.connect(db)
+    P.init_points_table(cx)
+    SC.grant(cx, email, 500, source_ref="SRC-1")
+    cx.close()
+
+    cap = {}
+    import dashboard.stripe_pay as sp
+    def fake_session(amount_cents, **kw):
+        cap["amount_cents"] = amount_cents
+        return {"url": "https://s.test"}
+    monkeypatch.setattr(sp, "create_checkout_session", fake_session)
+
+    r = _client().post("/reorder/checkout",
+                       json={"items": [{"slug": PRODUCT_SLUG, "qty": 1}],
+                             "address": {"state": "CA", "country": "US", "name": "A"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    # subtotal 7000 + shipping stub 2295 = 9295; minus 500 ship credit = 8795.
+    assert cap["amount_cents"] == 8795
+    assert body["total"] == 87.95
+
+    ref = body["invoice_id"]
+    cx2 = sqlite3.connect(db); cx2.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx2, ref)
+    assert row["total_cents"] == 8795
+    assert row["ship_credit_applied_cents"] == 500
+
+    payload = json.loads(row["qbo_lines_json"])
+    receipt_total_cents = round(sum(l["amount"] for l in payload["lines"]) * 100) - payload["discount_cents"]
+    assert receipt_total_cents == 8795  # charge matches the booked Sales Receipt
+
+
+def test_checkout_cart_ship_credit_floors_charge_at_zero(monkeypatch, tmp_path):
+    """A ship-credit balance larger than the order total must floor the charge (and
+    stored total) at 0, never go negative."""
+    db = _prep(monkeypatch, tmp_path, email="bigcart@b.com")
+    monkeypatch.setattr(app, "_STRIPE_ACTIVE", True)
+    monkeypatch.setenv("SHIP_CREDIT_AUTOAPPLY_ENABLED", "1")
+
+    from dashboard import points as P
+    from dashboard import ship_credit as SC
+    email = "bigcart@b.com"
+    cx = sqlite3.connect(db)
+    P.init_points_table(cx)
+    SC.grant(cx, email, 100000, source_ref="SRC-BIG")
+    cx.close()
+
+    import dashboard.stripe_pay as sp
+    monkeypatch.setattr(sp, "create_checkout_session", lambda *a, **k: {"url": "https://s.test"})
+
+    r = _client().post("/reorder/checkout",
+                       json={"items": [{"slug": PRODUCT_SLUG, "qty": 1}],
+                             "address": {"state": "CA", "country": "US", "name": "B"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["total"] == 0.0
+
+    ref = body["invoice_id"]
+    cx2 = sqlite3.connect(db); cx2.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx2, ref)
+    assert row["total_cents"] == 0
+    assert row["ship_credit_applied_cents"] == 9295
+
+
 def test_reorder_stripe_return_settles_pi_points_referral_and_books_once(monkeypatch, tmp_path):
     """PINNING test: a reorder Stripe-return with a non-empty payment-intent must
     still stamp the PaymentIntent, settle points, settle the referral, and book

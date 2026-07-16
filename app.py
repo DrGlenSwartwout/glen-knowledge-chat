@@ -8555,6 +8555,11 @@ def begin_checkout(slug):
     # GET is absorbed, not charged). Folded into the invoice discount so the charge
     # drops; the ledger is debited centrally at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
+    # The charge must match the booked receipt: receipt total is subtotal + shipping
+    # (via the discount above, which already folds in _sc_apply) so the actual card
+    # charge -- and the order's stored total -- must be reduced by _sc_apply too,
+    # floored at 0 (a credit can never make the charge negative).
+    _charged = max(0, _charge_cents(pc) - _sc_apply)
     checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
     qbo_payload = {
         "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
@@ -8580,7 +8585,7 @@ def begin_checkout(slug):
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
     out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
-           "total": round(_charge_cents(pc) / 100.0, 2),
+           "total": round(_charged / 100.0, 2),
            "method": method, "customer_id": ""}
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -8593,7 +8598,7 @@ def begin_checkout(slug):
         pass
     _ingest_order(source="funnel", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"],
-                  total_cents=_charge_cents(pc),
+                  total_cents=_charged,
                   address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
@@ -9530,22 +9535,22 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                # NOTE: retail/funnel checkout (begin_checkout) AND cart checkout
-                # (_checkout_cart) are paid-only as of the QBO Stage 2/3 migration --
-                # each sets metadata customer_id="" (no QBO customer/invoice exists at
-                # checkout time), so `cid` is always falsy for these kinds. reorder/
-                # portal-reorder/subscribe are NOT yet converted (pending Stages 3/4)
-                # and still create_invoice with a REAL cid -- they need record_payment
-                # just like any other invoice-based kind, so they are NOT excluded here;
-                # the leading `if cid` guard already makes this a no-op for the
-                # paid-only kinds (their cid is ""), so listing them here would only
-                # ever break the not-yet-converted flows without protecting anything.
+                # NOTE: retail/funnel checkout (begin_checkout), cart checkout
+                # (_checkout_cart), and reorder/portal-reorder/subscribe are ALL
+                # paid-only as of the QBO Stage 3 migration -- each sets metadata
+                # customer_id="" (no QBO customer/invoice exists at checkout time)
+                # and books a real Sales Receipt below, so `cid` is falsy for every
+                # one of these kinds. The `if cid` guard is what still routes a
+                # genuine invoice-based order (a real, non-empty QBO customer_id --
+                # e.g. a legacy/not-yet-migrated order that predates this flow's
+                # conversion) to record_payment; it is a no-op for the paid-only
+                # kinds precisely because their cid is "".
                 # The outer gate is therefore `inv` alone (not `inv and cid`), and each
                 # inner side effect is individually scoped: record_payment (invoice-
                 # apply) requires a real `cid` and excludes only biofield/retail
                 # (paid-only / has its own path, nothing to apply to); the stripe-pi/
                 # points/referral/booking block fires whenever there's a real `cid`
-                # (any remaining invoice-based kind) OR kind is one of the paid-only
+                # (a genuine invoice-based order) OR kind is one of the paid-only
                 # kinds (retail/reorder/portal-reorder/subscribe).
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
@@ -9582,10 +9587,11 @@ def begin_checkout_return():
                             except Exception as _re:
                                 print(f"[rewards] referral settle failed inv={inv}: {_re!r}", flush=True)
                             # ── Book ONE line-faithful QBO Sales Receipt now that payment is
-                            # confirmed. Paid-only (retail/funnel) orders carry a qbo_lines_json
-                            # payload from checkout; idempotent via qbo_sales_receipt_id; a
-                            # harmless no-op for invoice-based kinds (e.g. reorder) that have no
-                            # stored qbo_lines_json. ──
+                            # confirmed. Paid-only orders (retail/funnel, reorder, portal-reorder,
+                            # subscribe) all carry a qbo_lines_json payload from checkout and book
+                            # a real Sales Receipt here; idempotent via qbo_sales_receipt_id. A
+                            # harmless no-op only for a genuine invoice-based order (real cid, no
+                            # stored qbo_lines_json). ──
                             try:
                                 from dashboard import qbo_sale as _qsale
                                 _fcxo2 = _sqlite3.connect(LOG_DB); _fcxo2.row_factory = _sqlite3.Row
@@ -25289,9 +25295,11 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
     # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
     # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
     # so the correct charge (and stored order total) is subtotal + shipping =
-    # total_cents - get_cents + shipping_cents.
-    _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
-                     + int(pc["shipping_cents"]))
+    # total_cents - get_cents + shipping_cents. The booked receipt's discount
+    # already folds in _sc_apply, so the charge must be reduced by it too,
+    # floored at 0 (a credit can never make the charge negative).
+    _charge_cents = max(0, (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                            + int(pc["shipping_cents"])) - _sc_apply)
     _ingest_order(source="reorder", external_ref=checkout_ref, email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
                   total_cents=_charge_cents,
