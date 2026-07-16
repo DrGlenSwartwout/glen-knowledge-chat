@@ -37660,6 +37660,68 @@ def _push_invoice_edit_to_qbo(external_ref, priced):
         return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
 
 
+def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_in=None,
+                                 adjustment_cents_in=None, invoice_note=None):
+    """Reprice an order's line items at the current pricing (membership-aware) and
+    persist the invoice. Shared by the manual invoice editor (/api/orders/<oid>/edit)
+    and the one-click grant-and-reprice button. Carries the order's existing points +
+    shipping-credit forward unchanged, preserves $0 review-gift lines, and honors the
+    same override precedence as the editor. Returns (priced, was_paid), or (None, None)
+    when no line resolves to a real product. Raises CheckoutError on a rejected ship-to.
+
+    invoice_note=None leaves the stored note untouched (upsert_order skips it on update);
+    pass a string to replace it."""
+    email = order.get("email") or ""
+    addr = order.get("address") or {}
+    ship = {"name": order.get("name") or "",
+            "street": addr.get("street") or addr.get("address1") or "",
+            "address2": addr.get("address2") or "", "city": addr.get("city") or "",
+            "state": addr.get("state") or "", "zip": addr.get("zip") or "",
+            "country": (addr.get("country") or "US").upper()}
+    # Price WITHOUT points: editing an invoice must never re-touch the points ledger
+    # (settle_order_points is idempotent per order_ref, so a changed points figure
+    # would silently desync the ledger). We carry the order's already-redeemed points
+    # forward unchanged and apply them to the recomputed total.
+    priced = _price_inhouse_invoice(
+        lines_in, email=email, pickup=pickup, ship=ship,
+        discount_cents_in=discount_cents_in,
+        adjustment_cents_in=adjustment_cents_in,
+        points_redeem_cents_in=None)
+    if priced is None:
+        return None, None
+    existing_points = int(order.get("points_redeemed_cents") or 0)
+    priced["points_redeemed_cents"] = existing_points
+    priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
+    # Same for a shipping credit already auto-applied to this order: carry it
+    # forward unchanged (re-planning would double-read the balance and re-pricing
+    # would spring the total back up, desyncing the payment-settle consume).
+    existing_ship_credit = int(order.get("ship_credit_applied_cents") or 0)
+    priced["total_cents"] = max(0, priced["total_cents"] - existing_ship_credit)
+    # Preserve any $0 approved review-gift lines (the editor form drops them; they're
+    # not owner-editable but must stay on the invoice + keep their fulfillment link).
+    for _g in (order.get("items") or []):
+        if _g.get("gift"):
+            priced["items_rec"].append(_g)
+    _bos_orders.upsert_order(
+        cx, source=order["source"], external_ref=order["external_ref"],
+        email=email, name=order.get("name") or "", phone=order.get("phone") or "",
+        items=priced["items_rec"], total_cents=priced["total_cents"],
+        channel=_bos_orders.channel_on_edit(pickup, order.get("channel")),
+        get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
+        adjustment_cents=priced["adjustment_cents"],
+        points_redeemed_cents=priced["points_redeemed_cents"],
+        shipping_cents=priced["shipping_cents"],
+        ship_credit_applied_cents=existing_ship_credit,
+        invoice_note=(invoice_note.strip() if isinstance(invoice_note, str) else None))
+    return priced, (order.get("pay_status") == "paid")
+
+
+def _paid_order_edit_warning(was_paid):
+    return ("This order was already marked PAID — the recorded payment amount was not "
+            "changed. Collect or refund the difference and reconcile QuickBooks manually."
+            ) if was_paid else None
+
+
 @app.route("/api/orders/<int:oid>/edit", methods=["POST"])
 def api_orders_edit(oid):
     """Owner: edit an existing order's invoice — replace its line items + shipping +
@@ -37682,63 +37744,104 @@ def api_orders_edit(oid):
             return jsonify({"ok": False, "error": "order not found"}), 404
         if order.get("status") == "cancelled":
             return jsonify({"ok": False, "error": "a cancelled order can't be edited"}), 400
-        email = order.get("email") or ""
-        addr = order.get("address") or {}
-        ship = {"name": order.get("name") or "",
-                "street": addr.get("street") or addr.get("address1") or "",
-                "address2": addr.get("address2") or "", "city": addr.get("city") or "",
-                "state": addr.get("state") or "", "zip": addr.get("zip") or "",
-                "country": (addr.get("country") or "US").upper()}
-        # Price WITHOUT points: editing an invoice must never re-touch the points ledger
-        # (settle_order_points is idempotent per order_ref, so a changed points figure
-        # would silently desync the ledger). We carry the order's already-redeemed points
-        # forward unchanged and apply them to the recomputed total.
         try:
-            priced = _price_inhouse_invoice(
-                lines_in, email=email, pickup=pickup, ship=ship,
+            priced, was_paid = _reprice_and_persist_invoice(
+                cx, order, lines_in, pickup=pickup,
                 discount_cents_in=body.get("discount_cents"),
                 adjustment_cents_in=body.get("adjustment_cents"),
-                points_redeem_cents_in=None)
+                invoice_note=body.get("invoice_note"))
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if priced is None:
             return jsonify({"ok": False, "error": "no valid products"}), 400
-        existing_points = int(order.get("points_redeemed_cents") or 0)
-        priced["points_redeemed_cents"] = existing_points
-        priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
-        # Same for a shipping credit already auto-applied to this order: carry it
-        # forward unchanged (re-planning would double-read the balance and re-pricing
-        # would spring the total back up, desyncing the payment-settle consume).
-        existing_ship_credit = int(order.get("ship_credit_applied_cents") or 0)
-        priced["total_cents"] = max(0, priced["total_cents"] - existing_ship_credit)
-        # Preserve any $0 approved review-gift lines (the editor form drops them; they're
-        # not owner-editable but must stay on the invoice + keep their fulfillment link).
-        for _g in (order.get("items") or []):
-            if _g.get("gift"):
-                priced["items_rec"].append(_g)
-        note = body.get("invoice_note")
-        _bos_orders.upsert_order(
-            cx, source=order["source"], external_ref=order["external_ref"],
-            email=email, name=order.get("name") or "", phone=order.get("phone") or "",
-            items=priced["items_rec"], total_cents=priced["total_cents"],
-            channel=_bos_orders.channel_on_edit(pickup, order.get("channel")),
-            get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
-            adjustment_cents=priced["adjustment_cents"],
-            points_redeemed_cents=priced["points_redeemed_cents"],
-            shipping_cents=priced["shipping_cents"],
-            ship_credit_applied_cents=existing_ship_credit,
-            invoice_note=(note.strip() if isinstance(note, str) else None))
-        was_paid = (order.get("pay_status") == "paid")
     finally:
         cx.close()
     qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
     # Editing a PAID order changes the invoice total but NOT the recorded payment — alert
     # the owner to collect/refund the difference and reconcile QBO by hand (per design,
     # paid orders are editable but payment + QBO aren't auto-adjusted).
-    warning = ("This order was already marked PAID — the recorded payment amount was not "
-               "changed. Collect or refund the difference and reconcile QuickBooks manually."
-               ) if was_paid else None
+    warning = _paid_order_edit_warning(was_paid)
     return jsonify({"ok": True, "order_id": oid, "qbo": qbo, "warning": warning,
+                    "totals": {"subtotal_cents": priced["subtotal_cents"],
+                               "discount_cents": priced["discount_cents"],
+                               "adjustment_cents": priced["adjustment_cents"],
+                               "shipping_cents": priced["shipping_cents"],
+                               "get_cents": priced["get_cents"],
+                               "points_redeemed_cents": priced["points_redeemed_cents"],
+                               "total_cents": priced["total_cents"]},
+                    "lines": priced["items_rec"]})
+
+
+@app.route("/api/orders/<int:oid>/grant-member-access", methods=["POST"])
+def api_orders_grant_member_access(oid):
+    """Owner, one click: grant this order's client a 30-day member-access window, then
+    reprice the order at member pricing — the manual equivalent of what a paid $300
+    Causal Biofield Analysis auto-grants (_fulfill_biofield_program), for the clients
+    who are invoiced by hand instead of through the Stripe program checkout.
+
+    The grant is a `care_taster` membership (identical source + length to the automated
+    program grant), so it flips the paid-member pricing gate on. It is idempotent: if the
+    client already holds an active membership, no second grant is written and the order is
+    still repriced. Repricing re-runs the order's OWN lines through the invoice pricer, so
+    override lines (e.g. a courtesy Biofield price) are preserved and auto-priced FF lines
+    drop to the member volume/mix-match rate; a line is never raised."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        order = _bos_orders.get_order(cx, oid)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        if order.get("status") == "cancelled":
+            return jsonify({"ok": False, "error": "a cancelled order can't be repriced"}), 400
+        email = (order.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": False, "error": "this order has no client email to grant access to"}), 400
+        old_total = int(order.get("total_cents") or 0)
+        # 1) Grant the member-access window (idempotent). An already-active member keeps
+        #    their existing window — never stack a second grant — but the order is still
+        #    repriced below (the whole point of the button).
+        init_membership_tables(cx)
+        cx.commit()   # fresh-DB safe: the reads below open their own connections
+        already_member = bool(_active_membership_for_email(email))
+        granted, expires_at = False, None
+        if not already_member:
+            _grant_membership(cx, email, PROGRAM_CARE_TASTER_DAYS, CARE_TASTER_SOURCE)
+            cx.commit()   # make the grant visible to _is_paid_member's own connection below
+            granted = True
+            expires_at = (_now_utc().date() + timedelta(days=PROGRAM_CARE_TASTER_DAYS)).isoformat()
+        # 2) Reprice the order's own lines. Send unit_cents ONLY for override lines
+        #    (mirrors the editor's linesPayload): preserved as-is; the rest re-price at
+        #    the now-active member rate.
+        lines_in = []
+        for it in (order.get("items") or []):
+            if it.get("gift"):
+                continue
+            ln = {"slug": it.get("slug"), "qty": it.get("qty") or 1}
+            if it.get("override") is True:
+                ln["unit_cents"] = it.get("unit_cents")
+            lines_in.append(ln)
+        if not lines_in:
+            return jsonify({"ok": False, "error": "this order has no repriceable line items"}), 400
+        pickup = (order.get("channel") == "pickup")
+        try:
+            priced, was_paid = _reprice_and_persist_invoice(
+                cx, order, lines_in, pickup=pickup)   # invoice_note=None -> note preserved
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        if priced is None:
+            return jsonify({"ok": False, "error": "no valid products on this order"}), 400
+    finally:
+        cx.close()
+    qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
+    return jsonify({"ok": True, "order_id": oid,
+                    "granted": granted, "already_member": already_member,
+                    "membership_expires": expires_at,
+                    "old_total_cents": old_total, "new_total_cents": priced["total_cents"],
+                    "warning": _paid_order_edit_warning(was_paid),
+                    "qbo": qbo,
                     "totals": {"subtotal_cents": priced["subtotal_cents"],
                                "discount_cents": priced["discount_cents"],
                                "adjustment_cents": priced["adjustment_cents"],
