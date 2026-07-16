@@ -128,7 +128,7 @@ def default_create_order(customer, lines, replace_open=False):
         # from the console when the client actually collects in person.
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "replace_open": bool(replace_open),
-                "invoice_note": "Biofield Analysis and remedies. Payable by check."}
+                "invoice_note": "Biofield Analysis and remedies. Payable by Credit Card or Zelle."}
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
                                      headers={"X-Console-Key": key, "Content-Type": "application/json"})
