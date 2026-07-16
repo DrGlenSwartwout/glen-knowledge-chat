@@ -1382,6 +1382,34 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             code = cover_stress(cx, test_id, sid, rids)
         return {"ok": code is not None, "code": code}
 
+    @app.route("/author/<test_id>/stress/add", methods=["POST"])
+    def author_stress_add(test_id):
+        from dashboard import biofield_stress as _st
+        from dashboard.biofield_authoring import resolve_stress_name
+        d = request.get_json(silent=True) or {}
+        raw = (d.get("label") or "").strip()
+        if not raw:
+            return {"ok": False, "error": "empty label"}, 400
+        layer = d.get("layer")
+        with sqlite3.connect(db_path) as cx:
+            label = resolve_stress_name(cx, raw)
+            if not _st.vocab_has(cx, label):
+                _st.add_custom_vocab(cx, label)
+            _st.add_stress(cx, test_id, label, source="manual", balance="required")
+            sid = _st.stress_id_for(cx, test_id, label)
+            balanced_layer = None
+            if sid is not None and layer is not None:
+                rids = _st.layer_chain_rids(cx, test_id, layer)
+                if rids:
+                    _st.cover_stress(cx, test_id, sid, rids)
+                else:
+                    _st.set_manual_balanced(cx, test_id, sid, True)
+                try:
+                    balanced_layer = int(layer)
+                except (TypeError, ValueError):
+                    balanced_layer = None
+        return {"ok": sid is not None, "sid": sid, "label": label, "layer": balanced_layer}
+
     @app.route("/api/catalog")
     def api_catalog():
         with sqlite3.connect(db_path) as cx:
