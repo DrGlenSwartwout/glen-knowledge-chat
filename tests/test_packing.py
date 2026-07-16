@@ -78,5 +78,8 @@ def test_a_50ml_dropper_fits_the_small_box_at_prods_margin():
             "box_margin_mm": _PACKING_DEFAULTS["box_margin_mm"]}
     assert fits_all([(35, 135)], BOXES_MM["S"], **prod), "a 50 ml dropper fits Small"
     assert pack_count([(35, 135)] * 20, BOXES_MM["S"], **prod) == 5
-    # ...and a 30 ml infoceutical (40x110) still does NOT — Glen did not claim it does.
-    assert not fits_all([(40, 110)], BOXES_MM["S"], **prod)
+    # ...and a 30 ml infoceutical (40x110) now DOES too: Glen confirmed 2026-07-16 that
+    # infoceuticals fit Small; wrap_mm was reduced 6→5 so the Ø40 glass dropper (40+5=45)
+    # fits Small's 45mm usable width instead of missing it by 1mm. See
+    # test_packing_infoceutical_small_box.py.
+    assert fits_all([(40, 110)], BOXES_MM["S"], **prod)
