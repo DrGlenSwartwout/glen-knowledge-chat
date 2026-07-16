@@ -5761,7 +5761,27 @@ def _shipping_for_cart(box_counts, total_bottles):
     return _fallback_shipping_cents(total_bottles)
 
 
+def _subscription_tier_resolver(order_count, active=True):
+    """Per-line subscriber-discount resolver for a subscription charge.
+    Bundle lines flagged autoship_eligible climb the 12->29 bundle ladder;
+    every other line climbs the standard 3->25 ladder. When the member is not
+    paid-through (active False) all lines get 0 — matching the prior cron gate."""
+    from dashboard import subscriptions as _subs
+    oc = int(order_count or 0)
+
+    def _resolve(it):
+        if not active:
+            return 0
+        p = it.get("product") or {}
+        if p.get("bundle") and p.get("autoship_eligible"):
+            return _subs.tier_for_bundle(oc)
+        return _subs.tier_for(oc)
+
+    return _resolve
+
+
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
+                subscriber_order_count=None, subscriber_active=True,
                 points_to_redeem_cents=0, channel="retail", program_member=False,
                 email=None):
     """Price a reorder/checkout cart through the pricing engine + shipping.
@@ -5844,8 +5864,11 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     # about the address. An overseas client buying a service prices fine.
     if (box_counts or flat_ship_cents) and country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
+    tier_arg = subscriber_tier_pct
+    if subscriber_order_count is not None:
+        tier_arg = _subscription_tier_resolver(subscriber_order_count, subscriber_active)
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
-                              subscriber_tier_pct=subscriber_tier_pct, channel=channel,
+                              subscriber_tier_pct=tier_arg, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents,
@@ -25383,7 +25406,7 @@ def reorder_subscribe():
     try:
         from dashboard import subscriptions as _subs
         try:
-            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0),
+            pc = _price_cart(cart, ship=ship, subscriber_order_count=0, subscriber_active=True,
                              program_member=_is_paid_member(email), email=email)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
@@ -33022,13 +33045,14 @@ def cron_charge_subscriptions():
                 items = sub.get("items") or []
                 ship = sub.get("ship_address") or {}
                 order_count = sub.get("order_count", 0)
-                # Member loyalty discount applies only while paid-through; the
-                # tier VALUE is the earned tier_for(order_count) (held, not reset).
-                tier_pct = _subs.tier_for(order_count) if _active_membership_for_email(sub["email"]) else 0
+                # Per-line loyalty: bundle lines climb 12->29, single SKUs 3->25.
+                # Gated to 0 for all lines when the member isn't paid-through.
+                active = bool(_active_membership_for_email(sub["email"]))
 
                 # Price the order
                 try:
-                    pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct,
+                    pc = _price_cart(items, ship=ship, subscriber_order_count=order_count,
+                                     subscriber_active=active,
                                      program_member=_is_paid_member(sub["email"]),
                                      email=sub["email"])
                 except CheckoutError as ce:
