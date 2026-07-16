@@ -9077,20 +9077,20 @@ def _fulfill_continuous_care_monthly(session_id):
 
 
 def _book_membership_qbo(email, tier):
-    """Record a paid QBO invoice for a one-time membership tier (month /
-    year_prepay) purchase: find_or_create_customer -> create_invoice ->
-    record_payment. Best-effort — a QBO failure must never break the
-    membership grant, which is already committed on the caller's connection
-    by the time this runs. Never raises."""
+    """Record a paid one-time membership purchase (month / year_prepay) as a QBO
+    SalesReceipt — paid-only, no A/R invoice. Best-effort — a QBO failure must never
+    break the membership grant, which is already committed by the time this runs.
+    Never raises."""
     try:
         from dashboard import qbo_billing as qb
         cust = qb.find_or_create_customer(email, "")
-        inv = qb.create_invoice(
-            cust, [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
-            allow_online_pay=False, email_to=email)
-        qb.record_payment(cust.get("Id"), tier["price_cents"], inv.get("Id"), method="card")
+        qb.create_sales_receipt(
+            cust,
+            [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
+            email_to=email)
     except Exception as e:
-        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}", flush=True)
+        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}",
+              flush=True)
 
 
 def _record_membership_reconcile_alert(cx, session_id, email, tier):
