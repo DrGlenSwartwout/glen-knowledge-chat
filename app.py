@@ -5890,7 +5890,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # (invoice). "bottle"/unset -> plain product name. Keeps the QBO line NAME clean
         # for item mapping; only the description is decorated.
         _fmt_label = _FORMAT_LABELS.get((c.get("format") or "").strip().lower(), "")
-        _disp_name = f'{p["name"]} — {_fmt_label}' if _fmt_label else p["name"]
+        _disp_name = f'{p["name"]} ({_fmt_label})' if _fmt_label else p["name"]
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": _disp_name})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
