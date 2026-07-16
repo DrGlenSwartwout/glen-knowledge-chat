@@ -25284,6 +25284,7 @@ def _ship_founding_reservation(cx, sub):
             total_cents=charge_cents,
             address=ship,
             channel="retail",
+            get_cents=int(pc["priced"]["get_cents"]),
         )
     except Exception as e:
         print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")

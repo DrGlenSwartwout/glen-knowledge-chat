@@ -126,6 +126,37 @@ def test_ship_success_orders_keyed_on_charge_id_with_qbo_lines_persisted(monkeyp
     assert "Shipping (USPS)" in names
 
 
+def test_ship_success_records_get_cents_on_order(monkeypatch, tmp_path):
+    """GET is absorbed (never charged) but must still be RECORDED on the order
+    for Glen's G-45 remittance -- mirrors the Stage 3 conversions (ed86098f)."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    sub = _make_sub(db)
+
+    monkeypatch.setattr(appmod, "_price_cart",
+                        lambda items, *, ship, subscriber_tier_pct=None, **k: _fake_pc())
+    monkeypatch.setattr(qbo_billing, "create_invoice", _boom_invoice)
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+    monkeypatch.setattr(qbo_billing, "create_sales_receipt", lambda *a, **k: {"Id": "SR1"})
+    monkeypatch.setattr(appmod.stripe_pay, "charge_off_session",
+                        lambda *a, **k: {"status": "succeeded", "id": "ch_get"})
+
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    try:
+        res = appmod._ship_founding_reservation(cx, sub)
+    finally:
+        cx.close()
+    assert res["charged"] is True
+
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    try:
+        order = _orders_mod.find_order_by_external_ref(cx, "ch_get")
+    finally:
+        cx.close()
+    assert order is not None
+    # _fake_pc()["priced"]["get_cents"] == 75 -- must be recorded, not defaulted to 0.
+    assert order["get_cents"] == 75
+
+
 def test_ship_success_books_exactly_one_sales_receipt(monkeypatch, tmp_path):
     db = _isolate_db(monkeypatch, tmp_path)
     sub = _make_sub(db)
