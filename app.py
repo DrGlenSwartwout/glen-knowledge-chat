@@ -19228,6 +19228,8 @@ _CLIENT_FACT_COPY = {
     },
 }
 
+ALLOWED_CLIENT_FACT_KEYS = set(_CLIENT_FACT_COPY.keys())  # e.g. {"on_areds2"}
+
 
 def _client_facts_offered(prog, facts):
     """Client-reported modifier facts this program exposes, with current values.
@@ -19575,6 +19577,29 @@ def api_portal_support_program_add_to_invoice(token):
             invoice_note=f"{sp['label']} support program — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/portal/<token>/client-fact", methods=["POST"])
+def api_portal_client_fact(token):
+    """Client self-reports a boolean intake fact (e.g. on_areds2) that drives a
+    client-reported program modifier. Identity comes from the portal TOKEN, never
+    the body. Key is whitelisted so this can't set arbitrary facts. Returns the
+    re-resolved support_program for a live card re-render."""
+    if not _support_programs_enabled():
+        return ("", 404)
+    body = request.get_json(silent=True) or {}
+    key = (body.get("key") or "").strip()
+    if key not in ALLOWED_CLIENT_FACT_KEYS:
+        return jsonify({"ok": False, "error": "unknown fact key"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        from dashboard import client_facts as _cf
+        _cf.set_fact(cx, email, key, bool(body.get("value")))
+    return jsonify({"ok": True, "support_program": _support_program_for(email)})
 
 
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
