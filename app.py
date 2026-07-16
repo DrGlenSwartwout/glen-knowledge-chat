@@ -9645,6 +9645,33 @@ def begin_checkout_return():
                             except Exception as _bqe:
                                 print(f"[biofield] qbo sale booking failed inv={bf_inv}: {_bqe!r}",
                                       flush=True)
+                            # Stamp the Stripe PaymentIntent onto the order (mirrors the
+                            # non-biofield gate above, which is dead here since biofield
+                            # checkout sets metadata customer_id="").
+                            if pi_id:
+                                try:
+                                    _bcxo3 = _sqlite3.connect(LOG_DB); _bcxo3.row_factory = _sqlite3.Row
+                                    try:
+                                        _bo3 = _bos_orders.find_order_by_external_ref(_bcxo3, bf_inv)
+                                        if _bo3:
+                                            _bos_orders.set_order_stripe_pi(_bcxo3, _bo3["id"], pi_id)
+                                    finally:
+                                        _bcxo3.close()
+                                except Exception as _bpie:
+                                    print(f"[biofield] stripe pi stamp failed inv={bf_inv}: {_bpie!r}",
+                                          flush=True)
+                            # ── Referral crediting (points or cash to referrer) ──
+                            try:
+                                _bcxo4 = _sqlite3.connect(LOG_DB); _bcxo4.row_factory = _sqlite3.Row
+                                try:
+                                    _bo4 = _bos_orders.find_order_by_external_ref(_bcxo4, bf_inv)
+                                finally:
+                                    _bcxo4.close()
+                                if _bo4:
+                                    _settle_referral(dict(_bo4), order_ref=bf_inv)
+                            except Exception as _bre:
+                                print(f"[biofield] referral settle failed inv={bf_inv}: {_bre!r}",
+                                      flush=True)
                             # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
                             # Shared with the Stripe webhook (below) so a closed tab still
                             # delivers the paid care window. Idempotent via care_taster_grants.
