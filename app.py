@@ -9406,21 +9406,28 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                # NOTE: retail/funnel checkout (begin_checkout) AND reorder/portal-reorder/
-                # subscribe checkouts (_checkout_cart et al) are paid-only as of the QBO
-                # Stage 2 migration -- each sets metadata customer_id="" (no QBO customer/
-                # invoice exists at checkout time), so `cid` is always falsy for these kinds.
-                # The outer gate is therefore `inv` alone (not `inv and cid`), and each inner
-                # side effect is individually scoped: record_payment (invoice-apply) requires
-                # a real `cid` and excludes biofield/retail/reorder/portal-reorder/subscribe
-                # (paid-only, nothing to apply to); the stripe-pi/points/referral/booking
-                # block fires whenever there's a real `cid` (any remaining invoice-based kind)
-                # OR kind is one of the paid-only kinds above.
+                # NOTE: retail/funnel checkout (begin_checkout) AND cart checkout
+                # (_checkout_cart) are paid-only as of the QBO Stage 2/3 migration --
+                # each sets metadata customer_id="" (no QBO customer/invoice exists at
+                # checkout time), so `cid` is always falsy for these kinds. reorder/
+                # portal-reorder/subscribe are NOT yet converted (pending Stages 3/4)
+                # and still create_invoice with a REAL cid -- they need record_payment
+                # just like any other invoice-based kind, so they are NOT excluded here;
+                # the leading `if cid` guard already makes this a no-op for the
+                # paid-only kinds (their cid is ""), so listing them here would only
+                # ever break the not-yet-converted flows without protecting anything.
+                # The outer gate is therefore `inv` alone (not `inv and cid`), and each
+                # inner side effect is individually scoped: record_payment (invoice-
+                # apply) requires a real `cid` and excludes only biofield/retail
+                # (paid-only / has its own path, nothing to apply to); the stripe-pi/
+                # points/referral/booking block fires whenever there's a real `cid`
+                # (any remaining invoice-based kind) OR kind is one of the paid-only
+                # kinds (retail/reorder/portal-reorder/subscribe).
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
                 if inv:
                     if cid and _kind != "in-house" and _kind not in (
-                            "biofield", "retail", "reorder", "portal-reorder", "subscribe"):
+                            "biofield", "retail"):
                         try:
                             from dashboard import qbo_billing as _qb_ret
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)

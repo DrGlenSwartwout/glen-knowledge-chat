@@ -154,3 +154,49 @@ def test_reorder_stripe_return_settles_pi_points_referral_and_books_once(monkeyp
     cx3 = sqlite3.connect(db); cx3.row_factory = sqlite3.Row
     row3 = O.find_order_by_external_ref(cx3, token)
     assert row3["qbo_sales_receipt_id"] == "SR1"
+
+
+def test_invoice_based_reorder_return_still_records_qbo_payment(monkeypatch, tmp_path):
+    """PINNING test: a NOT-yet-converted invoice-based order (kind=="reorder" but
+    with a REAL non-empty QBO customer_id in the Stripe metadata -- i.e. a legacy
+    or not-yet-migrated portal-reorder/reorder checkout that still create_invoice'd
+    against a real QBO customer) must still get record_payment applied on return.
+
+    Commit 8d7c33d0 wrongly added "reorder"/"portal-reorder"/"subscribe" to the
+    record_payment exclusion kind-list, which would skip record_payment here even
+    though `cid` is real and there's an actual QBO invoice to apply the payment to.
+    The exclusion must cover only ("biofield", "retail") -- the leading `if cid`
+    already makes the guard a no-op for the converted paid-only kinds (their
+    metadata customer_id is ""), so kind-based exclusion beyond biofield/retail is
+    both wrong and unnecessary."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    token = "chk_pin_invoice_reorder_1"
+    real_cid = "C-REAL-999"
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    try:
+        O.upsert_order(cx, source="reorder", external_ref=token, email="legacy@b.com",
+                       name="Legacy", items=[{"slug": PRODUCT_SLUG, "qty": 1}],
+                       total_cents=7000, address={}, channel="retail",
+                       get_cents=0, discount_cents=0, points_redeemed_cents=0,
+                       shipping_cents=0, status="new")
+    finally:
+        cx.close()
+
+    monkeypatch.setattr(app, "_settle_order_points", lambda order, *, order_ref: None)
+    monkeypatch.setattr(app, "_settle_referral", lambda order, *, order_ref: None)
+
+    calls = {"record_payment": []}
+
+    def spy_record_payment(cid, amount_cents, inv):
+        calls["record_payment"].append((cid, amount_cents, inv))
+    monkeypatch.setattr(qbo_billing, "record_payment", spy_record_payment)
+
+    import dashboard.stripe_pay as sp
+    monkeypatch.setattr(sp, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 7000, "payment_intent": "pi_legacy",
+        "metadata": {"kind": "reorder", "invoice_id": token, "customer_id": real_cid}})
+
+    r = _client().get("/begin/checkout-return?session_id=sess1")
+    assert r.status_code in (301, 302)
+
+    assert calls["record_payment"] == [(real_cid, 7000, token)]
