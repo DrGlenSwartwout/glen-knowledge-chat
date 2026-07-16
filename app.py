@@ -20283,13 +20283,12 @@ def api_client_portal_checkout(token):
                 items = _merge_accepted_recommendation_items(_rcx, email, base_items)
         except Exception:
             items = base_items  # merge failure must never break checkout
-    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
+    lines, items_rec, subtotal_cents = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
         return jsonify({"error": "Card checkout is temporarily unavailable. Please reach out and we'll help."}), 503
     try:
-        from dashboard import qbo_billing as _qb_local
         ship = {}
         try:
             with sqlite3.connect(LOG_DB) as cx:
@@ -20299,14 +20298,24 @@ def api_client_portal_checkout(token):
                 ship = prior[0].get("address") or {}
         except Exception:
             ship = {}  # no prior order / address on file — proceed; collected at checkout
-        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-        _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="reorder", set by _stripe_checkout_url_for_reorder below) to book a
+        # line-faithful QBO Sales Receipt once the customer actually pays.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {"lines": lines, "discount_cents": 0, "tax_cents": 0}
+        out = {"invoice_id": checkout_ref, "customer_id": "",
+               "doc_number": "", "total": round(subtotal_cents / 100.0, 2)}
+        _ingest_order(source="portal-reorder", external_ref=checkout_ref, email=email,
                       name=ship.get("name", ""), items=items_rec,
-                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      total_cents=int(subtotal_cents),
                       address=ship, channel="retail")
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[portal-reorder] persist qbo_lines failed: {_e!r}", flush=True)
         stripe_url = _stripe_checkout_url_for_reorder(out, email)
         if not stripe_url:
             return jsonify({"error": _CARD_UNAVAILABLE}), 502

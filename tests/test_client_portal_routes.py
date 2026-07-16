@@ -474,6 +474,9 @@ def test_api_portal_shows_regular_and_special_price(client):
 
 
 def test_portal_checkout_charges_special_price(client, monkeypatch):
+    # Paid-only (QBO Stage 3): api_client_portal_checkout no longer calls
+    # create_invoice -- the exact QBO line payload is persisted via
+    # set_order_qbo_lines instead, so capture it the same way.
     c, appmod = client
     tok = _seed_portal(appmod, content={
         "greeting": "hi", "video": {}, "layers": [],
@@ -481,15 +484,15 @@ def test_portal_checkout_charges_special_price(client, monkeypatch):
     })
     captured = {}
     from dashboard import qbo_billing
+
+    def boom(*a, **k):
+        raise AssertionError("api_client_portal_checkout must not call create_invoice (paid-only)")
+    monkeypatch.setattr(qbo_billing, "create_invoice", boom)
     monkeypatch.setattr(qbo_billing, "find_or_create_customer",
                         lambda *a, **k: {"Id": "C1"})
-
-    def _fake_invoice(cust, lines, **kw):
-        captured["lines"] = lines
-        total = sum(l["amount"] * l["qty"] for l in lines)
-        return {"Id": "INV1", "DocNumber": "1001", "TotalAmt": total}
-    monkeypatch.setattr(qbo_billing, "create_invoice", _fake_invoice)
     monkeypatch.setattr(appmod, "_ingest_order", lambda *a, **k: None)
+    monkeypatch.setattr(appmod._bos_orders, "set_order_qbo_lines",
+                        lambda cx, ref, payload: captured.setdefault("payload", payload))
     monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", True)
     monkeypatch.setattr(appmod, "_stripe_checkout_url_for_reorder",
                         lambda out, email: "https://checkout.stripe/x")
@@ -497,7 +500,8 @@ def test_portal_checkout_charges_special_price(client, monkeypatch):
     r = c.post(f"/api/portal/{tok}/checkout")
     assert r.status_code == 200
     assert r.get_json()["stripe_url"] == "https://checkout.stripe/x"
-    assert captured["lines"][0]["amount"] == 25.0  # charged the special price, not catalog
+    # charged the special price, not catalog
+    assert captured["payload"]["lines"][0]["amount"] == 25.0
 
 
 def test_portal_checkout_bad_token_404(client):
