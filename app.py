@@ -19221,6 +19221,33 @@ def _client_facts_for(email):
         return {}
 
 
+_CLIENT_FACT_COPY = {
+    "on_areds2": {
+        "label": "I'm already taking an AREDS2 eye formula (e.g. PreserVision).",
+        "hint": "We'll skip the three Macular Wellness carotenoids your AREDS2 already covers.",
+    },
+}
+
+ALLOWED_CLIENT_FACT_KEYS = set(_CLIENT_FACT_COPY.keys())  # e.g. {"on_areds2"}
+
+
+def _client_facts_offered(prog, facts):
+    """Client-reported modifier facts this program exposes, with current values.
+    De-duped by modifier `when`; only keys we have copy for are surfaced."""
+    out, seen = [], set()
+    for mod in (prog.get("modifiers") or []):
+        if mod.get("source") != "client-reported":
+            continue
+        key = mod.get("when")
+        if not key or key in seen or key not in _CLIENT_FACT_COPY:
+            continue
+        seen.add(key)
+        copy = _CLIENT_FACT_COPY[key]
+        out.append({"key": key, "label": copy["label"], "hint": copy["hint"],
+                    "value": bool(facts.get(key))})
+    return out
+
+
 PRL_LINK = "https://truly.vip/prl"  # Glen's practitioner ordering link (code 021a1a)
 
 
@@ -19338,14 +19365,19 @@ def _support_program_for(email):
             prog = condition_programs.get(cx, key)
         if not prog:
             return None
+        facts = _client_facts_for(email)
         resolved = condition_programs.resolve_program_items(
-            prog, audience="client", client_facts=_client_facts_for(email))
-        return {
+            prog, audience="client", client_facts=facts)
+        result = {
             "condition_key": prog["condition_key"],
             "label": prog["label"],
             "consult_recommended": bool(prog["consult_recommended"]),
             "items": [_support_program_item_view(it) for it in resolved],
         }
+        offered = _client_facts_offered(prog, facts)
+        if offered:
+            result["client_facts"] = offered
+        return result
     except Exception:
         return None
 
@@ -19430,7 +19462,7 @@ def api_practitioner_condition_program_get(patient_email):
         return jsonify({"ok": True, "condition_key": key, "label": None,
                         "candidates": [], "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
     resolved = {(it.get("slug") or "") for it in condition_programs.resolve_program_items(
-        prog, audience="client", client_facts=_client_facts_for(email))}
+        prog, audience="practitioner", client_facts=_client_facts_for(email))}
     candidates = []
     for it in (prog.get("items") or []):
         candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
@@ -19545,6 +19577,29 @@ def api_portal_support_program_add_to_invoice(token):
             invoice_note=f"{sp['label']} support program — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/portal/<token>/client-fact", methods=["POST"])
+def api_portal_client_fact(token):
+    """Client self-reports a boolean intake fact (e.g. on_areds2) that drives a
+    client-reported program modifier. Identity comes from the portal TOKEN, never
+    the body. Key is whitelisted so this can't set arbitrary facts. Returns the
+    re-resolved support_program for a live card re-render."""
+    if not _support_programs_enabled():
+        return ("", 404)
+    body = request.get_json(silent=True) or {}
+    key = (body.get("key") or "").strip()
+    if key not in ALLOWED_CLIENT_FACT_KEYS:
+        return jsonify({"ok": False, "error": "unknown fact key"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        from dashboard import client_facts as _cf
+        _cf.set_fact(cx, email, key, bool(body.get("value")))
+    return jsonify({"ok": True, "support_program": _support_program_for(email)})
 
 
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])

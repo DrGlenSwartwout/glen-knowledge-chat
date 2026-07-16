@@ -220,6 +220,7 @@
           "action": "add",
           "source": "diagnosis-implied",
           "client_default": true,
+          "composer_default": false,
           "items": [
             {"slug": "angiogenx", "name": "AngiogenX", "dose": "1 or more/day"}
           ]
@@ -229,6 +230,7 @@
           "action": "add",
           "source": "diagnosis-implied",
           "client_default": true,
+          "composer_default": false,
           "items": [
             {"slug": "scar-solve", "name": "Scar Solve"},
             {"slug": "scar-soft-drink", "name": "Scar Soft"},

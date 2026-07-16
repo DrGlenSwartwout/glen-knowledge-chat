@@ -51,3 +51,10 @@ def test_wet_amd_leakage_angiogenx_keeps_dose():
     leak = [m for m in p["modifiers"] if m["when"] == "leakage"][0]
     ax = [i for i in leak["items"] if i["slug"] == "angiogenx"][0]
     assert ax.get("dose") == "1 or more/day"
+
+def test_wet_amd_leakage_scar_default_off_in_composer():
+    p = _seed()["condition_programs"]["wet-amd"]
+    for w in ("leakage", "scar"):
+        m = [x for x in p["modifiers"] if x["when"] == w][0]
+        assert m["source"] == "diagnosis-implied" and m["client_default"] is True
+        assert m["composer_default"] is False, w
