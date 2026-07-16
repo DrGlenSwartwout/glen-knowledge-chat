@@ -109,6 +109,14 @@
 
   .reassure{ font-size:12.5px; color:var(--muted); margin-top:16px; line-height:1.6; }
 
+  .subscribe-cta{ margin:14px 0; }
+  .subscribe-cta.hidden,.sub-modes.hidden,.sub-options.hidden,.sub-join.hidden{ display:none; }
+  .sub-modes .sub-mode{ display:block; margin:6px 0; cursor:pointer; }
+  .sub-mode-hi{ font-weight:600; }
+  .sub-options{ margin:8px 0 4px; }
+  .sub-ladder{ font-size:.9em; opacity:.85; margin:6px 0 0; }
+  .sub-join{ border:1px solid rgba(0,0,0,.12); border-radius:10px; padding:12px; }
+
   .buy-wrap{ margin-top:22px; }
   .buy-btn{ display:inline-block; background:var(--gold); color:#0a150d; font-family:var(--heading);
     font-weight:700; font-size:15px; letter-spacing:0.03em; padding:14px 34px; border:none; border-radius:999px;
@@ -340,6 +348,29 @@
           </span>
         </label>
 
+        <!-- Subscribe & Save (populated by renderSubscribeCta from product-data) -->
+        <div id="subscribe-cta" class="subscribe-cta hidden">
+          <!-- State A: paid member -->
+          <div id="sub-modes" class="sub-modes hidden">
+            <label class="sub-mode"><input type="radio" name="purchase-mode" value="once" checked /> <span>One-time purchase</span></label>
+            <label class="sub-mode sub-mode-hi"><input type="radio" name="purchase-mode" value="subscribe" /> <span id="sub-mode-label">Subscribe &amp; save</span></label>
+            <div id="sub-options" class="sub-options hidden">
+              <label for="sub-cadence">Delivery</label>
+              <select id="sub-cadence">
+                <option value="1">Monthly</option>
+                <option value="2">Every 2 months</option>
+                <option value="3">Quarterly</option>
+              </select>
+              <p class="sub-ladder" id="sub-ladder"></p>
+            </div>
+          </div>
+          <!-- State B: not a paid member -->
+          <div id="sub-join" class="sub-join hidden">
+            <p id="sub-join-copy"></p>
+            <button type="button" class="buy-btn sub-join-btn" id="sub-join-btn">Become a member</button>
+          </div>
+        </div>
+
         <div class="buy-wrap">
           <button class="buy-btn" id="buy-btn" disabled>Place your order</button>
           <div class="inline-msg" id="inline-msg"></div>
@@ -433,6 +464,7 @@
         if (!data) return;
         product = data;
         renderProduct(data);
+        renderSubscribeCta(data);   // NEW
       })
       .catch(function(){
         hide('loading');
@@ -637,7 +669,9 @@
 
       emailEl.addEventListener('input', function(){ clearInlineMsg(); refreshBuyState(); });
 
-      buyBtn.addEventListener('click', placeOrder);
+      buyBtn.addEventListener('click', function(){
+        if (subscribeMode()) { placeSubscription(); } else { placeOrder(); }
+      });
       refreshBuyState();
       fetch(BASE + '/api/referral/enabled', { credentials:'same-origin' })
         .then(function(r){ return r.json(); })
@@ -732,6 +766,100 @@
       .catch(function(e){
         ordering = false;
         buyBtn.textContent = 'Place your order';
+        setInlineMsg('Connection hiccup: ' + e.message + '. Please try again.');
+        refreshBuyState();
+      });
+    }
+
+    // ── Subscribe & Save ───────────────────────────────────────────────────
+    function subscribeMode(){
+      var r = document.querySelector('input[name="purchase-mode"]:checked');
+      return !!r && r.value === 'subscribe';
+    }
+
+    function renderSubscribeCta(p){
+      var wrap = document.getElementById('subscribe-cta');
+      if (!p || !p.autoship_eligible) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      if (p.is_paid_member) {
+        document.getElementById('sub-modes').classList.remove('hidden');
+        document.getElementById('sub-join').classList.add('hidden');
+        var a = p.autoship || {};
+        document.getElementById('sub-ladder').textContent =
+          'Save ' + a.first_pct + '% on your first shipment, climbing to ' + a.cap_pct +
+          '% — save more each time. Cancel anytime.';
+        // Toggle: show cadence when Subscribe is chosen; retitle the buy button.
+        document.querySelectorAll('input[name="purchase-mode"]').forEach(function(el){
+          el.addEventListener('change', function(){
+            document.getElementById('sub-options').classList.toggle('hidden', !subscribeMode());
+            var b = document.getElementById('buy-btn');
+            b.textContent = subscribeMode() ? 'Start my subscription' : 'Place your order';
+          });
+        });
+      } else {
+        document.getElementById('sub-modes').classList.add('hidden');
+        var j = document.getElementById('sub-join');
+        j.classList.remove('hidden');
+        var a2 = p.autoship || {};
+        document.getElementById('sub-join-copy').textContent =
+          'Members save ' + a2.first_pct + '–' + a2.cap_pct +
+          '% with Subscribe & Save on this product.';
+        document.getElementById('sub-join-btn').onclick = function(){ window.location.href = '/membership'; };
+      }
+    }
+
+    function placeSubscription(){
+      if (ordering) return;
+      var _street = (document.getElementById('ship-street').value || '').trim();
+      var _city = (document.getElementById('ship-city').value || '').trim();
+      var _state = (document.getElementById('ship-state').value || '').trim();
+      var _zip = (document.getElementById('ship-zip').value || '').trim();
+      if (!_street || !_city || !_state || !_zip) {
+        setInlineMsg('Please add your shipping address so we can send your shipments.');
+        document.getElementById('ship-street').focus();
+        return;
+      }
+      ordering = true;
+      var buyBtn = document.getElementById('buy-btn');
+      buyBtn.disabled = true;
+      buyBtn.textContent = 'Setting up your subscription…';
+      clearInlineMsg();
+      var qty = parseInt(document.getElementById('qty').value, 10); if (!qty || qty < 1) qty = 1;
+      var payload = {
+        items: [{ slug: slug, qty: qty }],
+        cadence_months: parseInt(document.getElementById('sub-cadence').value, 10) || 1,
+        address: { name: (document.getElementById('name').value || '').trim(),
+                   street: _street, city: _city, state: _state, zip: _zip, country: 'US' }
+      };
+      fetch(BASE + '/reorder/subscribe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin', body: JSON.stringify(payload)
+      })
+      .then(function(r){ return r.json().catch(function(){ return { ok:false, error:'HTTP ' + r.status }; }); })
+      .then(function(data){
+        ordering = false;
+        buyBtn.textContent = 'Start my subscription';
+        if (data && data.need_optin && window.OptinGate) {
+          OptinGate.show({ base: BASE, onAgree: function(){ placeSubscription(); } });
+          return;
+        }
+        if (data && data.error === 'not signed in') {
+          setInlineMsg('Please sign in (check your email for a sign-in link) to set up Subscribe & Save.');
+          refreshBuyState();
+          return;
+        }
+        if (!data || !data.ok) {
+          setInlineMsg((data && data.error) ? data.error : 'Could not start your subscription. Please try again.');
+          refreshBuyState();
+          return;
+        }
+        if (data.stripe_url) { window.location.href = data.stripe_url; return; }
+        setInlineMsg('Subscription created, but card setup is unavailable right now. Please try again shortly.');
+        refreshBuyState();
+      })
+      .catch(function(e){
+        ordering = false;
+        buyBtn.textContent = 'Start my subscription';
         setInlineMsg('Connection hiccup: ' + e.message + '. Please try again.');
         refreshBuyState();
       });
