@@ -80,6 +80,61 @@ def test_checkout_cart_persists_qbo_lines_and_token_ref(monkeypatch, tmp_path):
     assert payload["lines"]  # line-faithful payload was stored
 
 
+def test_checkout_cart_charges_subtotal_plus_shipping_not_get(monkeypatch, tmp_path):
+    """Policy (2026-07-16 design spec): GET is absorbed/recorded, never charged;
+    shipping IS charged. So the charged amount (out["total"]) and the stored
+    order total_cents must equal subtotal + shipping -- NOT subtotal + GET
+    (pc["priced"]["total_cents"]) -- and must match the qbo_lines_json payload
+    total (subtotal + shipping, tax_cents 0)."""
+    db = _prep(monkeypatch, tmp_path)
+    # Force a non-zero GET so a bug that charges pc["priced"]["total_cents"]
+    # (subtotal + GET) is distinguishable from the correct subtotal + shipping.
+    import dashboard.tax as _tax_mod
+    monkeypatch.setattr(_tax_mod, "compute_get_cents", lambda *a, **k: 189)
+
+    # Spy on _price_cart to capture its actual (post-discount) priced dict, so the
+    # expected amount doesn't have to duplicate the volume-discount math.
+    captured = {}
+    orig_price_cart = app._price_cart
+
+    def spy_price_cart(*a, **k):
+        pc = orig_price_cart(*a, **k)
+        captured["pc"] = pc
+        return pc
+    monkeypatch.setattr(app, "_price_cart", spy_price_cart)
+
+    r = _client().post("/reorder/checkout",
+                       json={"items": [{"slug": PRODUCT_SLUG, "qty": 6}],
+                             "address": {"state": "HI", "country": "US", "name": "A"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+
+    pc = captured["pc"]
+    get_cents = int(pc["priced"]["get_cents"])
+    shipping_cents = int(pc["shipping_cents"])
+    assert get_cents == 189  # confirms GET really was non-zero for this cart
+    assert shipping_cents == 2295
+    expected_cents = int(pc["priced"]["total_cents"]) - get_cents + shipping_cents
+
+    charged_cents = int(round(float(body["total"]) * 100))
+    assert charged_cents == expected_cents
+
+    ref = body["invoice_id"]
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, ref)
+    assert int(row["total_cents"]) == expected_cents
+    assert int(row["get_cents"]) == 189  # still recorded (absorbed) for remittance
+
+    payload = json.loads(row["qbo_lines_json"])
+    # Lines carry LIST price; the payload's own discount_cents (which does NOT
+    # include GET -- GET isn't on this payload at all) is applied at the
+    # receipt level, same as the real Sales-Receipt booking.
+    list_lines_cents = sum(round(l["amount"] * 100) * l.get("qty", 1) for l in payload["lines"])
+    qbo_total_cents = list_lines_cents - int(payload["discount_cents"])
+    assert qbo_total_cents == expected_cents
+
+
 def test_reorder_stripe_return_settles_pi_points_referral_and_books_once(monkeypatch, tmp_path):
     """PINNING test: a reorder Stripe-return with a non-empty payment-intent must
     still stamp the PaymentIntent, settle points, settle the referral, and book

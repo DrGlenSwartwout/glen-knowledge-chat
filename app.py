@@ -25109,9 +25109,15 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
         "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
         "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
         "tax_cents": 0}
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents.
+    _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                     + int(pc["shipping_cents"]))
     _ingest_order(source="reorder", external_ref=checkout_ref, email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
-                  total_cents=int(pc["priced"]["total_cents"]),
+                  total_cents=_charge_cents,
                   address=ship, channel="retail",
                   get_cents=pc["priced"].get("get_cents", 0),
                   discount_cents=pc["discount_cents"],
@@ -25125,7 +25131,7 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
         print(f"[reorder] persist qbo_lines failed: {_e!r}", flush=True)
     _record_referral_if_any(_ref_ctx, email, checkout_ref)
     out = {"invoice_id": checkout_ref, "doc_number": "",
-           "customer_id": "", "total": round(int(pc["priced"]["total_cents"]) / 100.0, 2)}
+           "customer_id": "", "total": round(_charge_cents / 100.0, 2)}
     stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
     return {"out": out, "stripe_url": stripe_url}
 
@@ -25374,9 +25380,15 @@ def reorder_subscribe():
             "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
             "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
             "tax_cents": 0}
+        # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+        # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal +
+        # GET, so the correct charge (and stored order total) is subtotal +
+        # shipping = total_cents - get_cents + shipping_cents.
+        _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                         + int(pc["shipping_cents"]))
         _ingest_order(source="subscribe", external_ref=checkout_ref, email=email,
                       name=ship.get("name", ""), items=pc["items_rec"],
-                      total_cents=int(pc["priced"]["total_cents"]),
+                      total_cents=_charge_cents,
                       address=ship, channel="retail",
                       get_cents=pc["priced"].get("get_cents", 0),
                       discount_cents=pc["discount_cents"],
@@ -25415,11 +25427,10 @@ def reorder_subscribe():
                 _cx.commit()
             metadata["stash_key"] = stash_key
 
-        total_cents = int(pc["priced"]["total_cents"])
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         sess = stripe_pay.create_checkout_session(
-            total_cents,
+            _charge_cents,
             customer_email=email,
             description="Remedy Match subscription setup",
             metadata=metadata,

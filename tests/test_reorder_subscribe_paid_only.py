@@ -61,10 +61,14 @@ def _prep(monkeypatch, tmp_path, email="sub@x.com"):
     monkeypatch.setattr(app, "_STRIPE_ACTIVE", True)
 
     cap = {}
+
+    def _fake_create_checkout_session(*a, **k):
+        cap.update(k)
+        if a:
+            cap["_charged_cents"] = a[0]
+        return {"id": "cs_1", "url": "https://stripe/setup"}
     import dashboard.stripe_pay as sp
-    monkeypatch.setattr(
-        sp, "create_checkout_session",
-        lambda *a, **k: cap.update(k) or {"id": "cs_1", "url": "https://stripe/setup"})
+    monkeypatch.setattr(sp, "create_checkout_session", _fake_create_checkout_session)
     return db, cap
 
 
@@ -117,6 +121,58 @@ def test_subscribe_order_keyed_on_token_with_qbo_lines_persisted(monkeypatch, tm
     assert payload["lines"]  # line-faithful payload persisted
     # the shipping line rides along in the same lines list (as create_invoice used to get)
     assert any(l.get("name") == "Shipping (USPS)" for l in payload["lines"])
+
+
+def test_subscribe_charges_subtotal_plus_shipping_not_get(monkeypatch, tmp_path):
+    """Policy (2026-07-16 design spec): GET is absorbed/recorded, never charged;
+    shipping IS charged. So the Stripe checkout amount and the stored order
+    total_cents must equal subtotal + shipping -- NOT subtotal + GET
+    (pc["priced"]["total_cents"]) -- and must match the qbo_lines_json payload
+    total (subtotal + shipping, tax_cents 0)."""
+    db, cap = _prep(monkeypatch, tmp_path)
+    import dashboard.tax as _tax_mod
+    monkeypatch.setattr(_tax_mod, "compute_get_cents", lambda *a, **k: 315)
+
+    # Spy on _price_cart to capture its actual (post-discount) priced dict, so the
+    # expected amount doesn't have to duplicate the volume-discount math.
+    captured = {}
+    orig_price_cart = app._price_cart
+
+    def spy_price_cart(*a, **k):
+        pc = orig_price_cart(*a, **k)
+        captured["pc"] = pc
+        return pc
+    monkeypatch.setattr(app, "_price_cart", spy_price_cart)
+
+    r = _client().post(
+        "/reorder/subscribe",
+        json={"items": [{"slug": PRODUCT_SLUG, "qty": 1}], "cadence_months": 1,
+              "address": {"state": "HI", "country": "US", "name": "A"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+
+    pc = captured["pc"]
+    get_cents = int(pc["priced"]["get_cents"])
+    shipping_cents = int(pc["shipping_cents"])
+    assert get_cents == 315  # confirms GET really was non-zero for this cart
+    assert shipping_cents == 2295
+    expected_cents = int(pc["priced"]["total_cents"]) - get_cents + shipping_cents
+
+    charged_cents = cap.get("_charged_cents")
+    assert charged_cents == expected_cents
+
+    token = cap["metadata"]["invoice_id"]
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert int(row["total_cents"]) == expected_cents
+    assert int(row["get_cents"]) == 315  # still recorded (absorbed) for remittance
+
+    payload = json.loads(row["qbo_lines_json"])
+    # Lines carry LIST price; the payload's own discount_cents (which does NOT
+    # include GET -- GET isn't on this payload at all) is applied at the
+    # receipt level, same as the real Sales-Receipt booking.
+    list_lines_cents = sum(round(l["amount"] * 100) * l.get("qty", 1) for l in payload["lines"])
+    qbo_total_cents = list_lines_cents - int(payload["discount_cents"])
+    assert qbo_total_cents == expected_cents
 
 
 def test_subscribe_return_still_writes_subscription_row(monkeypatch, tmp_path):
