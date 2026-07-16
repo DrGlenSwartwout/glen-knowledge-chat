@@ -1,0 +1,158 @@
+import json
+import sqlite3
+
+import app
+from dashboard import orders as O
+from dashboard import qbo_billing
+
+
+def _client():
+    return app.app.test_client()
+
+
+def _isolate_db(monkeypatch, tmp_path):
+    """Point app.LOG_DB at a throwaway sqlite file (never touching the real local
+    chat_log.db) and init the orders schema, mirroring
+    tests/test_biofield_checkout_paid_only.py's _isolate_db fixture (Task 3) --
+    these tests don't stub out _ingest_order, so the orders table must actually
+    exist on the fresh db."""
+    db = str(tmp_path / "log.db")
+    monkeypatch.setattr(app, "LOG_DB", db)
+    cx = sqlite3.connect(db)
+    try:
+        O.init_orders_table(cx)
+        cx.commit()
+    finally:
+        cx.close()
+    return db
+
+
+PRODUCT_SLUG = "brain-boost"
+
+
+def _prep(monkeypatch, tmp_path, method="card"):
+    """Isolate the DB, stub the product catalog with a real-shaped entry (mirrors
+    tests/test_begin_checkout_engine.py's _setup fixture), guard against any QBO
+    invoice write, and stub Stripe session creation so no network call happens."""
+    db = _isolate_db(monkeypatch, tmp_path)
+
+    def boom(*a, **k):
+        raise AssertionError("begin_checkout must not call create_invoice (paid-only)")
+    monkeypatch.setattr(qbo_billing, "create_invoice", boom)
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(
+        app, "_get_product",
+        lambda s: {"slug": s, "name": "Brain Boost", "price_cents": 7000,
+                   "qty_pricing": True, "qbo_item_id": "27"} if s == PRODUCT_SLUG else None)
+    monkeypatch.setattr(app._shipping, "quote", lambda b: {"shipping_cents": 2295})
+
+    import dashboard.stripe_pay as sp
+    monkeypatch.setattr(sp, "create_checkout_session", lambda *a, **k: {"url": "https://s.test"})
+    return db
+
+
+def test_begin_checkout_creates_no_qbo_invoice(monkeypatch, tmp_path):
+    """Guard (mutation-style): begin_checkout must NOT POST an invoice to QBO."""
+    _prep(monkeypatch, tmp_path)
+    r = _client().post(f"/begin/checkout/{PRODUCT_SLUG}",
+                       json={"email": "c@b.com", "name": "C", "qty": 1,
+                             "method": "card",
+                             "address": {"state": "CA", "country": "US", "name": "C"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body.get("invoice_id")  # token under the compat field
+    assert body.get("customer_id") == ""
+
+
+def test_begin_checkout_persists_qbo_lines_and_token_ref(monkeypatch, tmp_path):
+    db = _prep(monkeypatch, tmp_path)
+    r = _client().post(f"/begin/checkout/{PRODUCT_SLUG}",
+                       json={"email": "d@b.com", "name": "D", "qty": 1,
+                             "method": "card",
+                             "address": {"state": "CA", "country": "US", "name": "D"}})
+    ref = r.get_json()["invoice_id"]
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, ref)
+    assert row is not None and row["source"] == "funnel"
+    payload = json.loads(row["qbo_lines_json"])
+    assert payload["lines"]  # line-faithful payload was stored
+
+
+def test_funnel_stripe_return_settles_pi_points_referral_and_books_once(monkeypatch, tmp_path):
+    """PINNING test (closes the gap the Task 4 brief flagged): a funnel Stripe-return
+    with a non-empty payment-intent must still stamp the PaymentIntent, settle points,
+    settle the referral, and book exactly ONE QBO Sales Receipt -- even though the
+    checkout route now sets Stripe metadata customer_id="" (paid-only), which would
+    silently kill all four side effects if the return-handler gate still required a
+    truthy `cid` alongside `inv`."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    token = "chk_pin_test_1"
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    try:
+        oid = O.upsert_order(cx, source="funnel", external_ref=token, email="pin@b.com",
+                             name="Pin", items=[{"slug": PRODUCT_SLUG, "qty": 1}],
+                             total_cents=7000, address={}, channel="retail",
+                             get_cents=0, discount_cents=0, points_redeemed_cents=0,
+                             shipping_cents=0, status="new")
+        O.set_order_qbo_lines(cx, token, {
+            "lines": [{"name": "Brain Boost", "amount": 70.0, "qty": 1}],
+            "discount_cents": 0, "tax_cents": 0})
+    finally:
+        cx.close()
+
+    calls = {"pi": [], "points": [], "referral": [], "booked": []}
+    monkeypatch.setattr(app, "_settle_order_points",
+                        lambda order, *, order_ref: calls["points"].append(order_ref))
+    monkeypatch.setattr(app, "_settle_referral",
+                        lambda order, *, order_ref: calls["referral"].append(order_ref))
+
+    orig_set_pi = app._bos_orders.set_order_stripe_pi
+
+    def spy_set_pi(cx2, order_id, pi):
+        calls["pi"].append((order_id, pi))
+        return orig_set_pi(cx2, order_id, pi)
+    monkeypatch.setattr(app._bos_orders, "set_order_stripe_pi", spy_set_pi)
+
+    import dashboard.qbo_sale as _qs
+    orig_book = _qs.book_sale_on_payment
+
+    def spy_book(cx2, order):
+        calls["booked"].append(order.get("external_ref"))
+        return orig_book(cx2, order)
+    monkeypatch.setattr(_qs, "book_sale_on_payment", spy_book)
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
+    monkeypatch.setattr(qbo_billing, "create_sales_receipt", lambda *a, **k: {"Id": "SR1"})
+
+    import dashboard.stripe_pay as sp
+    monkeypatch.setattr(sp, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 7000, "payment_intent": "pi_123",
+        "metadata": {"kind": "retail", "invoice_id": token, "customer_id": "",
+                     "slug": PRODUCT_SLUG}})
+
+    r = _client().get("/begin/checkout-return?session_id=sess1")
+    assert r.status_code in (301, 302)
+
+    assert calls["pi"] == [(oid, "pi_123")]
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+    assert calls["booked"] == [token]  # exactly one booking call
+
+    cx2 = sqlite3.connect(db); cx2.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx2, token)
+    assert row["qbo_sales_receipt_id"] == "SR1"
+
+    # The generic invoice-apply (record_payment) path must NEVER fire for a
+    # paid-only funnel/retail order -- it has no real QBO customer/invoice to apply to.
+    def boom(*a, **k):
+        raise AssertionError("record_payment must not be called for kind=='retail'")
+    monkeypatch.setattr(qbo_billing, "record_payment", boom)
+    r2 = _client().get("/begin/checkout-return?session_id=sess1")
+    assert r2.status_code in (301, 302)
+    # second pass is idempotent: no second booking call (existing receipt short-circuits)
+    assert calls["booked"] == [token, token]
+    cx3 = sqlite3.connect(db); cx3.row_factory = sqlite3.Row
+    row3 = O.find_order_by_external_ref(cx3, token)
+    assert row3["qbo_sales_receipt_id"] == "SR1"

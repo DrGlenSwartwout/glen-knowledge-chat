@@ -17,6 +17,11 @@ def _setup(monkeypatch):
     monkeypatch.setattr(_qb, "create_invoice", fake_invoice)
     monkeypatch.setattr(_qb, "get_invoice_pay_link", lambda inv: "")
     monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: cap.setdefault("order", kw))
+    # begin_checkout is paid-only (QBO Stage 2): it no longer calls create_invoice, so
+    # the QBO line/discount payload is persisted via set_order_qbo_lines instead --
+    # capture it the same way `order` is captured above.
+    monkeypatch.setattr(appmod._bos_orders, "set_order_qbo_lines",
+                        lambda cx, ref, payload: cap.setdefault("qbo_payload", payload))
     monkeypatch.setattr(appmod, "_stripe_checkout_url_for_retail", lambda *a, **k: "https://stripe/x")
     monkeypatch.setenv("PRICING_ENGINE_CHECKOUT", "true")
     return cap
@@ -29,11 +34,12 @@ def test_begin_checkout_engine_records_discount_and_shipping(monkeypatch):
         "address":{"state":"CA","country":"US","name":"B"}})
     assert r.status_code == 200
     # 6 units → LINEAR volume 13.1818% off 42000 → discount 42000-36464=5536 passed to QBO
-    assert cap["kw"]["discount_cents"] == 5536
+    assert cap["qbo_payload"]["discount_cents"] == 5536
     assert cap["order"]["discount_cents"] == 5536
     assert cap["order"]["shipping_cents"] == 2295
     assert cap["order"]["source"] == "funnel"
-    assert r.get_json()["customer_id"] == "C1"
+    # paid-only: no real QBO customer exists at checkout time
+    assert r.get_json()["customer_id"] == ""
 
 def test_begin_checkout_consent_gate_still_enforced(monkeypatch):
     cap = _setup(monkeypatch)
@@ -57,7 +63,7 @@ def test_begin_checkout_member_gets_order_total_rate(monkeypatch):
         "address":{"state":"CA","country":"US","name":"M"}})
     assert r.status_code == 200
     # 29% order-total rate: 7000 - round(7000*(1-0.29)) = 7000-4970 = 2030
-    assert cap["kw"]["discount_cents"] == 2030
+    assert cap["qbo_payload"]["discount_cents"] == 2030
     assert cap["order"]["discount_cents"] == 2030
 
 def test_begin_checkout_guest_no_order_total_rate(monkeypatch):
@@ -73,5 +79,5 @@ def test_begin_checkout_guest_no_order_total_rate(monkeypatch):
         "email":"guest@x.com","name":"G","method":"card","qty":1,
         "address":{"state":"CA","country":"US","name":"G"}})
     assert r.status_code == 200
-    assert cap["kw"]["discount_cents"] == 0
+    assert cap["qbo_payload"]["discount_cents"] == 0
     assert cap["order"]["discount_cents"] == 0

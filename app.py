@@ -15,6 +15,7 @@ import os
 import re
 import json
 import uuid
+import uuid as _uuid
 import time
 import secrets
 import sqlite3
@@ -8334,30 +8335,33 @@ def biofield_checkout():
     charged_cents = pc["priced"]["total_cents"]
     redeemed = pc["points_redeemed_cents"]
 
-    from dashboard import qbo_billing as qb
-    cust = qb.find_or_create_customer(email, name)
-    inv = qb.create_invoice(cust, pc["qbo_lines"], allow_online_pay=_QBO_PAYMENTS_ACTIVE,
-                            email_to=email,
-                            discount_cents=pc["discount_cents"] + redeemed)
-    out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {"lines": pc["qbo_lines"],
+                   "discount_cents": pc["discount_cents"] + redeemed, "tax_cents": 0}
+    out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(charged_cents / 100.0, 2)}
 
-    _ingest_order(source="biofield", external_ref=inv.get("Id"), email=email, name=name,
+    _ingest_order(source="biofield", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"], total_cents=charged_cents, channel="retail",
                   get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
                   points_redeemed_cents=redeemed, shipping_cents=0)
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[biofield] persist qbo_lines failed: {_e!r}", flush=True)
     try:
         from dashboard import stripe_pay
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         metadata = {"kind": "biofield", "email": email,
-                    "invoice_id": inv.get("Id") or "",
-                    "customer_id": cust.get("Id") or "",
+                    "invoice_id": checkout_ref,
+                    "customer_id": "",
                     "points_redeemed_cents": str(int(redeemed)),
                     "tier": tier}
         sess = stripe_pay.create_checkout_session(
             charged_cents, customer_email=email,
-            description=f"{PROGRAM_TIERS[tier]['name']} #{inv.get('DocNumber') or ''}",
+            description=f"{PROGRAM_TIERS[tier]['name']}",
             metadata=metadata, success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin")
         out["stripe_url"] = sess.get("url") or ""
@@ -8398,7 +8402,6 @@ def begin_checkout(slug):
                         "error": "Please add your name and agree to our Terms "
                                  "to place an order."}), 403
     session_id = request.cookies.get("amg_session", "")
-    from dashboard import qbo_billing as qb
     try:
         redeem = int((data.get("points_to_redeem_cents") or 0))
     except (TypeError, ValueError):
@@ -8428,19 +8431,19 @@ def begin_checkout(slug):
     # GET is absorbed, not charged). Folded into the invoice discount so the charge
     # drops; the ledger is debited centrally at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
-    cust = qb.find_or_create_customer(email, name)
-    allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
-    inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-                            allow_online_pay=allow_online, email_to=email,
-                            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {
+        "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
+        "tax_cents": 0}
     _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
     if not _gift_won:
-        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        _record_referral_if_any(_ref_ctx, email, checkout_ref)
     if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
         try:
             from dashboard import coupons as _coupons
             with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
-                _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+                _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=checkout_ref)
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
     if _gift_won:
@@ -8448,14 +8451,13 @@ def begin_checkout(slug):
             from dashboard import coupons as _coupons
             from dashboard import referrals as _rf
             with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
-                _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
-                _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
+                _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=checkout_ref)
+                _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, checkout_ref)
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
-    out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
-           "method": method, "customer_id": cust.get("Id"),
-           "pay_link": qb.get_invoice_pay_link(inv)}
+    out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
+           "total": round(int(pc["priced"]["total_cents"]) / 100.0, 2),
+           "method": method, "customer_id": ""}
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -8465,14 +8467,19 @@ def begin_checkout(slug):
             cx.commit()
     except Exception:
         pass
-    _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+    _ingest_order(source="funnel", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"],
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  total_cents=int(pc["priced"]["total_cents"]),
                   address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[funnel] persist qbo_lines failed: {_e!r}", flush=True)
     if method in ("zelle", "wise"):
         out["pay_instructions"] = _ALT_PAY.get(method, {})
     elif method == "card" and _STRIPE_ACTIVE:
@@ -8494,7 +8501,7 @@ def begin_checkout(slug):
     try:
         disp = (request.cookies.get("rm_dispensary") or "").strip()
         if disp:
-            _record_dispensary_sale(disp, email, qty, inv.get("Id"))
+            _record_dispensary_sale(disp, email, qty, checkout_ref)
     except Exception as e:
         print(f"[dispensary] hook: {e!r}", flush=True)
     return jsonify(out)
@@ -9399,14 +9406,24 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                if inv and cid:
-                    if _kind != "in-house":
+                # NOTE: retail/funnel checkout (begin_checkout) is paid-only as of the QBO
+                # Stage 2 migration -- it sets metadata customer_id="" (no QBO customer/
+                # invoice exists at checkout time), so `cid` is always falsy for kind=="retail".
+                # The outer gate is therefore `inv` alone (not `inv and cid`), and each inner
+                # side effect is individually scoped: record_payment (invoice-apply) requires
+                # a real `cid` and excludes biofield/retail (paid-only, nothing to apply to);
+                # the stripe-pi/points/referral/booking block fires whenever there's a real
+                # `cid` (unaffected kinds, e.g. reorder) OR kind=="retail" (paid-only funnel).
+                # biofield is excluded here on purpose -- it has its own dedicated block below
+                # (kind=="biofield") so it isn't double-settled/double-booked via this path.
+                if inv:
+                    if cid and _kind != "in-house" and _kind not in ("biofield", "retail"):
                         try:
                             from dashboard import qbo_billing as _qb_ret
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id:
+                    if pi_id and (cid or _kind in ("retail",)):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -9430,6 +9447,23 @@ def begin_checkout_return():
                                 _settle_referral(_o_for_points, order_ref=inv)
                             except Exception as _re:
                                 print(f"[rewards] referral settle failed inv={inv}: {_re!r}", flush=True)
+                            # ── Book ONE line-faithful QBO Sales Receipt now that payment is
+                            # confirmed. Paid-only (retail/funnel) orders carry a qbo_lines_json
+                            # payload from checkout; idempotent via qbo_sales_receipt_id; a
+                            # harmless no-op for invoice-based kinds (e.g. reorder) that have no
+                            # stored qbo_lines_json. ──
+                            try:
+                                from dashboard import qbo_sale as _qsale
+                                _fcxo2 = _sqlite3.connect(LOG_DB); _fcxo2.row_factory = _sqlite3.Row
+                                try:
+                                    _fo2 = _bos_orders.find_order_by_external_ref(_fcxo2, inv)
+                                    if _fo2:
+                                        _qsale.book_sale_on_payment(_fcxo2, dict(_fo2))
+                                finally:
+                                    _fcxo2.close()
+                            except Exception as _fqe:
+                                print(f"[begin-return] qbo sale booking failed inv={inv}: {_fqe!r}",
+                                      flush=True)
 
                 # ── Subscribe kind: vault the card and create the subscription row ──
                 if md.get("kind") == "subscribe" and pi_id:
@@ -9626,6 +9660,47 @@ def begin_checkout_return():
                                     _settle_order_points(_bo, order_ref=bf_inv)
                             except Exception as _bpe:
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
+                                      flush=True)
+                            # Book ONE line-faithful QBO Sales Receipt now that payment is
+                            # confirmed (paid-only; idempotent via qbo_sales_receipt_id).
+                            try:
+                                from dashboard import qbo_sale as _qsale
+                                _bcxo2 = _sqlite3.connect(LOG_DB); _bcxo2.row_factory = _sqlite3.Row
+                                try:
+                                    _bo2 = _bos_orders.find_order_by_external_ref(_bcxo2, bf_inv)
+                                    if _bo2:
+                                        _qsale.book_sale_on_payment(_bcxo2, dict(_bo2))
+                                finally:
+                                    _bcxo2.close()
+                            except Exception as _bqe:
+                                print(f"[biofield] qbo sale booking failed inv={bf_inv}: {_bqe!r}",
+                                      flush=True)
+                            # Stamp the Stripe PaymentIntent onto the order (mirrors the
+                            # non-biofield gate above, which is dead here since biofield
+                            # checkout sets metadata customer_id="").
+                            if pi_id:
+                                try:
+                                    _bcxo3 = _sqlite3.connect(LOG_DB); _bcxo3.row_factory = _sqlite3.Row
+                                    try:
+                                        _bo3 = _bos_orders.find_order_by_external_ref(_bcxo3, bf_inv)
+                                        if _bo3:
+                                            _bos_orders.set_order_stripe_pi(_bcxo3, _bo3["id"], pi_id)
+                                    finally:
+                                        _bcxo3.close()
+                                except Exception as _bpie:
+                                    print(f"[biofield] stripe pi stamp failed inv={bf_inv}: {_bpie!r}",
+                                          flush=True)
+                            # ── Referral crediting (points or cash to referrer) ──
+                            try:
+                                _bcxo4 = _sqlite3.connect(LOG_DB); _bcxo4.row_factory = _sqlite3.Row
+                                try:
+                                    _bo4 = _bos_orders.find_order_by_external_ref(_bcxo4, bf_inv)
+                                finally:
+                                    _bcxo4.close()
+                                if _bo4:
+                                    _settle_referral(dict(_bo4), order_ref=bf_inv)
+                            except Exception as _bre:
+                                print(f"[biofield] referral settle failed inv={bf_inv}: {_bre!r}",
                                       flush=True)
                             # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
                             # Shared with the Stripe webhook (below) so a closed tab still
@@ -9912,10 +9987,13 @@ def begin_concierge_chat():
 
 @app.route("/begin/concierge/add", methods=["POST"])
 def begin_concierge_add():
-    """Add a catalog complement to the member's existing (unpaid) invoice."""
+    """Add a catalog complement to the member's pending (unpaid) order. Paid-only:
+    there is no live QBO invoice to append to pre-payment, so this appends the line
+    to the order's qbo_lines_json and re-totals; the Sales Receipt booked at payment
+    reads qbo_lines_json, so that's sufficient -- no QBO call happens here."""
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
-    invoice_id = (data.get("invoice_id") or "").strip()
+    invoice_id = (data.get("invoice_id") or "").strip()  # checkout_ref token (frontend compat name)
     _sid = (request.cookies.get("amg_session") or "").strip()
     email = (data.get("email") or "").strip().lower()
     if not is_member(_sid, email):
@@ -9930,16 +10008,39 @@ def begin_concierge_add():
         qty = max(1, min(int(data.get("qty", 1) or 1), 99))
     except Exception:
         qty = 1
+    unit = round(p["price_cents"] / 100.0, 2)
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
     try:
-        from dashboard import qbo_billing as qb
-        unit = round(p["price_cents"] / 100.0, 2)
-        inv = qb.add_invoice_line(invoice_id, name=p["name"], amount=unit, qty=qty,
-                                  item_id=p.get("qbo_item_id"), description=p["name"])
+        order = _bos_orders.find_order_by_external_ref(cx, invoice_id)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        payload = (json.loads(order["qbo_lines_json"]) if order["qbo_lines_json"]
+                   else {"lines": [], "discount_cents": 0, "tax_cents": 0})
+        payload.setdefault("lines", [])
+        payload["lines"].append({"name": p["name"], "amount": unit, "qty": qty})
+        _bos_orders.set_order_qbo_lines(cx, invoice_id, payload)
+        new_total = int(order["total_cents"] or 0) + int(round(unit * qty * 100))
+        # Re-total via upsert_order (idempotent on source+external_ref). upsert_order
+        # unconditionally overwrites email/name/phone/channel/get_cents/discount_cents/
+        # points_redeemed_cents/shipping_cents/adjustment_cents on every call, so pass
+        # the order's current values through -- otherwise a re-total here would zero
+        # them out (see the ff-match-drafts route's warning on this same footgun).
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=invoice_id,
+            email=order.get("email") or "", name=order.get("name") or "",
+            phone=order.get("phone") or "", channel=order.get("channel") or "retail",
+            total_cents=new_total, get_cents=order.get("get_cents") or 0,
+            discount_cents=order.get("discount_cents") or 0,
+            points_redeemed_cents=order.get("points_redeemed_cents") or 0,
+            shipping_cents=order.get("shipping_cents") or 0,
+            adjustment_cents=order.get("adjustment_cents") or 0)
         return jsonify({"ok": True, "added": p["name"], "qty": qty,
-                        "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-                        "total": inv.get("TotalAmt")})
+                        "total": round(new_total / 100.0, 2)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        cx.close()
 
 
 @app.route("/api/qbo/price-coverage", methods=["GET"])

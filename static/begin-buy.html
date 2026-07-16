@@ -742,24 +742,14 @@
       hide('checkout');
 
       var head = document.getElementById('cc-head');
-      var doc = data.doc_number ? ('#' + data.doc_number) : '';
       var total = (data.total != null) ? data.total : '';
-      head.textContent = 'Invoice ' + doc + ' created for $' + total + '.';
+      head.textContent = 'Order received — $' + total + '.';
 
       if (data.method === 'card') {
         if (data.stripe_url) { window.location.href = data.stripe_url; return; }
-        var link = (data.pay_link || '').trim();
-        if (link) {
-          var payLink = document.getElementById('pay-link');
-          payLink.setAttribute('href', link);
-          payLink.classList.remove('hidden');
-          document.getElementById('cc-email-note').textContent =
-            'A copy of your invoice is on its way to your email as well.';
-        } else {
-          document.getElementById('cc-email-note').textContent =
-            data.payment_error ||
-            'Card payment isn’t enabled yet. Please use Zelle or Wise to complete this order, and they earn you extra points too.';
-        }
+        document.getElementById('cc-email-note').textContent =
+          data.payment_error ||
+          'Card payment isn’t enabled yet. Please use Zelle or Wise to complete this order, and they earn you extra points too.';
       } else {
         // Zelle / Wise: show pay-to instructions.
         var pi = data.pay_instructions || {};
