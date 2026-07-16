@@ -903,6 +903,18 @@ def _record_payment_exec(params, ctx):
             settle_dispensary_margin(_o, _o.get("external_ref"))
         except Exception as _de:
             print(f"[dispensary] altpay settle (l2+margin) skipped: {_de!r}", flush=True)
+    # Book ONE line-faithful QBO Sales Receipt now that payment is confirmed (alt-pay
+    # parity with the Stripe-return path). Local import -- qbo_sale imports this module,
+    # so a module-level import here would be circular; this function-scoped import is
+    # safe since both modules are already fully loaded by call time. Best-effort +
+    # idempotent (via qbo_sales_receipt_id) + a harmless no-op for orders with no stored
+    # qbo_lines_json (invoice-based kinds not yet converted to paid-only).
+    try:
+        from . import qbo_sale as _qsale
+        if _o:
+            _qsale.book_sale_on_payment(cx, _o)
+    except Exception as _qe:
+        print(f"[orders] qbo sale booking skipped for #{oid}: {_qe!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
