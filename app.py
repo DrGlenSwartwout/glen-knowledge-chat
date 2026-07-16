@@ -6371,8 +6371,8 @@ def begin_product_data(slug):
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
     }
-    _viewer_email = ((get_authenticated_user(request) or {}).get("email", "")
-                     or request.cookies.get("rm_reorder_email", ""))
+    _viewer_email = (((get_authenticated_user(request) or {}).get("email", "")
+                      or request.cookies.get("rm_reorder_email", "")).strip().lower())
     # Autoship eligibility: a bundle must carry autoship_eligible (device bundles are
     # false); a single SKU must be a Functional Formulation (_qty_eligible = qty_pricing
     # and not info_only), which excludes devices (ionizers/nightlights) and services.

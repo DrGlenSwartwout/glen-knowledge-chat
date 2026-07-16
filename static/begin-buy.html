@@ -804,6 +804,10 @@
             if (payField) payField.classList.toggle('hidden', sub);
             var reassure = document.querySelector('.reassure');
             if (reassure) reassure.classList.toggle('hidden', sub);
+            // The one-time group-coaching add-on rides one-time orders only; hide it in
+            // Subscribe mode, and restore it in one-time mode only if this product offers it.
+            var gb = document.getElementById('group-bundle-opt');
+            if (gb) { if (sub) { gb.classList.add('hidden'); } else if (p.group_bundle_enabled) { gb.classList.remove('hidden'); } }
             refreshBuyState();
           });
         });
