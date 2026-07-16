@@ -19221,6 +19221,31 @@ def _client_facts_for(email):
         return {}
 
 
+_CLIENT_FACT_COPY = {
+    "on_areds2": {
+        "label": "I'm already taking an AREDS2 eye formula (e.g. PreserVision).",
+        "hint": "We'll skip the three Macular Wellness carotenoids your AREDS2 already covers.",
+    },
+}
+
+
+def _client_facts_offered(prog, facts):
+    """Client-reported modifier facts this program exposes, with current values.
+    De-duped by modifier `when`; only keys we have copy for are surfaced."""
+    out, seen = [], set()
+    for mod in (prog.get("modifiers") or []):
+        if mod.get("source") != "client-reported":
+            continue
+        key = mod.get("when")
+        if not key or key in seen or key not in _CLIENT_FACT_COPY:
+            continue
+        seen.add(key)
+        copy = _CLIENT_FACT_COPY[key]
+        out.append({"key": key, "label": copy["label"], "hint": copy["hint"],
+                    "value": bool(facts.get(key))})
+    return out
+
+
 PRL_LINK = "https://truly.vip/prl"  # Glen's practitioner ordering link (code 021a1a)
 
 
@@ -19338,14 +19363,19 @@ def _support_program_for(email):
             prog = condition_programs.get(cx, key)
         if not prog:
             return None
+        facts = _client_facts_for(email)
         resolved = condition_programs.resolve_program_items(
-            prog, audience="client", client_facts=_client_facts_for(email))
-        return {
+            prog, audience="client", client_facts=facts)
+        result = {
             "condition_key": prog["condition_key"],
             "label": prog["label"],
             "consult_recommended": bool(prog["consult_recommended"]),
             "items": [_support_program_item_view(it) for it in resolved],
         }
+        offered = _client_facts_offered(prog, facts)
+        if offered:
+            result["client_facts"] = offered
+        return result
     except Exception:
         return None
 
