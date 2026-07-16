@@ -60,3 +60,30 @@ def test_flag_off_rung_is_excluded(tmp_path):
     # only biofield flag on -> live_group hidden even though unowned
     offers = po.next_offers(cx, "new@x.com", ["client"], enabled_keys={"biofield"})
     assert [o["key"] for o in offers] == ["biofield"]
+
+
+def test_membership_grant_hides_live_group_offer(tmp_path):
+    """Integration test for the actual wiring: portal_offers._owns_group ->
+    membership_products.owns_group. A membership_month grant with NO
+    subscriptions row must still hide the live_group upsell — a wrong import
+    or an inverted condition here would pass every isolated owns_group test
+    while silently failing to hide the rung."""
+    import datetime
+    import uuid
+    from dashboard import portal_offers as po
+    cx = _conn(tmp_path)
+    cx.execute("""CREATE TABLE IF NOT EXISTS memberships (
+        id TEXT PRIMARY KEY, email TEXT NOT NULL, granted_at TEXT NOT NULL,
+        expires_at TEXT, granted_by TEXT, source TEXT, truly_vip_ref TEXT,
+        notes TEXT, last_reminder_at TEXT)""")
+    now = datetime.datetime.utcnow()
+    granted_at = now.isoformat()
+    expires_at = (now + datetime.timedelta(days=30)).isoformat()
+    cx.execute(
+        "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (uuid.uuid4().hex, "grant@x.com", granted_at, expires_at,
+         "membership_month", "membership_month"))
+    cx.commit()
+    offers = po.next_offers(cx, "grant@x.com", ["client"], enabled_keys=ALL)
+    assert "live_group" not in [o["key"] for o in offers]
