@@ -9987,10 +9987,13 @@ def begin_concierge_chat():
 
 @app.route("/begin/concierge/add", methods=["POST"])
 def begin_concierge_add():
-    """Add a catalog complement to the member's existing (unpaid) invoice."""
+    """Add a catalog complement to the member's pending (unpaid) order. Paid-only:
+    there is no live QBO invoice to append to pre-payment, so this appends the line
+    to the order's qbo_lines_json and re-totals; the Sales Receipt booked at payment
+    reads qbo_lines_json, so that's sufficient -- no QBO call happens here."""
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
-    invoice_id = (data.get("invoice_id") or "").strip()
+    invoice_id = (data.get("invoice_id") or "").strip()  # checkout_ref token (frontend compat name)
     _sid = (request.cookies.get("amg_session") or "").strip()
     email = (data.get("email") or "").strip().lower()
     if not is_member(_sid, email):
@@ -10005,16 +10008,39 @@ def begin_concierge_add():
         qty = max(1, min(int(data.get("qty", 1) or 1), 99))
     except Exception:
         qty = 1
+    unit = round(p["price_cents"] / 100.0, 2)
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
     try:
-        from dashboard import qbo_billing as qb
-        unit = round(p["price_cents"] / 100.0, 2)
-        inv = qb.add_invoice_line(invoice_id, name=p["name"], amount=unit, qty=qty,
-                                  item_id=p.get("qbo_item_id"), description=p["name"])
+        order = _bos_orders.find_order_by_external_ref(cx, invoice_id)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        payload = (json.loads(order["qbo_lines_json"]) if order["qbo_lines_json"]
+                   else {"lines": [], "discount_cents": 0, "tax_cents": 0})
+        payload.setdefault("lines", [])
+        payload["lines"].append({"name": p["name"], "amount": unit, "qty": qty})
+        _bos_orders.set_order_qbo_lines(cx, invoice_id, payload)
+        new_total = int(order["total_cents"] or 0) + int(round(unit * qty * 100))
+        # Re-total via upsert_order (idempotent on source+external_ref). upsert_order
+        # unconditionally overwrites email/name/phone/channel/get_cents/discount_cents/
+        # points_redeemed_cents/shipping_cents/adjustment_cents on every call, so pass
+        # the order's current values through -- otherwise a re-total here would zero
+        # them out (see the ff-match-drafts route's warning on this same footgun).
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=invoice_id,
+            email=order.get("email") or "", name=order.get("name") or "",
+            phone=order.get("phone") or "", channel=order.get("channel") or "retail",
+            total_cents=new_total, get_cents=order.get("get_cents") or 0,
+            discount_cents=order.get("discount_cents") or 0,
+            points_redeemed_cents=order.get("points_redeemed_cents") or 0,
+            shipping_cents=order.get("shipping_cents") or 0,
+            adjustment_cents=order.get("adjustment_cents") or 0)
         return jsonify({"ok": True, "added": p["name"], "qty": qty,
-                        "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-                        "total": inv.get("TotalAmt")})
+                        "total": round(new_total / 100.0, 2)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        cx.close()
 
 
 @app.route("/api/qbo/price-coverage", methods=["GET"])
