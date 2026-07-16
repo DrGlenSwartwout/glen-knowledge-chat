@@ -283,9 +283,9 @@ def _refund_order_exec(params, ctx):
     if params.get("order_id"):
         from dashboard.orders import get_order
         order = get_order(cx, int(params["order_id"]))
-        if not order:
+        if not order and not invoice_id:
             raise ValueError(f"order #{params['order_id']} not found")
-        if not invoice_id:
+        if order and not invoice_id:
             invoice_id = order.get("external_ref")
     if not invoice_id:
         raise ValueError("invoice_id or order_id required")
@@ -322,8 +322,10 @@ def _refund_order_exec(params, ctx):
     pi = (params.get("stripe_payment_intent") or "").strip()
     if not pi and cx is not None:
         try:
-            from dashboard.orders import find_order_by_external_ref
-            o = find_order_by_external_ref(cx, invoice_id)
+            o = order
+            if o is None:
+                from dashboard.orders import find_order_by_external_ref
+                o = find_order_by_external_ref(cx, invoice_id)
             pi = (o or {}).get("stripe_payment_intent") or ""
         except Exception:
             pi = ""
