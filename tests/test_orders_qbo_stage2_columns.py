@@ -42,3 +42,12 @@ def test_set_sales_receipt_id_stamps_order(tmp_path):
 def test_set_qbo_lines_unknown_ref_returns_false(tmp_path):
     cx = _fresh_db(tmp_path)
     assert O.set_order_qbo_lines(cx, "nope", {"lines": []}) is False
+
+
+def test_claim_sales_receipt_slot_is_single_winner(tmp_path):
+    cx = _fresh_db(tmp_path)
+    oid = _new_order(cx, "tok-3")
+    assert O.claim_sales_receipt_slot(cx, oid) is True
+    assert O.get_order(cx, oid)["qbo_sales_receipt_id"] == "PENDING"
+    # a second caller (refresh/race) must lose the claim
+    assert O.claim_sales_receipt_slot(cx, oid) is False

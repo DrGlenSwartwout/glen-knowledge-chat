@@ -449,6 +449,22 @@ def set_order_sales_receipt_id(cx, order_id, sales_receipt_id):
     return cur.rowcount > 0
 
 
+def claim_sales_receipt_slot(cx, order_id):
+    """Atomically claim the QBO booking slot for an order: qbo_sales_receipt_id
+    NULL -> 'PENDING' in a single conditional UPDATE. Returns True only for the
+    caller that won the transition (it MUST then book exactly one Sales Receipt and
+    overwrite 'PENDING' with the real id via set_order_sales_receipt_id). Returns
+    False if the slot is already claimed or booked -- that caller must NOT book. This
+    is what prevents a double Sales Receipt on a checkout-return refresh, a
+    webhook+redirect race, or an alt-pay+card race."""
+    cur = cx.execute(
+        "UPDATE orders SET qbo_sales_receipt_id='PENDING', updated_at=? "
+        "WHERE id=? AND qbo_sales_receipt_id IS NULL",
+        (_now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
 def find_order_by_external_ref(cx, external_ref):
     cur = cx.execute("SELECT * FROM orders WHERE external_ref=? ORDER BY id DESC LIMIT 1",
                      (str(external_ref),))
