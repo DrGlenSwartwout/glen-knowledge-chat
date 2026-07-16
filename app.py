@@ -3493,6 +3493,43 @@ def _continuous_care_checkout_session(email, term_months):
         save_card=True)
 
 
+def _membership_checkout_session(email, tier_key):
+    """Create the membership-tier Stripe checkout session. Single source of truth
+    for metadata / save_card / success+cancel URLs for /membership/checkout. One-time
+    tiers (month, year_prepay) never vault a card; the recurring_capped tier
+    (year_monthly) vaults it so the charge cron can bill months 2..12. Returns the
+    session dict (read .get("url"))."""
+    from dashboard import membership_products as _mp
+    tier = _mp.get_tier(tier_key)
+    base = PUBLIC_BASE_URL.rstrip("/")
+    return stripe_pay.create_checkout_session(
+        tier["price_cents"], customer_email=email,
+        description=f"Remedy Match {tier['label']}",
+        metadata={"email": email, "kind": "membership_product", "tier": tier_key},
+        success_url=f"{base}/membership/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/",
+        save_card=(tier["billing"] == "recurring_capped"))
+
+
+@app.route("/membership/checkout", methods=["POST"])
+def membership_checkout():
+    """Start a Stripe Checkout for a membership product tier (month / year_monthly /
+    year_prepay). Public, flag-gated: 404s unless MEMBERSHIP_PRODUCTS_ENABLED and
+    _STRIPE_ACTIVE are both on."""
+    if not (MEMBERSHIP_PRODUCTS_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"error": "not found"}), 404
+    from dashboard import membership_products as _mp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tier_key = (data.get("tier") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not _mp.get_tier(tier_key):
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    sess = _membership_checkout_session(email, tier_key)
+    return jsonify({"ok": True, "url": sess.get("url", "")})
+
+
 @app.route("/continuous-care/checkout", methods=["POST"])
 def continuous_care_checkout():
     """Start a Stripe Checkout for Continuous Care MONTHLY (6 or 12 month fixed
@@ -5280,6 +5317,10 @@ BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAY
 PROGRAM_CARE_TASTER_ENABLED = os.environ.get("PROGRAM_CARE_TASTER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PROGRAM_CARE_TASTER_DAYS = 30
 CARE_TASTER_SOURCE = "care_taster"
+# Membership products: the three buyable membership tiers (month / year_monthly /
+# year_prepay) get their own public Stripe checkout door. Default OFF (dark-launch) —
+# when off, /membership/checkout 404s and the console manual-enroll path is unaffected.
+MEMBERSHIP_PRODUCTS_ENABLED = os.environ.get("MEMBERSHIP_PRODUCTS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Program → deposit front door, Task 3: the $1 biofield deposit is credited to the
 # buyer's points balance (1 point = 1c redemption value, per dashboard.points), and
 # auto-redeemed at program checkout so it applies as $1 off the program price.
