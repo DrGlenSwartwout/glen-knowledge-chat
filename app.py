@@ -9093,6 +9093,28 @@ def _book_membership_qbo(email, tier):
         print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}", flush=True)
 
 
+def _record_membership_reconcile_alert(cx, session_id, email, tier):
+    """Durable, owner-retrievable alert for the duplicate_member case in
+    _fulfill_membership_product: an active membership already existed at
+    year_monthly fulfillment, so no new subscription was created for the
+    month-1 charge just taken -- it needs manual reconcile. Idempotent on
+    session_id (INSERT OR IGNORE), on the caller's connection/transaction.
+    Best-effort: a failure here must never break the grant-extend/return path
+    the caller is on, so every error is swallowed and logged."""
+    try:
+        cx.execute(
+            "INSERT OR IGNORE INTO membership_reconcile_alerts "
+            "(session_id, email, tier, amount_cents, note, created_at, status) "
+            "VALUES (?,?,?,?,?,?,'open')",
+            (session_id, email, tier["key"], tier["price_cents"],
+             "member already had an active membership; month-1 charge needs "
+             "manual reconcile", datetime.utcnow().isoformat() + "Z"))
+        cx.commit()
+    except Exception as e:
+        print(f"[membership] reconcile-alert record failed sid={session_id}: {e!r}",
+              flush=True)
+
+
 def _fulfill_membership_product(session_id):
     """Fulfill a /membership/checkout Stripe session for a membership-product
     tier (month / year_monthly / year_prepay from dashboard.membership_products),
@@ -9106,6 +9128,7 @@ def _fulfill_membership_product(session_id):
     "no_card" | "not_paid" | "already" | "skip"."""
     from dashboard import membership_products as _mp
     from dashboard import subscriptions as _subs
+    from dashboard import prepay as _pp
     from datetime import date as _date
     try:
         sess = stripe_pay.get_session(session_id)
@@ -9172,18 +9195,30 @@ def _fulfill_membership_product(session_id):
                 _subs.migrate_add_term_cap_column(cx)
                 _subs.migrate_add_attribution_column(cx)
                 _subs.migrate_add_consent_column(cx)
+                # Rolling ~1-month access window off the month-1 charge — mirrors
+                # _fulfill_continuous_care_monthly, which grants term_days(1 month) + a
+                # 4-day grace rather than the full term up front. The charge cron
+                # (_extend_membership_grant, tagged "membership_renewal") extends this
+                # on each successful monthly charge, so access rolls forward with
+                # payment and stops if payment stops. NOT `days` (that is the full
+                # 12-month grant.grant_days window, still correct for the one_time
+                # tiers below, which are never billed again).
+                roll_days = _pp.term_days(today_s, 1) + 4
                 if _subs.active_memberships_by_email(cx, email):
                     # Never create a SECOND active membership for an email that
                     # already has one — the charge cron bills every active
                     # membership row, so a duplicate row = double $99/mo. Still
-                    # extend the access grant for the month just paid.
+                    # extend the access grant for the month just paid (rolling
+                    # window, not the full term — same reasoning as above: there is
+                    # no new subscription here to justify more than one month).
                     until = datetime.combine(
-                        today + timedelta(days=days), datetime.min.time()).isoformat() + "Z"
+                        today + timedelta(days=roll_days), datetime.min.time()).isoformat() + "Z"
                     _extend_membership_grant(cx, email, until, tier["source"])
                     cx.commit()
                     print(f"[membership] {email} already has an active membership; "
                           f"NOT creating a 2nd sub (session={session_id}) — reconcile "
                           f"the duplicate month-1 charge manually", flush=True)
+                    _record_membership_reconcile_alert(cx, session_id, email, tier)
                     return "duplicate_member"
                 # order_count=1 records the month-1 charge just taken at checkout, so
                 # membership_category reads 'full' (member pricing) immediately.
@@ -9194,7 +9229,7 @@ def _fulfill_membership_product(session_id):
                     next_charge_date=_subs.add_months(today_s, 1),
                     cadence_months=tier["cadence_months"],
                     term_charges_total=tier["term_charges"], initial_order_count=1)
-                _grant_membership(cx, email, days, tier["source"])
+                _grant_membership(cx, email, roll_days, tier["source"])
                 cx.commit()
             else:  # one_time (month, year_prepay) — grant-only, never billed again
                 _grant_membership(cx, email, days, tier["source"])
@@ -11201,6 +11236,16 @@ def init_membership_tables(cx):
           email       TEXT,
           tier        TEXT,
           created_at  TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS membership_reconcile_alerts (
+          session_id    TEXT PRIMARY KEY,
+          email         TEXT,
+          tier          TEXT,
+          amount_cents  INTEGER,
+          note          TEXT,
+          created_at    TEXT,
+          status        TEXT DEFAULT 'open'
         );
     """)
 
@@ -37015,6 +37060,28 @@ def console_membership_enroll():
     if tier["billing"] == "recurring_capped":
         out["note"] = "no auto-billing; bill monthly by hand or use /membership/checkout"
     return jsonify(out)
+
+
+@app.route("/api/console/membership/reconcile-alerts", methods=["GET"])
+def console_membership_reconcile_alerts():
+    """Owner-only: open membership_reconcile_alerts rows -- the duplicate-member
+    orphaned-charge case from _fulfill_membership_product, where a month-1
+    charge was taken but no new subscription was created because the email
+    already had an active membership. Newest first."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        init_membership_tables(cx)
+        rows = cx.execute(
+            "SELECT session_id, email, tier, amount_cents, note, created_at, status "
+            "FROM membership_reconcile_alerts WHERE status='open' "
+            "ORDER BY created_at DESC").fetchall()
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "alerts": [dict(r) for r in rows]})
 
 
 @app.route("/api/console/shipments/suggestions", methods=["GET"])
