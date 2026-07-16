@@ -879,6 +879,34 @@ document.addEventListener("change", function(ev){
   });
 });
 
+// Add-to-invoice is delegated (not per-render) so it survives the .cf-toggle
+// live card re-render, which swaps the card's outerHTML and would otherwise
+// orphan a getElementById-bound listener. Self-contained: re-reads token,
+// ?member=, and the message element at click time.
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest ? ev.target.closest("#spAddToInvoiceBtn") : null;
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const spAddMsg = document.getElementById("spAddToInvoiceMsg");
+  if (spAddMsg) spAddMsg.hidden = true;
+  try {
+    const memberParam = new URLSearchParams(location.search).get("member");
+    const u = `/api/portal/${encodeURIComponent(token)}/support-program/add-to-invoice`
+      + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+    const r = await fetch(u, {method:"POST"});
+    const j = await r.json().catch(()=>null);
+    if (r.ok && j && j.ok) {
+      if (spAddMsg){ spAddMsg.textContent = "Added to your next invoice — Rae will finalize it."; spAddMsg.hidden = false; }
+    } else {
+      if (spAddMsg){ spAddMsg.textContent = "Something went wrong — please try again."; spAddMsg.hidden = false; }
+      btn.disabled = false;
+    }
+  } catch(e) {
+    if (spAddMsg){ spAddMsg.textContent = "Something went wrong — please try again."; spAddMsg.hidden = false; }
+    btn.disabled = false;
+  }
+});
+
 function render(d, v){
   d = d || {};
   // Premium element backdrop: key the Glendalf scene off the member's deficient
@@ -2156,46 +2184,6 @@ function render(d, v){
         ffAddMsg.hidden = false;
       }
       ffAddBtn.disabled = false;
-    }
-  });
-
-  // Support-program "Add my program to my invoice" button (Slice 4b, the paid
-  // money-write step). Unlike the FF add-to-invoice button, this one is open to
-  // ANY client with a resolved support program — no covered/reviewed gate — so
-  // it's shown whenever the card itself renders (see render() above). Carries
-  // ?member= so a caregiver viewing a member's tab queues THAT member's program.
-  const spAddBtn = document.getElementById("spAddToInvoiceBtn");
-  if(spAddBtn) spAddBtn.addEventListener("click", async ()=>{
-    if(spAddBtn.disabled) return;
-    spAddBtn.disabled = true;
-    const spAddMsg = document.getElementById("spAddToInvoiceMsg");
-    if(spAddMsg) spAddMsg.hidden = true;
-    try{
-      const memberParam = new URLSearchParams(location.search).get("member");
-      const u = `/api/portal/${encodeURIComponent(token)}/support-program/add-to-invoice`
-        + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
-      const r = await fetch(u, {method:"POST"});
-      const j = await r.json().catch(()=>null);
-      if(r.ok && j && j.ok){
-        if(spAddMsg){
-          spAddMsg.textContent = "Added to your next invoice — Rae will finalize it.";
-          spAddMsg.hidden = false;
-        }
-        // stays disabled on success — the idempotent server would just return the
-        // same order_ref again, but there's no reason to invite a repeat click.
-      } else {
-        if(spAddMsg){
-          spAddMsg.textContent = "Something went wrong — please try again.";
-          spAddMsg.hidden = false;
-        }
-        spAddBtn.disabled = false;
-      }
-    } catch(e){
-      if(spAddMsg){
-        spAddMsg.textContent = "Something went wrong — please try again.";
-        spAddMsg.hidden = false;
-      }
-      spAddBtn.disabled = false;
     }
   });
 
