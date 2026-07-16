@@ -120,31 +120,45 @@ Each ported bundle SKU gains/keeps:
   `price_cents` for the single bundle line and expands components for packing. (No live
   computation in the hot path.)
 
-### 3. Bundle-scoped autoship ladder (12 → 29)
+### 3. Bundle-scoped autoship ladder (12 → 29), applied **per line**
 
 - **New ladder** in `dashboard/subscriptions.py`:
   `BUNDLE_SUBSCRIBE_TIERS = [12,14,16,18,20,22,24,26,28,29]` (escalates +2, caps 29),
   with `tier_for_bundle(order_count)` mirroring `tier_for`.
-- **Per-subscription selection.** Add a `tier_profile` column to `subscriptions`
-  (default `'standard'`), set at creation:
-  - `'bundle'` when **every** priced line in the subscription is a bundle SKU
-    (`autoship_eligible` bundle) — the normal case, since a program is subscribed on
-    its own product page.
-  - `'standard'` otherwise (single SKUs, or a mixed cart — conservative: a mixed cart
-    does not get the richer bundle ladder).
-  - Existing rows default to `'standard'` → **no change to any live subscription.**
-- **Charge-cron** (`/api/cron/charge-subscriptions`) and **`/reorder/subscribe`**
-  select the ladder by `tier_profile`:
-  `pct = (tier_for_bundle if profile=='bundle' else tier_for)(order_count)`.
+- **Per-line selection (not per-subscription).** Each subscription line earns the
+  ladder appropriate to *what that line is*, using the subscription's `order_count`:
+  - a **bundle** line (`autoship_eligible` bundle SKU) → `tier_for_bundle(order_count)`
+  - any **other** line (single SKU) → `tier_for(order_count)` (unchanged 3→25)
+  - So a subscription mixing a program bundle + a loose bottle discounts the bundle at
+    12→29 and the bottle at 3→25, in the same charge.
+- **Pricing-engine change (the core work).** `pricing.compute` today applies one scalar
+  `subscriber_tier_pct` to the whole cart. Extend it to resolve the subscriber tier
+  **per item**: for each line, pick the tier via a small resolver
+  `subscriber_tier_pct_for(item, order_count)` = `tier_for_bundle` if the item is an
+  autoship-eligible bundle else `tier_for`. The existing single-scalar call sites keep
+  working (a scalar still applies uniformly); the subscribe path and the charge-cron
+  switch to passing the per-item resolver.
+- **No schema change.** `order_count` already lives on the `subscriptions` row. A
+  pre-existing single-SKU subscription has only non-bundle lines → identical discount
+  to today. **No live subscription changes behavior.**
+- **Charge-cron** (`/api/cron/charge-subscriptions`) and **`/reorder/subscribe`** both
+  re-price via the per-item resolver instead of a single `subscriber_tier_pct`.
 - **Device gate:** `/reorder/subscribe` **rejects** a cart whose bundle line has
   `autoship_eligible == false` (400 with a clear message); the product page hides the
   subscribe CTA for those bundles.
 
+**Money-path risk:** this touches the pricing engine's subscriber-tier application.
+Guard with characterization tests proving (a) a single-scalar call is unchanged, (b) a
+single-SKU subscription charges exactly as before, (c) a bundle line gets 12→29, and
+(d) a mixed cart splits correctly.
+
 ### 4. Surfaces
 
-- **Bundle product page:** show the one-time price and, when `autoship_eligible`, a
-  "**Subscribe & save — save more each time**" CTA that opens the existing subscribe
-  flow. Device bundles show one-time only.
+- **Each ported bundle gets a new product page on the new storefront** (the deploy-chat
+  site), and the SKU's `url` points to that page — not the remedymatch.com listing.
+- The page shows the one-time price and, when `autoship_eligible`, a "**Subscribe &
+  save — save more each time**" CTA that opens the existing subscribe flow. Device
+  bundles (Dental, Sleep) show one-time only.
 - No change to the subscription self-manage portal or Stripe/QBO plumbing.
 
 ## Non-goals
@@ -162,7 +176,7 @@ Each ported bundle SKU gains/keeps:
 - **Device gate** test: `/reorder/subscribe` rejects an `autoship_eligible=false`
   bundle; accepts an eligible one.
 - **Cron** test: a `tier_profile='bundle'` subscription charges at the 12→29 ladder;
-  a `'standard'` one still charges at 3→25.
+  a single-SKU line in the same subscription still charges at 3→25 (per-line split).
 - **Component-resolution** test: every ported bundle's `bundle_component_slugs`
   resolve via `_get_product` (no unknown slugs).
 - **End-to-end verify:** render a ported bundle page, confirm one-time price + CTA,
@@ -175,13 +189,12 @@ Each ported bundle SKU gains/keeps:
 - Device bundles ship with no autoship path.
 - Build script + drift-guard run before deploy so no bundle ships with a stale price.
 
-## Open questions for review
+## Resolved decisions (from review)
 
-1. **Bundle ladder shape** — `[12,14,…,28,29]` as above, or a different curve /
-   number of steps to reach the 29 cap?
-2. **Device classification** — Dental (toothbrush) + Sleep (nightlights) as one-time
-   only. Confirm the toothbrush counts as a device.
-3. **Mixed-cart tier** — a subscription mixing a bundle + a single SKU falls back to
-   the standard ladder (not bundle). OK?
-4. **Bundle `url`** — where should each ported bundle's product URL point (new
-   storefront product page vs the remedymatch.com listing)?
+1. **Bundle ladder shape** — `[12,14,16,18,20,22,24,26,28,29]` (steps of 2, cap 29). ✅
+2. **Device classification** — Dental (toothbrush) + Sleep (nightlights) are device
+   bundles → one-time only, no autoship. ✅
+3. **Mixed-cart tier** — **per line**: the bundle line earns 12→29, the single SKU
+   stays on 3→25, within the same subscription. ✅
+4. **Bundle `url`** — each ported bundle gets a **new product page on the new
+   storefront**; the `url` points there. ✅
