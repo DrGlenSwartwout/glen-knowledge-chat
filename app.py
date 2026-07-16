@@ -8332,6 +8332,15 @@ def _price_biofield(points_to_redeem_cents=0, tier=PROGRAM_PREMIUM_TIER):
             "shipping_cents": 0}
 
 
+def _charge_cents(pc):
+    """The customer is charged merch + shipping; Hawai'i GET is absorbed and only
+    recorded on the order for remittance, never charged. `pc["priced"]["total_cents"]`
+    (subtotal + get_cents, from the pricing engine) is NOT the charge basis -- back
+    the GET out and add shipping: subtotal + shipping."""
+    return (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+            + int(pc["shipping_cents"]))
+
+
 @app.route("/biofield/checkout", methods=["POST"])
 def biofield_checkout():
     """Sell the $300 Biofield as a points-redeemable service. Ships dark behind
@@ -8365,7 +8374,7 @@ def biofield_checkout():
             _points.init_points_table(_bcx)
             redeem = min(PROGRAM_DEPOSIT_CREDIT_CENTS, _points.balance(_bcx, email))
     pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
-    charged_cents = pc["priced"]["total_cents"]
+    charged_cents = _charge_cents(pc)
     redeemed = pc["points_redeemed_cents"]
 
     checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
@@ -8377,7 +8386,7 @@ def biofield_checkout():
     _ingest_order(source="biofield", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"], total_cents=charged_cents, channel="retail",
                   get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
-                  points_redeemed_cents=redeemed, shipping_cents=0)
+                  points_redeemed_cents=redeemed, shipping_cents=pc["shipping_cents"])
     try:
         with _sqlite3.connect(LOG_DB) as _lcx:
             _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
@@ -8489,7 +8498,7 @@ def begin_checkout(slug):
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
     out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
-           "total": round(int(pc["priced"]["total_cents"]) / 100.0, 2),
+           "total": round(_charge_cents(pc) / 100.0, 2),
            "method": method, "customer_id": ""}
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -8502,7 +8511,7 @@ def begin_checkout(slug):
         pass
     _ingest_order(source="funnel", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"],
-                  total_cents=int(pc["priced"]["total_cents"]),
+                  total_cents=_charge_cents(pc),
                   address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],

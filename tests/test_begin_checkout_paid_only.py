@@ -67,6 +67,46 @@ def test_begin_checkout_creates_no_qbo_invoice(monkeypatch, tmp_path):
     assert body.get("customer_id") == ""
 
 
+def test_begin_checkout_charges_subtotal_plus_shipping_not_get(monkeypatch, tmp_path):
+    """Money-path fix: the Stripe charge (and the stored order total_cents) must equal
+    subtotal + shipping, NOT subtotal + GET. Real HI ship-to + TAX_ENABLED so the
+    pricing engine computes a genuine nonzero get_cents -- before the fix this GET
+    leaked into the charged amount while shipping was dropped entirely."""
+    db = _prep(monkeypatch, tmp_path)
+    monkeypatch.setattr(app, "_STRIPE_ACTIVE", True)
+    monkeypatch.setenv("TAX_ENABLED", "true")
+    monkeypatch.setenv("GET_RETAIL_RATE", "0.045")
+
+    cap = {}
+    import dashboard.stripe_pay as sp
+    def fake_session(amount_cents, **kw):
+        cap["amount_cents"] = amount_cents
+        return {"url": "https://s.test"}
+    monkeypatch.setattr(sp, "create_checkout_session", fake_session)
+
+    r = _client().post(f"/begin/checkout/{PRODUCT_SLUG}",
+                       json={"email": "hi@b.com", "name": "H", "qty": 1,
+                             "method": "card",
+                             "address": {"state": "HI", "country": "US", "name": "H",
+                                         "street": "1 Aloha", "city": "Hilo", "zip": "96720"}})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    # subtotal 7000 (qty 1, no discount) + shipping stub 2295 = 9295. GET (315) must
+    # NOT be charged; shipping (previously dropped entirely) must be included.
+    assert cap["amount_cents"] == 9295
+    assert body["total"] == 92.95
+
+    cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, body["invoice_id"])
+    assert row["total_cents"] == 9295
+    assert row["get_cents"] == 315            # still recorded on the order for GET remittance
+    assert row["shipping_cents"] == 2295
+
+    payload = json.loads(row["qbo_lines_json"])
+    receipt_total_cents = round(sum(l["amount"] for l in payload["lines"]) * 100) - payload["discount_cents"]
+    assert receipt_total_cents == 9295        # charge matches the booked Sales Receipt
+
+
 def test_begin_checkout_persists_qbo_lines_and_token_ref(monkeypatch, tmp_path):
     db = _prep(monkeypatch, tmp_path)
     r = _client().post(f"/begin/checkout/{PRODUCT_SLUG}",
