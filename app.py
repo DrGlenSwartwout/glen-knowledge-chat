@@ -25317,9 +25317,11 @@ def _subscriptions_enabled() -> bool:
 
 @app.route("/reorder/subscribe", methods=["POST"])
 def reorder_subscribe():
-    """POST /reorder/subscribe — price the first subscription order, create a QBO invoice,
-    then create a Stripe checkout session with save_card=True so the card is vaulted.
-    On return, /begin/checkout-return writes the subscription row."""
+    """POST /reorder/subscribe — price the first subscription order, ingest it as a
+    paid-only order (no QBO invoice/customer at checkout time; the exact line
+    payload rides in qbo_lines_json for a line-faithful Sales Receipt on payment),
+    then create a Stripe checkout session with save_card=True so the card is
+    vaulted. On return, /begin/checkout-return writes the subscription row."""
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
@@ -25360,13 +25362,31 @@ def reorder_subscribe():
             return jsonify({"ok": False,
                             "error": "Your cart is empty or those items are no longer available."}), 400
 
-        cust = qb.find_or_create_customer(email, ship.get("name", ""))
-        inv = qb.create_invoice(
-            cust,
-            pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-            allow_online_pay=True,
-            email_to=email,
-            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="subscribe") to book a line-faithful QBO Sales Receipt once the
+        # customer actually pays. The SEPARATE subscribe block there (vaults the
+        # card + writes the subscription row) keys off metadata (items/ship/
+        # cadence/email), not this invoice_id, so it is unaffected by this change.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0}
+        _ingest_order(source="subscribe", external_ref=checkout_ref, email=email,
+                      name=ship.get("name", ""), items=pc["items_rec"],
+                      total_cents=int(pc["priced"]["total_cents"]),
+                      address=ship, channel="retail",
+                      get_cents=pc["priced"].get("get_cents", 0),
+                      discount_cents=pc["discount_cents"],
+                      points_redeemed_cents=pc["points_redeemed_cents"],
+                      shipping_cents=pc["shipping_cents"])
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[subscribe] persist qbo_lines failed: {_e!r}", flush=True)
 
         # Build metadata; stash items+ship in pending_subscriptions if too long
         items_json = json.dumps(cart)
@@ -25375,8 +25395,8 @@ def reorder_subscribe():
             "kind": "subscribe",
             "cadence_months": str(cadence),
             "email": email,
-            "invoice_id": inv.get("Id") or "",
-            "customer_id": cust.get("Id") or "",
+            "invoice_id": checkout_ref,
+            "customer_id": "",
         }
         if len(items_json) + len(ship_json) <= 450:
             metadata["items"] = items_json
@@ -25395,13 +25415,13 @@ def reorder_subscribe():
                 _cx.commit()
             metadata["stash_key"] = stash_key
 
-        total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+        total_cents = int(pc["priced"]["total_cents"])
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         sess = stripe_pay.create_checkout_session(
             total_cents,
             customer_email=email,
-            description=f"Remedy Match subscription setup #{inv.get('DocNumber') or ''}",
+            description="Remedy Match subscription setup",
             metadata=metadata,
             success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/reorder",
