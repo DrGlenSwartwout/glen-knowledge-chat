@@ -36764,6 +36764,39 @@ def admin_atlas_reseed():
     return ok({"reseeded": seeded, "force": force})
 
 
+# ───────────────────────── Body Map ─────────────────────────
+import bodymap_store
+try:
+    if bodymap_store.reseed_from_repo():
+        print("[bodymap] seeded persistent zone files from repo", flush=True)
+except Exception as _e:
+    print(f"[bodymap] reseed skipped: {_e}", flush=True)
+
+
+@app.route("/body-map")
+def body_map_page():
+    return send_from_directory(STATIC, "body-map.html")
+
+
+@app.route("/body-map.js")
+def body_map_js():
+    return send_from_directory(STATIC, "body-map.js")
+
+
+@app.route("/body-map.css")
+def body_map_css():
+    return send_from_directory(STATIC, "body-map.css")
+
+
+@app.route("/body-map/data")
+def body_map_data():
+    system = request.args.get("system", "iridology")
+    try:
+        return jsonify(bodymap_store.build_payload(system))
+    except KeyError:
+        return jsonify({"error": "unknown system"}), 404
+
+
 # ── Tier-2 wholesale: application → approval ──────────────────────────────────
 # Apply (resale-license holders) → Glen/Rae approve in /admin/wholesale → the same
 # wholesale_unlocked_at gate is set and ordering opens. Sits alongside the existing
