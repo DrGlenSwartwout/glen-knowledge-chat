@@ -109,7 +109,11 @@
     document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
     wireOverlay();
-    loadSystem("iridology").then(__bmSelfCheck);
+    const params = new URLSearchParams(location.search);
+    const sys = params.get("system");
+    const initialSystem = (sys === "iridology" || sys === "sclerology") ? sys : "iridology";
+    document.getElementById("bm-system").value = initialSystem;
+    loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
 
   function __bmSelfCheck() {
@@ -195,6 +199,37 @@
     document.getElementById("bm-mode-photo").addEventListener("click", () => setMode(true));
     document.getElementById("bm-upload").addEventListener("change", onUpload);
     document.getElementById("bm-svg").addEventListener("click", onCanvasClick);
+  }
+
+  function applyFocusFromURL(params) {
+    if (!state.payload) return;
+    const eye = params.get("eye");
+    if (eye === "right" || eye === "left") {
+      state.eye = eye; document.getElementById("bm-eye").value = eye; renderChart();
+    }
+    const zoneId = params.get("zone");
+    if (zoneId) {
+      const z = (state.payload.zones || []).find(x => x.id === zoneId);
+      if (z) {
+        if (z.eye !== state.eye) {
+          state.eye = z.eye; document.getElementById("bm-eye").value = z.eye; renderChart();
+        }
+        selectZone(z);
+        return;
+      }
+    }
+    const layerId = params.get("layer");
+    if (layerId) {
+      const layer = (state.payload.germ_layers || []).find(g => g.id === layerId);
+      if (layer) {
+        state.activeLayers.clear(); state.activeLayers.add(layerId);
+        const cb = document.getElementById("bml-" + layerId);
+        if (cb) cb.checked = true;
+        renderChart();
+        const first = currentZones()[0];
+        if (first) selectZone(first);
+      }
+    }
   }
 
   // expose for tasks/tests
