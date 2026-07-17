@@ -9916,6 +9916,18 @@ def begin_checkout_return():
                 _osx.settle_paid_order_effects(
                     kind=_kind, order=_settle_order, md=md, pi_id=pi_id, sid=sid,
                     deps=_SETTLEMENT_DEPS)
+                # Mark settlement attempted so a Stripe redelivery of the webhook
+                # skips re-settling this order (I1 crash-strand close). Best-effort:
+                # if this fails, the webhook's own settled_at gate still backfills.
+                if inv and _settle_order:
+                    try:
+                        _mcx = _sqlite3.connect(LOG_DB)
+                        try:
+                            _bos_orders.mark_order_settled(_mcx, _settle_order["id"])
+                        finally:
+                            _mcx.close()
+                    except Exception as _me:
+                        print(f"[begin-return] mark settled: {_me!r}", flush=True)
 
             # Biofield trial: membership creation is shared with the Stripe webhook so a
             # closed tab still gets fulfilled. Idempotent via biofield_trial_grants.
@@ -27460,31 +27472,38 @@ def webhook_stripe():
                             _wcx = _sqlite3.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
                             try:
                                 _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
-                                if _wo and _wo["qbo_lines_json"] and not _wo["qbo_sales_receipt_id"]:
-                                    _wpi = sess.get("payment_intent")
-                                    if _wpi:
-                                        _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
-                                    _bos_orders.set_order_payment(
-                                        _wcx, _wo["id"], method="card",
-                                        amount_cents=int(sess.get("amount_total") or 0))
-                                    from dashboard import qbo_sale as _wqs
-                                    _wqs.book_sale_on_payment(
-                                        _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
-                                    # Closed-tab parity: settle the same per-kind side-effects the
-                                    # redirect settles, via the shared orchestrator. Idempotent +
-                                    # best-effort -- a settler raising must not 500 the webhook.
-                                    try:
-                                        _wmd = sess.get("metadata") or {}
-                                        _wro = _bos_orders.find_order_by_external_ref(_wcx, inv)
-                                        from dashboard import order_settlement as _wosx
-                                        _wosx.settle_paid_order_effects(
-                                            kind=_wmd.get("kind") or "",
-                                            order=(dict(_wro) if _wro else None),
-                                            md=_wmd, pi_id=sess.get("payment_intent"),
-                                            sid=session_id, deps=_SETTLEMENT_DEPS)
-                                    except Exception as _wse:
-                                        print(f"[stripe-webhook] settlement failed: {_wse!r}",
-                                              flush=True)
+                                if _wo and _wo["qbo_lines_json"]:
+                                    # Book the receipt only if not already booked (atomic-claim guarded).
+                                    if not _wo["qbo_sales_receipt_id"]:
+                                        _wpi = sess.get("payment_intent")
+                                        if _wpi:
+                                            _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
+                                        _bos_orders.set_order_payment(
+                                            _wcx, _wo["id"], method="card",
+                                            amount_cents=int(sess.get("amount_total") or 0))
+                                        from dashboard import qbo_sale as _wqs
+                                        _wqs.book_sale_on_payment(
+                                            _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                                    # Settle per-kind side-effects INDEPENDENTLY of booking, gated on
+                                    # settled_at. Closes the crash-strand: a hard crash between booking
+                                    # and settling leaves settled_at NULL + no 200 -> Stripe redelivers
+                                    # -> this runs. A redirect crash after booking is backfilled here too
+                                    # (the webhook always fires). Best-effort: a settler raise must not
+                                    # 500 the webhook or block booking.
+                                    if not _wo["settled_at"]:
+                                        try:
+                                            _wmd = sess.get("metadata") or {}
+                                            _wro = _bos_orders.find_order_by_external_ref(_wcx, inv)
+                                            from dashboard import order_settlement as _wosx
+                                            _wosx.settle_paid_order_effects(
+                                                kind=_wmd.get("kind") or "",
+                                                order=(dict(_wro) if _wro else None),
+                                                md=_wmd, pi_id=sess.get("payment_intent"),
+                                                sid=session_id, deps=_SETTLEMENT_DEPS)
+                                            _bos_orders.mark_order_settled(_wcx, _wo["id"])
+                                        except Exception as _wse:
+                                            print(f"[stripe-webhook] settlement failed: {_wse!r}",
+                                                  flush=True)
                             finally:
                                 _wcx.close()
                 except Exception as _we:
