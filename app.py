@@ -36693,7 +36693,12 @@ def atlas_css():
 
 @app.route("/atlas/data")
 def atlas_data():
-    return jsonify(atlas_store.build_graph())
+    graph = atlas_store.build_graph()
+    for c in graph.get("concepts", []):
+        url = bodymap_store.atlas_target_url(bodymap_store.resolve_atlas_target(c))
+        if url:
+            c["body_map_url"] = url
+    return jsonify(graph)
 
 
 @app.route("/atlas/ask", methods=["POST"])
