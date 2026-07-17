@@ -122,6 +122,42 @@ def test_age_guard_skips_recently_pending_order():
     assert row[0] == "PENDING"
 
 
+def test_case_a_concurrent_winner_between_select_and_clear_is_not_double_booked():
+    # Simulates a race: our sweep's SELECT read the row as PENDING and our
+    # find_receipt() call returned None (Case A -- "no receipt exists yet").
+    # But between that read and our clear, a concurrent/faster instance
+    # resolved the SAME order and stamped a real receipt id onto it. Our
+    # blind clear+book must not stomp that -- it must detect the row no
+    # longer says PENDING and skip rebooking entirely.
+    cx = _fresh_db()
+    oid = _new_order(cx, "tok-race")
+    _mark_pending(cx, oid, 30)
+
+    book_calls = []
+
+    def find_receipt(token, email=None, since_date=None):
+        # Side effect: simulate a concurrent instance winning the race and
+        # stamping a real receipt id onto this order right now.
+        cx.execute("UPDATE orders SET qbo_sales_receipt_id=? WHERE id=?",
+                   ("SR-concurrent-winner", oid))
+        cx.commit()
+        return None
+
+    def book(cx_, order):
+        book_calls.append(order)
+        return "SHOULD-NOT-BOOK"
+
+    def stamp(cx_, order_id, receipt_id):
+        raise AssertionError("stamp must not be called in this scenario")
+
+    out = qbo_heal.heal_pending_receipts(cx, find_receipt=find_receipt, book=book, stamp=stamp)
+
+    assert book_calls == []
+    row = cx.execute("SELECT qbo_sales_receipt_id FROM orders WHERE id=?", (oid,)).fetchone()
+    assert row[0] == "SR-concurrent-winner"
+    assert out == []
+
+
 def test_non_pending_orders_never_touched():
     cx = _fresh_db()
     oid_real = _new_order(cx, "tok-real")

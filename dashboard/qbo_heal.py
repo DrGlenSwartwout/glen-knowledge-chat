@@ -67,8 +67,14 @@ def heal_pending_receipts(cx, *, find_receipt, book, stamp, older_than_min=10, n
                 out.append({"order_id": o["id"], "action": "stamped",
                            "receipt_id": existing["Id"]})
             else:
-                cx.execute("UPDATE orders SET qbo_sales_receipt_id=NULL WHERE id=?", (o["id"],))
+                cur = cx.execute(
+                    "UPDATE orders SET qbo_sales_receipt_id=NULL "
+                    "WHERE id=? AND qbo_sales_receipt_id='PENDING'", (o["id"],))
                 cx.commit()
+                if cur.rowcount == 0:
+                    # Another sweep/path resolved this order between our SELECT and now.
+                    # Do NOT rebook -- that would double-book. Skip.
+                    continue
                 o["qbo_sales_receipt_id"] = None
                 sr = book(cx, o)
                 out.append({"order_id": o["id"], "action": "rebooked", "receipt_id": sr})
