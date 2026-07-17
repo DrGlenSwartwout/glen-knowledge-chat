@@ -308,9 +308,12 @@ def test_webhook_closed_tab_retail_settles_points_and_referral(monkeypatch, tmp_
 def test_webhook_settlement_idempotent_when_run_twice(monkeypatch, tmp_path, client):
     """A closed-tab order that gets the SAME webhook delivered twice (Stripe
     retry / duplicate event) must not double-create the subscription: the
-    first call books + settles, and the second call's book-back guard
-    (qbo_sales_receipt_id already set) skips the whole block -- so settlement
-    is never re-attempted, and no duplicate row is created."""
+    first call books + settles. On the second call, the booking guard
+    (qbo_sales_receipt_id already set) only skips re-booking the Sales Receipt --
+    settlement is a separate, independently-gated step. It is the settled_at
+    gate (set via mark_order_settled after the first call's settlement) that
+    blocks settle_paid_order_effects from re-running, so no duplicate row is
+    created."""
     db = _isolate_db(monkeypatch, tmp_path)
     _noop_fulfillers(monkeypatch)
     token = "i" * 32
@@ -340,8 +343,8 @@ def test_webhook_settlement_idempotent_when_run_twice(monkeypatch, tmp_path, cli
     cx.row_factory = sqlite3.Row
     rows = cx.execute("SELECT * FROM subscriptions WHERE order_ref=?", (token,)).fetchall()
     assert len(rows) == 1
-    # points/referral only fire once too -- the second call's outer guard
-    # (already booked) prevents re-dispatch.
+    # points/referral only fire once too -- the second call's settled_at gate
+    # (not the booking guard) prevents settlement, and therefore re-dispatch.
     assert calls["points"] == [token]
     assert calls["referral"] == [token]
 
@@ -373,3 +376,100 @@ def test_webhook_settlement_raising_still_200s_and_books_receipt(monkeypatch, tm
     assert row["qbo_sales_receipt_id"] == "SR1"
     assert row["pay_status"] == "paid"
     assert calls["n"] == 1
+
+
+# ── I1 crash-strand backfill: settlement decoupled from the booking guard,
+# gated independently on settled_at (Task 3) ────────────────────────────────
+
+def test_webhook_settles_when_booked_but_unsettled(monkeypatch, tmp_path, client):
+    """Redirect crashed (or Stripe redelivered) after booking the receipt but
+    before settling: qbo_sales_receipt_id is already set and settled_at is
+    NULL. The webhook must still run settlement (the new independent branch)
+    and mark settled_at -- this is the I1 crash-strand backfill."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "k" * 32
+    _seed_paid_only_order(db, token, already_booked=True)
+    calls = {"points": [], "referral": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "retail"},
+        "payment_intent": "pi_backfill"})
+    calls_sr = _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    # Booking branch is skipped (already booked) -- no new receipt created.
+    assert calls_sr["n"] == 0
+    # Settlement branch runs independently.
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert row["qbo_sales_receipt_id"] == "SR-EXISTING"
+    assert row["settled_at"] is not None
+
+
+def test_webhook_skips_settlement_when_already_settled(monkeypatch, tmp_path, client):
+    """Order already booked AND already settled (settled_at set): a Stripe
+    redelivery must not re-run settlement."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "l" * 32
+    oid = _seed_paid_only_order(db, token, already_booked=True)
+    cx0 = sqlite3.connect(db)
+    try:
+        assert O.mark_order_settled(cx0, oid) is True
+    finally:
+        cx0.close()
+    calls = {"points": [], "referral": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "retail"},
+        "payment_intent": "pi_already_settled"})
+    calls_sr = _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    assert calls_sr["n"] == 0
+    assert calls["points"] == []
+    assert calls["referral"] == []
+
+
+def test_webhook_settle_raise_leaves_settled_at_null_for_retry(monkeypatch, tmp_path, client):
+    """A total settle_paid_order_effects raise must leave settled_at NULL (not
+    mark it) so a Stripe redelivery can re-attempt settlement -- the receipt
+    booking itself must still go through."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "m" * 32
+    _seed_paid_only_order(db, token)
+
+    from dashboard import order_settlement as _osx
+
+    def _boom(**kwargs):
+        raise RuntimeError("settlement blew up")
+    monkeypatch.setattr(_osx, "settle_paid_order_effects", _boom)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "retail"},
+        "payment_intent": "pi_boom2"})
+    calls = _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert row["qbo_sales_receipt_id"] == "SR1"
+    assert row["pay_status"] == "paid"
+    assert calls["n"] == 1
+    assert row["settled_at"] is None

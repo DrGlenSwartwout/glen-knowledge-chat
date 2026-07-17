@@ -20,6 +20,20 @@ def init_points_table(cx):
     if "scope" not in cols:
         cx.execute("ALTER TABLE points_ledger ADD COLUMN scope TEXT NOT NULL DEFAULT 'rm'")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_points_email ON points_ledger(email)")
+    try:
+        # IF NOT EXISTS only guards re-creation, not a constraint conflict: a prod
+        # points_ledger with pre-existing duplicate (order_ref, reason, scope) rows
+        # raises IntegrityError here on EVERY call (this runs on hot customer paths
+        # like points balance / points-redeem checkout). Swallow it: on such a DB
+        # the index simply stays absent (I2 remains open, no worse than before this
+        # change, and _add's INSERT OR IGNORE is just a harmless normal insert)
+        # until the owner-gated /api/console/points-dedup?apply=1 route dedups and
+        # creates it. The post-deploy checklist verifies index_exists, so this is
+        # not silent. On a clean/test DB the index still creates normally.
+        cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_points_order_ref_reason_scope "
+                   "ON points_ledger(order_ref, reason, scope)")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -30,16 +44,17 @@ def balance(cx, email, *, scope="rm"):
 
 
 def _add(cx, email, delta_cents, reason, order_ref, scope="rm"):
-    # Read-then-write balance. SAFE only because the app uses ONE sqlite connection,
-    # which serializes all operations. If this is ever called from pooled/parallel
-    # connections, switch balance_after to an atomic INSERT subquery (or BEGIN IMMEDIATE)
-    # or two concurrent redeems could both pass the guard and overdraw the balance.
-    bal = balance(cx, email, scope=scope) + int(delta_cents)
-    cx.execute("""INSERT INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
+    # balance_after is a NON-authoritative snapshot (balance() is SUM(delta_cents)).
+    # INSERT OR IGNORE + the UNIQUE(order_ref,reason,scope) index makes this atomically
+    # idempotent across processes: a concurrent duplicate (redirect + webhook settling
+    # the same order under gunicorn's 2 workers) inserts exactly one row. Return the
+    # re-read true balance so the result is correct whether we inserted or ignored.
+    snapshot = balance(cx, email, scope=scope) + int(delta_cents)
+    cx.execute("""INSERT OR IGNORE INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
                   VALUES (?,?,?,?,?,?)""",
-               (email, int(delta_cents), reason, order_ref, bal, scope))
+               (email, int(delta_cents), reason, order_ref, snapshot, scope))
     cx.commit()
-    return bal
+    return balance(cx, email, scope=scope)
 
 
 def earn(cx, email, *, full_price_cents, earn_pct, order_ref, scope="rm"):
@@ -50,6 +65,12 @@ def earn(cx, email, *, full_price_cents, earn_pct, order_ref, scope="rm"):
 
 def redeem(cx, email, *, value_cents, order_ref, scope="rm"):
     value_cents = int(value_cents)
+    # This balance-sufficiency check is a read-then-decide against a per-request
+    # connection: it closes same-key double-settle (via the UNIQUE index + INSERT
+    # OR IGNORE in _add), but it does NOT serialize across different order_refs.
+    # Two DIFFERENT order_refs concurrently redeeming against the same shrinking
+    # balance could still both pass this check and overdraw. Distinct, out-of-scope
+    # hazard from the one the UNIQUE index closes.
     if value_cents > balance(cx, email, scope=scope):
         raise ValueError("redeem exceeds balance")
     return _add(cx, email, -value_cents, "redeem", order_ref, scope=scope)

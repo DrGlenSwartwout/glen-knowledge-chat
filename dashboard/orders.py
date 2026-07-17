@@ -115,6 +115,11 @@ def init_orders_table(cx):
         # The QBO SalesReceipt Id booked for this order (paid-only). NULL until
         # payment books it; presence is the idempotency marker (never re-book).
         "ALTER TABLE orders ADD COLUMN qbo_sales_receipt_id TEXT",
+        # Per-kind settlement durability: set once settlement has been ATTEMPTED
+        # for this order (by the checkout redirect or the webhook backfill).
+        # NULL = not yet attempted. Set via mark_order_settled (conditional,
+        # idempotent) so a webhook retry never clobbers the first timestamp.
+        "ALTER TABLE orders ADD COLUMN settled_at TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -445,6 +450,17 @@ def set_order_sales_receipt_id(cx, order_id, sales_receipt_id):
     """Stamp the booked QBO SalesReceipt Id onto an order (idempotency marker)."""
     cur = cx.execute("UPDATE orders SET qbo_sales_receipt_id=?, updated_at=? WHERE id=?",
                      (str(sales_receipt_id), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def mark_order_settled(cx, order_id):
+    """Mark per-kind settlement as attempted for this order. Conditional on
+    settled_at being NULL so a re-run (redirect + webhook, or a webhook retry)
+    never overwrites the first timestamp. Returns True iff this call set it."""
+    cur = cx.execute(
+        "UPDATE orders SET settled_at=?, updated_at=? WHERE id=? AND settled_at IS NULL",
+        (_now(), _now(), order_id))
     cx.commit()
     return cur.rowcount > 0
 
