@@ -2,13 +2,1327 @@
   "system": "sclerology",
   "reference_frame": "unit_circle",
   "germ_layers": [
-    { "id": "perilimbal", "label": "Perilimbal (nearest the iris)", "r_inner": 1.0, "r_outer": 1.6 },
-    { "id": "mid-sclera", "label": "Mid sclera", "r_inner": 1.6, "r_outer": 2.3 },
-    { "id": "outer-sclera", "label": "Outer sclera (toward the canthus)", "r_inner": 2.3, "r_outer": 3.0 }
+    {
+      "id": "perilimbal",
+      "label": "Perilimbal (nearest the iris)",
+      "r_inner": 1.0,
+      "r_outer": 1.6
+    },
+    {
+      "id": "mid-sclera",
+      "label": "Mid sclera",
+      "r_inner": 1.6,
+      "r_outer": 2.3
+    },
+    {
+      "id": "outer-sclera",
+      "label": "Outer sclera (toward the canthus)",
+      "r_inner": 2.3,
+      "r_outer": 3.0
+    }
   ],
   "zones": [
-    { "id": "sclera-R-liver", "eye": "right", "germ_layer": "perilimbal", "radial": {"r_inner": 1.0, "r_outer": 1.6}, "sector": {"start_deg": 235, "end_deg": 265}, "anatomy": "Liver / gallbladder line", "meaning_standard": "Vessels rising from the lower temporal limbus are read for hepatobiliary congestion.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "sclera-R-colon", "eye": "right", "germ_layer": "mid-sclera", "radial": {"r_inner": 1.6, "r_outer": 2.3}, "sector": {"start_deg": 170, "end_deg": 210}, "anatomy": "Colon", "meaning_standard": "Lower scleral field vessels are read for bowel congestion and stasis.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "sclera-L-heart", "eye": "left", "germ_layer": "perilimbal", "radial": {"r_inner": 1.0, "r_outer": 1.6}, "sector": {"start_deg": 95, "end_deg": 125}, "anatomy": "Heart line", "meaning_standard": "Vessels at the left perilimbal margin are read for cardiovascular stress patterns.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+    {
+      "id": "sclera-R-brain",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 334,
+        "end_deg": 356
+      },
+      "anatomy": "Brain / cerebrum",
+      "meaning_standard": "Cerebral / head markings, upper sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-brain",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 4,
+        "end_deg": 26
+      },
+      "anatomy": "Brain / cerebrum",
+      "meaning_standard": "Cerebral / head markings, upper sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-pituitary",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 12
+      },
+      "anatomy": "Pituitary / pineal",
+      "meaning_standard": "Pituitary / pineal, top of the sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-pituitary",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 348,
+        "end_deg": 360
+      },
+      "anatomy": "Pituitary / pineal",
+      "meaning_standard": "Pituitary / pineal, top of the sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-sinus-face",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 40,
+        "end_deg": 60
+      },
+      "anatomy": "Face and sinuses",
+      "meaning_standard": "Face and sinus region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-sinus-face",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 300,
+        "end_deg": 320
+      },
+      "anatomy": "Face and sinuses",
+      "meaning_standard": "Face and sinus region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-eye-ear",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 58,
+        "end_deg": 74
+      },
+      "anatomy": "Eye and ear",
+      "meaning_standard": "Eye and ear region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-eye-ear",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 286,
+        "end_deg": 302
+      },
+      "anatomy": "Eye and ear",
+      "meaning_standard": "Eye and ear region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-throat-neck",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 60,
+        "end_deg": 78
+      },
+      "anatomy": "Throat and neck",
+      "meaning_standard": "Throat and neck (~2 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-throat-neck",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 282,
+        "end_deg": 300
+      },
+      "anatomy": "Throat and neck",
+      "meaning_standard": "Throat and neck (~2 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-thyroid",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 74,
+        "end_deg": 90
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Thyroid (~2:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-thyroid",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 270,
+        "end_deg": 286
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Thyroid (~2:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-lung-bronchi",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 90,
+        "end_deg": 114
+      },
+      "anatomy": "Lung and bronchi",
+      "meaning_standard": "Lung and bronchials (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-lung-bronchi",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 246,
+        "end_deg": 270
+      },
+      "anatomy": "Lung and bronchi",
+      "meaning_standard": "Lung and bronchials (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-shoulder-arm",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 112,
+        "end_deg": 130
+      },
+      "anatomy": "Shoulder and arm",
+      "meaning_standard": "Shoulder / arm (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-shoulder-arm",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 230,
+        "end_deg": 248
+      },
+      "anatomy": "Shoulder and arm",
+      "meaning_standard": "Shoulder / arm (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-breast-chest",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 118,
+        "end_deg": 136
+      },
+      "anatomy": "Breast and chest",
+      "meaning_standard": "Breast / chest wall.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-breast-chest",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 224,
+        "end_deg": 242
+      },
+      "anatomy": "Breast and chest",
+      "meaning_standard": "Breast / chest wall.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-diaphragm",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 128,
+        "end_deg": 144
+      },
+      "anatomy": "Diaphragm",
+      "meaning_standard": "Diaphragm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-diaphragm",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 216,
+        "end_deg": 232
+      },
+      "anatomy": "Diaphragm",
+      "meaning_standard": "Diaphragm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-solar-plexus",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 142,
+        "end_deg": 156
+      },
+      "anatomy": "Solar plexus",
+      "meaning_standard": "Solar plexus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-solar-plexus",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 204,
+        "end_deg": 218
+      },
+      "anatomy": "Solar plexus",
+      "meaning_standard": "Solar plexus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-adrenal",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 150,
+        "end_deg": 166
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Adrenal gland (~5:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-adrenal",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 194,
+        "end_deg": 210
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Adrenal gland (~5:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-kidney",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 162,
+        "end_deg": 192
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-kidney",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 168,
+        "end_deg": 198
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-ureter",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 176,
+        "end_deg": 192
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Ureter.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-ureter",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 168,
+        "end_deg": 184
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Ureter.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-bladder",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 170,
+        "end_deg": 190
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-bladder",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 170,
+        "end_deg": 190
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-prostate-uterus",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 192,
+        "end_deg": 202
+      },
+      "anatomy": "Prostate / uterus",
+      "meaning_standard": "Prostate / uterus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-prostate-uterus",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 158,
+        "end_deg": 168
+      },
+      "anatomy": "Prostate / uterus",
+      "meaning_standard": "Prostate / uterus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-reproductive",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 202,
+        "end_deg": 212
+      },
+      "anatomy": "Ovaries / testes",
+      "meaning_standard": "Ovaries / testes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-reproductive",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 148,
+        "end_deg": 158
+      },
+      "anatomy": "Ovaries / testes",
+      "meaning_standard": "Ovaries / testes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-cervical-spine",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 196,
+        "end_deg": 206
+      },
+      "anatomy": "Cervical spine",
+      "meaning_standard": "Cervical spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-cervical-spine",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 154,
+        "end_deg": 164
+      },
+      "anatomy": "Cervical spine",
+      "meaning_standard": "Cervical spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-thoracic-spine",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 206,
+        "end_deg": 218
+      },
+      "anatomy": "Thoracic spine",
+      "meaning_standard": "Thoracic spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-thoracic-spine",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 142,
+        "end_deg": 154
+      },
+      "anatomy": "Thoracic spine",
+      "meaning_standard": "Thoracic spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-lumbar-spine",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 218,
+        "end_deg": 228
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Lumbar spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-lumbar-spine",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 132,
+        "end_deg": 142
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Lumbar spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-sacrum-coccyx",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 228,
+        "end_deg": 238
+      },
+      "anatomy": "Sacrum and coccyx",
+      "meaning_standard": "Sacrum and coccyx.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-sacrum-coccyx",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 122,
+        "end_deg": 132
+      },
+      "anatomy": "Sacrum and coccyx",
+      "meaning_standard": "Sacrum and coccyx.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-pelvis-hip",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 208,
+        "end_deg": 226
+      },
+      "anatomy": "Pelvis and hip",
+      "meaning_standard": "Pelvis and hip.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-pelvis-hip",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 134,
+        "end_deg": 152
+      },
+      "anatomy": "Pelvis and hip",
+      "meaning_standard": "Pelvis and hip.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-leg-limb",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 196,
+        "end_deg": 214
+      },
+      "anatomy": "Leg and lower limb",
+      "meaning_standard": "Lower limb / leg (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-leg-limb",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 146,
+        "end_deg": 164
+      },
+      "anatomy": "Leg and lower limb",
+      "meaning_standard": "Lower limb / leg (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-stomach",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 130,
+        "end_deg": 156
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-stomach",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 204,
+        "end_deg": 230
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-colon-transverse",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 300,
+        "end_deg": 330
+      },
+      "anatomy": "Transverse colon",
+      "meaning_standard": "Transverse colon, upper sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-colon-transverse",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 30,
+        "end_deg": 60
+      },
+      "anatomy": "Transverse colon",
+      "meaning_standard": "Transverse colon, upper sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-lymphatic",
+      "eye": "right",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 156,
+        "end_deg": 176
+      },
+      "anatomy": "Lymphatic / immune",
+      "meaning_standard": "Lymphatic / immune congestion.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-lymphatic",
+      "eye": "left",
+      "germ_layer": "outer-sclera",
+      "radial": {
+        "r_inner": 2.3,
+        "r_outer": 3.0
+      },
+      "sector": {
+        "start_deg": 184,
+        "end_deg": 204
+      },
+      "anatomy": "Lymphatic / immune",
+      "meaning_standard": "Lymphatic / immune congestion.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-liver",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 235,
+        "end_deg": 265
+      },
+      "anatomy": "Liver / gallbladder line",
+      "meaning_standard": "Liver and gallbladder, lower nasal right sclera (~8 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-gallbladder",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 250,
+        "end_deg": 266
+      },
+      "anatomy": "Gallbladder",
+      "meaning_standard": "Gallbladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-pancreas-head",
+      "eye": "right",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 262,
+        "end_deg": 280
+      },
+      "anatomy": "Pancreas (head)",
+      "meaning_standard": "Head of the pancreas (~9 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-ascending-colon",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 268,
+        "end_deg": 296
+      },
+      "anatomy": "Ascending colon",
+      "meaning_standard": "Ascending colon, right sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-R-appendix",
+      "eye": "right",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 250,
+        "end_deg": 262
+      },
+      "anatomy": "Appendix / ileocecal",
+      "meaning_standard": "Appendix / ileocecal valve.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-heart",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 92,
+        "end_deg": 120
+      },
+      "anatomy": "Heart line",
+      "meaning_standard": "Heart, left sclera (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-spleen",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 118,
+        "end_deg": 140
+      },
+      "anatomy": "Spleen",
+      "meaning_standard": "Spleen, left sclera (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-pancreas-tail",
+      "eye": "left",
+      "germ_layer": "mid-sclera",
+      "radial": {
+        "r_inner": 1.6,
+        "r_outer": 2.3
+      },
+      "sector": {
+        "start_deg": 100,
+        "end_deg": 118
+      },
+      "anatomy": "Pancreas (tail)",
+      "meaning_standard": "Tail of the pancreas, left sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-descending-colon",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 64,
+        "end_deg": 92
+      },
+      "anatomy": "Descending colon",
+      "meaning_standard": "Descending colon, left sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "sclera-L-sigmoid-colon",
+      "eye": "left",
+      "germ_layer": "perilimbal",
+      "radial": {
+        "r_inner": 1.0,
+        "r_outer": 1.6
+      },
+      "sector": {
+        "start_deg": 150,
+        "end_deg": 172
+      },
+      "anatomy": "Sigmoid colon",
+      "meaning_standard": "Sigmoid colon, left sclera.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
   ]
 }
