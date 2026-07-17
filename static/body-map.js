@@ -254,8 +254,10 @@
     wireOverlay();
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
-    const initialSystem = (sys === "iridology" || sys === "sclerology" || sys === "ear" || sys === "foot") ? sys : "iridology";
-    document.getElementById("bm-system").value = initialSystem;
+    const sel = document.getElementById("bm-system");
+    const known = [...sel.options].map(o => o.value);
+    const initialSystem = known.includes(sys) ? sys : "iridology";
+    sel.value = initialSystem;
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
 

@@ -1,0 +1,764 @@
+{
+  "system": "hand",
+  "reference_frame": "hand_outline",
+  "side_noun": "palm",
+  "group_noun": "region",
+  "groups": [
+    {
+      "id": "head-sinus",
+      "label": "Head and sinuses (fingers)"
+    },
+    {
+      "id": "neck-thyroid",
+      "label": "Neck and thyroid"
+    },
+    {
+      "id": "chest-lung",
+      "label": "Chest, lungs and heart"
+    },
+    {
+      "id": "digestive",
+      "label": "Digestive organs"
+    },
+    {
+      "id": "urinary",
+      "label": "Urinary and adrenal"
+    },
+    {
+      "id": "spine",
+      "label": "Spine (radial/thumb edge)"
+    },
+    {
+      "id": "pelvis-elimination",
+      "label": "Pelvis and elimination (wrist)"
+    },
+    {
+      "id": "limb",
+      "label": "Shoulder, arm and leg (ulnar edge)"
+    }
+  ],
+  "anchors": [
+    {
+      "key": "thumb-tip",
+      "template": {
+        "x": 0.13,
+        "y": 0.5
+      },
+      "hint": "Tap the tip of your thumb."
+    },
+    {
+      "key": "middle-finger-tip",
+      "template": {
+        "x": 0.5,
+        "y": 0.05
+      },
+      "hint": "Tap the tip of your middle finger."
+    },
+    {
+      "key": "wrist-center",
+      "template": {
+        "x": 0.5,
+        "y": 0.9
+      },
+      "hint": "Tap the centre of your wrist."
+    }
+  ],
+  "outline_side": "right",
+  "outline_source": "procedural open-hand outline (right hand, palm view); scripts/build_hand_outline.py Catmull-Rom spline",
+  "outline": "M0.6200 0.9050 C0.6708 0.8742 0.6808 0.7775 0.7000 0.7200 C0.7192 0.6625 0.7283 0.6042 0.7350 0.5600 C0.7417 0.5158 0.7388 0.4883 0.7400 0.4550 C0.7412 0.4217 0.7453 0.3958 0.7420 0.3600 C0.7387 0.3242 0.7287 0.2658 0.7200 0.2400 C0.7113 0.2142 0.7000 0.2042 0.6900 0.2050 C0.6800 0.2058 0.6670 0.2158 0.6600 0.2450 C0.6530 0.2742 0.6527 0.3708 0.6480 0.3800 C0.6433 0.3892 0.6383 0.3442 0.6320 0.3000 C0.6257 0.2558 0.6183 0.1167 0.6100 0.1150 C0.6017 0.1133 0.5903 0.2433 0.5820 0.2900 C0.5737 0.3367 0.5678 0.4017 0.5600 0.3950 C0.5522 0.3883 0.5450 0.3083 0.5350 0.2500 C0.5250 0.1917 0.5117 0.0450 0.5000 0.0450 C0.4883 0.0450 0.4750 0.1917 0.4650 0.2500 C0.4550 0.3083 0.4475 0.3917 0.4400 0.3950 C0.4325 0.3983 0.4287 0.3175 0.4200 0.2700 C0.4113 0.2225 0.3987 0.1050 0.3880 0.1100 C0.3773 0.1150 0.3643 0.2425 0.3560 0.3000 C0.3477 0.3575 0.3510 0.4267 0.3380 0.4550 C0.3250 0.4833 0.3027 0.4700 0.2780 0.4700 C0.2533 0.4700 0.2150 0.4492 0.1900 0.4550 C0.1650 0.4608 0.1313 0.4833 0.1280 0.5050 C0.1247 0.5267 0.1467 0.5642 0.1700 0.5850 C0.1933 0.6058 0.2463 0.6042 0.2680 0.6300 C0.2897 0.6558 0.2897 0.7033 0.3000 0.7400 C0.3103 0.7767 0.3142 0.8225 0.3300 0.8500 C0.3458 0.8775 0.3467 0.8958 0.3950 0.9050 C0.4433 0.9142 0.5692 0.9358 0.6200 0.9050 Z",
+  "zones": [
+    {
+      "id": "hand-brain",
+      "side": "right",
+      "bilateral": true,
+      "group": "head-sinus",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.18,
+        "cy": 0.5,
+        "rx": 0.045,
+        "ry": 0.04
+      },
+      "anatomy": "Brain and head",
+      "meaning_standard": "Reflex for the brain and head, on the thumb.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-pituitary",
+      "side": "right",
+      "bilateral": true,
+      "group": "head-sinus",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.21,
+        "cy": 0.56,
+        "rx": 0.028,
+        "ry": 0.024
+      },
+      "anatomy": "Pituitary",
+      "meaning_standard": "Pituitary reflex, centre of the thumb.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-sinuses",
+      "side": "right",
+      "bilateral": true,
+      "group": "head-sinus",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5,
+        "cy": 0.2,
+        "rx": 0.026,
+        "ry": 0.022
+      },
+      "anatomy": "Sinuses",
+      "meaning_standard": "Sinus reflexes, across the finger tips.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-eyes",
+      "side": "right",
+      "bilateral": true,
+      "group": "head-sinus",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.448,
+        "cy": 0.4,
+        "rx": 0.035,
+        "ry": 0.028
+      },
+      "anatomy": "Eyes",
+      "meaning_standard": "Eye reflex, base of the index and middle fingers.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-ears",
+      "side": "right",
+      "bilateral": true,
+      "group": "head-sinus",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.64,
+        "cy": 0.41,
+        "rx": 0.038,
+        "ry": 0.028
+      },
+      "anatomy": "Ears",
+      "meaning_standard": "Ear reflex, base of the ring and little fingers.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-neck-throat",
+      "side": "right",
+      "bilateral": true,
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.3,
+        "cy": 0.605,
+        "rx": 0.03,
+        "ry": 0.025
+      },
+      "anatomy": "Neck and throat",
+      "meaning_standard": "Neck and throat reflex, base of the thumb.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-thyroid",
+      "side": "right",
+      "bilateral": true,
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.37,
+        "cy": 0.535,
+        "rx": 0.04,
+        "ry": 0.03
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Thyroid reflex, on the thenar (thumb ball).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-lung",
+      "side": "right",
+      "bilateral": true,
+      "group": "chest-lung",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.52,
+        "cy": 0.475,
+        "rx": 0.09,
+        "ry": 0.04
+      },
+      "anatomy": "Lungs and bronchi",
+      "meaning_standard": "Lung and bronchial reflex, upper palm below the fingers.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-diaphragm",
+      "side": "right",
+      "bilateral": true,
+      "group": "chest-lung",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5,
+        "cy": 0.55,
+        "rx": 0.08,
+        "ry": 0.03
+      },
+      "anatomy": "Diaphragm and solar plexus",
+      "meaning_standard": "Diaphragm and solar-plexus reflex, across the palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-heart",
+      "side": "left",
+      "bilateral": false,
+      "group": "chest-lung",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.56,
+        "cy": 0.48,
+        "rx": 0.045,
+        "ry": 0.04
+      },
+      "anatomy": "Heart",
+      "meaning_standard": "Heart reflex, upper palm — left hand only.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-shoulder-arm",
+      "side": "right",
+      "bilateral": true,
+      "group": "limb",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.66,
+        "cy": 0.48,
+        "rx": 0.038,
+        "ry": 0.032
+      },
+      "anatomy": "Shoulder and arm",
+      "meaning_standard": "Shoulder and arm reflex, ulnar (little-finger) edge.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-knee-leg",
+      "side": "right",
+      "bilateral": true,
+      "group": "limb",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.64,
+        "cy": 0.71,
+        "rx": 0.032,
+        "ry": 0.045
+      },
+      "anatomy": "Knee and leg",
+      "meaning_standard": "Knee and leg reflex, lower ulnar edge.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-R-liver",
+      "side": "right",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.6,
+        "cy": 0.62,
+        "rx": 0.07,
+        "ry": 0.05
+      },
+      "anatomy": "Liver",
+      "meaning_standard": "Liver reflex, right hand, mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-R-gallbladder",
+      "side": "right",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.62,
+        "cy": 0.665,
+        "rx": 0.028,
+        "ry": 0.022
+      },
+      "anatomy": "Gallbladder",
+      "meaning_standard": "Gallbladder reflex, right hand.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-spleen",
+      "side": "left",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.4,
+        "cy": 0.625,
+        "rx": 0.045,
+        "ry": 0.038
+      },
+      "anatomy": "Spleen",
+      "meaning_standard": "Spleen reflex, left hand, mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-stomach",
+      "side": "left",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.535,
+        "cy": 0.6,
+        "rx": 0.05,
+        "ry": 0.038
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach reflex, left hand, upper mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-pancreas",
+      "side": "left",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.51,
+        "cy": 0.655,
+        "rx": 0.045,
+        "ry": 0.03
+      },
+      "anatomy": "Pancreas",
+      "meaning_standard": "Pancreas reflex, left hand.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-transverse-colon",
+      "side": "right",
+      "bilateral": true,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5,
+        "cy": 0.71,
+        "rx": 0.095,
+        "ry": 0.03
+      },
+      "anatomy": "Transverse colon",
+      "meaning_standard": "Transverse colon reflex, across the mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-small-intestine",
+      "side": "right",
+      "bilateral": true,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5,
+        "cy": 0.785,
+        "rx": 0.08,
+        "ry": 0.045
+      },
+      "anatomy": "Small intestine",
+      "meaning_standard": "Small-intestine reflex, lower central palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-R-ascending-colon",
+      "side": "right",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.615,
+        "cy": 0.73,
+        "rx": 0.028,
+        "ry": 0.05
+      },
+      "anatomy": "Ascending colon",
+      "meaning_standard": "Ascending colon reflex, right hand, ulnar side.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-R-ileocecal",
+      "side": "right",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.615,
+        "cy": 0.8,
+        "rx": 0.028,
+        "ry": 0.02
+      },
+      "anatomy": "Ileocecal valve",
+      "meaning_standard": "Ileocecal-valve reflex, right hand, lower palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-descending-colon",
+      "side": "left",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.405,
+        "cy": 0.73,
+        "rx": 0.028,
+        "ry": 0.05
+      },
+      "anatomy": "Descending colon",
+      "meaning_standard": "Descending colon reflex, left hand, ulnar side.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-L-sigmoid-colon",
+      "side": "left",
+      "bilateral": false,
+      "group": "digestive",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.47,
+        "cy": 0.815,
+        "rx": 0.045,
+        "ry": 0.028
+      },
+      "anatomy": "Sigmoid colon",
+      "meaning_standard": "Sigmoid colon reflex, left hand, lower palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-adrenal",
+      "side": "right",
+      "bilateral": true,
+      "group": "urinary",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.445,
+        "cy": 0.62,
+        "rx": 0.028,
+        "ry": 0.02
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Adrenal reflex, atop the kidney, mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-kidney",
+      "side": "right",
+      "bilateral": true,
+      "group": "urinary",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.45,
+        "cy": 0.675,
+        "rx": 0.035,
+        "ry": 0.03
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney reflex, mid palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-ureter",
+      "side": "right",
+      "bilateral": true,
+      "group": "urinary",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.44,
+        "cy": 0.745,
+        "rx": 0.028,
+        "ry": 0.04
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Ureter reflex, running toward the bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-bladder",
+      "side": "right",
+      "bilateral": true,
+      "group": "urinary",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.42,
+        "cy": 0.82,
+        "rx": 0.035,
+        "ry": 0.028
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder reflex, lower radial palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-cervical-spine",
+      "side": "right",
+      "bilateral": true,
+      "group": "spine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.345,
+        "cy": 0.56,
+        "rx": 0.02,
+        "ry": 0.03
+      },
+      "anatomy": "Cervical spine",
+      "meaning_standard": "Cervical spine reflex, upper radial edge.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-thoracic-spine",
+      "side": "right",
+      "bilateral": true,
+      "group": "spine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.355,
+        "cy": 0.66,
+        "rx": 0.02,
+        "ry": 0.05
+      },
+      "anatomy": "Thoracic spine",
+      "meaning_standard": "Thoracic spine reflex, radial edge.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-lumbar-spine",
+      "side": "right",
+      "bilateral": true,
+      "group": "spine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.375,
+        "cy": 0.76,
+        "rx": 0.02,
+        "ry": 0.045
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Lumbar spine reflex, lower radial edge.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-sacral-coccyx",
+      "side": "right",
+      "bilateral": true,
+      "group": "spine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.405,
+        "cy": 0.84,
+        "rx": 0.025,
+        "ry": 0.035
+      },
+      "anatomy": "Sacrum and coccyx",
+      "meaning_standard": "Sacrum and coccyx reflex, radial edge near the wrist.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-hip-pelvis",
+      "side": "right",
+      "bilateral": true,
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.52,
+        "cy": 0.86,
+        "rx": 0.05,
+        "ry": 0.03
+      },
+      "anatomy": "Hip and pelvis",
+      "meaning_standard": "Hip and pelvis reflex, heel of the palm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "hand-sciatic",
+      "side": "right",
+      "bilateral": true,
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.56,
+        "cy": 0.835,
+        "rx": 0.07,
+        "ry": 0.025
+      },
+      "anatomy": "Sciatic nerve",
+      "meaning_standard": "Sciatic-nerve reflex, across the wrist.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
+  ]
+}

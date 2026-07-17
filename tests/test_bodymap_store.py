@@ -256,6 +256,28 @@ def test_shipped_foot_seed_valid():
     assert "foot-R-liver" in ids and "foot-L-heart" in ids
 
 
+def test_shipped_hand_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["hand"].name == "bodymap-hand.json"
+    data = json.loads((repo / "bodymap-hand.json").read_text())
+    assert data["reference_frame"] == "hand_outline"
+    assert data.get("outline")
+    group_ids = {g["id"] for g in data.get("groups", [])}
+    sides = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"hand zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "ellipse"   # reflexology zones are ovals
+        assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
+        sides.add(z["side"])
+    assert sides == {"left", "right"}, "both palms must be populated"
+    keys = {a["key"] for a in data.get("anchors", [])}
+    assert {"thumb-tip", "middle-finger-tip", "wrist-center"} <= keys
+    ids = {z["id"] for z in data["zones"]}
+    assert "hand-R-liver" in ids and "hand-L-heart" in ids
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
