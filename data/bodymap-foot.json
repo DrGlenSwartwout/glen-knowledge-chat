@@ -1,0 +1,1507 @@
+{
+  "system": "foot",
+  "reference_frame": "foot_outline",
+  "outline": "M 0.34 0.10 C 0.28 0.02 0.20 0.04 0.20 0.14 C 0.20 0.24 0.24 0.34 0.24 0.44 C 0.24 0.56 0.20 0.66 0.24 0.76 C 0.27 0.86 0.34 0.94 0.46 0.94 C 0.60 0.94 0.70 0.86 0.70 0.74 C 0.70 0.60 0.66 0.50 0.68 0.40 C 0.70 0.30 0.74 0.22 0.70 0.16 C 0.66 0.10 0.60 0.12 0.56 0.10 C 0.50 0.06 0.44 0.06 0.40 0.07 C 0.37 0.075 0.35 0.085 0.34 0.10 Z",
+  "groups": [
+    {
+      "id": "head-sinus",
+      "label": "Head and sinuses (toes)"
+    },
+    {
+      "id": "neck-thyroid",
+      "label": "Neck and thyroid"
+    },
+    {
+      "id": "chest-lung",
+      "label": "Chest, lungs and heart"
+    },
+    {
+      "id": "digestive",
+      "label": "Digestive organs"
+    },
+    {
+      "id": "urinary",
+      "label": "Urinary and adrenal"
+    },
+    {
+      "id": "spine",
+      "label": "Spine (medial edge)"
+    },
+    {
+      "id": "pelvis-elimination",
+      "label": "Pelvis and elimination (heel)"
+    },
+    {
+      "id": "limb",
+      "label": "Shoulder, arm and leg (lateral edge)"
+    }
+  ],
+  "anchors": [
+    {
+      "key": "big-toe-tip",
+      "template": {
+        "x": 0.33,
+        "y": 0.05
+      },
+      "hint": "Tap the tip of your big toe."
+    },
+    {
+      "key": "heel-center",
+      "template": {
+        "x": 0.46,
+        "y": 0.9
+      },
+      "hint": "Tap the center of your heel."
+    },
+    {
+      "key": "little-toe-base",
+      "template": {
+        "x": 0.7,
+        "y": 0.18
+      },
+      "hint": "Tap the base of your little toe."
+    }
+  ],
+  "zones": [
+    {
+      "id": "foot-L-brain",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.32,
+        "y": 0.07
+      },
+      "anatomy": "Brain and head",
+      "meaning_standard": "Reflects the brain and overall head function.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-brain",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.32,
+        "y": 0.07
+      },
+      "anatomy": "Brain and head",
+      "meaning_standard": "Reflects the brain and overall head function.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-pituitary",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.11
+      },
+      "anatomy": "Pituitary gland",
+      "meaning_standard": "Reflects the pituitary, the master gland regulating hormone balance.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-pituitary",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.11
+      },
+      "anatomy": "Pituitary gland",
+      "meaning_standard": "Reflects the pituitary, the master gland regulating hormone balance.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-pineal",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.1
+      },
+      "anatomy": "Pineal and hypothalamus",
+      "meaning_standard": "Reflects the pineal gland and hypothalamus, involved in sleep and internal regulation.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-pineal",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.1
+      },
+      "anatomy": "Pineal and hypothalamus",
+      "meaning_standard": "Reflects the pineal gland and hypothalamus, involved in sleep and internal regulation.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-temples",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.12
+      },
+      "anatomy": "Side of head and temples",
+      "meaning_standard": "Reflects the side of the head and temple region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-temples",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.12
+      },
+      "anatomy": "Side of head and temples",
+      "meaning_standard": "Reflects the side of the head and temple region.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-sinuses",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.52,
+        "y": 0.06
+      },
+      "anatomy": "Sinuses",
+      "meaning_standard": "Reflects the sinus cavities of the face.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-sinuses",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.52,
+        "y": 0.06
+      },
+      "anatomy": "Sinuses",
+      "meaning_standard": "Reflects the sinus cavities of the face.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-teeth-jaw",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.13
+      },
+      "anatomy": "Teeth and jaw",
+      "meaning_standard": "Reflects the teeth and jaw.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-teeth-jaw",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.13
+      },
+      "anatomy": "Teeth and jaw",
+      "meaning_standard": "Reflects the teeth and jaw.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-eyes",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.17
+      },
+      "anatomy": "Eyes",
+      "meaning_standard": "Reflects the eyes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-eyes",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.17
+      },
+      "anatomy": "Eyes",
+      "meaning_standard": "Reflects the eyes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-ears",
+      "side": "left",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.17
+      },
+      "anatomy": "Ears",
+      "meaning_standard": "Reflects the ears.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-ears",
+      "side": "right",
+      "group": "head-sinus",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.17
+      },
+      "anatomy": "Ears",
+      "meaning_standard": "Reflects the ears.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-neck-throat",
+      "side": "left",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.16
+      },
+      "anatomy": "Neck and throat",
+      "meaning_standard": "Reflects the neck and throat.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-neck-throat",
+      "side": "right",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.16
+      },
+      "anatomy": "Neck and throat",
+      "meaning_standard": "Reflects the neck and throat.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-thyroid",
+      "side": "left",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.22
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Reflects the thyroid gland, which governs metabolism.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-thyroid",
+      "side": "right",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.22
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Reflects the thyroid gland, which governs metabolism.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-parathyroid",
+      "side": "left",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.2
+      },
+      "anatomy": "Parathyroid",
+      "meaning_standard": "Reflects the parathyroid glands, which regulate calcium.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-parathyroid",
+      "side": "right",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.2
+      },
+      "anatomy": "Parathyroid",
+      "meaning_standard": "Reflects the parathyroid glands, which regulate calcium.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-trapezius",
+      "side": "left",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.22
+      },
+      "anatomy": "Trapezius and shoulder line",
+      "meaning_standard": "Reflects the trapezius muscle and shoulder line.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-trapezius",
+      "side": "right",
+      "group": "neck-thyroid",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.22
+      },
+      "anatomy": "Trapezius and shoulder line",
+      "meaning_standard": "Reflects the trapezius muscle and shoulder line.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-lung",
+      "side": "left",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.3
+      },
+      "anatomy": "Lungs and bronchi",
+      "meaning_standard": "Reflects the lungs and bronchial tubes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-lung",
+      "side": "right",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.3
+      },
+      "anatomy": "Lungs and bronchi",
+      "meaning_standard": "Reflects the lungs and bronchial tubes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-chest-breast",
+      "side": "left",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.27
+      },
+      "anatomy": "Chest and breast",
+      "meaning_standard": "Reflects the chest and breast tissue.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-chest-breast",
+      "side": "right",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.27
+      },
+      "anatomy": "Chest and breast",
+      "meaning_standard": "Reflects the chest and breast tissue.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-heart",
+      "side": "left",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.3
+      },
+      "anatomy": "Heart",
+      "meaning_standard": "Reflects the heart.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-diaphragm",
+      "side": "left",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.38
+      },
+      "anatomy": "Diaphragm",
+      "meaning_standard": "Reflects the diaphragm, the breathing muscle separating chest and abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-diaphragm",
+      "side": "right",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.38
+      },
+      "anatomy": "Diaphragm",
+      "meaning_standard": "Reflects the diaphragm, the breathing muscle separating chest and abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-solar-plexus",
+      "side": "left",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.4
+      },
+      "anatomy": "Solar plexus",
+      "meaning_standard": "Reflects the solar plexus, a nerve center tied to stress response.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-solar-plexus",
+      "side": "right",
+      "group": "chest-lung",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.4
+      },
+      "anatomy": "Solar plexus",
+      "meaning_standard": "Reflects the solar plexus, a nerve center tied to stress response.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-stomach",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.45
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Reflects the stomach.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-pancreas",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.43,
+        "y": 0.47
+      },
+      "anatomy": "Pancreas",
+      "meaning_standard": "Reflects the pancreas, involved in digestion and blood sugar regulation.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-spleen",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.6,
+        "y": 0.47
+      },
+      "anatomy": "Spleen",
+      "meaning_standard": "Reflects the spleen, part of immune and blood filtration function.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-liver",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.62,
+        "y": 0.45
+      },
+      "anatomy": "Liver",
+      "meaning_standard": "Reflects the liver, the body's main detoxification organ.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-gallbladder",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.6,
+        "y": 0.49
+      },
+      "anatomy": "Gallbladder",
+      "meaning_standard": "Reflects the gallbladder, which stores and releases bile.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-small-intestine",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.65
+      },
+      "anatomy": "Small intestine",
+      "meaning_standard": "Reflects the small intestine, where most nutrient absorption occurs.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-small-intestine",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.65
+      },
+      "anatomy": "Small intestine",
+      "meaning_standard": "Reflects the small intestine, where most nutrient absorption occurs.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-transverse-colon",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.58
+      },
+      "anatomy": "Transverse colon",
+      "meaning_standard": "Reflects the transverse colon, crossing the middle of the abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-transverse-colon",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.58
+      },
+      "anatomy": "Transverse colon",
+      "meaning_standard": "Reflects the transverse colon, crossing the middle of the abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-ascending-colon",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.62,
+        "y": 0.63
+      },
+      "anatomy": "Ascending colon",
+      "meaning_standard": "Reflects the ascending colon, on the right side of the abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-ileocecal",
+      "side": "right",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.69
+      },
+      "anatomy": "Ileocecal valve",
+      "meaning_standard": "Reflects the ileocecal valve, connecting the small and large intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-descending-colon",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.62,
+        "y": 0.63
+      },
+      "anatomy": "Descending colon",
+      "meaning_standard": "Reflects the descending colon, on the left side of the abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-sigmoid-colon",
+      "side": "left",
+      "group": "digestive",
+      "geometry": {
+        "type": "point",
+        "x": 0.55,
+        "y": 0.71
+      },
+      "anatomy": "Sigmoid colon",
+      "meaning_standard": "Reflects the sigmoid colon, the final curve before the rectum.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-adrenal",
+      "side": "left",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.5
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Reflects the adrenal glands, which govern the stress response.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-adrenal",
+      "side": "right",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.5
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Reflects the adrenal glands, which govern the stress response.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-kidney",
+      "side": "left",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.55
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Reflects the kidney, which filters blood and balances fluids.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-kidney",
+      "side": "right",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.55
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Reflects the kidney, which filters blood and balances fluids.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-ureter",
+      "side": "left",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.63
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Reflects the ureter, the tube carrying urine from kidney to bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-ureter",
+      "side": "right",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.63
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Reflects the ureter, the tube carrying urine from kidney to bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-bladder",
+      "side": "left",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.69
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Reflects the bladder, which stores urine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-bladder",
+      "side": "right",
+      "group": "urinary",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.69
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Reflects the bladder, which stores urine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-cervical-spine",
+      "side": "left",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.17
+      },
+      "anatomy": "Cervical spine",
+      "meaning_standard": "Reflects the cervical spine, the neck vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-cervical-spine",
+      "side": "right",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.17
+      },
+      "anatomy": "Cervical spine",
+      "meaning_standard": "Reflects the cervical spine, the neck vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-thoracic-spine",
+      "side": "left",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.29,
+        "y": 0.35
+      },
+      "anatomy": "Thoracic spine",
+      "meaning_standard": "Reflects the thoracic spine, the mid-back vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-thoracic-spine",
+      "side": "right",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.29,
+        "y": 0.35
+      },
+      "anatomy": "Thoracic spine",
+      "meaning_standard": "Reflects the thoracic spine, the mid-back vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-lumbar-spine",
+      "side": "left",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.29,
+        "y": 0.55
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Reflects the lumbar spine, the lower back vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-lumbar-spine",
+      "side": "right",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.29,
+        "y": 0.55
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Reflects the lumbar spine, the lower back vertebrae.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-sacral-coccyx",
+      "side": "left",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.31,
+        "y": 0.78
+      },
+      "anatomy": "Sacrum and coccyx",
+      "meaning_standard": "Reflects the sacrum and coccyx at the base of the spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-sacral-coccyx",
+      "side": "right",
+      "group": "spine",
+      "geometry": {
+        "type": "point",
+        "x": 0.31,
+        "y": 0.78
+      },
+      "anatomy": "Sacrum and coccyx",
+      "meaning_standard": "Reflects the sacrum and coccyx at the base of the spine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-shoulder-arm",
+      "side": "left",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.26
+      },
+      "anatomy": "Shoulder and arm",
+      "meaning_standard": "Reflects the shoulder and arm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-shoulder-arm",
+      "side": "right",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.26
+      },
+      "anatomy": "Shoulder and arm",
+      "meaning_standard": "Reflects the shoulder and arm.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-elbow",
+      "side": "left",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.74,
+        "y": 0.4
+      },
+      "anatomy": "Elbow",
+      "meaning_standard": "Reflects the elbow.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-elbow",
+      "side": "right",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.74,
+        "y": 0.4
+      },
+      "anatomy": "Elbow",
+      "meaning_standard": "Reflects the elbow.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-knee-leg",
+      "side": "left",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.6
+      },
+      "anatomy": "Knee and leg",
+      "meaning_standard": "Reflects the knee and leg.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-knee-leg",
+      "side": "right",
+      "group": "limb",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.6
+      },
+      "anatomy": "Knee and leg",
+      "meaning_standard": "Reflects the knee and leg.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-sciatic",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.85
+      },
+      "anatomy": "Sciatic nerve",
+      "meaning_standard": "Reflects the sciatic nerve, running from the lower back down the leg.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-sciatic",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.85
+      },
+      "anatomy": "Sciatic nerve",
+      "meaning_standard": "Reflects the sciatic nerve, running from the lower back down the leg.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-hip-pelvis",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.8
+      },
+      "anatomy": "Hip and pelvis",
+      "meaning_standard": "Reflects the hip and pelvis.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-hip-pelvis",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.8
+      },
+      "anatomy": "Hip and pelvis",
+      "meaning_standard": "Reflects the hip and pelvis.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-lower-back",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.8
+      },
+      "anatomy": "Lower back",
+      "meaning_standard": "Reflects the lower back.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-lower-back",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.8
+      },
+      "anatomy": "Lower back",
+      "meaning_standard": "Reflects the lower back.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-uterus-prostate",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.84
+      },
+      "anatomy": "Uterus or prostate",
+      "meaning_standard": "Reflects the uterus in women or the prostate in men.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-uterus-prostate",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.84
+      },
+      "anatomy": "Uterus or prostate",
+      "meaning_standard": "Reflects the uterus in women or the prostate in men.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-ovary-testis",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.84
+      },
+      "anatomy": "Ovary or testis",
+      "meaning_standard": "Reflects the ovary in women or the testis in men.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-ovary-testis",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.84
+      },
+      "anatomy": "Ovary or testis",
+      "meaning_standard": "Reflects the ovary in women or the testis in men.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-L-rectum",
+      "side": "left",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.83
+      },
+      "anatomy": "Rectum",
+      "meaning_standard": "Reflects the rectum, the final segment of the large intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "foot-R-rectum",
+      "side": "right",
+      "group": "pelvis-elimination",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.83
+      },
+      "anatomy": "Rectum",
+      "meaning_standard": "Reflects the rectum, the final segment of the large intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
+  ]
+}
