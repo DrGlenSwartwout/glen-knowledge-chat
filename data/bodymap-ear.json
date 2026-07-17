@@ -1,31 +1,1442 @@
 {
   "system": "ear",
   "reference_frame": "ear_outline",
-  "outline": "M 0.55 0.05 C 0.75 0.06 0.82 0.25 0.80 0.42 C 0.79 0.55 0.72 0.62 0.66 0.70 C 0.60 0.80 0.58 0.92 0.48 0.95 C 0.38 0.97 0.30 0.90 0.30 0.78 C 0.24 0.75 0.20 0.66 0.24 0.55 C 0.20 0.45 0.22 0.28 0.32 0.16 C 0.40 0.07 0.47 0.05 0.55 0.05 Z",
+  "side_noun": "ear",
+  "group_noun": "region",
+  "outline": "M 0.55 0.05 C 0.75 0.06 0.84 0.24 0.80 0.42 C 0.78 0.56 0.70 0.64 0.64 0.72 C 0.58 0.82 0.57 0.93 0.47 0.95 C 0.37 0.97 0.28 0.90 0.30 0.79 C 0.23 0.76 0.18 0.67 0.24 0.55 C 0.18 0.44 0.21 0.26 0.32 0.15 C 0.40 0.07 0.47 0.05 0.55 0.05 Z M 0.53 0.11 C 0.67 0.13 0.74 0.28 0.71 0.42 C 0.70 0.52 0.64 0.59 0.59 0.66 M 0.40 0.70 C 0.41 0.60 0.42 0.50 0.43 0.41 M 0.43 0.41 C 0.43 0.31 0.45 0.23 0.47 0.16 M 0.43 0.41 C 0.39 0.35 0.35 0.31 0.31 0.29 M 0.35 0.45 C 0.43 0.46 0.49 0.47 0.55 0.47 M 0.46 0.49 C 0.56 0.49 0.61 0.56 0.57 0.64 C 0.53 0.71 0.44 0.69 0.42 0.61 C 0.40 0.54 0.42 0.49 0.46 0.49 Z M 0.30 0.51 C 0.25 0.53 0.24 0.60 0.27 0.65 C 0.30 0.67 0.34 0.64 0.34 0.58 M 0.39 0.72 C 0.43 0.71 0.48 0.73 0.48 0.77 C 0.47 0.80 0.42 0.80 0.40 0.77",
+  "outline_side": "left",
   "groups": [
-    { "id": "helix", "label": "Helix (outer rim)" },
-    { "id": "antihelix", "label": "Antihelix (spine)" },
-    { "id": "triangular-fossa", "label": "Triangular fossa" },
-    { "id": "concha", "label": "Concha (internal organs)" },
-    { "id": "tragus", "label": "Tragus" },
-    { "id": "antitragus", "label": "Antitragus" },
-    { "id": "lobe", "label": "Lobe (head and face)" }
+    {
+      "id": "helix",
+      "label": "Helix (outer rim)"
+    },
+    {
+      "id": "scapha",
+      "label": "Scapha (upper limb)"
+    },
+    {
+      "id": "triangular-fossa",
+      "label": "Triangular fossa (pelvis / shen men)"
+    },
+    {
+      "id": "antihelix",
+      "label": "Antihelix (spine & trunk)"
+    },
+    {
+      "id": "crus-helix",
+      "label": "Crus of helix (digestive line)"
+    },
+    {
+      "id": "concha",
+      "label": "Concha (internal organs)"
+    },
+    {
+      "id": "tragus",
+      "label": "Tragus (nose / adrenal / throat)"
+    },
+    {
+      "id": "antitragus",
+      "label": "Antitragus (head / brain)"
+    },
+    {
+      "id": "lobe",
+      "label": "Lobe (head & face)"
+    }
   ],
   "anchors": [
-    { "key": "helix-top", "template": {"x": 0.50, "y": 0.08}, "hint": "Tap the top of your ear, at the top of the rim." },
-    { "key": "lobe-bottom", "template": {"x": 0.48, "y": 0.93}, "hint": "Tap the bottom of your earlobe." },
-    { "key": "tragus", "template": {"x": 0.31, "y": 0.60}, "hint": "Tap the tragus, the small flap in front of the ear canal." }
+    {
+      "key": "helix-top",
+      "template": {
+        "x": 0.55,
+        "y": 0.07
+      },
+      "hint": "Tap the top rim of your ear."
+    },
+    {
+      "key": "tragus",
+      "template": {
+        "x": 0.29,
+        "y": 0.58
+      },
+      "hint": "Tap the tragus (flap in front of the canal)."
+    },
+    {
+      "key": "lobe-bottom",
+      "template": {
+        "x": 0.47,
+        "y": 0.93
+      },
+      "hint": "Tap the bottom of your earlobe."
+    }
   ],
   "zones": [
-    { "id": "ear-L-apex", "side": "left", "group": "helix", "geometry": {"type": "point", "x": 0.52, "y": 0.11}, "anatomy": "Ear Apex", "meaning_standard": "Point at the top of the helix used for calming and to settle heat.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-shenmen", "side": "left", "group": "triangular-fossa", "geometry": {"type": "point", "x": 0.44, "y": 0.26}, "anatomy": "Shen Men", "meaning_standard": "Master calming and regulating point in the triangular fossa.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-sympathetic", "side": "left", "group": "antihelix", "geometry": {"type": "point", "x": 0.30, "y": 0.40}, "anatomy": "Sympathetic", "meaning_standard": "Autonomic balancing point along the inner antihelix border.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-point-zero", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.50, "y": 0.50}, "anatomy": "Point Zero", "meaning_standard": "Central reference point at the root of the helix; homeostatic anchor.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-kidney", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.55, "y": 0.42}, "anatomy": "Kidney", "meaning_standard": "Concha point reflecting the kidney and fluid balance.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-liver", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.61, "y": 0.53}, "anatomy": "Liver", "meaning_standard": "Concha point reflecting the liver.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-lung", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.50, "y": 0.60}, "anatomy": "Lung", "meaning_standard": "Concha point reflecting the lungs; used for respiration and detox support.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-heart", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.48, "y": 0.53}, "anatomy": "Heart", "meaning_standard": "Deep concha point reflecting the heart and circulation.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-stomach", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.46, "y": 0.47}, "anatomy": "Stomach", "meaning_standard": "Concha point at the helix root reflecting the stomach.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "ear-L-subcortex", "side": "left", "group": "lobe", "geometry": {"type": "point", "x": 0.50, "y": 0.84}, "anatomy": "Subcortex (head)", "meaning_standard": "Lobe point associated with the head and higher regulation.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+    {
+      "id": "ear-ear-apex",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.52,
+        "y": 0.09
+      },
+      "anatomy": "Ear apex",
+      "meaning_standard": "Ear apex — fever, allergy, calming.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-helix-tubercle",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.77,
+        "y": 0.23
+      },
+      "anatomy": "Helix tubercle (Darwin)",
+      "meaning_standard": "Darwin's tubercle, upper helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-liver-yang",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.78,
+        "y": 0.34
+      },
+      "anatomy": "Liver yang",
+      "meaning_standard": "Liver-yang point, helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-external-genital",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.2
+      },
+      "anatomy": "External genitals",
+      "meaning_standard": "External genital reflex, helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-urethra",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.26
+      },
+      "anatomy": "Urethra",
+      "meaning_standard": "Urethra reflex, helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-anus",
+      "side": "left",
+      "bilateral": true,
+      "group": "helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.27,
+        "y": 0.32
+      },
+      "anatomy": "Anus / rectum",
+      "meaning_standard": "Anus / lower rectum, helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-diaphragm-helix",
+      "side": "left",
+      "bilateral": true,
+      "group": "crus-helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.45
+      },
+      "anatomy": "Diaphragm (helix root)",
+      "meaning_standard": "Diaphragm / ear-centre, helix root.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-clavicle",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.66
+      },
+      "anatomy": "Clavicle",
+      "meaning_standard": "Clavicle, lower scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-shoulder",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.67,
+        "y": 0.58
+      },
+      "anatomy": "Shoulder",
+      "meaning_standard": "Shoulder, scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-shoulder-joint",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.7,
+        "y": 0.5
+      },
+      "anatomy": "Shoulder joint",
+      "meaning_standard": "Shoulder joint, scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-elbow",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.72,
+        "y": 0.42
+      },
+      "anatomy": "Elbow",
+      "meaning_standard": "Elbow, scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-wrist",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.73,
+        "y": 0.33
+      },
+      "anatomy": "Wrist",
+      "meaning_standard": "Wrist, scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-fingers",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.71,
+        "y": 0.25
+      },
+      "anatomy": "Fingers",
+      "meaning_standard": "Fingers, upper scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-wind-stream",
+      "side": "left",
+      "bilateral": true,
+      "group": "scapha",
+      "geometry": {
+        "type": "point",
+        "x": 0.68,
+        "y": 0.29
+      },
+      "anatomy": "Wind stream (allergy)",
+      "meaning_standard": "Wind-stream / allergy point, scapha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-shenmen",
+      "side": "left",
+      "bilateral": true,
+      "group": "triangular-fossa",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.24
+      },
+      "anatomy": "Shen men",
+      "meaning_standard": "Shen Men — master calming / pain point.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-uterus-genital",
+      "side": "left",
+      "bilateral": true,
+      "group": "triangular-fossa",
+      "geometry": {
+        "type": "point",
+        "x": 0.41,
+        "y": 0.21
+      },
+      "anatomy": "Uterus / internal genital",
+      "meaning_standard": "Uterus / internal genital, triangular fossa.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-pelvis",
+      "side": "left",
+      "bilateral": true,
+      "group": "triangular-fossa",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.3
+      },
+      "anatomy": "Pelvis",
+      "meaning_standard": "Pelvis, triangular fossa.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-hypertension",
+      "side": "left",
+      "bilateral": true,
+      "group": "triangular-fossa",
+      "geometry": {
+        "type": "point",
+        "x": 0.43,
+        "y": 0.3
+      },
+      "anatomy": "Hypertension groove",
+      "meaning_standard": "Blood-pressure-lowering point.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-toe",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.15
+      },
+      "anatomy": "Toe",
+      "meaning_standard": "Toe, superior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-heel",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.49,
+        "y": 0.15
+      },
+      "anatomy": "Heel",
+      "meaning_standard": "Heel, superior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-ankle",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.46,
+        "y": 0.2
+      },
+      "anatomy": "Ankle",
+      "meaning_standard": "Ankle, superior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-knee",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.26
+      },
+      "anatomy": "Knee",
+      "meaning_standard": "Knee, superior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-hip",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.38,
+        "y": 0.31
+      },
+      "anatomy": "Hip",
+      "meaning_standard": "Hip, superior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-buttock",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.34,
+        "y": 0.33
+      },
+      "anatomy": "Buttock",
+      "meaning_standard": "Buttock, inferior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-sciatic",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.32,
+        "y": 0.3
+      },
+      "anatomy": "Sciatic nerve",
+      "meaning_standard": "Sciatic nerve, inferior crus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-sympathetic",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.35
+      },
+      "anatomy": "Sympathetic",
+      "meaning_standard": "Autonomic / sympathetic point.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-cervical-vertebrae",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.39,
+        "y": 0.68
+      },
+      "anatomy": "Cervical vertebrae",
+      "meaning_standard": "Cervical spine, lower antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-thoracic-vertebrae",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.41,
+        "y": 0.58
+      },
+      "anatomy": "Thoracic vertebrae",
+      "meaning_standard": "Thoracic spine, mid antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-lumbosacral-vertebrae",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.43,
+        "y": 0.47
+      },
+      "anatomy": "Lumbosacral vertebrae",
+      "meaning_standard": "Lumbosacral spine, upper antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-neck",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.69
+      },
+      "anatomy": "Neck",
+      "meaning_standard": "Neck, antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-chest",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.38,
+        "y": 0.6
+      },
+      "anatomy": "Chest",
+      "meaning_standard": "Chest, antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-abdomen",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.5
+      },
+      "anatomy": "Abdomen",
+      "meaning_standard": "Abdomen, antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-mammary",
+      "side": "left",
+      "bilateral": true,
+      "group": "antihelix",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.62
+      },
+      "anatomy": "Breast / mammary",
+      "meaning_standard": "Breast / mammary, antihelix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-mouth",
+      "side": "left",
+      "bilateral": true,
+      "group": "crus-helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.38,
+        "y": 0.47
+      },
+      "anatomy": "Mouth",
+      "meaning_standard": "Mouth, crus of helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-esophagus",
+      "side": "left",
+      "bilateral": true,
+      "group": "crus-helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.47
+      },
+      "anatomy": "Oesophagus",
+      "meaning_standard": "Oesophagus, crus of helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-cardia",
+      "side": "left",
+      "bilateral": true,
+      "group": "crus-helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.47
+      },
+      "anatomy": "Cardia",
+      "meaning_standard": "Cardia, crus of helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-duodenum",
+      "side": "left",
+      "bilateral": true,
+      "group": "crus-helix",
+      "geometry": {
+        "type": "point",
+        "x": 0.52,
+        "y": 0.46
+      },
+      "anatomy": "Duodenum",
+      "meaning_standard": "Duodenum, end of crus of helix.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-point-zero",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.5
+      },
+      "anatomy": "Point zero",
+      "meaning_standard": "Point Zero — the reference / balance point.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-stomach",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.5
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach, around point zero.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-small-intestine",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.46
+      },
+      "anatomy": "Small intestine",
+      "meaning_standard": "Small intestine, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-large-intestine",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.53,
+        "y": 0.45
+      },
+      "anatomy": "Large intestine",
+      "meaning_standard": "Large intestine, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-appendix",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.55,
+        "y": 0.46
+      },
+      "anatomy": "Appendix",
+      "meaning_standard": "Appendix, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-kidney",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.43
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-ureter",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.58,
+        "y": 0.45
+      },
+      "anatomy": "Ureter",
+      "meaning_standard": "Ureter, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-bladder",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.59,
+        "y": 0.41
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-pancreas-gallbladder",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.6,
+        "y": 0.47
+      },
+      "anatomy": "Pancreas / gallbladder",
+      "meaning_standard": "Pancreas / gallbladder, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-liver",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.61,
+        "y": 0.53
+      },
+      "anatomy": "Liver",
+      "meaning_standard": "Liver, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-prostate",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.61,
+        "y": 0.4
+      },
+      "anatomy": "Prostate",
+      "meaning_standard": "Prostate, cymba concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-heart",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.49,
+        "y": 0.55
+      },
+      "anatomy": "Heart",
+      "meaning_standard": "Heart, centre of the cavum concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-lung",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.52,
+        "y": 0.6
+      },
+      "anatomy": "Lung",
+      "meaning_standard": "Lung, surrounding the heart.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-trachea",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.58
+      },
+      "anatomy": "Trachea / bronchi",
+      "meaning_standard": "Trachea / bronchi, cavum concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-spleen",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.57,
+        "y": 0.61
+      },
+      "anatomy": "Spleen",
+      "meaning_standard": "Spleen, cavum concha (left ear emphasis).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-san-jiao",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.63
+      },
+      "anatomy": "San jiao (triple burner)",
+      "meaning_standard": "San jiao / triple burner, cavum concha.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-endocrine",
+      "side": "left",
+      "bilateral": true,
+      "group": "concha",
+      "geometry": {
+        "type": "point",
+        "x": 0.43,
+        "y": 0.63
+      },
+      "anatomy": "Endocrine",
+      "meaning_standard": "Endocrine point, concha notch.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-external-nose",
+      "side": "left",
+      "bilateral": true,
+      "group": "tragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.31,
+        "y": 0.56
+      },
+      "anatomy": "External nose",
+      "meaning_standard": "External nose, tragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-adrenal",
+      "side": "left",
+      "bilateral": true,
+      "group": "tragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.28,
+        "y": 0.61
+      },
+      "anatomy": "Adrenal",
+      "meaning_standard": "Adrenal, tip of the tragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-internal-nose",
+      "side": "left",
+      "bilateral": true,
+      "group": "tragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.3,
+        "y": 0.63
+      },
+      "anatomy": "Internal nose",
+      "meaning_standard": "Internal nose, inner tragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-throat-pharynx",
+      "side": "left",
+      "bilateral": true,
+      "group": "tragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.32,
+        "y": 0.53
+      },
+      "anatomy": "Throat / pharynx",
+      "meaning_standard": "Throat / pharynx, tragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-external-ear",
+      "side": "left",
+      "bilateral": true,
+      "group": "tragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.33,
+        "y": 0.5
+      },
+      "anatomy": "External ear",
+      "meaning_standard": "External ear, upper tragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-subcortex",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.43,
+        "y": 0.76
+      },
+      "anatomy": "Subcortex",
+      "meaning_standard": "Subcortex — pain, inflammation, brain.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-brainstem",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.4,
+        "y": 0.73
+      },
+      "anatomy": "Brainstem",
+      "meaning_standard": "Brainstem, antitragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-forehead",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.46,
+        "y": 0.74
+      },
+      "anatomy": "Forehead",
+      "meaning_standard": "Forehead, antitragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-temple",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.48,
+        "y": 0.72
+      },
+      "anatomy": "Temple (taiyang)",
+      "meaning_standard": "Temple / taiyang, antitragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-occiput",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.72
+      },
+      "anatomy": "Occiput",
+      "meaning_standard": "Occiput, antitragus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-asthma",
+      "side": "left",
+      "bilateral": true,
+      "group": "antitragus",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.78
+      },
+      "anatomy": "Asthma (ping chuan)",
+      "meaning_standard": "Asthma / ping-chuan, antitragus apex.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-eye",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.48,
+        "y": 0.86
+      },
+      "anatomy": "Eye",
+      "meaning_standard": "Eye, centre of the lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-tongue",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.84
+      },
+      "anatomy": "Tongue",
+      "meaning_standard": "Tongue, lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-teeth-jaw",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.41,
+        "y": 0.85
+      },
+      "anatomy": "Teeth / jaw",
+      "meaning_standard": "Teeth / jaw, lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-tonsil",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.49,
+        "y": 0.92
+      },
+      "anatomy": "Tonsil",
+      "meaning_standard": "Tonsil, lower lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-internal-ear",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.53,
+        "y": 0.85
+      },
+      "anatomy": "Internal ear",
+      "meaning_standard": "Internal ear, lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-cheek",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.51,
+        "y": 0.83
+      },
+      "anatomy": "Cheek",
+      "meaning_standard": "Cheek, lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "ear-face",
+      "side": "left",
+      "bilateral": true,
+      "group": "lobe",
+      "geometry": {
+        "type": "point",
+        "x": 0.45,
+        "y": 0.81
+      },
+      "anatomy": "Face / upper jaw",
+      "meaning_standard": "Face / upper jaw, upper lobe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
   ]
 }
