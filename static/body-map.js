@@ -155,7 +155,7 @@
     wireOverlay();
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
-    const initialSystem = (sys === "iridology" || sys === "sclerology") ? sys : "iridology";
+    const initialSystem = (sys === "iridology" || sys === "sclerology" || sys === "ear") ? sys : "iridology";
     document.getElementById("bm-system").value = initialSystem;
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
@@ -187,6 +187,26 @@
     });
   }
 
+  function activeAnchorSteps() {
+    const a = state.payload && state.payload.anchors;
+    return (a && a.length) ? a : ANCHOR_STEPS;
+  }
+
+  // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
+  // from the first two anchor correspondences. Exact for 2 points; a third is not required.
+  function fitSimilarity(steps) {
+    const a0 = steps[0].template, a1 = steps[1].template;
+    const b0 = anchors[steps[0].key], b1 = anchors[steps[1].key];
+    const dax = a1.x - a0.x, day = a1.y - a0.y;
+    const dbx = b1.x - b0.x, dby = b1.y - b0.y;
+    const denom = dax * dax + day * day || 1e-9;
+    const mx = (dbx * dax + dby * day) / denom;
+    const my = (dby * dax - dbx * day) / denom;
+    const tx = b0.x - (mx * a0.x - my * a0.y);
+    const ty = b0.y - (my * a0.x + mx * a0.y);
+    return (n) => ({ x: mx * n.x - my * n.y + tx, y: my * n.x + mx * n.y + ty });
+  }
+
   function setMode(photo) {
     document.getElementById("bm-mode-ref").classList.toggle("bm-active", !photo);
     document.getElementById("bm-mode-photo").classList.toggle("bm-active", photo);
@@ -199,23 +219,26 @@
   function beginAnchoring() {
     anchorIdx = 0; Object.keys(anchors).forEach(k => delete anchors[k]);
     state.transform = null; renderChart();
-    document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[0].hint;
+    document.getElementById("bm-anchor-hint").textContent = activeAnchorSteps()[0].hint;
   }
 
   function onCanvasClick(evt) {
-    if (document.getElementById("bm-photo").hidden || anchorIdx >= ANCHOR_STEPS.length) return;
+    const steps = activeAnchorSteps();
+    if (document.getElementById("bm-photo").hidden || anchorIdx >= steps.length) return;
     const svg = document.getElementById("bm-svg");
     const rect = svg.getBoundingClientRect();
     const x = (evt.clientX - rect.left) / rect.width * VIEW;
     const y = (evt.clientY - rect.top) / rect.height * VIEW;
-    anchors[ANCHOR_STEPS[anchorIdx].key] = { x, y };
+    anchors[steps[anchorIdx].key] = { x, y };
     anchorIdx++;
-    if (anchorIdx < ANCHOR_STEPS.length) {
-      document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[anchorIdx].hint;
+    if (anchorIdx < steps.length) {
+      document.getElementById("bm-anchor-hint").textContent = steps[anchorIdx].hint;
       drawAnchors();
     } else {
       document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-      state.transform = computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+      state.transform = (state.payload && state.payload.anchors && state.payload.anchors.length)
+        ? fitSimilarity(steps)
+        : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
       renderChart(); drawAnchors();
       console.log("[bodymap] overlay placed");
     }
@@ -247,27 +270,28 @@
 
   function applyFocusFromURL(params) {
     if (!state.payload) return;
-    const eye = params.get("eye");
-    if (eye === "right" || eye === "left") {
-      state.eye = eye; document.getElementById("bm-eye").value = eye; renderChart();
+    const side = params.get("side") || params.get("eye");
+    const sides = new Set((state.payload.zones || []).map(zoneSide));
+    if (side && sides.has(side)) {
+      state.eye = side; document.getElementById("bm-eye").value = side; renderChart();
     }
     const zoneId = params.get("zone");
     if (zoneId) {
       const z = (state.payload.zones || []).find(x => x.id === zoneId);
       if (z) {
-        if (z.eye !== state.eye) {
-          state.eye = z.eye; document.getElementById("bm-eye").value = z.eye; renderChart();
+        if (zoneSide(z) !== state.eye) {
+          state.eye = zoneSide(z); document.getElementById("bm-eye").value = state.eye; renderChart();
         }
         selectZone(z);
         return;
       }
     }
-    const layerId = params.get("layer");
-    if (layerId) {
-      const layer = (state.payload.germ_layers || []).find(g => g.id === layerId);
-      if (layer) {
-        state.activeLayers.clear(); state.activeLayers.add(layerId);
-        const cb = document.getElementById("bml-" + layerId);
+    const groupId = params.get("group") || params.get("layer");
+    if (groupId) {
+      const grp = groupsOf(state.payload).find(g => g.id === groupId);
+      if (grp) {
+        state.activeLayers.clear(); state.activeLayers.add(groupId);
+        const cb = document.getElementById("bml-" + groupId);
         if (cb) cb.checked = true;
         renderChart();
         const first = currentZones()[0];
