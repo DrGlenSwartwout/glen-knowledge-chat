@@ -224,6 +224,24 @@ def consent_state(cx, primary_email, member_email):
             "consent_basis": r[1] or "", "consent_confirmed_at": r[2] or ""}
 
 
+def record_consent(cx, primary_email, member_email, basis, by=""):
+    """Record an operator-captured consent basis (verbal/written) on an EXISTING
+    link, activating sharing. Never overwrites a dependent's caregiver-authority
+    basis. Returns False if the link doesn't exist."""
+    p, m = _norm(primary_email), _norm(member_email)
+    row = cx.execute("SELECT consent_basis FROM household_members "
+                     "WHERE primary_email=? AND member_email=?", (p, m)).fetchone()
+    if not row:
+        return False
+    if (row[0] or "") == "caregiver-authority":
+        return True   # dependent link already consented via caregiver authority
+    cx.execute("UPDATE household_members SET share_consent=1, consent_basis=?, "
+               "consent_recorded_by=? WHERE primary_email=? AND member_email=?",
+               (basis, by or "", p, m))
+    cx.commit()
+    return True
+
+
 def confirm_consent(cx, primary_email, member_email):
     p, m = _norm(primary_email), _norm(member_email)
     row = cx.execute("SELECT consent_confirmed_at FROM household_members "
