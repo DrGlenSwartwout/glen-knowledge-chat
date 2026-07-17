@@ -84,7 +84,9 @@
     if (isOutlineFrame()) {
       if (state.payload.outline) {
         const path = document.createElementNS(svgNS, "path");
-        path.setAttribute("d", transformPathD(state.payload.outline, mapFn));
+        const oMir = state.payload.outline_side && state.payload.outline_side !== state.eye;
+        const oMapFn = oMir ? (p) => mapFn({ x: 1 - p.x, y: p.y }) : mapFn;
+        path.setAttribute("d", transformPathD(state.payload.outline, oMapFn));
         path.setAttribute("fill", "#00000008"); path.setAttribute("stroke", "#b8a678"); path.setAttribute("stroke-width", "1.5");
         svg.appendChild(path);
       }
