@@ -29336,6 +29336,18 @@ def _household_slug(name, head_first_name="", existing=None):
     return f"{base}-{n}"
 
 
+def _pair_household_name(cx, head_id, other_id):
+    """Household display name for a 2-person connect. '{Last} Household' when
+    surnames match; '{HeadLast} / {OtherLast} Household' when they differ."""
+    def _last(pid):
+        r = cx.execute("SELECT last_name FROM people WHERE id=?", (pid,)).fetchone()
+        return ((r[0] if r else "") or "").strip()
+    hl, ol = _last(head_id), _last(other_id)
+    if hl and ol and hl.lower() != ol.lower():
+        return f"{hl} / {ol} Household"
+    return f"{hl or ol or 'New'} Household"
+
+
 def _candidate_dedup_key(person_ids):
     """Stable dedup key for household_candidates rows. Sorting ensures the
     same cluster produces the same key across detection runs regardless
@@ -29869,6 +29881,75 @@ def person_household_suggestions(person_id):
                 "dismissed": False,
             })
     return jsonify({"suggestions": out})
+
+
+@app.route("/api/people/<int:person_id>/connect", methods=["POST"])
+def person_connect(person_id):
+    auth_err = _check_console_or_scoped_auth()
+    if auth_err: return auth_err
+    from dashboard import household as _hh
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx)
+    body = request.get_json(force=True) or {}
+    mode = (body.get("mode") or "").strip()
+    other_id = body.get("other_person_id")
+    if mode not in ("member", "caregiver", "dismiss") or not other_id:
+        return jsonify({"error": "mode + other_person_id required"}), 400
+
+    if mode == "dismiss":
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx.execute("INSERT INTO household_candidates (detected_at, signal, person_ids, "
+                       "status, resolved_at, resolved_by) VALUES (?,?,?,?,?,?)",
+                       (datetime.now(timezone.utc).isoformat(), "manual-dismiss",
+                        json.dumps(sorted([int(person_id), int(other_id)])),
+                        "dismissed", datetime.now(timezone.utc).isoformat(), "glen"))
+            cx.commit()
+        return jsonify({"ok": True, "dismissed": True})
+
+    # Ensure a CRM household grouping exists for the pair (idempotent).
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        existing = _person_household_slug(cx, person_id) or _person_household_slug(cx, other_id)
+        head_id = body.get("caregiver_person_id") or person_id  # caregiver heads the household
+        name = _pair_household_name(cx, head_id, other_id if head_id == person_id else person_id)
+
+    if existing:
+        with app.test_request_context(f"/api/households/{existing}/members", method="POST",
+                                      json={"person_id": other_id},
+                                      headers={"X-Console-Key": CONSOLE_SECRET or ""}):
+            add_household_member(existing)
+    else:
+        member_ids = sorted({int(person_id), int(other_id)})
+        with app.test_request_context("/api/households", method="POST",
+                                      json={"name": name, "head_person_id": head_id,
+                                            "member_person_ids": member_ids},
+                                      headers={"X-Console-Key": CONSOLE_SECRET or ""}):
+            resp = create_household()
+        if isinstance(resp, tuple) and resp[1] != 200:
+            return resp
+
+    if mode == "member":
+        return jsonify({"ok": True, "mode": "member"})
+
+    # mode == caregiver: layer the directional link on top of the grouping.
+    cg_id = body.get("caregiver_person_id"); cf_id = body.get("cared_for_person_id")
+    relationship = (body.get("relationship") or "dependent").strip().lower()
+    if not cg_id or not cf_id:
+        return jsonify({"error": "caregiver_person_id + cared_for_person_id required"}), 400
+    method = ((body.get("consent") or {}).get("method") or "portal").strip()
+    consent_basis = method if method in ("verbal", "written") else None
+    with sqlite3.connect(LOG_DB) as cx:
+        emails = {r[0]: r[1] for r in cx.execute(
+            "SELECT id, email FROM people WHERE id IN (?,?)", (cg_id, cf_id)).fetchall()}
+    cg_email, cf_email = emails.get(cg_id), emails.get(cf_id)
+    if not cg_email or not cf_email:
+        return jsonify({"error": "caregiver/cared-for email missing"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _hh.init_household_tables(cx)
+        _hh.add_member(cx, cg_email, cf_email, label="", relationship=relationship,
+                       consent_basis=consent_basis, consent_by="console")
+    return jsonify({"ok": True, "mode": "caregiver", "relationship": relationship,
+                    "consent_basis": consent_basis or "pending"})
 
 
 @app.route("/api/household-candidates", methods=["GET"])
