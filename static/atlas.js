@@ -208,8 +208,12 @@
       return '<a href="' + l.url + '" target="_blank" rel="noopener">' +
         (icon[l.type] || "•") + " " + (l.title || l.type) + "</a>";
     }).join("");
+    var bmLink = c.body_map_url
+      ? '<a href="' + c.body_map_url + '">◉ View on the Body Map</a>'
+      : "";
     this.drawer.innerHTML = "<h4>" + c.label + "</h4><div>" + (c.summary || "") + "</div>" +
-      '<div style="margin-top:8px">' + (links || "<span>No links yet.</span>") + "</div>";
+      '<div style="margin-top:8px">' + (links || "<span>No links yet.</span>") + "</div>" +
+      (bmLink ? '<div style="margin-top:8px">' + bmLink + "</div>" : "");
   };
 
   Atlas.prototype.select = function (id) {
