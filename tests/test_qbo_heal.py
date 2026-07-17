@@ -18,7 +18,7 @@ def _new_order(cx, ref, email="a@b.com"):
 
 
 def _mark_pending(cx, order_id, minutes_ago):
-    ts = (datetime.datetime.utcnow() - datetime.timedelta(minutes=minutes_ago)).isoformat()
+    ts = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=minutes_ago)).isoformat()
     cx.execute("UPDATE orders SET qbo_sales_receipt_id='PENDING', updated_at=? WHERE id=?",
                (ts, order_id))
     cx.commit()
@@ -127,13 +127,13 @@ def test_non_pending_orders_never_touched():
     oid_real = _new_order(cx, "tok-real")
     O.set_order_sales_receipt_id(cx, oid_real, "SR-already")
     cx.execute("UPDATE orders SET updated_at=? WHERE id=?",
-               ((datetime.datetime.utcnow() - datetime.timedelta(minutes=30)).isoformat(),
+               ((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=30)).isoformat(),
                 oid_real))
     cx.commit()
 
     oid_null = _new_order(cx, "tok-null")
     cx.execute("UPDATE orders SET updated_at=? WHERE id=?",
-               ((datetime.datetime.utcnow() - datetime.timedelta(minutes=30)).isoformat(),
+               ((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=30)).isoformat(),
                 oid_null))
     cx.commit()
 

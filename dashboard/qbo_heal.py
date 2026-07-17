@@ -48,7 +48,9 @@ def heal_pending_receipts(cx, *, find_receipt, book, stamp, older_than_min=10, n
     order successfully resolved this run (action is "stamped" or "rebooked").
     Skipped/errored orders are not included.
     """
-    cutoff = (now or datetime.datetime.utcnow()) - datetime.timedelta(minutes=older_than_min)
+    # tz-aware to match orders._now() (datetime.now(timezone.utc).isoformat(), "+00:00"),
+    # so the string comparison against updated_at is apples-to-apples, not naive-vs-aware.
+    cutoff = (now or datetime.datetime.now(datetime.timezone.utc)) - datetime.timedelta(minutes=older_than_min)
     cx.row_factory = sqlite3.Row
     rows = cx.execute(
         "SELECT * FROM orders WHERE qbo_sales_receipt_id='PENDING' AND updated_at < ?",
