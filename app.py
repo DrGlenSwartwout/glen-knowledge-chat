@@ -9562,7 +9562,8 @@ def begin_checkout_return():
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe")):
+                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe",
+                                                    "client")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -14045,6 +14046,14 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[practitioner-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -14119,6 +14128,14 @@ def api_practitioner_personal_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out["invoice_id"], out["qbo_payload"])
+            except Exception as _e:
+                print(f"[personal-checkout] persist qbo_lines failed: {_e!r}", flush=True)
         # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
         # build_order was called with method=None above, so it did NOT credit its
         # own 3% — this is the only earn for this order. Credit the explicit 3.5%
@@ -14220,6 +14237,14 @@ def api_practitioner_dropship_checkout():
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale",
                       get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[dropship-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -16054,6 +16079,15 @@ def api_client_checkout(code):
                   practitioner_id=pid,
                   margin_cents=int(out.get("margin_cents") or 0),
                   ship_credit_applied_cents=int(out.get("ship_credit_applied_cents") or 0))
+
+    # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+    # return-handler can book a real Sales Receipt once payment is confirmed.
+    if out.get("qbo_payload"):
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+        except Exception as e:
+            print(f"[client-checkout] persist qbo_lines failed: {e!r}", flush=True)
 
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
@@ -25873,6 +25907,29 @@ def practitioner_checkout_return():
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[stripe-return] pi capture: {_e!r}", flush=True)
+                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice (cid==""),
+                # so mark the order paid and book ONE Sales Receipt. Guarded on
+                # qbo_lines_json so legacy invoice-based orders are untouched;
+                # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
+                if inv:
+                    try:
+                        _pcx = _sqlite3.connect(LOG_DB); _pcx.row_factory = _sqlite3.Row
+                        try:
+                            _po = _bos_orders.find_order_by_external_ref(_pcx, inv)
+                            if _po and _po["qbo_lines_json"] and not _po["qbo_sales_receipt_id"]:
+                                _pi = sess.get("payment_intent")
+                                if _pi:
+                                    _bos_orders.set_order_stripe_pi(_pcx, _po["id"], _pi)
+                                _bos_orders.set_order_payment(
+                                    _pcx, _po["id"], method="card",
+                                    amount_cents=int(sess.get("amount_total") or 0))
+                                from dashboard import qbo_sale as _qs
+                                _qs.book_sale_on_payment(
+                                    _pcx, dict(_bos_orders.find_order_by_external_ref(_pcx, inv)))
+                        finally:
+                            _pcx.close()
+                    except Exception as _e:
+                        print(f"[practitioner-return] paid-only book: {_e!r}", flush=True)
         except Exception as e:
             print(f"[stripe-return] {e!r}", flush=True)
     dest = "/practitioner/portal?paid=" + paid

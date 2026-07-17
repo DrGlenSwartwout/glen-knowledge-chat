@@ -25,7 +25,10 @@ def test_practitioner_price_for_defaults_to_retail(monkeypatch):
 # ── build_client_order ───────────────────────────────────────────────────────
 
 def test_build_client_order_charges_patient_credits_margin(monkeypatch):
-    """1 bottle @ S=$70: patient is charged $70, margin = $13.40 (1340 cents)."""
+    """Paid-only (Stage 4): build_client_order creates NO QBO invoice/customer --
+    it returns a checkout_ref token + a line-faithful qbo_payload for the route
+    to persist and the return-handler to book once payment is confirmed.
+    1 bottle @ S=$70: patient is charged $70, margin = $13.40 (1340 cents)."""
     cart = [{"slug": "brain-boost", "qty": 1}]
     prac = {"id": "p1", "modules_completed": 0, "dispensary_code": "abc"}
     patient = {"email": "pat@x.com", "ship": {"name": "Pat", "state": "CA", "country": "US"}}
@@ -34,12 +37,10 @@ def test_build_client_order_charges_patient_credits_margin(monkeypatch):
     # S = $70 retail (practitioner hasn't overridden it)
     monkeypatch.setattr(dc, "practitioner_price_for", lambda pid, slug: 7000)
 
-    monkeypatch.setattr(dc.qb, "find_or_create_customer",
-                        lambda *a, **k: {"Id": "PATC"})
-    cap = {}
-    monkeypatch.setattr(dc.qb, "create_invoice",
-        lambda cust, lines, **k: cap.update(cust=cust, lines=lines) or
-        {"Id": "INV", "TotalAmt": 70.0})
+    def boom(*a, **k):
+        raise AssertionError("build_client_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
 
     import dashboard.tax as _tax
     monkeypatch.setattr(_tax, "compute_get_cents",
@@ -49,11 +50,14 @@ def test_build_client_order_charges_patient_credits_margin(monkeypatch):
 
     assert out["ok"] is True
     assert out["source"] == "dispensary"
-    assert out["customer_id"] == "PATC"          # the PATIENT is the QBO customer
+    assert out["customer_id"] == ""               # no QBO customer at checkout time
+    assert out["doc_number"] == ""
+    assert isinstance(out["invoice_id"], str) and len(out["invoice_id"]) == 32
     assert out["ship_to"]["name"] == "Pat"        # ships to the patient
     # 1 bottle @ S=$70, base $50, fee 33%*(7000-5000)=660 -> margin 1340
     assert out["margin_cents"] == 1340
-    assert cap["lines"][0]["amount"] == 70.0      # patient is charged S, not wholesale
+    assert out["qbo_payload"]["lines"][0]["amount"] == 70.0   # patient is charged S, not wholesale
+    assert out["total"] == 70.0
 
 
 def test_build_client_order_empty_cart_rejected(monkeypatch):
@@ -62,9 +66,11 @@ def test_build_client_order_empty_cart_rejected(monkeypatch):
     patient = {"email": "pat@x.com", "ship": {"state": "CA", "country": "US"}}
     monkeypatch.setattr(dc, "_retail_for", lambda slug: 7000)
     monkeypatch.setattr(dc, "practitioner_price_for", lambda pid, slug: 7000)
-    monkeypatch.setattr(dc.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C"})
-    monkeypatch.setattr(dc.qb, "create_invoice",
-        lambda *a, **k: {"Id": "I", "TotalAmt": 0.0})
+
+    def boom(*a, **k):
+        raise AssertionError("build_client_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
     import dashboard.tax as _tax
     monkeypatch.setattr(_tax, "compute_get_cents",
         lambda s, *, channel, ship_to_state, resale_ok=False: 0)
@@ -129,11 +135,11 @@ def test_build_client_order_get_recorded_not_charged(monkeypatch):
 
     monkeypatch.setattr(dc, "_retail_for", lambda slug: 7000)
     monkeypatch.setattr(dc, "practitioner_price_for", lambda pid, slug: 7000)
-    monkeypatch.setattr(dc.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C"})
-    cap = {}
-    monkeypatch.setattr(dc.qb, "create_invoice",
-        lambda cust, lines, **k: cap.update(lines=lines) or
-        {"Id": "INV", "TotalAmt": 70.0})
+
+    def boom(*a, **k):
+        raise AssertionError("build_client_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
     import dashboard.tax as _tax
     monkeypatch.setattr(_tax, "compute_get_cents",
         lambda s, *, channel, ship_to_state, resale_ok=False: 400)
@@ -141,7 +147,8 @@ def test_build_client_order_get_recorded_not_charged(monkeypatch):
     out = dc.build_client_order(cart, prac, patient=patient, method="card")
 
     assert out["get_cents"] == 400
+    lines = out["qbo_payload"]["lines"]
     names = " ".join(
-        l.get("name", "") + l.get("description", "") for l in cap["lines"]
+        l.get("name", "") + l.get("description", "") for l in lines
     ).lower()
-    assert "tax" not in names and "get" not in names   # no GET line on the invoice
+    assert "tax" not in names and "get" not in names   # no GET line in the payload
