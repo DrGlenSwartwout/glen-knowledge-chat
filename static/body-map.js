@@ -1,7 +1,7 @@
 // Body Map client. Reference-chart rendering + interaction. No image ever leaves the browser.
 (function () {
   const svgNS = "http://www.w3.org/2000/svg";
-  const VIEW = 600, CX = 300, CY = 300, R = 250; // reference-chart layout: unit circle -> 250px
+  const VIEW = 600, CX = 300, CY = 300;
   const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null };
 
   // clock degrees (0=12 o'clock, clockwise) -> normalized unit vector, y-down, 12=up=(0,-1)
@@ -23,7 +23,15 @@
   }
 
   // reference-frame normalized point -> reference-chart screen point
-  function refToScreen(p) { return { x: CX + p.x * R, y: CY + p.y * R }; }
+  function refToScreen(p) { const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R }; }
+
+  // Fit the reference-chart radius to the loaded system's data extent (iris r<=1, sclerology r_outer up to ~3).
+  function computeChartR(payload) {
+    let maxR = 1;
+    (payload.germ_layers || []).forEach(g => { if (g.r_outer > maxR) maxR = g.r_outer; });
+    (payload.zones || []).forEach(z => { if (z.radial && z.radial.r_outer > maxR) maxR = z.radial.r_outer; });
+    return (CX - 20) / maxR;   // fit within the canvas with a 20px margin
+  }
 
   function pointsToPath(pts, mapFn) {
     return pts.map((p, i) => { const s = mapFn(p); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
@@ -92,6 +100,7 @@
   async function loadSystem(system) {
     const res = await fetch("/body-map/data?system=" + encodeURIComponent(system));
     state.payload = await res.json();
+    state.chartR = computeChartR(state.payload);
     state.activeLayers.clear();
     renderLayerToggles(); renderChart();
   }
@@ -112,9 +121,9 @@
   }
 
   const ANCHOR_STEPS = [
-    { key: "pupil", hint: "Tap the CENTER of your pupil." },
-    { key: "limbus", hint: "Tap the EDGE of your iris (where color meets white)." },
-    { key: "twelve", hint: "Tap the TOP of your iris edge (12 o'clock)." },
+    { key: "pupil", hint: "Tap the center of your pupil." },
+    { key: "limbus", hint: "Tap the edge of your iris (where color meets white)." },
+    { key: "twelve", hint: "Tap the top of your iris edge (12 o'clock)." },
   ];
   const anchors = {};
   let anchorIdx = 0;
