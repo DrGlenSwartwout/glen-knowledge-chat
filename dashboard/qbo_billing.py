@@ -82,6 +82,50 @@ def _first_bank_account_id():
     return accts[0]["Id"] if accts else None
 
 
+def find_sales_receipt_by_ref(token, *, email=None, since_date=None):
+    """Look up the QBO SalesReceipt whose PrivateNote contains 'order:<token>'
+    (stamped when a receipt is created/repaired for an order). Exact-match
+    only -- never returns a receipt on amount alone. Returns the receipt dict
+    or None.
+
+    Primary: a LIKE query on PrivateNote (QBO may reject LIKE on this field --
+    wrapped in try/except). Fallback (primary raised or came up empty, and an
+    `email` was given): resolve the customer and scan their recent receipts
+    client-side for the token. Either way, the PrivateNote match is re-checked
+    client-side before returning, since QBO's LIKE (when it works at all) is
+    not trustworthy enough on its own to hand back a money-matching decision.
+    """
+    needle = "order:" + token
+
+    def _first_exact_match(receipts):
+        for r in receipts:
+            if needle in (r.get("PrivateNote") or ""):
+                return r
+        return None
+
+    try:
+        rs = _query(f"SELECT * FROM SalesReceipt WHERE PrivateNote LIKE '%{_esc(needle)}%'")
+        receipts = rs.get("QueryResponse", {}).get("SalesReceipt", [])
+    except Exception:
+        receipts = []
+
+    match = _first_exact_match(receipts)
+    if match:
+        return match
+
+    if not email:
+        return None
+
+    cust = find_or_create_customer(email)
+    q = f"SELECT * FROM SalesReceipt WHERE CustomerRef = '{_esc(str(cust['Id']))}'"
+    if since_date:
+        q += f" AND TxnDate >= '{_esc(str(since_date))}'"
+    q += " ORDERBY TxnDate DESC MAXRESULTS 50"
+    rs = _query(q)
+    receipts = rs.get("QueryResponse", {}).get("SalesReceipt", [])
+    return _first_exact_match(receipts)
+
+
 def create_refund_receipt(customer_id, amount, *, item_id=None,
                           bank_account_id=None, description="Refund"):
     """Issue a QBO RefundReceipt (records a money-out customer refund). `amount`
