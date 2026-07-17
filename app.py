@@ -29832,6 +29832,45 @@ def get_person_household(person_id):
     return jsonify({"household": data})
 
 
+@app.route("/api/people/<int:person_id>/household-suggestions", methods=["GET"])
+def person_household_suggestions(person_id):
+    auth_err = _check_console_or_scoped_auth()
+    if auth_err: return auth_err
+    import re as _re
+    from dashboard import household as _hh
+    def _norm_street(s): return _re.sub(r"\s+", " ", (s or "").strip().rstrip(".,")).strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _hh.init_household_tables(cx)
+        me = cx.execute("SELECT id, email, address1, zip FROM people WHERE id=?",
+                        (person_id,)).fetchone()
+        if not me:
+            return jsonify({"error": "person not found"}), 404
+        street, zipc = _norm_street(me["address1"]), (me["zip"] or "").strip().lower()
+        if len(street) < 4 or not zipc:
+            return jsonify({"suggestions": []})
+        rows = cx.execute("SELECT id, email, first_name, last_name, address1, zip FROM people "
+                          "WHERE id != ?", (person_id,)).fetchall()
+        out = []
+        for r in rows:
+            if _norm_street(r["address1"]) != street or (r["zip"] or "").strip().lower() != zipc:
+                continue
+            link = None
+            if _hh.can_view(cx, me["email"], r["email"]):
+                link = {"direction": "cares-for-other", "relationship": ""}
+            elif _hh.can_view(cx, r["email"], me["email"]):
+                link = {"direction": "other-cares-for-this", "relationship": ""}
+            out.append({
+                "person_id": r["id"], "email": r["email"],
+                "name": f'{r["first_name"] or ""} {r["last_name"] or ""}'.strip(),
+                "address1": r["address1"] or "",
+                "already_in_household_together": _hh.same_household(cx, me["email"], r["email"]),
+                "existing_caregiver_link": link,
+                "dismissed": False,
+            })
+    return jsonify({"suggestions": out})
+
+
 @app.route("/api/household-candidates", methods=["GET"])
 def list_household_candidates():
     auth_err = _check_console_or_scoped_auth()
