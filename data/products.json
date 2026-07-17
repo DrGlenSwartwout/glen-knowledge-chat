@@ -4,6 +4,38 @@
   "default_bottle_type": "default",
   "_wholesale_schema": "Phase 1 wholesale pricing engine (dashboard/wholesale_pricing.py): a product MAY add optional fields — bottle_type (string; matches dashboard.shipping bottle_types.name, used to source the box-fit large-box capacity B), cogs_cents (int; landed product cost), fulfillment_cents (int; per-bottle pick/pack/ship). Retail = price_cents. cogs+fulfillment gate the wholesale margin floor; when unset the margin is left unverified (loud warning). Populate per product before wholesale go-live (data task, see spec 2026-06-01 section 5).",
   "products": {
+    "mithreal-silver-baseball-cap": {
+      "name": "Baseball Cap with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-baseball-cap.png",
+      "price_cents": 5997,
+      "regular_cents": 7997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "description": "A comfortable baseball cap lined with real Mithreal silver to help shield your head from everyday EMF exposure.",
+      "competitor": {"brand": "DefenderShield", "name": "EMF Radiation Protection Baseball Cap", "price_cents": 6499, "regular_cents": 8499},
+      "source": "manual-add-2026-07-17-mithreal"
+    },
+    "mithreal-silver-ivy-hat": {
+      "name": "Ivy Hat with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-ivy-hat.png",
+      "price_cents": 5997,
+      "regular_cents": 7997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "description": "A classic ivy cap lined with real Mithreal silver to help shield your head from everyday EMF exposure.",
+      "source": "manual-add-2026-07-17-mithreal"
+    },
+    "mithreal-silver-blue-zipper-hoodie": {
+      "name": "Blue Zipper Hoodie with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-blue-zipper-hoodie.png",
+      "price_cents": 34997,
+      "regular_cents": 42500,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 2300,
+      "description": "A blue zip-up hoodie lined with real Mithreal silver to help shield your body from everyday EMF exposure.",
+      "competitor": {"brand": "DefenderShield", "name": "EMF Radiation Protection Hooded Jacket", "price_cents": 37999},
+      "source": "manual-add-2026-07-17-mithreal"
+    },
     "biofield-analysis": {
       "name": "Biofield Analysis",
       "price_cents": 30000,
