@@ -37,3 +37,31 @@ def test_membership_line_flips_products_to_member(client):
     assert mem["savings_cents"] == 0
     # subtotal includes the $99 membership on top of the (now discounted) products
     assert withmem["subtotal_cents"] == sum(l["line_cents"] for l in withmem["lines"])
+
+
+def test_price_inhouse_invoice_membership_line_flips_products_to_member():
+    # Direct coverage of _price_inhouse_invoice (the real order-creation/edit path,
+    # not just the preview endpoint) — a membership line in the cart should price
+    # itself at the tier's fixed price AND flip the accompanying FFs to member rate.
+    ffs = [{"slug": s, "qty": 1} for s in
+           ["paracleanse", "nerve-repair", "neuroceramides",
+            "microbiome", "oxygen-cleanse", "macular-wellness-lycopene"]]
+    lines = ffs + [{"slug": "membership:month", "qty": 1}]
+    priced = app_mod._price_inhouse_invoice(
+        lines, email="nonmember-direct-test@example.com", pickup=True, ship=None)
+    assert priced is not None
+
+    items_rec = priced["items_rec"]
+    mem_recs = [r for r in items_rec if r["slug"] == "membership:month"]
+    assert len(mem_recs) == 1
+    mem = mem_recs[0]
+    assert mem["kind"] == "membership"
+    assert mem["line_cents"] == 9900
+    assert mem["unit_cents"] == 9900
+
+    ff_recs = [r for r in items_rec if r["slug"] != "membership:month"]
+    assert len(ff_recs) == 6
+    for r in ff_recs:
+        assert r["unit_cents"] < 6997, r
+
+    assert priced["subtotal_cents"] == sum(r["line_cents"] for r in items_rec)

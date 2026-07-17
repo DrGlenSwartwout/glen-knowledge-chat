@@ -39040,7 +39040,7 @@ def api_orders_price_preview():
         _mtier = _mp.tier_of_line(ln)
         if _mtier:
             t = _mp.get_tier(_mtier)
-            out_lines.append({"slug": _mp.line_slug(_mtier), "qty": 1, "is_ff": False,
+            out_lines.append({"slug": _mp.line_slug(_mtier), "name": t["label"], "qty": 1, "is_ff": False,
                               "list_cents": t["price_cents"], "effective_unit_cents": t["price_cents"],
                               "line_cents": t["price_cents"], "vol_pct": 0, "savings_cents": 0})
             subtotal += t["price_cents"]
