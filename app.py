@@ -36879,7 +36879,7 @@ def admin_body_map_zones():
     except KeyError:
         return fail("unknown system", 404)
     return ok({"zones": [
-        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": z.get("eye", ""),
+        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": (z.get("side") or z.get("eye", "")),
          "meaning_standard": z.get("meaning_standard", ""), "meaning_glen": z.get("meaning_glen", "")}
         for z in data.get("zones", [])
     ]})

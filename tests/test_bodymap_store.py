@@ -157,3 +157,73 @@ def test_cluster_map_targets_exist_in_seed():
             assert tgt["zone"] in zones, f"{cluster} -> unknown zone {tgt['zone']}"
         if "layer" in tgt:
             assert tgt["layer"] in layers, f"{cluster} -> unknown layer {tgt['layer']}"
+
+
+def _point_zone(**over):
+    base = {
+        "id": "ear-L-shenmen", "side": "left", "group": "triangular-fossa",
+        "geometry": {"type": "point", "x": 0.44, "y": 0.28},
+        "anatomy": "Shen Men", "meaning_standard": "Calming point.",
+        "meaning_glen": "", "layers": {},
+    }
+    base.update(over)
+    return base
+
+
+def test_validate_point_zone_accepts_complete():
+    ok, err = bodymap_store.validate_zone(_point_zone())
+    assert ok is True and err is None
+
+
+def test_validate_point_zone_rejects_out_of_range_xy():
+    ok, err = bodymap_store.validate_zone(_point_zone(geometry={"type": "point", "x": 1.4, "y": 0.2}))
+    assert ok is False and "point" in err
+
+
+def test_validate_point_zone_requires_side_and_group():
+    z = _point_zone(); del z["side"]
+    ok, err = bodymap_store.validate_zone(z)
+    assert ok is False and ("side" in err or "eye" in err)
+    z2 = _point_zone(); del z2["group"]
+    ok2, err2 = bodymap_store.validate_zone(z2)
+    assert ok2 is False and "grouping" in err2
+
+
+def test_validate_sector_zone_still_accepts_iris():
+    iris = _zone()  # the iris fixture from earlier in this file (radial+sector+eye+germ_layer)
+    ok, err = bodymap_store.validate_zone(iris)
+    assert ok is True and err is None
+
+
+def test_build_payload_passes_through_ear_fields(tmp_path, monkeypatch):
+    p = tmp_path / "bodymap-ear.json"
+    p.write_text(json.dumps({
+        "system": "ear", "reference_frame": "ear_outline", "outline": "M 0 0 Z",
+        "groups": [{"id": "lobe", "label": "Lobe"}],
+        "anchors": [{"key": "helix-top", "template": {"x": 0.5, "y": 0.05}, "hint": "top"}],
+        "zones": [_point_zone(group="lobe")],
+    }))
+    monkeypatch.setattr(bodymap_store, "SYSTEMS", dict(bodymap_store.SYSTEMS, ear=p))
+    payload = bodymap_store.build_payload("ear")
+    assert payload["reference_frame"] == "ear_outline"
+    assert payload["outline"] == "M 0 0 Z"
+    assert payload["groups"] == [{"id": "lobe", "label": "Lobe"}]
+    assert payload["anchors"][0]["key"] == "helix-top"
+    assert payload["zones"][0]["meaning_display"] == "Calming point."
+
+
+def test_shipped_ear_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    data = json.loads((repo / "bodymap-ear.json").read_text())
+    assert data["reference_frame"] == "ear_outline"
+    assert data.get("outline")
+    assert data.get("zones")
+    group_ids = {g["id"] for g in data.get("groups", [])}
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"ear zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "point"
+        assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
+    keys = {a["key"] for a in data.get("anchors", [])}
+    assert {"helix-top", "lobe-bottom", "tragus"} <= keys

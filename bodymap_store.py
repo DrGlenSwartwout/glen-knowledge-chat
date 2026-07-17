@@ -18,10 +18,11 @@ DATA_DIR = _persist_dir()
 SYSTEMS = {
     "iridology": DATA_DIR / "bodymap-iridology.json",
     "sclerology": DATA_DIR / "bodymap-sclerology.json",
+    "ear": DATA_DIR / "bodymap-ear.json",
 }
 
-_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json")
-_REQUIRED = ("id", "eye", "germ_layer", "radial", "sector", "anatomy", "meaning_standard")
+_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json")
+_REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
 def reseed_from_repo(force=False):
@@ -38,27 +39,40 @@ def reseed_from_repo(force=False):
 
 
 def validate_zone(z):
-    """Return (ok, error_message_or_None)."""
+    """Return (ok, error_message_or_None). Accepts sector zones (iris) and point zones (ear)."""
     if not isinstance(z, dict):
         return False, "zone must be an object"
-    for key in _REQUIRED:
+    for key in _REQUIRED_COMMON:
         if key not in z:
             return False, f"missing required field: {key}"
-    if z.get("eye") not in ("right", "left"):
-        return False, "eye must be 'right' or 'left'"
-    radial = z.get("radial") or {}
-    ri, ro = radial.get("r_inner"), radial.get("r_outer")
-    if not all(isinstance(v, (int, float)) for v in (ri, ro)):
-        return False, "radial.r_inner/r_outer must be numbers"
-    if not (0.0 <= float(ri) < float(ro) <= 3.0):
-        return False, "radial must satisfy 0 <= r_inner < r_outer <= 3"
-    sector = z.get("sector") or {}
-    s, e = sector.get("start_deg"), sector.get("end_deg")
-    if not all(isinstance(v, (int, float)) for v in (s, e)):
-        return False, "sector.start_deg/end_deg must be numbers"
-    if not (0.0 <= float(s) < float(e) <= 360.0):
-        return False, "sector must satisfy 0 <= start_deg < end_deg <= 360"
-    return True, None
+    if (z.get("side") or z.get("eye")) not in ("right", "left"):
+        return False, "side/eye must be 'right' or 'left'"
+    if not (z.get("group") or z.get("germ_layer")):
+        return False, "missing grouping (group or germ_layer)"
+    geo = z.get("geometry") or {}
+    gtype = geo.get("type") or ("sector" if ("radial" in z and "sector" in z) else None)
+    if gtype == "point":
+        x, y = geo.get("x"), geo.get("y")
+        if not all(isinstance(v, (int, float)) for v in (x, y)):
+            return False, "geometry point x/y must be numbers"
+        if not (0.0 <= float(x) <= 1.0 and 0.0 <= float(y) <= 1.0):
+            return False, "geometry point x/y must be in [0,1]"
+        return True, None
+    if gtype == "sector":
+        radial = z.get("radial") or {}
+        ri, ro = radial.get("r_inner"), radial.get("r_outer")
+        if not all(isinstance(v, (int, float)) for v in (ri, ro)):
+            return False, "radial.r_inner/r_outer must be numbers"
+        if not (0.0 <= float(ri) < float(ro) <= 3.0):
+            return False, "radial must satisfy 0 <= r_inner < r_outer <= 3"
+        sector = z.get("sector") or {}
+        s, e = sector.get("start_deg"), sector.get("end_deg")
+        if not all(isinstance(v, (int, float)) for v in (s, e)):
+            return False, "sector.start_deg/end_deg must be numbers"
+        if not (0.0 <= float(s) < float(e) <= 360.0):
+            return False, "sector must satisfy 0 <= start_deg < end_deg <= 360"
+        return True, None
+    return False, "unknown geometry type"
 
 
 def _read(path, default):
@@ -93,6 +107,9 @@ def build_payload(system):
         "system": data.get("system", system),
         "reference_frame": data.get("reference_frame", "unit_circle"),
         "germ_layers": data.get("germ_layers", []),
+        "groups": data.get("groups", []),
+        "outline": data.get("outline", ""),
+        "anchors": data.get("anchors", []),
         "zones": zones,
     }
 
