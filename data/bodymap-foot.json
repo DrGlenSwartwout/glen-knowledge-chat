@@ -3,7 +3,7 @@
   "reference_frame": "foot_outline",
   "side_noun": "sole",
   "group_noun": "region",
-  "outline": "M 0.27 0.15 C 0.27 0.07 0.29 0.03 0.32 0.03 C 0.35 0.03 0.37 0.07 0.37 0.14 C 0.38 0.11 0.40 0.10 0.42 0.10 C 0.43 0.05 0.45 0.03 0.47 0.03 C 0.49 0.03 0.50 0.06 0.50 0.12 C 0.51 0.10 0.53 0.09 0.55 0.09 C 0.56 0.05 0.57 0.04 0.59 0.04 C 0.61 0.04 0.62 0.07 0.62 0.12 C 0.63 0.11 0.64 0.10 0.66 0.11 C 0.67 0.08 0.68 0.07 0.70 0.08 C 0.72 0.09 0.73 0.13 0.72 0.18 C 0.735 0.22 0.74 0.28 0.72 0.34 C 0.71 0.44 0.69 0.52 0.68 0.60 C 0.66 0.70 0.65 0.78 0.60 0.85 C 0.55 0.92 0.46 0.95 0.38 0.93 C 0.31 0.91 0.27 0.85 0.28 0.77 C 0.29 0.69 0.23 0.63 0.24 0.55 C 0.25 0.47 0.28 0.41 0.27 0.33 C 0.26 0.25 0.24 0.20 0.27 0.15 Z",
+  "outline": "M0.227 0.031 C0.209 0.033 0.191 0.041 0.177 0.051 C0.169 0.057 0.158 0.069 0.153 0.076 C0.129 0.112 0.127 0.16 0.149 0.2 C0.167 0.234 0.198 0.257 0.235 0.265 C0.245 0.267 0.269 0.268 0.278 0.266 C0.3 0.261 0.318 0.251 0.333 0.236 C0.352 0.217 0.363 0.191 0.364 0.163 C0.367 0.098 0.319 0.04 0.256 0.031 C0.247 0.03 0.235 0.03 0.227 0.031 Z  M0.592 0.045 C0.567 0.052 0.551 0.071 0.547 0.101 C0.545 0.11 0.546 0.128 0.547 0.135 C0.55 0.147 0.555 0.156 0.563 0.164 C0.569 0.169 0.571 0.171 0.577 0.174 C0.592 0.182 0.61 0.179 0.627 0.168 C0.638 0.16 0.647 0.147 0.651 0.13 C0.655 0.112 0.654 0.091 0.648 0.077 C0.642 0.062 0.628 0.049 0.613 0.045 C0.608 0.044 0.597 0.044 0.592 0.045 Z  M0.453 0.046 C0.44 0.047 0.428 0.053 0.418 0.063 C0.407 0.074 0.402 0.087 0.402 0.103 C0.402 0.111 0.402 0.114 0.403 0.121 C0.406 0.132 0.412 0.147 0.419 0.156 C0.423 0.162 0.431 0.17 0.436 0.172 C0.449 0.18 0.466 0.18 0.483 0.174 C0.493 0.17 0.505 0.16 0.511 0.151 C0.517 0.141 0.519 0.132 0.519 0.12 C0.519 0.097 0.51 0.074 0.495 0.059 C0.488 0.053 0.48 0.048 0.473 0.046 C0.468 0.045 0.458 0.045 0.453 0.046 Z  M0.717 0.1 C0.692 0.105 0.668 0.137 0.668 0.166 C0.668 0.178 0.672 0.188 0.681 0.197 C0.693 0.21 0.709 0.216 0.726 0.214 C0.738 0.212 0.748 0.208 0.757 0.198 C0.769 0.186 0.778 0.169 0.78 0.153 C0.782 0.138 0.777 0.125 0.766 0.114 C0.761 0.109 0.759 0.107 0.753 0.105 C0.749 0.103 0.744 0.101 0.742 0.1 C0.736 0.099 0.723 0.098 0.717 0.1 Z  M0.822 0.189 C0.801 0.194 0.783 0.213 0.778 0.236 C0.777 0.242 0.777 0.254 0.779 0.26 C0.78 0.267 0.784 0.274 0.789 0.279 C0.811 0.301 0.851 0.289 0.867 0.255 C0.872 0.245 0.873 0.241 0.873 0.23 C0.872 0.221 0.872 0.219 0.871 0.215 C0.868 0.207 0.865 0.203 0.86 0.198 C0.851 0.189 0.836 0.185 0.822 0.189 Z  M0.522 0.197 C0.486 0.2 0.458 0.206 0.43 0.217 C0.403 0.227 0.386 0.239 0.369 0.256 C0.354 0.272 0.343 0.286 0.333 0.308 C0.307 0.361 0.305 0.424 0.326 0.467 C0.342 0.499 0.369 0.518 0.406 0.522 C0.434 0.526 0.45 0.53 0.468 0.536 C0.519 0.553 0.552 0.585 0.561 0.626 C0.563 0.637 0.564 0.65 0.563 0.663 C0.562 0.679 0.558 0.692 0.546 0.716 C0.539 0.731 0.533 0.742 0.507 0.785 C0.495 0.807 0.48 0.836 0.476 0.848 C0.469 0.866 0.466 0.881 0.468 0.894 C0.47 0.916 0.479 0.933 0.495 0.946 C0.509 0.957 0.526 0.965 0.549 0.968 C0.561 0.97 0.589 0.97 0.602 0.968 C0.632 0.964 0.651 0.959 0.667 0.951 C0.682 0.944 0.694 0.935 0.709 0.92 C0.731 0.898 0.749 0.871 0.767 0.834 C0.804 0.758 0.829 0.66 0.838 0.554 C0.839 0.539 0.839 0.485 0.838 0.473 C0.837 0.462 0.833 0.44 0.83 0.426 C0.821 0.377 0.809 0.343 0.79 0.314 C0.781 0.302 0.775 0.294 0.764 0.284 C0.742 0.261 0.713 0.242 0.674 0.225 C0.639 0.21 0.613 0.203 0.578 0.199 C0.568 0.198 0.53 0.197 0.522 0.197 Z",
   "groups": [
     {
       "id": "head-sinus",
@@ -72,10 +72,10 @@
       "group": "head-sinus",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.34,
-        "cy": 0.1,
+        "cx": 0.249,
+        "cy": 0.085,
         "rx": 0.05,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Brain and head",
       "meaning_standard": "Reflex area for the brain and head, on the big toe.",
@@ -93,10 +93,10 @@
       "group": "head-sinus",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.52,
-        "cy": 0.09,
-        "rx": 0.1,
-        "ry": 0.04
+        "cx": 0.6,
+        "cy": 0.095,
+        "rx": 0.04,
+        "ry": 0.025
       },
       "anatomy": "Sinuses",
       "meaning_standard": "Reflex area for the sinuses, across the small toes.",
@@ -114,8 +114,8 @@
       "group": "head-sinus",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.34,
-        "cy": 0.14,
+        "cx": 0.249,
+        "cy": 0.135,
         "rx": 0.03,
         "ry": 0.02
       },
@@ -135,8 +135,8 @@
       "group": "head-sinus",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.45,
-        "cy": 0.2,
+        "cx": 0.461,
+        "cy": 0.115,
         "rx": 0.04,
         "ry": 0.03
       },
@@ -156,9 +156,9 @@
       "group": "head-sinus",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.61,
-        "cy": 0.2,
-        "rx": 0.05,
+        "cx": 0.724,
+        "cy": 0.16,
+        "rx": 0.045,
         "ry": 0.03
       },
       "anatomy": "Ears",
@@ -177,8 +177,8 @@
       "group": "neck-thyroid",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.35,
-        "cy": 0.22,
+        "cx": 0.279,
+        "cy": 0.235,
         "rx": 0.03,
         "ry": 0.02
       },
@@ -198,7 +198,7 @@
       "group": "neck-thyroid",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.38,
+        "cx": 0.481,
         "cy": 0.26,
         "rx": 0.04,
         "ry": 0.03
@@ -219,7 +219,7 @@
       "group": "neck-thyroid",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.6,
+        "cx": 0.593,
         "cy": 0.25,
         "rx": 0.06,
         "ry": 0.03
@@ -240,10 +240,10 @@
       "group": "chest-lung",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.5,
+        "cx": 0.562,
         "cy": 0.33,
         "rx": 0.1,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Lungs and bronchi",
       "meaning_standard": "Lung and bronchial reflex, across the ball of the foot.",
@@ -261,7 +261,7 @@
       "group": "chest-lung",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.47,
+        "cx": 0.548,
         "cy": 0.41,
         "rx": 0.08,
         "ry": 0.03
@@ -282,7 +282,7 @@
       "group": "chest-lung",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.6,
+        "cx": 0.362,
         "cy": 0.33,
         "rx": 0.05,
         "ry": 0.04
@@ -303,10 +303,10 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.6,
+        "cx": 0.658,
         "cy": 0.47,
         "rx": 0.07,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Liver",
       "meaning_standard": "Liver reflex, right foot, lateral arch.",
@@ -324,7 +324,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.6,
+        "cx": 0.695,
         "cy": 0.52,
         "rx": 0.03,
         "ry": 0.02
@@ -345,7 +345,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.38,
+        "cx": 0.518,
         "cy": 0.47,
         "rx": 0.05,
         "ry": 0.04
@@ -366,7 +366,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.58,
+        "cx": 0.355,
         "cy": 0.45,
         "rx": 0.05,
         "ry": 0.04
@@ -387,7 +387,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.56,
+        "cx": 0.357,
         "cy": 0.5,
         "rx": 0.05,
         "ry": 0.03
@@ -408,7 +408,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.48,
+        "cx": 0.683,
         "cy": 0.58,
         "rx": 0.1,
         "ry": 0.03
@@ -429,10 +429,10 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.48,
+        "cx": 0.691,
         "cy": 0.66,
         "rx": 0.09,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Small intestine",
       "meaning_standard": "Small intestine reflex, central lower arch.",
@@ -450,10 +450,10 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.62,
+        "cx": 0.743,
         "cy": 0.63,
         "rx": 0.03,
-        "ry": 0.06
+        "ry": 0.045
       },
       "anatomy": "Ascending colon",
       "meaning_standard": "Ascending colon, right foot, lateral strip.",
@@ -471,7 +471,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.63,
+        "cx": 0.734,
         "cy": 0.7,
         "rx": 0.03,
         "ry": 0.02
@@ -492,10 +492,10 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.38,
+        "cx": 0.353,
         "cy": 0.63,
         "rx": 0.03,
-        "ry": 0.06
+        "ry": 0.045
       },
       "anatomy": "Descending colon",
       "meaning_standard": "Descending colon, left foot, lateral strip.",
@@ -513,7 +513,7 @@
       "group": "digestive",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.5,
+        "cx": 0.32,
         "cy": 0.71,
         "rx": 0.05,
         "ry": 0.03
@@ -534,7 +534,7 @@
       "group": "urinary",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.44,
+        "cx": 0.543,
         "cy": 0.5,
         "rx": 0.03,
         "ry": 0.02
@@ -555,7 +555,7 @@
       "group": "urinary",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.45,
+        "cx": 0.644,
         "cy": 0.55,
         "rx": 0.04,
         "ry": 0.03
@@ -576,7 +576,7 @@
       "group": "urinary",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.41,
+        "cx": 0.656,
         "cy": 0.61,
         "rx": 0.03,
         "ry": 0.04
@@ -597,7 +597,7 @@
       "group": "urinary",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.34,
+        "cx": 0.639,
         "cy": 0.66,
         "rx": 0.04,
         "ry": 0.03
@@ -618,8 +618,8 @@
       "group": "spine",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.31,
-        "cy": 0.18,
+        "cx": 0.536,
+        "cy": 0.235,
         "rx": 0.02,
         "ry": 0.03
       },
@@ -639,10 +639,10 @@
       "group": "spine",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.3,
+        "cx": 0.38,
         "cy": 0.34,
         "rx": 0.02,
-        "ry": 0.06
+        "ry": 0.045
       },
       "anatomy": "Thoracic spine",
       "meaning_standard": "Thoracic spine, mid medial edge.",
@@ -660,10 +660,10 @@
       "group": "spine",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.31,
+        "cx": 0.537,
         "cy": 0.54,
         "rx": 0.02,
-        "ry": 0.06
+        "ry": 0.045
       },
       "anatomy": "Lumbar spine",
       "meaning_standard": "Lumbar spine, lower medial edge.",
@@ -681,10 +681,10 @@
       "group": "spine",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.33,
+        "cx": 0.589,
         "cy": 0.76,
         "rx": 0.03,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Sacrum and coccyx",
       "meaning_standard": "Sacrum and coccyx, medial heel.",
@@ -702,7 +702,7 @@
       "group": "pelvis-elimination",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.5,
+        "cx": 0.613,
         "cy": 0.86,
         "rx": 0.1,
         "ry": 0.03
@@ -723,7 +723,7 @@
       "group": "pelvis-elimination",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.46,
+        "cx": 0.628,
         "cy": 0.8,
         "rx": 0.06,
         "ry": 0.04
@@ -744,7 +744,7 @@
       "group": "limb",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.66,
+        "cx": 0.668,
         "cy": 0.28,
         "rx": 0.03,
         "ry": 0.03
@@ -765,10 +765,10 @@
       "group": "limb",
       "geometry": {
         "type": "ellipse",
-        "cx": 0.68,
+        "cx": 0.76,
         "cy": 0.62,
         "rx": 0.04,
-        "ry": 0.05
+        "ry": 0.045
       },
       "anatomy": "Knee and leg",
       "meaning_standard": "Knee and leg reflex, lateral heel edge.",
@@ -780,5 +780,6 @@
       }
     }
   ],
-  "outline_side": "right"
+  "outline_side": "right",
+  "outline_source": "svgsilh.com CC0 #42674 (single foot, plantar, 5 toes); potrace path transform-baked + normalized to unit box, specks stripped"
 }
