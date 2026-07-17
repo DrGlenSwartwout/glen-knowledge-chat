@@ -9562,7 +9562,8 @@ def begin_checkout_return():
                             _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe")):
+                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe",
+                                                    "wholesale", "client")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -14045,6 +14046,14 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[practitioner-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":

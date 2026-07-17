@@ -1,15 +1,22 @@
 """Practitioner wholesale checkout — the money path (Phase 3e).
 
-Ties the pricing engine and the wallet to QBO: price a cart, create ONE invoice,
-redeem Wellness Credit, and apply the redeemed amount as a discount line. Credit
-is redeemed AFTER the invoice exists (so the redemption is authoritative against
-the locked balance and idempotent on the invoice id), then the discount is set to
-exactly what was committed. Training-first allocation lives at the route layer:
-call build_module_order before build_order when both are pending.
+``build_order`` (product cart) is QBO paid-only (Stage 4): it prices the cart and
+resolves the Wellness Credit redemption up front against a freshly-minted
+``checkout_ref`` token -- NOT a QBO invoice id, since no invoice is created at
+checkout time. A real, line-faithful QBO Sales Receipt is booked later by the
+return-handler (once payment is confirmed) from the ``qbo_payload`` this returns.
+Redemption happens before booking (a Sales Receipt is final once posted) and is
+idempotent on ``checkout_ref``.
+
+``build_module_order`` (certification tuition) still creates a QBO invoice and
+applies the redeemed credit as a discount line -- it is unchanged/out of scope
+here. Training-first allocation lives at the route layer: call
+build_module_order before build_order when both are pending.
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import List, Optional
 
 from dashboard import qbo_billing as qb
@@ -31,9 +38,15 @@ def _qbo_line(ln: dict, catalog: Optional[dict]) -> dict:
 def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
                 db_path=None, catalog=None, allow_override=False,
                 ship_to_state="", resale_ok=False) -> dict:
-    """Price + invoice a product cart, then redeem up to 50% of the order in credit.
-    When paid fee-free (method zelle/wise), also earn 3% Wellness Credit on the
-    amount charged.
+    """Price a product cart (paid-only -- no QBO invoice/customer at checkout
+    time), then redeem up to 50% of the order in credit. When paid fee-free
+    (method zelle/wise), also earn 3% Wellness Credit on the amount charged. A
+    real, line-faithful QBO Sales Receipt is booked by the return-handler once
+    payment is confirmed, from the ``qbo_payload`` this returns.
+
+    Credit is resolved BEFORE booking (a Sales Receipt is final once posted),
+    keyed on ``checkout_ref`` -- a fresh token minted here, not a QBO invoice id
+    -- so the redemption is idempotent per checkout without QBO existing yet.
 
     practitioner needs: id (uuid), modules_completed, email, name.
     Returns the checkout result dict (ok / error)."""
@@ -45,37 +58,33 @@ def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
                 "margin_warnings": quote["margin_warnings"], "quote": quote}
 
     lines = [_qbo_line(ln, catalog) for ln in quote["lines"]]
-    cust = qb.find_or_create_customer(practitioner["email"], practitioner.get("name", ""))
     from dashboard import tax as _tax
     # Absorb-and-track: GET is computed and returned for the order ledger, NOT
-    # added to the invoice (the practitioner pays the all-in wholesale price).
+    # charged to the practitioner (the wholesale price is all-in).
     get_cents = _tax.compute_get_cents(quote["subtotal_cents"], channel="wholesale",
                                        ship_to_state=ship_to_state, resale_ok=resale_ok)
-    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"])
-    invoice_id = inv.get("Id")
 
-    redeemed = wallet.redeem_for_order(practitioner["id"], quote["subtotal_cents"], invoice_id)
-    if redeemed > 0:
-        inv = qb.apply_invoice_discount(invoice_id, redeemed)
+    checkout_ref = uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    redeemed = wallet.redeem_for_order(practitioner["id"], quote["subtotal_cents"], checkout_ref)
+    charged = max(0, quote["subtotal_cents"] - redeemed)
 
     fee_free = 0
     if method in ("zelle", "wise"):
-        charged = max(0, quote["subtotal_cents"] - redeemed)
-        fee_free = wallet.earn_fee_free(practitioner["id"], charged, invoice_id)
+        fee_free = wallet.earn_fee_free(practitioner["id"], charged, checkout_ref)
 
     return {
         "ok": True,
-        "invoice_id": invoice_id,
-        "sync_token": inv.get("SyncToken"),
-        "doc_number": inv.get("DocNumber"),
-        "total": inv.get("TotalAmt"),
+        "invoice_id": checkout_ref,
+        "customer_id": "",
+        "doc_number": "",
+        "total": round(charged / 100.0, 2),
         "subtotal_cents": quote["subtotal_cents"],
         "blended_unit_price_cents": quote["blended_unit_price_cents"],
         "credit_redeemed_cents": redeemed,
         "fee_free_credit_cents": fee_free,
         "get_cents": get_cents,
         "method": method,
-        "customer_id": cust.get("Id"),
+        "qbo_payload": {"lines": lines, "discount_cents": redeemed, "tax_cents": 0},
     }
 
 
