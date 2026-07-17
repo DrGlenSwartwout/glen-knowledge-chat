@@ -19,9 +19,10 @@ SYSTEMS = {
     "iridology": DATA_DIR / "bodymap-iridology.json",
     "sclerology": DATA_DIR / "bodymap-sclerology.json",
     "ear": DATA_DIR / "bodymap-ear.json",
+    "foot": DATA_DIR / "bodymap-foot.json",
 }
 
-_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json")
+_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json", "bodymap-foot.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -110,6 +111,8 @@ def build_payload(system):
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
         "anchors": data.get("anchors", []),
+        "side_noun": data.get("side_noun", ""),
+        "group_noun": data.get("group_noun", ""),
         "zones": zones,
     }
 

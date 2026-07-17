@@ -227,3 +227,30 @@ def test_shipped_ear_seed_valid():
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
     keys = {a["key"] for a in data.get("anchors", [])}
     assert {"helix-top", "lobe-bottom", "tragus"} <= keys
+
+
+def test_foot_system_registered():
+    assert "foot" in bodymap_store.SYSTEMS
+    assert bodymap_store.SYSTEMS["foot"].name == "bodymap-foot.json"
+
+
+def test_shipped_foot_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    data = json.loads((repo / "bodymap-foot.json").read_text())
+    assert data["reference_frame"] == "foot_outline"
+    assert data.get("outline")
+    group_ids = {g["id"] for g in data.get("groups", [])}
+    sides = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"foot zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "point"
+        assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
+        sides.add(z["side"])
+    assert sides == {"left", "right"}, "both soles must be populated"
+    keys = {a["key"] for a in data.get("anchors", [])}
+    assert {"big-toe-tip", "heel-center", "little-toe-base"} <= keys
+    # lateralized organs on the correct side
+    ids = {z["id"] for z in data["zones"]}
+    assert "foot-R-liver" in ids and "foot-L-heart" in ids

@@ -7,6 +7,7 @@
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
   function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
+  function isOutlineFrame() { return state.frame && state.frame !== "unit_circle"; }
 
   // clock degrees (0=12 o'clock, clockwise) -> normalized unit vector, y-down, 12=up=(0,-1)
   function clockToNormalized(deg) {
@@ -28,7 +29,7 @@
 
   // reference-frame normalized point -> reference-chart screen point
   function refToScreen(p) {
-    if (state.frame === "ear_outline") { return { x: p.x * VIEW, y: p.y * VIEW }; }
+    if (isOutlineFrame()) { return { x: p.x * VIEW, y: p.y * VIEW }; }
     const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R };
   }
 
@@ -64,7 +65,7 @@
     const svg = document.getElementById("bm-svg");
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
-    if (state.frame === "ear_outline") {
+    if (isOutlineFrame()) {
       if (state.payload.outline) {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(sampleOutline(state.payload.outline), mapFn));
@@ -107,8 +108,8 @@
     const panel = document.getElementById("bm-panel");
     panel.replaceChildren();
     const h = document.createElement("h2"); h.textContent = z.anatomy;
-    const groupNoun = z.germ_layer ? " layer, " : " region, ";
-    const sideNoun = z.eye ? " eye" : " ear";
+    const groupNoun = (state.payload && state.payload.group_noun) ? (" " + state.payload.group_noun + ", ") : (z.germ_layer ? " layer, " : " region, ");
+    const sideNoun = (state.payload && state.payload.side_noun) ? (" " + state.payload.side_noun) : (z.eye ? " eye" : " ear");
     const meta = document.createElement("p");
     const strong = document.createElement("strong"); strong.textContent = zoneGroup(z);
     meta.append(strong, document.createTextNode(groupNoun + zoneSide(z) + sideNoun));
@@ -145,7 +146,7 @@
     sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
     if (!sides.includes(state.eye)) state.eye = sides[0] || "right";
     sel.value = state.eye;
-    document.getElementById("bm-side-label").textContent = state.frame === "ear_outline" ? "Side" : "Eye";
+    document.getElementById("bm-side-label").textContent = isOutlineFrame() ? "Side" : "Eye";
     renderLayerToggles(); renderChart();
   }
 
@@ -155,7 +156,7 @@
     wireOverlay();
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
-    const initialSystem = (sys === "iridology" || sys === "sclerology" || sys === "ear") ? sys : "iridology";
+    const initialSystem = (sys === "iridology" || sys === "sclerology" || sys === "ear" || sys === "foot") ? sys : "iridology";
     document.getElementById("bm-system").value = initialSystem;
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
