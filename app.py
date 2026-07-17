@@ -30250,7 +30250,8 @@ def detect_household_candidates():
         cx.row_factory = sqlite3.Row
         people = cx.execute("""
             SELECT id, LOWER(TRIM(email)) AS email_lc, LOWER(TRIM(last_name)) AS last_lc,
-                   phone, LOWER(TRIM(city)) AS city_lc, LOWER(TRIM(state)) AS state_lc, tags
+                   phone, LOWER(TRIM(city)) AS city_lc, LOWER(TRIM(state)) AS state_lc, tags,
+                   LOWER(TRIM(address1)) AS addr1_lc, LOWER(TRIM(zip)) AS zip_lc
             FROM people
         """).fetchall()
 
@@ -30288,6 +30289,16 @@ def detect_household_candidates():
         for p in people:
             if not (p["city_lc"] and p["state_lc"] and p["last_lc"]): continue
             by_addr.setdefault((p["city_lc"], p["state_lc"], p["last_lc"]), []).append(p["id"])
+        # ── Signal 4: shared-street-address (no last-name requirement) ────────
+        import re as _re
+        def _norm_street(s):
+            return _re.sub(r"\s+", " ", (s or "").strip().rstrip(".,")).strip()
+        by_street = {}
+        for p in people:
+            street = _norm_street(p["addr1_lc"])
+            if len(street) < 4 or not p["zip_lc"]:
+                continue
+            by_street.setdefault((street, p["zip_lc"]), []).append(p["id"])
 
         def _emit_signal(name, clusters):
             for ids in clusters.values():
@@ -30310,6 +30321,7 @@ def detect_household_candidates():
         _emit_signal("shared-email",            by_email)
         _emit_signal("shared-phone-lastname",   by_phone_last)
         _emit_signal("shared-address-lastname", by_addr)
+        _emit_signal("shared-street-address",   by_street)
         cx.commit()
     return summary
 
