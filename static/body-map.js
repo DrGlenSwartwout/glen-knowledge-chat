@@ -99,6 +99,7 @@
   function wire() {
     document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
+    wireOverlay();
     loadSystem("iridology").then(__bmSelfCheck);
   }
 
@@ -110,7 +111,84 @@
     console.log("[bodymap] selfcheck " + (okUp && okRight && okArc ? "ok" : "FAIL"));
   }
 
+  const ANCHOR_STEPS = [
+    { key: "pupil", hint: "Tap the CENTER of your pupil." },
+    { key: "limbus", hint: "Tap the EDGE of your iris (where color meets white)." },
+    { key: "twelve", hint: "Tap the TOP of your iris edge (12 o'clock)." },
+  ];
+  const anchors = {};
+  let anchorIdx = 0;
+
+  // Build a normalized-frame -> screen transform from the three tapped anchors.
+  function computeSimilarity(P, L, Tw) {
+    const scale = Math.hypot(L.x - P.x, L.y - P.y);
+    const rot = Math.atan2(Tw.y - P.y, Tw.x - P.x) + Math.PI / 2; // normalized 12 o'clock is up
+    const cos = Math.cos(rot), sin = Math.sin(rot);
+    return (n) => ({
+      x: P.x + scale * (n.x * cos - n.y * sin),
+      y: P.y + scale * (n.x * sin + n.y * cos),
+    });
+  }
+
+  function setMode(photo) {
+    document.getElementById("bm-mode-ref").classList.toggle("bm-active", !photo);
+    document.getElementById("bm-mode-photo").classList.toggle("bm-active", photo);
+    document.getElementById("bm-photo").hidden = !photo || !document.getElementById("bm-photo").src;
+    document.getElementById("bm-photo-tools").hidden = !photo;
+    document.getElementById("bm-disclaimer").hidden = !photo;
+    if (!photo) { state.transform = null; renderChart(); }
+  }
+
+  function beginAnchoring() {
+    anchorIdx = 0; Object.keys(anchors).forEach(k => delete anchors[k]);
+    state.transform = null; renderChart();
+    document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[0].hint;
+  }
+
+  function onCanvasClick(evt) {
+    if (document.getElementById("bm-photo").hidden || anchorIdx >= ANCHOR_STEPS.length) return;
+    const svg = document.getElementById("bm-svg");
+    const rect = svg.getBoundingClientRect();
+    const x = (evt.clientX - rect.left) / rect.width * VIEW;
+    const y = (evt.clientY - rect.top) / rect.height * VIEW;
+    anchors[ANCHOR_STEPS[anchorIdx].key] = { x, y };
+    anchorIdx++;
+    if (anchorIdx < ANCHOR_STEPS.length) {
+      document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[anchorIdx].hint;
+      drawAnchors();
+    } else {
+      document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
+      state.transform = computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+      renderChart(); drawAnchors();
+      console.log("[bodymap] overlay placed");
+    }
+  }
+
+  function drawAnchors() {
+    const svg = document.getElementById("bm-svg");
+    Object.values(anchors).forEach(a => {
+      const c = document.createElementNS(svgNS, "circle");
+      c.setAttribute("cx", a.x); c.setAttribute("cy", a.y); c.setAttribute("r", 6);
+      c.setAttribute("class", "bm-anchor"); svg.appendChild(c);
+    });
+  }
+
+  function onUpload(evt) {
+    const file = evt.target.files && evt.target.files[0];
+    if (!file) return;
+    const img = document.getElementById("bm-photo");
+    img.src = URL.createObjectURL(file); // stays in-browser; never uploaded
+    img.hidden = false; setMode(true); beginAnchoring();
+  }
+
+  function wireOverlay() {
+    document.getElementById("bm-mode-ref").addEventListener("click", () => setMode(false));
+    document.getElementById("bm-mode-photo").addEventListener("click", () => setMode(true));
+    document.getElementById("bm-upload").addEventListener("change", onUpload);
+    document.getElementById("bm-svg").addEventListener("click", onCanvasClick);
+  }
+
   // expose for tasks/tests
-  window.__bm = { clockToNormalized, arcSectorPoints, state };
+  window.__bm = { clockToNormalized, arcSectorPoints, computeSimilarity, state };
   document.addEventListener("DOMContentLoaded", wire);
 })();
