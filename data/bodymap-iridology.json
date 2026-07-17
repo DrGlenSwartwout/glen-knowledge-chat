@@ -1,0 +1,20 @@
+{
+  "system": "iridology",
+  "reference_frame": "unit_circle",
+  "germ_layers": [
+    { "id": "endoderm", "label": "Endoderm (inner ring - digestive & glandular)", "r_inner": 0.0, "r_outer": 0.33 },
+    { "id": "mesoderm", "label": "Mesoderm (middle ring - muscle, skeletal, circulatory)", "r_inner": 0.33, "r_outer": 0.66 },
+    { "id": "ectoderm", "label": "Ectoderm (outer ring - skin & nervous system)", "r_inner": 0.66, "r_outer": 1.0 }
+  ],
+  "zones": [
+    { "id": "iris-R-stomach", "eye": "right", "germ_layer": "endoderm", "radial": {"r_inner": 0.05, "r_outer": 0.18}, "sector": {"start_deg": 0, "end_deg": 90}, "anatomy": "Stomach", "meaning_standard": "Innermost ring around the pupil reflects the stomach and digestive fire.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-R-intestines", "eye": "right", "germ_layer": "endoderm", "radial": {"r_inner": 0.18, "r_outer": 0.30}, "sector": {"start_deg": 0, "end_deg": 360}, "anatomy": "Intestinal tract", "meaning_standard": "The zone just outside the stomach ring maps the intestinal tract around the full circle.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-R-liver", "eye": "right", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 235, "end_deg": 260}, "anatomy": "Liver", "meaning_standard": "Lower nasal region of the right iris reflects the liver.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-R-kidney", "eye": "right", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 165, "end_deg": 195}, "anatomy": "Kidney", "meaning_standard": "Lower region of the iris reflects kidney function and fluid balance.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-R-brain", "eye": "right", "germ_layer": "ectoderm", "radial": {"r_inner": 0.70, "r_outer": 0.92}, "sector": {"start_deg": 340, "end_deg": 360}, "anatomy": "Cerebrum", "meaning_standard": "Top of the iris reflects the brain and higher nervous centers.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-R-skin", "eye": "right", "germ_layer": "ectoderm", "radial": {"r_inner": 0.90, "r_outer": 1.0}, "sector": {"start_deg": 0, "end_deg": 360}, "anatomy": "Skin / elimination", "meaning_standard": "The outermost ring (skin zone) reflects the skin as an organ of elimination.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-L-stomach", "eye": "left", "germ_layer": "endoderm", "radial": {"r_inner": 0.05, "r_outer": 0.18}, "sector": {"start_deg": 270, "end_deg": 360}, "anatomy": "Stomach", "meaning_standard": "Innermost ring around the pupil reflects the stomach and digestive fire.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-L-heart", "eye": "left", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 100, "end_deg": 125}, "anatomy": "Heart", "meaning_standard": "Left iris, lower nasal region, classically reflects the heart.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "iris-L-brain", "eye": "left", "germ_layer": "ectoderm", "radial": {"r_inner": 0.70, "r_outer": 0.92}, "sector": {"start_deg": 0, "end_deg": 20}, "anatomy": "Cerebrum", "meaning_standard": "Top of the iris reflects the brain and higher nervous centers.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+  ]
+}
