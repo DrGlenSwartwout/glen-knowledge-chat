@@ -111,6 +111,8 @@ def build_payload(system):
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
         "anchors": data.get("anchors", []),
+        "side_noun": data.get("side_noun", ""),
+        "group_noun": data.get("group_noun", ""),
         "zones": zones,
     }
 

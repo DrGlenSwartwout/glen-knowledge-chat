@@ -108,8 +108,8 @@
     const panel = document.getElementById("bm-panel");
     panel.replaceChildren();
     const h = document.createElement("h2"); h.textContent = z.anatomy;
-    const groupNoun = z.germ_layer ? " layer, " : " region, ";
-    const sideNoun = z.eye ? " eye" : " ear";
+    const groupNoun = (state.payload && state.payload.group_noun) ? (" " + state.payload.group_noun + ", ") : (z.germ_layer ? " layer, " : " region, ");
+    const sideNoun = (state.payload && state.payload.side_noun) ? (" " + state.payload.side_noun) : (z.eye ? " eye" : " ear");
     const meta = document.createElement("p");
     const strong = document.createElement("strong"); strong.textContent = zoneGroup(z);
     meta.append(strong, document.createTextNode(groupNoun + zoneSide(z) + sideNoun));
