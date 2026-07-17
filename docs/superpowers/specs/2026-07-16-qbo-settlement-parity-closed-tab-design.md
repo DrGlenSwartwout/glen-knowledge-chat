@@ -44,10 +44,12 @@ Given a paid `order` (dict) + its Stripe `session` (dict), runs the complete **p
 - `settle_biofield(order, session)` → readiness seed + care taster
 
 Dispatch by `kind` (derived from order/session, matching the redirect's current gating). **The plan MUST reproduce the redirect's exact per-kind calls verbatim** — the grouping below is the intended shape, but each kind's settler membership is defined by what the redirect actually does today, extracted from the code, not by this summary:
-- **storefront points/referral** (retail / reorder / portal-reorder / subscribe / biofield): `settle_points`, `settle_referral`.
+- **storefront points/referral** (retail / reorder / portal-reorder / subscribe / **client** / biofield): `settle_points`, `settle_referral`. **Verified against the code:** the redirect's shared gate is `pi_id and (cid or _kind in ("retail","reorder","portal-reorder","subscribe","client"))`, and biofield settles the same two via its own block — so ALL SIX kinds receive common points/referral today. The parity refactor must preserve that.
 - **subscribe:** `ensure_subscription`, `grant_group_bundle`.
-- **client:** `settle_client` **only** — client has its *own* points path (`points.redeem`/`credit`) and no referral in the redirect, so it must **not** also go through the common `settle_points`/`settle_referral` (that would double-settle). `settle_client` encapsulates the client-specific wallet + dispensary + patient-points + ship-credit.
+- **client:** `settle_client` (wallet margin + dispensary record + patient dispensary-scoped points + ship-credit) **in addition to** the common points/referral above. NOTE — a `client` order therefore settles points twice today: global-scope via `settle_points` AND dispensary-scope via `settle_client`. This is **pre-existing behavior** and is preserved unchanged here (behavior-preserving refactor); whether the global-scope earn on a dispensary order is intended is a separate product question flagged to Glen, not decided in this change.
 - **biofield:** `settle_biofield` (readiness seed + care taster) in addition to the common points/referral above.
+
+The exact per-kind membership is **confirmed empirically by the redirect characterization tests** (written against current code before the refactor) and the orchestrator's `_COMMON_POINTS_KINDS` constant is set to match — code reading says all six, but the characterization is the source of truth.
 
 Each settler call is wrapped so one failing settler logs + is recorded in `skipped` but does not abort the rest (best-effort per side-effect). The module does **not** touch mark-paid / receipt-booking / PI-stamp — those already fire correctly in each path; this module is exactly the per-kind side-effects the webhook omits.
 
