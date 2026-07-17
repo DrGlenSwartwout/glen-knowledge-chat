@@ -9563,7 +9563,7 @@ def begin_checkout_return():
                         except Exception as e:
                             print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe",
-                                                    "wholesale", "client")):
+                                                    "client")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -14128,6 +14128,14 @@ def api_practitioner_personal_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out["invoice_id"], out["qbo_payload"])
+            except Exception as _e:
+                print(f"[personal-checkout] persist qbo_lines failed: {_e!r}", flush=True)
         # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
         # build_order was called with method=None above, so it did NOT credit its
         # own 3% — this is the only earn for this order. Credit the explicit 3.5%
@@ -25899,7 +25907,7 @@ def practitioner_checkout_return():
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[stripe-return] pi capture: {_e!r}", flush=True)
-                # Paid-only wholesale/dispensary (Stage 4): no QBO invoice (cid==""),
+                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice (cid==""),
                 # so mark the order paid and book ONE Sales Receipt. Guarded on
                 # qbo_lines_json so legacy invoice-based orders are untouched;
                 # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).

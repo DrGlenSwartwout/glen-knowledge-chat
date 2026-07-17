@@ -14,7 +14,15 @@ The heavy deps (portal data, the checkout engine, order ingestion, the wallet)
 are stubbed by monkeypatching the imported names in ``app``.
 """
 
+import json
+import sqlite3
+
 import pytest
+
+import app as _appmod_top
+from dashboard import orders as O
+from dashboard import qbo_billing
+from dashboard import stripe_pay
 
 
 # ── fixtures / stubs ───────────────────────────────────────────────────────────
@@ -218,3 +226,124 @@ def test_quote_ok(client):
     assert body["ok"] is True
     assert body["quote"] == PORTAL["quote"]
     assert body["wallet_balance_cents"] == 0
+
+
+# ── 7. CRITICAL: qbo_payload persistence (booking-gap fix) ────────────────────
+#
+# build_order was converted to paid-only: no more create_invoice, the CALLER
+# must persist out["qbo_payload"] via set_order_qbo_lines so the return-handler
+# (card) or record_payment (alt-pay) can later book a real Sales Receipt. The
+# wholesale route does this (app.py ~14049-14056); the personal route did not --
+# so a personal order booked NEITHER an invoice nor a Sales Receipt. This test
+# drives the personal checkout with a realistic build_order stub (qbo_payload +
+# token invoice_id) against an isolated on-disk orders table and asserts the
+# order row actually gets qbo_lines_json persisted, keyed on the token.
+
+def _isolate_db(monkeypatch, tmp_path):
+    db = str(tmp_path / "log.db")
+    monkeypatch.setattr(_appmod_top, "LOG_DB", db)
+    cx = sqlite3.connect(db)
+    try:
+        O.init_orders_table(cx)
+        cx.commit()
+    finally:
+        cx.close()
+    return db
+
+
+def _personal_fixed_out(token):
+    return {
+        "ok": True, "invoice_id": token, "customer_id": "", "doc_number": "",
+        "total": 500.0, "subtotal_cents": 50000, "credit_redeemed_cents": 0,
+        "fee_free_credit_cents": 0, "get_cents": 275, "method": None,
+        "qbo_payload": {"lines": [{"name": "X Formula", "amount": 25.0, "qty": 20,
+                                    "item_id": "55"}],
+                       "discount_cents": 0, "tax_cents": 0},
+    }
+
+
+def test_route_persists_qbo_lines_for_personal_order(monkeypatch, tmp_path):
+    _appmod_top.app.config["TESTING"] = True
+    db = _isolate_db(monkeypatch, tmp_path)
+    token = "c" * 32
+    fixed_out = _personal_fixed_out(token)
+
+    def boom(*a, **k):
+        raise AssertionError("build_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(qbo_billing, "create_invoice", boom)
+    monkeypatch.setattr(qbo_billing, "apply_invoice_discount", boom)
+
+    monkeypatch.setattr(_appmod_top, "_practitioner_session_pid", lambda: "pid1")
+    monkeypatch.setattr(_appmod_top._pp, "portal_data", lambda pid: dict(PORTAL))
+    monkeypatch.setattr(_appmod_top._pp, "cart_clear", lambda pid: None)
+    monkeypatch.setattr(_appmod_top._pp, "record_order", lambda *a, **k: None)
+    monkeypatch.setattr(_appmod_top._wc, "build_order", lambda *a, **k: dict(fixed_out))
+    monkeypatch.setattr(_appmod_top._wallet, "earn_personal", lambda *a, **k: 0)
+
+    r = _appmod_top.app.test_client().post(
+        "/api/practitioner/personal/checkout", json={"method": "zelle"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["invoice_id"] == token
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert row is not None, "personal order was never ingested"
+    assert row["source"] == "personal"
+    assert row["qbo_lines_json"] is not None, (
+        "qbo_payload was never persisted -- personal order books NEITHER an "
+        "invoice nor a Sales Receipt (the booking gap this fix closes)")
+    payload = json.loads(row["qbo_lines_json"])
+    assert payload["lines"][0]["item_id"] == "55"
+    assert payload["tax_cents"] == 0
+
+
+def test_personal_card_return_books_one_sales_receipt(monkeypatch, tmp_path):
+    """End-to-end: personal checkout persists qbo_lines, then the paid-only
+    card-return branch (source-agnostic, guarded on qbo_lines_json) books
+    exactly one Sales Receipt for it."""
+    _appmod_top.app.config["TESTING"] = True
+    db = _isolate_db(monkeypatch, tmp_path)
+    token = "d" * 32
+    fixed_out = _personal_fixed_out(token)
+
+    monkeypatch.setattr(qbo_billing, "create_invoice",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("no invoice in paid-only flow")))
+    monkeypatch.setattr(_appmod_top, "_practitioner_session_pid", lambda: "pid1")
+    monkeypatch.setattr(_appmod_top._pp, "portal_data", lambda pid: dict(PORTAL))
+    monkeypatch.setattr(_appmod_top._pp, "cart_clear", lambda pid: None)
+    monkeypatch.setattr(_appmod_top._pp, "record_order", lambda *a, **k: None)
+    monkeypatch.setattr(_appmod_top._wc, "build_order", lambda *a, **k: dict(fixed_out))
+    monkeypatch.setattr(_appmod_top._wallet, "earn_personal", lambda *a, **k: 0)
+
+    c = _appmod_top.app.test_client()
+    r = c.post("/api/practitioner/personal/checkout", json={"method": "zelle"})
+    assert r.status_code == 200, r.get_data(as_text=True)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "id": sid, "payment_status": "paid", "amount_total": 50000,
+        "metadata": {"invoice_id": token, "customer_id": ""},
+        "payment_intent": "pi_personal_1",
+    })
+    calls = {"n": 0}
+
+    def _fake_create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
+                                    email_to=None):
+        calls["n"] += 1
+        return {"Id": "SR-PERSONAL-1"}
+    monkeypatch.setattr(qbo_billing, "find_or_create_customer",
+                        lambda email, name="": {"Id": "C9"})
+    monkeypatch.setattr(qbo_billing, "create_sales_receipt", _fake_create_sales_receipt)
+
+    r2 = c.get(f"/practitioner/checkout-return?session_id=sess1&t={token}")
+    assert r2.status_code in (301, 302)
+    assert calls["n"] == 1
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert row["pay_status"] == "paid"
+    assert row["qbo_sales_receipt_id"] == "SR-PERSONAL-1"
