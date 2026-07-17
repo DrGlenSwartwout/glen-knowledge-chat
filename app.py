@@ -36797,6 +36797,40 @@ def body_map_data():
         return jsonify({"error": "unknown system"}), 404
 
 
+@app.route("/admin/body-map")
+def admin_body_map_page():
+    return send_from_directory(STATIC, "admin-body-map.html")
+
+
+@app.route("/admin/body-map/zones", methods=["GET"])
+@require_console_key
+def admin_body_map_zones():
+    system = request.args.get("system", "iridology")
+    try:
+        data = bodymap_store.load_map(system)
+    except KeyError:
+        return fail("unknown system", 404)
+    return ok({"zones": [
+        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": z.get("eye", ""),
+         "meaning_standard": z.get("meaning_standard", ""), "meaning_glen": z.get("meaning_glen", "")}
+        for z in data.get("zones", [])
+    ]})
+
+
+@app.route("/admin/body-map/zone", methods=["POST"])
+@require_console_key
+def admin_body_map_zone():
+    body = request.get_json(silent=True) or {}
+    system, zid = body.get("system", "iridology"), body.get("id")
+    if not zid:
+        return fail("id required", 400)
+    try:
+        bodymap_store.set_zone_overlay(system, zid, body.get("meaning_glen", ""))
+    except KeyError:
+        return fail("unknown zone id", 404)
+    return ok({"updated": zid})
+
+
 # ── Tier-2 wholesale: application → approval ──────────────────────────────────
 # Apply (resale-license holders) → Glen/Rae approve in /admin/wholesale → the same
 # wholesale_unlocked_at gate is set and ordering opens. Sits alongside the existing

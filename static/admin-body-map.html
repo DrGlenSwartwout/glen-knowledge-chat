@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Map — Admin</title>
+  <style>
+    body { font-family:system-ui,sans-serif; margin:24px; color:#22302b; }
+    h1 { color:#1F5A4D; }
+    .row { border:1px solid #e3ded2; padding:10px; margin:8px 0; }
+    .row h3 { margin:0 0 4px; }
+    .std { color:#6a756f; font-size:14px; }
+    textarea { width:100%; min-height:60px; margin-top:6px; }
+    button { background:#1F5A4D; color:#fff; border:0; padding:6px 12px; cursor:pointer; }
+    input[type=password] { padding:4px 8px; }
+  </style>
+</head>
+<body>
+  <h1>Body Map — Clinical Overlay Editor</h1>
+  <p>Console key <input type="password" id="key"> System
+     <select id="system"><option>iridology</option><option>sclerology</option></select>
+     <button id="load">Load zones</button></p>
+  <div id="rows"></div>
+  <script>
+    const H = () => ({ "X-Console-Key": document.getElementById("key").value, "Content-Type": "application/json" });
+    async function load() {
+      const sys = document.getElementById("system").value;
+      const r = await fetch("/admin/body-map/zones?system=" + sys, { headers: H() });
+      const data = await r.json();
+      const box = document.getElementById("rows"); box.innerHTML = "";
+      (data.zones || []).forEach(z => {
+        const div = document.createElement("div"); div.className = "row";
+        div.innerHTML = "<h3>" + z.anatomy + " <small>(" + z.eye + ", " + z.id + ")</small></h3>" +
+          "<div class='std'>" + z.meaning_standard + "</div>" +
+          "<textarea>" + (z.meaning_glen || "") + "</textarea><button>Save</button>";
+        div.querySelector("button").addEventListener("click", async () => {
+          const body = JSON.stringify({ system: sys, id: z.id, meaning_glen: div.querySelector("textarea").value });
+          const res = await fetch("/admin/body-map/zone", { method: "POST", headers: H(), body });
+          div.querySelector("button").textContent = res.ok ? "Saved" : "Error";
+        });
+        box.appendChild(div);
+      });
+    }
+    document.getElementById("load").addEventListener("click", load);
+  </script>
+</body>
+</html>
