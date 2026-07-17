@@ -110,3 +110,41 @@ def set_zone_overlay(system, zone_id, text):
     if not hit:
         raise KeyError(zone_id)
     _write(path, data)
+
+
+ATLAS_CLUSTER_MAP = {
+    "gut-digestive": {"system": "iridology", "zone": "iris-R-intestines"},
+    "brain-nervous": {"system": "iridology", "zone": "iris-R-brain"},
+    "circulation-cardio": {"system": "iridology", "zone": "iris-L-heart"},
+    "structural-musculoskeletal": {"system": "iridology", "layer": "mesoderm"},
+    "detox-drainage": {"system": "iridology", "zone": "iris-R-liver"},
+    "metabolic-bloodsugar": {"system": "iridology", "zone": "iris-R-liver"},
+    "immune": {"system": "iridology", "zone": "iris-R-intestines"},
+    "eye-health": {"system": "iridology"},
+}
+
+
+def resolve_atlas_target(concept):
+    """Body Map deep-link target for an Atlas concept, or None.
+    Order: per-concept override (concept['body_map'] with a 'system') -> cluster map -> None."""
+    if not isinstance(concept, dict):
+        return None
+    override = concept.get("body_map")
+    if isinstance(override, dict) and override.get("system"):
+        return override
+    return ATLAS_CLUSTER_MAP.get(concept.get("cluster"))
+
+
+def atlas_target_url(target):
+    """Build the /body-map deep-link URL for a target dict. Returns '' when falsy/invalid."""
+    if not isinstance(target, dict) or not target.get("system"):
+        return ""
+    from urllib.parse import urlencode
+    params = {"system": target["system"]}
+    if target.get("eye"):
+        params["eye"] = target["eye"]
+    if target.get("zone"):
+        params["zone"] = target["zone"]
+    elif target.get("layer"):
+        params["layer"] = target["layer"]
+    return "/body-map?" + urlencode(params)

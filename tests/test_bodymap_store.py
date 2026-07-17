@@ -114,3 +114,46 @@ def test_shipped_seeds_all_zones_valid():
         layer_ids = {g["id"] for g in data.get("germ_layers", [])}
         for z in data["zones"]:
             assert z["germ_layer"] in layer_ids, f"{fname} zone {z['id']} bad germ_layer"
+
+
+def test_resolve_atlas_target_override_wins():
+    c = {"cluster": "brain-nervous", "body_map": {"system": "iridology", "zone": "iris-R-liver"}}
+    assert bodymap_store.resolve_atlas_target(c) == {"system": "iridology", "zone": "iris-R-liver"}
+
+
+def test_resolve_atlas_target_cluster_hit():
+    c = {"cluster": "brain-nervous"}
+    assert bodymap_store.resolve_atlas_target(c) == {"system": "iridology", "zone": "iris-R-brain"}
+
+
+def test_resolve_atlas_target_unmapped_is_none():
+    assert bodymap_store.resolve_atlas_target({"cluster": "antioxidants"}) is None
+    assert bodymap_store.resolve_atlas_target({}) is None
+    assert bodymap_store.resolve_atlas_target("nope") is None
+
+
+def test_resolve_atlas_target_ignores_override_without_system():
+    c = {"cluster": "brain-nervous", "body_map": {"zone": "iris-R-liver"}}
+    assert bodymap_store.resolve_atlas_target(c) == {"system": "iridology", "zone": "iris-R-brain"}
+
+
+def test_atlas_target_url_variants():
+    assert bodymap_store.atlas_target_url({"system": "iridology", "zone": "iris-R-liver"}) == "/body-map?system=iridology&zone=iris-R-liver"
+    assert bodymap_store.atlas_target_url({"system": "iridology", "layer": "mesoderm"}) == "/body-map?system=iridology&layer=mesoderm"
+    assert bodymap_store.atlas_target_url({"system": "iridology"}) == "/body-map?system=iridology"
+    assert bodymap_store.atlas_target_url(None) == ""
+    # zone takes precedence over layer when both present
+    assert bodymap_store.atlas_target_url({"system": "iridology", "zone": "iris-R-liver", "layer": "mesoderm"}) == "/body-map?system=iridology&zone=iris-R-liver"
+
+
+def test_cluster_map_targets_exist_in_seed():
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    seed = json.loads((repo / "bodymap-iridology.json").read_text())
+    zones = {z["id"] for z in seed["zones"]}
+    layers = {g["id"] for g in seed["germ_layers"]}
+    for cluster, tgt in bodymap_store.ATLAS_CLUSTER_MAP.items():
+        assert tgt.get("system") == "iridology", cluster
+        if "zone" in tgt:
+            assert tgt["zone"] in zones, f"{cluster} -> unknown zone {tgt['zone']}"
+        if "layer" in tgt:
+            assert tgt["layer"] in layers, f"{cluster} -> unknown layer {tgt['layer']}"
