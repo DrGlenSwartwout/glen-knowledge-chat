@@ -36916,7 +36916,7 @@ def admin_atlas_reseed():
 # ───────────────────────── Body Map ─────────────────────────
 import bodymap_store
 try:
-    if bodymap_store.reseed_from_repo():
+    if bodymap_store.reseed_from_repo(force=True):
         print("[bodymap] seeded persistent zone files from repo", flush=True)
 except Exception as _e:
     print(f"[bodymap] reseed skipped: {_e}", flush=True)

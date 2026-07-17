@@ -52,6 +52,15 @@ def validate_zone(z):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
     gtype = geo.get("type") or ("sector" if ("radial" in z and "sector" in z) else None)
+    if gtype == "ellipse":
+        cx, cy, rx, ry = geo.get("cx"), geo.get("cy"), geo.get("rx"), geo.get("ry")
+        if not all(isinstance(v, (int, float)) for v in (cx, cy, rx, ry)):
+            return False, "ellipse cx/cy/rx/ry must be numbers"
+        if not (0.0 <= float(cx) <= 1.0 and 0.0 <= float(cy) <= 1.0):
+            return False, "ellipse cx/cy must be in [0,1]"
+        if not (0.0 < float(rx) <= 1.0 and 0.0 < float(ry) <= 1.0):
+            return False, "ellipse rx/ry must be in (0,1]"
+        return True, None
     if gtype == "polygon":
         pts = geo.get("points")
         if not isinstance(pts, list) or len(pts) < 3:
