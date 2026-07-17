@@ -187,3 +187,44 @@ def test_non_pending_orders_never_touched():
     assert out == []
     assert O.get_order(cx, oid_real)["qbo_sales_receipt_id"] == "SR-already"
     assert O.get_order(cx, oid_null)["qbo_sales_receipt_id"] is None
+
+
+def test_pending_order_with_empty_string_external_ref_is_skipped():
+    # orders.external_ref is NOT NULL in the schema, so the realistic token-less
+    # case is an empty string (o.get("external_ref") is still falsy). The sweep
+    # must skip such an order entirely -- never call find_receipt (which would
+    # otherwise look up "order:None"/"order:" downstream), stamp, or book.
+    #
+    # NOTE: calls are recorded (not raised) on purpose. heal_pending_receipts
+    # wraps the whole per-order body in a broad try/except, so a raised
+    # AssertionError from inside find_receipt would be silently swallowed as
+    # "inconclusive lookup" and the test would pass for the wrong reason.
+    cx = _fresh_db()
+    oid = _new_order(cx, "tok-will-be-cleared-2")
+    _mark_pending(cx, oid, 30)
+    cx.execute("UPDATE orders SET external_ref='' WHERE id=?", (oid,))
+    cx.commit()
+
+    find_receipt_calls = []
+    book_calls = []
+    stamp_calls = []
+
+    def find_receipt(token, email=None, since_date=None):
+        find_receipt_calls.append(token)
+        return None
+
+    def book(cx_, order):
+        book_calls.append(order)
+        return "SHOULD-NOT-BOOK"
+
+    def stamp(cx_, order_id, receipt_id):
+        stamp_calls.append((order_id, receipt_id))
+
+    out = qbo_heal.heal_pending_receipts(cx, find_receipt=find_receipt, book=book, stamp=stamp)
+
+    assert find_receipt_calls == []
+    assert book_calls == []
+    assert stamp_calls == []
+    assert out == []
+    row = cx.execute("SELECT qbo_sales_receipt_id FROM orders WHERE id=?", (oid,)).fetchone()
+    assert row[0] == "PENDING"

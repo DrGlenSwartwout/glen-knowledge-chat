@@ -21635,15 +21635,20 @@ def api_cron_qbo_heal_pending():
     if not expected or key != expected:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import qbo_heal as _heal, qbo_billing as _qb, qbo_sale as _qs, orders as _ord
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
-    try:
-        healed = _heal.heal_pending_receipts(
-            cx,
-            find_receipt=_qb.find_sales_receipt_by_ref,
-            book=lambda cx2, o: _qs.book_sale_on_payment(cx2, o),
-            stamp=_ord.set_order_sales_receipt_id)
-    finally:
-        cx.close()
+    # Serialized under _db_lock (mirrors /api/cron/household-holds/sweep above): two
+    # overlapping sweeps in this process cannot interleave, which is what closes the
+    # concurrent-rebook / double-book window on a single web instance. See qbo_heal's
+    # module docstring for why the CAS clear alone does not make that safe.
+    with _db_lock:
+        cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+        try:
+            healed = _heal.heal_pending_receipts(
+                cx,
+                find_receipt=_qb.find_sales_receipt_by_ref,
+                book=lambda cx2, o: _qs.book_sale_on_payment(cx2, o),
+                stamp=_ord.set_order_sales_receipt_id)
+        finally:
+            cx.close()
     return jsonify({"ok": True, "healed": healed, "count": len(healed)})
 
 

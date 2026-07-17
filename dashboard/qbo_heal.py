@@ -23,6 +23,20 @@ resolves each such order to one of:
 Only orders whose qbo_sales_receipt_id is exactly 'PENDING' and whose
 updated_at is older than `older_than_min` are ever touched, so an in-flight
 booking (PENDING for a few seconds) is never disturbed.
+
+Concurrency: the Case-A clear below is a compare-and-swap (`WHERE id=? AND
+qbo_sales_receipt_id='PENDING'`), which by itself does NOT make concurrent
+double-book impossible. It reliably catches the case where a concurrent path
+already resolved the order to a real (non-'PENDING') receipt id between our
+SELECT and our clear. It does NOT distinguish the ORIGINAL stuck 'PENDING'
+from a FRESH 'PENDING' that a concurrent sweep's in-flight rebook just wrote
+via claim_sales_receipt_slot() -- to the CAS, both read as 'PENDING' and both
+match. Two overlapping heal_pending_receipts() runs against the same order
+could each pass the CAS and each call book(), double-booking it. What
+actually closes that window is that the calling route serializes the sweep
+in-process under app._db_lock (single web instance), so overlapping runs
+never interleave in the first place -- the CAS guard is a second layer, not
+the mechanism that makes concurrent double-book impossible on its own.
 """
 import datetime
 import sqlite3
@@ -60,6 +74,12 @@ def heal_pending_receipts(cx, *, find_receipt, book, stamp, older_than_min=10, n
         o = dict(r)
         try:
             token = o.get("external_ref")
+            if not token:
+                # No token to look up or rebook against -- calling find_receipt
+                # here would look up "order:None"/"order:" downstream. Leave the
+                # order PENDING and skip it (logged for manual follow-up).
+                print(f"[qbo-heal] order {o.get('id')!r} skipped: no external_ref", flush=True)
+                continue
             existing = find_receipt(token, email=o.get("email"),
                                     since_date=(o.get("created_at") or "")[:10])
             if existing and existing.get("Id"):
@@ -72,8 +92,16 @@ def heal_pending_receipts(cx, *, find_receipt, book, stamp, older_than_min=10, n
                     "WHERE id=? AND qbo_sales_receipt_id='PENDING'", (o["id"],))
                 cx.commit()
                 if cur.rowcount == 0:
-                    # Another sweep/path resolved this order between our SELECT and now.
-                    # Do NOT rebook -- that would double-book. Skip.
+                    # rowcount==0 means the row no longer read 'PENDING' at clear
+                    # time -- a concurrent path already stamped it to a real
+                    # receipt id. Do NOT rebook -- that would double-book. Skip.
+                    #
+                    # NOTE: this CAS does NOT by itself rule out a concurrent
+                    # sweep's rebook re-writing a FRESH 'PENDING' (via
+                    # claim_sales_receipt_slot) before we get here -- that would
+                    # still match this WHERE clause. The route that calls this
+                    # sweep serializes overlapping runs under _db_lock, which is
+                    # what actually prevents that interleaving.
                     continue
                 o["qbo_sales_receipt_id"] = None
                 sr = book(cx, o)
