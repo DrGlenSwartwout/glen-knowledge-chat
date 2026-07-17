@@ -245,7 +245,7 @@ def test_shipped_foot_seed_valid():
     for z in data["zones"]:
         ok, err = bodymap_store.validate_zone(z)
         assert ok, f"foot zone {z.get('id')}: {err}"
-        assert z["geometry"]["type"] == "point"
+        assert z["geometry"]["type"] == "polygon"   # reflexology zones are areas, not points
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
         sides.add(z["side"])
     assert sides == {"left", "right"}, "both soles must be populated"
@@ -254,3 +254,44 @@ def test_shipped_foot_seed_valid():
     # lateralized organs on the correct side
     ids = {z["id"] for z in data["zones"]}
     assert "foot-R-liver" in ids and "foot-L-heart" in ids
+
+
+def _poly_zone(**over):
+    base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
+            "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
+            "anatomy": "Liver", "meaning_standard": "Liver reflex area.", "meaning_glen": "", "layers": {}}
+    base.update(over); return base
+
+def test_validate_polygon_accepts():
+    ok, err = bodymap_store.validate_zone(_poly_zone()); assert ok is True and err is None
+
+def test_validate_polygon_rejects_too_few_points():
+    ok, err = bodymap_store.validate_zone(_poly_zone(geometry={"type":"polygon","points":[[0.1,0.1],[0.2,0.2]]}))
+    assert ok is False and "polygon" in err
+
+def test_validate_polygon_rejects_out_of_range():
+    ok, err = bodymap_store.validate_zone(_poly_zone(geometry={"type":"polygon","points":[[0.1,0.1],[0.2,0.2],[1.4,0.3]]}))
+    assert ok is False and "polygon" in err
+
+def test_upsert_and_delete_zone(tmp_path, monkeypatch):
+    p = tmp_path / "bodymap-foot.json"
+    p.write_text(json.dumps({"system":"foot","reference_frame":"foot_outline","groups":[{"id":"digestive","label":"Digestive"}],"zones":[]}))
+    monkeypatch.setattr(bodymap_store, "SYSTEMS", dict(bodymap_store.SYSTEMS, foot=p))
+    bodymap_store.upsert_zone("foot", _poly_zone())
+    assert len(json.loads(p.read_text())["zones"]) == 1
+    bodymap_store.upsert_zone("foot", _poly_zone(anatomy="Liver v2"))   # update same id
+    zs = json.loads(p.read_text())["zones"]; assert len(zs) == 1 and zs[0]["anatomy"] == "Liver v2"
+    bodymap_store.delete_zone("foot", "foot-liver")
+    assert json.loads(p.read_text())["zones"] == []
+    try:
+        bodymap_store.delete_zone("foot", "nope"); assert False
+    except KeyError:
+        pass
+
+def test_upsert_zone_rejects_invalid(tmp_path, monkeypatch):
+    p = tmp_path / "bodymap-foot.json"; p.write_text(json.dumps({"system":"foot","zones":[]}))
+    monkeypatch.setattr(bodymap_store, "SYSTEMS", dict(bodymap_store.SYSTEMS, foot=p))
+    try:
+        bodymap_store.upsert_zone("foot", _poly_zone(anatomy=None)); assert False
+    except ValueError:
+        pass

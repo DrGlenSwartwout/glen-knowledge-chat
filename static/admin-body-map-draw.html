@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Map: Area Drawing Tool</title>
+  <style>
+    body { font-family:system-ui,sans-serif; margin:24px; color:#22302b; }
+    h1 { color:#1F5A4D; margin-bottom:4px; }
+    .instructions { color:#6a756f; font-size:14px; margin:0 0 16px; }
+    .controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; border:1px solid #e3ded2; padding:10px; margin-bottom:16px; }
+    .controls label { display:flex; flex-direction:column; font-size:12px; color:#6a756f; gap:2px; }
+    .controls input[type=password], .controls select, .controls input[type=file] { padding:4px 6px; font-size:14px; }
+    .work-area { display:flex; flex-wrap:wrap; gap:24px; }
+    .canvas-col { flex:0 0 auto; }
+    #draw-svg { border:1px solid #ccc; background:#fafaf7; cursor:crosshair; width:600px; height:600px; }
+    .canvas-buttons { margin-top:8px; display:flex; gap:8px; align-items:center; }
+    .vertex-count { color:#6a756f; font-size:13px; }
+    .form-col { flex:1 1 320px; min-width:280px; }
+    fieldset { border:1px solid #e3ded2; padding:12px; }
+    fieldset legend { color:#1F5A4D; font-weight:600; padding:0 4px; }
+    fieldset[disabled] { opacity:0.5; }
+    .field { margin-bottom:10px; display:flex; flex-direction:column; gap:2px; }
+    .field label { font-size:12px; color:#6a756f; }
+    .field input[type=text], .field select, .field textarea { padding:5px 7px; font-size:14px; font-family:inherit; }
+    .field textarea { min-height:70px; resize:vertical; }
+    .checkbox-field { flex-direction:row; align-items:center; gap:6px; }
+    button { background:#1F5A4D; color:#fff; border:0; padding:6px 12px; cursor:pointer; font-size:14px; }
+    button:disabled { background:#9fb3ac; cursor:not-allowed; }
+    button.secondary { background:#6a756f; }
+    #status-line { margin-top:8px; font-size:13px; min-height:18px; }
+    #status-line.error { color:#b3261e; }
+    #status-line.success { color:#1F5A4D; }
+    #zone-list { margin-top:12px; }
+    .zone-item { border:1px solid #e3ded2; padding:8px 10px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .zone-item .zone-label { font-size:14px; }
+    .zone-item .zone-id { color:#6a756f; font-size:12px; }
+    h2 { color:#1F5A4D; font-size:16px; margin:20px 0 8px; }
+  </style>
+</head>
+<body>
+  <h1>Body Map: Area Drawing Tool</h1>
+  <p class="instructions">Load a reference chart, click to trace a zone's boundary, close the shape, tag it, and save.</p>
+
+  <div class="controls">
+    <label>Console key
+      <input type="password" id="key">
+    </label>
+    <label>System
+      <select id="system">
+        <option value="foot">foot</option>
+      </select>
+    </label>
+    <label>Side (canonical)
+      <select id="side">
+        <option value="left">left</option>
+        <option value="right">right</option>
+      </select>
+    </label>
+    <label>Reference chart image
+      <input type="file" id="ref-file" accept="image/*">
+    </label>
+  </div>
+
+  <div class="work-area">
+    <div class="canvas-col">
+      <svg id="draw-svg" viewBox="0 0 600 600" width="600" height="600">
+        <image id="ref-image" x="0" y="0" width="600" height="600" opacity="0.35" style="pointer-events:none;"></image>
+        <g id="live-poly"></g>
+      </svg>
+      <div class="canvas-buttons">
+        <button type="button" id="close-shape-btn">Close shape</button>
+        <button type="button" id="clear-btn" class="secondary">Clear</button>
+        <span class="vertex-count" id="vertex-count">Vertices placed: 0</span>
+      </div>
+    </div>
+
+    <div class="form-col">
+      <fieldset id="tag-fieldset" disabled>
+        <legend>Tag this zone</legend>
+        <div class="field">
+          <label for="anatomy-input">Anatomy</label>
+          <input type="text" id="anatomy-input">
+        </div>
+        <div class="field">
+          <label for="group-select">Group</label>
+          <select id="group-select"></select>
+        </div>
+        <div class="field checkbox-field">
+          <input type="checkbox" id="bilateral-input">
+          <label for="bilateral-input">Bilateral (mirrored zone)</label>
+        </div>
+        <div class="field">
+          <label for="meaning-input">Meaning (standard)</label>
+          <textarea id="meaning-input"></textarea>
+        </div>
+        <div class="field">
+          <label for="id-input">Id</label>
+          <input type="text" id="id-input">
+        </div>
+        <button type="button" id="save-btn">Save zone</button>
+        <div id="status-line"></div>
+      </fieldset>
+
+      <h2>Existing zones</h2>
+      <div id="zone-list"></div>
+    </div>
+  </div>
+
+  <script>
+    const svg = document.getElementById("draw-svg");
+    const refImage = document.getElementById("ref-image");
+    const livePoly = document.getElementById("live-poly");
+    const vertexCountEl = document.getElementById("vertex-count");
+    const closeShapeBtn = document.getElementById("close-shape-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const tagFieldset = document.getElementById("tag-fieldset");
+    const anatomyInput = document.getElementById("anatomy-input");
+    const groupSelect = document.getElementById("group-select");
+    const bilateralInput = document.getElementById("bilateral-input");
+    const meaningInput = document.getElementById("meaning-input");
+    const idInput = document.getElementById("id-input");
+    const saveBtn = document.getElementById("save-btn");
+    const statusLine = document.getElementById("status-line");
+    const zoneListEl = document.getElementById("zone-list");
+    const keyInput = document.getElementById("key");
+    const systemSelect = document.getElementById("system");
+    const sideSelect = document.getElementById("side");
+    const refFileInput = document.getElementById("ref-file");
+
+    let vertices = [];       // in-progress normalized [x,y] pairs, 0..1
+    let closedPoints = null; // finalized normalized [x,y] pairs once closed
+    let currentObjectUrl = null;
+    let idManuallyEdited = false;
+    let lastAutoId = "";
+
+    function headers() {
+      return { "X-Console-Key": keyInput.value, "Content-Type": "application/json" };
+    }
+
+    function setStatus(msg, kind) {
+      statusLine.textContent = msg;
+      statusLine.className = kind ? kind : "";
+    }
+
+    function slugify(text) {
+      return String(text || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    }
+
+    // ---- reference image: client-side only, never uploaded ----
+    refFileInput.addEventListener("change", () => {
+      const file = refFileInput.files && refFileInput.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const prevUrl = currentObjectUrl;
+      currentObjectUrl = url;
+      refImage.setAttribute("href", url);
+      refImage.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", url);
+      if (prevUrl) {
+        URL.revokeObjectURL(prevUrl);
+      }
+    });
+
+    // ---- drawing ----
+    function svgPoint(evt) {
+      const rect = svg.getBoundingClientRect();
+      const scaleX = 600 / rect.width;
+      const scaleY = 600 / rect.height;
+      const x = (evt.clientX - rect.left) * scaleX;
+      const y = (evt.clientY - rect.top) * scaleY;
+      return [x, y];
+    }
+
+    function renderLivePoly() {
+      livePoly.innerHTML = "";
+      const pts = closedPoints || vertices;
+      if (pts.length > 0) {
+        const pointsAttr = pts.map(p => (p[0] * 600) + "," + (p[1] * 600)).join(" ");
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", closedPoints ? "polygon" : "polyline");
+        poly.setAttribute("points", pointsAttr);
+        poly.setAttribute("fill", closedPoints ? "rgba(31,90,77,0.25)" : "none");
+        poly.setAttribute("stroke", "#1F5A4D");
+        poly.setAttribute("stroke-width", "2");
+        livePoly.appendChild(poly);
+        pts.forEach(p => {
+          const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          c.setAttribute("cx", p[0] * 600);
+          c.setAttribute("cy", p[1] * 600);
+          c.setAttribute("r", "4");
+          c.setAttribute("fill", "#1F5A4D");
+          livePoly.appendChild(c);
+        });
+      }
+      vertexCountEl.textContent = "Vertices placed: " + (closedPoints ? closedPoints.length : vertices.length) + (closedPoints ? " (closed)" : "");
+    }
+
+    svg.addEventListener("click", (evt) => {
+      if (closedPoints) return; // shape already closed; Clear to restart
+      const [x, y] = svgPoint(evt);
+      const nx = Math.round((x / 600) * 1000) / 1000;
+      const ny = Math.round((y / 600) * 1000) / 1000;
+      vertices.push([Math.min(1, Math.max(0, nx)), Math.min(1, Math.max(0, ny))]);
+      renderLivePoly();
+    });
+
+    closeShapeBtn.addEventListener("click", () => {
+      if (vertices.length < 3) {
+        setStatus("Need at least 3 vertices to close a shape.", "error");
+        return;
+      }
+      closedPoints = vertices.slice();
+      renderLivePoly();
+      tagFieldset.disabled = false;
+      setStatus("Shape closed. Tag it and save.", "success");
+    });
+
+    clearBtn.addEventListener("click", () => {
+      resetDrawing();
+      setStatus("", "");
+    });
+
+    function resetDrawing() {
+      vertices = [];
+      closedPoints = null;
+      renderLivePoly();
+      tagFieldset.disabled = true;
+      resetTagForm();
+    }
+
+    function resetTagForm() {
+      anatomyInput.value = "";
+      groupSelect.selectedIndex = 0;
+      bilateralInput.checked = false;
+      meaningInput.value = "";
+      idInput.value = "";
+      idManuallyEdited = false;
+      lastAutoId = "";
+    }
+
+    // ---- tag form: id auto-slug from anatomy, editable ----
+    anatomyInput.addEventListener("input", () => {
+      if (idManuallyEdited) return;
+      const slug = slugify(anatomyInput.value);
+      const autoId = systemSelect.value + (slug ? "-" + slug : "");
+      idInput.value = autoId;
+      lastAutoId = autoId;
+    });
+
+    idInput.addEventListener("input", () => {
+      if (idInput.value !== lastAutoId) {
+        idManuallyEdited = true;
+      }
+    });
+
+    // ---- groups ----
+    async function loadGroups() {
+      const sys = systemSelect.value;
+      groupSelect.innerHTML = "";
+      try {
+        const res = await fetch("/body-map/data?system=" + encodeURIComponent(sys));
+        const data = await res.json();
+        (data.groups || []).forEach(g => {
+          const opt = document.createElement("option");
+          opt.value = g.id;
+          opt.textContent = g.label || g.id;
+          groupSelect.appendChild(opt);
+        });
+      } catch (e) {
+        setStatus("Could not load groups: " + e, "error");
+      }
+    }
+
+    // ---- save ----
+    saveBtn.addEventListener("click", async () => {
+      if (!closedPoints || closedPoints.length < 3) {
+        setStatus("Close a shape with at least 3 vertices first.", "error");
+        return;
+      }
+      const anatomy = anatomyInput.value.trim();
+      const id = idInput.value.trim();
+      const group = groupSelect.value;
+      if (!anatomy) {
+        setStatus("Anatomy is required.", "error");
+        return;
+      }
+      if (!id) {
+        setStatus("Id is required.", "error");
+        return;
+      }
+      if (!group) {
+        setStatus("Group is required.", "error");
+        return;
+      }
+      const zone = {
+        id: id,
+        side: sideSelect.value,
+        bilateral: bilateralInput.checked,
+        group: group,
+        anatomy: anatomy,
+        meaning_standard: meaningInput.value,
+        meaning_glen: "",
+        geometry: { type: "polygon", points: closedPoints },
+        layers: { embryological_depth: null, stress_affirmation: null, touch_for_health: null }
+      };
+      const body = JSON.stringify({ system: systemSelect.value, zone: zone });
+      try {
+        const res = await fetch("/admin/body-map/zone/upsert", { method: "POST", headers: headers(), body: body });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          setStatus("Saved " + id + ".", "success");
+          resetDrawing();
+          await loadZones();
+        } else {
+          setStatus("Error: " + (data.error || res.statusText), "error");
+        }
+      } catch (e) {
+        setStatus("Error: " + e, "error");
+      }
+    });
+
+    // ---- zone list ----
+    async function loadZones() {
+      const sys = systemSelect.value;
+      zoneListEl.innerHTML = "";
+      try {
+        const res = await fetch("/admin/body-map/zones?system=" + encodeURIComponent(sys), { headers: headers() });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          const msg = document.createElement("div");
+          msg.textContent = "Could not load zones: " + (data.error || res.statusText);
+          zoneListEl.appendChild(msg);
+          return;
+        }
+        const zones = (data.data && data.data.zones) || [];
+        zones.forEach(z => {
+          const row = document.createElement("div");
+          row.className = "zone-item";
+
+          const labelWrap = document.createElement("div");
+          const label = document.createElement("div");
+          label.className = "zone-label";
+          label.textContent = z.anatomy || "(no anatomy)";
+          const idLine = document.createElement("div");
+          idLine.className = "zone-id";
+          idLine.textContent = z.id + (z.eye ? " (" + z.eye + ")" : "");
+          labelWrap.appendChild(label);
+          labelWrap.appendChild(idLine);
+
+          const delBtn = document.createElement("button");
+          delBtn.type = "button";
+          delBtn.className = "secondary";
+          delBtn.textContent = "Delete";
+          delBtn.addEventListener("click", async () => {
+            delBtn.disabled = true;
+            try {
+              const delRes = await fetch("/admin/body-map/zone/delete", {
+                method: "POST",
+                headers: headers(),
+                body: JSON.stringify({ system: sys, id: z.id })
+              });
+              const delData = await delRes.json().catch(() => ({}));
+              if (delRes.ok && delData.ok) {
+                setStatus("Deleted " + z.id + ".", "success");
+                await loadZones();
+              } else {
+                setStatus("Error: " + (delData.error || delRes.statusText), "error");
+                delBtn.disabled = false;
+              }
+            } catch (e) {
+              setStatus("Error: " + e, "error");
+              delBtn.disabled = false;
+            }
+          });
+
+          row.appendChild(labelWrap);
+          row.appendChild(delBtn);
+          zoneListEl.appendChild(row);
+        });
+      } catch (e) {
+        const msg = document.createElement("div");
+        msg.textContent = "Could not load zones: " + e;
+        zoneListEl.appendChild(msg);
+      }
+    }
+
+    systemSelect.addEventListener("change", async () => {
+      resetDrawing();
+      await loadGroups();
+      await loadZones();
+    });
+
+    // ---- init ----
+    (async () => {
+      await loadGroups();
+      await loadZones();
+    })();
+  </script>
+</body>
+</html>

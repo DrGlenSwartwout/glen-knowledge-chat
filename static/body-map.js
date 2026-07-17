@@ -45,18 +45,34 @@
     return pts.map((p, i) => { const s = mapFn(p); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
   }
 
-  // Parse a normalized outline path ("M x y C ... Z") into a list of {x,y} anchor points
-  // by pulling every numeric coordinate pair. Good enough to draw a closed, warpable outline.
-  function sampleOutline(d) {
-    const nums = (d.match(/-?\d*\.?\d+/g) || []).map(Number);
-    const pts = [];
-    for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
-    return pts;
+  // Transform every coordinate pair in a normalized SVG path via mapFn, preserving the curve
+  // commands (M/L/C/S/Q/T) so the outline draws as smooth curves rather than a jagged polyline.
+  function transformPathD(d, mapFn) {
+    let out = d.replace(/([MLCSQT])([^A-Za-z]*)/gi, (m, cmd, nums) => {
+      const vals = (nums.match(/-?\d*\.?\d+/g) || []).map(Number);
+      let s = cmd.toUpperCase();
+      for (let i = 0; i + 1 < vals.length; i += 2) {
+        const p = mapFn({ x: vals[i], y: vals[i + 1] });
+        s += " " + p.x.toFixed(1) + " " + p.y.toFixed(1);
+      }
+      return s + " ";
+    });
+    if (/z\s*$/i.test(d)) out += "Z";
+    return out;
+  }
+
+  // Distinct region colors, assigned by a group's position in the payload's group list.
+  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86"];
+  function groupColor(z) {
+    const groups = groupsOf(state.payload);
+    const idx = groups.findIndex(g => g.id === zoneGroup(z));
+    return GROUP_PALETTE[(idx >= 0 ? idx : 0) % GROUP_PALETTE.length];
   }
 
   function currentZones() {
     if (!state.payload) return [];
-    return state.payload.zones.filter(z => zoneSide(z) === state.eye &&
+    return state.payload.zones.filter(z =>
+      (z.bilateral || zoneSide(z) === state.eye) &&
       (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
   }
 
@@ -68,8 +84,8 @@
     if (isOutlineFrame()) {
       if (state.payload.outline) {
         const path = document.createElementNS(svgNS, "path");
-        path.setAttribute("d", pointsToPath(sampleOutline(state.payload.outline), mapFn));
-        path.setAttribute("fill", "none"); path.setAttribute("stroke", "#c8b98f"); path.setAttribute("stroke-width", "1.5");
+        path.setAttribute("d", transformPathD(state.payload.outline, mapFn));
+        path.setAttribute("fill", "#00000008"); path.setAttribute("stroke", "#b8a678"); path.setAttribute("stroke-width", "1.5");
         svg.appendChild(path);
       }
     } else {
@@ -86,13 +102,39 @@
     }
     currentZones().forEach(z => {
       const geo = z.geometry || {};
-      if (geo.type === "point") {
-        const s = mapFn({ x: geo.x, y: geo.y });
+      const mir = z.bilateral && zoneSide(z) !== state.eye;         // mirror the contralateral side
+      const N = (x, y) => mapFn({ x: mir ? 1 - x : x, y: y });
+      const col = groupColor(z);
+      function addLabel(sx, sy) {
+        const onRight = sx > 300;
+        const t = document.createElementNS(svgNS, "text");
+        t.setAttribute("x", (sx + (onRight ? -8 : 8)).toFixed(1));
+        t.setAttribute("y", (sy + 3).toFixed(1));
+        t.setAttribute("text-anchor", onRight ? "end" : "start");
+        t.setAttribute("class", "bm-label"); t.dataset.id = z.id;
+        t.textContent = z.anatomy; t.addEventListener("click", () => selectZone(z));
+        svg.appendChild(t);
+      }
+      if (geo.type === "polygon") {
+        const pts = geo.points || [];
+        const d = pts.map((p, i) => { const s = N(p[0], p[1]); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", d); path.setAttribute("class", "bm-zone bm-area"); path.dataset.id = z.id;
+        path.setAttribute("fill", col); path.setAttribute("fill-opacity", "0.35");
+        path.setAttribute("stroke", col); path.setAttribute("stroke-width", "1.2");
+        path.addEventListener("click", () => selectZone(z));
+        svg.appendChild(path);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const c = N(cx, cy); addLabel(c.x, c.y);
+      } else if (geo.type === "point") {
+        const s = N(geo.x, geo.y);
         const dot = document.createElementNS(svgNS, "circle");
-        dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 7);
+        dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 5);
         dot.setAttribute("class", "bm-zone bm-point"); dot.dataset.id = z.id;
+        dot.setAttribute("fill", col); dot.setAttribute("stroke", "#fff"); dot.setAttribute("stroke-width", "1");
         dot.addEventListener("click", () => selectZone(z));
-        svg.appendChild(dot);
+        svg.appendChild(dot); addLabel(s.x, s.y);
       } else {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));

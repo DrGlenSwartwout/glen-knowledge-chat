@@ -36980,6 +36980,41 @@ def admin_body_map_zone():
     return ok({"updated": zid})
 
 
+@app.route("/admin/body-map/draw")
+def admin_body_map_draw_page():
+    return send_from_directory(STATIC, "admin-body-map-draw.html")
+
+
+@app.route("/admin/body-map/zone/upsert", methods=["POST"])
+@require_console_key
+def admin_body_map_zone_upsert():
+    body = request.get_json(silent=True) or {}
+    system, zone = body.get("system"), body.get("zone")
+    if not system or not isinstance(zone, dict):
+        return fail("system and zone required", 400)
+    try:
+        bodymap_store.upsert_zone(system, zone)
+    except ValueError as e:
+        return fail(str(e), 400)
+    except KeyError:
+        return fail("unknown system", 404)
+    return ok({"upserted": zone.get("id")})
+
+
+@app.route("/admin/body-map/zone/delete", methods=["POST"])
+@require_console_key
+def admin_body_map_zone_delete():
+    body = request.get_json(silent=True) or {}
+    system, zid = body.get("system"), body.get("id")
+    if not system or not zid:
+        return fail("system and id required", 400)
+    try:
+        bodymap_store.delete_zone(system, zid)
+    except KeyError:
+        return fail("unknown zone id", 404)
+    return ok({"deleted": zid})
+
+
 # ── Tier-2 wholesale: application → approval ──────────────────────────────────
 # Apply (resale-license holders) → Glen/Rae approve in /admin/wholesale → the same
 # wholesale_unlocked_at gate is set and ordering opens. Sits alongside the existing
