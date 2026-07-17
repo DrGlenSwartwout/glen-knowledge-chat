@@ -227,3 +227,8 @@ def test_shipped_ear_seed_valid():
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
     keys = {a["key"] for a in data.get("anchors", [])}
     assert {"helix-top", "lobe-bottom", "tragus"} <= keys
+
+
+def test_foot_system_registered():
+    assert "foot" in bodymap_store.SYSTEMS
+    assert bodymap_store.SYSTEMS["foot"].name == "bodymap-foot.json"

@@ -19,9 +19,10 @@ SYSTEMS = {
     "iridology": DATA_DIR / "bodymap-iridology.json",
     "sclerology": DATA_DIR / "bodymap-sclerology.json",
     "ear": DATA_DIR / "bodymap-ear.json",
+    "foot": DATA_DIR / "bodymap-foot.json",
 }
 
-_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json")
+_SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json", "bodymap-foot.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
