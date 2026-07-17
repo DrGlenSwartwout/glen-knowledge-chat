@@ -102,21 +102,15 @@
         });
       });
     }
+    const labelSpecs = [];
     currentZones().forEach(z => {
       const geo = z.geometry || {};
       const mir = z.bilateral && zoneSide(z) !== state.eye;         // mirror the contralateral side
       const N = (x, y) => mapFn({ x: mir ? 1 - x : x, y: y });
       const col = groupColor(z);
-      function addLabel(sx, sy) {
-        const onRight = sx > 300;
-        const t = document.createElementNS(svgNS, "text");
-        t.setAttribute("x", (sx + (onRight ? -8 : 8)).toFixed(1));
-        t.setAttribute("y", (sy + 3).toFixed(1));
-        t.setAttribute("text-anchor", onRight ? "end" : "start");
-        t.setAttribute("class", "bm-label"); t.dataset.id = z.id;
-        t.textContent = z.anatomy; t.addEventListener("click", () => selectZone(z));
-        svg.appendChild(t);
-      }
+      // Collect label anchors now; place them in de-collided columns after all
+      // zones are drawn (see placeLabels) so labels never overlap each other.
+      function addLabel(sx, sy) { labelSpecs.push({ z, sx, sy }); }
       if (geo.type === "ellipse") {
         const c = N(geo.cx, geo.cy);
         const ex = N(geo.cx + geo.rx, geo.cy), ey = N(geo.cx, geo.cy + geo.ry);
@@ -157,10 +151,58 @@
         svg.appendChild(path);
       }
     });
+    placeLabels(labelSpecs, svg);
+  }
+
+  // Place zone labels in two vertical columns (left/right of the chart centre),
+  // greedily de-collided so no two labels overlap, each tied to its zone by a
+  // thin leader line. Long anatomy names stay legible via the label halo.
+  function placeLabels(specs, svg) {
+    if (!specs.length) return;
+    const LINE_H = 13, TOP = 14, BOT = VIEW - 14;
+    const LX = 150, RX = 450;                 // inner edges of the two columns
+    // Balance the two columns: the foot's zones cluster near the centre line,
+    // so a fixed x=CX split lands almost everything on one side. Sort by x and
+    // give the left half to the left column, right half to the right column.
+    const cols = { L: [], R: [] };
+    const byX = [...specs].sort((a, b) => a.sx - b.sx);
+    const half = Math.ceil(byX.length / 2);
+    byX.forEach((s, i) => (i < half ? cols.L : cols.R).push(s));
+    for (const side of ["L", "R"]) {
+      const list = cols[side].sort((a, b) => a.sy - b.sy);
+      // top-down greedy: keep each label at its anchor y unless that collides
+      let prevY = -Infinity;
+      list.forEach(s => { s.ly = Math.max(s.sy, prevY + LINE_H); prevY = s.ly; });
+      // if the column overran the bottom, slide the whole run up, re-clamping
+      const overrun = list.length ? list[list.length - 1].ly - BOT : 0;
+      if (overrun > 0) {
+        const headroom = list.length ? list[0].ly - TOP : 0;
+        const shift = Math.min(overrun, Math.max(0, headroom));
+        prevY = TOP - LINE_H;
+        list.forEach(s => { s.ly = Math.max(s.ly - shift, prevY + LINE_H); prevY = s.ly; });
+      }
+      const anchorEnd = side === "L";
+      const edgeX = anchorEnd ? LX : RX;
+      list.forEach(s => {
+        const ly = Math.min(BOT, Math.max(TOP, s.ly));
+        const leader = document.createElementNS(svgNS, "line");
+        leader.setAttribute("x1", edgeX); leader.setAttribute("y1", ly.toFixed(1));
+        leader.setAttribute("x2", s.sx.toFixed(1)); leader.setAttribute("y2", s.sy.toFixed(1));
+        leader.setAttribute("class", "bm-leader"); leader.dataset.id = s.z.id;
+        svg.appendChild(leader);
+        const t = document.createElementNS(svgNS, "text");
+        t.setAttribute("x", edgeX); t.setAttribute("y", (ly + 3).toFixed(1));
+        t.setAttribute("text-anchor", anchorEnd ? "end" : "start");
+        t.setAttribute("class", "bm-label"); t.dataset.id = s.z.id;
+        t.textContent = s.z.anatomy;
+        t.addEventListener("click", () => selectZone(s.z));
+        svg.appendChild(t);
+      });
+    }
   }
 
   function selectZone(z) {
-    document.querySelectorAll(".bm-zone").forEach(e => e.classList.toggle("bm-sel", e.dataset.id === z.id));
+    document.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e => e.classList.toggle("bm-sel", e.dataset.id === z.id));
     const panel = document.getElementById("bm-panel");
     panel.replaceChildren();
     const h = document.createElement("h2"); h.textContent = z.anatomy;
