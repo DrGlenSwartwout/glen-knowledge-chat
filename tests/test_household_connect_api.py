@@ -23,9 +23,9 @@ def _app(tmp_path, monkeypatch):
     return appmod
 
 
-def _person(cx, email, first, last):
-    cx.execute("INSERT INTO people (email, first_name, last_name) VALUES (?,?,?)",
-               (email, first, last))
+def _person(cx, email, first, last, address1="", zip=""):
+    cx.execute("INSERT INTO people (email, first_name, last_name, address1, zip) "
+               "VALUES (?,?,?,?,?)", (email, first, last, address1, zip))
     return cx.execute("SELECT id FROM people WHERE email=?", (email,)).fetchone()[0]
 
 
@@ -158,3 +158,41 @@ def test_connect_self_connect_rejected(tmp_path, monkeypatch):
                json={"other_person_id": a, "mode": "member"},
                headers={"X-Console-Key": "testkey"})
     assert r.status_code == 400
+
+
+def test_connect_member_then_suggestion_marks_already_together(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        a = _person(cx, "a@x.com", "Ann", "Lee", "12 Palm St", "96720")
+        b = _person(cx, "b@x.com", "Bo", "Reyes", "12 Palm St", "96720")
+        cx.commit()
+    c = appmod.app.test_client()
+    r1 = c.get(f"/api/people/{a}/household-suggestions", headers={"X-Console-Key": "testkey"})
+    ids1 = [s["person_id"] for s in r1.get_json()["suggestions"]]
+    assert b in ids1
+
+    r2 = c.post(f"/api/people/{a}/connect",
+                json={"other_person_id": b, "mode": "member"},
+                headers={"X-Console-Key": "testkey"})
+    assert r2.get_json()["ok"] is True
+
+    r3 = c.get(f"/api/people/{a}/household-suggestions", headers={"X-Console-Key": "testkey"})
+    b_suggestion = next(s for s in r3.get_json()["suggestions"] if s["person_id"] == b)
+    assert b_suggestion["already_in_household_together"] is True
+
+
+def test_connect_dismiss_then_suggestion_marked_dismissed(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cc = _person(cx, "c@x.com", "Cy", "Tan", "45 Ohia Ave", "96721")
+        d = _person(cx, "d@x.com", "Dee", "Kim", "45 Ohia Ave", "96721")
+        cx.commit()
+    client = appmod.app.test_client()
+    r1 = client.post(f"/api/people/{cc}/connect",
+                      json={"other_person_id": d, "mode": "dismiss"},
+                      headers={"X-Console-Key": "testkey"})
+    assert r1.get_json()["ok"] is True
+
+    r2 = client.get(f"/api/people/{cc}/household-suggestions", headers={"X-Console-Key": "testkey"})
+    d_suggestion = next(s for s in r2.get_json()["suggestions"] if s["person_id"] == d)
+    assert d_suggestion["dismissed"] is True

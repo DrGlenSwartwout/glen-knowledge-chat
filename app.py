@@ -29861,6 +29861,16 @@ def person_household_suggestions(person_id):
         street, zipc = _norm_street(me["address1"]), (me["zip"] or "").strip().lower()
         if len(street) < 4 or not zipc:
             return jsonify({"suggestions": []})
+        slug_me = _person_household_slug(cx, person_id)
+        dismissed_ids = set()
+        for drow in cx.execute(
+                "SELECT person_ids FROM household_candidates WHERE status='dismissed'").fetchall():
+            try:
+                ids = json.loads(drow[0] or "[]")
+            except Exception:
+                continue
+            if person_id in ids:
+                dismissed_ids.update(i for i in ids if i != person_id)
         rows = cx.execute("SELECT id, email, first_name, last_name, address1, zip FROM people "
                           "WHERE id != ?", (person_id,)).fetchall()
         out = []
@@ -29872,13 +29882,15 @@ def person_household_suggestions(person_id):
                 link = {"direction": "cares-for-other", "relationship": ""}
             elif _hh.can_view(cx, r["email"], me["email"]):
                 link = {"direction": "other-cares-for-this", "relationship": ""}
+            slug_other = _person_household_slug(cx, r["id"])
             out.append({
                 "person_id": r["id"], "email": r["email"],
                 "name": f'{r["first_name"] or ""} {r["last_name"] or ""}'.strip(),
                 "address1": r["address1"] or "",
-                "already_in_household_together": _hh.same_household(cx, me["email"], r["email"]),
+                "already_in_household_together": _hh.same_household(cx, me["email"], r["email"])
+                    or (bool(slug_me) and slug_me == slug_other),
                 "existing_caregiver_link": link,
-                "dismissed": False,
+                "dismissed": r["id"] in dismissed_ids,
             })
     return jsonify({"suggestions": out})
 
@@ -29950,7 +29962,10 @@ def person_connect(person_id):
 
     # mode == caregiver: layer the directional link on top of the grouping.
     cg_id = body.get("caregiver_person_id"); cf_id = body.get("cared_for_person_id")
-    relationship = (body.get("relationship") or "dependent").strip().lower()
+    relationship_raw = body.get("relationship")
+    if not relationship_raw:
+        return jsonify({"error": "relationship required for caregiver mode"}), 400
+    relationship = relationship_raw.strip().lower()
     if not cg_id or not cf_id:
         return jsonify({"error": "caregiver_person_id + cared_for_person_id required"}), 400
     method = ((body.get("consent") or {}).get("method") or "portal").strip()

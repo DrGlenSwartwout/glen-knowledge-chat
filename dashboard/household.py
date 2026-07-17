@@ -244,11 +244,13 @@ def record_consent(cx, primary_email, member_email, basis, by=""):
 
 def confirm_consent(cx, primary_email, member_email):
     p, m = _norm(primary_email), _norm(member_email)
-    row = cx.execute("SELECT consent_confirmed_at FROM household_members "
+    row = cx.execute("SELECT consent_basis, consent_confirmed_at FROM household_members "
                      "WHERE primary_email=? AND member_email=?", (p, m)).fetchone()
     if not row:
         return False
-    if row[0]:  # already hard-confirmed — idempotent, never downgrade
+    if (row[0] or "") == "caregiver-authority":
+        return True   # dependent link already consented; don't overwrite
+    if row[1]:  # already hard-confirmed — idempotent, never downgrade
         return True
     cx.execute("UPDATE household_members SET share_consent=1, consent_basis='portal-confirmed', "
                "consent_confirmed_at=? WHERE primary_email=? AND member_email=?", (_now(), p, m))

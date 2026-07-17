@@ -49,3 +49,12 @@ def test_confirm_consent_hard_and_idempotent():
     h.confirm_consent(cx, "cg@x.com", "adult@x.com")  # idempotent, no downgrade
     st2 = h.consent_state(cx, "cg@x.com", "adult@x.com")
     assert st2["consent_confirmed_at"] == first and st2["share_consent"] == 1
+
+
+def test_confirm_consent_on_dependent_link_keeps_caregiver_authority():
+    cx = _cx()
+    h.add_member(cx, "cg@x.com", "kid@x.com", "Kid", "child")
+    assert h.confirm_consent(cx, "cg@x.com", "kid@x.com") is True
+    st = h.consent_state(cx, "cg@x.com", "kid@x.com")
+    assert st["consent_basis"] == "caregiver-authority"
+    assert st["share_consent"] == 1
