@@ -44,7 +44,7 @@ def validate_zone(z):
     if not isinstance(z, dict):
         return False, "zone must be an object"
     for key in _REQUIRED_COMMON:
-        if key not in z:
+        if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
     if (z.get("side") or z.get("eye")) not in ("right", "left"):
         return False, "side/eye must be 'right' or 'left'"
@@ -52,6 +52,16 @@ def validate_zone(z):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
     gtype = geo.get("type") or ("sector" if ("radial" in z and "sector" in z) else None)
+    if gtype == "polygon":
+        pts = geo.get("points")
+        if not isinstance(pts, list) or len(pts) < 3:
+            return False, "geometry polygon needs >= 3 points"
+        for p in pts:
+            if not (isinstance(p, (list, tuple)) and len(p) == 2
+                    and all(isinstance(v, (int, float)) for v in p)
+                    and 0.0 <= float(p[0]) <= 1.0 and 0.0 <= float(p[1]) <= 1.0):
+                return False, "polygon points must be [x,y] pairs in [0,1]"
+        return True, None
     if gtype == "point":
         x, y = geo.get("x"), geo.get("y")
         if not all(isinstance(v, (int, float)) for v in (x, y)):
@@ -129,6 +139,34 @@ def set_zone_overlay(system, zone_id, text):
             break
     if not hit:
         raise KeyError(zone_id)
+    _write(path, data)
+
+
+def upsert_zone(system, zone):
+    """Add or replace a zone (matched by id) in the system's seed. Raises ValueError if invalid."""
+    ok, err = validate_zone(zone)
+    if not ok:
+        raise ValueError(err)
+    path = SYSTEMS[system]
+    data = load_map(system)
+    zones = data.setdefault("zones", [])
+    for i, z in enumerate(zones):
+        if z.get("id") == zone.get("id"):
+            zones[i] = zone
+            break
+    else:
+        zones.append(zone)
+    _write(path, data)
+
+
+def delete_zone(system, zone_id):
+    """Remove a zone by id. Raises KeyError if not present."""
+    path = SYSTEMS[system]
+    data = load_map(system)
+    kept = [z for z in data.get("zones", []) if z.get("id") != zone_id]
+    if len(kept) == len(data.get("zones", [])):
+        raise KeyError(zone_id)
+    data["zones"] = kept
     _write(path, data)
 
 
