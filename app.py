@@ -6041,6 +6041,37 @@ def _maybe_raise_cashout_review(cx, slug: str, mode: str) -> None:
         print(f"[rewards] _maybe_raise_cashout_review failed slug={slug}: {_e!r}", flush=True)
 
 
+def _raise_settlement_skip_todo(order_ref, kind, skipped):
+    """Best-effort: when per-kind settlement skipped one or more effects (a settler
+    raised and was swallowed best-effort, then the order was marked settled and will
+    NOT retry), raise ONE deduped console todo so the stranded effect is visible +
+    actionable. Never raises into the request path."""
+    try:
+        if not order_ref or not skipped:
+            return
+        from datetime import datetime as _dt, timezone as _tz
+        now = _dt.now(_tz.utc).isoformat()
+        names = ", ".join(str(s) for s in skipped)
+        dedup_key = f"settle-skip:{order_ref}"
+        _init_todos_table()
+        _tcx = sqlite3.connect(LOG_DB)
+        try:
+            _tcx.execute(
+                """INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(dedup_key) DO NOTHING""",
+                (now, "glen", "Fulfillment",
+                 f"Settlement skipped for order {order_ref}",
+                 f"Order {order_ref} (kind={kind}) was marked settled but these effects were "
+                 f"skipped and will not auto-retry: {names}. Re-run settlement manually if needed.",
+                 "high", "settlement-skip", dedup_key))
+            _tcx.commit()
+        finally:
+            _tcx.close()
+    except Exception as _e:
+        print(f"[settlement] skip-todo failed ref={order_ref!r}: {_e!r}", flush=True)
+
+
 def _settle_referrer_reward(cx, order, order_ref):
     """On a paid referral order: credit the referrer pct% of the referee's product spend.
     Returns cents credited (0 if none). Idempotent per referee; never raises into the caller."""
@@ -6271,33 +6302,37 @@ def _grant_group_bundle(md, pi_id):
                     "CREATE TABLE IF NOT EXISTS group_bundle_grants "
                     "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
                 _gcx.commit()
-                # Idempotency: skip if this invoice/pi was already granted.
-                already = _gcx.execute(
-                    "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
-                    (g_invoice,)).fetchone()
-                if not already:
-                    existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
-                    if existing:
-                        cur = existing[0]
-                        _subs_gb.set_next_charge_date(
-                            _gcx, cur["id"],
-                            _subs_gb.add_months(cur["next_charge_date"], n))
-                    elif g_cus and g_pm:
-                        start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
-                        _subs_gb.create_membership(
-                            _gcx, email=g_email, stripe_customer_id=g_cus,
-                            stripe_payment_method_id=g_pm,
-                            amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
-                            next_charge_date=start)
-                        _member_join_welcome(_gcx, g_email, "subscription")
-                    _gcx.execute(
-                        "INSERT INTO group_bundle_grants (invoice_id, created_at) "
-                        "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
-                    _gcx.commit()
-                    print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}",
-                          flush=True)
+                # Claim the grant marker ATOMICALLY before any side effect: exactly one
+                # run wins ON CONFLICT, so a concurrent redirect+webhook settle (or a
+                # second delivery) can't double-create the membership or double-send the
+                # welcome. (Trade-off: a hard crash between this commit and create_membership
+                # would strand this one free-window grant — rare, and strictly better than
+                # the double-grant it replaces.)
+                claim = _gcx.execute(
+                    "INSERT INTO group_bundle_grants (invoice_id, created_at) VALUES (?,?) "
+                    "ON CONFLICT(invoice_id) DO NOTHING", (g_invoice, _now_utc().isoformat()))
+                _gcx.commit()
+                if claim.rowcount == 0:
+                    return  # another run already claimed/granted this invoice
+                existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
+                if existing:
+                    cur = existing[0]
+                    _subs_gb.set_next_charge_date(
+                        _gcx, cur["id"],
+                        _subs_gb.add_months(cur["next_charge_date"], n))
+                elif g_cus and g_pm:
+                    start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
+                    _subs_gb.create_membership(
+                        _gcx, email=g_email, stripe_customer_id=g_cus,
+                        stripe_payment_method_id=g_pm,
+                        amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
+                        next_charge_date=start)
+                    _member_join_welcome(_gcx, g_email, "subscription")
+                _gcx.commit()
+                print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}", flush=True)
     except Exception as _ge:
         app.logger.exception("group bundle grant failed: %s", _ge)
+        raise
 
 
 def _settle_client_effects(md):
@@ -9933,9 +9968,11 @@ def begin_checkout_return():
                     except Exception as _e:
                         print(f"[begin-return] settle order lookup: {_e!r}", flush=True)
                 from dashboard import order_settlement as _osx
-                _osx.settle_paid_order_effects(
+                _res = _osx.settle_paid_order_effects(
                     kind=_kind, order=_settle_order, md=md, pi_id=pi_id, sid=sid,
                     deps=_SETTLEMENT_DEPS)
+                if _res and _res.get("skipped"):
+                    _raise_settlement_skip_todo(inv, _res.get("kind"), _res["skipped"])
                 # Mark settlement attempted so a Stripe redelivery of the webhook
                 # skips re-settling this order (I1 crash-strand close). Best-effort:
                 # if this fails, the webhook's own settled_at gate still backfills.
@@ -27515,11 +27552,13 @@ def webhook_stripe():
                                             _wmd = sess.get("metadata") or {}
                                             _wro = _bos_orders.find_order_by_external_ref(_wcx, inv)
                                             from dashboard import order_settlement as _wosx
-                                            _wosx.settle_paid_order_effects(
+                                            _res = _wosx.settle_paid_order_effects(
                                                 kind=_wmd.get("kind") or "",
                                                 order=(dict(_wro) if _wro else None),
                                                 md=_wmd, pi_id=sess.get("payment_intent"),
                                                 sid=session_id, deps=_SETTLEMENT_DEPS)
+                                            if _res and _res.get("skipped"):
+                                                _raise_settlement_skip_todo(inv, _res.get("kind"), _res["skipped"])
                                             _bos_orders.mark_order_settled(_wcx, _wo["id"])
                                         except Exception as _wse:
                                             print(f"[stripe-webhook] settlement failed: {_wse!r}",
