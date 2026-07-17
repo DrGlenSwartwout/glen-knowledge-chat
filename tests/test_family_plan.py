@@ -1,9 +1,12 @@
 """Family plan entitlement: one caregiver's paid plan un-blurs the whole household.
 
 The plan is bought by the caregiver. Every household member linked to that
-caregiver WITH share_consent=1 gets full scan results. A member who has revoked
-consent is not covered — consent gates the caregiver's reach in both directions
-(same rule household.can_view already enforces for the view switcher).
+caregiver is covered, regardless of share_consent. Entitlement is DECOUPLED from
+report-sharing consent: share_consent gates whether the caregiver can VIEW the
+member's reports (household.can_view) — a separate axis. This matters because
+operational caregiver links (partner/spouse/manages-account) default
+share_consent=0 (see household.add_member), so a partner added to a paid family
+plan via the default flow must still be covered even before consent is granted.
 """
 
 import sqlite3
@@ -85,10 +88,31 @@ def test_active_plan_covers_the_caregiver_themself(cx):
     assert fp.covers(cx, CAREGIVER) is True
 
 
-def test_member_who_revoked_consent_is_not_covered(cx):
+def test_member_who_revoked_consent_is_still_covered(cx):
+    """Entitlement is decoupled from report-sharing consent (Issue 3). Revoking
+    share_consent blocks household.can_view (a separate axis) but must NOT drop
+    the member's coverage under the caregiver's active paid plan."""
     _link(cx, PET)
     fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
     hh.set_share_consent(cx, CAREGIVER, PET, 0)
+    assert fp.covers(cx, PET) is True
+    # the decoupled axis: viewing still requires consent
+    assert hh.can_view(cx, CAREGIVER, PET) is False
+
+
+def test_operational_link_with_no_consent_is_still_covered(cx):
+    """Guard 2 defaults operational caregiver links (partner/spouse/manages-account)
+    to share_consent=0. This is the exact regression the decoupling fixes: a
+    partner added to a paid family plan via the default flow must still be
+    entitled, even though they have not (yet) consented to report sharing."""
+    _link(cx, SPOUSE, relationship="partner")
+    assert hh.caregivers_for(cx, SPOUSE)[0]["share_consent"] == 0
+    fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
+    assert fp.covers(cx, SPOUSE) is True
+
+
+def test_member_with_no_active_plan_caregiver_is_not_covered(cx):
+    _link(cx, PET, relationship="partner")
     assert fp.covers(cx, PET) is False
 
 

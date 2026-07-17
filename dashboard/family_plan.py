@@ -110,10 +110,13 @@ def is_active(cx, caregiver_email):
 
 def covers(cx, email):
     """True when `email` is entitled — either they hold the plan, or a caregiver
-    who holds it is linked to them with share_consent=1.
+    who holds it is linked to them via a household/caregiver link.
 
-    Consent gates the caregiver's reach in both directions: a member who has
-    revoked it is not viewable (household.can_view) and is not covered here.
+    Entitlement is INDEPENDENT of report-sharing consent: share_consent governs
+    whether the caregiver can VIEW the member's reports (household.can_view), a
+    separate axis from whether the member is covered by the caregiver's paid
+    plan. A member linked to an active plan-holder is covered here even if they
+    (or the caregiver) have not consented to report sharing.
     """
     email = _lc(email)
     if not email:
@@ -122,7 +125,7 @@ def covers(cx, email):
         return True
     from dashboard import household as _hh
     for cg in _hh.caregivers_for(cx, email):
-        if cg["share_consent"] and is_active(cx, cg["primary_email"]):
+        if is_active(cx, cg["primary_email"]):
             return True
     return False
 
