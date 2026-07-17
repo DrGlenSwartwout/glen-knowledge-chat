@@ -97,6 +97,20 @@ def init_subscriptions_table(cx) -> None:
         stmt = stmt.strip()
         if stmt:
             cx.execute(stmt)
+    try:
+        cx.execute("ALTER TABLE subscriptions ADD COLUMN order_ref TEXT")
+    except sqlite3.OperationalError:
+        pass  # already migrated
+    # Atomic dedup backstop: prod runs gunicorn with 2 workers + gevent, so the
+    # redirect (one process) and the Stripe webhook (another process) can both
+    # pass the has_subscription_for_order SELECT before either commits. The
+    # UNIQUE index makes the second INSERT fail instead of double-creating.
+    # Safe with existing NULL order_ref rows: SQLite treats each NULL as
+    # distinct under a UNIQUE index, so they never collide with each other.
+    cx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_order_ref "
+        "ON subscriptions(order_ref)"
+    )
     cx.commit()
 
 
@@ -128,13 +142,18 @@ def _row_to_dict(row) -> dict:
 def create(cx, *, email: str, stripe_customer_id: str,
            stripe_payment_method_id: str, items: list,
            cadence_months: int, ship_address: dict,
-           next_charge_date: str, order_count: int = 0) -> int:
+           next_charge_date: str, order_count: int = 0,
+           order_ref: str | None = None) -> int:
     """Insert a new active subscription and return its id.
 
     order_count is the number of orders ALREADY placed on this subscription. At
     sign-up the setup checkout charges the 1st order (at tier_for(0)=3%), so the
     subscription is created with order_count=1 — that way the first SCHEDULED charge
     reads tier_for(1)=5% (the 2nd active month), climbing the 3→25% loyalty curve.
+
+    order_ref, when given, is the originating order's idempotency token —
+    persisted so has_subscription_for_order/create_once can dedup a
+    double-create (redirect vs. webhook, or a redirect refresh).
     """
     now = _now_iso()
     cur = cx.execute(
@@ -142,15 +161,45 @@ def create(cx, *, email: str, stripe_customer_id: str,
                (email, stripe_customer_id, stripe_payment_method_id,
                 items_json, cadence_months, status, order_count,
                 next_charge_date, ship_address_json, skip_next,
-                created_at, updated_at)
-           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?)""",
+                created_at, updated_at, order_ref)
+           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?,?)""",
         (email, stripe_customer_id, stripe_payment_method_id,
          json.dumps(items or []), cadence_months, int(order_count),
          next_charge_date, json.dumps(ship_address or {}),
-         now, now),
+         now, now, order_ref),
     )
     cx.commit()
     return cur.lastrowid
+
+
+def has_subscription_for_order(cx, order_ref) -> bool:
+    """True if a subscription row already exists for this originating order_ref."""
+    if not order_ref:
+        return False
+    row = cx.execute(
+        "SELECT 1 FROM subscriptions WHERE order_ref=? LIMIT 1", (order_ref,)).fetchone()
+    return row is not None
+
+
+def create_once(cx, *, order_ref, **create_kwargs):
+    """Idempotent create keyed on order_ref: if a row already exists for this
+    order_ref, no-op and return None; else create and return the new rowid.
+    Closes the redirect-refresh and redirect-vs-webhook double-create.
+
+    The has_subscription_for_order check is a fast pre-check (cheap, avoids
+    the exception path in the common case) but is NOT itself atomic — prod
+    runs gunicorn with 2 workers + gevent, so the redirect and the webhook
+    can both pass the SELECT before either commits. The UNIQUE index on
+    order_ref (see init_subscriptions_table) is the real atomicity guarantee:
+    if two processes race past the pre-check, only one INSERT wins and the
+    other raises sqlite3.IntegrityError, which we catch here and treat the
+    same as "already exists" — return None."""
+    if has_subscription_for_order(cx, order_ref):
+        return None
+    try:
+        return create(cx, order_ref=order_ref, **create_kwargs)
+    except sqlite3.IntegrityError:
+        return None  # lost the race to another process; not a double-create
 
 
 def get(cx, sub_id: int) -> dict | None:
