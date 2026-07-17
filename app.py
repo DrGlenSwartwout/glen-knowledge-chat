@@ -27434,6 +27434,21 @@ def webhook_stripe():
                                     from dashboard import qbo_sale as _wqs
                                     _wqs.book_sale_on_payment(
                                         _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                                    # Closed-tab parity: settle the same per-kind side-effects the
+                                    # redirect settles, via the shared orchestrator. Idempotent +
+                                    # best-effort -- a settler raising must not 500 the webhook.
+                                    try:
+                                        _wmd = sess.get("metadata") or {}
+                                        _wro = _bos_orders.find_order_by_external_ref(_wcx, inv)
+                                        from dashboard import order_settlement as _wosx
+                                        _wosx.settle_paid_order_effects(
+                                            kind=_wmd.get("kind") or "",
+                                            order=(dict(_wro) if _wro else None),
+                                            md=_wmd, pi_id=sess.get("payment_intent"),
+                                            sid=session_id, deps=_SETTLEMENT_DEPS)
+                                    except Exception as _wse:
+                                        print(f"[stripe-webhook] settlement failed: {_wse!r}",
+                                              flush=True)
                             finally:
                                 _wcx.close()
                 except Exception as _we:

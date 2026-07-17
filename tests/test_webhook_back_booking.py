@@ -11,6 +11,7 @@ double-book against the redirect handler. Best-effort: any failure inside the
 block must be swallowed and the webhook must still 200.
 """
 
+import json
 import sqlite3
 
 import pytest
@@ -82,7 +83,7 @@ def _mock_sales_receipt_spy(monkeypatch):
     calls = {"n": 0}
 
     def _fake_create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
-                                    email_to=None):
+                                    email_to=None, bank_account_id=None, private_note=None):
         calls["n"] += 1
         return {"Id": f"SR{calls['n']}"}
 
@@ -172,3 +173,203 @@ def test_webhook_swallows_booking_error_returns_200(monkeypatch, tmp_path, clien
 
     r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
     assert r.status_code == 200
+
+
+# ── Closed-tab per-kind settlement parity (Task 4) ───────────────────────────
+# These exercise order_settlement.settle_paid_order_effects being dispatched
+# from the webhook's book-back block -- the same per-kind side-effects the
+# /begin/checkout-return redirect settles, so a closed browser tab settles
+# identically (points/referral/subscription row/wallet margin/biofield
+# readiness). Patterns mirror tests/test_begin_return_settlement.py.
+
+def _spy_common_settlers(monkeypatch, calls):
+    monkeypatch.setattr(app, "_settle_order_points",
+                        lambda order, *, order_ref: calls["points"].append(order_ref))
+    monkeypatch.setattr(app, "_settle_referral",
+                        lambda order, *, order_ref: calls["referral"].append(order_ref))
+
+
+def test_webhook_closed_tab_biofield_seeds_readiness(monkeypatch, tmp_path, client):
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "e" * 32
+    _seed_paid_only_order(db, token)
+    calls = {"points": [], "referral": [], "seed": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    import dashboard.biofield_store as _bf
+    monkeypatch.setattr(_bf, "seed_paid",
+                        lambda cx, email, *, via, order_ref: calls["seed"].append(order_ref))
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "biofield", "email": "bf@x.com"},
+        "payment_intent": "pi_bf"})
+    _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    assert calls["seed"] == [token]
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+
+
+def test_webhook_closed_tab_subscribe_creates_subscription_row(monkeypatch, tmp_path, client):
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "f" * 32
+    _seed_paid_only_order(db, token)
+    calls = {"points": [], "referral": [], "create_once": 0}
+    _spy_common_settlers(monkeypatch, calls)
+
+    import dashboard.subscriptions as _subs
+    orig_create_once = _subs.create_once
+
+    def _spy_create_once(cx, **kw):
+        calls["create_once"] += 1
+        return orig_create_once(cx, **kw)
+    monkeypatch.setattr(_subs, "create_once", _spy_create_once)
+
+    monkeypatch.setattr(stripe_pay, "get_payment_intent", lambda pi: {
+        "customer": "cus_1", "payment_method": "pm_1"})
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {
+            "invoice_id": token, "kind": "subscribe", "email": "sub@x.com",
+            "cadence_months": "1",
+            "items": json.dumps([{"slug": "brain-boost", "qty": 1}]),
+            "ship": json.dumps({"state": "CA"}),
+        },
+        "payment_intent": "pi_sub"})
+    _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    assert calls["create_once"] == 1
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute("SELECT * FROM subscriptions WHERE order_ref=?", (token,)).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["email"] == "sub@x.com"
+
+
+def test_webhook_closed_tab_client_credits_wallet(monkeypatch, tmp_path, client):
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "g" * 32
+    _seed_paid_only_order(db, token)
+    calls = {"points": [], "referral": [], "wallet": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    import dashboard.wallet as _wal
+    monkeypatch.setattr(_wal, "earn_dropship_margin",
+                        lambda pid, marg, **k: calls["wallet"].append((pid, marg)) or 1)
+    monkeypatch.setattr(app._pp, "record_dispensary_order",
+                        lambda *a, **k: None, raising=False)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {
+            "invoice_id": token, "kind": "client",
+            "practitioner_id": "prac_1", "margin_cents": "1500",
+            "patient_email": "pat@x.com", "subtotal_cents": "7000",
+        },
+        "payment_intent": "pi_client"})
+    _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    assert calls["wallet"] == [("prac_1", 1500)]
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+
+
+def test_webhook_closed_tab_retail_settles_points_and_referral(monkeypatch, tmp_path, client):
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "h" * 32
+    _seed_paid_only_order(db, token)
+    calls = {"points": [], "referral": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "retail"},
+        "payment_intent": "pi_retail"})
+    _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+
+
+def test_webhook_settlement_idempotent_when_run_twice(monkeypatch, tmp_path, client):
+    """A closed-tab order that gets the SAME webhook delivered twice (Stripe
+    retry / duplicate event) must not double-create the subscription: the
+    first call books + settles, and the second call's book-back guard
+    (qbo_sales_receipt_id already set) skips the whole block -- so settlement
+    is never re-attempted, and no duplicate row is created."""
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "i" * 32
+    _seed_paid_only_order(db, token)
+    calls = {"points": [], "referral": []}
+    _spy_common_settlers(monkeypatch, calls)
+
+    monkeypatch.setattr(stripe_pay, "get_payment_intent", lambda pi: {
+        "customer": "cus_1", "payment_method": "pm_1"})
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {
+            "invoice_id": token, "kind": "subscribe", "email": "sub2@x.com",
+            "cadence_months": "1",
+            "items": json.dumps([{"slug": "brain-boost", "qty": 1}]),
+            "ship": json.dumps({"state": "CA"}),
+        },
+        "payment_intent": "pi_sub2"})
+    _mock_sales_receipt_spy(monkeypatch)
+
+    r1 = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r1.status_code == 200
+    r2 = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r2.status_code == 200
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    rows = cx.execute("SELECT * FROM subscriptions WHERE order_ref=?", (token,)).fetchall()
+    assert len(rows) == 1
+    # points/referral only fire once too -- the second call's outer guard
+    # (already booked) prevents re-dispatch.
+    assert calls["points"] == [token]
+    assert calls["referral"] == [token]
+
+
+def test_webhook_settlement_raising_still_200s_and_books_receipt(monkeypatch, tmp_path, client):
+    db = _isolate_db(monkeypatch, tmp_path)
+    _noop_fulfillers(monkeypatch)
+    token = "j" * 32
+    _seed_paid_only_order(db, token)
+
+    from dashboard import order_settlement as _osx
+
+    def _boom(**kwargs):
+        raise RuntimeError("settlement blew up")
+    monkeypatch.setattr(_osx, "settle_paid_order_effects", _boom)
+
+    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
+        "payment_status": "paid", "amount_total": 70000,
+        "metadata": {"invoice_id": token, "kind": "retail"},
+        "payment_intent": "pi_boom"})
+    calls = _mock_sales_receipt_spy(monkeypatch)
+
+    r = client.post("/webhook/stripe", data=_event(), content_type="application/json")
+    assert r.status_code == 200
+
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    row = O.find_order_by_external_ref(cx, token)
+    assert row["qbo_sales_receipt_id"] == "SR1"
+    assert row["pay_status"] == "paid"
+    assert calls["n"] == 1
