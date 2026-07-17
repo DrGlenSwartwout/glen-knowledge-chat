@@ -84,3 +84,51 @@ def test_no_order_skips_common_points_referral():
 def test_unknown_kind_noop():
     d = _Deps(); out = _run("membership_product", d)
     assert d.calls == []
+
+def test_group_bundle_grant_that_raises_lands_in_skipped():
+    # Orchestrator-level guard: if the injected grant_group_bundle dep raises
+    # (rather than swallowing internally and returning None), `_do`'s own
+    # try/except must catch it and record "group_bundle" in `skipped` -- that's
+    # what lets the settlement-todo surface a failed grant instead of it
+    # silently looking settled forever.
+    d = _Deps(raise_on={"group_bundle"})
+    out = _run("retail", d, md={"invoice_id": "tok1", "kind": "retail",
+                                 "grant_group_months": "1"})
+    assert "group_bundle" in out["skipped"]
+    assert "group_bundle" not in out["settled"]
+
+def test_real_grant_group_bundle_failure_reaches_orchestrator_skipped(monkeypatch, tmp_path):
+    # True end-to-end: wire the REAL app._grant_group_bundle (not a mock) in as
+    # the orchestrator's grant_group_bundle dep, make its internal
+    # create_membership call blow up, and confirm the failure surfaces as
+    # "group_bundle" in `skipped` -- proving _grant_group_bundle now propagates
+    # instead of swallowing, so a real production failure is never invisible.
+    import sqlite3
+    import app as appmod
+    from dashboard import stripe_pay as _stripe_pay_mod
+    from dashboard import subscriptions as subs
+
+    db = str(tmp_path / "log.db")
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setenv("GROUP_BUNDLE_ENABLED", "1")
+    monkeypatch.setattr(
+        _stripe_pay_mod, "get_payment_intent",
+        lambda pi: {"customer": "cus_1", "payment_method": "pm_1"})
+
+    def _boom(cx, **kwargs):
+        raise RuntimeError("boom: create_membership")
+
+    monkeypatch.setattr(subs, "create_membership", _boom)
+
+    class _RealGrantDeps(_Deps):
+        def grant_group_bundle(self, md, pi_id):
+            appmod._grant_group_bundle(md, pi_id)
+
+    d = _RealGrantDeps()
+    md = {"invoice_id": "tok1", "kind": "retail", "grant_group_months": "1",
+          "email": "a@b.com"}
+    out = osx.settle_paid_order_effects(
+        kind="retail", order=_ORDER, md=md, pi_id="pi_1", sid="sess_1", deps=d)
+
+    assert "group_bundle" in out["skipped"]
+    assert "group_bundle" not in out["settled"]

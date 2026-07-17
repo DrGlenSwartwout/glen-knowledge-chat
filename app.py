@@ -6332,6 +6332,7 @@ def _grant_group_bundle(md, pi_id):
                 print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}", flush=True)
     except Exception as _ge:
         app.logger.exception("group bundle grant failed: %s", _ge)
+        raise
 
 
 def _settle_client_effects(md):

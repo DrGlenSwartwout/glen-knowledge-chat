@@ -152,3 +152,27 @@ def test_marker_claimed_before_create_membership(monkeypatch, tmp_path):
     # Sanity: the flow still completed normally through the spy.
     assert len(_active(db)) == 1
     assert len(calls) == 1
+
+
+# ── Test 5: a failure inside the grant must PROPAGATE, not be swallowed ────
+#
+# `_grant_group_bundle` used to catch every exception internally and just log
+# it -- so a failure always looked "settled" to its caller. It is dispatched
+# by dashboard/order_settlement.py's `_do("group_bundle", ...)`, whose own
+# try/except is what populates the orchestrator's `skipped` list (read by the
+# settlement-todo). If `_grant_group_bundle` never re-raises, a real failure
+# (e.g. create_membership blowing up after the claim marker is already
+# committed) is silently recorded as settled and the grant is permanently
+# stranded with no visibility. Fix: re-raise after logging so `_do` sees it.
+
+def test_grant_failure_propagates_instead_of_being_swallowed(monkeypatch, tmp_path):
+    db, calls = _wire(monkeypatch, tmp_path)
+
+    def _boom(cx, **kwargs):
+        raise RuntimeError("boom: create_membership")
+
+    monkeypatch.setattr(subs, "create_membership", _boom)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="boom: create_membership"):
+        appmod._grant_group_bundle(_md(), "pi_1")
