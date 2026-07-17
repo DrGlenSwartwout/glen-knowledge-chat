@@ -13,9 +13,12 @@ These tests cover the new paid-only branch added after the legacy
 `if inv and cid:` block:
   - a paid-only order (qbo_lines_json set, cid=="") gets pay_status=paid,
     the Stripe PI captured, and exactly one Sales Receipt booked;
-  - re-hitting the same return URL books no second receipt (idempotent);
-  - a legacy invoice-based order (real cid, no qbo_lines_json) keeps going
-    through qbo_billing.record_payment and is NOT touched by the new branch.
+  - re-hitting the same return URL books no second receipt (idempotent).
+
+(QBO Stage 5: the legacy `if inv and cid:` record_payment block itself was
+removed as dead code -- it only ever fired for legacy invoice-based orders,
+which are voided/drained and never occur in practice. The test that locked
+in that legacy behavior was removed along with it.)
 """
 
 import sqlite3
@@ -132,35 +135,3 @@ def test_paid_only_wholesale_card_return_rehit_is_idempotent(monkeypatch, tmp_pa
     cx.row_factory = sqlite3.Row
     row = O.find_order_by_external_ref(cx, token)
     assert row["qbo_sales_receipt_id"] == "SR2"
-
-
-def test_legacy_invoice_order_still_uses_record_payment_not_double_processed(
-        monkeypatch, tmp_path, client):
-    db = _isolate_db(monkeypatch, tmp_path)
-    # No order seeded for this external_ref at all -- legacy invoice-based orders
-    # of this kind aren't rows in the paid-only `orders` table; the return
-    # handler's legacy branch talks to QBO directly via record_payment.
-    legacy_inv = "9-1700000000"
-
-    monkeypatch.setattr(stripe_pay, "get_session", lambda sid: {
-        "id": sid, "payment_status": "paid", "amount_total": 75000,
-        "metadata": {"invoice_id": legacy_inv, "customer_id": "C1"},
-        "payment_intent": "pi_789",
-    })
-
-    record_calls = []
-    monkeypatch.setattr(qbo_billing, "record_payment",
-                        lambda cid, amt, inv: record_calls.append((cid, amt, inv)))
-
-    receipt_calls = {"n": 0}
-
-    def _fake_create_sales_receipt(*a, **k):
-        receipt_calls["n"] += 1
-        return {"Id": "SR-SHOULD-NOT-HAPPEN"}
-    monkeypatch.setattr(qbo_billing, "create_sales_receipt", _fake_create_sales_receipt)
-
-    r = client.get(f"/practitioner/checkout-return?session_id=sess1&t=tok")
-    assert r.status_code in (301, 302)
-
-    assert record_calls == [("C1", 75000, legacy_inv)]
-    assert receipt_calls["n"] == 0

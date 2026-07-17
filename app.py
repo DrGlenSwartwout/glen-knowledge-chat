@@ -5010,39 +5010,6 @@ def qbo_invoice_status():
     return jsonify({"ok": True, "invoices": out})
 
 
-@app.route("/api/console/reconcile-qbo", methods=["POST"])
-def console_reconcile_qbo():
-    """Flip board orders to paid when their QBO invoice has actually been paid.
-    QBO hosted-page payments don't sync back, so portal-reorder/reorder orders sit
-    Unpaid even after the client pays. Polls each open QBO-invoice order's live
-    balance and marks the paid ones (method=qbo). Runs on prod where QBO auth is live.
-    Auth: X-Cron-Secret / X-Console-Key / ?key == CRON_SECRET or CONSOLE_SECRET."""
-    key = (request.headers.get("X-Cron-Secret", "")
-           or request.headers.get("X-Console-Key", "")
-           or request.args.get("key", ""))
-    allowed = {s for s in (os.environ.get("CRON_SECRET"), os.environ.get("CONSOLE_SECRET")) if s}
-    if not allowed or key not in allowed:
-        return jsonify({"error": "unauthorized"}), 401
-    from dashboard import qbo_billing as _qb
-    from dashboard import qbo_reconcile as _rec
-    from dashboard import orders as _ord
-
-    def _mark_paid(cx, oid, *, method, amount_cents):
-        _ord.set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
-        try:
-            _ord.settle_order_points(cx, _ord.get_order(cx, oid))   # idempotent
-        except Exception as _e:
-            print(f"[qbo-reconcile] points settle skipped for {oid}: {_e!r}", flush=True)
-
-    cx = _sqlite3.connect(LOG_DB)
-    try:
-        reconciled = _rec.reconcile_qbo_payments(
-            cx, get_invoice=_qb.get_invoice, mark_paid=_mark_paid)
-    finally:
-        cx.close()
-    return jsonify({"ok": True, "reconciled": reconciled, "count": len(reconciled)})
-
-
 @app.route("/api/qbo/test-invoice", methods=["POST"])
 def qbo_test_invoice():
     """Create ONE test invoice (no online pay) for a clearly-named test customer to
@@ -9537,31 +9504,20 @@ def begin_checkout_return():
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 # NOTE: retail/funnel checkout (begin_checkout), cart checkout
                 # (_checkout_cart), and reorder/portal-reorder/subscribe are ALL
-                # paid-only as of the QBO Stage 3 migration -- each sets metadata
-                # customer_id="" (no QBO customer/invoice exists at checkout time)
-                # and books a real Sales Receipt below, so `cid` is falsy for every
-                # one of these kinds. The `if cid` guard is what still routes a
-                # genuine invoice-based order (a real, non-empty QBO customer_id --
-                # e.g. a legacy/not-yet-migrated order that predates this flow's
-                # conversion) to record_payment; it is a no-op for the paid-only
-                # kinds precisely because their cid is "".
-                # The outer gate is therefore `inv` alone (not `inv and cid`), and each
-                # inner side effect is individually scoped: record_payment (invoice-
-                # apply) requires a real `cid` and excludes only biofield/retail
-                # (paid-only / has its own path, nothing to apply to); the stripe-pi/
-                # points/referral/booking block fires whenever there's a real `cid`
-                # (a genuine invoice-based order) OR kind is one of the paid-only
-                # kinds (retail/reorder/portal-reorder/subscribe).
+                # paid-only as of the QBO Stage 3+ migration -- each sets metadata
+                # customer_id="" (no QBO customer/invoice exists at checkout time),
+                # so `cid` is falsy for every one of these kinds. There is no
+                # invoice-payment application (record_payment) anymore -- that
+                # legacy routing was removed. The only thing this block does for
+                # a matched order is: capture the Stripe PaymentIntent id, settle
+                # points/referral, and book ONE line-faithful QBO Sales Receipt
+                # (idempotent via qbo_sales_receipt_id). The outer gate is `inv`
+                # alone; the inner gate `pi_id and (cid or _kind in (...))` just
+                # widens eligibility to include a genuine invoice-based order (a
+                # real, non-empty QBO customer_id) alongside the paid-only kinds.
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
                 if inv:
-                    if cid and _kind != "in-house" and _kind not in (
-                            "biofield", "retail"):
-                        try:
-                            from dashboard import qbo_billing as _qb_ret
-                            _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                        except Exception as e:
-                            print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
                     if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe",
                                                     "client")):
                         _o_for_points = None
@@ -25888,26 +25844,8 @@ def practitioner_checkout_return():
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 md = sess.get("metadata") or {}
-                inv, cid = md.get("invoice_id"), md.get("customer_id")
-                if inv and cid:
-                    try:
-                        from dashboard import qbo_billing as qb
-                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                    except Exception as e:
-                        print(f"[stripe-return] qbo payment failed: {e!r}", flush=True)
-                    pi = sess.get("payment_intent")
-                    if pi:
-                        try:
-                            _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
-                            try:
-                                _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
-                                if _o:
-                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
-                            finally:
-                                _cxo.close()
-                        except Exception as _e:
-                            print(f"[stripe-return] pi capture: {_e!r}", flush=True)
-                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice (cid==""),
+                inv = md.get("invoice_id")
+                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice,
                 # so mark the order paid and book ONE Sales Receipt. Guarded on
                 # qbo_lines_json so legacy invoice-based orders are untouched;
                 # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
