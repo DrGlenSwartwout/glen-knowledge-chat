@@ -8279,6 +8279,42 @@ def api_console_points_ledger():
                     "rows": [dict(r) for r in rows]})
 
 
+@app.route("/api/console/points-dedup", methods=["POST"])
+def api_console_points_dedup():
+    """Owner-gated one-off: remove duplicate (order_ref, reason, scope) points_ledger
+    rows (keeping the earliest id) and ensure the UNIQUE index. Dry-run by default;
+    ?apply=1 performs the deletion. Idempotent/re-runnable. Prereq for the UNIQUE
+    index (dashboard.points.init_points_table) to create cleanly on prod."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    apply = request.args.get("apply") == "1"
+    cx = sqlite3.connect(LOG_DB); cx.row_factory = sqlite3.Row
+    try:
+        dupes = cx.execute(
+            "SELECT order_ref, reason, scope, COUNT(*) c, MIN(id) keep "
+            "FROM points_ledger WHERE order_ref IS NOT NULL "
+            "GROUP BY order_ref, reason, scope HAVING c > 1").fetchall()
+        groups = [dict(r) for r in dupes]
+        removed = 0
+        if apply:
+            for g in groups:
+                cur = cx.execute(
+                    "DELETE FROM points_ledger WHERE order_ref=? AND reason=? AND scope=? AND id<>?",
+                    (g["order_ref"], g["reason"], g["scope"], g["keep"]))
+                removed += cur.rowcount
+            cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_points_order_ref_reason_scope "
+                       "ON points_ledger(order_ref, reason, scope)")
+            cx.commit()
+        index_exists = cx.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='ux_points_order_ref_reason_scope'").fetchone() is not None
+        return jsonify({"ok": True, "applied": apply, "duplicate_groups": len(groups),
+                        "rows_removed": removed, "index_exists": index_exists,
+                        "groups": groups[:50]})
+    finally:
+        cx.close()
+
+
 @app.route("/api/console/dispensary-pay-mix", methods=["GET"])
 def api_console_dispensary_pay_mix():
     """Read-only: card vs alt-pay (zelle/wise) split of dispensary sales, PROXIED by
