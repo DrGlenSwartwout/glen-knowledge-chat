@@ -15,6 +15,7 @@ import os
 import re
 import json
 import uuid
+import uuid as _uuid
 import time
 import secrets
 import sqlite3
@@ -84,7 +85,7 @@ FEEDBACK_VIEW_URL   = os.environ.get("FEEDBACK_VIEW_URL",   "https://Truly.VIP/F
 # vector space). With no fallback set it behaves as a single client. See
 # dashboard/openai_failover.py.
 from dashboard.openai_failover import build_openai_client as _build_openai_client
-from dashboard.people import set_person_tags, distinct_tags
+from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
@@ -3493,6 +3494,54 @@ def _continuous_care_checkout_session(email, term_months):
         save_card=True)
 
 
+def _membership_checkout_session(email, tier_key):
+    """Create the membership-tier Stripe checkout session. Single source of truth
+    for metadata / save_card / success+cancel URLs for /membership/checkout. One-time
+    tiers (month, year_prepay) never vault a card; the recurring_capped tier
+    (year_monthly) vaults it so the charge cron can bill months 2..12. Returns the
+    session dict (read .get("url"))."""
+    from dashboard import membership_products as _mp
+    tier = _mp.get_tier(tier_key)
+    base = PUBLIC_BASE_URL.rstrip("/")
+    return stripe_pay.create_checkout_session(
+        tier["price_cents"], customer_email=email,
+        description=f"Remedy Match {tier['label']}",
+        metadata={"email": email, "kind": "membership_product", "tier": tier_key},
+        success_url=f"{base}/membership/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/",
+        save_card=(tier["billing"] == "recurring_capped"))
+
+
+@app.route("/membership", methods=["GET"])
+def membership_choose_page():
+    """Customer-facing choose-your-membership page (month / year_monthly /
+    year_prepay). Dark-launched: 404s unless MEMBERSHIP_PRODUCTS_ENABLED."""
+    if not MEMBERSHIP_PRODUCTS_ENABLED:
+        return ("Not found", 404)
+    resp = send_from_directory(STATIC, "membership-choose.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/membership/checkout", methods=["POST"])
+def membership_checkout():
+    """Start a Stripe Checkout for a membership product tier (month / year_monthly /
+    year_prepay). Public, flag-gated: 404s unless MEMBERSHIP_PRODUCTS_ENABLED and
+    _STRIPE_ACTIVE are both on."""
+    if not (MEMBERSHIP_PRODUCTS_ENABLED and _STRIPE_ACTIVE):
+        return jsonify({"error": "not found"}), 404
+    from dashboard import membership_products as _mp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tier_key = (data.get("tier") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not _mp.get_tier(tier_key):
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    sess = _membership_checkout_session(email, tier_key)
+    return jsonify({"ok": True, "url": sess.get("url", "")})
+
+
 @app.route("/continuous-care/checkout", methods=["POST"])
 def continuous_care_checkout():
     """Start a Stripe Checkout for Continuous Care MONTHLY (6 or 12 month fixed
@@ -3532,6 +3581,24 @@ def continuous_care_return():
     res = _fulfill_continuous_care_monthly(sid) if sid else {"ok": False}
     ok = bool(res.get("ok"))
     return _redir(f"{PUBLIC_BASE_URL.rstrip('/')}/?care={'ok' if ok else 'err'}")
+
+
+@app.route("/membership/return", methods=["GET"])
+def membership_return():
+    """Stripe return for a membership-product checkout (month / year_monthly /
+    year_prepay). Re-fetches the session + PaymentIntent via the shared fulfiller
+    (the security guarantee) and honors any paid session regardless of the
+    MEMBERSHIP_PRODUCTS_ENABLED flag — fulfillment is idempotent + self-verifying,
+    and the webhook is the safety net for a closed tab. Never raises."""
+    sid = (request.args.get("session_id") or "").strip()
+    status = "err"
+    if sid:
+        try:
+            status = ("ok" if _fulfill_membership_product(sid)
+                      in ("ok", "duplicate_member", "already") else "err")
+        except Exception as e:
+            print(f"[membership] return fulfill error: {e!r}", flush=True)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/?membership={status}")
 
 
 @app.route("/membership/cancel/<token>", methods=["GET"])
@@ -4943,39 +5010,6 @@ def qbo_invoice_status():
     return jsonify({"ok": True, "invoices": out})
 
 
-@app.route("/api/console/reconcile-qbo", methods=["POST"])
-def console_reconcile_qbo():
-    """Flip board orders to paid when their QBO invoice has actually been paid.
-    QBO hosted-page payments don't sync back, so portal-reorder/reorder orders sit
-    Unpaid even after the client pays. Polls each open QBO-invoice order's live
-    balance and marks the paid ones (method=qbo). Runs on prod where QBO auth is live.
-    Auth: X-Cron-Secret / X-Console-Key / ?key == CRON_SECRET or CONSOLE_SECRET."""
-    key = (request.headers.get("X-Cron-Secret", "")
-           or request.headers.get("X-Console-Key", "")
-           or request.args.get("key", ""))
-    allowed = {s for s in (os.environ.get("CRON_SECRET"), os.environ.get("CONSOLE_SECRET")) if s}
-    if not allowed or key not in allowed:
-        return jsonify({"error": "unauthorized"}), 401
-    from dashboard import qbo_billing as _qb
-    from dashboard import qbo_reconcile as _rec
-    from dashboard import orders as _ord
-
-    def _mark_paid(cx, oid, *, method, amount_cents):
-        _ord.set_order_payment(cx, oid, method=method, amount_cents=amount_cents)
-        try:
-            _ord.settle_order_points(cx, _ord.get_order(cx, oid))   # idempotent
-        except Exception as _e:
-            print(f"[qbo-reconcile] points settle skipped for {oid}: {_e!r}", flush=True)
-
-    cx = _sqlite3.connect(LOG_DB)
-    try:
-        reconciled = _rec.reconcile_qbo_payments(
-            cx, get_invoice=_qb.get_invoice, mark_paid=_mark_paid)
-    finally:
-        cx.close()
-    return jsonify({"ok": True, "reconciled": reconciled, "count": len(reconciled)})
-
-
 @app.route("/api/qbo/test-invoice", methods=["POST"])
 def qbo_test_invoice():
     """Create ONE test invoice (no online pay) for a clearly-named test customer to
@@ -4998,17 +5032,92 @@ def qbo_test_invoice():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/test-sales-receipt", methods=["POST"])
+def qbo_test_sales_receipt():
+    """Create ONE test Sales Receipt for a clearly-named test customer to verify the
+    paid-only write layer against live QBO. Void/delete it afterward in QBO."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer("zztest+remedymatch@example.com", "ZZ Test DeleteMe")
+        sr = qb.create_sales_receipt(
+            cust,
+            [{"name": "TEST RemedyMatch Product", "amount": 1.0, "qty": 1,
+              "description": "TEST — verifying QBO paid-only write layer, please delete"}])
+        return jsonify({"ok": True, "id": sr.get("Id"),
+                        "doc_number": sr.get("DocNumber"), "total": sr.get("TotalAmt"),
+                        "customer": cust.get("DisplayName")})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/qbo/void-invoice", methods=["POST"])
 def qbo_void_invoice():
     if not _qbo_auth_ok():
         return jsonify({"error": "Unauthorized"}), 401
     data = request.get_json(silent=True) or {}
+    inv_id = data.get("id")
     try:
         from dashboard import qbo_billing as qb
-        out = qb.void_invoice(data.get("id"), data.get("sync_token"))
+        # Fetch the CURRENT SyncToken when the caller didn't pass one (or passed
+        # "auto"), so a void never fails with a Stale Object Error just because
+        # the invoice was edited in QBO since. A passed token still wins.
+        st = data.get("sync_token")
+        if st in (None, "", "auto"):
+            inv = qb.get_invoice(inv_id)
+            i = inv.get("Invoice", inv) if isinstance(inv, dict) else inv
+            st = (i or {}).get("SyncToken")
+        out = qb.void_invoice(inv_id, st)
         return jsonify({"ok": True, "voided": out.get("Invoice", {}).get("Id")})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/qbo/open-invoices", methods=["GET"])
+def qbo_open_invoices():
+    """Owner read-only: list every QBO invoice with an outstanding balance
+    (Balance > 0). Runs on prod where QBO auth is live (the local token is stale).
+    Used to review the A/R backlog before a MANUAL void sweep — never blanket-void,
+    some open invoices are real receivables. ?limit caps results (default 200)."""
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import qbo_billing as qb
+    try:
+        limit = max(1, min(int(request.args.get("limit") or 200), 1000))
+    except (TypeError, ValueError):
+        limit = 200
+    try:
+        rs = qb._query(
+            "SELECT Id, DocNumber, TxnDate, DueDate, TotalAmt, Balance, CustomerRef "
+            f"FROM Invoice WHERE Balance > '0' ORDERBY TxnDate DESC MAXRESULTS {limit}")
+        invs = (rs or {}).get("QueryResponse", {}).get("Invoice", []) or []
+        out = [{"id": i.get("Id"), "doc_number": i.get("DocNumber"),
+                "txn_date": i.get("TxnDate"), "due_date": i.get("DueDate"),
+                "total": i.get("TotalAmt"), "balance": i.get("Balance"),
+                "customer": (i.get("CustomerRef") or {}).get("name")} for i in invs]
+        total_balance = round(sum(float(i.get("balance") or 0) for i in out), 2)
+        return jsonify({"ok": True, "count": len(out),
+                        "total_balance": total_balance, "invoices": out})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:400]}), 500
+
+
+@app.route("/api/console/practitioner-order/remove", methods=["POST"])
+def api_console_practitioner_order_remove():
+    """Owner: remove a persisted practitioner order row by invoice_id (e.g. a
+    voided/erroneous certification-module order). Local portal-history display
+    only — does NOT touch QBO. Body: {invoice_id}."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "unauthorized"}), 401
+    inv = ((request.get_json(silent=True) or {}).get("invoice_id") or "").strip()
+    if not inv:
+        return jsonify({"ok": False, "error": "invoice_id required"}), 400
+    from dashboard import practitioner_portal as _ppx
+    removed = _ppx.delete_order(inv)
+    return jsonify({"ok": True, "removed": removed})
 
 
 # ── Recurring membership subscriptions (Group Coaching) ───────────────────────
@@ -5280,6 +5389,10 @@ BIOFIELD_DEPOSIT_PREVIEW_DAYS = int(os.environ.get("BIOFIELD_DEPOSIT_PREVIEW_DAY
 PROGRAM_CARE_TASTER_ENABLED = os.environ.get("PROGRAM_CARE_TASTER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 PROGRAM_CARE_TASTER_DAYS = 30
 CARE_TASTER_SOURCE = "care_taster"
+# Membership products: the three buyable membership tiers (month / year_monthly /
+# year_prepay) get their own public Stripe checkout door. Default OFF (dark-launch) —
+# when off, /membership/checkout 404s and the console manual-enroll path is unaffected.
+MEMBERSHIP_PRODUCTS_ENABLED = os.environ.get("MEMBERSHIP_PRODUCTS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Program → deposit front door, Task 3: the $1 biofield deposit is credited to the
 # buyer's points balance (1 point = 1c redemption value, per dashboard.points), and
 # auto-redeemed at program checkout so it applies as $1 off the program price.
@@ -5363,6 +5476,9 @@ _FORMATS = [
     {"id": "larger", "label": "Larger bottle", "note": "90, 180, or 360 capsules in one bottle (quantity 3, 6, or 12)"},
     {"id": "refill", "label": "Cellophane refill packs", "note": "Capsules only, no bottle"},
 ]
+# id -> label for the non-default packaging formats. "bottle" (the default) is omitted
+# on purpose: only a non-standard choice becomes a fulfillment note on the order line.
+_FORMAT_LABELS = {f["id"]: f["label"] for f in _FORMATS if f["id"] != "bottle"}
 
 
 def _qty_eligible(p):
@@ -5374,18 +5490,26 @@ def _qty_eligible(p):
     return bool(p.get("qty_pricing")) and not p.get("info_only")
 
 
-def _inhouse_ff_unit_cents(p, total_ff_qty, settings):
+def _inhouse_ff_unit_cents(p, total_ff_qty, settings, *, program_member=False, line_qty=1):
     """Effective in-house unit price (cents) for a $69.97 functional-formulation
-    capsule (_qty_eligible): the order-wide volume rate driven by the TOTAL FF
-    capsule quantity (1 bottle = 1 month). OPEN TO ALL. Clamped at the wholesale
-    discount floor. Non-FF products return list price."""
+    capsule (_qty_eligible): a linear volume rate. Clamped at the wholesale
+    discount floor. Non-FF products return list price.
+
+    Glen policy (2026-07): the order-wide MIX/MATCH aggregation (rate driven by
+    the TOTAL FF quantity across every different FF SKU in the order) is a paid-
+    member perk only. A non-paid/$1-trial member still keeps the SAME-SKU
+    quantity discount (rate driven by just THIS line's own qty) — they just don't
+    get credit for other SKUs in the cart. program_member selects which quantity
+    the rate is computed on; the rate curve itself (volume_pct/volume_anchors) is
+    unchanged either way."""
     if not _qty_eligible(p):
         return int(p.get("price_cents") or 0)
     from dashboard import pricing as _pricing
     # Base the volume math on the product's OWN price, not a hardcoded $69.97, so
     # changing FF pricing flows through instead of breaking the discount.
     base = int(p.get("price_cents") or 0)
-    pct = _pricing.volume_pct(int(total_ff_qty or 0), settings)
+    qty_for_rate = int(total_ff_qty or 0) if program_member else max(1, int(line_qty or 1))
+    pct = _pricing.volume_pct(qty_for_rate, settings)
     # Clamp to the canonical discount floor (unit_floor_cents), which also enforces the
     # FF minimum unit price ($50) — keeping the in-house builder identical to compute().
     floor = _pricing.unit_floor_cents(p, base, settings, "discount")
@@ -5402,9 +5526,12 @@ def _inhouse_total_ff_qty(lines_in):
     return tot
 
 
-def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None):
-    """Explicit owner override wins; else FF capsules get the order-wide volume rate
-    (open to all), everything else its list price.
+def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slugs=None,
+                             program_member=False, line_qty=1):
+    """Explicit owner override wins; else FF capsules get a volume rate — the
+    order-wide mix/match rate for a paid member (program_member=True), or the
+    same-SKU (this line's own qty) rate for a non-member (Glen 2026-07 policy;
+    see _inhouse_ff_unit_cents) — everything else its list price.
 
     repertoire_slugs (optional): a member's repertoire SKU set, resolved ONCE per
     checkout by the caller (see _resolve_repertoire_slugs) — already FF-filtered
@@ -5416,10 +5543,13 @@ def _inhouse_line_unit_cents(p, override, total_ff_qty, settings, repertoire_slu
     the SAME pricing.apply_discount/unit_floor_cents helpers dashboard.pricing.compute()
     uses for the identical case (Task 3/5's display path), so the two paths agree
     to the cent. Never stacked with the FF volume rate — the lower of the two
-    (best-of) wins, matching compute()'s max(...) non-additive rule."""
+    (best-of) wins, matching compute()'s max(...) non-additive rule.
+    (repertoire_slugs is only ever non-empty for a paid member already — see
+    _resolve_repertoire_slugs — so it never conflicts with the program_member gate.)"""
     if override not in (None, ""):
         return int(override)
-    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings)
+    base = _inhouse_ff_unit_cents(p, total_ff_qty, settings,
+                                  program_member=program_member, line_qty=line_qty)
     if repertoire_slugs and _qty_eligible(p):
         slug = (p.get("slug") or "").strip().lower()
         if slug in repertoire_slugs:
@@ -5656,7 +5786,37 @@ def _shipping_for_cart(box_counts, total_bottles):
     return _fallback_shipping_cents(total_bottles)
 
 
+def _subscription_tier_resolver(order_count, active=True):
+    """Per-line subscriber-discount resolver for a subscription charge.
+    Bundle lines flagged autoship_eligible climb the 12->29 bundle ladder;
+    every other line climbs the standard 3->25 ladder. When the member is not
+    paid-through (active False) all lines get 0 — matching the prior cron gate."""
+    from dashboard import subscriptions as _subs
+    oc = int(order_count or 0)
+
+    def _resolve(it):
+        if not active:
+            return 0
+        p = it.get("product") or {}
+        if p.get("bundle") and p.get("autoship_eligible"):
+            return _subs.tier_for_bundle(oc)
+        return _subs.tier_for(oc)
+
+    return _resolve
+
+
+def _cart_has_noautoship_bundle(cart):
+    """True if any cart line is a bundle explicitly barred from autoship
+    (autoship_eligible False) — device bundles are one-time purchase only."""
+    for c in (cart or []):
+        p = _get_product((c.get("slug") or "").strip())
+        if p and p.get("bundle") and not p.get("autoship_eligible", False):
+            return True
+    return False
+
+
 def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
+                subscriber_order_count=None, subscriber_active=True,
                 points_to_redeem_cents=0, channel="retail", program_member=False,
                 email=None):
     """Price a reorder/checkout cart through the pricing engine + shipping.
@@ -5692,8 +5852,14 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         it = _engine_item(p, qty)
         items.append(it)
         subtotal_list += it["unit_cents"] * qty
+        # A non-default packaging format (larger bottle / refill packs) becomes a
+        # fulfillment note folded into the display name (kanban) and QBO line description
+        # (invoice). "bottle"/unset -> plain product name. Keeps the QBO line NAME clean
+        # for item mapping; only the description is decorated.
+        _fmt_label = _FORMAT_LABELS.get((c.get("format") or "").strip().lower(), "")
+        _disp_name = f'{p["name"]} ({_fmt_label})' if _fmt_label else p["name"]
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
-                          "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
+                          "qty": qty, "item_id": p.get("qbo_item_id"), "description": _disp_name})
         # shipping.pick_box keys by BOTTLE TYPE (not product name); default-typed if unset.
         # Use the RESOLVED slug: a retired duplicate redirects to its live twin, and the
         # stored order line + bottle lookup must both name the survivor, not the dead slug.
@@ -5701,7 +5867,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # Persist per-line LIST pricing on the stored order (cart-level discounts ride
         # the order's discount_cents, which the invoice renders separately, so
         # subtotal − discount still reconciles to the total).
-        items_rec.append({"name": p["name"], "qty": qty, "desc": p["name"],
+        items_rec.append({"name": _disp_name, "qty": qty, "desc": _disp_name,
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
         # Services / digital goods carry no bottle: counting them would push the
         # "default" placeholder into quote(), which raises UnknownBottleType and
@@ -5739,8 +5905,11 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     # about the address. An overseas client buying a service prices fine.
     if (box_counts or flat_ship_cents) and country not in ("US", "USA", ""):
         raise CheckoutError("We ship to US addresses only — please use a US forwarding address.")
+    tier_arg = subscriber_tier_pct
+    if subscriber_order_count is not None:
+        tier_arg = _subscription_tier_resolver(subscriber_order_count, subscriber_active)
     priced = _pricing.compute(items, settings=settings, coupon_pct=coupon_pct,
-                              subscriber_tier_pct=subscriber_tier_pct, channel=channel,
+                              subscriber_tier_pct=tier_arg, channel=channel,
                               points_to_redeem_cents=int(points_to_redeem_cents or 0),
                               ship_to_state=ship.get("state", ""),
                               tax_fn=_tax.compute_get_cents,
@@ -6233,6 +6402,24 @@ def begin_product_data(slug):
             request.cookies.get("amg_session", ""),
             (get_authenticated_user(request) or {}).get("email", "")),
     }
+    _viewer_email = (((get_authenticated_user(request) or {}).get("email", "")
+                      or request.cookies.get("rm_reorder_email", "")).strip().lower())
+    # Autoship eligibility: a bundle must carry autoship_eligible (device bundles are
+    # false); a single SKU must be a Functional Formulation (_qty_eligible = qty_pricing
+    # and not info_only), which excludes devices (ionizers/nightlights) and services.
+    _autoship_ok = (bool(p.get("autoship_eligible")) if p.get("bundle")
+                    else _qty_eligible(p))
+    data["autoship_eligible"] = _autoship_ok
+    data["bundle"] = bool(p.get("bundle"))
+    data["is_paid_member"] = _is_paid_member(_viewer_email)
+    if _autoship_ok:
+        from dashboard import subscriptions as _subs
+        if p.get("bundle"):
+            data["autoship"] = {"first_pct": _subs.tier_for_bundle(0),
+                                "cap_pct": _subs.tier_for_bundle(99)}
+        else:
+            data["autoship"] = {"first_pct": _subs.tier_for(0),
+                                "cap_pct": _subs.tier_for(99)}
     try:
         from dashboard import founding as _founding
         _launch = _founding.get_launch(slug)
@@ -8203,6 +8390,15 @@ def _price_biofield(points_to_redeem_cents=0, tier=PROGRAM_PREMIUM_TIER):
             "shipping_cents": 0}
 
 
+def _charge_cents(pc):
+    """The customer is charged merch + shipping; Hawai'i GET is absorbed and only
+    recorded on the order for remittance, never charged. `pc["priced"]["total_cents"]`
+    (subtotal + get_cents, from the pricing engine) is NOT the charge basis -- back
+    the GET out and add shipping: subtotal + shipping."""
+    return (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+            + int(pc["shipping_cents"]))
+
+
 @app.route("/biofield/checkout", methods=["POST"])
 def biofield_checkout():
     """Sell the $300 Biofield as a points-redeemable service. Ships dark behind
@@ -8236,33 +8432,36 @@ def biofield_checkout():
             _points.init_points_table(_bcx)
             redeem = min(PROGRAM_DEPOSIT_CREDIT_CENTS, _points.balance(_bcx, email))
     pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
-    charged_cents = pc["priced"]["total_cents"]
+    charged_cents = _charge_cents(pc)
     redeemed = pc["points_redeemed_cents"]
 
-    from dashboard import qbo_billing as qb
-    cust = qb.find_or_create_customer(email, name)
-    inv = qb.create_invoice(cust, pc["qbo_lines"], allow_online_pay=_QBO_PAYMENTS_ACTIVE,
-                            email_to=email,
-                            discount_cents=pc["discount_cents"] + redeemed)
-    out = {"ok": True, "invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {"lines": pc["qbo_lines"],
+                   "discount_cents": pc["discount_cents"] + redeemed, "tax_cents": 0}
+    out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(charged_cents / 100.0, 2)}
 
-    _ingest_order(source="biofield", external_ref=inv.get("Id"), email=email, name=name,
+    _ingest_order(source="biofield", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"], total_cents=charged_cents, channel="retail",
                   get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
-                  points_redeemed_cents=redeemed, shipping_cents=0)
+                  points_redeemed_cents=redeemed, shipping_cents=pc["shipping_cents"])
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[biofield] persist qbo_lines failed: {_e!r}", flush=True)
     try:
         from dashboard import stripe_pay
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         metadata = {"kind": "biofield", "email": email,
-                    "invoice_id": inv.get("Id") or "",
-                    "customer_id": cust.get("Id") or "",
+                    "invoice_id": checkout_ref,
+                    "customer_id": "",
                     "points_redeemed_cents": str(int(redeemed)),
                     "tier": tier}
         sess = stripe_pay.create_checkout_session(
             charged_cents, customer_email=email,
-            description=f"{PROGRAM_TIERS[tier]['name']} #{inv.get('DocNumber') or ''}",
+            description=f"{PROGRAM_TIERS[tier]['name']}",
             metadata=metadata, success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin")
         out["stripe_url"] = sess.get("url") or ""
@@ -8303,7 +8502,6 @@ def begin_checkout(slug):
                         "error": "Please add your name and agree to our Terms "
                                  "to place an order."}), 403
     session_id = request.cookies.get("amg_session", "")
-    from dashboard import qbo_billing as qb
     try:
         redeem = int((data.get("points_to_redeem_cents") or 0))
     except (TypeError, ValueError):
@@ -8322,7 +8520,7 @@ def begin_checkout(slug):
         _gift_pct, _gift_coupon = 0, None
     _eff_pct = max(_ref_pct or 0, _self_pct or 0, _gift_pct or 0)
     try:
-        pc = _price_cart([{"slug": slug, "qty": qty}], ship=ship,
+        pc = _price_cart([{"slug": slug, "qty": qty, "format": fmt}], ship=ship,
                          coupon_pct=_eff_pct,
                          points_to_redeem_cents=redeem,
                          program_member=_is_paid_member(email), email=email)
@@ -8333,19 +8531,24 @@ def begin_checkout(slug):
     # GET is absorbed, not charged). Folded into the invoice discount so the charge
     # drops; the ledger is debited centrally at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
-    cust = qb.find_or_create_customer(email, name)
-    allow_online = (method == "card") and _QBO_PAYMENTS_ACTIVE
-    inv = qb.create_invoice(cust, pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-                            allow_online_pay=allow_online, email_to=email,
-                            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
+    # The charge must match the booked receipt: receipt total is subtotal + shipping
+    # (via the discount above, which already folds in _sc_apply) so the actual card
+    # charge -- and the order's stored total -- must be reduced by _sc_apply too,
+    # floored at 0 (a credit can never make the charge negative).
+    _charged = max(0, _charge_cents(pc) - _sc_apply)
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {
+        "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
+        "tax_cents": 0}
     _gift_won = bool(_gift_coupon and _gift_pct >= max(_ref_pct or 0, _self_pct or 0))
     if not _gift_won:
-        _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
+        _record_referral_if_any(_ref_ctx, email, checkout_ref)
     if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
         try:
             from dashboard import coupons as _coupons
             with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
-                _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=inv.get("Id"))
+                _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=checkout_ref)
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
     if _gift_won:
@@ -8353,14 +8556,13 @@ def begin_checkout(slug):
             from dashboard import coupons as _coupons
             from dashboard import referrals as _rf
             with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
-                _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=inv.get("Id"))
-                _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, inv.get("Id"))
+                _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=checkout_ref)
+                _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, checkout_ref)
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] gift redeem/attrib failed: {e!r}", flush=True)
-    out = {"ok": True, "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-           "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt"),
-           "method": method, "customer_id": cust.get("Id"),
-           "pay_link": qb.get_invoice_pay_link(inv)}
+    out = {"ok": True, "invoice_id": checkout_ref, "doc_number": "",
+           "total": round(_charged / 100.0, 2),
+           "method": method, "customer_id": ""}
     try:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
             cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -8370,14 +8572,19 @@ def begin_checkout(slug):
             cx.commit()
     except Exception:
         pass
-    _ingest_order(source="funnel", external_ref=inv.get("Id"), email=email, name=name,
+    _ingest_order(source="funnel", external_ref=checkout_ref, email=email, name=name,
                   items=pc["items_rec"],
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  total_cents=_charged,
                   address=ship, channel="retail", get_cents=pc["priced"]["get_cents"],
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[funnel] persist qbo_lines failed: {_e!r}", flush=True)
     if method in ("zelle", "wise"):
         out["pay_instructions"] = _ALT_PAY.get(method, {})
     elif method == "card" and _STRIPE_ACTIVE:
@@ -8399,7 +8606,7 @@ def begin_checkout(slug):
     try:
         disp = (request.cookies.get("rm_dispensary") or "").strip()
         if disp:
-            _record_dispensary_sale(disp, email, qty, inv.get("Id"))
+            _record_dispensary_sale(disp, email, qty, checkout_ref)
     except Exception as e:
         print(f"[dispensary] hook: {e!r}", flush=True)
     return jsonify(out)
@@ -9001,6 +9208,184 @@ def _fulfill_continuous_care_monthly(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _book_membership_qbo(email, tier):
+    """Record a paid one-time membership purchase (month / year_prepay) as a QBO
+    SalesReceipt — paid-only, no A/R invoice. Best-effort — a QBO failure must never
+    break the membership grant, which is already committed by the time this runs.
+    Never raises."""
+    try:
+        from dashboard import qbo_billing as qb
+        cust = qb.find_or_create_customer(email, "")
+        qb.create_sales_receipt(
+            cust,
+            [{"name": tier["label"], "amount": tier["price_cents"] / 100.0, "qty": 1}],
+            email_to=email)
+    except Exception as e:
+        print(f"[membership] QBO booking skipped for {email}/{tier.get('key')}: {e!r}",
+              flush=True)
+
+
+def _record_membership_reconcile_alert(cx, session_id, email, tier):
+    """Durable, owner-retrievable alert for the duplicate_member case in
+    _fulfill_membership_product: an active membership already existed at
+    year_monthly fulfillment, so no new subscription was created for the
+    month-1 charge just taken -- it needs manual reconcile. Idempotent on
+    session_id (INSERT OR IGNORE), on the caller's connection/transaction.
+    Best-effort: a failure here must never break the grant-extend/return path
+    the caller is on, so every error is swallowed and logged."""
+    try:
+        cx.execute(
+            "INSERT OR IGNORE INTO membership_reconcile_alerts "
+            "(session_id, email, tier, amount_cents, note, created_at, status) "
+            "VALUES (?,?,?,?,?,?,'open')",
+            (session_id, email, tier["key"], tier["price_cents"],
+             "member already had an active membership; month-1 charge needs "
+             "manual reconcile", datetime.utcnow().isoformat() + "Z"))
+        cx.commit()
+    except Exception as e:
+        print(f"[membership] reconcile-alert record failed sid={session_id}: {e!r}",
+              flush=True)
+
+
+def _fulfill_membership_product(session_id):
+    """Fulfill a /membership/checkout Stripe session for a membership-product
+    tier (month / year_monthly / year_prepay from dashboard.membership_products),
+    idempotently. Callable from the /membership/return redirect AND the Stripe
+    webhook, so a closed tab / dropped redirect still gets fulfilled (money
+    captured => membership granted). Re-fetches the session + PaymentIntent (the
+    security guarantee). Self-dispatching: no-ops unless metadata
+    kind == 'membership_product'. Claim-then-create on
+    membership_product_grants(session_id) makes the redirect and webhook race
+    safely. Never raises. Returns a status string: "ok" | "duplicate_member" |
+    "no_card" | "not_paid" | "already" | "skip"."""
+    from dashboard import membership_products as _mp
+    from dashboard import subscriptions as _subs
+    from dashboard import prepay as _pp
+    from datetime import date as _date
+    try:
+        sess = stripe_pay.get_session(session_id)
+    except Exception as e:
+        print(f"[membership] get_session failed sid={session_id}: {e!r}", flush=True)
+        return "skip"
+    md = sess.get("metadata") or {}
+    if md.get("kind") != "membership_product":
+        return "skip"
+    tier = _mp.get_tier(md.get("tier") or "")
+    email = (md.get("email") or "").strip().lower()
+    if not (tier and email):
+        return "skip"
+    pi_id = sess.get("payment_intent")
+    try:
+        pi = stripe_pay.get_payment_intent(pi_id) if pi_id else {}
+    except Exception as e:
+        print(f"[membership] get_payment_intent failed sid={session_id}: {e!r}", flush=True)
+        return "skip"
+    status = pi.get("status") or sess.get("payment_status")
+    if status not in ("succeeded", "paid"):
+        return "not_paid"
+    today = _date.today()
+    today_s = today.isoformat()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        init_membership_tables(cx)
+        try:
+            cx.execute(
+                "INSERT INTO membership_product_grants (session_id, email, tier, created_at) "
+                "VALUES (?,?,?,?)",
+                (session_id, email, tier["key"], datetime.utcnow().isoformat() + "Z"))
+            cx.commit()
+        except sqlite3.IntegrityError:
+            return "already"
+        days = _mp.grant_days(tier["key"], today)
+        # From here on the idempotency claim is committed. Any exception below
+        # (e.g. from create_membership, which commits internally before
+        # _grant_membership runs) must not leave a billable subscription with
+        # no access grant AND a permanently-blocking "already" retry — so the
+        # whole post-claim body is guarded: on ANY exception, unwind the claim
+        # row and return "error". A subsequent retry then re-enters cleanly:
+        # if create_membership already committed, the duplicate-member guard
+        # below finds it and self-heals by extending the grant instead of
+        # creating a second subscription.
+        try:
+            if tier["billing"] == "recurring_capped":
+                customer, pm = pi.get("customer"), pi.get("payment_method")
+                if not (customer and pm):
+                    # No vaulted card => the cron could never bill months 2..N off of
+                    # it. Unwind the claim so a retry (e.g. with a card added) is not
+                    # blocked by this session's own idempotency row.
+                    cx.execute("DELETE FROM membership_product_grants WHERE session_id=?",
+                               (session_id,))
+                    cx.commit()
+                    print(f"[membership] no vaulted card on {session_id} — skipping", flush=True)
+                    return "no_card"
+                # Subscriptions-table migrations — every other subscriptions call
+                # site runs these first; init_membership_tables above does NOT
+                # create/migrate the subscriptions table. Mirrors the exact
+                # bootstrap _fulfill_continuous_care_monthly runs.
+                _subs.init_subscriptions_table(cx)
+                _subs.migrate_add_membership_columns(cx)
+                _subs.migrate_add_term_cap_column(cx)
+                _subs.migrate_add_attribution_column(cx)
+                _subs.migrate_add_consent_column(cx)
+                # Rolling ~1-month access window off the month-1 charge — mirrors
+                # _fulfill_continuous_care_monthly, which grants term_days(1 month) + a
+                # 4-day grace rather than the full term up front. The charge cron
+                # (_extend_membership_grant, tagged "membership_renewal") extends this
+                # on each successful monthly charge, so access rolls forward with
+                # payment and stops if payment stops. NOT `days` (that is the full
+                # 12-month grant.grant_days window, still correct for the one_time
+                # tiers below, which are never billed again).
+                roll_days = _pp.term_days(today_s, 1) + 4
+                if _subs.active_memberships_by_email(cx, email):
+                    # Never create a SECOND active membership for an email that
+                    # already has one — the charge cron bills every active
+                    # membership row, so a duplicate row = double $99/mo. Still
+                    # extend the access grant for the month just paid (rolling
+                    # window, not the full term — same reasoning as above: there is
+                    # no new subscription here to justify more than one month).
+                    until = datetime.combine(
+                        today + timedelta(days=roll_days), datetime.min.time()).isoformat() + "Z"
+                    _extend_membership_grant(cx, email, until, tier["source"])
+                    cx.commit()
+                    print(f"[membership] {email} already has an active membership; "
+                          f"NOT creating a 2nd sub (session={session_id}) — reconcile "
+                          f"the duplicate month-1 charge manually", flush=True)
+                    _record_membership_reconcile_alert(cx, session_id, email, tier)
+                    return "duplicate_member"
+                # order_count=1 records the month-1 charge just taken at checkout, so
+                # membership_category reads 'full' (member pricing) immediately.
+                # Capped at term_charges (the charge cron self-cancels there).
+                _subs.create_membership(
+                    cx, email=email, stripe_customer_id=customer,
+                    stripe_payment_method_id=pm, amount_cents=tier["price_cents"],
+                    next_charge_date=_subs.add_months(today_s, 1),
+                    cadence_months=tier["cadence_months"],
+                    term_charges_total=tier["term_charges"], initial_order_count=1)
+                _grant_membership(cx, email, roll_days, tier["source"])
+                cx.commit()
+            else:  # one_time (month, year_prepay) — grant-only, never billed again
+                _grant_membership(cx, email, days, tier["source"])
+                cx.commit()
+                _book_membership_qbo(email, tier)
+        except Exception as e:
+            print(f"[membership] fulfill failed after claim sid={session_id}: {e!r}",
+                  flush=True)
+            try:
+                # Discard any uncommitted work from the failed attempt FIRST (e.g.
+                # a _grant_membership insert that hadn't reached its cx.commit()
+                # yet) — otherwise the delete+commit below would inadvertently
+                # commit it alongside the claim-row delete.
+                cx.rollback()
+                cx.execute("DELETE FROM membership_product_grants WHERE session_id=?",
+                           (session_id,))
+                cx.commit()
+            except Exception as _de:
+                print(f"[membership] claim-unwind failed sid={session_id}: {_de!r}",
+                      flush=True)
+            return "error"
+        return "ok"
+
+
 def _fulfill_biofield_program(session_id):
     """Grant the 30-day Continuous Care taster from a paid biofield PROGRAM purchase,
     idempotently. Callable from the /begin/checkout-return redirect AND the Stripe
@@ -9126,14 +9511,24 @@ def begin_checkout_return():
                             _cxih.close()
                     except Exception as _e:
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
-                if inv and cid:
-                    if _kind != "in-house":
-                        try:
-                            from dashboard import qbo_billing as _qb_ret
-                            _qb_ret.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                        except Exception as e:
-                            print(f"[begin-return] qbo payment failed: {e!r}", flush=True)
-                    if pi_id:
+                # NOTE: retail/funnel checkout (begin_checkout), cart checkout
+                # (_checkout_cart), and reorder/portal-reorder/subscribe are ALL
+                # paid-only as of the QBO Stage 3+ migration -- each sets metadata
+                # customer_id="" (no QBO customer/invoice exists at checkout time),
+                # so `cid` is falsy for every one of these kinds. There is no
+                # invoice-payment application (record_payment) anymore -- that
+                # legacy routing was removed. The only thing this block does for
+                # a matched order is: capture the Stripe PaymentIntent id, settle
+                # points/referral, and book ONE line-faithful QBO Sales Receipt
+                # (idempotent via qbo_sales_receipt_id). The outer gate is `inv`
+                # alone; the inner gate `pi_id and (cid or _kind in (...))` just
+                # widens eligibility to include a genuine invoice-based order (a
+                # real, non-empty QBO customer_id) alongside the paid-only kinds.
+                # biofield is excluded here on purpose -- it has its own dedicated block below
+                # (kind=="biofield") so it isn't double-settled/double-booked via this path.
+                if inv:
+                    if pi_id and (cid or _kind in ("retail", "reorder", "portal-reorder", "subscribe",
+                                                    "client")):
                         _o_for_points = None
                         try:
                             _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
@@ -9157,6 +9552,24 @@ def begin_checkout_return():
                                 _settle_referral(_o_for_points, order_ref=inv)
                             except Exception as _re:
                                 print(f"[rewards] referral settle failed inv={inv}: {_re!r}", flush=True)
+                            # ── Book ONE line-faithful QBO Sales Receipt now that payment is
+                            # confirmed. Paid-only orders (retail/funnel, reorder, portal-reorder,
+                            # subscribe) all carry a qbo_lines_json payload from checkout and book
+                            # a real Sales Receipt here; idempotent via qbo_sales_receipt_id. A
+                            # harmless no-op only for a genuine invoice-based order (real cid, no
+                            # stored qbo_lines_json). ──
+                            try:
+                                from dashboard import qbo_sale as _qsale
+                                _fcxo2 = _sqlite3.connect(LOG_DB); _fcxo2.row_factory = _sqlite3.Row
+                                try:
+                                    _fo2 = _bos_orders.find_order_by_external_ref(_fcxo2, inv)
+                                    if _fo2:
+                                        _qsale.book_sale_on_payment(_fcxo2, dict(_fo2))
+                                finally:
+                                    _fcxo2.close()
+                            except Exception as _fqe:
+                                print(f"[begin-return] qbo sale booking failed inv={inv}: {_fqe!r}",
+                                      flush=True)
 
                 # ── Subscribe kind: vault the card and create the subscription row ──
                 if md.get("kind") == "subscribe" and pi_id:
@@ -9353,6 +9766,47 @@ def begin_checkout_return():
                                     _settle_order_points(_bo, order_ref=bf_inv)
                             except Exception as _bpe:
                                 print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
+                                      flush=True)
+                            # Book ONE line-faithful QBO Sales Receipt now that payment is
+                            # confirmed (paid-only; idempotent via qbo_sales_receipt_id).
+                            try:
+                                from dashboard import qbo_sale as _qsale
+                                _bcxo2 = _sqlite3.connect(LOG_DB); _bcxo2.row_factory = _sqlite3.Row
+                                try:
+                                    _bo2 = _bos_orders.find_order_by_external_ref(_bcxo2, bf_inv)
+                                    if _bo2:
+                                        _qsale.book_sale_on_payment(_bcxo2, dict(_bo2))
+                                finally:
+                                    _bcxo2.close()
+                            except Exception as _bqe:
+                                print(f"[biofield] qbo sale booking failed inv={bf_inv}: {_bqe!r}",
+                                      flush=True)
+                            # Stamp the Stripe PaymentIntent onto the order (mirrors the
+                            # non-biofield gate above, which is dead here since biofield
+                            # checkout sets metadata customer_id="").
+                            if pi_id:
+                                try:
+                                    _bcxo3 = _sqlite3.connect(LOG_DB); _bcxo3.row_factory = _sqlite3.Row
+                                    try:
+                                        _bo3 = _bos_orders.find_order_by_external_ref(_bcxo3, bf_inv)
+                                        if _bo3:
+                                            _bos_orders.set_order_stripe_pi(_bcxo3, _bo3["id"], pi_id)
+                                    finally:
+                                        _bcxo3.close()
+                                except Exception as _bpie:
+                                    print(f"[biofield] stripe pi stamp failed inv={bf_inv}: {_bpie!r}",
+                                          flush=True)
+                            # ── Referral crediting (points or cash to referrer) ──
+                            try:
+                                _bcxo4 = _sqlite3.connect(LOG_DB); _bcxo4.row_factory = _sqlite3.Row
+                                try:
+                                    _bo4 = _bos_orders.find_order_by_external_ref(_bcxo4, bf_inv)
+                                finally:
+                                    _bcxo4.close()
+                                if _bo4:
+                                    _settle_referral(dict(_bo4), order_ref=bf_inv)
+                            except Exception as _bre:
+                                print(f"[biofield] referral settle failed inv={bf_inv}: {_bre!r}",
                                       flush=True)
                             # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
                             # Shared with the Stripe webhook (below) so a closed tab still
@@ -9639,10 +10093,13 @@ def begin_concierge_chat():
 
 @app.route("/begin/concierge/add", methods=["POST"])
 def begin_concierge_add():
-    """Add a catalog complement to the member's existing (unpaid) invoice."""
+    """Add a catalog complement to the member's pending (unpaid) order. Paid-only:
+    there is no live QBO invoice to append to pre-payment, so this appends the line
+    to the order's qbo_lines_json and re-totals; the Sales Receipt booked at payment
+    reads qbo_lines_json, so that's sufficient -- no QBO call happens here."""
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
-    invoice_id = (data.get("invoice_id") or "").strip()
+    invoice_id = (data.get("invoice_id") or "").strip()  # checkout_ref token (frontend compat name)
     _sid = (request.cookies.get("amg_session") or "").strip()
     email = (data.get("email") or "").strip().lower()
     if not is_member(_sid, email):
@@ -9657,16 +10114,39 @@ def begin_concierge_add():
         qty = max(1, min(int(data.get("qty", 1) or 1), 99))
     except Exception:
         qty = 1
+    unit = round(p["price_cents"] / 100.0, 2)
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
     try:
-        from dashboard import qbo_billing as qb
-        unit = round(p["price_cents"] / 100.0, 2)
-        inv = qb.add_invoice_line(invoice_id, name=p["name"], amount=unit, qty=qty,
-                                  item_id=p.get("qbo_item_id"), description=p["name"])
+        order = _bos_orders.find_order_by_external_ref(cx, invoice_id)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        payload = (json.loads(order["qbo_lines_json"]) if order["qbo_lines_json"]
+                   else {"lines": [], "discount_cents": 0, "tax_cents": 0})
+        payload.setdefault("lines", [])
+        payload["lines"].append({"name": p["name"], "amount": unit, "qty": qty})
+        _bos_orders.set_order_qbo_lines(cx, invoice_id, payload)
+        new_total = int(order["total_cents"] or 0) + int(round(unit * qty * 100))
+        # Re-total via upsert_order (idempotent on source+external_ref). upsert_order
+        # unconditionally overwrites email/name/phone/channel/get_cents/discount_cents/
+        # points_redeemed_cents/shipping_cents/adjustment_cents on every call, so pass
+        # the order's current values through -- otherwise a re-total here would zero
+        # them out (see the ff-match-drafts route's warning on this same footgun).
+        _bos_orders.upsert_order(
+            cx, source=order["source"], external_ref=invoice_id,
+            email=order.get("email") or "", name=order.get("name") or "",
+            phone=order.get("phone") or "", channel=order.get("channel") or "retail",
+            total_cents=new_total, get_cents=order.get("get_cents") or 0,
+            discount_cents=order.get("discount_cents") or 0,
+            points_redeemed_cents=order.get("points_redeemed_cents") or 0,
+            shipping_cents=order.get("shipping_cents") or 0,
+            adjustment_cents=order.get("adjustment_cents") or 0)
         return jsonify({"ok": True, "added": p["name"], "qty": qty,
-                        "invoice_id": inv.get("Id"), "sync_token": inv.get("SyncToken"),
-                        "total": inv.get("TotalAmt")})
+                        "total": round(new_total / 100.0, 2)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        cx.close()
 
 
 @app.route("/api/qbo/price-coverage", methods=["GET"])
@@ -10976,6 +11456,23 @@ def init_membership_tables(cx):
           email       TEXT NOT NULL,
           studio_ref  TEXT,
           notes       TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS membership_product_grants (
+          session_id  TEXT PRIMARY KEY,
+          email       TEXT,
+          tier        TEXT,
+          created_at  TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS membership_reconcile_alerts (
+          session_id    TEXT PRIMARY KEY,
+          email         TEXT,
+          tier          TEXT,
+          amount_cents  INTEGER,
+          note          TEXT,
+          created_at    TEXT,
+          status        TEXT DEFAULT 'open'
         );
     """)
 
@@ -13273,24 +13770,22 @@ def api_practitioner_register():
     module_pay = None
     if clean["portal_role"] == "coach":
         try:
-            mo = _wc.build_module_order(
+            q = _wc.quote_module(
                 {"id": pid, "email": clean["email"], "name": clean["name"]},
-                "module-1", today=datetime.now(timezone.utc))
+                "module-1")
             module_pay = {
-                "invoice_id": mo.get("invoice_id"), "total": mo.get("total"),
-                "doc_number": mo.get("doc_number"),
+                "total": q.get("total"),
+                "tuition_cents": q.get("tuition_cents"),
+                "credit_available_cents": q.get("credit_available_cents"),
+                "amount_due_cents": q.get("amount_due_cents"),
                 "pay_instructions": [
                     {"label": _ALT_PAY["zelle"]["label"], "to": _ALT_PAY["zelle"]["to"]},
                     {"label": _ALT_PAY["wise"]["label"], "to": _ALT_PAY["wise"]["to"]},
                 ],
             }
-            try:
-                _pp.record_order(pid, invoice_id=mo.get("invoice_id"),
-                                 doc_number=mo.get("doc_number"),
-                                 total_cents=int(round((mo.get("total") or 0) * 100)),
-                                 credit_cents=mo.get("credit_redeemed_cents", 0))
-            except Exception:
-                pass
+            # PAID-ONLY: no QBO invoice and no order row are created at signup.
+            # The coach pays via Zelle/Wise; a Sales Receipt (and any credit
+            # redemption) is recorded only when the payment actually arrives.
             # NOTE: coaches no longer auto-unlock reselling here. Reselling
             # (drop-ship + wholesale ordering) is now gated behind a resale
             # license: a coach submits one via /api/practitioner/resale-apply,
@@ -13298,7 +13793,7 @@ def api_practitioner_register():
             # register_practitioner returned it (False for coaches; licensed
             # registrants are unlocked there, independent of this branch).
         except Exception as e:
-            print(f"[practitioner-register] module invoice failed: {e!r}", flush=True)
+            print(f"[practitioner-register] module quote failed: {e!r}", flush=True)
     try:
         magic = _pp.create_magic_link_token(pid, clean["email"])
         _send_practitioner_magic_link(
@@ -13516,6 +14011,14 @@ def api_practitioner_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[practitioner-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -13590,6 +14093,14 @@ def api_practitioner_personal_checkout():
                       name=(prac.get("name") if isinstance(prac, dict) else "") or "",
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="personal", get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out["invoice_id"], out["qbo_payload"])
+            except Exception as _e:
+                print(f"[personal-checkout] persist qbo_lines failed: {_e!r}", flush=True)
         # Personal fee-free earn: 3.5% of the charged amount (zelle/wise), else 0.
         # build_order was called with method=None above, so it did NOT credit its
         # own 3% — this is the only earn for this order. Credit the explicit 3.5%
@@ -13691,6 +14202,14 @@ def api_practitioner_dropship_checkout():
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale",
                       get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[dropship-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":
@@ -15526,6 +16045,15 @@ def api_client_checkout(code):
                   margin_cents=int(out.get("margin_cents") or 0),
                   ship_credit_applied_cents=int(out.get("ship_credit_applied_cents") or 0))
 
+    # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+    # return-handler can book a real Sales Receipt once payment is confirmed.
+    if out.get("qbo_payload"):
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+        except Exception as e:
+            print(f"[client-checkout] persist qbo_lines failed: {e!r}", flush=True)
+
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
                              str(out.get("invoice_id") or ""))
@@ -16742,17 +17270,21 @@ def _enabled_offer_keys() -> set:
 
 def _portal_priced_lines(items, email=None):
     """Build QBO invoice lines from a portal's reorder items, honoring an optional
-    per-item ``price_cents`` override (the practitioner-special price); else the
-    order-wide volume rate (open to all), with a paid member's repertoire SKUs at
-    their flat reorder rate (Task 5b — this is the ACTUAL checkout charge path, so
-    it must match what the portal displays). Returns (lines, items_rec, subtotal_cents).
+    per-item ``price_cents`` override (the practitioner-special price); else a
+    volume rate — the order-wide mix/match rate for a paid member, the same-SKU
+    (this line's own qty) rate for a non-member (Glen 2026-07 policy; see
+    _inhouse_ff_unit_cents) — with a paid member's repertoire SKUs at their flat
+    reorder rate (Task 5b — this is the ACTUAL checkout charge path, so it must
+    match what the portal displays). Returns (lines, items_rec, subtotal_cents).
 
     email (optional): the portal token's client email — passed straight through to
-    _resolve_repertoire_slugs, resolved ONCE for the whole cart (not per line)."""
+    _resolve_repertoire_slugs AND _is_paid_member, each resolved ONCE for the
+    whole cart (not per line)."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(items or [])
     rep_slugs = _resolve_repertoire_slugs(email)
+    program_member = _is_paid_member(email)
     lines, items_rec, subtotal_cents = [], [], 0
     for it in (items or []):
         slug = (it.get("slug") or "").strip()
@@ -16764,7 +17296,8 @@ def _portal_priced_lines(items, email=None):
         except Exception:
             qty = 1
         unit_cents = _inhouse_line_unit_cents(p, it.get("price_cents"), total_ff_qty, settings,
-                                              repertoire_slugs=rep_slugs)
+                                              repertoire_slugs=rep_slugs,
+                                              program_member=program_member, line_qty=qty)
         subtotal_cents += unit_cents * qty
         lines.append({"name": p["name"], "amount": round(unit_cents / 100.0, 2),
                       "qty": qty, "item_id": p.get("qbo_item_id"), "description": p["name"]})
@@ -18825,6 +19358,33 @@ def _client_facts_for(email):
         return {}
 
 
+_CLIENT_FACT_COPY = {
+    "on_areds2": {
+        "label": "I'm already taking an AREDS2 eye formula (e.g. PreserVision).",
+        "hint": "We'll skip the three Macular Wellness carotenoids your AREDS2 already covers.",
+    },
+}
+
+ALLOWED_CLIENT_FACT_KEYS = set(_CLIENT_FACT_COPY.keys())  # e.g. {"on_areds2"}
+
+
+def _client_facts_offered(prog, facts):
+    """Client-reported modifier facts this program exposes, with current values.
+    De-duped by modifier `when`; only keys we have copy for are surfaced."""
+    out, seen = [], set()
+    for mod in (prog.get("modifiers") or []):
+        if mod.get("source") != "client-reported":
+            continue
+        key = mod.get("when")
+        if not key or key in seen or key not in _CLIENT_FACT_COPY:
+            continue
+        seen.add(key)
+        copy = _CLIENT_FACT_COPY[key]
+        out.append({"key": key, "label": copy["label"], "hint": copy["hint"],
+                    "value": bool(facts.get(key))})
+    return out
+
+
 PRL_LINK = "https://truly.vip/prl"  # Glen's practitioner ordering link (code 021a1a)
 
 
@@ -18942,14 +19502,19 @@ def _support_program_for(email):
             prog = condition_programs.get(cx, key)
         if not prog:
             return None
+        facts = _client_facts_for(email)
         resolved = condition_programs.resolve_program_items(
-            prog, audience="client", client_facts=_client_facts_for(email))
-        return {
+            prog, audience="client", client_facts=facts)
+        result = {
             "condition_key": prog["condition_key"],
             "label": prog["label"],
             "consult_recommended": bool(prog["consult_recommended"]),
             "items": [_support_program_item_view(it) for it in resolved],
         }
+        offered = _client_facts_offered(prog, facts)
+        if offered:
+            result["client_facts"] = offered
+        return result
     except Exception:
         return None
 
@@ -19034,7 +19599,7 @@ def api_practitioner_condition_program_get(patient_email):
         return jsonify({"ok": True, "condition_key": key, "label": None,
                         "candidates": [], "saved": (saved and {"items": saved["items"], "note": saved["note"]})})
     resolved = {(it.get("slug") or "") for it in condition_programs.resolve_program_items(
-        prog, audience="client", client_facts=_client_facts_for(email))}
+        prog, audience="practitioner", client_facts=_client_facts_for(email))}
     candidates = []
     for it in (prog.get("items") or []):
         candidates.append({**_practitioner_candidate_view(it), "section": "base", "checked": True})
@@ -19149,6 +19714,29 @@ def api_portal_support_program_add_to_invoice(token):
             invoice_note=f"{sp['label']} support program — pending Rae invoicing")
         cx.commit()
         return jsonify({"ok": True, "order_ref": ext})
+
+
+@app.route("/api/portal/<token>/client-fact", methods=["POST"])
+def api_portal_client_fact(token):
+    """Client self-reports a boolean intake fact (e.g. on_areds2) that drives a
+    client-reported program modifier. Identity comes from the portal TOKEN, never
+    the body. Key is whitelisted so this can't set arbitrary facts. Returns the
+    re-resolved support_program for a live card re-render."""
+    if not _support_programs_enabled():
+        return ("", 404)
+    body = request.get_json(silent=True) or {}
+    key = (body.get("key") or "").strip()
+    if key not in ALLOWED_CLIENT_FACT_KEYS:
+        return jsonify({"ok": False, "error": "unknown fact key"}), 400
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        from dashboard import client_facts as _cf
+        _cf.set_fact(cx, email, key, bool(body.get("value")))
+    return jsonify({"ok": True, "support_program": _support_program_for(email)})
 
 
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
@@ -19877,13 +20465,12 @@ def api_client_portal_checkout(token):
                 items = _merge_accepted_recommendation_items(_rcx, email, base_items)
         except Exception:
             items = base_items  # merge failure must never break checkout
-    lines, items_rec, _subtotal = _portal_priced_lines(items, email=email)
+    lines, items_rec, subtotal_cents = _portal_priced_lines(items, email=email)
     if not lines:
         return jsonify({"error": "Your remedies are no longer available — please reach out and we'll help."}), 400
     if not _STRIPE_ACTIVE:
         return jsonify({"error": "Card checkout is temporarily unavailable. Please reach out and we'll help."}), 503
     try:
-        from dashboard import qbo_billing as _qb_local
         ship = {}
         try:
             with sqlite3.connect(LOG_DB) as cx:
@@ -19893,14 +20480,24 @@ def api_client_portal_checkout(token):
                 ship = prior[0].get("address") or {}
         except Exception:
             ship = {}  # no prior order / address on file — proceed; collected at checkout
-        cust = _qb_local.find_or_create_customer(email, ship.get("name", ""))
-        inv = _qb_local.create_invoice(cust, lines, allow_online_pay=True, email_to=email)
-        out = {"invoice_id": inv.get("Id"), "customer_id": cust.get("Id"),
-               "doc_number": inv.get("DocNumber"), "total": inv.get("TotalAmt")}
-        _ingest_order(source="portal-reorder", external_ref=inv.get("Id"), email=email,
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="reorder", set by _stripe_checkout_url_for_reorder below) to book a
+        # line-faithful QBO Sales Receipt once the customer actually pays.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {"lines": lines, "discount_cents": 0, "tax_cents": 0}
+        out = {"invoice_id": checkout_ref, "customer_id": "",
+               "doc_number": "", "total": round(subtotal_cents / 100.0, 2)}
+        _ingest_order(source="portal-reorder", external_ref=checkout_ref, email=email,
                       name=ship.get("name", ""), items=items_rec,
-                      total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                      total_cents=int(subtotal_cents),
                       address=ship, channel="retail")
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[portal-reorder] persist qbo_lines failed: {_e!r}", flush=True)
         stripe_url = _stripe_checkout_url_for_reorder(out, email)
         if not stripe_url:
             return jsonify({"error": _CARD_UNAVAILABLE}), 502
@@ -24668,9 +25265,11 @@ def _resolve_ship_address(email, body_address):
 
 
 def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code=None):
-    """Price a cart through the engine, create the QBO invoice, ingest the order, and mint the
-    Stripe URL (metadata kind=reorder -> recorded by /begin/checkout-return). Returns
-    {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty priced cart."""
+    """Price a cart through the engine, ingest the order (paid-only: no QBO invoice/customer
+    at checkout time), and mint the Stripe URL (metadata kind=reorder -> recorded by
+    /begin/checkout-return, which books the line-faithful QBO Sales Receipt on payment).
+    Returns {out, stripe_url}. Raises CheckoutError for a pricing problem or an empty
+    priced cart."""
     requested_redeem = int(points_to_redeem_cents or 0)
     if requested_redeem > 0:
         from dashboard import points as _pts_co
@@ -24687,25 +25286,36 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
     # customer's ship_credit balance (bounded by net product + shipping) into the
     # invoice discount; the ledger is debited at payment settle.
     _sc_apply = _plan_ship_credit(email, int(pc["priced"]["subtotal_cents"]) + int(pc["shipping_cents"]))
-    cust = qb.find_or_create_customer(email, ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=True,
-        email_to=email,
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply)
-    _ingest_order(source="reorder", external_ref=inv.get("Id"), email=email,
+    checkout_ref = _uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
+    qbo_payload = {
+        "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+        "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"] + _sc_apply,
+        "tax_cents": 0}
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents. The booked receipt's discount
+    # already folds in _sc_apply, so the charge must be reduced by it too,
+    # floored at 0 (a credit can never make the charge negative).
+    _charge_cents = max(0, (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                            + int(pc["shipping_cents"])) - _sc_apply)
+    _ingest_order(source="reorder", external_ref=checkout_ref, email=email,
                   name=ship.get("name", ""), items=pc["items_rec"],
-                  total_cents=int(round(float(inv.get("TotalAmt") or 0) * 100)),
+                  total_cents=_charge_cents,
                   address=ship, channel="retail",
                   get_cents=pc["priced"].get("get_cents", 0),
                   discount_cents=pc["discount_cents"],
                   points_redeemed_cents=pc["points_redeemed_cents"],
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
-    _record_referral_if_any(_ref_ctx, email, inv.get("Id"))
-    out = {"invoice_id": inv.get("Id"), "doc_number": inv.get("DocNumber"),
-           "customer_id": cust.get("Id"), "total": inv.get("TotalAmt")}
+    try:
+        with _sqlite3.connect(LOG_DB) as _lcx:
+            _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+    except Exception as _e:
+        print(f"[reorder] persist qbo_lines failed: {_e!r}", flush=True)
+    _record_referral_if_any(_ref_ctx, email, checkout_ref)
+    out = {"invoice_id": checkout_ref, "doc_number": "",
+           "customer_id": "", "total": round(_charge_cents / 100.0, 2)}
     stripe_url = _stripe_checkout_url_for_reorder(out, email) if _STRIPE_ACTIVE else ""
     return {"out": out, "stripe_url": stripe_url}
 
@@ -24820,46 +25430,65 @@ def begin_founding_status(slug):
 # ── Founding charge-on-ship ───────────────────────────────────────────────────
 
 def _ship_founding_reservation(cx, sub):
-    """Charge the vaulted card for the founding bottle (charge-on-ship), ingest a
-    qualifying product order, and activate the autoship. Returns a result dict."""
+    """Charge the vaulted card for the founding bottle (charge-on-ship, paid-only:
+    no QBO invoice/customer before payment -- the exact line payload rides in
+    qbo_lines_json for a line-faithful Sales Receipt booked inline right after the
+    charge succeeds), ingest a qualifying product order, and activate the
+    autoship. Returns a result dict."""
     from dashboard import subscriptions as _subs
+    from dashboard import qbo_sale as _qsale
     items = sub.get("items") or []
     ship = sub.get("ship_address") or {}
     pc = _price_cart(items, ship=ship, subscriber_tier_pct=None,
                      program_member=_is_paid_member(sub["email"]),
                      email=sub["email"])
-    cust = qb.find_or_create_customer(sub["email"], ship.get("name", ""))
-    inv = qb.create_invoice(
-        cust,
-        pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-        allow_online_pay=False,
-        email_to=sub["email"],
-        discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"],
-    )
-    total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
+    # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+    # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal + GET,
+    # so the correct charge (and stored order total) is subtotal + shipping =
+    # total_cents - get_cents + shipping_cents.
+    charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                    + int(pc["shipping_cents"]))
     res = stripe_pay.charge_off_session(
-        sub["stripe_customer_id"], sub["stripe_payment_method_id"], total_cents,
+        sub["stripe_customer_id"], sub["stripe_payment_method_id"], charge_cents,
         description="Remedy Match founding bottle",
         metadata={"sub": str(sub["id"]), "kind": "founding_ship"},
     )
     if res.get("status") != "succeeded":
         _subs.bump_failed_count(cx, sub["id"])
-        return {"charged": False, "sub_id": sub["id"], "amount_cents": total_cents}
+        return {"charged": False, "sub_id": sub["id"], "amount_cents": charge_cents}
     today = _now_utc().strftime("%Y-%m-%d")
     _subs.mark_founding_active(cx, sub["id"], next_charge_date=_subs.add_months(today, 1))
+    external_ref = res.get("id") or ""
     try:
         _ingest_order(
             source="reorder",  # "reorder" is in coaching.QUALIFYING_SOURCES → delivery opens coaching window
-            external_ref=res.get("id") or inv.get("Id") or "",
+            external_ref=external_ref,
             email=sub["email"],
             items=items,
-            total_cents=total_cents,
+            total_cents=charge_cents,
             address=ship,
             channel="retail",
+            get_cents=int(pc["priced"]["get_cents"]),
         )
     except Exception as e:
         print(f"[founding-ship] ingest failed sub={sub['id']}: {e!r}")
-    return {"charged": True, "sub_id": sub["id"], "amount_cents": total_cents}
+    # Book ONE line-faithful QBO Sales Receipt now that payment is confirmed
+    # (paid-only: no invoice was ever created for this charge). Best-effort +
+    # idempotent (book_sale_on_payment atomically claims the booking slot) so this
+    # can never break the charge/ship path above.
+    try:
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0,
+        }
+        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+        order = _bos_orders.find_order_by_external_ref(cx, external_ref)
+        if order:
+            _qsale.book_sale_on_payment(cx, dict(order))
+    except Exception as e:
+        print(f"[founding-ship] qbo sale booking failed sub={sub['id']}: {e!r}")
+    return {"charged": True, "sub_id": sub["id"], "amount_cents": charge_cents}
 
 
 @app.route("/api/founding/ship", methods=["POST"])
@@ -24897,9 +25526,11 @@ def _subscriptions_enabled() -> bool:
 
 @app.route("/reorder/subscribe", methods=["POST"])
 def reorder_subscribe():
-    """POST /reorder/subscribe — price the first subscription order, create a QBO invoice,
-    then create a Stripe checkout session with save_card=True so the card is vaulted.
-    On return, /begin/checkout-return writes the subscription row."""
+    """POST /reorder/subscribe — price the first subscription order, ingest it as a
+    paid-only order (no QBO invoice/customer at checkout time; the exact line
+    payload rides in qbo_lines_json for a line-faithful Sales Receipt on payment),
+    then create a Stripe checkout session with save_card=True so the card is
+    vaulted. On return, /begin/checkout-return writes the subscription row."""
     email = _reorder_email_from_cookie()
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
@@ -24925,6 +25556,10 @@ def reorder_subscribe():
     cart = body.get("items") or []
     ship = body.get("address") or {}
 
+    if _cart_has_noautoship_bundle(cart):
+        return jsonify({"ok": False,
+                        "error": "This item is available for one-time purchase only, not autoship."}), 400
+
     # ── Pricing-engine path (required for subscribe) ──────────────────────────
     if not os.environ.get("PRICING_ENGINE_CHECKOUT", "").strip().lower() in ("1", "true", "yes", "on"):
         return jsonify({"error": "PRICING_ENGINE_CHECKOUT must be enabled for subscriptions"}), 400
@@ -24932,7 +25567,7 @@ def reorder_subscribe():
     try:
         from dashboard import subscriptions as _subs
         try:
-            pc = _price_cart(cart, ship=ship, subscriber_tier_pct=_subs.tier_for(0),
+            pc = _price_cart(cart, ship=ship, subscriber_order_count=0, subscriber_active=True,
                              program_member=_is_paid_member(email), email=email)
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
@@ -24940,13 +25575,37 @@ def reorder_subscribe():
             return jsonify({"ok": False,
                             "error": "Your cart is empty or those items are no longer available."}), 400
 
-        cust = qb.find_or_create_customer(email, ship.get("name", ""))
-        inv = qb.create_invoice(
-            cust,
-            pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
-            allow_online_pay=True,
-            email_to=email,
-            discount_cents=pc["discount_cents"] + pc["points_redeemed_cents"])
+        # Paid-only (QBO Stage 3): no QBO customer/invoice exists at checkout time.
+        # checkout_ref is the stable order/correlation key; the exact line/discount
+        # payload is persisted via set_order_qbo_lines for /begin/checkout-return
+        # (kind=="subscribe") to book a line-faithful QBO Sales Receipt once the
+        # customer actually pays. The SEPARATE subscribe block there (vaults the
+        # card + writes the subscription row) keys off metadata (items/ship/
+        # cadence/email), not this invoice_id, so it is unaffected by this change.
+        checkout_ref = _uuid.uuid4().hex
+        qbo_payload = {
+            "lines": pc["qbo_lines"] + _shipping_line(pc["shipping_cents"]),
+            "discount_cents": pc["discount_cents"] + pc["points_redeemed_cents"],
+            "tax_cents": 0}
+        # Charge basis (2026-07-16 design spec): GET is absorbed/recorded, never
+        # charged; shipping IS charged. pc["priced"]["total_cents"] = subtotal +
+        # GET, so the correct charge (and stored order total) is subtotal +
+        # shipping = total_cents - get_cents + shipping_cents.
+        _charge_cents = (int(pc["priced"]["total_cents"]) - int(pc["priced"]["get_cents"])
+                         + int(pc["shipping_cents"]))
+        _ingest_order(source="subscribe", external_ref=checkout_ref, email=email,
+                      name=ship.get("name", ""), items=pc["items_rec"],
+                      total_cents=_charge_cents,
+                      address=ship, channel="retail",
+                      get_cents=pc["priced"].get("get_cents", 0),
+                      discount_cents=pc["discount_cents"],
+                      points_redeemed_cents=pc["points_redeemed_cents"],
+                      shipping_cents=pc["shipping_cents"])
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
+        except Exception as _e:
+            print(f"[subscribe] persist qbo_lines failed: {_e!r}", flush=True)
 
         # Build metadata; stash items+ship in pending_subscriptions if too long
         items_json = json.dumps(cart)
@@ -24955,8 +25614,8 @@ def reorder_subscribe():
             "kind": "subscribe",
             "cadence_months": str(cadence),
             "email": email,
-            "invoice_id": inv.get("Id") or "",
-            "customer_id": cust.get("Id") or "",
+            "invoice_id": checkout_ref,
+            "customer_id": "",
         }
         if len(items_json) + len(ship_json) <= 450:
             metadata["items"] = items_json
@@ -24975,13 +25634,12 @@ def reorder_subscribe():
                 _cx.commit()
             metadata["stash_key"] = stash_key
 
-        total_cents = int(round(float(inv.get("TotalAmt") or 0) * 100))
         success = (f"{PUBLIC_BASE_URL}/begin/checkout-return"
                    f"?session_id={{CHECKOUT_SESSION_ID}}")
         sess = stripe_pay.create_checkout_session(
-            total_cents,
+            _charge_cents,
             customer_email=email,
-            description=f"Remedy Match subscription setup #{inv.get('DocNumber') or ''}",
+            description="Remedy Match subscription setup",
             metadata=metadata,
             success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/reorder",
@@ -25195,25 +25853,30 @@ def practitioner_checkout_return():
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 md = sess.get("metadata") or {}
-                inv, cid = md.get("invoice_id"), md.get("customer_id")
-                if inv and cid:
+                inv = md.get("invoice_id")
+                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice,
+                # so mark the order paid and book ONE Sales Receipt. Guarded on
+                # qbo_lines_json so legacy invoice-based orders are untouched;
+                # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
+                if inv:
                     try:
-                        from dashboard import qbo_billing as qb
-                        qb.record_payment(cid, int(sess.get("amount_total") or 0), inv)
-                    except Exception as e:
-                        print(f"[stripe-return] qbo payment failed: {e!r}", flush=True)
-                    pi = sess.get("payment_intent")
-                    if pi:
+                        _pcx = _sqlite3.connect(LOG_DB); _pcx.row_factory = _sqlite3.Row
                         try:
-                            _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
-                            try:
-                                _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
-                                if _o:
-                                    _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi)
-                            finally:
-                                _cxo.close()
-                        except Exception as _e:
-                            print(f"[stripe-return] pi capture: {_e!r}", flush=True)
+                            _po = _bos_orders.find_order_by_external_ref(_pcx, inv)
+                            if _po and _po["qbo_lines_json"] and not _po["qbo_sales_receipt_id"]:
+                                _pi = sess.get("payment_intent")
+                                if _pi:
+                                    _bos_orders.set_order_stripe_pi(_pcx, _po["id"], _pi)
+                                _bos_orders.set_order_payment(
+                                    _pcx, _po["id"], method="card",
+                                    amount_cents=int(sess.get("amount_total") or 0))
+                                from dashboard import qbo_sale as _qs
+                                _qs.book_sale_on_payment(
+                                    _pcx, dict(_bos_orders.find_order_by_external_ref(_pcx, inv)))
+                        finally:
+                            _pcx.close()
+                    except Exception as _e:
+                        print(f"[practitioner-return] paid-only book: {_e!r}", flush=True)
         except Exception as e:
             print(f"[stripe-return] {e!r}", flush=True)
     dest = "/practitioner/portal?paid=" + paid
@@ -26011,6 +26674,8 @@ def _upsert_person_additive(cx, person, ts=None):
             except Exception:
                 ex = set()
             merged = sorted(ex | set(arrays[jf]))
+            if jf == "tags":
+                merged = dedupe_tags_ci(merged)  # collapse GHL-echoed case twins
             if merged != sorted(ex):
                 upd[jf] = json.dumps(merged)
         if dnd:  # force the consent flip on the tags column (a removal, so the union check above misses it)
@@ -26018,7 +26683,7 @@ def _upsert_person_additive(cx, person, ts=None):
                 ex_tags = set(json.loads(existing["tags"] or "[]"))
             except Exception:
                 ex_tags = set()
-            upd["tags"] = json.dumps(sorted(_apply_dnd(ex_tags | set(arrays.get("tags", [])))))
+            upd["tags"] = json.dumps(dedupe_tags_ci(sorted(_apply_dnd(ex_tags | set(arrays.get("tags", []))))))
         if order_count > int(existing["order_count"] or 0):
             upd["order_count"] = order_count
         if session_count > int(existing["session_count"] or 0):
@@ -26034,7 +26699,7 @@ def _upsert_person_additive(cx, person, ts=None):
     ins = dict(scalars)
     for jf in _PERSON_UPSERT_JSON:
         ins[jf] = json.dumps(sorted(set(arrays[jf])))
-    ins["tags"] = json.dumps(sorted(_apply_dnd(set(arrays.get("tags", [])))))
+    ins["tags"] = json.dumps(dedupe_tags_ci(sorted(_apply_dnd(set(arrays.get("tags", []))))))
     ins["email"] = email
     ins["order_count"] = order_count
     ins["session_count"] = session_count
@@ -26644,9 +27309,39 @@ def webhook_stripe():
                 _fulfill_prepay_term(session_id)
                 _fulfill_biofield_program(session_id)
                 _fulfill_continuous_care_monthly(session_id)
+                _fulfill_membership_product(session_id)     # kind == "membership_product"
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
                 _fulfill_family_plan(session_id)
+
+                # Webhook-back the paid-only Sales-Receipt booking so a closed browser
+                # tab (dropped redirect) can't leave money collected with no QBO
+                # receipt + an order stuck unpaid. Guarded on qbo_lines_json (paid-only
+                # checkout orders only) + idempotent via book_sale_on_payment's atomic
+                # claim -> never double-books with the redirect handlers.
+                try:
+                    from dashboard import stripe_pay as _sp2
+                    sess = _sp2.get_session(session_id)
+                    if sess.get("payment_status") == "paid":
+                        inv = (sess.get("metadata") or {}).get("invoice_id")
+                        if inv:
+                            _wcx = _sqlite3.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
+                            try:
+                                _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
+                                if _wo and _wo["qbo_lines_json"] and not _wo["qbo_sales_receipt_id"]:
+                                    _wpi = sess.get("payment_intent")
+                                    if _wpi:
+                                        _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
+                                    _bos_orders.set_order_payment(
+                                        _wcx, _wo["id"], method="card",
+                                        amount_cents=int(sess.get("amount_total") or 0))
+                                    from dashboard import qbo_sale as _wqs
+                                    _wqs.book_sale_on_payment(
+                                        _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                            finally:
+                                _wcx.close()
+                except Exception as _we:
+                    print(f"[stripe-webhook] paid-only book-back failed: {_we!r}", flush=True)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
@@ -28664,6 +29359,42 @@ def update_person_tags_route(person_id):
         cx.execute("UPDATE people SET tags=? WHERE id=?", (json.dumps(new_tags), person_id))
         cx.commit()
     return jsonify({"ok": True, "tags": new_tags})
+
+
+@app.route("/admin/dedupe-people-tags", methods=["POST"])
+def admin_dedupe_people_tags():
+    """One-time cleanup: collapse case-duplicate tags (e.g. `terrain:Aging` +
+    GHL-echoed `terrain:aging`) already stored across the people table. The
+    additive upsert now prevents new ones; this heals rows written before the
+    fix. `?dry_run=1` reports without writing."""
+    if CONSOLE_SECRET:
+        key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
+    scanned = changed = removed = 0
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        rows = cx.execute("SELECT id, tags FROM people").fetchall()
+        for r in rows:
+            scanned += 1
+            try:
+                cur = json.loads(r["tags"] or "[]")
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(cur, list):
+                continue
+            new = dedupe_tags_ci(cur)
+            if new != cur:
+                changed += 1
+                removed += len(cur) - len(new)
+                if not dry:
+                    cx.execute("UPDATE people SET tags=? WHERE id=?",
+                               (json.dumps(new), r["id"]))
+        if not dry:
+            cx.commit()
+    return jsonify({"ok": True, "scanned": scanned, "rows_changed": changed,
+                    "tags_removed": removed, "dry_run": dry})
 
 
 # ── Household endpoints ────────────────────────────────────────────────────────
@@ -32473,20 +33204,28 @@ def cron_charge_subscriptions():
                         amount_cents, description=_charge_label,
                         metadata={"sub": str(sid), "kind": "membership"})
                     if res.get("status") == "succeeded":
-                        try:
-                            cust = qb.find_or_create_customer(sub["email"], "")
-                            inv = qb.create_invoice(
-                                cust,
-                                [{"name": _line_label, "amount": amount_cents / 100.0,
-                                  "qty": 1, "description": f"{_line_label} (monthly)"}],
-                                allow_online_pay=False, email_to=sub["email"])
-                            inv_id = inv.get("Id", "")
-                        except Exception as qe:
-                            print(f"[sub-cron] membership QBO sub={sid}: {qe!r}", flush=True)
-                            inv_id = ""
-                        _ingest_order(source="membership", external_ref=res.get("id") or inv_id,
+                        external_ref = res.get("id") or ""
+                        _ingest_order(source="membership", external_ref=external_ref,
                                       email=sub["email"], items=[], total_cents=amount_cents,
                                       address={}, channel="retail")
+                        # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                        # book ONE line-faithful Sales Receipt inline now that payment is
+                        # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                        # the booking slot atomically), so this can never break the charge/
+                        # subscription-bookkeeping path below.
+                        try:
+                            from dashboard import qbo_sale as _qsale
+                            qbo_payload = {
+                                "lines": [{"name": _line_label,
+                                          "amount": round(amount_cents / 100.0, 2), "qty": 1}],
+                                "discount_cents": 0, "tax_cents": 0}
+                            _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                            _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                            if _o:
+                                _qsale.book_sale_on_payment(cx, dict(_o))
+                        except Exception as qe:
+                            print(f"[sub-cron] membership qbo sale booking failed sid={sid}: {qe!r}",
+                                  flush=True)
                         _subs.advance_after_charge(cx, sid)
                         _subs.reset_failed_count(cx, sid)
                         updated = _subs.get(cx, sid)
@@ -32510,7 +33249,7 @@ def cron_charge_subscriptions():
                             print(f"[sub-cron] grant-extend sub={sid}: {_ge!r}", flush=True)
                         try:
                             _send_subscription_email(sub["email"], "receipt", {
-                                "total_cents": amount_cents, "invoice_id": inv_id,
+                                "total_cents": amount_cents, "invoice_id": "",
                                 "kind": "membership", "product": _product,
                                 "next_charge_date": updated["next_charge_date"] if updated else ""})
                         except Exception as ee:
@@ -32532,13 +33271,14 @@ def cron_charge_subscriptions():
                 items = sub.get("items") or []
                 ship = sub.get("ship_address") or {}
                 order_count = sub.get("order_count", 0)
-                # Member loyalty discount applies only while paid-through; the
-                # tier VALUE is the earned tier_for(order_count) (held, not reset).
-                tier_pct = _subs.tier_for(order_count) if _active_membership_for_email(sub["email"]) else 0
+                # Per-line loyalty: bundle lines climb 12->29, single SKUs 3->25.
+                # Gated to 0 for all lines when the member isn't paid-through.
+                active = bool(_active_membership_for_email(sub["email"]))
 
                 # Price the order
                 try:
-                    pc = _price_cart(items, ship=ship, subscriber_tier_pct=tier_pct,
+                    pc = _price_cart(items, ship=ship, subscriber_order_count=order_count,
+                                     subscriber_active=active,
                                      program_member=_is_paid_member(sub["email"]),
                                      email=sub["email"])
                 except CheckoutError as ce:
@@ -32570,25 +33310,12 @@ def cron_charge_subscriptions():
                 )
 
                 if res.get("status") == "succeeded":
-                    # Build QBO invoice
-                    try:
-                        cust = qb.find_or_create_customer(sub["email"], "")
-                        inv = qb.create_invoice(
-                            cust,
-                            pc["qbo_lines"] + _shipping_line(shipping_cents),
-                            allow_online_pay=False,
-                            email_to=sub["email"],
-                            discount_cents=discount_cents + points_redeemed_cents,
-                        )
-                        inv_id = inv.get("Id", "")
-                    except Exception as qe:
-                        print(f"[sub-cron] QBO invoice sub={sid}: {qe!r}", flush=True)
-                        inv_id = ""
+                    external_ref = res.get("id") or ""
 
                     # Record the order
                     _ingest_order(
                         source="subscription",
-                        external_ref=res.get("id") or inv_id,
+                        external_ref=external_ref,
                         email=sub["email"],
                         items=pc.get("items_rec") or [],
                         total_cents=total_cents,
@@ -32600,6 +33327,25 @@ def cron_charge_subscriptions():
                         shipping_cents=shipping_cents,
                     )
 
+                    # Paid-only (QBO Stage 3): no QBO invoice/customer for this charge --
+                    # book ONE line-faithful Sales Receipt inline now that payment is
+                    # confirmed. Best-effort + idempotent (book_sale_on_payment claims
+                    # the booking slot atomically), so this can never break the charge/
+                    # subscription-bookkeeping path below.
+                    try:
+                        from dashboard import qbo_sale as _qsale
+                        qbo_payload = {
+                            "lines": pc["qbo_lines"] + _shipping_line(shipping_cents),
+                            "discount_cents": discount_cents + points_redeemed_cents,
+                            "tax_cents": 0,
+                        }
+                        _bos_orders.set_order_qbo_lines(cx, external_ref, qbo_payload)
+                        _o = _bos_orders.find_order_by_external_ref(cx, external_ref)
+                        if _o:
+                            _qsale.book_sale_on_payment(cx, dict(_o))
+                    except Exception as qe:
+                        print(f"[sub-cron] qbo sale booking failed sid={sid}: {qe!r}", flush=True)
+
                     _subs.advance_after_charge(cx, sid)
                     _subs.reset_failed_count(cx, sid)
 
@@ -32608,7 +33354,7 @@ def cron_charge_subscriptions():
                     _maybe_extend_founding_membership(cx, sub, updated)
                     _send_subscription_email(sub["email"], "receipt", {
                         "total_cents": total_cents,
-                        "invoice_id": inv_id,
+                        "invoice_id": "",
                         "kind": sub.get("kind", "product"),
                         "next_charge_date": updated["next_charge_date"] if updated else "",
                     })
@@ -36051,6 +36797,73 @@ def admin_atlas_reseed():
     return ok({"reseeded": seeded, "force": force})
 
 
+# ───────────────────────── Body Map ─────────────────────────
+import bodymap_store
+try:
+    if bodymap_store.reseed_from_repo():
+        print("[bodymap] seeded persistent zone files from repo", flush=True)
+except Exception as _e:
+    print(f"[bodymap] reseed skipped: {_e}", flush=True)
+
+
+@app.route("/body-map")
+def body_map_page():
+    return send_from_directory(STATIC, "body-map.html")
+
+
+@app.route("/body-map.js")
+def body_map_js():
+    return send_from_directory(STATIC, "body-map.js")
+
+
+@app.route("/body-map.css")
+def body_map_css():
+    return send_from_directory(STATIC, "body-map.css")
+
+
+@app.route("/body-map/data")
+def body_map_data():
+    system = request.args.get("system", "iridology")
+    try:
+        return jsonify(bodymap_store.build_payload(system))
+    except KeyError:
+        return jsonify({"error": "unknown system"}), 404
+
+
+@app.route("/admin/body-map")
+def admin_body_map_page():
+    return send_from_directory(STATIC, "admin-body-map.html")
+
+
+@app.route("/admin/body-map/zones", methods=["GET"])
+@require_console_key
+def admin_body_map_zones():
+    system = request.args.get("system", "iridology")
+    try:
+        data = bodymap_store.load_map(system)
+    except KeyError:
+        return fail("unknown system", 404)
+    return ok({"zones": [
+        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": z.get("eye", ""),
+         "meaning_standard": z.get("meaning_standard", ""), "meaning_glen": z.get("meaning_glen", "")}
+        for z in data.get("zones", [])
+    ]})
+
+
+@app.route("/admin/body-map/zone", methods=["POST"])
+@require_console_key
+def admin_body_map_zone():
+    body = request.get_json(silent=True) or {}
+    system, zid = body.get("system", "iridology"), body.get("id")
+    if not zid:
+        return fail("id required", 400)
+    try:
+        bodymap_store.set_zone_overlay(system, zid, body.get("meaning_glen", ""))
+    except KeyError:
+        return fail("unknown zone id", 404)
+    return ok({"updated": zid})
+
+
 # ── Tier-2 wholesale: application → approval ──────────────────────────────────
 # Apply (resale-license holders) → Glen/Rae approve in /admin/wholesale → the same
 # wholesale_unlocked_at gate is set and ordering opens. Sits alongside the existing
@@ -36696,13 +37509,78 @@ def console_client_invoice():
                           "amount_dollars": f"{(cents or 0) / 100:.2f}" if cents is not None else ""})
     except Exception:
         lines = []
-    import urllib.parse as _up
-    key = request.args.get("key") or ""
-    edit_url = f"/orders/new?edit_order={r['id']}" + (f"&key={_up.quote(key)}" if key else "")
+    # edit_url carries NO console key — the console UI (console-biofield-portal.html)
+    # appends its own key() client-side. Reflecting the caller's key here leaked the
+    # CONSOLE_SECRET into the JSON response body.
+    edit_url = f"/orders/new?edit_order={r['id']}"
     return jsonify({"ok": True, "order": {
         "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
         "edit_url": edit_url, "lines": lines}, **biofield_paid})
+
+
+@app.route("/api/console/membership/enroll", methods=["POST"])
+def console_membership_enroll():
+    """Owner-only manual enroll: grants the membership entitlement (member
+    pricing + group access) without a Stripe round-trip, for cases where
+    payment is collected separately (e.g. a Payment Link). The recurring_capped
+    tier only grants the entitlement window here -- it does not create a
+    subscriptions row, since there is no vaulted card to charge automatically."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import membership_products as _mp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tier = _mp.get_tier((data.get("tier") or "").strip())
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not tier:
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    import datetime as _dt
+    today = _now_utc().date()
+    days = _mp.grant_days(tier["key"], today)
+    src_override = data.get("source")
+    if src_override:
+        src = src_override.strip()
+        if not src.startswith("membership_"):
+            return jsonify({"ok": False, "error": "source must start with membership_"}), 400
+    else:
+        src = tier["source"]
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        init_membership_tables(cx)
+        _grant_membership(cx, email, days, src)
+        cx.commit()
+    finally:
+        cx.close()
+    out = {"ok": True, "tier": tier["key"], "billing": tier["billing"],
+           "expires_at": (today + _dt.timedelta(days=days)).isoformat()}
+    if tier["billing"] == "recurring_capped":
+        out["note"] = "no auto-billing; bill monthly by hand or use /membership/checkout"
+    return jsonify(out)
+
+
+@app.route("/api/console/membership/reconcile-alerts", methods=["GET"])
+def console_membership_reconcile_alerts():
+    """Owner-only: open membership_reconcile_alerts rows -- the duplicate-member
+    orphaned-charge case from _fulfill_membership_product, where a month-1
+    charge was taken but no new subscription was created because the email
+    already had an active membership. Newest first."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        init_membership_tables(cx)
+        rows = cx.execute(
+            "SELECT session_id, email, tier, amount_cents, note, created_at, status "
+            "FROM membership_reconcile_alerts WHERE status='open' "
+            "ORDER BY created_at DESC").fetchall()
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "alerts": [dict(r) for r in rows]})
 
 
 @app.route("/api/console/shipments/suggestions", methods=["GET"])
@@ -37114,14 +37992,19 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None,
                            adjustment_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
-    console invoice editor. Honors per-line unit_cents overrides; FF capsules get the
-    order-wide volume rate (open to all); shipping/GET via _price_cart (pickup → no
-    shipping); a manual order discount; points capped to the customer's real balance.
+    console invoice editor. Honors per-line unit_cents overrides; FF capsules get a
+    volume rate — the order-wide mix/match rate for a paid member, the same-SKU
+    (per-line qty) rate for a non-member (Glen 2026-07 policy; see
+    _inhouse_ff_unit_cents); shipping/GET via _price_cart (pickup → no shipping);
+    a manual order discount; points capped to the customer's real balance.
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
+    # Paid membership gates the order-wide mix/match volume rate (Glen 2026-07):
+    # resolved ONCE for the whole order, same as repertoire below.
+    program_member = _is_paid_member(email)
     # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
     # this also makes the owner in-house INVOICE honor repertoire pricing for members,
     # not just the portal checkout). Only ever consulted below when a line has no
@@ -37164,14 +38047,18 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _explicit = ln.get("unit_cents")
         _is_override = _explicit not in (None, "")
         if _is_override:
-            unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _explicit, total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         elif _cprices.get(slug) is not None:
-            unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _cprices.get(slug), total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         elif _ff_flat is not None and _qty_eligible(p):
-            unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings)
+            unit_cents = _inhouse_line_unit_cents(p, _ff_flat, total_ff_qty, settings,
+                                                  program_member=program_member, line_qty=qty)
         else:
             unit_cents = _inhouse_line_unit_cents(p, None, total_ff_qty, settings,
-                                                  repertoire_slugs=rep_slugs)  # volume/list/repertoire
+                                                  repertoire_slugs=rep_slugs,
+                                                  program_member=program_member, line_qty=qty)  # volume/list/repertoire
             _is_ff = _qty_eligible(p)
             _lc = int(p.get("price_cents") or 0)
             for _cand in (
@@ -37272,6 +38159,68 @@ def _push_invoice_edit_to_qbo(external_ref, priced):
         return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
 
 
+def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_in=None,
+                                 adjustment_cents_in=None, invoice_note=None):
+    """Reprice an order's line items at the current pricing (membership-aware) and
+    persist the invoice. Shared by the manual invoice editor (/api/orders/<oid>/edit)
+    and the one-click grant-and-reprice button. Carries the order's existing points +
+    shipping-credit forward unchanged, preserves $0 review-gift lines, and honors the
+    same override precedence as the editor. Returns (priced, was_paid), or (None, None)
+    when no line resolves to a real product. Raises CheckoutError on a rejected ship-to.
+
+    invoice_note=None leaves the stored note untouched (upsert_order skips it on update);
+    pass a string to replace it."""
+    email = order.get("email") or ""
+    addr = order.get("address") or {}
+    ship = {"name": order.get("name") or "",
+            "street": addr.get("street") or addr.get("address1") or "",
+            "address2": addr.get("address2") or "", "city": addr.get("city") or "",
+            "state": addr.get("state") or "", "zip": addr.get("zip") or "",
+            "country": (addr.get("country") or "US").upper()}
+    # Price WITHOUT points: editing an invoice must never re-touch the points ledger
+    # (settle_order_points is idempotent per order_ref, so a changed points figure
+    # would silently desync the ledger). We carry the order's already-redeemed points
+    # forward unchanged and apply them to the recomputed total.
+    priced = _price_inhouse_invoice(
+        lines_in, email=email, pickup=pickup, ship=ship,
+        discount_cents_in=discount_cents_in,
+        adjustment_cents_in=adjustment_cents_in,
+        points_redeem_cents_in=None)
+    if priced is None:
+        return None, None
+    existing_points = int(order.get("points_redeemed_cents") or 0)
+    priced["points_redeemed_cents"] = existing_points
+    priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
+    # Same for a shipping credit already auto-applied to this order: carry it
+    # forward unchanged (re-planning would double-read the balance and re-pricing
+    # would spring the total back up, desyncing the payment-settle consume).
+    existing_ship_credit = int(order.get("ship_credit_applied_cents") or 0)
+    priced["total_cents"] = max(0, priced["total_cents"] - existing_ship_credit)
+    # Preserve any $0 approved review-gift lines (the editor form drops them; they're
+    # not owner-editable but must stay on the invoice + keep their fulfillment link).
+    for _g in (order.get("items") or []):
+        if _g.get("gift"):
+            priced["items_rec"].append(_g)
+    _bos_orders.upsert_order(
+        cx, source=order["source"], external_ref=order["external_ref"],
+        email=email, name=order.get("name") or "", phone=order.get("phone") or "",
+        items=priced["items_rec"], total_cents=priced["total_cents"],
+        channel=_bos_orders.channel_on_edit(pickup, order.get("channel")),
+        get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
+        adjustment_cents=priced["adjustment_cents"],
+        points_redeemed_cents=priced["points_redeemed_cents"],
+        shipping_cents=priced["shipping_cents"],
+        ship_credit_applied_cents=existing_ship_credit,
+        invoice_note=(invoice_note.strip() if isinstance(invoice_note, str) else None))
+    return priced, (order.get("pay_status") == "paid")
+
+
+def _paid_order_edit_warning(was_paid):
+    return ("This order was already marked PAID — the recorded payment amount was not "
+            "changed. Collect or refund the difference and reconcile QuickBooks manually."
+            ) if was_paid else None
+
+
 @app.route("/api/orders/<int:oid>/edit", methods=["POST"])
 def api_orders_edit(oid):
     """Owner: edit an existing order's invoice — replace its line items + shipping +
@@ -37294,63 +38243,104 @@ def api_orders_edit(oid):
             return jsonify({"ok": False, "error": "order not found"}), 404
         if order.get("status") == "cancelled":
             return jsonify({"ok": False, "error": "a cancelled order can't be edited"}), 400
-        email = order.get("email") or ""
-        addr = order.get("address") or {}
-        ship = {"name": order.get("name") or "",
-                "street": addr.get("street") or addr.get("address1") or "",
-                "address2": addr.get("address2") or "", "city": addr.get("city") or "",
-                "state": addr.get("state") or "", "zip": addr.get("zip") or "",
-                "country": (addr.get("country") or "US").upper()}
-        # Price WITHOUT points: editing an invoice must never re-touch the points ledger
-        # (settle_order_points is idempotent per order_ref, so a changed points figure
-        # would silently desync the ledger). We carry the order's already-redeemed points
-        # forward unchanged and apply them to the recomputed total.
         try:
-            priced = _price_inhouse_invoice(
-                lines_in, email=email, pickup=pickup, ship=ship,
+            priced, was_paid = _reprice_and_persist_invoice(
+                cx, order, lines_in, pickup=pickup,
                 discount_cents_in=body.get("discount_cents"),
                 adjustment_cents_in=body.get("adjustment_cents"),
-                points_redeem_cents_in=None)
+                invoice_note=body.get("invoice_note"))
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if priced is None:
             return jsonify({"ok": False, "error": "no valid products"}), 400
-        existing_points = int(order.get("points_redeemed_cents") or 0)
-        priced["points_redeemed_cents"] = existing_points
-        priced["total_cents"] = max(0, priced["total_cents"] - existing_points)
-        # Same for a shipping credit already auto-applied to this order: carry it
-        # forward unchanged (re-planning would double-read the balance and re-pricing
-        # would spring the total back up, desyncing the payment-settle consume).
-        existing_ship_credit = int(order.get("ship_credit_applied_cents") or 0)
-        priced["total_cents"] = max(0, priced["total_cents"] - existing_ship_credit)
-        # Preserve any $0 approved review-gift lines (the editor form drops them; they're
-        # not owner-editable but must stay on the invoice + keep their fulfillment link).
-        for _g in (order.get("items") or []):
-            if _g.get("gift"):
-                priced["items_rec"].append(_g)
-        note = body.get("invoice_note")
-        _bos_orders.upsert_order(
-            cx, source=order["source"], external_ref=order["external_ref"],
-            email=email, name=order.get("name") or "", phone=order.get("phone") or "",
-            items=priced["items_rec"], total_cents=priced["total_cents"],
-            channel=_bos_orders.channel_on_edit(pickup, order.get("channel")),
-            get_cents=priced["get_cents"], discount_cents=priced["discount_cents"],
-            adjustment_cents=priced["adjustment_cents"],
-            points_redeemed_cents=priced["points_redeemed_cents"],
-            shipping_cents=priced["shipping_cents"],
-            ship_credit_applied_cents=existing_ship_credit,
-            invoice_note=(note.strip() if isinstance(note, str) else None))
-        was_paid = (order.get("pay_status") == "paid")
     finally:
         cx.close()
     qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
     # Editing a PAID order changes the invoice total but NOT the recorded payment — alert
     # the owner to collect/refund the difference and reconcile QBO by hand (per design,
     # paid orders are editable but payment + QBO aren't auto-adjusted).
-    warning = ("This order was already marked PAID — the recorded payment amount was not "
-               "changed. Collect or refund the difference and reconcile QuickBooks manually."
-               ) if was_paid else None
+    warning = _paid_order_edit_warning(was_paid)
     return jsonify({"ok": True, "order_id": oid, "qbo": qbo, "warning": warning,
+                    "totals": {"subtotal_cents": priced["subtotal_cents"],
+                               "discount_cents": priced["discount_cents"],
+                               "adjustment_cents": priced["adjustment_cents"],
+                               "shipping_cents": priced["shipping_cents"],
+                               "get_cents": priced["get_cents"],
+                               "points_redeemed_cents": priced["points_redeemed_cents"],
+                               "total_cents": priced["total_cents"]},
+                    "lines": priced["items_rec"]})
+
+
+@app.route("/api/orders/<int:oid>/grant-member-access", methods=["POST"])
+def api_orders_grant_member_access(oid):
+    """Owner, one click: grant this order's client a 30-day member-access window, then
+    reprice the order at member pricing — the manual equivalent of what a paid $300
+    Causal Biofield Analysis auto-grants (_fulfill_biofield_program), for the clients
+    who are invoiced by hand instead of through the Stripe program checkout.
+
+    The grant is a `care_taster` membership (identical source + length to the automated
+    program grant), so it flips the paid-member pricing gate on. It is idempotent: if the
+    client already holds an active membership, no second grant is written and the order is
+    still repriced. Repricing re-runs the order's OWN lines through the invoice pricer, so
+    override lines (e.g. a courtesy Biofield price) are preserved and auto-priced FF lines
+    drop to the member volume/mix-match rate; a line is never raised."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    cx = _sqlite3.connect(LOG_DB)
+    cx.row_factory = _sqlite3.Row
+    try:
+        order = _bos_orders.get_order(cx, oid)
+        if not order:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        if order.get("status") == "cancelled":
+            return jsonify({"ok": False, "error": "a cancelled order can't be repriced"}), 400
+        email = (order.get("email") or "").strip().lower()
+        if not email:
+            return jsonify({"ok": False, "error": "this order has no client email to grant access to"}), 400
+        old_total = int(order.get("total_cents") or 0)
+        # 1) Grant the member-access window (idempotent). An already-active member keeps
+        #    their existing window — never stack a second grant — but the order is still
+        #    repriced below (the whole point of the button).
+        init_membership_tables(cx)
+        cx.commit()   # fresh-DB safe: the reads below open their own connections
+        already_member = bool(_active_membership_for_email(email))
+        granted, expires_at = False, None
+        if not already_member:
+            _grant_membership(cx, email, PROGRAM_CARE_TASTER_DAYS, CARE_TASTER_SOURCE)
+            cx.commit()   # make the grant visible to _is_paid_member's own connection below
+            granted = True
+            expires_at = (_now_utc().date() + timedelta(days=PROGRAM_CARE_TASTER_DAYS)).isoformat()
+        # 2) Reprice the order's own lines. Send unit_cents ONLY for override lines
+        #    (mirrors the editor's linesPayload): preserved as-is; the rest re-price at
+        #    the now-active member rate.
+        lines_in = []
+        for it in (order.get("items") or []):
+            if it.get("gift"):
+                continue
+            ln = {"slug": it.get("slug"), "qty": it.get("qty") or 1}
+            if it.get("override") is True:
+                ln["unit_cents"] = it.get("unit_cents")
+            lines_in.append(ln)
+        if not lines_in:
+            return jsonify({"ok": False, "error": "this order has no repriceable line items"}), 400
+        pickup = (order.get("channel") == "pickup")
+        try:
+            priced, was_paid = _reprice_and_persist_invoice(
+                cx, order, lines_in, pickup=pickup)   # invoice_note=None -> note preserved
+        except CheckoutError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+        if priced is None:
+            return jsonify({"ok": False, "error": "no valid products on this order"}), 400
+    finally:
+        cx.close()
+    qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
+    return jsonify({"ok": True, "order_id": oid,
+                    "granted": granted, "already_member": already_member,
+                    "membership_expires": expires_at,
+                    "old_total_cents": old_total, "new_total_cents": priced["total_cents"],
+                    "warning": _paid_order_edit_warning(was_paid),
+                    "qbo": qbo,
                     "totals": {"subtotal_cents": priced["subtotal_cents"],
                                "discount_cents": priced["discount_cents"],
                                "adjustment_cents": priced["adjustment_cents"],
@@ -37516,8 +38506,10 @@ def api_orders_manual():
 @app.route("/api/orders/price-preview", methods=["POST"])
 def api_orders_price_preview():
     """OWNER: live per-line pricing for the order-entry form. Same authority as
-    /api/orders/manual — FF capsules get the order-wide volume rate, others list
-    price, owner overrides honored. Server is the single source of truth."""
+    /api/orders/manual — FF capsules get a volume rate (the order-wide mix/match
+    rate for a paid member, else the same-SKU per-line-qty rate — Glen 2026-07
+    policy; see _inhouse_ff_unit_cents), others list price, owner overrides
+    honored. Server is the single source of truth."""
     actor = _bos_actor()
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -37526,11 +38518,15 @@ def api_orders_price_preview():
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
-    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2)
+    _pemail = (_body.get("email") or "").strip().lower()
+    _ppm = _is_paid_member(_pemail)
+    # The order-wide mix/match rate — a paid-member-only perk (Glen 2026-07); a
+    # non-member's per-line vol_pct is computed inside the loop below, off that
+    # line's own qty (same-SKU rate), since it isn't a single order-wide number.
+    vol_pct = round(float(_pricing.volume_pct(total_ff_qty, settings) or 0), 2) if _ppm else 0
     # Reflect this client's saved special prices in the live preview too (same
     # precedence as the pricer: explicit line edit > client price > volume/list).
     _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
-    _pemail = (_body.get("email") or "").strip().lower()
     if _pemail:
         try:
             from dashboard import client_prices as _cp_mod
@@ -37569,7 +38565,8 @@ def api_orders_price_preview():
             _eff_ov = _ff_flat
         else:
             _eff_ov = None
-        unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings)
+        unit = _inhouse_line_unit_cents(p, _eff_ov, total_ff_qty, settings,
+                                        program_member=_ppm, line_qty=qty)
         if _eff_ov is None:   # cohort + earned loyalty compete with volume/list (lowest wins)
             for _cand in (_cohort_best_price(_cohorts, slug, list_cents, is_ff),
                           _cohort_loyalty_price(_loyalty, slug, is_ff, _earned)):
@@ -37578,10 +38575,14 @@ def api_orders_price_preview():
         overridden = ov not in (None, "")
         line_cents = unit * qty
         subtotal += line_cents
+        # Non-member vol_pct is the same-SKU rate off THIS line's own qty (there's
+        # no single order-wide number to show — see _inhouse_ff_unit_cents).
+        _line_vol_pct = (vol_pct if _ppm else
+                         round(float(_pricing.volume_pct(qty, settings) or 0), 2))
         out_lines.append({
             "slug": slug, "qty": qty, "is_ff": is_ff, "list_cents": list_cents,
             "effective_unit_cents": unit, "line_cents": line_cents,
-            "vol_pct": (vol_pct if (is_ff and not overridden) else 0),
+            "vol_pct": (_line_vol_pct if (is_ff and not overridden) else 0),
             "savings_cents": max(0, list_cents - unit)})
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines})
@@ -37669,6 +38670,29 @@ def api_order_payment_resync(pid):
         _op.ensure_table(cx)
         row = _op.resync(cx, pid)
         return jsonify({"ok": True, "row": row})
+    finally:
+        cx.close()
+
+
+@app.route("/api/console/backfill-legacy-payments", methods=["POST"])
+def api_backfill_legacy_payments():
+    """Owner/OPS: one-time backfill of pre-ledger PAID orders into the order_payments
+    ledger as source='legacy' rows (amount = the order's legacy paid_cents; NO QBO
+    push). Default is a DRY RUN (reports the plan, writes nothing); ?dry_run=0 applies.
+    Body {"skip":[order_id,...]} excludes orders (e.g. one under active QBO
+    reconciliation whose legacy paid_cents is wrong). Idempotent (orders that already
+    have a ledger row are excluded); biofield trials excluded."""
+    actor = _bos_actor()
+    if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    dry = (request.args.get("dry_run") or "1").strip().lower() not in ("0", "false", "no")
+    body = request.get_json(silent=True) or {}
+    skip = body.get("skip") or []
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _op.ensure_table(cx)
+        res = _op.backfill_legacy_payments(cx, dry_run=dry, skip_order_ids=skip)
+        return jsonify({"ok": True, "dry_run": dry, **res})
     finally:
         cx.close()
 
@@ -39161,6 +40185,26 @@ def bos_orders_create():
                     o["biofield_pdf_url"] = pdf_urls.get((o.get("email") or "").strip().lower(), "")
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
+            # Ledger paid/balance annotation: attach ledger_paid_cents/ledger_balance_cents
+            # ONLY to orders that have active order_payments rows (a payment or refund
+            # recorded), so pre-ledger / legacy-paid orders keep their pay_status badge
+            # without a misleading "balance = full total". One grouped query — no
+            # per-order round-trips. Raw SQL (NOT the _op module: this handler locally
+            # rebinds `_op` to dashboard.opens further down, which would shadow it).
+            try:
+                _led = {}
+                for e in cx.execute(
+                        "SELECT order_id, kind, COALESCE(SUM(amount_cents),0) FROM order_payments "
+                        "WHERE status='active' GROUP BY order_id, kind").fetchall():
+                    _led.setdefault(int(e[0]), {"payment": 0, "refund": 0})[e[1]] = int(e[2] or 0)
+                for o in rows:
+                    led = _led.get(int(o.get("id")))
+                    if led:
+                        paid = led["payment"] - led["refund"]
+                        o["ledger_paid_cents"] = paid
+                        o["ledger_balance_cents"] = int(o.get("total_cents") or 0) - paid
+            except Exception as _e:
+                print(f"[orders] ledger balance annotate skipped: {_e!r}", flush=True)
             # Reward-gift attach (Phase 2 Slice 2 Task 4): show a member's earned-but-
             # unfulfilled reward gift on the pack board for their next order, across ALL
             # order sources, so Rae can pack it. Gated — off by default, no payload change.

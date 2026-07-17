@@ -236,3 +236,55 @@ def test_payments_list_includes_manual_payments(tmp_path, monkeypatch):
                for row in manual_rows), manual_rows
     assert all(row["amount_cents"] != 2000 for row in manual_rows), \
         "voided manual payment leaked into /api/payments"
+
+
+def test_orders_list_annotates_ledger_balance_only_when_activity(tmp_path, monkeypatch):
+    """GET /api/orders attaches ledger_paid_cents/ledger_balance_cents ONLY to
+    orders that have active ledger rows; orders with no ledger activity (incl.
+    pre-ledger/legacy) are left un-annotated (so the board doesn't show a
+    misleading 'balance = full total')."""
+    appmod, client = _client(tmp_path, monkeypatch)
+    monkeypatch.setattr(appmod, "_bos_actor",
+                        lambda: _rbac.Actor(role="owner", name="owner"))
+    # seed a SECOND order that will have NO ledger activity
+    import sqlite3 as _s
+    from dashboard import orders as O
+    cx = _s.connect(appmod.LOG_DB)
+    O.upsert_order(cx, source="qbo", external_ref="INV-2",
+                   email="d2@e.com", total_cents=10000)
+    cx.commit()
+    cx.close()
+    # give order #1 ledger activity: a $100 partial payment
+    assert client.post("/api/orders/1/payments",
+                       json={"amount": 100.00, "method": "Zelle"}).status_code == 200
+
+    orders = client.get("/api/orders?limit=50").get_json()["data"]
+    by_id = {o["id"]: o for o in orders}
+    o1, o2 = by_id[1], by_id[2]
+    # order #1 has a ledger payment -> annotated with paid + balance
+    assert o1.get("ledger_paid_cents") == 10000
+    assert o1.get("ledger_balance_cents") == 41282 - 10000
+    # order #2 has no ledger rows -> NOT annotated
+    assert "ledger_paid_cents" not in o2
+    assert "ledger_balance_cents" not in o2
+
+
+def test_backfill_legacy_payments_endpoint(tmp_path, monkeypatch):
+    appmod, client = _client(tmp_path, monkeypatch)
+    import sqlite3 as _s
+    cx = _s.connect(appmod.LOG_DB)
+    cx.execute("UPDATE orders SET paid_cents=41282, pay_method='card', pay_status='paid' WHERE id=1")
+    cx.commit()
+    cx.close()
+    # VA is rejected (money-touching route, OWNER/OPS only)
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: _rbac.Actor(role="va", name="shaira"))
+    assert client.post("/api/console/backfill-legacy-payments?dry_run=1").status_code == 401
+    # owner DRY RUN reports the plan and writes nothing
+    monkeypatch.setattr(appmod, "_bos_actor", lambda: _rbac.Actor(role="owner", name="owner"))
+    j = client.post("/api/console/backfill-legacy-payments?dry_run=1").get_json()
+    assert j["ok"] and j["dry_run"] is True and j["written"] == 0
+    assert any(c["order_id"] == 1 for c in j["candidates"])
+    cx = _s.connect(appmod.LOG_DB)
+    n = cx.execute("SELECT COUNT(*) FROM order_payments WHERE source='legacy'").fetchone()[0]
+    cx.close()
+    assert n == 0   # dry run never writes

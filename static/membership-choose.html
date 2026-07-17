@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Choose your Membership</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
+    --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
+    --maxw:640px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+    --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{ background:var(--bg); color:var(--cream); font-family:var(--font); font-size:16px; line-height:1.6;
+    background-image:radial-gradient(120% 80% at 50% -10%, rgba(212,168,67,0.07), transparent 60%); }
+  h1,h2{ font-family:var(--heading); font-weight:600; line-height:1.25; }
+  .shell{ max-width:var(--maxw); margin:0 auto; padding:32px 22px 60px; }
+  .eyebrow{ font-family:var(--heading); font-weight:600; font-size:12px; letter-spacing:0.3em; color:var(--green); margin-bottom:10px; }
+  h1{ font-size:26px; color:var(--cream); }
+  .sub{ color:var(--muted); font-size:14px; margin-top:8px; }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-top:24px; }
+  .field{ margin-bottom:18px; }
+  label{ display:block; font-family:var(--heading); font-weight:600; font-size:13px; color:var(--cream); margin-bottom:7px; }
+  .hint{ font-weight:400; color:var(--muted); font-size:12px; }
+  input[type=email]{ width:100%; background:var(--surface-2);
+    border:1px solid var(--border); border-radius:9px; color:var(--cream); font-family:var(--font); font-size:15px; padding:11px 13px; outline:none; }
+  input:focus{ border-color:var(--gold); }
+  input::placeholder{ color:var(--muted); opacity:.6; }
+  .tiers{ display:flex; flex-direction:column; gap:14px; }
+  .tier{ border:1px solid var(--border); border-radius:var(--radius); padding:18px; transition:border-color .2s; }
+  .tier:hover{ border-color:rgba(212,168,67,.45); }
+  .tier .t-head{ display:flex; align-items:baseline; gap:11px; }
+  .tier .t-name{ font-family:var(--heading); font-weight:700; font-size:17px; }
+  .tier .t-price{ margin-left:auto; color:var(--gold); font-family:var(--heading); font-weight:700; font-size:17px; white-space:nowrap; }
+  .tier .t-sub{ color:var(--muted); font-size:13px; margin-top:4px; }
+  .tier .btn{ margin-top:14px; }
+  .btn{ display:inline-block; width:100%; background:var(--gold); color:#0a150d; font-family:var(--heading); font-weight:700;
+    font-size:15px; border:none; border-radius:999px; padding:14px; cursor:pointer; transition:opacity .2s, transform .2s; }
+  .btn:hover{ opacity:.92; transform:translateY(-1px); } .btn:disabled{ opacity:.45; cursor:not-allowed; transform:none; }
+  .msg{ font-size:13.5px; margin-top:14px; min-height:1em; line-height:1.5; }
+  .msg.err{ color:#e8a0a0; } .msg.ok{ color:var(--green); }
+  .note{ font-size:12.5px; color:var(--muted); margin-top:20px; line-height:1.6; }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <p class="eyebrow">Healing Oasis · Membership</p>
+    <h1>Choose your Membership</h1>
+    <p class="sub">Join live group coaching and enjoy member pricing on everything in the store. Pick the plan that fits you best.</p>
+
+    <div class="card">
+      <div class="field">
+        <label for="email">Your email <span class="hint">(required, we send your receipt and access here)</span></label>
+        <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+    </div>
+
+    <div class="tiers" id="tiers">
+      <div class="tier" data-tier="month">
+        <div class="t-head"><span class="t-name">Monthly Membership</span><span class="t-price">$99</span></div>
+        <p class="t-sub">Billed once. One month of live group coaching and member pricing.</p>
+        <button class="btn" data-choose="month">Choose</button>
+      </div>
+      <div class="tier" data-tier="year_monthly">
+        <div class="t-head"><span class="t-name">Annual Membership (monthly)</span><span class="t-price">$99/mo</span></div>
+        <p class="t-sub">A full year of membership, billed $99 each month for 12 months.</p>
+        <button class="btn" data-choose="year_monthly">Choose</button>
+      </div>
+      <div class="tier" data-tier="year_prepay">
+        <div class="t-head"><span class="t-name">Annual Membership (full pay)</span><span class="t-price">$990</span></div>
+        <p class="t-sub">A full year of membership, paid once. The best value of the three plans.</p>
+        <button class="btn" data-choose="year_prepay">Choose</button>
+      </div>
+    </div>
+
+    <div class="msg" id="msg"></div>
+    <p class="note">After you choose, you will be taken to a secure Stripe checkout page to complete your payment. You can cancel or pause your membership any time from the link in your welcome email.</p>
+  </div>
+
+  <script>
+    var BASE = window.location.origin;
+
+    function $(id){ return document.getElementById(id); }
+    function emailOk(){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(($('email').value||'').trim()); }
+
+    document.querySelectorAll('[data-choose]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var tier = btn.getAttribute('data-choose');
+        var email = ($('email').value||'').trim();
+        $('msg').className = 'msg'; $('msg').textContent = '';
+        if (!emailOk()){
+          $('msg').className = 'msg err';
+          $('msg').textContent = 'Please enter a valid email address first.';
+          return;
+        }
+        document.querySelectorAll('[data-choose]').forEach(function(b){ b.disabled = true; });
+        var original = btn.textContent;
+        btn.textContent = 'Loading…';
+
+        fetch(BASE + '/membership/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email, tier: tier })
+        })
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (d && d.ok && d.url){
+              window.location = d.url;
+              return;
+            }
+            document.querySelectorAll('[data-choose]').forEach(function(b){ b.disabled = false; });
+            btn.textContent = original;
+            $('msg').className = 'msg err';
+            $('msg').textContent = (d && d.error) || 'Something went wrong. Please try again.';
+          })
+          .catch(function(e){
+            document.querySelectorAll('[data-choose]').forEach(function(b){ b.disabled = false; });
+            btn.textContent = original;
+            $('msg').className = 'msg err';
+            $('msg').textContent = 'Connection error: ' + e.message;
+          });
+      });
+    });
+  </script>
+</body>
+</html>

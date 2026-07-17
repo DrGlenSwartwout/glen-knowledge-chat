@@ -1,0 +1,14 @@
+{
+  "system": "sclerology",
+  "reference_frame": "unit_circle",
+  "germ_layers": [
+    { "id": "perilimbal", "label": "Perilimbal (nearest the iris)", "r_inner": 1.0, "r_outer": 1.6 },
+    { "id": "mid-sclera", "label": "Mid sclera", "r_inner": 1.6, "r_outer": 2.3 },
+    { "id": "outer-sclera", "label": "Outer sclera (toward the canthus)", "r_inner": 2.3, "r_outer": 3.0 }
+  ],
+  "zones": [
+    { "id": "sclera-R-liver", "eye": "right", "germ_layer": "perilimbal", "radial": {"r_inner": 1.0, "r_outer": 1.6}, "sector": {"start_deg": 235, "end_deg": 265}, "anatomy": "Liver / gallbladder line", "meaning_standard": "Vessels rising from the lower temporal limbus are read for hepatobiliary congestion.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "sclera-R-colon", "eye": "right", "germ_layer": "mid-sclera", "radial": {"r_inner": 1.6, "r_outer": 2.3}, "sector": {"start_deg": 170, "end_deg": 210}, "anatomy": "Colon", "meaning_standard": "Lower scleral field vessels are read for bowel congestion and stasis.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "sclera-L-heart", "eye": "left", "germ_layer": "perilimbal", "radial": {"r_inner": 1.0, "r_outer": 1.6}, "sector": {"start_deg": 95, "end_deg": 125}, "anatomy": "Heart line", "meaning_standard": "Vessels at the left perilimbal margin are read for cardiovascular stress patterns.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+  ]
+}

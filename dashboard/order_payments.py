@@ -59,15 +59,21 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
     /api/payments money view can render Stripe charges and manual payments in
     one uniform list. Refunds are represented as a negative amount_cents.
     Newest first (paid_at, falling back to created_at). Voided/pending rows
-    (status != 'active') and Stripe-sourced rows are excluded — Stripe already
-    has its own row in the ledger via dashboard.payments. Read-only; caller
-    sets cx.row_factory = sqlite3.Row."""
+    (status != 'active') are excluded. Stripe-sourced PAYMENTS are excluded —
+    they already appear via dashboard.payments' charge ledger — but Stripe-sourced
+    REFUNDS ARE included (a card refund has no row in the charge ledger, so this is
+    its only appearance), tagged 'card:refund'. Read-only; caller sets
+    cx.row_factory = sqlite3.Row."""
     rows = cx.execute(
-        "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, "
+        "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, op.source AS op_source, "
         "op.external_ref AS op_ref, op.paid_at, op.created_at, "
         "o.email, o.name, o.channel "
         "FROM order_payments op JOIN orders o ON o.id = op.order_id "
-        "WHERE op.status='active' AND op.source != 'stripe' "
+        # Non-Stripe rows (manual payments + refunds) PLUS Stripe REFUNDS. A card
+        # refund is source='stripe' but has NO row in the Stripe charge ledger
+        # (dashboard.payments tracks charges, not refunds), so include it here.
+        # Stripe PAYMENTS (card charges) stay excluded — they're already there.
+        "WHERE op.status='active' AND (op.source != 'stripe' OR op.kind='refund') "
         "AND op.kind IN ('payment','refund') "
         "ORDER BY COALESCE(op.paid_at, op.created_at) DESC, op.id DESC "
         "LIMIT ?", (int(limit),)).fetchall()
@@ -77,7 +83,10 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
         if r["kind"] == "refund":
             amt = -amt
         method = (r["method"] or "other").strip()
-        tag = "manual:" + (method.lower().replace(" ", "-") or "other")
+        if (r["op_source"] or "") == "stripe":
+            tag = "card:refund"   # a Stripe-issued card refund (money out, shown negative)
+        else:
+            tag = "manual:" + (method.lower().replace(" ", "-") or "other")
         out.append({
             "id": f"op-{r['op_id']}",
             "created_at": r["created_at"],
@@ -148,8 +157,10 @@ def _mark_sync(cx, pid, *, qbo_txn_id=None, state):
 
 def _push_payment(cx, pid):
     row = _row(cx, pid)
-    if row.get("qbo_txn_id"):
-        return  # already synced — idempotent
+    if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
+        return  # already synced — idempotent. Honor qbo_sync too, not just txn_id:
+                # a legacy-backfill row is synced with a NULL txn_id and must NEVER
+                # be pushed (its payment already exists in QBO — pushing = double-count).
     try:
         cid, inv_id = _qbo_ctx(cx, row["order_id"])
         if not cid or not inv_id:
@@ -202,8 +213,8 @@ def refundable_cents(cx, order_id, refunds_payment_id=None):
 
 def _push_refund(cx, pid):
     row = _row(cx, pid)
-    if row.get("qbo_txn_id"):
-        return
+    if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
+        return  # already synced (incl. legacy backfill: synced, NULL txn_id) — never re-push
     try:
         cid, inv_id = _qbo_ctx(cx, row["order_id"])
         if not cid or not inv_id:
@@ -291,3 +302,54 @@ def resync(cx, payment_id):
     else:
         _push_refund(cx, payment_id)   # defined in Task 3
     return _row(cx, payment_id)
+
+
+def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):
+    """Create one source='legacy' payment row per PAID pre-ledger order so it shows
+    correctly in the ledger/panel/board. Candidates: orders with paid_cents>0, source
+    != 'biofield_trial' (trials skipped), status != 'cancelled' (a cancelled order
+    must never get a "paid" ledger row), that have NO ledger rows yet, minus any
+    skip_order_ids. Amount = the order's legacy paid_cents; method = its pay_method.
+
+    NO QBO push — these payments already exist in QBO from the pre-ledger flow, so we
+    insert directly (never via add_payment/record_payment); qbo_sync='synced' and
+    qbo_txn_id stays NULL, so a later void() won't touch QBO. Idempotent: an order
+    that already has ANY ledger row is excluded (re-runs write nothing, and orders
+    under active reconciliation aren't disturbed). Provenance-neutral timestamps: the
+    row's paid_at/created_at come from the order's own paid_at (never now()).
+
+    dry_run=True returns the plan without writing. Returns
+    {"candidates": [...], "count": N, "written": M}."""
+    skip = {int(x) for x in (skip_order_ids or [])}
+    rows = cx.execute(
+        "SELECT o.id, o.email, o.name, COALESCE(o.paid_cents,0) AS paid, "
+        "COALESCE(o.pay_method,'') AS method, o.paid_at, o.created_at, "
+        "COALESCE(o.total_cents,0) AS total "
+        "FROM orders o "
+        "WHERE COALESCE(o.paid_cents,0) > 0 "
+        "AND COALESCE(o.source,'') != 'biofield_trial' "
+        "AND COALESCE(o.status,'') != 'cancelled' "
+        "AND o.id NOT IN (SELECT DISTINCT order_id FROM order_payments) "
+        "ORDER BY o.id").fetchall()
+    plan = []
+    for r in rows:
+        if int(r["id"]) in skip:
+            continue
+        plan.append({
+            "order_id": int(r["id"]), "email": r["email"] or "", "name": r["name"] or "",
+            "amount_cents": int(r["paid"]), "method": (r["method"] or "legacy"),
+            "total_cents": int(r["total"]), "paid_at": r["paid_at"] or r["created_at"],
+        })
+    written = 0
+    if not dry_run:
+        for p in plan:
+            ts = p["paid_at"]
+            cx.execute(
+                "INSERT INTO order_payments (order_id, kind, amount_cents, method, source, "
+                "status, qbo_sync, note, paid_at, created_at, updated_at, created_by) "
+                "VALUES (?, 'payment', ?, ?, 'legacy', 'active', 'synced', "
+                "'legacy pay_status backfill', ?, ?, ?, 'backfill')",
+                (p["order_id"], p["amount_cents"], p["method"], ts, ts, ts))
+            written += 1
+        cx.commit()
+    return {"candidates": plan, "count": len(plan), "written": written}

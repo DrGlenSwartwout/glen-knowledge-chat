@@ -375,7 +375,8 @@
       ],
       "ingredients_source": "manual",
       "description": "Brain Boost Nootropic . Brain Boost Nootropic Brain Boost Brain Boost is a nootropic formulation that includes Coluracetam, which enhances color vision and other brain functions. Vision provides 2/3 of all the nerve current entering the brain, so increasing vision helps energize many other brain, endocrine and immune functions as well. The pathways from the eyes to the biological clock in the hypothalamus that regulates these other systemic functions are specifically color sensitive, so enhancing color vision can light up your life and your wellness in surprising ways. Brain Boost Nootropic ....",
-      "enrichment_note": "Section A: appended confirmed Bioavailability-Factors extras (Centrophenoxine, Citicoline, Fulvic Acid, 11 Spirit Minerals); removed Coluracetam per Glen; DHA intentionally NOT added. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section A: appended confirmed Bioavailability-Factors extras (Centrophenoxine, Citicoline, Fulvic Acid, 11 Spirit Minerals); removed Coluracetam per Glen; DHA intentionally NOT added. Source: Glen's Products-Worklist.md.",
+      "bottle_type": "30 Caps"
     },
     "brain-cleanse": {
       "name": "Brain Cleanse",
@@ -4068,7 +4069,7 @@
     },
     "dry-eye-relief-program": {
       "name": "Dry Eye Relief Program",
-      "price_cents": 24997,
+      "price_cents": 18892,
       "pinecone_title": "Dry Eye Relief Program",
       "url": "https://remedymatch.com/remedies/program/463-dry-eye-relief-program",
       "bundle": true,
@@ -4080,7 +4081,23 @@
       "bundle_description": "The Dry Eye Relief Program provides an automatic monthly supply of key remedies to support eye comfort and healthy tear production including:\n\nACES Eye Drops (1 drop in each eye, AM and PM)\n\nMoisturize capsules (1 per day with food)\n\nWholOmega capsules (4 per day with the heaviest meal)",
       "ingredients": [],
       "ingredients_source": "manual",
-      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md.",
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "aces-eye-drops",
+          "qty": 1
+        },
+        {
+          "slug": "moisturize",
+          "qty": 1
+        },
+        {
+          "slug": "wholomega",
+          "qty": 1
+        }
+      ]
     },
     "endocrine-restore": {
       "name": "Endocrine Restore",
@@ -7888,9 +7905,26 @@
     },
     "gut-terrain-program": {
       "name": "Gut Terrain Program",
-      "price_cents": 15997,
+      "price_cents": 18892,
       "pinecone_title": "Gut Terrain Program",
-      "url": "https://remedymatch.com/remedies/program/462-gut-terrain-program"
+      "url": "https://remedymatch.com/remedies/program/462-gut-terrain-program",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "terrain-restore",
+          "qty": 1
+        },
+        {
+          "slug": "microbiome",
+          "qty": 1
+        },
+        {
+          "slug": "fiber-cleanse",
+          "qty": 1
+        }
+      ]
     },
     "acetaldehyde-detox": {
       "name": "Acetaldehyde Detox",
@@ -9621,9 +9655,34 @@
     },
     "brain-program": {
       "name": "Brain Program",
-      "price_cents": 29997,
+      "price_cents": 31486,
       "pinecone_title": "Brain Program",
-      "url": "https://remedymatch.com/remedies/program/467-brain-program"
+      "url": "https://remedymatch.com/remedies/program/467-brain-program",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "brain-boost",
+          "qty": 1
+        },
+        {
+          "slug": "brain-cleanse",
+          "qty": 1
+        },
+        {
+          "slug": "neuro-magnesium",
+          "qty": 1
+        },
+        {
+          "slug": "neuroprotect",
+          "qty": 1
+        },
+        {
+          "slug": "nous-energy",
+          "qty": 1
+        }
+      ]
     },
     "ed10-skin-driver": {
       "name": "ED10 Skin Driver",
@@ -9926,7 +9985,8 @@
       "price_cents": 6997,
       "pinecone_title": "Terrain Restore",
       "url": "https://remedymatch.com/remedies/syntropy/113-terrain-restore",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "bottle_type": "Dropper 50 mL"
     },
     "et6-cfi": {
       "name": "ET6 CFI: Colds Flu Immunity",
@@ -9962,7 +10022,7 @@
     },
     "glucose-tolerance-program": {
       "name": "Glucose Tolerance Program",
-      "price_cents": 11997,
+      "price_cents": 12595,
       "pinecone_title": "Glucose Tolerance Program",
       "url": "https://remedymatch.com/remedies/program/465-glucose-tolerance-program",
       "bundle": true,
@@ -9973,7 +10033,19 @@
       "bundle_description": "About one-third of aging-related changes are directly related to sugar regulation. If you have an issue with sugar regulation such as metabolic syndrome, pre-diabetes, or diabetes, adding a regular program to specifically support healing your sugar regulation and reverse related degenerative tissue changes is essential.\n\nThe Glucose Tolerance Program supplies key remedies monthly to support healthy sugar metabolism:\n\nGlucose Tolerance\n\nReverse AGE\n\nYou can order either or both of these remedies individually on their product pages or you can order the program from this page. Each product is designed to last for one month, and you can order the program to be automatically delivered monthly. We extend savings to you when you set up an automatic shipment, and you can always cancel at any time. If you know you will be using a product for at least 6 months or a year, you can access even greater savings by purchasing in bulk.\n\nIn any case, whatever challenges you are facing, if you are not achieving your health and wellness goals, including maintenance or recovery of vision, the next step beyond a program like this designed to support and optimize your healing processes in the face of a particular issue or symptom, you can apply for a consultation with us. We can evaluate what your healing powers are focused on achieving right now and design a precision program tailor-made to your body's intelligent healing processes that are active - in real time. We typically see the reversal of about one year of aging and degeneration in a one-month program using our systems, which is why we call it Accelerated Self Healing™.",
       "ingredients": [],
       "ingredients_source": "manual",
-      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md.",
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "glucose-tolerance",
+          "qty": 1
+        },
+        {
+          "slug": "reverse-age",
+          "qty": 1
+        }
+      ]
     },
     "reverse-aging-program": {
       "name": "Reverse Aging Program",
@@ -10058,9 +10130,22 @@
     },
     "iop-program": {
       "name": "IOP Program",
-      "price_cents": 29985,
+      "price_cents": 31486,
       "pinecone_title": "IOP Program",
-      "url": "https://remedymatch.com/remedies/program/537-iop-program"
+      "url": "https://remedymatch.com/remedies/program/537-iop-program",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "iop-syntropy",
+          "qty": 3
+        },
+        {
+          "slug": "ocuflow-daytime",
+          "qty": 2
+        }
+      ]
     },
     "c15-syntropy-pentadecanoic-acid": {
       "name": "C15 Syntropy: Pentadecanoic Acid",
@@ -10735,7 +10820,7 @@
     },
     "macular-wellness-program": {
       "name": "Macular Wellness Program",
-      "price_cents": 38997,
+      "price_cents": 31486,
       "pinecone_title": "Macular Wellness Program",
       "url": "https://remedymatch.com/remedies/program/464-macular-wellness-program",
       "bundle": true,
@@ -10749,7 +10834,31 @@
       "bundle_description": "The Macular Wellness Program supplies:\n\nMacular Wellness Lycopene (with a different meal than WholOmega and Astaxanthin)\n\nMacular Wellness Astaxanthin (with a different meal than WholOmega and Lycopene)\n\nLipid Cleanse capsules - with meals\n\nLipid Zyme capsules - between meals \n\nWholOmega capsules (4/day with the heaviest meal, and separate from the Macular Wellness formulas)\n\nIf you are having trouble with night vision, take our Night Vision formula.\n\nIf your Macular Pigment Optical Density (MPOD) test is low, add the appropriate Macular Wellness formulation with the carotenoid that the body stores in the area(s) of the retina showing visual or tissue changes. The fovea is responsible for sharp visual acuity better than 20/60. Any distortion of vision can be mapped with an Amsler Grid to track the location to the Parafoveal or outer Macula area. Some tests can distinguish between low Lutein and low levels of the other macular carotenoids.\n\nMacula: Macular Wellness Lutein\n\nParafovea: Macular Wellness Zeaxanthin\n\nFovea: Macular Wellness Meso-Zeaxanthin\n\nIf your Macular Degeneration is moderately advanced, or already progressed into the wet stage, please also apply for consultation with us to develop an individualized program.\n\nIf there is scar tissue in the retina, add Clear the Way capsules between meals.\n\nIf there is leakage of fluids in the retina or the growth of new blood vessels, consider adding AngiogenX in consultation with your trusted source of health and wellness guidance. Avoid taking AngiogenX before, during, and after surgeries or after any other trauma or tissue damage that requires cicatrization (wound healing) and growth of new blood vessels in the process of repair.",
       "ingredients": [],
       "ingredients_source": "manual",
-      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md."
+      "enrichment_note": "Section C: marked as bundle (multi-product monthly program), not a single formula. Source: Glen's Products-Worklist.md.",
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_component_slugs": [
+        {
+          "slug": "macular-wellness-lycopene",
+          "qty": 1
+        },
+        {
+          "slug": "macular-wellness-astaxanthin",
+          "qty": 1
+        },
+        {
+          "slug": "lipid-cleanse",
+          "qty": 1
+        },
+        {
+          "slug": "lipid-zyme",
+          "qty": 1
+        },
+        {
+          "slug": "wholomega",
+          "qty": 1
+        }
+      ]
     },
     "seaaminos": {
       "name": "SeaAminos",
@@ -18825,7 +18934,9 @@
       "regular_cents": 4000,
       "description": "build up 1 drop a day to 15 drops stirred into a little water without touching metal daily on rising",
       "bottle_type": "30ml",
-      "aliases": ["BFA"]
+      "aliases": [
+        "BFA"
+      ]
     },
     "pl-polarity-infoceutical": {
       "name": "PL Polarity Infoceutical",
@@ -19941,6 +20052,129 @@
       "regular_cents": 8000,
       "description": "1 scoop 3 times a day in drinks",
       "bottle_type": "120 caps"
+    },
+    "crystalline-lens-program": {
+      "name": "Crystalline Lens Program",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_components": [
+        "Crystalline Clarity",
+        "Clear Lens Eye Drops",
+        "Clarity",
+        "Golden Book",
+        "Crucifer Complex"
+      ],
+      "bundle_component_slugs": [
+        {
+          "slug": "crystalline-clarity",
+          "qty": 1
+        },
+        {
+          "slug": "clear-lens-eye-drops-aces-cat-eye-drops",
+          "qty": 1
+        },
+        {
+          "slug": "clarity",
+          "qty": 1
+        },
+        {
+          "slug": "golden-book",
+          "qty": 1
+        },
+        {
+          "slug": "crucifer-complex",
+          "qty": 1
+        }
+      ],
+      "bundle_description": "A monthly supply supporting crystalline lens health and clarity: Crystalline Clarity, Clear Lens Eye Drops, Clarity, Golden Book, and Crucifer Complex.",
+      "price_cents": 31486
+    },
+    "scar-reduction-program": {
+      "name": "Scar Reduction Program",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": true,
+      "bundle_components": [
+        "Scar Silk",
+        "Scar Solve",
+        "Vitamin E Spectrum",
+        "MSM Syntropy Powder"
+      ],
+      "bundle_component_slugs": [
+        {
+          "slug": "scar-silk",
+          "qty": 1
+        },
+        {
+          "slug": "scar-solve",
+          "qty": 1
+        },
+        {
+          "slug": "vitamin-e-spectrum",
+          "qty": 1
+        },
+        {
+          "slug": "msm-syntropy-powder",
+          "qty": 1
+        }
+      ],
+      "bundle_description": "Internal and external scar-tissue support: Scar Silk, Scar Solve, Vitamin E Spectrum, and MSM Syntropy Powder.",
+      "price_cents": 22489
+    },
+    "dental-bundle": {
+      "name": "Dental Bundle",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": false,
+      "bundle_components": [
+        "Dental Powder",
+        "Wicking Toothbrush"
+      ],
+      "bundle_component_slugs": [
+        {
+          "slug": "dental-powder",
+          "qty": 1
+        },
+        {
+          "slug": "wicking-toothbrush",
+          "qty": 2
+        }
+      ],
+      "bundle_description": "Oral-care essentials for remineralization and dental health: Dental Powder plus two Wicking Toothbrushes.",
+      "price_cents": 9892
+    },
+    "sleep-bundle": {
+      "name": "Sleep Bundle",
+      "bundle": true,
+      "price_rule": "components_less_10pct",
+      "autoship_eligible": false,
+      "bundle_components": [
+        "Brain Cleanse",
+        "Sleep Synergy",
+        "Therapeutic Nightlight",
+        "Biocompatible Nightlight"
+      ],
+      "bundle_component_slugs": [
+        {
+          "slug": "brain-cleanse",
+          "qty": 1
+        },
+        {
+          "slug": "sleep-syntropy",
+          "qty": 1
+        },
+        {
+          "slug": "therapeutic-nightlight",
+          "qty": 1
+        },
+        {
+          "slug": "biocompatible-nightlight",
+          "qty": 1
+        }
+      ],
+      "bundle_description": "Support for restful, regenerative, cleansing sleep: Brain Cleanse, Sleep Synergy, and biocompatible lighting.",
+      "price_cents": 35095
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"

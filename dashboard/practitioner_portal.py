@@ -132,6 +132,21 @@ def record_order(practitioner_id, *, invoice_id, doc_number=None, total_cents=0,
         cx.commit()
 
 
+def delete_order(invoice_id, *, db_path=None) -> int:
+    """Remove a persisted wholesale/module order row by invoice_id (e.g. a voided
+    or erroneous order). Returns the number of rows deleted. Local portal-history
+    only; does not touch QBO."""
+    if not invoice_id:
+        return 0
+    p = db_path or _db_path()
+    with sqlite3.connect(p) as cx:
+        _ensure_orders_table(cx)
+        cur = cx.execute("DELETE FROM wholesale_orders WHERE invoice_id=?",
+                         (str(invoice_id),))
+        cx.commit()
+        return cur.rowcount
+
+
 def order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
     p = db_path or _db_path()
     with sqlite3.connect(p) as cx:

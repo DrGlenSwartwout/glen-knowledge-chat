@@ -118,24 +118,6 @@ services:
           name: glen-knowledge-chat
           envVarKey: CONSOLE_SECRET
 
-  # Reconcile QBO-side invoice payments onto the orders board. portal-reorder/
-  # reorder orders carry a QBO invoice + hosted pay link; QBO payments don't sync
-  # back, so paid orders sit Unpaid until this flips them. Cron just curls the web
-  # endpoint (does the work where chat_log.db + the live QBO token live).
-  - type: cron
-    name: glen-qbo-reconcile
-    runtime: python
-    schedule: "20 * * * *"   # hourly, at :20
-    buildCommand: "true"     # stdlib-only, no deps to install
-    startCommand: python scripts/run_qbo_reconcile_cron.py
-    envVars:
-      - key: WEB_URL
-        value: https://glen-knowledge-chat.onrender.com
-      - fromService:
-          type: web
-          name: glen-knowledge-chat
-          envVarKey: CRON_SECRET
-
   # Daily testimonial-invite scan — mines recent client comms + Gmail (from known
   # clients) for positive results, adding review candidates to the Invite Queue.
   # Cross-container pattern: cron curls the web service (which holds the Gmail token + DB).

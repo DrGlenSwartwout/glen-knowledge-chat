@@ -279,28 +279,53 @@ def _refund_order_exec(params, ctx):
     if amount <= 0:
         raise ValueError("a positive amount is required")
     invoice_id = params.get("invoice_id")
-    if not invoice_id and params.get("order_id"):
+    order = None
+    if params.get("order_id"):
         from dashboard.orders import get_order
         order = get_order(cx, int(params["order_id"]))
-        if not order:
+        if not order and not invoice_id:
             raise ValueError(f"order #{params['order_id']} not found")
-        invoice_id = order.get("external_ref")
+        if order and not invoice_id:
+            invoice_id = order.get("external_ref")
     if not invoice_id:
         raise ValueError("invoice_id or order_id required")
+    # Paid-only orders key external_ref = a checkout token (no QBO invoice); resolve
+    # the order so we can fall back to email-based customer resolution.
+    if order is None and cx is not None:
+        try:
+            from dashboard.orders import find_order_by_external_ref
+            order = find_order_by_external_ref(cx, invoice_id)
+        except Exception:
+            order = None
+
     inv = qb.get_invoice(str(invoice_id))
-    if not inv:
+    if inv:
+        customer_id = (inv.get("CustomerRef") or {}).get("value")
+        description = params.get("reason") or f"Refund for invoice {invoice_id}"
+    elif order and (order.get("email") or "").strip():
+        # Paid-only order: no QBO invoice. The customer that booked the SalesReceipt
+        # is find_or_create_customer(email) (idempotent -> same customer). Record a
+        # money-out RefundReceipt against it. Works even if qbo_sales_receipt_id is
+        # the 'PENDING' sentinel (we only need the customer).
+        cust = qb.find_or_create_customer(order.get("email"), order.get("name", ""))
+        customer_id = cust.get("Id")
+        _sr = order.get("qbo_sales_receipt_id")
+        description = params.get("reason") or (
+            f"Refund for order {invoice_id}"
+            + (f" (SalesReceipt {_sr})" if _sr and _sr != "PENDING" else ""))
+    else:
         raise ValueError(f"invoice {invoice_id} not found")
-    customer_id = (inv.get("CustomerRef") or {}).get("value")
     if not customer_id:
-        raise ValueError("invoice has no customer")
-    description = params.get("reason") or f"Refund for invoice {invoice_id}"
+        raise ValueError("could not resolve a QBO customer for this refund")
 
     # Resolve a Stripe PaymentIntent: explicit param, else from the captured order.
     pi = (params.get("stripe_payment_intent") or "").strip()
     if not pi and cx is not None:
         try:
-            from dashboard.orders import find_order_by_external_ref
-            o = find_order_by_external_ref(cx, invoice_id)
+            o = order
+            if o is None:
+                from dashboard.orders import find_order_by_external_ref
+                o = find_order_by_external_ref(cx, invoice_id)
             pi = (o or {}).get("stripe_payment_intent") or ""
         except Exception:
             pi = ""

@@ -232,3 +232,26 @@ def test_post_authorized_save_persists(wired):
     assert saved["condition_key"] == CONDITION_KEY
     assert saved["items"] == [{"slug": "wholomega", "name": "WholOmega", "dose": "1/day"}]
     assert saved["note"] == "start low"
+
+
+def test_composer_default_false_unchecks_but_keeps_base(wired, monkeypatch):
+    app_module, db_path = wired
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        condition_programs.upsert(
+            cx, CONDITION_KEY, "Dry AMD Support", False,
+            items=[{"slug": "wholomega", "name": "WholOmega"}],
+            modifiers=[
+                {"when": "drusen", "action": "add", "source": "diagnosis-implied",
+                 "client_default": True,
+                 "items": [{"slug": "drusen-support", "name": "Drusen Support"}]},
+                {"when": "scar", "action": "add", "source": "diagnosis-implied",
+                 "client_default": True, "composer_default": False,
+                 "items": [{"slug": "scar-solve", "name": "Scar Solve"}]},
+            ])
+    client = app_module.app.test_client()
+    r = client.get(f"/api/practitioner/condition-program/{EMAIL}")
+    cands = {c["slug"]: c for c in r.get_json()["candidates"]}
+    assert cands["wholomega"]["checked"] is True          # base always checked
+    assert cands["drusen-support"]["checked"] is True      # composer_default absent -> client_default
+    assert cands["scar-solve"]["checked"] is False         # composer_default False -> unchecked candidate

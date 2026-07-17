@@ -478,6 +478,37 @@ function supportProgramBodyHtml(sp){
   if(!rows) rows = `<p class="muted">No program items yet.</p>`;
   return `${consult}${rows}`;
 }
+// Full support-program card (Task 3): wraps supportProgramBodyHtml with the card
+// chrome, the client-reported facts checklist (e.g. on_areds2 — sp.client_facts,
+// added by the server alongside the resolved program), and the add-to-invoice
+// button. Factored into its own builder so the delegated .cf-toggle change
+// handler below can re-render the whole card in place from the server's
+// re-resolved program, without touching the rest of the page.
+// Whether the client has already queued their program onto an invoice this page
+// load. Tracked at module scope so the .cf-toggle live re-render (which rebuilds
+// the card via outerHTML) preserves the added state instead of resetting the
+// button to enabled and dropping the confirmation.
+const SP_INVOICE_ADDED_MSG = "Added to your next invoice — Rae will finalize it.";
+let spInvoiceAdded = false;
+function supportProgramCardHtml(sp){
+  sp = sp || {};
+  const facts = Array.isArray(sp.client_facts) ? sp.client_facts : [];
+  const factRows = facts.map(f => `
+    <label class="cf-row" style="display:flex;gap:.5rem;align-items:flex-start;margin:.5rem 0">
+      <input type="checkbox" class="cf-toggle" data-key="${esc(f.key)}"${f.value ? " checked" : ""}>
+      <span><span>${esc(f.label||"")}</span>${f.hint ? `<span class="muted" style="display:block;font-size:.9em">${esc(f.hint)}</span>` : ""}</span>
+    </label>`).join("");
+  const factMsg = factRows ? `<p class="small cf-msg" style="margin:.3rem 0 0" hidden></p>` : "";
+  const addBtn = sp.consult_recommended ? "" :
+    `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem"${spInvoiceAdded ? " disabled" : ""}>Add my program to my invoice</button>
+     <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem"${spInvoiceAdded ? "" : " hidden"}>${spInvoiceAdded ? SP_INVOICE_ADDED_MSG : ""}</p>`;
+  return `<div class="card support-program-card">
+      <h2>Your ${esc(sp.label || "")} Support Program</h2>
+      ${supportProgramBodyHtml(sp)}
+      ${factRows}${factMsg}
+      ${addBtn}
+    </div>`;
+}
 // Life Stress essence card body (Task 6): essences matched to the emotional/stress
 // patterns found in this client's scan (E4L + journal), flag-gated at the card block
 // below (d.life_stress_enabled). Each essence links to its product page when a URL
@@ -831,6 +862,62 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+// on_areds2 (and future client-reported facts): POST the toggle, re-render the
+// support-program card from the returned re-resolved program so items update live.
+// Delegated once on document, same reasoning as the Family Plan listener above —
+// the checkboxes are injected via render()'s innerHTML (and re-injected by this
+// handler's own outerHTML swap), so a per-render listener would stack.
+document.addEventListener("change", function(ev){
+  const cb = ev.target;
+  if (!cb || !cb.classList || !cb.classList.contains("cf-toggle")) return;
+  const card = cb.closest(".support-program-card");
+  const msg = card && card.querySelector(".cf-msg");
+  if (msg){ msg.hidden = false; msg.textContent = "Saving…"; }
+  fetch(`/api/portal/${encodeURIComponent(token)}/client-fact`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({key: cb.getAttribute("data-key"), value: cb.checked})
+  }).then(r => r.json()).then(res => {
+    if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
+    if (card && res.support_program) {
+      card.outerHTML = supportProgramCardHtml(res.support_program);
+    } else if (msg) {
+      msg.hidden = true; msg.textContent = "";  // nothing to re-render; clear "Saving…"
+    }
+  }).catch(() => {
+    cb.checked = !cb.checked;  // revert
+    if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
+  });
+});
+
+// Add-to-invoice is delegated (not per-render) so it survives the .cf-toggle
+// live card re-render, which swaps the card's outerHTML and would otherwise
+// orphan a getElementById-bound listener. Self-contained: re-reads token,
+// ?member=, and the message element at click time.
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest ? ev.target.closest("#spAddToInvoiceBtn") : null;
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const spAddMsg = document.getElementById("spAddToInvoiceMsg");
+  if (spAddMsg) spAddMsg.hidden = true;
+  try {
+    const memberParam = new URLSearchParams(location.search).get("member");
+    const u = `/api/portal/${encodeURIComponent(token)}/support-program/add-to-invoice`
+      + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
+    const r = await fetch(u, {method:"POST"});
+    const j = await r.json().catch(()=>null);
+    if (r.ok && j && j.ok) {
+      spInvoiceAdded = true;
+      if (spAddMsg){ spAddMsg.textContent = SP_INVOICE_ADDED_MSG; spAddMsg.hidden = false; }
+    } else {
+      if (spAddMsg){ spAddMsg.textContent = "Something went wrong — please try again."; spAddMsg.hidden = false; }
+      btn.disabled = false;
+    }
+  } catch(e) {
+    if (spAddMsg){ spAddMsg.textContent = "Something went wrong — please try again."; spAddMsg.hidden = false; }
+    btn.disabled = false;
+  }
+});
+
 function render(d, v){
   d = d || {};
   // Premium element backdrop: key the Glendalf scene off the member's deficient
@@ -992,6 +1079,10 @@ function render(d, v){
         style="width:100%;min-height:640px;height:80vh;border:0;border-radius:12px"></iframe>
     </div>`;
   }
+
+  html += `<div class="card quiet"><h2>Body Map: Iris &amp; Sclera</h2>
+    <p class="muted small" style="margin:.3rem 0 .7rem">Explore the map of the iris and sclera, or map the zones onto a photo of your own eye.</p>
+    <a class="btn full" href="/body-map">Open the Body Map</a></div>`;
 
   // Account snapshot — always shown when we have an identity.
   if(v && v.account){
@@ -1400,13 +1491,7 @@ function render(d, v){
   // gated on coverage/review — the server endpoint is open to any tagged client,
   // so the button always shows alongside the card.
   if (d.support_programs_enabled && d.support_program) {
-    const sp = d.support_program;
-    html += `<div class="card support-program-card">
-      <h2>Your ${esc(sp.label || "")} Support Program</h2>
-      ${supportProgramBodyHtml(sp)}
-      ${sp.consult_recommended ? "" : `<button type="button" class="btn" id="spAddToInvoiceBtn" style="margin-top:.7rem">Add my program to my invoice</button>
-      <p class="small" id="spAddToInvoiceMsg" style="margin-top:.4rem" hidden></p>`}
-    </div>`;
+    html += supportProgramCardHtml(d.support_program);
   }
 
   // Life Stress essence card (Task 6, flag-gated server-side): essences matched to
@@ -2114,46 +2199,6 @@ function render(d, v){
         ffAddMsg.hidden = false;
       }
       ffAddBtn.disabled = false;
-    }
-  });
-
-  // Support-program "Add my program to my invoice" button (Slice 4b, the paid
-  // money-write step). Unlike the FF add-to-invoice button, this one is open to
-  // ANY client with a resolved support program — no covered/reviewed gate — so
-  // it's shown whenever the card itself renders (see render() above). Carries
-  // ?member= so a caregiver viewing a member's tab queues THAT member's program.
-  const spAddBtn = document.getElementById("spAddToInvoiceBtn");
-  if(spAddBtn) spAddBtn.addEventListener("click", async ()=>{
-    if(spAddBtn.disabled) return;
-    spAddBtn.disabled = true;
-    const spAddMsg = document.getElementById("spAddToInvoiceMsg");
-    if(spAddMsg) spAddMsg.hidden = true;
-    try{
-      const memberParam = new URLSearchParams(location.search).get("member");
-      const u = `/api/portal/${encodeURIComponent(token)}/support-program/add-to-invoice`
-        + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
-      const r = await fetch(u, {method:"POST"});
-      const j = await r.json().catch(()=>null);
-      if(r.ok && j && j.ok){
-        if(spAddMsg){
-          spAddMsg.textContent = "Added to your next invoice — Rae will finalize it.";
-          spAddMsg.hidden = false;
-        }
-        // stays disabled on success — the idempotent server would just return the
-        // same order_ref again, but there's no reason to invite a repeat click.
-      } else {
-        if(spAddMsg){
-          spAddMsg.textContent = "Something went wrong — please try again.";
-          spAddMsg.hidden = false;
-        }
-        spAddBtn.disabled = false;
-      }
-    } catch(e){
-      if(spAddMsg){
-        spAddMsg.textContent = "Something went wrong — please try again.";
-        spAddMsg.hidden = false;
-      }
-      spAddBtn.disabled = false;
     }
   });
 

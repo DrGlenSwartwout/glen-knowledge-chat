@@ -9,12 +9,18 @@ import sqlite3
 from dashboard import subscriptions as _subs
 from dashboard import biofield_store as _bf
 from dashboard import prepay as _prepay
+from dashboard import membership_products as _mp
 
 MEMBERSHIP_PRICE_CENTS = _prepay.MONTHLY_ANCHOR_CENTS
 BIOFIELD_PRICE_CENTS = 30000
 
 
 def _owns_group(cx, email):
+    try:
+        if _mp.owns_group(cx, email):
+            return True
+    except Exception:
+        pass
     try:
         _subs.init_subscriptions_table(cx)
         _subs.migrate_add_membership_columns(cx)

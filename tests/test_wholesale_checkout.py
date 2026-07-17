@@ -102,16 +102,22 @@ def env(tmp_path, monkeypatch):
 # ── build_order ───────────────────────────────────────────────────────────────
 
 def test_build_order_certified_two_boxes_no_credit(env):
+    """Paid-only (Stage 4): build_order creates NO QBO invoice/customer -- it
+    returns a checkout_ref token + a line-faithful qbo_payload for the route to
+    persist and the return-handler to book once payment is confirmed."""
     out = env["wc"].build_order([{"slug": "x", "qty": 40}], env["prac"],
                                 db_path=env["db"], catalog=env["catalog"])
     assert out["ok"] is True
     assert out["blended_unit_price_cents"] == 2500     # certified floor
     assert out["subtotal_cents"] == 100000
     assert out["credit_redeemed_cents"] == 0
-    assert len(env["qb"].created) == 1
+    assert env["qb"].created == []                      # no invoice created
     assert env["qb"].discounts == []                    # no discount applied
-    line = env["qb"].created[0]["lines"][0]
+    assert out["customer_id"] == ""
+    assert isinstance(out["invoice_id"], str) and len(out["invoice_id"]) == 32
+    line = out["qbo_payload"]["lines"][0]
     assert line["item_id"] == "55"
+    assert out["qbo_payload"]["discount_cents"] == 0
 
 
 def test_build_order_applies_credit_capped_at_half(env):
@@ -121,10 +127,12 @@ def test_build_order_applies_credit_capped_at_half(env):
     assert out["ok"] is True
     # 50% of the $1000 order = $500 redeemed (balance had $1000)
     assert out["credit_redeemed_cents"] == 50000
-    assert env["qb"].discounts == [("INV1", 50000)]
+    assert env["qb"].discounts == []                    # no QBO discount call
+    assert out["qbo_payload"]["discount_cents"] == 50000
+    assert out["total"] == round((100000 - 50000) / 100.0, 2)
     assert env["wallet"].get_balance_cents(PID) == 50000   # halved
-    # ledger has the spend_order keyed to the invoice
-    assert any(r["entry_type"] == "spend_order" and r["qbo_invoice_id"] == "INV1"
+    # ledger has the spend_order keyed to the checkout_ref token (not an invoice)
+    assert any(r["entry_type"] == "spend_order" and r["qbo_invoice_id"] == out["invoice_id"]
                for r in env["store"]["ledger"])
 
 
@@ -161,11 +169,42 @@ def test_build_order_empty_cart(env):
 
 
 # ── build_module_order (training-first redemption, up to 100%) ─────────────────
+# Paid-only (Stage 4, Task 2): no QBO invoice/customer/discount at checkout time --
+# a checkout_ref token + line-faithful qbo_payload are returned instead (see
+# tests/test_wholesale_module_paid_only.py for the full conversion coverage).
 
 def test_build_module_order_redeems_up_to_full_tuition(env):
     env["wallet"].earn_dropship(PID, 50)               # +$1000 credit
     out = env["wc"].build_module_order(env["prac"], "module-1", today=datetime(2026, 6, 9))
     assert out["ok"] is True
     assert out["credit_redeemed_cents"] == 29700        # full $297 covered
-    assert env["qb"].discounts == [("INV1", 29700)]
+    assert env["qb"].created == []                      # no invoice created
+    assert env["qb"].discounts == []                    # no QBO discount call
+    assert out["customer_id"] == ""
+    assert isinstance(out["invoice_id"], str) and len(out["invoice_id"]) == 32
+    assert out["qbo_payload"]["discount_cents"] == 29700
     assert env["wallet"].get_balance_cents(PID) == 70300
+
+
+# ── quote_module (paid-only: no QBO invoice at signup) ─────────────────────────
+
+def test_quote_module_is_paid_only_no_invoice(env):
+    """A coach's module quote computes what's owed WITHOUT creating a QBO invoice
+    or redeeming credit (that happens only when payment is recorded)."""
+    out = env["wc"].quote_module(env["prac"], "module-1")
+    assert out["ok"] is True
+    assert out["tuition_cents"] == 29700
+    assert out["amount_due_cents"] == out["tuition_cents"] - out["credit_available_cents"]
+    assert out["total"] == round(out["amount_due_cents"] / 100.0, 2)
+    assert env["qb"].created == []      # invariant: no A/R invoice minted
+    assert env["qb"].discounts == []
+
+
+def test_quote_module_previews_credit_without_spending(env):
+    env["wallet"].earn_dropship(PID, 50)               # +$1000 credit balance
+    before = env["wallet"].get_balance_cents(PID)
+    out = env["wc"].quote_module(env["prac"], "module-1")
+    assert out["credit_available_cents"] > 0           # some credit previewed
+    assert out["amount_due_cents"] == 29700 - out["credit_available_cents"]
+    assert env["wallet"].get_balance_cents(PID) == before   # NOT redeemed
+    assert env["qb"].created == []                     # still no invoice

@@ -27,6 +27,8 @@ def _build_cx():
 # ---------------------------------------------------------------------------
 
 def test_ship_charges_and_activates(monkeypatch):
+    """Paid-only (Pattern II): no QBO invoice is created; the charge amount is
+    subtotal+shipping (never GET), and the order is keyed on the Stripe charge id."""
     cx = _build_cx()
     sid = subs.create_founding_reservation(
         cx, email="f@x.com", stripe_customer_id="cus_1",
@@ -40,22 +42,28 @@ def test_ship_charges_and_activates(monkeypatch):
     monkeypatch.setattr(appmod, "_price_cart", lambda items, *, ship, subscriber_tier_pct=None, **k: {
         "qbo_lines": [{"name": "Neuro Magnesium", "amount": 80.0, "qty": 1}],
         "shipping_cents": 600, "discount_cents": 0, "points_redeemed_cents": 0,
+        "priced": {"total_cents": 8600, "get_cents": 0, "subtotal_cents": 8600},
     })
     monkeypatch.setattr(appmod.stripe_pay, "charge_off_session",
                         lambda *a, **k: {"status": "succeeded", "id": "pi_1"})
+
+    def _boom_invoice(*a, **k):
+        raise AssertionError("paid-only: _ship_founding_reservation must not call create_invoice")
+
     monkeypatch.setattr(appmod.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
-    monkeypatch.setattr(appmod.qb, "create_invoice",
-                        lambda *a, **k: {"Id": "INV1", "TotalAmt": 86.0})
+    monkeypatch.setattr(appmod.qb, "create_invoice", _boom_invoice)
     orders = []
     monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: orders.append(kw))
 
     res = appmod._ship_founding_reservation(cx, sub)
 
     assert res["charged"] is True
+    assert res["amount_cents"] == 9200  # subtotal(8600) + shipping(600), GET excluded
     row = subs.get(cx, sid)
     assert row["founding_state"] == "active" and row["order_count"] == 1
     assert row["next_charge_date"] != "2999-01-01"
     assert orders and orders[0]["source"] == "reorder"   # qualifies for delivery->coaching
+    assert orders[0]["external_ref"] == "pi_1"  # keyed on the Stripe charge id, not an invoice id
 
 
 # ---------------------------------------------------------------------------

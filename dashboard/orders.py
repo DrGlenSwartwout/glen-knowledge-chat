@@ -108,6 +108,13 @@ def init_orders_table(cx):
         # console "Print invoice" reprint path does not touch this column —
         # only the customer-facing send does.
         "ALTER TABLE orders ADD COLUMN invoice_token TEXT",
+        # Stage 2 (QBO paid-only): the exact QBO line payload captured at checkout
+        # ({"lines":[...],"discount_cents":N,"tax_cents":N}) so a line-faithful
+        # Sales Receipt can be booked when payment confirms.
+        "ALTER TABLE orders ADD COLUMN qbo_lines_json TEXT",
+        # The QBO SalesReceipt Id booked for this order (paid-only). NULL until
+        # payment books it; presence is the idempotency marker (never re-book).
+        "ALTER TABLE orders ADD COLUMN qbo_sales_receipt_id TEXT",
     ):
         try:
             cx.execute(ddl)
@@ -421,6 +428,39 @@ def orders_in_hold_group(cx, hold_group_id):
 def set_order_stripe_pi(cx, order_id, payment_intent):
     cur = cx.execute("UPDATE orders SET stripe_payment_intent=?, updated_at=? WHERE id=?",
                      (payment_intent, _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_qbo_lines(cx, external_ref, payload):
+    """Store the exact QBO line payload for the order with this external_ref, so the
+    paid handler can book a line-faithful Sales Receipt. Returns False if no such row."""
+    cur = cx.execute("UPDATE orders SET qbo_lines_json=?, updated_at=? WHERE external_ref=?",
+                     (json.dumps(payload), _now(), str(external_ref)))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def set_order_sales_receipt_id(cx, order_id, sales_receipt_id):
+    """Stamp the booked QBO SalesReceipt Id onto an order (idempotency marker)."""
+    cur = cx.execute("UPDATE orders SET qbo_sales_receipt_id=?, updated_at=? WHERE id=?",
+                     (str(sales_receipt_id), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
+def claim_sales_receipt_slot(cx, order_id):
+    """Atomically claim the QBO booking slot for an order: qbo_sales_receipt_id
+    NULL -> 'PENDING' in a single conditional UPDATE. Returns True only for the
+    caller that won the transition (it MUST then book exactly one Sales Receipt and
+    overwrite 'PENDING' with the real id via set_order_sales_receipt_id). Returns
+    False if the slot is already claimed or booked -- that caller must NOT book. This
+    is what prevents a double Sales Receipt on a checkout-return refresh, a
+    webhook+redirect race, or an alt-pay+card race."""
+    cur = cx.execute(
+        "UPDATE orders SET qbo_sales_receipt_id='PENDING', updated_at=? "
+        "WHERE id=? AND qbo_sales_receipt_id IS NULL",
+        (_now(), order_id))
     cx.commit()
     return cur.rowcount > 0
 
@@ -879,6 +919,18 @@ def _record_payment_exec(params, ctx):
             settle_dispensary_margin(_o, _o.get("external_ref"))
         except Exception as _de:
             print(f"[dispensary] altpay settle (l2+margin) skipped: {_de!r}", flush=True)
+    # Book ONE line-faithful QBO Sales Receipt now that payment is confirmed (alt-pay
+    # parity with the Stripe-return path). Local import -- qbo_sale imports this module,
+    # so a module-level import here would be circular; this function-scoped import is
+    # safe since both modules are already fully loaded by call time. Best-effort +
+    # idempotent (via qbo_sales_receipt_id) + a harmless no-op for orders with no stored
+    # qbo_lines_json (invoice-based kinds not yet converted to paid-only).
+    try:
+        from . import qbo_sale as _qsale
+        if _o:
+            _qsale.book_sale_on_payment(cx, _o)
+    except Exception as _qe:
+        print(f"[orders] qbo sale booking skipped for #{oid}: {_qe!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"

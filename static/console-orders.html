@@ -55,6 +55,9 @@
   .pay-badge.unpaid { color:#b04a2f; }
   .pay-badge.claimed { color:#8a6d2f; }
   .pay-badge.credit { color:#1F5A4D; background:#e7f3ee; }
+  .led-bal { font-weight:600; }
+  .led-bal.owed { color:var(--gold); }      /* ledger balance still owed */
+  .led-bal.settled { color:var(--green); }   /* fully paid / overpaid (credit) */
   details.fulfill { margin-top:8px; font-size:12px; border-top:1px solid var(--border); padding-top:7px; }
   details.fulfill summary { cursor:pointer; color:var(--muted); font-size:11px; }
   .ffline { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:6px 0; color:var(--cream); }
@@ -237,7 +240,12 @@
       + '<div class="meta"><span class="onum">#'+Number(o.id)+'</span>'
         + (o.external_ref?' &middot; '+esc(o.external_ref):'')
         + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
-        + (total?' &middot; '+total:'')+'</div>'
+        + (total?' &middot; '+total:'')
+        + (o.ledger_balance_cents!=null
+            ? ' &middot; <span class="led-bal '+(o.ledger_balance_cents>0?'owed':'settled')+'">Paid $'
+              +((o.ledger_paid_cents||0)/100).toFixed(2)+' &middot; Bal $'+(o.ledger_balance_cents/100).toFixed(2)+'</span>'
+            : '')
+        +'</div>'
       + '</div>';
     var giftLines = (o.reward_gifts||[]).map(function(g){
       return '<div class="meta reward-gift">&#127873; Include: '+esc(g.gift_label||g.gift_sku||'')+'</div>';
@@ -387,15 +395,27 @@
         + ' · <a href="/console/orders" style="color:#7c9cff">clear</a>';
       board.appendChild(note);
     }
-    // Households column (leftmost): one card per open combined shipment, built
-    // purely from the orders that carry a group_shipment_id.
+    // Households columns: the active "Households" column (leftmost) holds shipments
+    // with at least one still-open member; a shipment whose every live member is
+    // done/delivered moves to a separate "Households Done" column appended after the
+    // lanes (below). Built purely from the orders that carry a group_shipment_id; a
+    // shipment whose every member is cancelled is dropped entirely.
     var groups = {};
     orders.forEach(function(o){ if(o.group_shipment_id!=null){ (groups[o.group_shipment_id]=groups[o.group_shipment_id]||[]).push(o); } });
-    var gids = Object.keys(groups);
-    if (gids.length){
+    function _shipmentDone(ms){
+      var live = ms.filter(function(m){ return m.status!=='cancelled'; });
+      return live.length>0 && live.every(function(m){ return m.status==='done'||m.status==='delivered'; });
+    }
+    var openGids = [], doneGids = [];
+    Object.keys(groups).forEach(function(id){
+      var live = groups[id].filter(function(m){ return m.status!=='cancelled'; });
+      if (!live.length) return;                 // all members cancelled -> drop
+      (_shipmentDone(groups[id]) ? doneGids : openGids).push(id);
+    });
+    if (openGids.length){
       var gcol = document.createElement('div'); gcol.className='col';
-      gcol.innerHTML = '<h2>Households <span class="n">'+gids.length+'</span></h2>'
-        + gids.map(function(id){ return shipmentCardHtml(id, groups[id]); }).join('');
+      gcol.innerHTML = '<h2>Households <span class="n">'+openGids.length+'</span></h2>'
+        + openGids.map(function(id){ return shipmentCardHtml(id, groups[id]); }).join('');
       board.appendChild(gcol);
     }
     LANES.forEach(function(l){
@@ -406,6 +426,15 @@
         + inLane.map(cardHtml).join('');
       board.appendChild(col);
     });
+    // Households Done: completed combined shipments, kept as one grouped card
+    // instead of scattering members into the Done lane. Appended last so the grid
+    // wraps it to the bottom row, next to Done.
+    if (doneGids.length){
+      var dcol = document.createElement('div'); dcol.className='col';
+      dcol.innerHTML = '<h2>Households Done <span class="n">'+doneGids.length+'</span></h2>'
+        + doneGids.map(function(id){ return shipmentCardHtml(id, groups[id]); }).join('');
+      board.appendChild(dcol);
+    }
     renderBanner();
     updateBar();
     maybeHighlight();
