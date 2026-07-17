@@ -138,9 +138,10 @@ def cc_recipients_for(cx, member_email):
 
 def caregivers_for(cx, member_email):
     rows = cx.execute(
-        "SELECT primary_email, share_consent FROM household_members WHERE member_email=? "
-        "ORDER BY created_at, id", (_norm(member_email),)).fetchall()
-    return [{"primary_email": r[0], "share_consent": int(r[1] if r[1] is not None else 1)} for r in rows]
+        "SELECT primary_email, share_consent, relationship FROM household_members "
+        "WHERE member_email=? ORDER BY created_at, id", (_norm(member_email),)).fetchall()
+    return [{"primary_email": r[0], "share_consent": int(r[1] if r[1] is not None else 1),
+             "relationship": r[2] or ""} for r in rows]
 
 
 def same_household(cx, a, b):

@@ -16879,7 +16879,8 @@ def _portal_tos_agreed(primary_email):
             caregivers = _hh.caregivers_for(cx, primary_email)   # a read; fetch then release
         for cg in caregivers:
             # is_member opens its own _db_lock connection, so do not nest it inside cx.
-            if cg["share_consent"] and is_member(email=cg["primary_email"]):
+            if (_hh.is_dependent(cg["relationship"])
+                    and cg["share_consent"] and is_member(email=cg["primary_email"])):
                 return True
     except Exception as _e:
         print(f"[dependent-tos] {_e!r}", flush=True)
