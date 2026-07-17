@@ -71,7 +71,8 @@
 
   function currentZones() {
     if (!state.payload) return [];
-    return state.payload.zones.filter(z => zoneSide(z) === state.eye &&
+    return state.payload.zones.filter(z =>
+      (z.bilateral || zoneSide(z) === state.eye) &&
       (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
   }
 
@@ -101,24 +102,39 @@
     }
     currentZones().forEach(z => {
       const geo = z.geometry || {};
-      if (geo.type === "point") {
-        const s = mapFn({ x: geo.x, y: geo.y });
-        const col = groupColor(z);
+      const mir = z.bilateral && zoneSide(z) !== state.eye;         // mirror the contralateral side
+      const N = (x, y) => mapFn({ x: mir ? 1 - x : x, y: y });
+      const col = groupColor(z);
+      function addLabel(sx, sy) {
+        const onRight = sx > 300;
+        const t = document.createElementNS(svgNS, "text");
+        t.setAttribute("x", (sx + (onRight ? -8 : 8)).toFixed(1));
+        t.setAttribute("y", (sy + 3).toFixed(1));
+        t.setAttribute("text-anchor", onRight ? "end" : "start");
+        t.setAttribute("class", "bm-label"); t.dataset.id = z.id;
+        t.textContent = z.anatomy; t.addEventListener("click", () => selectZone(z));
+        svg.appendChild(t);
+      }
+      if (geo.type === "polygon") {
+        const pts = geo.points || [];
+        const d = pts.map((p, i) => { const s = N(p[0], p[1]); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", d); path.setAttribute("class", "bm-zone bm-area"); path.dataset.id = z.id;
+        path.setAttribute("fill", col); path.setAttribute("fill-opacity", "0.35");
+        path.setAttribute("stroke", col); path.setAttribute("stroke-width", "1.2");
+        path.addEventListener("click", () => selectZone(z));
+        svg.appendChild(path);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const c = N(cx, cy); addLabel(c.x, c.y);
+      } else if (geo.type === "point") {
+        const s = N(geo.x, geo.y);
         const dot = document.createElementNS(svgNS, "circle");
         dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 5);
         dot.setAttribute("class", "bm-zone bm-point"); dot.dataset.id = z.id;
         dot.setAttribute("fill", col); dot.setAttribute("stroke", "#fff"); dot.setAttribute("stroke-width", "1");
         dot.addEventListener("click", () => selectZone(z));
-        svg.appendChild(dot);
-        const onRight = s.x > 300;
-        const label = document.createElementNS(svgNS, "text");
-        label.setAttribute("x", (s.x + (onRight ? -8 : 8)).toFixed(1));
-        label.setAttribute("y", (s.y + 3).toFixed(1));
-        label.setAttribute("text-anchor", onRight ? "end" : "start");
-        label.setAttribute("class", "bm-label"); label.dataset.id = z.id;
-        label.textContent = z.anatomy;
-        label.addEventListener("click", () => selectZone(z));
-        svg.appendChild(label);
+        svg.appendChild(dot); addLabel(s.x, s.y);
       } else {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
