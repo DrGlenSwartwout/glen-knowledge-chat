@@ -129,6 +129,7 @@ def build_payload(system):
         "germ_layers": data.get("germ_layers", []),
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
+        "outline_side": data.get("outline_side", ""),
         "anchors": data.get("anchors", []),
         "side_noun": data.get("side_noun", ""),
         "group_noun": data.get("group_noun", ""),
