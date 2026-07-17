@@ -25882,6 +25882,29 @@ def practitioner_checkout_return():
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[stripe-return] pi capture: {_e!r}", flush=True)
+                # Paid-only wholesale/dispensary (Stage 4): no QBO invoice (cid==""),
+                # so mark the order paid and book ONE Sales Receipt. Guarded on
+                # qbo_lines_json so legacy invoice-based orders are untouched;
+                # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
+                if inv:
+                    try:
+                        _pcx = _sqlite3.connect(LOG_DB); _pcx.row_factory = _sqlite3.Row
+                        try:
+                            _po = _bos_orders.find_order_by_external_ref(_pcx, inv)
+                            if _po and _po["qbo_lines_json"] and not _po["qbo_sales_receipt_id"]:
+                                _pi = sess.get("payment_intent")
+                                if _pi:
+                                    _bos_orders.set_order_stripe_pi(_pcx, _po["id"], _pi)
+                                _bos_orders.set_order_payment(
+                                    _pcx, _po["id"], method="card",
+                                    amount_cents=int(sess.get("amount_total") or 0))
+                                from dashboard import qbo_sale as _qs
+                                _qs.book_sale_on_payment(
+                                    _pcx, dict(_bos_orders.find_order_by_external_ref(_pcx, inv)))
+                        finally:
+                            _pcx.close()
+                    except Exception as _e:
+                        print(f"[practitioner-return] paid-only book: {_e!r}", flush=True)
         except Exception as e:
             print(f"[stripe-return] {e!r}", flush=True)
     dest = "/practitioner/portal?paid=" + paid
