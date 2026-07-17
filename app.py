@@ -12361,6 +12361,9 @@ def api_console_client_species_read():
                              "WHERE species IS NOT NULL AND lower(trim(species))<>'' "
                              "AND lower(trim(species))<>'human'").fetchone()[0]
         out = {"ok": True, "total": total, "animals": animals}
+        if (request.args.get("list") or "").strip().lower() in ("animals", "1", "true"):
+            out["animals_list"] = _cs.list_animals(cx)
+            return jsonify(out)
         if not email:
             return jsonify(out)
         rec = _cs.get(cx, email) or {"species": "", "animal_name": "", "is_animal": False}
