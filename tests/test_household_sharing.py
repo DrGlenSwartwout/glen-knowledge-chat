@@ -20,12 +20,12 @@ def test_add_member_sets_cc_from_relationship_and_consent_default():
     h.add_member(cx, "p@x.com", "rob@x.com", "Rob", "spouse")
     ms = {m["email"]: m for m in h.members_for(cx, "p@x.com")}
     assert ms["sasha@x.com"]["cc_enabled"] == 1 and ms["sasha@x.com"]["share_consent"] == 1
-    assert ms["rob@x.com"]["cc_enabled"] == 0 and ms["rob@x.com"]["share_consent"] == 1
+    assert ms["rob@x.com"]["cc_enabled"] == 0 and ms["rob@x.com"]["share_consent"] == 0  # operational word → dark until consent
 
 
 def test_can_view_requires_consent():
     cx = _cx()
-    h.add_member(cx, "p@x.com", "m@x.com", "M", "spouse")
+    h.add_member(cx, "p@x.com", "m@x.com", "M", "")   # blank = legacy shared default
     assert h.can_view(cx, "p@x.com", "m@x.com") is True       # default consented
     h.set_share_consent(cx, "p@x.com", "m@x.com", 0)
     assert h.can_view(cx, "p@x.com", "m@x.com") is False      # revoked → not viewable

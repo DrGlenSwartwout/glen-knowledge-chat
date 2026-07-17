@@ -66,7 +66,7 @@ def _seed_covered_member(tmp_db, email=MEMBER):
     never monkeypatched)."""
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
-        hh.add_member(cx, CAREGIVER, email, relationship="spouse")
+        hh.add_member(cx, CAREGIVER, email, relationship="")  # blank = legacy shared default
         fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
 
 

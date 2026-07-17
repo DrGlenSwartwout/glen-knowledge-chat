@@ -355,7 +355,7 @@ def test_load_caregivers_mixed_consent_only_returns_consented(client):
     hh.init_household_tables(cx)
     hh.add_member(cx, "auntie2@y.com", "kiddo3@y.com", label="Kiddo3", relationship="aunt")
     hh.set_share_consent(cx, "auntie2@y.com", "kiddo3@y.com", 0)
-    hh.add_member(cx, "mom2@y.com", "kiddo3@y.com", label="Kiddo3", relationship="mother")
+    hh.add_member(cx, "mom2@y.com", "kiddo3@y.com", label="Kiddo3", relationship="")  # blank = legacy shared default
     cx.close()
     j = c.get("/api/console/biofield-portal?key=test-secret&email=kiddo3@y.com").get_json()
     assert j["found"] is True

@@ -121,7 +121,7 @@ def test_covers_is_case_and_whitespace_insensitive(cx):
 
 def test_every_consented_member_is_covered_by_one_plan(cx):
     _link(cx, PET, relationship="pet")
-    _link(cx, SPOUSE, relationship="spouse")
+    _link(cx, SPOUSE, relationship="")  # blank = legacy shared default
     fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
     assert fp.covers(cx, PET) is True
     assert fp.covers(cx, SPOUSE) is True
