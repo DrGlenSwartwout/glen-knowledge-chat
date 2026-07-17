@@ -114,3 +114,41 @@ def test_preclaimed_marker_bails_before_side_effects(monkeypatch, tmp_path):
     rows = _active(db)
     assert rows == [], "no membership should be created when marker is pre-claimed"
     assert calls == [], "welcome must never fire when marker is pre-claimed"
+
+
+# ── Test 4: marker is claimed BEFORE create_membership is invoked ──────────
+#
+# Tests 1-3 above pass on both the fixed (claim-first) code and the old
+# ordering (membership created, then marker inserted), because they only
+# ever call `_grant_group_bundle` once or twice sequentially -- they never
+# observe the *moment* create_membership runs. This test does: it spies on
+# `subscriptions.create_membership` and checks, from inside the spy, whether
+# the `group_bundle_grants` marker row already exists at call time. Only the
+# claim-first ordering makes that true.
+
+def test_marker_claimed_before_create_membership(monkeypatch, tmp_path):
+    db, calls = _wire(monkeypatch, tmp_path)
+    observed = {}
+
+    real_create_membership = subs.create_membership
+
+    def spy_create_membership(cx, **kwargs):
+        marker = cx.execute(
+            "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
+            ("tok1",)).fetchone()
+        observed["marker_present_at_call"] = marker is not None
+        # Perform the real insert so the flow completes normally (membership
+        # row + welcome still fire as expected).
+        return real_create_membership(cx, **kwargs)
+
+    monkeypatch.setattr(subs, "create_membership", spy_create_membership)
+
+    appmod._grant_group_bundle(_md(), "pi_1")
+
+    assert observed.get("marker_present_at_call") is True, (
+        "group_bundle_grants marker must already be committed BEFORE "
+        "create_membership is called (claim-first ordering)")
+
+    # Sanity: the flow still completed normally through the spy.
+    assert len(_active(db)) == 1
+    assert len(calls) == 1
