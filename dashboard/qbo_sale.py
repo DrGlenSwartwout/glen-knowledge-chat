@@ -47,7 +47,8 @@ def book_sale_on_payment(cx, order):
             cust, lines,
             discount_cents=int(payload.get("discount_cents") or 0),
             tax_cents=int(payload.get("tax_cents") or 0),
-            email_to=order.get("email") or None)
+            email_to=order.get("email") or None,
+            private_note=f"order:{order.get('external_ref')}")
         sr_id = sr.get("Id")
         if sr_id:
             orders.set_order_sales_receipt_id(cx, oid, sr_id)  # 'PENDING' -> real id

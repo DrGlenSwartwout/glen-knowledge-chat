@@ -4,6 +4,11 @@
   const VIEW = 600, CX = 300, CY = 300;
   const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null };
 
+  function zoneSide(z) { return z.side || z.eye; }
+  function zoneGroup(z) { return z.group || z.germ_layer; }
+  function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
+  function isOutlineFrame() { return state.frame && state.frame !== "unit_circle"; }
+
   // clock degrees (0=12 o'clock, clockwise) -> normalized unit vector, y-down, 12=up=(0,-1)
   function clockToNormalized(deg) {
     const r = deg * Math.PI / 180;
@@ -23,7 +28,10 @@
   }
 
   // reference-frame normalized point -> reference-chart screen point
-  function refToScreen(p) { const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R }; }
+  function refToScreen(p) {
+    if (isOutlineFrame()) { return { x: p.x * VIEW, y: p.y * VIEW }; }
+    const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R };
+  }
 
   // Fit the reference-chart radius to the loaded system's data extent (iris r<=1, sclerology r_outer up to ~3).
   function computeChartR(payload) {
@@ -37,10 +45,35 @@
     return pts.map((p, i) => { const s = mapFn(p); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
   }
 
+  // Transform every coordinate pair in a normalized SVG path via mapFn, preserving the curve
+  // commands (M/L/C/S/Q/T) so the outline draws as smooth curves rather than a jagged polyline.
+  function transformPathD(d, mapFn) {
+    let out = d.replace(/([MLCSQT])([^A-Za-z]*)/gi, (m, cmd, nums) => {
+      const vals = (nums.match(/-?\d*\.?\d+/g) || []).map(Number);
+      let s = cmd.toUpperCase();
+      for (let i = 0; i + 1 < vals.length; i += 2) {
+        const p = mapFn({ x: vals[i], y: vals[i + 1] });
+        s += " " + p.x.toFixed(1) + " " + p.y.toFixed(1);
+      }
+      return s + " ";
+    });
+    if (/z\s*$/i.test(d)) out += "Z";
+    return out;
+  }
+
+  // Distinct region colors, assigned by a group's position in the payload's group list.
+  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86"];
+  function groupColor(z) {
+    const groups = groupsOf(state.payload);
+    const idx = groups.findIndex(g => g.id === zoneGroup(z));
+    return GROUP_PALETTE[(idx >= 0 ? idx : 0) % GROUP_PALETTE.length];
+  }
+
   function currentZones() {
     if (!state.payload) return [];
-    return state.payload.zones.filter(z => z.eye === state.eye &&
-      (state.activeLayers.size === 0 || state.activeLayers.has(z.germ_layer)));
+    return state.payload.zones.filter(z =>
+      (z.bilateral || zoneSide(z) === state.eye) &&
+      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
   }
 
   function renderChart() {
@@ -48,24 +81,81 @@
     const svg = document.getElementById("bm-svg");
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
-    // germ-layer rings (context)
-    (state.payload.germ_layers || []).forEach(g => {
-      [g.r_inner, g.r_outer].forEach(rr => {
-        const c = document.createElementNS(svgNS, "circle");
-        const o = mapFn({ x: 0, y: 0 }), edge = mapFn({ x: rr, y: 0 });
-        c.setAttribute("cx", o.x); c.setAttribute("cy", o.y);
-        c.setAttribute("r", Math.hypot(edge.x - o.x, edge.y - o.y));
-        c.setAttribute("fill", "none"); c.setAttribute("stroke", "#d9cfb8"); c.setAttribute("stroke-width", "1");
-        svg.appendChild(c);
+    if (isOutlineFrame()) {
+      if (state.payload.outline) {
+        const path = document.createElementNS(svgNS, "path");
+        const oMir = state.payload.outline_side && state.payload.outline_side !== state.eye;
+        const oMapFn = oMir ? (p) => mapFn({ x: 1 - p.x, y: p.y }) : mapFn;
+        path.setAttribute("d", transformPathD(state.payload.outline, oMapFn));
+        path.setAttribute("fill", "#00000008"); path.setAttribute("stroke", "#b8a678"); path.setAttribute("stroke-width", "1.5");
+        svg.appendChild(path);
+      }
+    } else {
+      (state.payload.germ_layers || []).forEach(g => {
+        [g.r_inner, g.r_outer].forEach(rr => {
+          const c = document.createElementNS(svgNS, "circle");
+          const o = mapFn({ x: 0, y: 0 }), edge = mapFn({ x: rr, y: 0 });
+          c.setAttribute("cx", o.x); c.setAttribute("cy", o.y);
+          c.setAttribute("r", Math.hypot(edge.x - o.x, edge.y - o.y));
+          c.setAttribute("fill", "none"); c.setAttribute("stroke", "#d9cfb8"); c.setAttribute("stroke-width", "1");
+          svg.appendChild(c);
+        });
       });
-    });
+    }
     currentZones().forEach(z => {
-      const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
-      path.setAttribute("class", "bm-zone");
-      path.dataset.id = z.id;
-      path.addEventListener("click", () => selectZone(z));
-      svg.appendChild(path);
+      const geo = z.geometry || {};
+      const mir = z.bilateral && zoneSide(z) !== state.eye;         // mirror the contralateral side
+      const N = (x, y) => mapFn({ x: mir ? 1 - x : x, y: y });
+      const col = groupColor(z);
+      function addLabel(sx, sy) {
+        const onRight = sx > 300;
+        const t = document.createElementNS(svgNS, "text");
+        t.setAttribute("x", (sx + (onRight ? -8 : 8)).toFixed(1));
+        t.setAttribute("y", (sy + 3).toFixed(1));
+        t.setAttribute("text-anchor", onRight ? "end" : "start");
+        t.setAttribute("class", "bm-label"); t.dataset.id = z.id;
+        t.textContent = z.anatomy; t.addEventListener("click", () => selectZone(z));
+        svg.appendChild(t);
+      }
+      if (geo.type === "ellipse") {
+        const c = N(geo.cx, geo.cy);
+        const ex = N(geo.cx + geo.rx, geo.cy), ey = N(geo.cx, geo.cy + geo.ry);
+        const el = document.createElementNS(svgNS, "ellipse");
+        el.setAttribute("cx", c.x.toFixed(1)); el.setAttribute("cy", c.y.toFixed(1));
+        el.setAttribute("rx", Math.hypot(ex.x - c.x, ex.y - c.y).toFixed(1));
+        el.setAttribute("ry", Math.hypot(ey.x - c.x, ey.y - c.y).toFixed(1));
+        el.setAttribute("class", "bm-zone bm-area"); el.dataset.id = z.id;
+        el.setAttribute("fill", col); el.setAttribute("fill-opacity", "0.35");
+        el.setAttribute("stroke", col); el.setAttribute("stroke-width", "1.2");
+        el.addEventListener("click", () => selectZone(z));
+        svg.appendChild(el); addLabel(c.x, c.y);
+      } else if (geo.type === "polygon") {
+        const pts = geo.points || [];
+        const d = pts.map((p, i) => { const s = N(p[0], p[1]); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", d); path.setAttribute("class", "bm-zone bm-area"); path.dataset.id = z.id;
+        path.setAttribute("fill", col); path.setAttribute("fill-opacity", "0.35");
+        path.setAttribute("stroke", col); path.setAttribute("stroke-width", "1.2");
+        path.addEventListener("click", () => selectZone(z));
+        svg.appendChild(path);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const c = N(cx, cy); addLabel(c.x, c.y);
+      } else if (geo.type === "point") {
+        const s = N(geo.x, geo.y);
+        const dot = document.createElementNS(svgNS, "circle");
+        dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 5);
+        dot.setAttribute("class", "bm-zone bm-point"); dot.dataset.id = z.id;
+        dot.setAttribute("fill", col); dot.setAttribute("stroke", "#fff"); dot.setAttribute("stroke-width", "1");
+        dot.addEventListener("click", () => selectZone(z));
+        svg.appendChild(dot); addLabel(s.x, s.y);
+      } else {
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
+        path.setAttribute("class", "bm-zone"); path.dataset.id = z.id;
+        path.addEventListener("click", () => selectZone(z));
+        svg.appendChild(path);
+      }
     });
   }
 
@@ -74,16 +164,18 @@
     const panel = document.getElementById("bm-panel");
     panel.replaceChildren();
     const h = document.createElement("h2"); h.textContent = z.anatomy;
+    const groupNoun = (state.payload && state.payload.group_noun) ? (" " + state.payload.group_noun + ", ") : (z.germ_layer ? " layer, " : " region, ");
+    const sideNoun = (state.payload && state.payload.side_noun) ? (" " + state.payload.side_noun) : (z.eye ? " eye" : " ear");
     const meta = document.createElement("p");
-    const strong = document.createElement("strong"); strong.textContent = z.germ_layer;
-    meta.append(strong, document.createTextNode(" layer, " + z.eye + " eye"));
+    const strong = document.createElement("strong"); strong.textContent = zoneGroup(z);
+    meta.append(strong, document.createTextNode(groupNoun + zoneSide(z) + sideNoun));
     const body = document.createElement("p"); body.textContent = z.meaning_display || z.meaning_standard;
     panel.append(h, meta, body);
   }
 
   function renderLayerToggles() {
     const box = document.getElementById("bm-layers"); box.innerHTML = "";
-    (state.payload.germ_layers || []).forEach(g => {
+    groupsOf(state.payload).forEach(g => {
       const id = "bml-" + g.id;
       const label = document.createElement("label");
       const cb = document.createElement("input");
@@ -100,8 +192,17 @@
   async function loadSystem(system) {
     const res = await fetch("/body-map/data?system=" + encodeURIComponent(system));
     state.payload = await res.json();
+    state.frame = state.payload.reference_frame || "unit_circle";
     state.chartR = computeChartR(state.payload);
     state.activeLayers.clear();
+    // laterality: relabel + repopulate from the sides present, keep current if still valid
+    const sides = [...new Set((state.payload.zones || []).map(zoneSide))];
+    const sel = document.getElementById("bm-eye");
+    sel.replaceChildren();
+    sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
+    if (!sides.includes(state.eye)) state.eye = sides[0] || "right";
+    sel.value = state.eye;
+    document.getElementById("bm-side-label").textContent = isOutlineFrame() ? "Side" : "Eye";
     renderLayerToggles(); renderChart();
   }
 
@@ -109,7 +210,11 @@
     document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
     wireOverlay();
-    loadSystem("iridology").then(__bmSelfCheck);
+    const params = new URLSearchParams(location.search);
+    const sys = params.get("system");
+    const initialSystem = (sys === "iridology" || sys === "sclerology" || sys === "ear" || sys === "foot") ? sys : "iridology";
+    document.getElementById("bm-system").value = initialSystem;
+    loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
 
   function __bmSelfCheck() {
@@ -139,6 +244,26 @@
     });
   }
 
+  function activeAnchorSteps() {
+    const a = state.payload && state.payload.anchors;
+    return (a && a.length) ? a : ANCHOR_STEPS;
+  }
+
+  // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
+  // from the first two anchor correspondences. Exact for 2 points; a third is not required.
+  function fitSimilarity(steps) {
+    const a0 = steps[0].template, a1 = steps[1].template;
+    const b0 = anchors[steps[0].key], b1 = anchors[steps[1].key];
+    const dax = a1.x - a0.x, day = a1.y - a0.y;
+    const dbx = b1.x - b0.x, dby = b1.y - b0.y;
+    const denom = dax * dax + day * day || 1e-9;
+    const mx = (dbx * dax + dby * day) / denom;
+    const my = (dby * dax - dbx * day) / denom;
+    const tx = b0.x - (mx * a0.x - my * a0.y);
+    const ty = b0.y - (my * a0.x + mx * a0.y);
+    return (n) => ({ x: mx * n.x - my * n.y + tx, y: my * n.x + mx * n.y + ty });
+  }
+
   function setMode(photo) {
     document.getElementById("bm-mode-ref").classList.toggle("bm-active", !photo);
     document.getElementById("bm-mode-photo").classList.toggle("bm-active", photo);
@@ -151,23 +276,26 @@
   function beginAnchoring() {
     anchorIdx = 0; Object.keys(anchors).forEach(k => delete anchors[k]);
     state.transform = null; renderChart();
-    document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[0].hint;
+    document.getElementById("bm-anchor-hint").textContent = activeAnchorSteps()[0].hint;
   }
 
   function onCanvasClick(evt) {
-    if (document.getElementById("bm-photo").hidden || anchorIdx >= ANCHOR_STEPS.length) return;
+    const steps = activeAnchorSteps();
+    if (document.getElementById("bm-photo").hidden || anchorIdx >= steps.length) return;
     const svg = document.getElementById("bm-svg");
     const rect = svg.getBoundingClientRect();
     const x = (evt.clientX - rect.left) / rect.width * VIEW;
     const y = (evt.clientY - rect.top) / rect.height * VIEW;
-    anchors[ANCHOR_STEPS[anchorIdx].key] = { x, y };
+    anchors[steps[anchorIdx].key] = { x, y };
     anchorIdx++;
-    if (anchorIdx < ANCHOR_STEPS.length) {
-      document.getElementById("bm-anchor-hint").textContent = ANCHOR_STEPS[anchorIdx].hint;
+    if (anchorIdx < steps.length) {
+      document.getElementById("bm-anchor-hint").textContent = steps[anchorIdx].hint;
       drawAnchors();
     } else {
       document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-      state.transform = computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+      state.transform = (state.payload && state.payload.anchors && state.payload.anchors.length)
+        ? fitSimilarity(steps)
+        : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
       renderChart(); drawAnchors();
       console.log("[bodymap] overlay placed");
     }
@@ -195,6 +323,38 @@
     document.getElementById("bm-mode-photo").addEventListener("click", () => setMode(true));
     document.getElementById("bm-upload").addEventListener("change", onUpload);
     document.getElementById("bm-svg").addEventListener("click", onCanvasClick);
+  }
+
+  function applyFocusFromURL(params) {
+    if (!state.payload) return;
+    const side = params.get("side") || params.get("eye");
+    const sides = new Set((state.payload.zones || []).map(zoneSide));
+    if (side && sides.has(side)) {
+      state.eye = side; document.getElementById("bm-eye").value = side; renderChart();
+    }
+    const zoneId = params.get("zone");
+    if (zoneId) {
+      const z = (state.payload.zones || []).find(x => x.id === zoneId);
+      if (z) {
+        if (zoneSide(z) !== state.eye) {
+          state.eye = zoneSide(z); document.getElementById("bm-eye").value = state.eye; renderChart();
+        }
+        selectZone(z);
+        return;
+      }
+    }
+    const groupId = params.get("group") || params.get("layer");
+    if (groupId) {
+      const grp = groupsOf(state.payload).find(g => g.id === groupId);
+      if (grp) {
+        state.activeLayers.clear(); state.activeLayers.add(groupId);
+        const cb = document.getElementById("bml-" + groupId);
+        if (cb) cb.checked = true;
+        renderChart();
+        const first = currentZones()[0];
+        if (first) selectZone(first);
+      }
+    }
   }
 
   // expose for tasks/tests

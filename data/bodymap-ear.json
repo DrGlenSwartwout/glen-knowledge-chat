@@ -1,0 +1,31 @@
+{
+  "system": "ear",
+  "reference_frame": "ear_outline",
+  "outline": "M 0.55 0.05 C 0.75 0.06 0.82 0.25 0.80 0.42 C 0.79 0.55 0.72 0.62 0.66 0.70 C 0.60 0.80 0.58 0.92 0.48 0.95 C 0.38 0.97 0.30 0.90 0.30 0.78 C 0.24 0.75 0.20 0.66 0.24 0.55 C 0.20 0.45 0.22 0.28 0.32 0.16 C 0.40 0.07 0.47 0.05 0.55 0.05 Z",
+  "groups": [
+    { "id": "helix", "label": "Helix (outer rim)" },
+    { "id": "antihelix", "label": "Antihelix (spine)" },
+    { "id": "triangular-fossa", "label": "Triangular fossa" },
+    { "id": "concha", "label": "Concha (internal organs)" },
+    { "id": "tragus", "label": "Tragus" },
+    { "id": "antitragus", "label": "Antitragus" },
+    { "id": "lobe", "label": "Lobe (head and face)" }
+  ],
+  "anchors": [
+    { "key": "helix-top", "template": {"x": 0.50, "y": 0.08}, "hint": "Tap the top of your ear, at the top of the rim." },
+    { "key": "lobe-bottom", "template": {"x": 0.48, "y": 0.93}, "hint": "Tap the bottom of your earlobe." },
+    { "key": "tragus", "template": {"x": 0.31, "y": 0.60}, "hint": "Tap the tragus, the small flap in front of the ear canal." }
+  ],
+  "zones": [
+    { "id": "ear-L-apex", "side": "left", "group": "helix", "geometry": {"type": "point", "x": 0.52, "y": 0.11}, "anatomy": "Ear Apex", "meaning_standard": "Point at the top of the helix used for calming and to settle heat.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-shenmen", "side": "left", "group": "triangular-fossa", "geometry": {"type": "point", "x": 0.44, "y": 0.26}, "anatomy": "Shen Men", "meaning_standard": "Master calming and regulating point in the triangular fossa.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-sympathetic", "side": "left", "group": "antihelix", "geometry": {"type": "point", "x": 0.30, "y": 0.40}, "anatomy": "Sympathetic", "meaning_standard": "Autonomic balancing point along the inner antihelix border.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-point-zero", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.50, "y": 0.50}, "anatomy": "Point Zero", "meaning_standard": "Central reference point at the root of the helix; homeostatic anchor.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-kidney", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.55, "y": 0.42}, "anatomy": "Kidney", "meaning_standard": "Concha point reflecting the kidney and fluid balance.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-liver", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.61, "y": 0.53}, "anatomy": "Liver", "meaning_standard": "Concha point reflecting the liver.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-lung", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.50, "y": 0.60}, "anatomy": "Lung", "meaning_standard": "Concha point reflecting the lungs; used for respiration and detox support.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-heart", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.48, "y": 0.53}, "anatomy": "Heart", "meaning_standard": "Deep concha point reflecting the heart and circulation.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-stomach", "side": "left", "group": "concha", "geometry": {"type": "point", "x": 0.46, "y": 0.47}, "anatomy": "Stomach", "meaning_standard": "Concha point at the helix root reflecting the stomach.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
+    { "id": "ear-L-subcortex", "side": "left", "group": "lobe", "geometry": {"type": "point", "x": 0.50, "y": 0.84}, "anatomy": "Subcortex (head)", "meaning_standard": "Lobe point associated with the head and higher regulation.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+  ]
+}

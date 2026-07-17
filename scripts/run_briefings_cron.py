@@ -29,7 +29,27 @@ if not CRON_SECRET:
     sys.exit(1)
 
 
-def main():
+def _run_qbo_heal():
+    """Best-effort second curl: sweep QBO orders stuck at qbo_sales_receipt_id
+    'PENDING'. Rides this same daily cron rather than a separate Render
+    service. Any failure here is logged and swallowed -- it must never fail
+    the briefings cron this function is folded into."""
+    url = f"{WEB_URL}/api/cron/qbo-heal-pending"
+    headers = {"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"}
+    try:
+        body = post_with_retry(url, headers, timeout=120,
+                               label="qbo-heal-cron").decode("utf-8", errors="replace")
+        print(f"[qbo-heal] HTTP 200: {body}", flush=True)
+    except urllib.error.HTTPError as e:
+        print(f"[qbo-heal] HTTP {e.code}: {e.read().decode('utf-8', errors='replace')}", flush=True)
+    except urllib.error.URLError as e:
+        print(f"[qbo-heal] URL error: {e}", flush=True)
+    except Exception as e:
+        print(f"[qbo-heal] unexpected error (ignored): {e!r}", flush=True)
+
+
+def _run_briefings():
+    """Returns the exit code for the briefings curl (0 ok, 1 failed)."""
     url = f"{WEB_URL}/cron/regenerate-briefings"
     headers = {"X-Cron-Secret": CRON_SECRET, "Content-Type": "application/json"}
     # Transient 5xx / connection blips are retried inside post_with_retry.
@@ -39,16 +59,24 @@ def main():
         print(f"HTTP 200: {body}", flush=True)
         try:
             data = json.loads(body)
-            if not data.get("ok"):
-                sys.exit(1)
+            return 0 if data.get("ok") else 1
         except json.JSONDecodeError:
-            sys.exit(1)
+            return 1
     except urllib.error.HTTPError as e:
         print(f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')}", flush=True)
-        sys.exit(1)
+        return 1
     except urllib.error.URLError as e:
         print(f"URL error: {e}", flush=True)
-        sys.exit(1)
+        return 1
+
+
+def main():
+    code = _run_briefings()
+    # Best-effort QBO heal sweep, folded into this same daily cron. Runs
+    # regardless of the briefings outcome and must never change `code` --
+    # a heal failure is logged (inside _run_qbo_heal) and swallowed here.
+    _run_qbo_heal()
+    sys.exit(code)
 
 
 if __name__ == "__main__":

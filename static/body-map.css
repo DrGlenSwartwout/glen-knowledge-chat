@@ -22,3 +22,6 @@ body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:v
 .bm-hint { color:#8a958f; }
 .bm-photo-tools { padding:8px 20px 24px; }
 .bm-anchor-hint { color:var(--bm-ink); font-weight:600; }
+.bm-label { font-size:10px; fill:#3a3a3a; cursor:pointer; paint-order:stroke; stroke:#fbf8f3; stroke-width:2.5px; stroke-linejoin:round; }
+.bm-label:hover, .bm-point:hover { font-weight:600; }
+.bm-point { cursor:pointer; }

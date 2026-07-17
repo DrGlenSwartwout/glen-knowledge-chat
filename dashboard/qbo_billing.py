@@ -82,6 +82,68 @@ def _first_bank_account_id():
     return accts[0]["Id"] if accts else None
 
 
+def find_sales_receipt_by_ref(token, *, email=None, since_date=None):
+    """Look up the QBO SalesReceipt whose PrivateNote is exactly 'order:<token>'
+    (stamped when a receipt is created/repaired for an order). Exact-match
+    only -- never returns a receipt on amount alone, and never matches a
+    substring (e.g. token 'tok1' must not match a receipt stamped for
+    'tok10'). Returns the receipt dict or None.
+
+    Primary: a LIKE query on PrivateNote (QBO may reject LIKE on this field --
+    wrapped in try/except). Fallback (primary raised or came up empty, and an
+    `email` was given): resolve the customer and scan their recent receipts
+    client-side for the token. Either way, the PrivateNote match is re-checked
+    client-side (exact equality, after stripping whitespace) before returning,
+    since QBO's LIKE (when it works at all) is not trustworthy enough on its
+    own to hand back a money-matching decision.
+
+    Contract: None means "a query genuinely succeeded and found no matching
+    receipt" -- it must never mean "the lookup failed". The heal sweep treats
+    None as license to rebook, so a failed primary query with no way to
+    confirm via fallback (no email, or the fallback itself raises) is
+    re-raised instead of swallowed -- callers should catch it and skip the
+    order for the next sweep rather than risk a double-book.
+    """
+    needle = "order:" + token
+
+    def _first_exact_match(receipts):
+        for r in receipts:
+            if (r.get("PrivateNote") or "").strip() == needle:
+                return r
+        return None
+
+    primary_error = None
+    try:
+        rs = _query(f"SELECT * FROM SalesReceipt WHERE PrivateNote LIKE '%{_esc(needle)}%'")
+        receipts = rs.get("QueryResponse", {}).get("SalesReceipt", [])
+    except Exception as e:
+        print(f"[qbo] find_sales_receipt_by_ref primary query failed: {e!r}", flush=True)
+        primary_error = e
+        receipts = []
+
+    if primary_error is None:
+        match = _first_exact_match(receipts)
+        if match:
+            return match
+
+    if not email:
+        if primary_error is not None:
+            raise primary_error
+        return None
+
+    # Not wrapped in try/except: if this raises (whether or not the primary
+    # also raised), it propagates -- we have no further fallback, so we must
+    # not collapse an unresolved lookup into a false "not found".
+    cust = find_or_create_customer(email)
+    q = f"SELECT * FROM SalesReceipt WHERE CustomerRef = '{_esc(str(cust['Id']))}'"
+    if since_date:
+        q += f" AND TxnDate >= '{_esc(str(since_date))}'"
+    q += " ORDERBY TxnDate DESC MAXRESULTS 50"
+    rs = _query(q)
+    receipts = rs.get("QueryResponse", {}).get("SalesReceipt", [])
+    return _first_exact_match(receipts)
+
+
 def create_refund_receipt(customer_id, amount, *, item_id=None,
                           bank_account_id=None, description="Refund"):
     """Issue a QBO RefundReceipt (records a money-out customer refund). `amount`
@@ -265,7 +327,7 @@ def replace_invoice_lines(invoice_id, lines, *, discount_cents=0, tax_cents=0):
 
 
 def create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
-                         email_to=None, bank_account_id=None):
+                         email_to=None, bank_account_id=None, private_note=None):
     """Record a PAID sale as a QBO SalesReceipt — booked straight to the deposit
     account, never touching A/R. Mirrors create_invoice's line/discount/tax handling
     so the two agree exactly; the only structural differences are DepositToAccountRef
@@ -291,6 +353,8 @@ def create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
     if tax_cents and int(tax_cents) > 0:
         body["TxnTaxDetail"] = {"TotalTax": round(int(tax_cents) / 100.0, 2)}
         body["GlobalTaxCalculation"] = "TaxExcluded"
+    if private_note:
+        body["PrivateNote"] = str(private_note)[:1000]
     return _post("/salesreceipt", body).get("SalesReceipt")
 
 

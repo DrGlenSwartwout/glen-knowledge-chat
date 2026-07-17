@@ -6178,6 +6178,241 @@ def _settle_order_points(order, *, order_ref):
                 print(f"[dispensary-l2] card settle skipped: {_de!r}", flush=True)
 
 
+# ── Per-kind paid-order settlers (extracted from begin_checkout_return) ──────
+# These four functions are the block bodies that used to live inline in the
+# /begin/checkout-return "paid" branch. They are dispatched by
+# dashboard.order_settlement.settle_paid_order_effects (via _SETTLEMENT_DEPS) so
+# the redirect and the Stripe webhook settle a paid order identically. Every one
+# is idempotent per order_ref / invoice and best-effort (never raises).
+
+def _ensure_subscription_row(md, pi_id):
+    """Subscribe-kind settler: vault the card + create the subscription row,
+    deduped on the originating order_ref (create_once replaces bare create so a
+    redirect refresh / redirect-vs-webhook race never double-creates)."""
+    if not pi_id:
+        return
+    try:
+        from dashboard import stripe_pay as _sp
+        from dashboard import subscriptions as _subs_ret
+        pi_data = _sp.get_payment_intent(pi_id)
+        stripe_cus = pi_data.get("customer") or ""
+        stripe_pm  = pi_data.get("payment_method") or ""
+        cadence    = int(md.get("cadence_months") or 1)
+        sub_email  = md.get("email") or ""
+
+        # Recover items + ship from metadata or stash
+        stash_key = md.get("stash_key")
+        if stash_key:
+            with sqlite3.connect(LOG_DB) as _scx:
+                _scx.row_factory = sqlite3.Row
+                _sr = _scx.execute(
+                    "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
+                    (stash_key,)).fetchone()
+            if not _sr:
+                app.logger.warning(
+                    "subscribe stash miss for key=%s — subscription will have "
+                    "empty items/address", stash_key)
+            items_list = json.loads(_sr["items_json"]) if _sr else []
+            ship_dict  = json.loads(_sr["ship_json"])  if _sr else {}
+        else:
+            items_list = json.loads(md.get("items") or "[]")
+            ship_dict  = json.loads(md.get("ship")  or "{}")
+
+        today = _now_utc().strftime("%Y-%m-%d")
+        next_date = _subs_ret.add_months(today, cadence)
+
+        with sqlite3.connect(LOG_DB) as _scx2:
+            _scx2.row_factory = sqlite3.Row
+            _subs_ret.init_subscriptions_table(_scx2)
+            _rowid = _subs_ret.create_once(
+                _scx2,
+                order_ref=(md.get("invoice_id") or ""),
+                email=sub_email,
+                stripe_customer_id=stripe_cus,
+                stripe_payment_method_id=stripe_pm,
+                items=items_list,
+                cadence_months=cadence,
+                ship_address=ship_dict,
+                next_charge_date=next_date,
+                order_count=1)   # the setup checkout already placed order #1 (5%)
+            if _rowid is None:
+                return  # already created for this order_ref (dedup) — no-op
+        print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
+    except Exception as _se:
+        print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
+
+
+def _grant_group_bundle(md, pi_id):
+    """Group-bundle settler: grant the free live-group window + start the $99/mo
+    membership (flag-gated, idempotent per invoice). Fires for any paid kind that
+    carries grant_group_months (today only retail program orders do)."""
+    if not (os.environ.get("GROUP_BUNDLE_ENABLED")
+            and int(md.get("grant_group_months") or 0) > 0 and pi_id):
+        return
+    try:
+        from dashboard import stripe_pay as _sp
+        from dashboard import subscriptions as _subs_gb, group_bundle as _gb
+        from datetime import date as _date_gb
+        n = int(md.get("grant_group_months"))
+        g_email = (md.get("email") or "").strip().lower()
+        g_invoice = (md.get("invoice_id") or pi_id or "").strip()
+        if g_email:
+            pi_d = _sp.get_payment_intent(pi_id)
+            g_cus = pi_d.get("customer") or ""
+            g_pm  = pi_d.get("payment_method") or ""
+            with sqlite3.connect(LOG_DB) as _gcx:
+                _gcx.row_factory = sqlite3.Row
+                _subs_gb.init_subscriptions_table(_gcx)
+                _subs_gb.migrate_add_membership_columns(_gcx)
+                _subs_gb.migrate_add_term_cap_column(_gcx)
+                _subs_gb.migrate_add_attribution_column(_gcx)
+                _subs_gb.migrate_add_consent_column(_gcx)
+                _gcx.execute(
+                    "CREATE TABLE IF NOT EXISTS group_bundle_grants "
+                    "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
+                _gcx.commit()
+                # Idempotency: skip if this invoice/pi was already granted.
+                already = _gcx.execute(
+                    "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
+                    (g_invoice,)).fetchone()
+                if not already:
+                    existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
+                    if existing:
+                        cur = existing[0]
+                        _subs_gb.set_next_charge_date(
+                            _gcx, cur["id"],
+                            _subs_gb.add_months(cur["next_charge_date"], n))
+                    elif g_cus and g_pm:
+                        start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
+                        _subs_gb.create_membership(
+                            _gcx, email=g_email, stripe_customer_id=g_cus,
+                            stripe_payment_method_id=g_pm,
+                            amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
+                            next_charge_date=start)
+                        _member_join_welcome(_gcx, g_email, "subscription")
+                    _gcx.execute(
+                        "INSERT INTO group_bundle_grants (invoice_id, created_at) "
+                        "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
+                    _gcx.commit()
+                    print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}",
+                          flush=True)
+    except Exception as _ge:
+        app.logger.exception("group bundle grant failed: %s", _ge)
+
+
+def _settle_client_effects(md):
+    """Client-kind settler: credit practitioner dropship margin to the wallet,
+    record the dispensary order, settle dispensary-scope points (flag-gated), and
+    consume any auto-applied ship credit. (The `kind=='client'` guard is now the
+    orchestrator's dispatch.)"""
+    try:
+        from dashboard import wallet as _wallet_ret
+        _pid   = md.get("practitioner_id")
+        _marg  = int(md.get("margin_cents") or 0)
+        _inv   = md.get("invoice_id")
+        _wallet_ret.earn_dropship_margin(
+            _pid, _marg, qbo_invoice_id=_inv)
+        if hasattr(_pp, "record_dispensary_order"):
+            _pp.record_dispensary_order(
+                _pid,
+                invoice_id=_inv,
+                credit_earned_cents=_marg,
+            )
+        if os.environ.get("CLIENT_POINTS_ENABLED"):
+            try:
+                from dashboard import points as _points_ret
+                p_email = (md.get("patient_email") or "").strip().lower()
+                redeemed = int(md.get("points_redeemed_cents") or 0)
+                subtotal = int(md.get("subtotal_cents") or 0)
+                scope = f"dispensary:{_pid}"
+                if p_email:
+                    with sqlite3.connect(LOG_DB) as _pcx:
+                        _pcx.row_factory = sqlite3.Row
+                        _points_ret.init_points_table(_pcx)
+                        if redeemed > 0:
+                            # redeem() writes reason "redeem"; guard on that
+                            # so a re-run of the same invoice does not double-redeem.
+                            if not _points_ret.has_entry(_pcx, order_ref=_inv,
+                                    reason="redeem", scope=scope):
+                                take = min(redeemed,
+                                           _points_ret.balance(_pcx, p_email, scope=scope))
+                                if take > 0:
+                                    _points_ret.redeem(_pcx, p_email, value_cents=take,
+                                                       order_ref=_inv, scope=scope)
+                        elif subtotal > 0:
+                            earn_pct = float(_pricing_settings().get("points_earn_pct", 0.05))
+                            _points_ret.credit(_pcx, p_email,
+                                value_cents=round(subtotal * earn_pct),
+                                reason="earn:dispensary", order_ref=_inv, scope=scope)
+            except Exception as _pe:
+                app.logger.exception("client points settle failed: %s", _pe)
+        # Slice 2b: consume any shipping credit auto-applied to this
+        # dispensary order (global ship_credit scope, email-keyed —
+        # NOT the dispensary points scope). This flow settles here, not
+        # via _settle_order_points/set_order_payment; idempotent per
+        # invoice. Read the applied amount off the ingested order.
+        try:
+            _p_email = (md.get("patient_email") or "").strip().lower()
+            if _p_email and _inv:
+                with sqlite3.connect(LOG_DB) as _sccx:
+                    _sccx.row_factory = sqlite3.Row
+                    _o = _bos_orders.find_order_by_external_ref(_sccx, str(_inv))
+                    _applied = int((_o or {}).get("ship_credit_applied_cents") or 0)
+                    if _applied > 0:
+                        from dashboard import ship_credit as _shc
+                        _shc.consume(_sccx, _p_email, _applied, applied_ref=str(_inv))
+        except Exception as _sce:
+            app.logger.exception("client ship-credit settle failed: %s", _sce)
+    except Exception as _ce:
+        app.logger.exception(
+            "client margin credit failed: %s", _ce)
+
+
+def _settle_biofield_effects(md, sid):
+    """Biofield-kind settler: seed paid readiness + grant the 30-day Continuous
+    Care taster. ONLY these two — biofield's points/referral settle via the common
+    path, and its PI-stamp + Sales-Receipt booking stay inline in the handler
+    (common, not per-kind)."""
+    try:
+        from dashboard import biofield_store as _bf
+        bf_email = (md.get("email") or "").strip().lower()
+        bf_inv = md.get("invoice_id") or ""
+        if bf_email:
+            _bcx = _sqlite3.connect(LOG_DB)
+            try:
+                _bf.init_table(_bcx)
+                _bf.seed_paid(_bcx, bf_email, via="stripe", order_ref=bf_inv)
+            finally:
+                _bcx.close()
+            # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
+            # Shared with the Stripe webhook so a closed tab still delivers the
+            # paid care window. Idempotent via care_taster_grants.
+            _fulfill_biofield_program(sid)
+    except Exception as _be:
+        print(f"[biofield] return seed failed: {_be!r}", flush=True)
+
+
+# Thin adapters so the injected settler signatures match order_settlement's
+# expected settle_points(order, order_ref) / settle_referral(order, order_ref).
+def _settle_points_dep(order, order_ref):
+    _settle_order_points(order, order_ref=order_ref)
+
+
+def _settle_referral_dep(order, order_ref):
+    _settle_referral(order, order_ref=order_ref)
+
+
+from types import SimpleNamespace as _SimpleNamespace  # noqa: E402
+_SETTLEMENT_DEPS = _SimpleNamespace(
+    settle_points=_settle_points_dep,
+    settle_referral=_settle_referral_dep,
+    ensure_subscription=_ensure_subscription_row,
+    grant_group_bundle=_grant_group_bundle,
+    settle_client=_settle_client_effects,
+    settle_biofield=_settle_biofield_effects,
+)
+
+
 # Generated/cached product content (ingredients + benefits + learn-more research).
 # Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
 try:
@@ -8064,6 +8299,42 @@ def api_console_points_ledger():
                     "rows": [dict(r) for r in rows]})
 
 
+@app.route("/api/console/points-dedup", methods=["POST"])
+def api_console_points_dedup():
+    """Owner-gated one-off: remove duplicate (order_ref, reason, scope) points_ledger
+    rows (keeping the earliest id) and ensure the UNIQUE index. Dry-run by default;
+    ?apply=1 performs the deletion. Idempotent/re-runnable. Prereq for the UNIQUE
+    index (dashboard.points.init_points_table) to create cleanly on prod."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    apply = request.args.get("apply") == "1"
+    cx = sqlite3.connect(LOG_DB); cx.row_factory = sqlite3.Row
+    try:
+        dupes = cx.execute(
+            "SELECT order_ref, reason, scope, COUNT(*) c, MIN(id) keep "
+            "FROM points_ledger WHERE order_ref IS NOT NULL "
+            "GROUP BY order_ref, reason, scope HAVING c > 1").fetchall()
+        groups = [dict(r) for r in dupes]
+        removed = 0
+        if apply:
+            for g in groups:
+                cur = cx.execute(
+                    "DELETE FROM points_ledger WHERE order_ref=? AND reason=? AND scope=? AND id<>?",
+                    (g["order_ref"], g["reason"], g["scope"], g["keep"]))
+                removed += cur.rowcount
+            cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_points_order_ref_reason_scope "
+                       "ON points_ledger(order_ref, reason, scope)")
+            cx.commit()
+        index_exists = cx.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' "
+            "AND name='ux_points_order_ref_reason_scope'").fetchone() is not None
+        return jsonify({"ok": True, "applied": apply, "duplicate_groups": len(groups),
+                        "rows_removed": removed, "index_exists": index_exists,
+                        "groups": groups[:50]})
+    finally:
+        cx.close()
+
+
 @app.route("/api/console/dispensary-pay-mix", methods=["GET"])
 def api_console_dispensary_pay_mix():
     """Read-only: card vs alt-pay (zelle/wise) split of dispensary sales, PROXIED by
@@ -9561,17 +9832,9 @@ def begin_checkout_return():
                                 _cxo.close()
                         except Exception as _e:
                             print(f"[begin-return] pi capture: {_e!r}", flush=True)
-                        # ── Points settlement (earn + deduct redeemed) ──
+                        # points/referral now settle via order_settlement.settle_paid_order_effects
+                        # (the single dispatch at the end of this paid block), NOT inline here.
                         if _o_for_points:
-                            try:
-                                _settle_order_points(_o_for_points, order_ref=inv)
-                            except Exception as _pe:
-                                print(f"[points] settle failed inv={inv}: {_pe!r}", flush=True)
-                            # ── Referral crediting (points or cash to referrer) ──
-                            try:
-                                _settle_referral(_o_for_points, order_ref=inv)
-                            except Exception as _re:
-                                print(f"[rewards] referral settle failed inv={inv}: {_re!r}", flush=True)
                             # ── Book ONE line-faithful QBO Sales Receipt now that payment is
                             # confirmed. Paid-only orders (retail/funnel, reorder, portal-reorder,
                             # subscribe) all carry a qbo_lines_json payload from checkout and book
@@ -9591,202 +9854,34 @@ def begin_checkout_return():
                                 print(f"[begin-return] qbo sale booking failed inv={inv}: {_fqe!r}",
                                       flush=True)
 
-                # ── Subscribe kind: vault the card and create the subscription row ──
-                if md.get("kind") == "subscribe" and pi_id:
-                    try:
-                        from dashboard import subscriptions as _subs_ret
-                        pi_data = _sp.get_payment_intent(pi_id)
-                        stripe_cus = pi_data.get("customer") or ""
-                        stripe_pm  = pi_data.get("payment_method") or ""
-                        cadence    = int(md.get("cadence_months") or 1)
-                        sub_email  = md.get("email") or ""
+                # NOTE: subscribe-kind subscription creation now settles via
+                # order_settlement -> _ensure_subscription_row (single dispatch at the
+                # end of this paid block).
 
-                        # Recover items + ship from metadata or stash
-                        stash_key = md.get("stash_key")
-                        if stash_key:
-                            with sqlite3.connect(LOG_DB) as _scx:
-                                _scx.row_factory = sqlite3.Row
-                                _sr = _scx.execute(
-                                    "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
-                                    (stash_key,)).fetchone()
-                            if not _sr:
-                                app.logger.warning(
-                                    "subscribe stash miss for key=%s — subscription will have "
-                                    "empty items/address", stash_key)
-                            items_list = json.loads(_sr["items_json"]) if _sr else []
-                            ship_dict  = json.loads(_sr["ship_json"])  if _sr else {}
-                        else:
-                            items_list = json.loads(md.get("items") or "[]")
-                            ship_dict  = json.loads(md.get("ship")  or "{}")
-
-                        today = _now_utc().strftime("%Y-%m-%d")
-                        next_date = _subs_ret.add_months(today, cadence)
-
-                        with sqlite3.connect(LOG_DB) as _scx2:
-                            _scx2.row_factory = sqlite3.Row
-                            _subs_ret.init_subscriptions_table(_scx2)
-                            _subs_ret.create(
-                                _scx2,
-                                email=sub_email,
-                                stripe_customer_id=stripe_cus,
-                                stripe_payment_method_id=stripe_pm,
-                                items=items_list,
-                                cadence_months=cadence,
-                                ship_address=ship_dict,
-                                next_charge_date=next_date,
-                                order_count=1)   # the setup checkout already placed order #1 (5%)
-                        print(f"[subscribe-return] subscription created for {sub_email}", flush=True)
-                    except Exception as _se:
-                        print(f"[subscribe-return] failed to create subscription: {_se!r}", flush=True)
-
-                # ── Group bundle: grant the free live-group window (flag-gated) ──
-                # Best-effort, never raises. A per-invoice marker makes a literal
-                # re-run of the SAME return a no-op; a genuinely new program order
-                # (new invoice) extends an existing membership's window instead of
-                # creating a second row.
-                if os.environ.get("GROUP_BUNDLE_ENABLED") and int(md.get("grant_group_months") or 0) > 0 and pi_id:
-                    try:
-                        from dashboard import subscriptions as _subs_gb, group_bundle as _gb
-                        from datetime import date as _date_gb
-                        n = int(md.get("grant_group_months"))
-                        g_email = (md.get("email") or "").strip().lower()
-                        g_invoice = (md.get("invoice_id") or pi_id or "").strip()
-                        if g_email:
-                            pi_d = _sp.get_payment_intent(pi_id)
-                            g_cus = pi_d.get("customer") or ""
-                            g_pm  = pi_d.get("payment_method") or ""
-                            with sqlite3.connect(LOG_DB) as _gcx:
-                                _gcx.row_factory = sqlite3.Row
-                                _subs_gb.init_subscriptions_table(_gcx)
-                                _subs_gb.migrate_add_membership_columns(_gcx)
-                                _subs_gb.migrate_add_term_cap_column(_gcx)
-                                _subs_gb.migrate_add_attribution_column(_gcx)
-                                _subs_gb.migrate_add_consent_column(_gcx)
-                                _gcx.execute(
-                                    "CREATE TABLE IF NOT EXISTS group_bundle_grants "
-                                    "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
-                                _gcx.commit()
-                                # Idempotency: skip if this invoice/pi was already granted.
-                                already = _gcx.execute(
-                                    "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
-                                    (g_invoice,)).fetchone()
-                                if not already:
-                                    existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
-                                    if existing:
-                                        cur = existing[0]
-                                        _subs_gb.set_next_charge_date(
-                                            _gcx, cur["id"],
-                                            _subs_gb.add_months(cur["next_charge_date"], n))
-                                    elif g_cus and g_pm:
-                                        start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
-                                        _subs_gb.create_membership(
-                                            _gcx, email=g_email, stripe_customer_id=g_cus,
-                                            stripe_payment_method_id=g_pm,
-                                            amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
-                                            next_charge_date=start)
-                                        _member_join_welcome(_gcx, g_email, "subscription")
-                                    _gcx.execute(
-                                        "INSERT INTO group_bundle_grants (invoice_id, created_at) "
-                                        "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
-                                    _gcx.commit()
-                                    print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}",
-                                          flush=True)
-                    except Exception as _ge:
-                        app.logger.exception("group bundle grant failed: %s", _ge)
+                # NOTE: group-bundle grant (free live-group window, flag-gated) now
+                # settles via order_settlement -> _grant_group_bundle (single dispatch
+                # at the end of this paid block), dispatched kind-agnostically by
+                # grant_group_months presence in md -- not just for kind=='subscribe'.
+                # See dashboard/order_settlement.py.
 
                 # NOTE: founding_reserve uses a setup-mode ($0) Stripe session and is
                 # handled BELOW, outside this "paid" block, so it is reachable for
                 # payment_status == "no_payment_required" setup sessions.
 
-                # ── Client kind: credit practitioner margin to wallet ──
-                try:
-                    if md.get("kind") == "client":
-                        from dashboard import wallet as _wallet_ret
-                        _pid   = md.get("practitioner_id")
-                        _marg  = int(md.get("margin_cents") or 0)
-                        _inv   = md.get("invoice_id")
-                        _wallet_ret.earn_dropship_margin(
-                            _pid, _marg, qbo_invoice_id=_inv)
-                        if hasattr(_pp, "record_dispensary_order"):
-                            _pp.record_dispensary_order(
-                                _pid,
-                                invoice_id=_inv,
-                                credit_earned_cents=_marg,
-                            )
-                        if os.environ.get("CLIENT_POINTS_ENABLED"):
-                            try:
-                                from dashboard import points as _points_ret
-                                p_email = (md.get("patient_email") or "").strip().lower()
-                                redeemed = int(md.get("points_redeemed_cents") or 0)
-                                subtotal = int(md.get("subtotal_cents") or 0)
-                                scope = f"dispensary:{_pid}"
-                                if p_email:
-                                    with sqlite3.connect(LOG_DB) as _pcx:
-                                        _pcx.row_factory = sqlite3.Row
-                                        _points_ret.init_points_table(_pcx)
-                                        if redeemed > 0:
-                                            # redeem() writes reason "redeem"; guard on that
-                                            # so a re-run of the same invoice does not double-redeem.
-                                            if not _points_ret.has_entry(_pcx, order_ref=_inv,
-                                                    reason="redeem", scope=scope):
-                                                take = min(redeemed,
-                                                           _points_ret.balance(_pcx, p_email, scope=scope))
-                                                if take > 0:
-                                                    _points_ret.redeem(_pcx, p_email, value_cents=take,
-                                                                       order_ref=_inv, scope=scope)
-                                        elif subtotal > 0:
-                                            earn_pct = float(_pricing_settings().get("points_earn_pct", 0.05))
-                                            _points_ret.credit(_pcx, p_email,
-                                                value_cents=round(subtotal * earn_pct),
-                                                reason="earn:dispensary", order_ref=_inv, scope=scope)
-                            except Exception as _pe:
-                                app.logger.exception("client points settle failed: %s", _pe)
-                        # Slice 2b: consume any shipping credit auto-applied to this
-                        # dispensary order (global ship_credit scope, email-keyed —
-                        # NOT the dispensary points scope). This flow settles here, not
-                        # via _settle_order_points/set_order_payment; idempotent per
-                        # invoice. Read the applied amount off the ingested order.
-                        try:
-                            _p_email = (md.get("patient_email") or "").strip().lower()
-                            if _p_email and _inv:
-                                with sqlite3.connect(LOG_DB) as _sccx:
-                                    _sccx.row_factory = sqlite3.Row
-                                    _o = _bos_orders.find_order_by_external_ref(_sccx, str(_inv))
-                                    _applied = int((_o or {}).get("ship_credit_applied_cents") or 0)
-                                    if _applied > 0:
-                                        from dashboard import ship_credit as _shc
-                                        _shc.consume(_sccx, _p_email, _applied, applied_ref=str(_inv))
-                        except Exception as _sce:
-                            app.logger.exception("client ship-credit settle failed: %s", _sce)
-                except Exception as _ce:
-                    app.logger.exception(
-                        "client margin credit failed: %s", _ce)
+                # NOTE: client-kind wallet-margin + dispensary points + ship-credit now
+                # settle via order_settlement -> _settle_client_effects (single dispatch
+                # below).
 
-                # ── Biofield kind: seed readiness + settle points (best-effort) ──
+                # ── Biofield kind: stamp PaymentIntent + book the Sales Receipt ──
+                # These two are COMMON (not per-kind) — the webhook does them too — so
+                # they stay INLINE. Biofield's readiness seed + care taster settle via
+                # order_settlement -> _settle_biofield_effects, and its points/referral
+                # via the common path of that same dispatch (below).
                 if md.get("kind") == "biofield":
                     try:
-                        from dashboard import biofield_store as _bf
                         bf_email = (md.get("email") or "").strip().lower()
                         bf_inv = md.get("invoice_id") or ""
                         if bf_email:
-                            _bcx = _sqlite3.connect(LOG_DB)
-                            try:
-                                _bf.init_table(_bcx)
-                                _bf.seed_paid(_bcx, bf_email, via="stripe", order_ref=bf_inv)
-                            finally:
-                                _bcx.close()
-                            # Settle loyalty points on the recorded order (idempotent).
-                            try:
-                                _bcxo = _sqlite3.connect(LOG_DB); _bcxo.row_factory = _sqlite3.Row
-                                try:
-                                    _bo = _bos_orders.find_order_by_external_ref(_bcxo, bf_inv)
-                                finally:
-                                    _bcxo.close()
-                                if _bo:
-                                    _settle_order_points(_bo, order_ref=bf_inv)
-                            except Exception as _bpe:
-                                print(f"[biofield] points settle failed inv={bf_inv}: {_bpe!r}",
-                                      flush=True)
                             # Book ONE line-faithful QBO Sales Receipt now that payment is
                             # confirmed (paid-only; idempotent via qbo_sales_receipt_id).
                             try:
@@ -9816,24 +9911,43 @@ def begin_checkout_return():
                                 except Exception as _bpie:
                                     print(f"[biofield] stripe pi stamp failed inv={bf_inv}: {_bpie!r}",
                                           flush=True)
-                            # ── Referral crediting (points or cash to referrer) ──
-                            try:
-                                _bcxo4 = _sqlite3.connect(LOG_DB); _bcxo4.row_factory = _sqlite3.Row
-                                try:
-                                    _bo4 = _bos_orders.find_order_by_external_ref(_bcxo4, bf_inv)
-                                finally:
-                                    _bcxo4.close()
-                                if _bo4:
-                                    _settle_referral(dict(_bo4), order_ref=bf_inv)
-                            except Exception as _bre:
-                                print(f"[biofield] referral settle failed inv={bf_inv}: {_bre!r}",
-                                      flush=True)
-                            # ── Continuous Care taster: 30-day paid grant (flag-gated) ──
-                            # Shared with the Stripe webhook (below) so a closed tab still
-                            # delivers the paid care window. Idempotent via care_taster_grants.
-                            _fulfill_biofield_program(sid)
                     except Exception as _be:
-                        print(f"[biofield] return seed failed: {_be!r}", flush=True)
+                        print(f"[biofield] return book/stamp failed: {_be!r}", flush=True)
+
+                # ── Single per-kind settlement dispatch (parity with the Stripe webhook) ──
+                # Common points/referral (retail/reorder/portal-reorder/subscribe/client/
+                # biofield) + kind-specific effects (subscribe -> subscription + group
+                # bundle no-op; client -> wallet margin; biofield -> seed + care taster).
+                # Every dep is idempotent per order_ref; the pre-existing gating is
+                # preserved because paid card orders always carry pi_id and the common
+                # settlers no-op without a matching order row.
+                _settle_order = None
+                if inv:
+                    try:
+                        _scx0 = _sqlite3.connect(LOG_DB); _scx0.row_factory = _sqlite3.Row
+                        try:
+                            _fo = _bos_orders.find_order_by_external_ref(_scx0, inv)
+                            _settle_order = dict(_fo) if _fo else None
+                        finally:
+                            _scx0.close()
+                    except Exception as _e:
+                        print(f"[begin-return] settle order lookup: {_e!r}", flush=True)
+                from dashboard import order_settlement as _osx
+                _osx.settle_paid_order_effects(
+                    kind=_kind, order=_settle_order, md=md, pi_id=pi_id, sid=sid,
+                    deps=_SETTLEMENT_DEPS)
+                # Mark settlement attempted so a Stripe redelivery of the webhook
+                # skips re-settling this order (I1 crash-strand close). Best-effort:
+                # if this fails, the webhook's own settled_at gate still backfills.
+                if inv and _settle_order:
+                    try:
+                        _mcx = _sqlite3.connect(LOG_DB)
+                        try:
+                            _bos_orders.mark_order_settled(_mcx, _settle_order["id"])
+                        finally:
+                            _mcx.close()
+                    except Exception as _me:
+                        print(f"[begin-return] mark settled: {_me!r}", flush=True)
 
             # Biofield trial: membership creation is shared with the Stripe webhook so a
             # closed tab still gets fulfilled. Idempotent via biofield_trial_grants.
@@ -21651,6 +21765,36 @@ def household_holds_sweep_cron():
     return jsonify({"ok": True, "released": released, "combined": combined})
 
 
+@app.route("/api/cron/qbo-heal-pending", methods=["POST"])
+def api_cron_qbo_heal_pending():
+    """Sweep orders stuck at qbo_sales_receipt_id='PENDING' (crashed/interrupted
+    booking) and resolve each: stamp the existing QBO receipt if one already
+    exists, or re-claim + rebook if none does. See dashboard.qbo_heal for the
+    full resolution logic. Rides the existing daily briefings cron (folded in
+    by scripts/run_briefings_cron.py) -- no separate Render cron service.
+    Auth: X-Cron-Secret header matching CRON_SECRET (falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import qbo_heal as _heal, qbo_billing as _qb, qbo_sale as _qs, orders as _ord
+    # Serialized under _db_lock (mirrors /api/cron/household-holds/sweep above): two
+    # overlapping sweeps in this process cannot interleave, which is what closes the
+    # concurrent-rebook / double-book window on a single web instance. See qbo_heal's
+    # module docstring for why the CAS clear alone does not make that safe.
+    with _db_lock:
+        cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+        try:
+            healed = _heal.heal_pending_receipts(
+                cx,
+                find_receipt=_qb.find_sales_receipt_by_ref,
+                book=lambda cx2, o: _qs.book_sale_on_payment(cx2, o),
+                stamp=_ord.set_order_sales_receipt_id)
+        finally:
+            cx.close()
+    return jsonify({"ok": True, "healed": healed, "count": len(healed)})
+
+
 @app.route("/api/cron/family-plan/charge", methods=["POST"])
 def family_plan_charge_cron():
     """Daily charge cron for paid Family Plans. Charges each due, non-comp, active
@@ -27348,16 +27492,38 @@ def webhook_stripe():
                             _wcx = _sqlite3.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
                             try:
                                 _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
-                                if _wo and _wo["qbo_lines_json"] and not _wo["qbo_sales_receipt_id"]:
-                                    _wpi = sess.get("payment_intent")
-                                    if _wpi:
-                                        _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
-                                    _bos_orders.set_order_payment(
-                                        _wcx, _wo["id"], method="card",
-                                        amount_cents=int(sess.get("amount_total") or 0))
-                                    from dashboard import qbo_sale as _wqs
-                                    _wqs.book_sale_on_payment(
-                                        _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                                if _wo and _wo["qbo_lines_json"]:
+                                    # Book the receipt only if not already booked (atomic-claim guarded).
+                                    if not _wo["qbo_sales_receipt_id"]:
+                                        _wpi = sess.get("payment_intent")
+                                        if _wpi:
+                                            _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
+                                        _bos_orders.set_order_payment(
+                                            _wcx, _wo["id"], method="card",
+                                            amount_cents=int(sess.get("amount_total") or 0))
+                                        from dashboard import qbo_sale as _wqs
+                                        _wqs.book_sale_on_payment(
+                                            _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                                    # Settle per-kind side-effects INDEPENDENTLY of booking, gated on
+                                    # settled_at. Closes the crash-strand: a hard crash between booking
+                                    # and settling leaves settled_at NULL + no 200 -> Stripe redelivers
+                                    # -> this runs. A redirect crash after booking is backfilled here too
+                                    # (the webhook always fires). Best-effort: a settler raise must not
+                                    # 500 the webhook or block booking.
+                                    if not _wo["settled_at"]:
+                                        try:
+                                            _wmd = sess.get("metadata") or {}
+                                            _wro = _bos_orders.find_order_by_external_ref(_wcx, inv)
+                                            from dashboard import order_settlement as _wosx
+                                            _wosx.settle_paid_order_effects(
+                                                kind=_wmd.get("kind") or "",
+                                                order=(dict(_wro) if _wro else None),
+                                                md=_wmd, pi_id=sess.get("payment_intent"),
+                                                sid=session_id, deps=_SETTLEMENT_DEPS)
+                                            _bos_orders.mark_order_settled(_wcx, _wo["id"])
+                                        except Exception as _wse:
+                                            print(f"[stripe-webhook] settlement failed: {_wse!r}",
+                                                  flush=True)
                             finally:
                                 _wcx.close()
                 except Exception as _we:
@@ -36751,7 +36917,12 @@ def atlas_css():
 
 @app.route("/atlas/data")
 def atlas_data():
-    return jsonify(atlas_store.build_graph())
+    graph = atlas_store.build_graph()
+    for c in graph.get("concepts", []):
+        url = bodymap_store.atlas_target_url(bodymap_store.resolve_atlas_target(c))
+        if url:
+            c["body_map_url"] = url
+    return jsonify(graph)
 
 
 @app.route("/atlas/ask", methods=["POST"])
@@ -36820,7 +36991,7 @@ def admin_atlas_reseed():
 # ───────────────────────── Body Map ─────────────────────────
 import bodymap_store
 try:
-    if bodymap_store.reseed_from_repo():
+    if bodymap_store.reseed_from_repo(force=True):
         print("[bodymap] seeded persistent zone files from repo", flush=True)
 except Exception as _e:
     print(f"[bodymap] reseed skipped: {_e}", flush=True)
@@ -36864,7 +37035,7 @@ def admin_body_map_zones():
     except KeyError:
         return fail("unknown system", 404)
     return ok({"zones": [
-        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": z.get("eye", ""),
+        {"id": z["id"], "anatomy": z.get("anatomy", ""), "eye": (z.get("side") or z.get("eye", "")),
          "meaning_standard": z.get("meaning_standard", ""), "meaning_glen": z.get("meaning_glen", "")}
         for z in data.get("zones", [])
     ]})
@@ -36882,6 +37053,41 @@ def admin_body_map_zone():
     except KeyError:
         return fail("unknown zone id", 404)
     return ok({"updated": zid})
+
+
+@app.route("/admin/body-map/draw")
+def admin_body_map_draw_page():
+    return send_from_directory(STATIC, "admin-body-map-draw.html")
+
+
+@app.route("/admin/body-map/zone/upsert", methods=["POST"])
+@require_console_key
+def admin_body_map_zone_upsert():
+    body = request.get_json(silent=True) or {}
+    system, zone = body.get("system"), body.get("zone")
+    if not system or not isinstance(zone, dict):
+        return fail("system and zone required", 400)
+    try:
+        bodymap_store.upsert_zone(system, zone)
+    except ValueError as e:
+        return fail(str(e), 400)
+    except KeyError:
+        return fail("unknown system", 404)
+    return ok({"upserted": zone.get("id")})
+
+
+@app.route("/admin/body-map/zone/delete", methods=["POST"])
+@require_console_key
+def admin_body_map_zone_delete():
+    body = request.get_json(silent=True) or {}
+    system, zid = body.get("system"), body.get("id")
+    if not system or not zid:
+        return fail("system and id required", 400)
+    try:
+        bodymap_store.delete_zone(system, zid)
+    except KeyError:
+        return fail("unknown zone id", 404)
+    return ok({"deleted": zid})
 
 
 # ── Tier-2 wholesale: application → approval ──────────────────────────────────
