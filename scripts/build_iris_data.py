@@ -38,6 +38,7 @@ ZONES = [
     # ---- digestive rings (annular, both eyes) ----
     ("stomach", "Stomach", "both", "endoderm", 0.06, 0.18, 0, 360, "Stomach ring, immediately around the pupil."),
     ("intestines", "Intestinal tract", "both", "endoderm", 0.18, 0.30, 0, 360, "Bowel / intestinal ring, just outside the stomach."),
+    ("autonomic-wreath", "Autonomic nerve wreath", "both", "mesoderm", 0.30, 0.34, 0, 360, "Autonomic nerve wreath (collarette), boundary of the digestive zone."),
     # ---- brain & brain-stem (top, both eyes) ----
     # slug "brain" keeps the id iris-R-brain that Atlas cluster deep-links target
     ("brain", "Cerebrum", "both", "ectoderm", 0.66, 0.92, 334, 356, "Cerebrum, upper iris toward 12 o'clock."),
@@ -45,6 +46,12 @@ ZONES = [
     ("pituitary", "Pituitary", "both", "ectoderm", 0.54, 0.72, 0, 12, "Pituitary, at 12 o'clock."),
     ("medulla", "Medulla / brain-stem", "both", "ectoderm", 0.62, 0.76, 6, 18, "Medulla oblongata / brain-stem."),
     ("cerebellum", "Cerebellum", "both", "ectoderm", 0.66, 0.92, 16, 34, "Cerebellum, just past 12 o'clock."),
+    # ---- brain / mental "flag" centres (outer periphery across the top) ----
+    ("mental-comprehension", "Mental / comprehension", "both", "ectoderm", 0.82, 0.94, 322, 336, "Comprehension / mental-ability centre."),
+    ("mental-ego", "Ego pressure", "both", "ectoderm", 0.82, 0.94, 338, 350, "Ego-pressure centre."),
+    ("life-vitality", "Life / vitality centre", "both", "ectoderm", 0.82, 0.94, 352, 360, "Life / vitality centre, top of the iris."),
+    ("sensory-motor", "Sensory-motor centre", "both", "ectoderm", 0.82, 0.94, 4, 18, "Sensory-motor brain centre."),
+    ("speech-center", "Speech centre", "both", "ectoderm", 0.82, 0.94, 20, 34, "Speech / expression centre."),
     # ---- head & sensory (upper, both eyes) ----
     ("nose", "Nose", "both", "ectoderm", 0.54, 0.70, 30, 42, "Nose, upper iris."),
     ("eye-vision", "Eye / vision", "both", "ectoderm", 0.56, 0.74, 40, 52, "Eye and vision centre."),
@@ -63,6 +70,9 @@ ZONES = [
     ("shoulder-chest", "Shoulder and chest", "both", "ectoderm", 0.62, 0.85, 116, 132, "Shoulder / upper chest (~4 o'clock)."),
     ("breast-mammary", "Breast / mammary", "both", "ectoderm", 0.58, 0.78, 120, 136, "Breast / mammary area."),
     ("diaphragm", "Diaphragm", "both", "mesoderm", 0.34, 0.48, 128, 142, "Diaphragm."),
+    ("sternum", "Sternum", "both", "mesoderm", 0.48, 0.60, 118, 130, "Sternum / breastbone."),
+    ("ribs", "Ribs", "both", "ectoderm", 0.64, 0.80, 132, 146, "Ribs / rib cage."),
+    ("aorta", "Aorta / great vessels", "both", "mesoderm", 0.28, 0.40, 106, 120, "Aorta and great vessels."),
     ("solar-plexus", "Solar plexus", "both", "mesoderm", 0.30, 0.42, 142, 156, "Solar plexus."),
     # ---- lower body (both eyes) ----
     ("adrenal", "Adrenal gland", "both", "mesoderm", 0.42, 0.56, 150, 166, "Adrenal gland, above the kidney (~5:30)."),
@@ -71,7 +81,11 @@ ZONES = [
     ("bladder", "Bladder", "both", "endoderm", 0.22, 0.34, 172, 190, "Bladder, lower iris near the pupil (~6 o'clock)."),
     ("urethra", "Urethra", "both", "endoderm", 0.14, 0.26, 184, 196, "Urethra."),
     ("rectum", "Rectum", "both", "endoderm", 0.20, 0.32, 188, 202, "Rectum."),
-    ("reproductive", "Reproductive / pelvic", "both", "mesoderm", 0.34, 0.50, 194, 210, "Reproductive and pelvic organs (~6:30)."),
+    ("prostate-uterus", "Prostate / uterus", "both", "mesoderm", 0.34, 0.48, 192, 202, "Prostate (male) / uterus (female)."),
+    ("ovary-testis", "Ovaries / testes", "both", "mesoderm", 0.34, 0.48, 202, 212, "Ovaries (female) / testes (male)."),
+    ("peritoneum", "Peritoneum / abdominal wall", "both", "ectoderm", 0.74, 0.86, 150, 200, "Peritoneum and abdominal wall."),
+    ("hernia", "Hernia zone", "both", "ectoderm", 0.70, 0.82, 200, 214, "Hernia / inguinal zone."),
+    ("limb-bone", "Limb bones (femur)", "both", "ectoderm", 0.82, 0.94, 200, 216, "Femur / lower-limb bones."),
     # ---- spine, pelvis, limb (both eyes, ~7 o'clock) ----
     ("cervical-spine", "Cervical spine", "both", "mesoderm", 0.50, 0.62, 196, 206, "Cervical spine."),
     ("thoracic-spine", "Thoracic spine", "both", "mesoderm", 0.52, 0.64, 206, 218, "Thoracic / dorsal spine."),

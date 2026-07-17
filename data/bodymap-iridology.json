@@ -107,6 +107,48 @@
       }
     },
     {
+      "id": "iris-R-autonomic-wreath",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.3,
+        "r_outer": 0.34
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Autonomic nerve wreath",
+      "meaning_standard": "Autonomic nerve wreath (collarette), boundary of the digestive zone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-autonomic-wreath",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.3,
+        "r_outer": 0.34
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Autonomic nerve wreath",
+      "meaning_standard": "Autonomic nerve wreath (collarette), boundary of the digestive zone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
       "id": "iris-R-brain",
       "eye": "right",
       "germ_layer": "ectoderm",
@@ -309,6 +351,216 @@
       },
       "anatomy": "Cerebellum",
       "meaning_standard": "Cerebellum, just past 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-mental-comprehension",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 322,
+        "end_deg": 336
+      },
+      "anatomy": "Mental / comprehension",
+      "meaning_standard": "Comprehension / mental-ability centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-mental-comprehension",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 24,
+        "end_deg": 38
+      },
+      "anatomy": "Mental / comprehension",
+      "meaning_standard": "Comprehension / mental-ability centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-mental-ego",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 338,
+        "end_deg": 350
+      },
+      "anatomy": "Ego pressure",
+      "meaning_standard": "Ego-pressure centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-mental-ego",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 10,
+        "end_deg": 22
+      },
+      "anatomy": "Ego pressure",
+      "meaning_standard": "Ego-pressure centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-life-vitality",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 352,
+        "end_deg": 360
+      },
+      "anatomy": "Life / vitality centre",
+      "meaning_standard": "Life / vitality centre, top of the iris.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-life-vitality",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 8
+      },
+      "anatomy": "Life / vitality centre",
+      "meaning_standard": "Life / vitality centre, top of the iris.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-sensory-motor",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 4,
+        "end_deg": 18
+      },
+      "anatomy": "Sensory-motor centre",
+      "meaning_standard": "Sensory-motor brain centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-sensory-motor",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 342,
+        "end_deg": 356
+      },
+      "anatomy": "Sensory-motor centre",
+      "meaning_standard": "Sensory-motor brain centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-speech-center",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 20,
+        "end_deg": 34
+      },
+      "anatomy": "Speech centre",
+      "meaning_standard": "Speech / expression centre.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-speech-center",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 326,
+        "end_deg": 340
+      },
+      "anatomy": "Speech centre",
+      "meaning_standard": "Speech / expression centre.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -989,6 +1241,132 @@
       }
     },
     {
+      "id": "iris-R-sternum",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.48,
+        "r_outer": 0.6
+      },
+      "sector": {
+        "start_deg": 118,
+        "end_deg": 130
+      },
+      "anatomy": "Sternum",
+      "meaning_standard": "Sternum / breastbone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-sternum",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.48,
+        "r_outer": 0.6
+      },
+      "sector": {
+        "start_deg": 230,
+        "end_deg": 242
+      },
+      "anatomy": "Sternum",
+      "meaning_standard": "Sternum / breastbone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-ribs",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.64,
+        "r_outer": 0.8
+      },
+      "sector": {
+        "start_deg": 132,
+        "end_deg": 146
+      },
+      "anatomy": "Ribs",
+      "meaning_standard": "Ribs / rib cage.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-ribs",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.64,
+        "r_outer": 0.8
+      },
+      "sector": {
+        "start_deg": 214,
+        "end_deg": 228
+      },
+      "anatomy": "Ribs",
+      "meaning_standard": "Ribs / rib cage.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-aorta",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.28,
+        "r_outer": 0.4
+      },
+      "sector": {
+        "start_deg": 106,
+        "end_deg": 120
+      },
+      "anatomy": "Aorta / great vessels",
+      "meaning_standard": "Aorta and great vessels.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-aorta",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.28,
+        "r_outer": 0.4
+      },
+      "sector": {
+        "start_deg": 240,
+        "end_deg": 254
+      },
+      "anatomy": "Aorta / great vessels",
+      "meaning_standard": "Aorta and great vessels.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
       "id": "iris-R-solar-plexus",
       "eye": "right",
       "germ_layer": "mesoderm",
@@ -1283,19 +1661,19 @@
       }
     },
     {
-      "id": "iris-R-reproductive",
+      "id": "iris-R-prostate-uterus",
       "eye": "right",
       "germ_layer": "mesoderm",
       "radial": {
         "r_inner": 0.34,
-        "r_outer": 0.5
+        "r_outer": 0.48
       },
       "sector": {
-        "start_deg": 194,
-        "end_deg": 210
+        "start_deg": 192,
+        "end_deg": 202
       },
-      "anatomy": "Reproductive / pelvic",
-      "meaning_standard": "Reproductive and pelvic organs (~6:30).",
+      "anatomy": "Prostate / uterus",
+      "meaning_standard": "Prostate (male) / uterus (female).",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -1304,19 +1682,187 @@
       }
     },
     {
-      "id": "iris-L-reproductive",
+      "id": "iris-L-prostate-uterus",
       "eye": "left",
       "germ_layer": "mesoderm",
       "radial": {
         "r_inner": 0.34,
-        "r_outer": 0.5
+        "r_outer": 0.48
+      },
+      "sector": {
+        "start_deg": 158,
+        "end_deg": 168
+      },
+      "anatomy": "Prostate / uterus",
+      "meaning_standard": "Prostate (male) / uterus (female).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-ovary-testis",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.34,
+        "r_outer": 0.48
+      },
+      "sector": {
+        "start_deg": 202,
+        "end_deg": 212
+      },
+      "anatomy": "Ovaries / testes",
+      "meaning_standard": "Ovaries (female) / testes (male).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-ovary-testis",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.34,
+        "r_outer": 0.48
+      },
+      "sector": {
+        "start_deg": 148,
+        "end_deg": 158
+      },
+      "anatomy": "Ovaries / testes",
+      "meaning_standard": "Ovaries (female) / testes (male).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-peritoneum",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.74,
+        "r_outer": 0.86
       },
       "sector": {
         "start_deg": 150,
-        "end_deg": 166
+        "end_deg": 200
       },
-      "anatomy": "Reproductive / pelvic",
-      "meaning_standard": "Reproductive and pelvic organs (~6:30).",
+      "anatomy": "Peritoneum / abdominal wall",
+      "meaning_standard": "Peritoneum and abdominal wall.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-peritoneum",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.74,
+        "r_outer": 0.86
+      },
+      "sector": {
+        "start_deg": 160,
+        "end_deg": 210
+      },
+      "anatomy": "Peritoneum / abdominal wall",
+      "meaning_standard": "Peritoneum and abdominal wall.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-hernia",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.7,
+        "r_outer": 0.82
+      },
+      "sector": {
+        "start_deg": 200,
+        "end_deg": 214
+      },
+      "anatomy": "Hernia zone",
+      "meaning_standard": "Hernia / inguinal zone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-hernia",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.7,
+        "r_outer": 0.82
+      },
+      "sector": {
+        "start_deg": 146,
+        "end_deg": 160
+      },
+      "anatomy": "Hernia zone",
+      "meaning_standard": "Hernia / inguinal zone.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-limb-bone",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 200,
+        "end_deg": 216
+      },
+      "anatomy": "Limb bones (femur)",
+      "meaning_standard": "Femur / lower-limb bones.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-limb-bone",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.82,
+        "r_outer": 0.94
+      },
+      "sector": {
+        "start_deg": 144,
+        "end_deg": 160
+      },
+      "anatomy": "Limb bones (femur)",
+      "meaning_standard": "Femur / lower-limb bones.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
