@@ -1,4 +1,6 @@
 import json
+import pathlib
+
 import bodymap_store
 
 
@@ -98,3 +100,17 @@ def test_set_zone_overlay_unknown_raises(tmp_path, monkeypatch):
         assert False, "expected KeyError"
     except KeyError:
         pass
+
+
+def test_shipped_seeds_all_zones_valid():
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    for fname in ("bodymap-iridology.json", "bodymap-sclerology.json"):
+        data = json.loads((repo / fname).read_text())
+        assert data.get("zones"), f"{fname} has no zones"
+        for z in data["zones"]:
+            ok, err = bodymap_store.validate_zone(z)
+            assert ok, f"{fname} zone {z.get('id')}: {err}"
+        # germ_layer ids referenced by zones must exist
+        layer_ids = {g["id"] for g in data.get("germ_layers", [])}
+        for z in data["zones"]:
+            assert z["germ_layer"] in layer_ids, f"{fname} zone {z['id']} bad germ_layer"
