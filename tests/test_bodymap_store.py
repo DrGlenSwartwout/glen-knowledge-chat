@@ -210,3 +210,20 @@ def test_build_payload_passes_through_ear_fields(tmp_path, monkeypatch):
     assert payload["groups"] == [{"id": "lobe", "label": "Lobe"}]
     assert payload["anchors"][0]["key"] == "helix-top"
     assert payload["zones"][0]["meaning_display"] == "Calming point."
+
+
+def test_shipped_ear_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    data = json.loads((repo / "bodymap-ear.json").read_text())
+    assert data["reference_frame"] == "ear_outline"
+    assert data.get("outline")
+    assert data.get("zones")
+    group_ids = {g["id"] for g in data.get("groups", [])}
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"ear zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "point"
+        assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
+    keys = {a["key"] for a in data.get("anchors", [])}
+    assert {"helix-top", "lobe-bottom", "tragus"} <= keys
