@@ -55,3 +55,46 @@ def test_reseed_seeds_when_missing_and_respects_force(tmp_path, monkeypatch):
     assert (persist / "bodymap-iridology.json").exists()
     (persist / "bodymap-iridology.json").write_text('{"system":"iridology","germ_layers":[],"zones":[1]}')
     assert bodymap_store.reseed_from_repo() is False  # does not clobber curation
+
+
+def _seed_system(tmp_path, monkeypatch, zones):
+    p = tmp_path / "bodymap-iridology.json"
+    p.write_text(json.dumps({
+        "system": "iridology", "reference_frame": "unit_circle",
+        "germ_layers": [{"id": "endoderm", "label": "E", "r_inner": 0.0, "r_outer": 0.33}],
+        "zones": zones,
+    }))
+    monkeypatch.setattr(bodymap_store, "SYSTEMS", dict(bodymap_store.SYSTEMS, iridology=p))
+    return p
+
+
+def test_build_payload_drops_invalid_and_sets_display(tmp_path, monkeypatch):
+    good = _zone(id="iris-R-liver", meaning_glen="Glen's read.")
+    bad = _zone(id="iris-R-bad", sector={"start_deg": 10, "end_deg": 999})
+    _seed_system(tmp_path, monkeypatch, [good, bad])
+    payload = bodymap_store.build_payload("iridology")
+    ids = {z["id"] for z in payload["zones"]}
+    assert ids == {"iris-R-liver"}
+    assert payload["zones"][0]["meaning_display"] == "Glen's read."  # glen overrides standard
+
+
+def test_build_payload_display_falls_back_to_standard(tmp_path, monkeypatch):
+    _seed_system(tmp_path, monkeypatch, [_zone(id="iris-R-liver", meaning_glen="")])
+    payload = bodymap_store.build_payload("iridology")
+    assert payload["zones"][0]["meaning_display"] == "Detox zone."
+
+
+def test_set_zone_overlay_persists(tmp_path, monkeypatch):
+    p = _seed_system(tmp_path, monkeypatch, [_zone(id="iris-R-liver", meaning_glen="")])
+    bodymap_store.set_zone_overlay("iridology", "iris-R-liver", "New clinical note.")
+    reloaded = json.loads(p.read_text())
+    assert reloaded["zones"][0]["meaning_glen"] == "New clinical note."
+
+
+def test_set_zone_overlay_unknown_raises(tmp_path, monkeypatch):
+    _seed_system(tmp_path, monkeypatch, [_zone(id="iris-R-liver")])
+    try:
+        bodymap_store.set_zone_overlay("iridology", "nope", "x")
+        assert False, "expected KeyError"
+    except KeyError:
+        pass

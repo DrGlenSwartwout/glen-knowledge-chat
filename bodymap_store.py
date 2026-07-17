@@ -78,3 +78,35 @@ def load_map(system):
         raise KeyError(system)
     return _read(path, {"system": system, "reference_frame": "unit_circle",
                         "germ_layers": [], "zones": []})
+
+
+def build_payload(system):
+    """Public payload for /body-map/data: valid zones only, each with meaning_display."""
+    data = load_map(system)
+    zones = []
+    for z in data.get("zones", []):
+        if not validate_zone(z)[0]:
+            continue
+        display = (z.get("meaning_glen") or "").strip() or z.get("meaning_standard", "")
+        zones.append({**z, "meaning_display": display})
+    return {
+        "system": data.get("system", system),
+        "reference_frame": data.get("reference_frame", "unit_circle"),
+        "germ_layers": data.get("germ_layers", []),
+        "zones": zones,
+    }
+
+
+def set_zone_overlay(system, zone_id, text):
+    """Persist Glen's meaning_glen for one zone. Raises KeyError if the zone is unknown."""
+    path = SYSTEMS[system]
+    data = load_map(system)
+    hit = False
+    for z in data.get("zones", []):
+        if z.get("id") == zone_id:
+            z["meaning_glen"] = text
+            hit = True
+            break
+    if not hit:
+        raise KeyError(zone_id)
+    _write(path, data)
