@@ -83,39 +83,57 @@ def _first_bank_account_id():
 
 
 def find_sales_receipt_by_ref(token, *, email=None, since_date=None):
-    """Look up the QBO SalesReceipt whose PrivateNote contains 'order:<token>'
+    """Look up the QBO SalesReceipt whose PrivateNote is exactly 'order:<token>'
     (stamped when a receipt is created/repaired for an order). Exact-match
-    only -- never returns a receipt on amount alone. Returns the receipt dict
-    or None.
+    only -- never returns a receipt on amount alone, and never matches a
+    substring (e.g. token 'tok1' must not match a receipt stamped for
+    'tok10'). Returns the receipt dict or None.
 
     Primary: a LIKE query on PrivateNote (QBO may reject LIKE on this field --
     wrapped in try/except). Fallback (primary raised or came up empty, and an
     `email` was given): resolve the customer and scan their recent receipts
     client-side for the token. Either way, the PrivateNote match is re-checked
-    client-side before returning, since QBO's LIKE (when it works at all) is
-    not trustworthy enough on its own to hand back a money-matching decision.
+    client-side (exact equality, after stripping whitespace) before returning,
+    since QBO's LIKE (when it works at all) is not trustworthy enough on its
+    own to hand back a money-matching decision.
+
+    Contract: None means "a query genuinely succeeded and found no matching
+    receipt" -- it must never mean "the lookup failed". The heal sweep treats
+    None as license to rebook, so a failed primary query with no way to
+    confirm via fallback (no email, or the fallback itself raises) is
+    re-raised instead of swallowed -- callers should catch it and skip the
+    order for the next sweep rather than risk a double-book.
     """
     needle = "order:" + token
 
     def _first_exact_match(receipts):
         for r in receipts:
-            if needle in (r.get("PrivateNote") or ""):
+            if (r.get("PrivateNote") or "").strip() == needle:
                 return r
         return None
 
+    primary_error = None
     try:
         rs = _query(f"SELECT * FROM SalesReceipt WHERE PrivateNote LIKE '%{_esc(needle)}%'")
         receipts = rs.get("QueryResponse", {}).get("SalesReceipt", [])
-    except Exception:
+    except Exception as e:
+        print(f"[qbo] find_sales_receipt_by_ref primary query failed: {e!r}", flush=True)
+        primary_error = e
         receipts = []
 
-    match = _first_exact_match(receipts)
-    if match:
-        return match
+    if primary_error is None:
+        match = _first_exact_match(receipts)
+        if match:
+            return match
 
     if not email:
+        if primary_error is not None:
+            raise primary_error
         return None
 
+    # Not wrapped in try/except: if this raises (whether or not the primary
+    # also raised), it propagates -- we have no further fallback, so we must
+    # not collapse an unresolved lookup into a false "not found".
     cust = find_or_create_customer(email)
     q = f"SELECT * FROM SalesReceipt WHERE CustomerRef = '{_esc(str(cust['Id']))}'"
     if since_date:

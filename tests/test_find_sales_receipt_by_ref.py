@@ -16,7 +16,7 @@ def _qr(receipts):
 
 
 def test_primary_match_returned(monkeypatch):
-    receipt = {"Id": "SR1", "PrivateNote": "order:tok1 — checkout ref"}
+    receipt = {"Id": "SR1", "PrivateNote": "order:tok1"}
 
     def fake_query(q):
         assert "PrivateNote LIKE" in q
@@ -42,7 +42,7 @@ def test_primary_false_hit_not_returned_and_no_email_is_none(monkeypatch):
 
 
 def test_primary_raises_fallback_via_email_finds_match(monkeypatch):
-    match = {"Id": "SR3", "PrivateNote": "order:tok1 stamped"}
+    match = {"Id": "SR3", "PrivateNote": "order:tok1"}
     calls = {"query_n": 0}
 
     def fake_query(q):
@@ -65,7 +65,7 @@ def test_primary_raises_fallback_via_email_finds_match(monkeypatch):
 
 
 def test_primary_empty_fallback_via_email_finds_match(monkeypatch):
-    match = {"Id": "SR4", "PrivateNote": "order:tok2 stamped"}
+    match = {"Id": "SR4", "PrivateNote": "order:tok2"}
     calls = {"query_n": 0}
 
     def fake_query(q):
@@ -151,3 +151,65 @@ def test_exact_match_discipline_same_amount_wrong_privatenote_never_returned(mon
     monkeypatch.setattr(qb, "find_or_create_customer", lambda email, name="": {"Id": "CUST1"})
     out2 = qb.find_sales_receipt_by_ref("tok6", email="buyer@example.com")
     assert out2 is None
+
+
+def test_primary_raises_no_email_raises_not_none(monkeypatch):
+    # A swallowed primary failure (auth/network/timeout) must NEVER collapse to
+    # None with no email to fall back on -- returning None here would make the
+    # heal sweep rebook a SECOND receipt while the first (unreachable, not
+    # nonexistent) still exists. It must raise so the sweep's per-order
+    # try/except skips this order instead of falsely rebooking.
+    def fake_query(q):
+        raise RuntimeError("QBO: LIKE not supported on PrivateNote")
+
+    monkeypatch.setattr(qb, "_query", fake_query)
+    with pytest.raises(RuntimeError):
+        qb.find_sales_receipt_by_ref("tok7")
+
+
+def test_primary_raises_fallback_also_raises_raises(monkeypatch):
+    calls = {"query_n": 0}
+
+    def fake_query(q):
+        calls["query_n"] += 1
+        if calls["query_n"] == 1:
+            raise RuntimeError("primary: LIKE not supported on PrivateNote")
+        raise RuntimeError("fallback: QBO timeout")
+
+    monkeypatch.setattr(qb, "_query", fake_query)
+    monkeypatch.setattr(qb, "find_or_create_customer", lambda email, name="": {"Id": "CUST9"})
+    with pytest.raises(RuntimeError):
+        qb.find_sales_receipt_by_ref("tok8", email="buyer@example.com")
+
+
+def test_primary_raises_fallback_succeeds_empty_returns_none(monkeypatch):
+    # Primary fails, but the fallback customer-scoped scan runs cleanly and
+    # genuinely finds nothing -- that's a real "not found", so None is correct.
+    calls = {"query_n": 0}
+
+    def fake_query(q):
+        calls["query_n"] += 1
+        if calls["query_n"] == 1:
+            raise RuntimeError("primary: LIKE not supported on PrivateNote")
+        return _qr([])
+
+    monkeypatch.setattr(qb, "_query", fake_query)
+    monkeypatch.setattr(qb, "find_or_create_customer", lambda email, name="": {"Id": "CUST9"})
+    out = qb.find_sales_receipt_by_ref("tok9", email="buyer@example.com")
+    assert out is None
+    assert calls["query_n"] == 2
+
+
+def test_anchored_match_does_not_match_substring_token(monkeypatch):
+    # Task 1 stamps PrivateNote as EXACTLY "order:<token>". An unanchored
+    # substring match would let token "tok1" match PrivateNote "order:tok10",
+    # which is a wrong-order false positive (Case B stamp on the wrong receipt,
+    # or a missed real match for tok10 itself).
+    other_order = {"Id": "SR10", "PrivateNote": "order:tok10"}
+
+    def fake_query(q):
+        return _qr([other_order])
+
+    monkeypatch.setattr(qb, "_query", fake_query)
+    out = qb.find_sales_receipt_by_ref("tok1")
+    assert out is None
