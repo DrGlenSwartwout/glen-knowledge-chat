@@ -36,6 +36,7 @@
   }
 
   function renderChart() {
+    if (!state.payload) return;
     const svg = document.getElementById("bm-svg");
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
@@ -63,9 +64,13 @@
   function selectZone(z) {
     document.querySelectorAll(".bm-zone").forEach(e => e.classList.toggle("bm-sel", e.dataset.id === z.id));
     const panel = document.getElementById("bm-panel");
-    panel.innerHTML = "<h2>" + z.anatomy + "</h2>" +
-      "<p><strong>" + z.germ_layer + "</strong> layer, " + z.eye + " eye</p>" +
-      "<p>" + (z.meaning_display || z.meaning_standard) + "</p>";
+    panel.replaceChildren();
+    const h = document.createElement("h2"); h.textContent = z.anatomy;
+    const meta = document.createElement("p");
+    const strong = document.createElement("strong"); strong.textContent = z.germ_layer;
+    meta.append(strong, document.createTextNode(" layer, " + z.eye + " eye"));
+    const body = document.createElement("p"); body.textContent = z.meaning_display || z.meaning_standard;
+    panel.append(h, meta, body);
   }
 
   function renderLayerToggles() {
@@ -73,8 +78,9 @@
     (state.payload.germ_layers || []).forEach(g => {
       const id = "bml-" + g.id;
       const label = document.createElement("label");
-      label.innerHTML = '<input type="checkbox" id="' + id + '"> ' + g.label;
-      const cb = label.querySelector("input");
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.id = id;
+      label.append(cb, document.createTextNode(" " + g.label));
       cb.addEventListener("change", () => {
         if (cb.checked) state.activeLayers.add(g.id); else state.activeLayers.delete(g.id);
         renderChart();
