@@ -39083,6 +39083,53 @@ def api_orders_price_preview():
                     "subtotal_cents": subtotal, "lines": out_lines})
 
 
+@app.route("/api/orders/membership-offer", methods=["POST"])
+def api_orders_membership_offer():
+    """Given a product cart + a membership tier, return the offer economics: gross fee,
+    the product savings the membership unlocks on THIS order, and the net add. Pure read;
+    no persistence. Used by the staff editor and the customer invoice controls.
+
+    Gated the same as /api/orders/price-preview (OWNER via _bos_actor): the savings
+    math re-invokes that endpoint in-process, so an unauthorized caller can never get
+    real numbers out of it anyway -- gating here turns that into a clean 401 instead
+    of a 500 (KeyError on the nested endpoint's unauthorized response body)."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import membership_products as _mp
+    _body = request.get_json(silent=True) or {}
+    tier_key = (_body.get("tier") or "month").strip()
+    tier = _mp.get_tier(tier_key)
+    if not tier:
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    lines_in = _body.get("lines") or []
+    email = (_body.get("email") or "").strip().lower()
+    # Forward the caller's console-key auth into the nested price-preview call below --
+    # test_request_context() builds a fresh WSGI environ that does NOT inherit the
+    # outer request's headers, and api_orders_price_preview() gates on _bos_actor()
+    # reading X-Console-Key off that fresh request. Without forwarding it, the nested
+    # call 401s and there is no "lines" key to read.
+    _console_key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
+    # Price the product lines twice: as-is (list for a non-member) and with the membership
+    # line present (member). Savings = the delta the membership unlocks.
+    def _subtotal(lines):
+        with app.test_request_context(
+                "/api/orders/price-preview", method="POST",
+                json={"email": email, "lines": lines},
+                headers={"X-Console-Key": _console_key}):
+            resp = api_orders_price_preview()
+        data = resp.get_json() if hasattr(resp, "get_json") else resp[0].get_json()
+        prod = [l for l in data["lines"] if not str(l["slug"]).startswith("membership:")]
+        return sum(l["line_cents"] for l in prod), prod
+    base_sub, _ = _subtotal(lines_in)
+    mem_sub, _ = _subtotal(lines_in + [{"slug": _mp.line_slug(tier_key), "qty": 1}])
+    savings = max(0, base_sub - mem_sub)
+    gross = int(tier["price_cents"])
+    return jsonify({"ok": True, "tier": tier_key, "gross_cents": gross,
+                    "savings_cents": savings, "net_add_cents": max(0, gross - savings),
+                    "net_savings_cents": savings, "offered_tiers": _mp.invoice_offer_tiers()})
+
+
 @app.route("/api/orders/<int:oid>/payments", methods=["GET"])
 def api_order_payments_list(oid):
     if _bos_actor() is None:
