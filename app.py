@@ -21631,6 +21631,36 @@ def household_holds_sweep_cron():
     return jsonify({"ok": True, "released": released, "combined": combined})
 
 
+@app.route("/api/cron/qbo-heal-pending", methods=["POST"])
+def api_cron_qbo_heal_pending():
+    """Sweep orders stuck at qbo_sales_receipt_id='PENDING' (crashed/interrupted
+    booking) and resolve each: stamp the existing QBO receipt if one already
+    exists, or re-claim + rebook if none does. See dashboard.qbo_heal for the
+    full resolution logic. Rides the existing daily briefings cron (folded in
+    by scripts/run_briefings_cron.py) -- no separate Render cron service.
+    Auth: X-Cron-Secret header matching CRON_SECRET (falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import qbo_heal as _heal, qbo_billing as _qb, qbo_sale as _qs, orders as _ord
+    # Serialized under _db_lock (mirrors /api/cron/household-holds/sweep above): two
+    # overlapping sweeps in this process cannot interleave, which is what closes the
+    # concurrent-rebook / double-book window on a single web instance. See qbo_heal's
+    # module docstring for why the CAS clear alone does not make that safe.
+    with _db_lock:
+        cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+        try:
+            healed = _heal.heal_pending_receipts(
+                cx,
+                find_receipt=_qb.find_sales_receipt_by_ref,
+                book=lambda cx2, o: _qs.book_sale_on_payment(cx2, o),
+                stamp=_ord.set_order_sales_receipt_id)
+        finally:
+            cx.close()
+    return jsonify({"ok": True, "healed": healed, "count": len(healed)})
+
+
 @app.route("/api/cron/family-plan/charge", methods=["POST"])
 def family_plan_charge_cron():
     """Daily charge cron for paid Family Plans. Charges each due, non-comp, active
