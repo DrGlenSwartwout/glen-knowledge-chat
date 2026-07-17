@@ -146,7 +146,7 @@
     sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
     if (!sides.includes(state.eye)) state.eye = sides[0] || "right";
     sel.value = state.eye;
-    document.getElementById("bm-side-label").textContent = state.frame === "ear_outline" ? "Side" : "Eye";
+    document.getElementById("bm-side-label").textContent = isOutlineFrame() ? "Side" : "Eye";
     renderLayerToggles(); renderChart();
   }
 
