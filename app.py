@@ -9802,14 +9802,11 @@ def begin_checkout_return():
                 # order_settlement -> _ensure_subscription_row (single dispatch at the
                 # end of this paid block).
 
-                # ── Group bundle: grant the free live-group window (flag-gated) ──
-                # Kept INLINE (not routed through the orchestrator): it fires for ANY
-                # paid kind carrying grant_group_months — today only retail program
-                # orders do, and the orchestrator grants group_bundle solely for
-                # kind=='subscribe' (which never carries grant_group_months). Routing
-                # it through the orchestrator would silently drop the retail grant.
-                # Best-effort, never raises; idempotent per invoice.
-                _grant_group_bundle(md, pi_id)
+                # NOTE: group-bundle grant (free live-group window, flag-gated) now
+                # settles via order_settlement -> _grant_group_bundle (single dispatch
+                # at the end of this paid block), dispatched kind-agnostically by
+                # grant_group_months presence in md -- not just for kind=='subscribe'.
+                # See dashboard/order_settlement.py.
 
                 # NOTE: founding_reserve uses a setup-mode ($0) Stripe session and is
                 # handled BELOW, outside this "paid" block, so it is reachable for

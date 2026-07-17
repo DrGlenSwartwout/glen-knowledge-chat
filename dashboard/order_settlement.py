@@ -40,8 +40,17 @@ def settle_paid_order_effects(*, kind, order, md, pi_id, sid, deps):
 
     if kind == "subscribe":
         _do("subscription", lambda: deps.ensure_subscription(md, pi_id))
+
+    # Group-bundle grant is a RETAIL effect, not a subscribe one: grant_group_months
+    # is stamped only on kind=="retail" program orders (see
+    # _stripe_checkout_url_for_retail in app.py), never on subscribe. Dispatch by
+    # the metadata's presence, kind-agnostic, so both the redirect and the webhook
+    # (which route purely through this orchestrator) grant it identically. The
+    # dep (_grant_group_bundle) retains its own GROUP_BUNDLE_ENABLED/pi_id gate.
+    if int((md or {}).get("grant_group_months") or 0) > 0:
         _do("group_bundle", lambda: deps.grant_group_bundle(md, pi_id))
-    elif kind == "client":
+
+    if kind == "client":
         _do("client", lambda: deps.settle_client(md))
     elif kind == "biofield":
         _do("biofield", lambda: deps.settle_biofield(md, sid))

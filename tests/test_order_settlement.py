@@ -29,9 +29,27 @@ def test_retail_settles_points_and_referral_only():
     assert d.calls == ["points", "referral"]
     assert set(out["settled"]) == {"points", "referral"}
 
-def test_subscribe_adds_subscription_and_group_bundle():
+def test_subscribe_without_grant_group_months_skips_group_bundle():
+    # subscribe never carries grant_group_months today -- group_bundle must NOT
+    # fire just because kind=='subscribe'; only ensure_subscription runs.
     d = _Deps(); _run("subscribe", d)
+    assert d.calls == ["points", "referral", "subscription"]
+
+def test_subscribe_with_grant_group_months_adds_group_bundle():
+    d = _Deps()
+    _run("subscribe", d, md={"invoice_id": "tok1", "kind": "subscribe",
+                              "grant_group_months": "3"})
     assert d.calls == ["points", "referral", "subscription", "group_bundle"]
+
+def test_non_subscribe_kind_with_grant_group_months_calls_group_bundle():
+    # Dispatch is kind-agnostic: any kind carrying grant_group_months (today
+    # only retail program orders do) must fire group_bundle via the
+    # orchestrator, not just subscribe.
+    d = _Deps()
+    out = _run("retail", d, md={"invoice_id": "tok1", "kind": "retail",
+                                 "grant_group_months": "1"})
+    assert d.calls == ["points", "referral", "group_bundle"]
+    assert set(out["settled"]) == {"points", "referral", "group_bundle"}
 
 def test_client_settles_common_points_and_client():
     # Behavior-preserving: client goes through the shared gate today, so it gets
@@ -50,7 +68,9 @@ def test_reorder_and_portal_reorder_like_retail():
         assert d.calls == ["points", "referral"]
 
 def test_one_settler_raising_is_recorded_and_others_continue():
-    d = _Deps(raise_on={"points"}); out = _run("subscribe", d)
+    d = _Deps(raise_on={"points"})
+    out = _run("subscribe", d, md={"invoice_id": "tok1", "kind": "subscribe",
+                                    "grant_group_months": "3"})
     # points raises but referral/subscription/group_bundle still run
     assert d.calls == ["points", "referral", "subscription", "group_bundle"]
     assert "points" in out["skipped"]
