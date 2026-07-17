@@ -265,7 +265,7 @@ def replace_invoice_lines(invoice_id, lines, *, discount_cents=0, tax_cents=0):
 
 
 def create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
-                         email_to=None, bank_account_id=None):
+                         email_to=None, bank_account_id=None, private_note=None):
     """Record a PAID sale as a QBO SalesReceipt — booked straight to the deposit
     account, never touching A/R. Mirrors create_invoice's line/discount/tax handling
     so the two agree exactly; the only structural differences are DepositToAccountRef
@@ -291,6 +291,8 @@ def create_sales_receipt(customer, lines, *, discount_cents=0, tax_cents=0,
     if tax_cents and int(tax_cents) > 0:
         body["TxnTaxDetail"] = {"TotalTax": round(int(tax_cents) / 100.0, 2)}
         body["GlobalTaxCalculation"] = "TaxExcluded"
+    if private_note:
+        body["PrivateNote"] = str(private_note)[:1000]
     return _post("/salesreceipt", body).get("SalesReceipt")
 
 

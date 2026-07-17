@@ -8,13 +8,16 @@ class _FakeQB:
     def __init__(self):
         self.receipts = 0
         self.last_lines = None
+        self.last_private_note = None
     def find_or_create_customer(self, email, name=""):
         return {"Id": "C1"}
-    def create_sales_receipt(self, cust, lines, *, discount_cents=0, tax_cents=0, email_to=None):
+    def create_sales_receipt(self, cust, lines, *, discount_cents=0, tax_cents=0,
+                             email_to=None, private_note=None):
         self.receipts += 1
         self.last_lines = lines
         self.last_discount = discount_cents
         self.last_tax = tax_cents
+        self.last_private_note = private_note
         return {"Id": "SR1"}
 
 
