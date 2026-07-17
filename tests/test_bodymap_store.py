@@ -245,7 +245,7 @@ def test_shipped_foot_seed_valid():
     for z in data["zones"]:
         ok, err = bodymap_store.validate_zone(z)
         assert ok, f"foot zone {z.get('id')}: {err}"
-        assert z["geometry"]["type"] == "point"
+        assert z["geometry"]["type"] == "polygon"   # reflexology zones are areas, not points
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
         sides.add(z["side"])
     assert sides == {"left", "right"}, "both soles must be populated"
