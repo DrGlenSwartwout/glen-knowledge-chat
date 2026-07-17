@@ -308,9 +308,12 @@ def test_webhook_closed_tab_retail_settles_points_and_referral(monkeypatch, tmp_
 def test_webhook_settlement_idempotent_when_run_twice(monkeypatch, tmp_path, client):
     """A closed-tab order that gets the SAME webhook delivered twice (Stripe
     retry / duplicate event) must not double-create the subscription: the
-    first call books + settles, and the second call's book-back guard
-    (qbo_sales_receipt_id already set) skips the whole block -- so settlement
-    is never re-attempted, and no duplicate row is created."""
+    first call books + settles. On the second call, the booking guard
+    (qbo_sales_receipt_id already set) only skips re-booking the Sales Receipt --
+    settlement is a separate, independently-gated step. It is the settled_at
+    gate (set via mark_order_settled after the first call's settlement) that
+    blocks settle_paid_order_effects from re-running, so no duplicate row is
+    created."""
     db = _isolate_db(monkeypatch, tmp_path)
     _noop_fulfillers(monkeypatch)
     token = "i" * 32
@@ -340,8 +343,8 @@ def test_webhook_settlement_idempotent_when_run_twice(monkeypatch, tmp_path, cli
     cx.row_factory = sqlite3.Row
     rows = cx.execute("SELECT * FROM subscriptions WHERE order_ref=?", (token,)).fetchall()
     assert len(rows) == 1
-    # points/referral only fire once too -- the second call's outer guard
-    # (already booked) prevents re-dispatch.
+    # points/referral only fire once too -- the second call's settled_at gate
+    # (not the booking guard) prevents settlement, and therefore re-dispatch.
     assert calls["points"] == [token]
     assert calls["referral"] == [token]
 
