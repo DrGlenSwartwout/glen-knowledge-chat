@@ -8,10 +8,13 @@ return-handler (once payment is confirmed) from the ``qbo_payload`` this returns
 Redemption happens before booking (a Sales Receipt is final once posted) and is
 idempotent on ``checkout_ref``.
 
-``build_module_order`` (certification tuition) still creates a QBO invoice and
-applies the redeemed credit as a discount line -- it is unchanged/out of scope
-here. Training-first allocation lives at the route layer: call
-build_module_order before build_order when both are pending.
+``build_module_order`` (certification tuition) is paid-only the same way: it
+mints its own ``checkout_ref`` token, resolves ``wallet.redeem_for_module``
+credit up front (that call keeps its own idempotency -- module_slug + calendar
+month, not a ref argument), and returns a line-faithful ``qbo_payload`` for a
+Sales Receipt to be booked once payment is confirmed. Training-first
+allocation lives at the route layer: call build_module_order before
+build_order when both are pending.
 """
 
 from __future__ import annotations
@@ -90,30 +93,41 @@ def build_order(cart_items: List[dict], practitioner: dict, *, method=None,
 
 def build_module_order(practitioner: dict, module_slug: str, *, today,
                        tuition_cents: int = wallet.MODULE_TUITION_CENTS) -> dict:
-    """Invoice one certification module, then redeem up to 100% of tuition in credit
-    (monthly-gated). practitioner needs: id, email, name."""
-    cust = qb.find_or_create_customer(practitioner["email"], practitioner.get("name", ""))
-    inv = qb.create_invoice(cust, [{
-        "name": f"Certification Module — {module_slug}",
-        "amount": round(tuition_cents / 100.0, 2),
-        "qty": 1,
-        "description": f"Functional Formulations Certification — {module_slug}",
-    }], email_to=practitioner["email"])
-    invoice_id = inv.get("Id")
+    """Price one certification module (paid-only -- no QBO invoice/customer at
+    checkout time), then redeem up to 100% of tuition in credit (monthly-gated).
+    A real, line-faithful QBO Sales Receipt is booked later (once payment is
+    confirmed) from the ``qbo_payload`` this returns.
+
+    ``redeem_for_module`` keeps its OWN idempotency (module_slug + calendar
+    month, not a ref/invoice-id argument -- its signature takes none), so
+    credit is resolved before booking without being keyed on ``checkout_ref``.
+
+    practitioner needs: id, email, name."""
+    checkout_ref = uuid.uuid4().hex   # stable order/correlation key (no QBO invoice yet)
 
     redeemed = wallet.redeem_for_module(practitioner["id"], module_slug,
                                         today=today, tuition_cents=tuition_cents)
-    if redeemed > 0:
-        inv = qb.apply_invoice_discount(invoice_id, redeemed)
+
+    qbo_payload = {
+        "lines": [{
+            "name": f"Certification Module — {module_slug}",
+            "amount": round(tuition_cents / 100.0, 2),
+            "qty": 1,
+            "description": f"Functional Formulations Certification — {module_slug}",
+        }],
+        "discount_cents": redeemed,
+        "tax_cents": 0,
+    }
 
     return {
         "ok": True,
-        "invoice_id": invoice_id,
-        "sync_token": inv.get("SyncToken"),
-        "doc_number": inv.get("DocNumber"),
-        "total": inv.get("TotalAmt"),
+        "invoice_id": checkout_ref,
+        "customer_id": "",
+        "doc_number": "",
+        "total": round((tuition_cents - redeemed) / 100.0, 2),
         "tuition_cents": tuition_cents,
         "credit_redeemed_cents": redeemed,
+        "qbo_payload": qbo_payload,
     }
 
 

@@ -169,13 +169,20 @@ def test_build_order_empty_cart(env):
 
 
 # ── build_module_order (training-first redemption, up to 100%) ─────────────────
+# Paid-only (Stage 4, Task 2): no QBO invoice/customer/discount at checkout time --
+# a checkout_ref token + line-faithful qbo_payload are returned instead (see
+# tests/test_wholesale_module_paid_only.py for the full conversion coverage).
 
 def test_build_module_order_redeems_up_to_full_tuition(env):
     env["wallet"].earn_dropship(PID, 50)               # +$1000 credit
     out = env["wc"].build_module_order(env["prac"], "module-1", today=datetime(2026, 6, 9))
     assert out["ok"] is True
     assert out["credit_redeemed_cents"] == 29700        # full $297 covered
-    assert env["qb"].discounts == [("INV1", 29700)]
+    assert env["qb"].created == []                      # no invoice created
+    assert env["qb"].discounts == []                    # no QBO discount call
+    assert out["customer_id"] == ""
+    assert isinstance(out["invoice_id"], str) and len(out["invoice_id"]) == 32
+    assert out["qbo_payload"]["discount_cents"] == 29700
     assert env["wallet"].get_balance_cents(PID) == 70300
 
 
