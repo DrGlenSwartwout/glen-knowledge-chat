@@ -115,7 +115,19 @@
         t.textContent = z.anatomy; t.addEventListener("click", () => selectZone(z));
         svg.appendChild(t);
       }
-      if (geo.type === "polygon") {
+      if (geo.type === "ellipse") {
+        const c = N(geo.cx, geo.cy);
+        const ex = N(geo.cx + geo.rx, geo.cy), ey = N(geo.cx, geo.cy + geo.ry);
+        const el = document.createElementNS(svgNS, "ellipse");
+        el.setAttribute("cx", c.x.toFixed(1)); el.setAttribute("cy", c.y.toFixed(1));
+        el.setAttribute("rx", Math.hypot(ex.x - c.x, ex.y - c.y).toFixed(1));
+        el.setAttribute("ry", Math.hypot(ey.x - c.x, ey.y - c.y).toFixed(1));
+        el.setAttribute("class", "bm-zone bm-area"); el.dataset.id = z.id;
+        el.setAttribute("fill", col); el.setAttribute("fill-opacity", "0.35");
+        el.setAttribute("stroke", col); el.setAttribute("stroke-width", "1.2");
+        el.addEventListener("click", () => selectZone(z));
+        svg.appendChild(el); addLabel(c.x, c.y);
+      } else if (geo.type === "polygon") {
         const pts = geo.points || [];
         const d = pts.map((p, i) => { const s = N(p[0], p[1]); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
         const path = document.createElementNS(svgNS, "path");
