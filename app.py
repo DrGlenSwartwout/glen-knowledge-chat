@@ -38000,6 +38000,36 @@ def console_membership_enroll():
     return jsonify(out)
 
 
+@app.route("/api/console/membership/revoke", methods=["POST"])
+def console_membership_revoke():
+    """Owner-only: revoke a member's access grant(s). Manual enroll grants the member
+    flag immediately (before any payment), so a comped/mistaken enroll leaves someone
+    priced as a paid member without having paid. This expires every currently-active
+    memberships row for the email so the paid-member gate (_is_paid_member, which reads
+    MAX(expires_at)) reads non-member on the next check. Idempotent: revoking an already
+    non-member is a no-op (0 rows). Audit-preserving: rows are expired in place (not
+    deleted), so the record that a grant existed remains."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    now = datetime.utcnow().isoformat() + "Z"
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        init_membership_tables(cx)
+        cur = cx.execute(
+            "UPDATE memberships SET expires_at=? WHERE email=? AND expires_at > ?",
+            (now, email, now))
+        n = cur.rowcount
+        cx.commit()
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "email": email, "grants_revoked": n})
+
+
 @app.route("/api/console/membership/reconcile-alerts", methods=["GET"])
 def console_membership_reconcile_alerts():
     """Owner-only: open membership_reconcile_alerts rows -- the duplicate-member
