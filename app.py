@@ -27304,6 +27304,35 @@ def webhook_stripe():
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
                 _fulfill_family_plan(session_id)
+
+                # Webhook-back the paid-only Sales-Receipt booking so a closed browser
+                # tab (dropped redirect) can't leave money collected with no QBO
+                # receipt + an order stuck unpaid. Guarded on qbo_lines_json (paid-only
+                # checkout orders only) + idempotent via book_sale_on_payment's atomic
+                # claim -> never double-books with the redirect handlers.
+                try:
+                    from dashboard import stripe_pay as _sp2
+                    sess = _sp2.get_session(session_id)
+                    if sess.get("payment_status") == "paid":
+                        inv = (sess.get("metadata") or {}).get("invoice_id")
+                        if inv:
+                            _wcx = _sqlite3.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
+                            try:
+                                _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
+                                if _wo and _wo["qbo_lines_json"] and not _wo["qbo_sales_receipt_id"]:
+                                    _wpi = sess.get("payment_intent")
+                                    if _wpi:
+                                        _bos_orders.set_order_stripe_pi(_wcx, _wo["id"], _wpi)
+                                    _bos_orders.set_order_payment(
+                                        _wcx, _wo["id"], method="card",
+                                        amount_cents=int(sess.get("amount_total") or 0))
+                                    from dashboard import qbo_sale as _wqs
+                                    _wqs.book_sale_on_payment(
+                                        _wcx, dict(_bos_orders.find_order_by_external_ref(_wcx, inv)))
+                            finally:
+                                _wcx.close()
+                except Exception as _we:
+                    print(f"[stripe-webhook] paid-only book-back failed: {_we!r}", flush=True)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
