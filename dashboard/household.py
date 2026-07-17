@@ -83,12 +83,15 @@ def add_member(cx, primary_email, member_email, label="", relationship="",
     p, m = _norm(primary_email), _norm(member_email)
     if not p or not m or p == m:
         return False
-    if is_dependent(relationship):
+    rel = (relationship or "").strip().lower()
+    if is_dependent(rel):
         share, basis = 1, "caregiver-authority"
+    elif not rel:
+        share, basis = 1, ""        # legacy generic link: shared by default (revocable)
     elif consent_basis in ("verbal", "written"):
         share, basis = 1, consent_basis
     else:
-        share, basis = 0, ""
+        share, basis = 0, ""        # explicit operational word: dark until consent
     cx.execute(
         "INSERT OR IGNORE INTO household_members "
         "(primary_email, member_email, label, relationship, created_at, share_consent, "

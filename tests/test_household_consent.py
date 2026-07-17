@@ -15,6 +15,13 @@ def test_dependent_defaults_shared_and_authority():
     assert st["share_consent"] == 1 and st["consent_basis"] == "caregiver-authority"
 
 
+def test_blank_relationship_keeps_legacy_shared_default():
+    cx = _cx()
+    h.add_member(cx, "cg@x.com", "m@x.com", "M")   # no relationship
+    st = h.consent_state(cx, "cg@x.com", "m@x.com")
+    assert st["share_consent"] == 1 and st["consent_basis"] == ""
+
+
 def test_operational_defaults_dark_and_pending():
     cx = _cx()
     h.add_member(cx, "cg@x.com", "adult@x.com", "Partner", "partner")
