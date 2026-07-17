@@ -9504,21 +9504,17 @@ def begin_checkout_return():
                         print(f"[begin-return] in-house pay record: {_e!r}", flush=True)
                 # NOTE: retail/funnel checkout (begin_checkout), cart checkout
                 # (_checkout_cart), and reorder/portal-reorder/subscribe are ALL
-                # paid-only as of the QBO Stage 3 migration -- each sets metadata
-                # customer_id="" (no QBO customer/invoice exists at checkout time)
-                # and books a real Sales Receipt below, so `cid` is falsy for every
-                # one of these kinds. The `if cid` guard is what still routes a
-                # genuine invoice-based order (a real, non-empty QBO customer_id --
-                # e.g. a legacy/not-yet-migrated order that predates this flow's
-                # conversion) to record_payment; it is a no-op for the paid-only
-                # kinds precisely because their cid is "".
-                # The outer gate is therefore `inv` alone (not `inv and cid`), and each
-                # inner side effect is individually scoped: record_payment (invoice-
-                # apply) requires a real `cid` and excludes only biofield/retail
-                # (paid-only / has its own path, nothing to apply to); the stripe-pi/
-                # points/referral/booking block fires whenever there's a real `cid`
-                # (a genuine invoice-based order) OR kind is one of the paid-only
-                # kinds (retail/reorder/portal-reorder/subscribe).
+                # paid-only as of the QBO Stage 3+ migration -- each sets metadata
+                # customer_id="" (no QBO customer/invoice exists at checkout time),
+                # so `cid` is falsy for every one of these kinds. There is no
+                # invoice-payment application (record_payment) anymore -- that
+                # legacy routing was removed. The only thing this block does for
+                # a matched order is: capture the Stripe PaymentIntent id, settle
+                # points/referral, and book ONE line-faithful QBO Sales Receipt
+                # (idempotent via qbo_sales_receipt_id). The outer gate is `inv`
+                # alone; the inner gate `pi_id and (cid or _kind in (...))` just
+                # widens eligibility to include a genuine invoice-based order (a
+                # real, non-empty QBO customer_id) alongside the paid-only kinds.
                 # biofield is excluded here on purpose -- it has its own dedicated block below
                 # (kind=="biofield") so it isn't double-settled/double-booked via this path.
                 if inv:
@@ -25848,8 +25844,8 @@ def practitioner_checkout_return():
             if sess.get("payment_status") == "paid":
                 paid = "1"
                 md = sess.get("metadata") or {}
-                inv, cid = md.get("invoice_id"), md.get("customer_id")
-                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice (cid==""),
+                inv = md.get("invoice_id")
+                # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice,
                 # so mark the order paid and book ONE Sales Receipt. Guarded on
                 # qbo_lines_json so legacy invoice-based orders are untouched;
                 # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
