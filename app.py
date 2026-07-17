@@ -7273,14 +7273,23 @@ def _mentor_kickoff_build(slug, name):
     from dashboard import mentor_copy as _mc, mentor_pages as _mp
 
     def _build():
+        # Do NOT hold _db_lock across the build. build_page makes several slow LLM
+        # calls, and holding the global DB lock for that long stalls request
+        # handling and gets the gunicorn worker killed mid-build, leaving a draft
+        # row with zero sections. A dedicated connection with a busy timeout is
+        # safe on its own (SQLite serializes writes at the file level); this
+        # matches the synchronous mentor_page.rebuild action path, which works.
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            cx = sqlite3.connect(LOG_DB, timeout=30)
+            try:
                 _mp.init_table(cx)
                 page = _mp.get_page(cx, slug)
                 if page and (page.get("content") or {}):
                     return  # already built
                 _mc.build_page(cx, slug, name, client=_cl,
                                retriever=_mentor_retriever, strip=_strip_dash)
+            finally:
+                cx.close()
         except Exception as exc:  # noqa: BLE001 - background build must never raise
             print(f"[mentor-build] {slug}: {exc}", flush=True)
 
