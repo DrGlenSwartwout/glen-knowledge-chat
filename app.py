@@ -38472,11 +38472,14 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
+    from dashboard import membership_products as _mp
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
     # Paid membership gates the order-wide mix/match volume rate (Glen 2026-07):
-    # resolved ONCE for the whole order, same as repertoire below.
-    program_member = _is_paid_member(email)
+    # resolved ONCE for the whole order, same as repertoire below. A membership
+    # line in the cart provisionally flips the buyer to member pricing too
+    # (computed only — never persisted until payment; see Task 2 brief).
+    program_member = _is_paid_member(email) or bool(_mp.cart_has_membership_tier(lines_in))
     # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
     # this also makes the owner in-house INVOICE honor repertoire pricing for members,
     # not just the portal checkout). Only ever consulted below when a line has no
@@ -38509,6 +38512,15 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
+        _mtier = _mp.tier_of_line(ln)
+        if _mtier:
+            t = _mp.get_tier(_mtier)
+            _mrec = {"slug": _mp.line_slug(_mtier), "name": t["label"], "qty": 1,
+                     "unit_cents": t["price_cents"], "line_cents": t["price_cents"],
+                     "kind": "membership", "tier": _mtier}
+            items_rec.append(_mrec)
+            subtotal_list += t["price_cents"]
+            continue
         p = _get_product(slug)
         if not p:
             continue
@@ -38986,12 +38998,15 @@ def api_orders_price_preview():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import pricing as _pricing
+    from dashboard import membership_products as _mp
     settings = _pricing.load_settings(_pricing_settings())
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
     _pemail = (_body.get("email") or "").strip().lower()
-    _ppm = _is_paid_member(_pemail)
+    # A membership line in the cart provisionally flips the buyer to member
+    # pricing (computed only — never persisted until payment; see Task 2 brief).
+    _ppm = _is_paid_member(_pemail) or bool(_mp.cart_has_membership_tier(lines_in))
     # The order-wide mix/match rate — a paid-member-only perk (Glen 2026-07); a
     # non-member's per-line vol_pct is computed inside the loop below, off that
     # line's own qty (same-SKU rate), since it isn't a single order-wide number.
@@ -39022,6 +39037,14 @@ def api_orders_price_preview():
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
+        _mtier = _mp.tier_of_line(ln)
+        if _mtier:
+            t = _mp.get_tier(_mtier)
+            out_lines.append({"slug": _mp.line_slug(_mtier), "qty": 1, "is_ff": False,
+                              "list_cents": t["price_cents"], "effective_unit_cents": t["price_cents"],
+                              "line_cents": t["price_cents"], "vol_pct": 0, "savings_cents": 0})
+            subtotal += t["price_cents"]
+            continue
         p = _get_product(slug)
         if not p:
             continue
