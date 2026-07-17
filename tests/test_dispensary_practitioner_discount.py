@@ -8,8 +8,9 @@ practitioner's margin), clamped to the house ceilings and floored via
 identical to today (flat S, unchanged margin).
 
 Stubbing mirrors tests/test_client_order.py: monkeypatch
-practitioner_price_for / qb.find_or_create_customer / qb.create_invoice /
-tax.compute_get_cents so the call runs with no network. `_get_product` /
+practitioner_price_for / tax.compute_get_cents so the call runs with no
+network; qb.find_or_create_customer / qb.create_invoice must NOT be called
+(paid-only, Stage 4 -- no QBO invoice/customer at checkout time). `_get_product` /
 `_qty_eligible` come from `app` (lazily imported inside build_client_order);
 we monkeypatch `_get_product` on the app module so the eligible-SKU is
 deterministic and use the real `_qty_eligible`.
@@ -24,17 +25,23 @@ S = 6997  # practitioner's selling price for the SKU (>= MAP)
 
 
 def _stub_qb_tax(monkeypatch, cap):
-    monkeypatch.setattr(dc.qb, "find_or_create_customer", lambda *a, **k: {"Id": "PATC"})
-    monkeypatch.setattr(
-        dc.qb, "create_invoice",
-        lambda cust, lines, **k: cap.update(cust=cust, lines=lines)
-        or {"Id": "INV", "TotalAmt": 0.0},
-    )
+    """`cap` is populated from the returned qbo_payload after the call (see
+    _capture below) -- create_invoice/find_or_create_customer must not fire."""
+    def boom(*a, **k):
+        raise AssertionError("build_client_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
     import dashboard.tax as _tax
     monkeypatch.setattr(
         _tax, "compute_get_cents",
         lambda s, *, channel, ship_to_state, resale_ok=False: 0,
     )
+
+
+def _capture(cap, out):
+    """Mirror the old cap["lines"] shape from the qbo_payload the call returns."""
+    cap["lines"] = out["qbo_payload"]["lines"]
+    return out
 
 
 def _stub_eligible_product(monkeypatch, slug="vol-sku"):
@@ -59,6 +66,7 @@ def test_no_config_leaves_price_at_S(monkeypatch):
 
     out = dc.build_client_order(cart, prac, patient=patient, method="card",
                                 effective_settings=None)
+    _capture(cap, out)
 
     # Patient charged flat S; margin identical to today's quote_line margin.
     q = dc._pp.quote_line(selling_cents=S, qty=1, modules=0, settings=dc._settings())
@@ -89,6 +97,7 @@ def test_dialed_open_total_discounts_patient_off_S(monkeypatch):
 
     out = dc.build_client_order(cart, prac, patient=patient, method="card",
                                 effective_settings=eff, program_member=False)
+    _capture(cap, out)
 
     # Ground the expectation entirely in the same pricing helpers the engine uses.
     exp_pct = _pricing.open_total_pct(QTY, eff)
@@ -126,6 +135,7 @@ def test_dialed_same_sku_discounts_per_line(monkeypatch):
     )
     out = dc.build_client_order(cart, prac, patient=patient, method="card",
                                 effective_settings=eff, program_member=False)
+    _capture(cap, out)
 
     exp_pct = _pricing.same_sku_pct(QTY, eff)
     assert exp_pct > 0
@@ -156,6 +166,7 @@ def test_ineligible_sku_not_discounted(monkeypatch):
     )
     out = dc.build_client_order(cart, prac, patient=patient, method="card",
                                 effective_settings=eff, program_member=False)
+    _capture(cap, out)
     assert cap["lines"][0]["amount"] == 69.97          # flat S, no discount
     assert out["subtotal_cents"] == S * 12
 

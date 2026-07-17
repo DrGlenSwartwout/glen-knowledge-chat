@@ -195,8 +195,17 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     behavior is byte-identical to the flat-S baseline (no discount, unchanged
     margin) — the discount machinery is skipped entirely.
 
+    ``build_client_order`` is QBO paid-only (Stage 4): no QBO invoice/customer
+    is created at checkout time -- a fresh ``checkout_ref`` token is minted and
+    a line-faithful ``qbo_payload`` is returned for the route to persist. The
+    return-handler (already wired for kind="client") books a real QBO Sales
+    Receipt from it once payment is confirmed. The points-redeem/ship-credit
+    discount is already resolved before this point (never a QBO invoice id),
+    so this is a straight Pattern-I conversion.
+
     Key differences from build_dropship_order:
-    - QBO customer = the PATIENT (patient["email"]).
+    - QBO customer = the PATIENT (patient["email"]) -- but not created here;
+      the return-handler resolves it when booking the Sales Receipt.
     - Each line is priced at S = practitioner_price_for(pid, slug) (>= MAP),
       optionally reduced by the practitioner-effective volume discount.
     - base/fee/margin computed via quote_line(selling_cents=S, qty=total_bottles).
@@ -204,8 +213,9 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     - GET recorded-not-charged on the patient's ship-to state.
     - NO wallet redeem (the margin is credited on PAID, not here).
 
-    Returns dict with ok / invoice_id / total / customer_id (patient) /
-    ship_to / source / margin_cents / get_cents.
+    Returns dict with ok / invoice_id (checkout_ref token) / total / customer_id
+    (always "") / doc_number (always "") / qbo_payload / ship_to / source /
+    margin_cents / get_cents / points_redeemed_cents / ship_credit_applied_cents.
     """
     if not cart:
         return {"ok": False, "error": "empty_cart"}
@@ -269,9 +279,6 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
             "description": f"{slug} (dispensary)",
         })
 
-    # QBO invoice billed to the PATIENT.
-    cust = qb.find_or_create_customer(patient["email"], patient.get("name", ""))
-
     from dashboard import tax as _tax
     get_cents = _tax.compute_get_cents(subtotal_cents, channel="dispensary",
                                        ship_to_state=ship.get("state", ""))
@@ -290,15 +297,19 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
     ship_credit_applied = _sc.plan_application(
         int(ship_credit_balance_cents or 0), max(0, subtotal_cents - redeem_cents))
 
-    inv = qb.create_invoice(cust, lines, email_to=patient["email"],
-                            discount_cents=redeem_cents + ship_credit_applied)
-    invoice_id = inv.get("Id")
+    # Paid-only: no QBO invoice/customer yet -- mint a stable order/correlation
+    # key. The discount (points + ship-credit) is already resolved above (never
+    # a QBO invoice id), so it folds straight into the qbo_payload discount.
+    checkout_ref = uuid.uuid4().hex
+    discount_cents = redeem_cents + ship_credit_applied
+    charged = max(0, subtotal_cents - discount_cents)
 
     return {
         "ok": True,
-        "invoice_id": invoice_id,
-        "total": inv.get("TotalAmt"),
-        "customer_id": cust.get("Id"),
+        "invoice_id": checkout_ref,
+        "customer_id": "",
+        "doc_number": "",
+        "total": round(charged / 100.0, 2),
         "ship_to": ship,
         "source": "dispensary",
         "subtotal_cents": subtotal_cents,
@@ -306,4 +317,5 @@ def build_client_order(cart: List[dict], practitioner: dict, *,
         "points_redeemed_cents": redeem_cents,
         "ship_credit_applied_cents": ship_credit_applied,
         "get_cents": get_cents,
+        "qbo_payload": {"lines": lines, "discount_cents": discount_cents, "tax_cents": 0},
     }

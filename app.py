@@ -16072,6 +16072,15 @@ def api_client_checkout(code):
                   margin_cents=int(out.get("margin_cents") or 0),
                   ship_credit_applied_cents=int(out.get("ship_credit_applied_cents") or 0))
 
+    # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+    # return-handler can book a real Sales Receipt once payment is confirmed.
+    if out.get("qbo_payload"):
+        try:
+            with _sqlite3.connect(LOG_DB) as _lcx:
+                _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+        except Exception as e:
+            print(f"[client-checkout] persist qbo_lines failed: {e!r}", flush=True)
+
     # Bridge this dispensary sale into the referral graph for durable attribution + L2.
     _capture_portal_referral(code, email, _pp.practitioner_email_by_id(pid),
                              str(out.get("invoice_id") or ""))
