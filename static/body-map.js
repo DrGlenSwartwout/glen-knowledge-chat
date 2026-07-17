@@ -4,6 +4,10 @@
   const VIEW = 600, CX = 300, CY = 300;
   const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null };
 
+  function zoneSide(z) { return z.side || z.eye; }
+  function zoneGroup(z) { return z.group || z.germ_layer; }
+  function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
+
   // clock degrees (0=12 o'clock, clockwise) -> normalized unit vector, y-down, 12=up=(0,-1)
   function clockToNormalized(deg) {
     const r = deg * Math.PI / 180;
@@ -23,7 +27,10 @@
   }
 
   // reference-frame normalized point -> reference-chart screen point
-  function refToScreen(p) { const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R }; }
+  function refToScreen(p) {
+    if (state.frame === "ear_outline") { return { x: p.x * VIEW, y: p.y * VIEW }; }
+    const R = state.chartR || 250; return { x: CX + p.x * R, y: CY + p.y * R };
+  }
 
   // Fit the reference-chart radius to the loaded system's data extent (iris r<=1, sclerology r_outer up to ~3).
   function computeChartR(payload) {
@@ -37,10 +44,19 @@
     return pts.map((p, i) => { const s = mapFn(p); return (i ? "L" : "M") + s.x.toFixed(1) + " " + s.y.toFixed(1); }).join(" ") + " Z";
   }
 
+  // Parse a normalized outline path ("M x y C ... Z") into a list of {x,y} anchor points
+  // by pulling every numeric coordinate pair. Good enough to draw a closed, warpable outline.
+  function sampleOutline(d) {
+    const nums = (d.match(/-?\d*\.?\d+/g) || []).map(Number);
+    const pts = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+    return pts;
+  }
+
   function currentZones() {
     if (!state.payload) return [];
-    return state.payload.zones.filter(z => z.eye === state.eye &&
-      (state.activeLayers.size === 0 || state.activeLayers.has(z.germ_layer)));
+    return state.payload.zones.filter(z => zoneSide(z) === state.eye &&
+      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
   }
 
   function renderChart() {
@@ -48,24 +64,41 @@
     const svg = document.getElementById("bm-svg");
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
-    // germ-layer rings (context)
-    (state.payload.germ_layers || []).forEach(g => {
-      [g.r_inner, g.r_outer].forEach(rr => {
-        const c = document.createElementNS(svgNS, "circle");
-        const o = mapFn({ x: 0, y: 0 }), edge = mapFn({ x: rr, y: 0 });
-        c.setAttribute("cx", o.x); c.setAttribute("cy", o.y);
-        c.setAttribute("r", Math.hypot(edge.x - o.x, edge.y - o.y));
-        c.setAttribute("fill", "none"); c.setAttribute("stroke", "#d9cfb8"); c.setAttribute("stroke-width", "1");
-        svg.appendChild(c);
+    if (state.frame === "ear_outline") {
+      if (state.payload.outline) {
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", pointsToPath(sampleOutline(state.payload.outline), mapFn));
+        path.setAttribute("fill", "none"); path.setAttribute("stroke", "#c8b98f"); path.setAttribute("stroke-width", "1.5");
+        svg.appendChild(path);
+      }
+    } else {
+      (state.payload.germ_layers || []).forEach(g => {
+        [g.r_inner, g.r_outer].forEach(rr => {
+          const c = document.createElementNS(svgNS, "circle");
+          const o = mapFn({ x: 0, y: 0 }), edge = mapFn({ x: rr, y: 0 });
+          c.setAttribute("cx", o.x); c.setAttribute("cy", o.y);
+          c.setAttribute("r", Math.hypot(edge.x - o.x, edge.y - o.y));
+          c.setAttribute("fill", "none"); c.setAttribute("stroke", "#d9cfb8"); c.setAttribute("stroke-width", "1");
+          svg.appendChild(c);
+        });
       });
-    });
+    }
     currentZones().forEach(z => {
-      const path = document.createElementNS(svgNS, "path");
-      path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
-      path.setAttribute("class", "bm-zone");
-      path.dataset.id = z.id;
-      path.addEventListener("click", () => selectZone(z));
-      svg.appendChild(path);
+      const geo = z.geometry || {};
+      if (geo.type === "point") {
+        const s = mapFn({ x: geo.x, y: geo.y });
+        const dot = document.createElementNS(svgNS, "circle");
+        dot.setAttribute("cx", s.x); dot.setAttribute("cy", s.y); dot.setAttribute("r", 7);
+        dot.setAttribute("class", "bm-zone bm-point"); dot.dataset.id = z.id;
+        dot.addEventListener("click", () => selectZone(z));
+        svg.appendChild(dot);
+      } else {
+        const path = document.createElementNS(svgNS, "path");
+        path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
+        path.setAttribute("class", "bm-zone"); path.dataset.id = z.id;
+        path.addEventListener("click", () => selectZone(z));
+        svg.appendChild(path);
+      }
     });
   }
 
@@ -74,16 +107,18 @@
     const panel = document.getElementById("bm-panel");
     panel.replaceChildren();
     const h = document.createElement("h2"); h.textContent = z.anatomy;
+    const groupNoun = z.germ_layer ? " layer, " : " region, ";
+    const sideNoun = z.eye ? " eye" : " ear";
     const meta = document.createElement("p");
-    const strong = document.createElement("strong"); strong.textContent = z.germ_layer;
-    meta.append(strong, document.createTextNode(" layer, " + z.eye + " eye"));
+    const strong = document.createElement("strong"); strong.textContent = zoneGroup(z);
+    meta.append(strong, document.createTextNode(groupNoun + zoneSide(z) + sideNoun));
     const body = document.createElement("p"); body.textContent = z.meaning_display || z.meaning_standard;
     panel.append(h, meta, body);
   }
 
   function renderLayerToggles() {
     const box = document.getElementById("bm-layers"); box.innerHTML = "";
-    (state.payload.germ_layers || []).forEach(g => {
+    groupsOf(state.payload).forEach(g => {
       const id = "bml-" + g.id;
       const label = document.createElement("label");
       const cb = document.createElement("input");
@@ -100,8 +135,17 @@
   async function loadSystem(system) {
     const res = await fetch("/body-map/data?system=" + encodeURIComponent(system));
     state.payload = await res.json();
+    state.frame = state.payload.reference_frame || "unit_circle";
     state.chartR = computeChartR(state.payload);
     state.activeLayers.clear();
+    // laterality: relabel + repopulate from the sides present, keep current if still valid
+    const sides = [...new Set((state.payload.zones || []).map(zoneSide))];
+    const sel = document.getElementById("bm-eye");
+    sel.replaceChildren();
+    sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
+    if (!sides.includes(state.eye)) state.eye = sides[0] || "right";
+    sel.value = state.eye;
+    document.getElementById("bm-side-label").textContent = state.frame === "ear_outline" ? "Side" : "Eye";
     renderLayerToggles(); renderChart();
   }
 
