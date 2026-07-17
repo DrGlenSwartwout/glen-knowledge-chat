@@ -2,19 +2,991 @@
   "system": "iridology",
   "reference_frame": "unit_circle",
   "germ_layers": [
-    { "id": "endoderm", "label": "Endoderm (inner ring - digestive & glandular)", "r_inner": 0.0, "r_outer": 0.33 },
-    { "id": "mesoderm", "label": "Mesoderm (middle ring - muscle, skeletal, circulatory)", "r_inner": 0.33, "r_outer": 0.66 },
-    { "id": "ectoderm", "label": "Ectoderm (outer ring - skin & nervous system)", "r_inner": 0.66, "r_outer": 1.0 }
+    {
+      "id": "endoderm",
+      "label": "Endoderm (inner ring - digestive & glandular)",
+      "r_inner": 0.0,
+      "r_outer": 0.33
+    },
+    {
+      "id": "mesoderm",
+      "label": "Mesoderm (middle ring - muscle, skeletal, circulatory)",
+      "r_inner": 0.33,
+      "r_outer": 0.66
+    },
+    {
+      "id": "ectoderm",
+      "label": "Ectoderm (outer ring - skin & nervous system)",
+      "r_inner": 0.66,
+      "r_outer": 1.0
+    }
   ],
   "zones": [
-    { "id": "iris-R-stomach", "eye": "right", "germ_layer": "endoderm", "radial": {"r_inner": 0.05, "r_outer": 0.18}, "sector": {"start_deg": 0, "end_deg": 90}, "anatomy": "Stomach", "meaning_standard": "Innermost ring around the pupil reflects the stomach and digestive fire.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-R-intestines", "eye": "right", "germ_layer": "endoderm", "radial": {"r_inner": 0.18, "r_outer": 0.30}, "sector": {"start_deg": 0, "end_deg": 360}, "anatomy": "Intestinal tract", "meaning_standard": "The zone just outside the stomach ring maps the intestinal tract around the full circle.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-R-liver", "eye": "right", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 235, "end_deg": 260}, "anatomy": "Liver", "meaning_standard": "Lower nasal region of the right iris reflects the liver.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-R-kidney", "eye": "right", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 165, "end_deg": 195}, "anatomy": "Kidney", "meaning_standard": "Lower region of the iris reflects kidney function and fluid balance.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-R-brain", "eye": "right", "germ_layer": "ectoderm", "radial": {"r_inner": 0.70, "r_outer": 0.92}, "sector": {"start_deg": 340, "end_deg": 360}, "anatomy": "Cerebrum", "meaning_standard": "Top of the iris reflects the brain and higher nervous centers.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-R-skin", "eye": "right", "germ_layer": "ectoderm", "radial": {"r_inner": 0.90, "r_outer": 1.0}, "sector": {"start_deg": 0, "end_deg": 360}, "anatomy": "Skin / elimination", "meaning_standard": "The outermost ring (skin zone) reflects the skin as an organ of elimination.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-L-stomach", "eye": "left", "germ_layer": "endoderm", "radial": {"r_inner": 0.05, "r_outer": 0.18}, "sector": {"start_deg": 270, "end_deg": 360}, "anatomy": "Stomach", "meaning_standard": "Innermost ring around the pupil reflects the stomach and digestive fire.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-L-heart", "eye": "left", "germ_layer": "mesoderm", "radial": {"r_inner": 0.40, "r_outer": 0.58}, "sector": {"start_deg": 100, "end_deg": 125}, "anatomy": "Heart", "meaning_standard": "Left iris, lower nasal region, classically reflects the heart.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} },
-    { "id": "iris-L-brain", "eye": "left", "germ_layer": "ectoderm", "radial": {"r_inner": 0.70, "r_outer": 0.92}, "sector": {"start_deg": 0, "end_deg": 20}, "anatomy": "Cerebrum", "meaning_standard": "Top of the iris reflects the brain and higher nervous centers.", "meaning_glen": "", "layers": {"embryological_depth": null, "stress_affirmation": null, "touch_for_health": null} }
+    {
+      "id": "iris-R-stomach",
+      "eye": "right",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.06,
+        "r_outer": 0.18
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach ring, immediately around the pupil.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-stomach",
+      "eye": "left",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.06,
+        "r_outer": 0.18
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Stomach",
+      "meaning_standard": "Stomach ring, immediately around the pupil.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-intestines",
+      "eye": "right",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.18,
+        "r_outer": 0.3
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Intestinal tract",
+      "meaning_standard": "Bowel / intestinal ring, just outside the stomach.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-intestines",
+      "eye": "left",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.18,
+        "r_outer": 0.3
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Intestinal tract",
+      "meaning_standard": "Bowel / intestinal ring, just outside the stomach.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-brain",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.66,
+        "r_outer": 0.92
+      },
+      "sector": {
+        "start_deg": 334,
+        "end_deg": 358
+      },
+      "anatomy": "Cerebrum",
+      "meaning_standard": "Cerebrum, upper iris toward 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-brain",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.66,
+        "r_outer": 0.92
+      },
+      "sector": {
+        "start_deg": 2,
+        "end_deg": 26
+      },
+      "anatomy": "Cerebrum",
+      "meaning_standard": "Cerebrum, upper iris toward 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-pituitary",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.56,
+        "r_outer": 0.74
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 14
+      },
+      "anatomy": "Pituitary",
+      "meaning_standard": "Pituitary, at 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-pituitary",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.56,
+        "r_outer": 0.74
+      },
+      "sector": {
+        "start_deg": 346,
+        "end_deg": 360
+      },
+      "anatomy": "Pituitary",
+      "meaning_standard": "Pituitary, at 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-cerebellum",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.66,
+        "r_outer": 0.92
+      },
+      "sector": {
+        "start_deg": 16,
+        "end_deg": 40
+      },
+      "anatomy": "Cerebellum",
+      "meaning_standard": "Cerebellum, just past 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-cerebellum",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.66,
+        "r_outer": 0.92
+      },
+      "sector": {
+        "start_deg": 320,
+        "end_deg": 344
+      },
+      "anatomy": "Cerebellum",
+      "meaning_standard": "Cerebellum, just past 12 o'clock.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-face-sinus",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.6,
+        "r_outer": 0.82
+      },
+      "sector": {
+        "start_deg": 42,
+        "end_deg": 62
+      },
+      "anatomy": "Face and sinuses",
+      "meaning_standard": "Face and sinus area, upper iris.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-face-sinus",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.6,
+        "r_outer": 0.82
+      },
+      "sector": {
+        "start_deg": 298,
+        "end_deg": 318
+      },
+      "anatomy": "Face and sinuses",
+      "meaning_standard": "Face and sinus area, upper iris.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-throat-neck",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.58
+      },
+      "sector": {
+        "start_deg": 54,
+        "end_deg": 74
+      },
+      "anatomy": "Throat and neck",
+      "meaning_standard": "Throat and neck (~2 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-throat-neck",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.58
+      },
+      "sector": {
+        "start_deg": 286,
+        "end_deg": 306
+      },
+      "anatomy": "Throat and neck",
+      "meaning_standard": "Throat and neck (~2 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-thyroid",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.36,
+        "r_outer": 0.54
+      },
+      "sector": {
+        "start_deg": 70,
+        "end_deg": 88
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Thyroid gland (~2:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-thyroid",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.36,
+        "r_outer": 0.54
+      },
+      "sector": {
+        "start_deg": 272,
+        "end_deg": 290
+      },
+      "anatomy": "Thyroid",
+      "meaning_standard": "Thyroid gland (~2:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-bronchi-lung",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.62
+      },
+      "sector": {
+        "start_deg": 88,
+        "end_deg": 112
+      },
+      "anatomy": "Lung and bronchi",
+      "meaning_standard": "Lung and bronchials (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-bronchi-lung",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.62
+      },
+      "sector": {
+        "start_deg": 248,
+        "end_deg": 272
+      },
+      "anatomy": "Lung and bronchi",
+      "meaning_standard": "Lung and bronchials (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-shoulder-chest",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.62,
+        "r_outer": 0.85
+      },
+      "sector": {
+        "start_deg": 106,
+        "end_deg": 128
+      },
+      "anatomy": "Shoulder and chest",
+      "meaning_standard": "Shoulder / upper chest (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-shoulder-chest",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.62,
+        "r_outer": 0.85
+      },
+      "sector": {
+        "start_deg": 232,
+        "end_deg": 254
+      },
+      "anatomy": "Shoulder and chest",
+      "meaning_standard": "Shoulder / upper chest (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-kidney",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.58
+      },
+      "sector": {
+        "start_deg": 162,
+        "end_deg": 192
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-kidney",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.58
+      },
+      "sector": {
+        "start_deg": 168,
+        "end_deg": 198
+      },
+      "anatomy": "Kidney",
+      "meaning_standard": "Kidney (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-adrenal",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.56
+      },
+      "sector": {
+        "start_deg": 148,
+        "end_deg": 166
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Adrenal gland, above the kidney (~5:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-adrenal",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.56
+      },
+      "sector": {
+        "start_deg": 194,
+        "end_deg": 212
+      },
+      "anatomy": "Adrenal gland",
+      "meaning_standard": "Adrenal gland, above the kidney (~5:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-bladder",
+      "eye": "right",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.22,
+        "r_outer": 0.34
+      },
+      "sector": {
+        "start_deg": 170,
+        "end_deg": 190
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder, lower iris near the pupil (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-bladder",
+      "eye": "left",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.22,
+        "r_outer": 0.34
+      },
+      "sector": {
+        "start_deg": 170,
+        "end_deg": 190
+      },
+      "anatomy": "Bladder",
+      "meaning_standard": "Bladder, lower iris near the pupil (~6 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-reproductive",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.34,
+        "r_outer": 0.5
+      },
+      "sector": {
+        "start_deg": 192,
+        "end_deg": 210
+      },
+      "anatomy": "Reproductive / pelvic",
+      "meaning_standard": "Reproductive and pelvic organs (~6:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-reproductive",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.34,
+        "r_outer": 0.5
+      },
+      "sector": {
+        "start_deg": 150,
+        "end_deg": 168
+      },
+      "anatomy": "Reproductive / pelvic",
+      "meaning_standard": "Reproductive and pelvic organs (~6:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-leg-limb",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.62,
+        "r_outer": 0.86
+      },
+      "sector": {
+        "start_deg": 196,
+        "end_deg": 220
+      },
+      "anatomy": "Leg and lower limb",
+      "meaning_standard": "Lower limb / leg (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-leg-limb",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.62,
+        "r_outer": 0.86
+      },
+      "sector": {
+        "start_deg": 140,
+        "end_deg": 164
+      },
+      "anatomy": "Leg and lower limb",
+      "meaning_standard": "Lower limb / leg (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-lumbar-spine",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.54,
+        "r_outer": 0.66
+      },
+      "sector": {
+        "start_deg": 205,
+        "end_deg": 224
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Lumbar spine (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-lumbar-spine",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.54,
+        "r_outer": 0.66
+      },
+      "sector": {
+        "start_deg": 136,
+        "end_deg": 155
+      },
+      "anatomy": "Lumbar spine",
+      "meaning_standard": "Lumbar spine (~7 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-lymphatic",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.8,
+        "r_outer": 0.9
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Lymphatic / circulation",
+      "meaning_standard": "Lymphatic and circulation ring.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-lymphatic",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.8,
+        "r_outer": 0.9
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Lymphatic / circulation",
+      "meaning_standard": "Lymphatic and circulation ring.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-skin",
+      "eye": "right",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.9,
+        "r_outer": 1.0
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Skin / elimination",
+      "meaning_standard": "Skin and elimination, the outermost ring.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-skin",
+      "eye": "left",
+      "germ_layer": "ectoderm",
+      "radial": {
+        "r_inner": 0.9,
+        "r_outer": 1.0
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 360
+      },
+      "anatomy": "Skin / elimination",
+      "meaning_standard": "Skin and elimination, the outermost ring.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-liver",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.38,
+        "r_outer": 0.6
+      },
+      "sector": {
+        "start_deg": 228,
+        "end_deg": 258
+      },
+      "anatomy": "Liver",
+      "meaning_standard": "Liver, lower nasal right iris (~8 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-gallbladder",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.55
+      },
+      "sector": {
+        "start_deg": 246,
+        "end_deg": 262
+      },
+      "anatomy": "Gallbladder",
+      "meaning_standard": "Gallbladder, beside the liver (~8:20).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-pancreas-head",
+      "eye": "right",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.36,
+        "r_outer": 0.52
+      },
+      "sector": {
+        "start_deg": 262,
+        "end_deg": 280
+      },
+      "anatomy": "Pancreas (head)",
+      "meaning_standard": "Head of the pancreas (~9 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-ascending-colon",
+      "eye": "right",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.24,
+        "r_outer": 0.36
+      },
+      "sector": {
+        "start_deg": 268,
+        "end_deg": 296
+      },
+      "anatomy": "Ascending colon",
+      "meaning_standard": "Ascending colon, right iris (~9:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-R-appendix",
+      "eye": "right",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.22,
+        "r_outer": 0.32
+      },
+      "sector": {
+        "start_deg": 250,
+        "end_deg": 264
+      },
+      "anatomy": "Appendix / ileocecal",
+      "meaning_standard": "Appendix and ileocecal valve (~8:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-heart",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.62
+      },
+      "sector": {
+        "start_deg": 88,
+        "end_deg": 116
+      },
+      "anatomy": "Heart",
+      "meaning_standard": "Heart, left iris (~3 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-spleen",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.4,
+        "r_outer": 0.56
+      },
+      "sector": {
+        "start_deg": 118,
+        "end_deg": 140
+      },
+      "anatomy": "Spleen",
+      "meaning_standard": "Spleen, left iris (~4 o'clock).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-pancreas-tail",
+      "eye": "left",
+      "germ_layer": "mesoderm",
+      "radial": {
+        "r_inner": 0.36,
+        "r_outer": 0.52
+      },
+      "sector": {
+        "start_deg": 100,
+        "end_deg": 118
+      },
+      "anatomy": "Pancreas (tail)",
+      "meaning_standard": "Tail of the pancreas, left iris.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-descending-colon",
+      "eye": "left",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.24,
+        "r_outer": 0.36
+      },
+      "sector": {
+        "start_deg": 64,
+        "end_deg": 92
+      },
+      "anatomy": "Descending colon",
+      "meaning_standard": "Descending colon, left iris (~2:30).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "iris-L-sigmoid-colon",
+      "eye": "left",
+      "germ_layer": "endoderm",
+      "radial": {
+        "r_inner": 0.22,
+        "r_outer": 0.34
+      },
+      "sector": {
+        "start_deg": 150,
+        "end_deg": 172
+      },
+      "anatomy": "Sigmoid colon",
+      "meaning_standard": "Sigmoid colon, left iris (~5:00).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
   ]
 }

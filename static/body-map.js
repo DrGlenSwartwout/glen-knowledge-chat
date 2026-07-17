@@ -149,6 +149,12 @@
         path.setAttribute("class", "bm-zone"); path.dataset.id = z.id;
         path.addEventListener("click", () => selectZone(z));
         svg.appendChild(path);
+        // label at the sector centroid (mid-angle, mid-radius)
+        const midA = (z.sector.start_deg + z.sector.end_deg) / 2;
+        const midR = (z.radial.r_inner + z.radial.r_outer) / 2;
+        const u = clockToNormalized(midA);
+        const sc = mapFn({ x: u.x * midR, y: u.y * midR });
+        addLabel(sc.x, sc.y);
       }
     });
     placeLabels(labelSpecs, svg);
