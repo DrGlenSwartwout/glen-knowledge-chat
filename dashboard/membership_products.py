@@ -6,6 +6,7 @@ the recurring-capped tier uses a subscriptions row with term_charges_total that
 self-cancels at the cap (dashboard.subscriptions + app charge cron)."""
 import calendar
 import datetime
+import os
 
 GRACE_DAYS = 4
 
@@ -65,3 +66,56 @@ def owns_group(cx, email):
         f"AND expires_at > ? AND source IN ({ph}) LIMIT 1",
         (email, now, *srcs)).fetchone()
     return row is not None
+
+
+_MEMBERSHIP_LINE_PREFIX = "membership:"
+
+
+def line_slug(tier_key):
+    return f"{_MEMBERSHIP_LINE_PREFIX}{tier_key}"
+
+
+def line_for(tier_key):
+    """The stored order-line dict for a membership tier, or None if the tier is unknown.
+    Carries kind='membership' + tier so pricing/rendering can recognize it without a
+    product-catalog lookup (the slug is intentionally NOT a catalog product)."""
+    t = TIERS.get(tier_key)
+    if not t:
+        return None
+    return {"slug": line_slug(tier_key), "name": t["label"], "qty": 1,
+            "unit_cents": t["price_cents"], "line_cents": t["price_cents"],
+            "kind": "membership", "tier": tier_key}
+
+
+def tier_of_line(line):
+    """Tier key if `line` is a membership line (by kind marker or slug prefix), else None."""
+    if not isinstance(line, dict):
+        return None
+    if line.get("kind") == "membership":
+        tk = line.get("tier") or (line.get("slug") or "")[len(_MEMBERSHIP_LINE_PREFIX):]
+        return tk if tk in TIERS else None
+    slug = (line.get("slug") or "")
+    if slug.startswith(_MEMBERSHIP_LINE_PREFIX):
+        tk = slug[len(_MEMBERSHIP_LINE_PREFIX):]
+        return tk if tk in TIERS else None
+    return None
+
+
+def cart_has_membership_tier(lines):
+    """First membership tier key present in `lines`, else None."""
+    for ln in (lines or []):
+        tk = tier_of_line(ln)
+        if tk:
+            return tk
+    return None
+
+
+def invoice_offer_tiers():
+    """Tier keys offered by the on-invoice membership control. Configurable via the
+    MEMBERSHIP_INVOICE_TIERS env var (comma-separated); unknown tiers are dropped;
+    default ['month']."""
+    raw = (os.environ.get("MEMBERSHIP_INVOICE_TIERS") or "").strip()
+    if not raw:
+        return ["month"]
+    out = [k.strip() for k in raw.split(",") if k.strip() in TIERS]
+    return out or ["month"]
