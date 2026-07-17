@@ -37,6 +37,9 @@ def test_dropship_fee_zero_when_retail_equals_base():
 # ── build_dropship_order ──────────────────────────────────────────────────────
 
 def test_build_dropship_order_invoices_practitioner_ships_patient(monkeypatch):
+    """Paid-only (Stage 4): build_dropship_order creates NO QBO invoice/customer
+    -- it returns a checkout_ref token + a line-faithful qbo_payload for the
+    route to persist and the return-handler to book once payment is confirmed."""
     cart = [{"slug": "brain-boost", "qty": 6}]
     prac = {"id": "p1", "modules_completed": 0, "email": "doc@x.com", "name": "Doc"}
     patient_ship = {"name": "Pat", "state": "CA", "country": "US", "address1": "1 St"}
@@ -44,16 +47,15 @@ def test_build_dropship_order_invoices_practitioner_ships_patient(monkeypatch):
     # stubs
     monkeypatch.setattr(dc, "_retail_for", lambda slug: 7000)
 
-    cap = {}
-    monkeypatch.setattr(dc.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
-    monkeypatch.setattr(dc.qb, "create_invoice",
-        lambda cust, lines, **k: cap.update(lines=lines, kw=k) or
-        {"Id": "INV", "SyncToken": "0", "DocNumber": "1001", "TotalAmt": 339.60})
+    def boom(*a, **k):
+        raise AssertionError("build_dropship_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
 
     # stub wallet — no balance to redeem
     import dashboard.wallet as _wallet
-    monkeypatch.setattr(_wallet, "redeem_for_order", lambda pid, total, inv: 0)
-    monkeypatch.setattr(_wallet, "earn_fee_free", lambda pid, charged, inv: 0)
+    monkeypatch.setattr(_wallet, "redeem_for_order", lambda pid, total, ref: 0)
+    monkeypatch.setattr(_wallet, "earn_fee_free", lambda pid, charged, ref: 0)
 
     # stub tax
     import dashboard.tax as _tax
@@ -65,48 +67,51 @@ def test_build_dropship_order_invoices_practitioner_ships_patient(monkeypatch):
     assert out["ok"] is True
     assert out["ship_to"]["name"] == "Pat"            # ships to the PATIENT
     assert out["source"] == "dropship"
-    # 6 bottles uncertified: invoice carries unit qty
-    assert cap["lines"][0]["qty"] == 6
+    assert out["customer_id"] == ""
+    assert isinstance(out["invoice_id"], str) and len(out["invoice_id"]) == 32
+    # 6 bottles uncertified: qbo_payload carries unit qty
+    assert out["qbo_payload"]["lines"][0]["qty"] == 6
 
 
 def _stub_order(monkeypatch, retail=7000, get=0):
     monkeypatch.setattr(dc, "_retail_for", lambda slug: retail)
-    cap = {}
-    monkeypatch.setattr(dc.qb, "find_or_create_customer", lambda *a, **k: {"Id": "C1"})
-    monkeypatch.setattr(dc.qb, "create_invoice",
-        lambda cust, lines, **k: cap.update(lines=lines, kw=k) or
-        {"Id": "INV", "SyncToken": "0", "DocNumber": "1", "TotalAmt": 100.0})
+
+    def boom(*a, **k):
+        raise AssertionError("build_dropship_order must not touch QBO invoicing (paid-only)")
+    monkeypatch.setattr(dc.qb, "find_or_create_customer", boom)
+    monkeypatch.setattr(dc.qb, "create_invoice", boom)
     import dashboard.wallet as _wallet, dashboard.tax as _tax
-    monkeypatch.setattr(_wallet, "redeem_for_order", lambda pid, total, inv: 0)
-    monkeypatch.setattr(_wallet, "earn_fee_free", lambda pid, charged, inv: 0)
+    monkeypatch.setattr(_wallet, "redeem_for_order", lambda pid, total, ref: 0)
+    monkeypatch.setattr(_wallet, "earn_fee_free", lambda pid, charged, ref: 0)
     monkeypatch.setattr(_tax, "compute_get_cents",
         lambda subtotal, *, channel, ship_to_state, resale_ok=False: get)
-    return cap
 
 
 def test_multi_line_cart_prices_off_total_bottles(monkeypatch):
     # 3 + 3 = 6 total bottles → BOTH lines price at the 6-bottle blended base ($48.68),
     # not the 3-bottle base — and never the 1-bottle $50.
-    cap = _stub_order(monkeypatch)
+    _stub_order(monkeypatch)
     prac = {"id": "p1", "modules_completed": 0, "email": "doc@x.com", "name": "Doc"}
     out = dc.build_dropship_order(
         [{"slug": "a", "qty": 3}, {"slug": "b", "qty": 3}], prac,
         patient_ship={"name": "Pat", "state": "CA", "country": "US"}, method="zelle")
     assert out["ok"] is True
     base6 = dc.dropship_line_cents(retail_cents=7000, qty=6, modules=0, settings=dc._settings())
-    assert round(cap["lines"][0]["amount"] * 100) == base6["unit_cents"]   # 6-bottle unit
-    assert cap["lines"][0]["qty"] == 3 and cap["lines"][1]["qty"] == 3     # per-line qty
+    lines = out["qbo_payload"]["lines"]
+    assert round(lines[0]["amount"] * 100) == base6["unit_cents"]   # 6-bottle unit
+    assert lines[0]["qty"] == 3 and lines[1]["qty"] == 3            # per-line qty
 
 
 def test_get_recorded_not_charged(monkeypatch):
-    # GET comes back in the result, never added to the invoice lines.
-    cap = _stub_order(monkeypatch, get=275)
+    # GET comes back in the result, never added to the qbo_payload lines.
+    _stub_order(monkeypatch, get=275)
     prac = {"id": "p1", "modules_completed": 0, "email": "doc@x.com", "name": "Doc"}
     out = dc.build_dropship_order([{"slug": "a", "qty": 1}], prac,
         patient_ship={"name": "Pat", "state": "HI", "country": "US"}, method="zelle")
     assert out["get_cents"] == 275
-    names = " ".join(l.get("name", "") + l.get("description", "") for l in cap["lines"]).lower()
-    assert "tax" not in names and "get" not in names      # no GET line on the invoice
+    lines = out["qbo_payload"]["lines"]
+    names = " ".join(l.get("name", "") + l.get("description", "") for l in lines).lower()
+    assert "tax" not in names and "get" not in names      # no GET line in the payload
 
 
 def test_empty_cart_rejected(monkeypatch):

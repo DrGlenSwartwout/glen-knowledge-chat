@@ -14229,6 +14229,14 @@ def api_practitioner_dropship_checkout():
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale",
                       get_cents=out.get("get_cents", 0))
+        # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
+        # return-handler can book a real Sales Receipt once payment is confirmed.
+        if out.get("qbo_payload"):
+            try:
+                with _sqlite3.connect(LOG_DB) as _lcx:
+                    _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
+            except Exception as e:
+                print(f"[dropship-checkout] persist qbo_lines failed: {e!r}", flush=True)
         if method in ("zelle", "wise"):
             out["pay_instructions"] = _ALT_PAY.get(method, {})
         elif method == "card":

@@ -1,14 +1,23 @@
 """Practitioner-paid drop-ship: price each line at the drop-ship wholesale
-(blended base + 33% of the RETAIL markup), invoice the practitioner, ship to the
-patient. The practitioner bills the patient privately (margin off-platform).
+(blended base + 33% of the RETAIL markup), ship to the patient. The
+practitioner bills the patient privately (margin off-platform).
+
+``build_dropship_order`` is QBO paid-only (Stage 4): it prices the cart and
+resolves the Wellness Credit redemption up front against a freshly-minted
+``checkout_ref`` token -- NOT a QBO invoice id, since no invoice is created at
+checkout time. A real, line-faithful QBO Sales Receipt is booked later by the
+return-handler (once payment is confirmed) from the ``qbo_payload`` this returns.
+Redemption happens before booking (a Sales Receipt is final once posted) and is
+idempotent on ``checkout_ref``.
 
 Also provides build_client_order — the patient-paid sibling where the patient is
 invoiced at the practitioner's price S and the practitioner's margin (S - base - fee)
-is returned for wallet crediting on payment."""
+is returned for wallet crediting on payment. (Unchanged/out of scope here.)"""
 from __future__ import annotations
 
 import os
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import List
 
@@ -52,17 +61,22 @@ def dropship_line_cents(*, retail_cents, qty, modules, settings):
 
 def build_dropship_order(cart: List[dict], practitioner: dict, *,
                          patient_ship: dict, method=None) -> dict:
-    """Price + invoice a drop-ship cart at wholesale, ship to the patient.
+    """Price a drop-ship cart at wholesale (paid-only -- no QBO invoice/customer
+    at checkout time), ship to the patient. A real, line-faithful QBO Sales
+    Receipt is booked by the return-handler once payment is confirmed, from the
+    ``qbo_payload`` this returns.
 
     Mirrors wholesale_checkout.build_order. Differences:
     - Price each line via dropship_line_cents (base + 33% of retail markup).
-    - QBO customer is the PRACTITIONER (they pay), but ship-to is the PATIENT.
+    - The PRACTITIONER pays (wallet credit is theirs), but ship-to is the PATIENT.
     - source = "dropship".
-    - Wallet: redeem <= 50% + fee-free 3% earn on zelle/wise.
+    - Wallet: redeem <= 50% (keyed on checkout_ref, resolved BEFORE booking) +
+      fee-free 3% earn on zelle/wise.
     - GET recorded-not-charged on the patient's ship-to state.
 
     practitioner needs: id (uuid), modules_completed, email, name.
-    Returns dict with ok / invoice_id / total / customer_id / ship_to / source.
+    Returns dict with ok / invoice_id (checkout_ref token) / total / customer_id
+    (always "") / qbo_payload / ship_to / source.
     """
     if not cart:
         return {"ok": False, "error": "empty_cart"}
@@ -94,39 +108,33 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
             "description": f"{slug} (drop-ship wholesale)",
         })
 
-    # Create QBO invoice billed to the PRACTITIONER.
-    cust = qb.find_or_create_customer(practitioner["email"], practitioner.get("name", ""))
-
     from dashboard import tax as _tax
     get_cents = _tax.compute_get_cents(subtotal_cents, channel="wholesale",
                                        ship_to_state=patient_ship.get("state", ""))
 
-    inv = qb.create_invoice(cust, lines, email_to=practitioner["email"])
-    invoice_id = inv.get("Id")
-
-    # Wallet: redeem up to 50% of the order.
-    redeemed = wallet.redeem_for_order(practitioner["id"], subtotal_cents, invoice_id)
-    if redeemed > 0:
-        inv = qb.apply_invoice_discount(invoice_id, redeemed)
+    # Paid-only: no QBO invoice/customer yet -- mint a stable order/correlation
+    # key and resolve credit redemption against IT (never a QBO invoice id).
+    checkout_ref = uuid.uuid4().hex
+    redeemed = wallet.redeem_for_order(practitioner["id"], subtotal_cents, checkout_ref)
+    charged = max(0, subtotal_cents - redeemed)
 
     # Fee-free 3% earn on zelle/wise.
     fee_free = 0
     if method in ("zelle", "wise"):
-        charged = max(0, subtotal_cents - redeemed)
-        fee_free = wallet.earn_fee_free(practitioner["id"], charged, invoice_id)
+        fee_free = wallet.earn_fee_free(practitioner["id"], charged, checkout_ref)
 
     return {
         "ok": True,
-        "invoice_id": invoice_id,
-        "sync_token": inv.get("SyncToken"),
-        "doc_number": inv.get("DocNumber"),
-        "total": inv.get("TotalAmt"),
+        "invoice_id": checkout_ref,
+        "customer_id": "",
+        "doc_number": "",
+        "total": round(charged / 100.0, 2),
         "subtotal_cents": subtotal_cents,
         "credit_redeemed_cents": redeemed,
         "fee_free_credit_cents": fee_free,
         "get_cents": get_cents,
         "method": method,
-        "customer_id": cust.get("Id"),
+        "qbo_payload": {"lines": lines, "discount_cents": redeemed, "tax_cents": 0},
         "ship_to": patient_ship,
         "source": "dropship",
     }
