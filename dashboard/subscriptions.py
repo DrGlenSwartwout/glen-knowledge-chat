@@ -97,6 +97,10 @@ def init_subscriptions_table(cx) -> None:
         stmt = stmt.strip()
         if stmt:
             cx.execute(stmt)
+    try:
+        cx.execute("ALTER TABLE subscriptions ADD COLUMN order_ref TEXT")
+    except sqlite3.OperationalError:
+        pass  # already migrated
     cx.commit()
 
 
@@ -128,13 +132,18 @@ def _row_to_dict(row) -> dict:
 def create(cx, *, email: str, stripe_customer_id: str,
            stripe_payment_method_id: str, items: list,
            cadence_months: int, ship_address: dict,
-           next_charge_date: str, order_count: int = 0) -> int:
+           next_charge_date: str, order_count: int = 0,
+           order_ref: str | None = None) -> int:
     """Insert a new active subscription and return its id.
 
     order_count is the number of orders ALREADY placed on this subscription. At
     sign-up the setup checkout charges the 1st order (at tier_for(0)=3%), so the
     subscription is created with order_count=1 — that way the first SCHEDULED charge
     reads tier_for(1)=5% (the 2nd active month), climbing the 3→25% loyalty curve.
+
+    order_ref, when given, is the originating order's idempotency token —
+    persisted so has_subscription_for_order/create_once can dedup a
+    double-create (redirect vs. webhook, or a redirect refresh).
     """
     now = _now_iso()
     cur = cx.execute(
@@ -142,15 +151,33 @@ def create(cx, *, email: str, stripe_customer_id: str,
                (email, stripe_customer_id, stripe_payment_method_id,
                 items_json, cadence_months, status, order_count,
                 next_charge_date, ship_address_json, skip_next,
-                created_at, updated_at)
-           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?)""",
+                created_at, updated_at, order_ref)
+           VALUES (?,?,?,?,?,'active',?,?,?,0,?,?,?)""",
         (email, stripe_customer_id, stripe_payment_method_id,
          json.dumps(items or []), cadence_months, int(order_count),
          next_charge_date, json.dumps(ship_address or {}),
-         now, now),
+         now, now, order_ref),
     )
     cx.commit()
     return cur.lastrowid
+
+
+def has_subscription_for_order(cx, order_ref) -> bool:
+    """True if a subscription row already exists for this originating order_ref."""
+    if not order_ref:
+        return False
+    row = cx.execute(
+        "SELECT 1 FROM subscriptions WHERE order_ref=? LIMIT 1", (order_ref,)).fetchone()
+    return row is not None
+
+
+def create_once(cx, *, order_ref, **create_kwargs):
+    """Idempotent create keyed on order_ref: if a row already exists for this
+    order_ref, no-op and return None; else create and return the new rowid.
+    Closes the redirect-refresh and redirect-vs-webhook double-create."""
+    if has_subscription_for_order(cx, order_ref):
+        return None
+    return create(cx, order_ref=order_ref, **create_kwargs)
 
 
 def get(cx, sub_id: int) -> dict | None:
