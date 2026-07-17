@@ -6,6 +6,7 @@
   "products": {
     "mithreal-silver-baseball-cap": {
       "name": "Baseball Cap with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-baseball-cap.png",
       "price_cents": 5997,
       "regular_cents": 7997,
       "bottle_type": "own-box",
@@ -16,6 +17,7 @@
     },
     "mithreal-silver-ivy-hat": {
       "name": "Ivy Hat with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-ivy-hat.png",
       "price_cents": 5997,
       "regular_cents": 7997,
       "bottle_type": "own-box",
@@ -25,6 +27,7 @@
     },
     "mithreal-silver-blue-zipper-hoodie": {
       "name": "Blue Zipper Hoodie with Mithreal Silver",
+      "image": "/static/product-photos/mithreal-silver-blue-zipper-hoodie.png",
       "price_cents": 34997,
       "regular_cents": 42500,
       "bottle_type": "own-box",

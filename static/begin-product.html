@@ -31,7 +31,13 @@
     /* ── Product header ── */
     .product{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
       padding:28px 28px 26px; margin-top:34px; }
+    .p-hero{ display:block; width:100%; max-width:440px; aspect-ratio:1/1; object-fit:cover;
+      border-radius:20px; border:1px solid var(--border); background:#f4f6f9; margin:2px 0 16px; }
     .p-name{ font-family:var(--heading); font-weight:700; font-size:clamp(22px,4.6vw,29px); color:var(--cream); line-height:1.25; }
+    .p-regular{ margin-left:10px; font-family:var(--heading); font-weight:500; font-size:14px;
+      color:var(--muted); text-decoration:line-through; opacity:0.7; }
+    .p-compare{ margin-top:10px; font-size:13px; line-height:1.5; color:var(--muted); }
+    .p-compare b{ color:var(--cream); font-weight:600; }
     .p-price{ display:inline-block; margin-top:14px; font-family:var(--heading); font-weight:600; font-size:14px;
       letter-spacing:0.04em; color:var(--gold); border:1px solid rgba(212,168,67,0.4); border-radius:999px; padding:5px 16px; }
     .sp-wish{ display:inline-flex; align-items:center; gap:6px; margin-top:14px; margin-left:8px;
@@ -251,8 +257,11 @@
 
     <div id="sp-product" class="product hidden">
       <p class="eyebrow">Your remedy</p>
+      <img id="sp-hero" class="p-hero hidden" alt="">
       <h1 class="p-name" id="sp-name"></h1>
       <span class="p-price" id="sp-price"></span>
+      <span class="p-regular hidden" id="sp-regular"></span>
+      <div class="p-compare hidden" id="sp-compare"></div>
 
       <div id="founding-video" style="display:none;margin:1rem 0;">
         <video controls playsinline style="width:100%;border-radius:24px;"></video>
@@ -1442,10 +1451,30 @@
     function renderProduct(data){
       document.getElementById('sp-name').textContent = data.name || 'Your remedy';
       document.title = (data.name || 'Product') + ' · Dr. Glen Swartwout';
+      if (data.image){
+        var hero = document.getElementById('sp-hero');
+        hero.src = data.image; hero.alt = data.name || '';
+        hero.classList.remove('hidden');
+      }
       if (data.price){
         document.getElementById('sp-price').textContent = data.price;
       } else {
         hide('sp-price');
+      }
+      if (data.regular){
+        var regEl = document.getElementById('sp-regular');
+        regEl.textContent = data.regular;
+        regEl.classList.remove('hidden');
+      }
+      if (data.competitor && data.competitor.price){
+        var cmp = document.getElementById('sp-compare');
+        var c = data.competitor;
+        var brand = document.createElement('b'); brand.textContent = (c.brand || '') + (c.name ? ' ' + c.name : '');
+        var ours = document.createElement('b'); ours.textContent = data.price || '';
+        cmp.appendChild(brand);
+        cmp.appendChild(document.createTextNode(': ' + c.price + '  →  ours '));
+        cmp.appendChild(ours);
+        cmp.classList.remove('hidden');
       }
 
       var wishBtn = renderWishlistButton(data);

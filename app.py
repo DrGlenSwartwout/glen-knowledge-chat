@@ -6386,9 +6386,20 @@ def begin_product_data(slug):
             qty_tiers.append({"min": m, "unit_cents": u, "unit": f"${u/100:.2f}",
                               "save": ((_base - u) // 100) if u < _base else 0})
         formats = _FORMATS
+    _comp = p.get("competitor") if isinstance(p.get("competitor"), dict) else None
     data = {
         "slug": slug, "name": p["name"],
         "price_cents": p["price_cents"], "price": f"${p['price_cents']/100:.2f}",
+        # Real product photo (physical goods). Optional: only apparel/devices carry it.
+        "image": p.get("image", ""),
+        # Compare-at (SRP) strikethrough — only when a genuine higher list price is set.
+        "regular": (f"${p['regular_cents']/100:.2f}"
+                    if p.get("regular_cents") and p["regular_cents"] > p["price_cents"] else ""),
+        # Named-competitor value anchor (e.g. DefenderShield). Priced fields formatted here.
+        "competitor": ({"brand": _comp.get("brand", ""), "name": _comp.get("name", ""),
+                        "price": f"${_comp['price_cents']/100:.2f}" if _comp.get("price_cents") else "",
+                        "regular": f"${_comp['regular_cents']/100:.2f}" if _comp.get("regular_cents") else ""}
+                       if _comp else None),
         "description": p.get("description") or card.get("description", ""),
         "ingredients": ingredients,
         "benefits": p.get("benefits") or card.get("benefits", []),
@@ -6704,9 +6715,18 @@ def begin_product_page_data(slug):
                     _img_sec3["body"]["pick"] = _pick
         except Exception as _e:
             print(f"[img-pick] page-data skipped: {_e}", flush=True)
+    _pc = p.get("competitor") if isinstance(p.get("competitor"), dict) else None
     _page_data = {
         "slug": slug, "name": p["name"], "price_cents": p["price_cents"],
         "price": f"${p['price_cents']/100:.2f}", "cta_url": f"/begin/buy/{slug}",
+        # Real product photo (physical goods only), compare-at SRP, and named-competitor anchor.
+        "image": p.get("image", ""),
+        "regular": (f"${p['regular_cents']/100:.2f}"
+                    if p.get("regular_cents") and p["regular_cents"] > p["price_cents"] else ""),
+        "competitor": ({"brand": _pc.get("brand", ""), "name": _pc.get("name", ""),
+                        "price": f"${_pc['price_cents']/100:.2f}" if _pc.get("price_cents") else "",
+                        "regular": f"${_pc['regular_cents']/100:.2f}" if _pc.get("regular_cents") else ""}
+                       if _pc else None),
         "ai_state": _ai_state,
         "sections": sections,
         "miron_assets": _MIRON_ASSETS["assets"] if _has_ings else [],
