@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Body Map — Admin</title>
+  <title>Body Map Admin</title>
   <style>
     body { font-family:system-ui,sans-serif; margin:24px; color:#22302b; }
     h1 { color:#1F5A4D; }
@@ -16,7 +16,7 @@
   </style>
 </head>
 <body>
-  <h1>Body Map — Clinical Overlay Editor</h1>
+  <h1>Body Map: Clinical Overlay Editor</h1>
   <p>Console key <input type="password" id="key"> System
      <select id="system"><option>iridology</option><option>sclerology</option></select>
      <button id="load">Load zones</button></p>
@@ -30,14 +30,21 @@
       const box = document.getElementById("rows"); box.innerHTML = "";
       (data.zones || []).forEach(z => {
         const div = document.createElement("div"); div.className = "row";
-        div.innerHTML = "<h3>" + z.anatomy + " <small>(" + z.eye + ", " + z.id + ")</small></h3>" +
-          "<div class='std'>" + z.meaning_standard + "</div>" +
-          "<textarea>" + (z.meaning_glen || "") + "</textarea><button>Save</button>";
-        div.querySelector("button").addEventListener("click", async () => {
-          const body = JSON.stringify({ system: sys, id: z.id, meaning_glen: div.querySelector("textarea").value });
+        const h3 = document.createElement("h3");
+        h3.textContent = z.anatomy + " ";
+        const small = document.createElement("small");
+        small.textContent = "(" + z.eye + ", " + z.id + ")";
+        h3.appendChild(small);
+        const std = document.createElement("div"); std.className = "std";
+        std.textContent = z.meaning_standard;
+        const ta = document.createElement("textarea"); ta.value = z.meaning_glen || "";
+        const btn = document.createElement("button"); btn.textContent = "Save";
+        btn.addEventListener("click", async () => {
+          const body = JSON.stringify({ system: sys, id: z.id, meaning_glen: ta.value });
           const res = await fetch("/admin/body-map/zone", { method: "POST", headers: H(), body });
-          div.querySelector("button").textContent = res.ok ? "Saved" : "Error";
+          btn.textContent = res.ok ? "Saved" : "Error";
         });
+        div.append(h3, std, ta, btn);
         box.appendChild(div);
       });
     }
