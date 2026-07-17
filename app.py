@@ -6271,31 +6271,34 @@ def _grant_group_bundle(md, pi_id):
                     "CREATE TABLE IF NOT EXISTS group_bundle_grants "
                     "(invoice_id TEXT PRIMARY KEY, created_at TEXT)")
                 _gcx.commit()
-                # Idempotency: skip if this invoice/pi was already granted.
-                already = _gcx.execute(
-                    "SELECT 1 FROM group_bundle_grants WHERE invoice_id=?",
-                    (g_invoice,)).fetchone()
-                if not already:
-                    existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
-                    if existing:
-                        cur = existing[0]
-                        _subs_gb.set_next_charge_date(
-                            _gcx, cur["id"],
-                            _subs_gb.add_months(cur["next_charge_date"], n))
-                    elif g_cus and g_pm:
-                        start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
-                        _subs_gb.create_membership(
-                            _gcx, email=g_email, stripe_customer_id=g_cus,
-                            stripe_payment_method_id=g_pm,
-                            amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
-                            next_charge_date=start)
-                        _member_join_welcome(_gcx, g_email, "subscription")
-                    _gcx.execute(
-                        "INSERT INTO group_bundle_grants (invoice_id, created_at) "
-                        "VALUES (?,?)", (g_invoice, _now_utc().isoformat()))
-                    _gcx.commit()
-                    print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}",
-                          flush=True)
+                # Claim the grant marker ATOMICALLY before any side effect: exactly one
+                # run wins ON CONFLICT, so a concurrent redirect+webhook settle (or a
+                # second delivery) can't double-create the membership or double-send the
+                # welcome. (Trade-off: a hard crash between this commit and create_membership
+                # would strand this one free-window grant — rare, and strictly better than
+                # the double-grant it replaces.)
+                claim = _gcx.execute(
+                    "INSERT INTO group_bundle_grants (invoice_id, created_at) VALUES (?,?) "
+                    "ON CONFLICT(invoice_id) DO NOTHING", (g_invoice, _now_utc().isoformat()))
+                _gcx.commit()
+                if claim.rowcount == 0:
+                    return  # another run already claimed/granted this invoice
+                existing = _subs_gb.active_memberships_by_email(_gcx, g_email)
+                if existing:
+                    cur = existing[0]
+                    _subs_gb.set_next_charge_date(
+                        _gcx, cur["id"],
+                        _subs_gb.add_months(cur["next_charge_date"], n))
+                elif g_cus and g_pm:
+                    start = _subs_gb.add_months(_date_gb.today().isoformat(), n)
+                    _subs_gb.create_membership(
+                        _gcx, email=g_email, stripe_customer_id=g_cus,
+                        stripe_payment_method_id=g_pm,
+                        amount_cents=_gb.MEMBERSHIP_AMOUNT_CENTS,
+                        next_charge_date=start)
+                    _member_join_welcome(_gcx, g_email, "subscription")
+                _gcx.commit()
+                print(f"[group-bundle] granted {n}mo to {g_email} inv={g_invoice}", flush=True)
     except Exception as _ge:
         app.logger.exception("group bundle grant failed: %s", _ge)
 
