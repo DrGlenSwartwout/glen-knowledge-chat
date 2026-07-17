@@ -39,6 +39,14 @@ def test_remove_member():
     assert h.members_for(cx, "p@x.com") == []
 
 
+def test_caregivers_for_includes_relationship():
+    cx = _cx()
+    h.add_member(cx, "cg@x.com", "dep@x.com", "Dep", "dependent")
+    rows = h.caregivers_for(cx, "dep@x.com")
+    assert rows[0]["primary_email"] == "cg@x.com"
+    assert rows[0]["relationship"] == "dependent"
+
+
 def test_can_view():
     cx = _cx()
     h.add_member(cx, "p@x.com", "m@x.com")

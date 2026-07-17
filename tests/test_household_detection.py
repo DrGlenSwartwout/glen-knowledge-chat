@@ -31,7 +31,9 @@ def _seed(db_path):
                 phone TEXT DEFAULT '',
                 city TEXT DEFAULT '',
                 state TEXT DEFAULT '',
-                tags TEXT DEFAULT '[]'
+                tags TEXT DEFAULT '[]',
+                address1 TEXT DEFAULT '',
+                zip TEXT DEFAULT ''
             )
         """)
         cx.execute("""

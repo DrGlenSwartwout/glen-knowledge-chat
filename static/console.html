@@ -1918,6 +1918,7 @@ async function pmbCancel(mergeId) {
 
 // ── People page ───────────────────────────────────────────────────────────────
 let _peopleOffset = 0, _peopleTotal = 0, _selectedPersonId = null;
+let _currentPersonId = null;
 
 // ── Multi-select for household creation ────────────────────────────────────────
 const _pmsSelected = new Set();
@@ -2142,17 +2143,17 @@ async function removePersonTag(id, tag) {
 
 async function loadPersonDetail(id) {
   _selectedPersonId = id;
+  _currentPersonId = id;
   document.querySelectorAll('.person-card').forEach(c => c.classList.toggle('selected', c.id===`pcard-${id}`));
-  const [pRes, hRes] = await Promise.all([
+  const [p, h, s] = await Promise.all([
     fetch(`${BASE}/api/people/${id}`, { headers:{'X-Console-Key':consoleKey} }),
     fetch(`${BASE}/api/people/${id}/household`, { headers:{'X-Console-Key':consoleKey} }),
-  ]);
-  const p = await pRes.json();
-  const h = await hRes.json();
-  renderPersonDetail(p, h.household);
+    fetch(`${BASE}/api/people/${id}/household-suggestions`, { headers:{'X-Console-Key':consoleKey} }),
+  ].map(pr => pr.then(r => r.json())));
+  renderPersonDetail(p, h.household, s.suggestions || []);
 }
 
-function renderPersonDetail(p, household) {
+function renderPersonDetail(p, household, suggestions) {
   const tags  = _parseTags(p.tags);
   const loc   = [p.island, p.city, p.state, p.country].filter(Boolean).join(', ');
   const orgs  = (() => { try { return JSON.parse(p.organizations||'[]'); } catch { return p.organizations ? [p.organizations] : []; } })();
@@ -2181,6 +2182,7 @@ function renderPersonDetail(p, household) {
       ${orgs.length ? `<div class="detail-field"><label>Organizations</label><p>${orgs.map(_esc).join(', ')}</p></div>` : ''}
       ${field('Source', p.source)} ${field('GHL ID', p.ghl_id)}
       ${_renderHouseholdSection(p, household)}
+      ${_renderConnectionSuggestions(p, suggestions || [])}
       ${field('Date of Birth', p.dob)} ${field('Birthplace', p.birthplace)} ${field('Gender', p.gender)}
       ${listField('Roles', p.roles)}
       <button class="detail-enrich-btn" onclick="enrichPerson(${p.id}, '${_esc(p.name||(p.first_name+' '+p.last_name).trim())}')">✦ Research &amp; Enrich with AI</button>
@@ -2253,6 +2255,81 @@ function _renderHouseholdSection(person, household) {
     <button class="detail-enrich-btn" style="border-color:var(--hh-amber-text);color:var(--hh-amber-text);width:100%;margin-top:6px;font-size:11px"
             onclick="openHouseholdDialogForAddMember('${_esc(household.slug)}')">+ Add member</button>
   </div>`;
+}
+
+function _renderConnectionSuggestions(person, suggestions) {
+  const fresh = suggestions.filter(s => !s.already_in_household_together
+                                      && !s.existing_caregiver_link && !s.dismissed);
+  if (!fresh.length) return '';
+  const rows = fresh.map(s => `
+    <div class="conn-row" data-other="${s.person_id}" style="border-top:1px solid #eee;padding:8px 0">
+      <div style="font-size:13px">Same address: <b>${_esc(s.name)}</b> (${_esc(s.email)})</div>
+      <label><input type="radio" name="conn-${s.person_id}" value="member" checked> Household member</label>
+      <label><input type="radio" name="conn-${s.person_id}" value="caregiver"> Caregiver</label>
+      <label><input type="radio" name="conn-${s.person_id}" value="dismiss"> Do not connect</label>
+      <div class="conn-cg" data-other="${s.person_id}" style="display:none;margin:6px 0 0 18px">
+        <select class="conn-dir">
+          <option value="this-cares">This person cares for ${_esc(s.name)}</option>
+          <option value="other-cares">${_esc(s.name)} cares for this person</option>
+        </select>
+        <select class="conn-rel">
+          <optgroup label="Dependent (Terms covered)">
+            <option value="dependent">dependent</option><option value="child">child</option>
+            <option value="charge">charge</option><option value="caregiving-client">caregiving-client</option>
+            <option value="pet">pet</option>
+          </optgroup>
+          <optgroup label="Operational (own consent)">
+            <option value="partner">partner</option><option value="spouse">spouse</option>
+            <option value="manages-account">manages-account</option>
+          </optgroup>
+        </select>
+        <select class="conn-consent">
+          <option value="portal">Send portal confirmation</option>
+          <option value="verbal">Record verbal consent</option>
+          <option value="written">Record written consent</option>
+        </select>
+        <div style="font-size:11px;color:var(--hh-meta)">Dependents are covered by the caregiver's Terms. Operational links stay off until the cared-for adult confirms.</div>
+      </div>
+      <button class="conn-go" data-other="${s.person_id}" style="margin-top:6px;padding:5px 10px;background:#f5b87a;color:#0a0c12;border:none;border-radius:4px;font-size:12px;cursor:pointer">Confirm</button>
+    </div>`).join('');
+  setTimeout(_wireConnectionSuggestions, 0);
+  return `<div class="detail-section"><h4>Possible connections</h4>${rows}</div>`;
+}
+
+function _wireConnectionSuggestions() {
+  document.querySelectorAll('.conn-row').forEach(row => {
+    const other = row.dataset.other;
+    const cg = row.querySelector('.conn-cg');
+    row.querySelectorAll(`input[name="conn-${other}"]`).forEach(radio => {
+      radio.addEventListener('change', () => {
+        cg.style.display = radio.value === 'caregiver' && radio.checked ? 'block' : 'none';
+      });
+    });
+  });
+  document.querySelectorAll('.conn-go').forEach(btn => {
+    btn.addEventListener('click', () => _submitConnection(btn.dataset.other));
+  });
+}
+
+async function _submitConnection(otherId) {
+  const row = document.querySelector(`.conn-row[data-other="${otherId}"]`);
+  const mode = row.querySelector(`input[name="conn-${otherId}"]:checked`).value;
+  const selfId = _currentPersonId;  // set in loadPersonDetail
+  const payload = { other_person_id: Number(otherId), mode };
+  if (mode === 'caregiver') {
+    const dir = row.querySelector('.conn-dir').value;
+    const caregiver = dir === 'this-cares' ? selfId : Number(otherId);
+    const caredFor  = dir === 'this-cares' ? Number(otherId) : selfId;
+    payload.caregiver_person_id = caregiver;
+    payload.cared_for_person_id = caredFor;
+    payload.relationship = row.querySelector('.conn-rel').value;
+    payload.consent = { method: row.querySelector('.conn-consent').value };
+  }
+  await fetch(`${BASE}/api/people/${selfId}/connect`, {
+    method: 'POST', headers: {'Content-Type':'application/json','X-Console-Key':consoleKey},
+    body: JSON.stringify(payload),
+  });
+  loadPersonDetail(selfId);
 }
 
 // ── Household dialog state ─────────────────────────────────────────────────────

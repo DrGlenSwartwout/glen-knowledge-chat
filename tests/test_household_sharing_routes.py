@@ -47,7 +47,7 @@ def test_caregiver_sets_cc_only_for_own_members(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     from dashboard import household as h
     with sqlite3.connect(appmod.LOG_DB) as cx:
-        h.init_household_tables(cx); h.add_member(cx, "care@x.com", "mem@x.com", "M", "spouse"); cx.commit()
+        h.init_household_tables(cx); h.add_member(cx, "care@x.com", "mem@x.com", "M", ""); cx.commit()
     care_tok = _mint(appmod, "care@x.com")
     if not care_tok: pytest.skip("no mint helper")
     c = appmod.app.test_client()
@@ -104,7 +104,7 @@ def test_console_toggles_flags(tmp_path, monkeypatch):
     import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     from dashboard import household as h
     with sqlite3.connect(appmod.LOG_DB) as cx:
-        h.init_household_tables(cx); h.add_member(cx, "p@x.com", "m@x.com", "M", "spouse"); cx.commit()
+        h.init_household_tables(cx); h.add_member(cx, "p@x.com", "m@x.com", "M", ""); cx.commit()
     c = appmod.app.test_client()
     # GET shows the flags
     g = c.get("/api/console/household?primary_email=p@x.com").get_json()

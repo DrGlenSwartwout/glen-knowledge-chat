@@ -82,12 +82,17 @@ def test_flag_on_plan_unlocks_the_caregiver_own_report(app_with_household, tmp_d
     assert app_with_household._portal_biofield_unlocked(CAREGIVER) is True
 
 
-def test_flag_on_revoked_consent_keeps_the_member_blurred(app_with_household, tmp_db, monkeypatch):
+def test_flag_on_revoked_consent_still_unlocks_the_member(app_with_household, tmp_db, monkeypatch):
+    """Entitlement is decoupled from report-sharing consent (Issue 3):
+    _portal_biofield_unlocked delegates straight to family_plan.covers(), which no
+    longer conditions on share_consent. Revoking consent still gates VIEWING
+    (household.can_view) — a separate axis — but must not re-blur a household
+    member's own paid-plan coverage."""
     monkeypatch.setenv("FAMILY_PLAN_ENABLED", "1")
     _grant_plan(tmp_db, CAREGIVER)
     with sqlite3.connect(tmp_db) as cx:
         hh.set_share_consent(cx, CAREGIVER, PET, 0)
-    assert app_with_household._portal_biofield_unlocked(PET) is False
+    assert app_with_household._portal_biofield_unlocked(PET) is True
 
 
 def test_family_lookup_failure_fails_closed(app_with_household, monkeypatch):

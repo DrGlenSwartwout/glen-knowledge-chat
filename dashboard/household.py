@@ -57,6 +57,14 @@ def init_household_tables(cx):
     except Exception:
         pass
 
+    for _col, _default in (("consent_basis", "''"), ("consent_recorded_by", "''"),
+                           ("consent_confirmed_at", "''")):
+        try:
+            cx.execute(f"ALTER TABLE household_members ADD COLUMN {_col} TEXT DEFAULT {_default}")
+        except Exception:
+            pass
+    cx.commit()
+
     cx.execute("""
         CREATE TABLE IF NOT EXISTS scan_reassignments (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,15 +78,26 @@ def init_household_tables(cx):
     cx.commit()
 
 
-def add_member(cx, primary_email, member_email, label="", relationship=""):
+def add_member(cx, primary_email, member_email, label="", relationship="",
+               consent_basis=None, consent_by=""):
     p, m = _norm(primary_email), _norm(member_email)
     if not p or not m or p == m:
         return False
+    rel = (relationship or "").strip().lower()
+    if is_dependent(rel):
+        share, basis = 1, "caregiver-authority"
+    elif not rel:
+        share, basis = 1, ""        # legacy generic link: shared by default (revocable)
+    elif consent_basis in ("verbal", "written"):
+        share, basis = 1, consent_basis
+    else:
+        share, basis = 0, ""        # explicit operational word: dark until consent
     cx.execute(
         "INSERT OR IGNORE INTO household_members "
-        "(primary_email, member_email, label, relationship, created_at, share_consent, cc_enabled) "
-        "VALUES (?,?,?,?,?,1,?)",
-        (p, m, label or "", relationship or "", _now(), default_cc_for(relationship)))
+        "(primary_email, member_email, label, relationship, created_at, share_consent, "
+        " cc_enabled, consent_basis, consent_recorded_by) VALUES (?,?,?,?,?,?,?,?,?)",
+        (p, m, label or "", relationship or "", _now(), share,
+         default_cc_for(relationship), basis, consent_by or ""))
     cx.commit()
     return True
 
@@ -138,9 +157,10 @@ def cc_recipients_for(cx, member_email):
 
 def caregivers_for(cx, member_email):
     rows = cx.execute(
-        "SELECT primary_email, share_consent FROM household_members WHERE member_email=? "
-        "ORDER BY created_at, id", (_norm(member_email),)).fetchall()
-    return [{"primary_email": r[0], "share_consent": int(r[1] if r[1] is not None else 1)} for r in rows]
+        "SELECT primary_email, share_consent, relationship FROM household_members "
+        "WHERE member_email=? ORDER BY created_at, id", (_norm(member_email),)).fetchall()
+    return [{"primary_email": r[0], "share_consent": int(r[1] if r[1] is not None else 1),
+             "relationship": r[2] or ""} for r in rows]
 
 
 def same_household(cx, a, b):
@@ -191,3 +211,48 @@ def list_reassignments(cx, limit=100):
         "ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
     return [{"scan_date": r[0], "from_email": r[1], "to_email": r[2], "by": r[3], "at": r[4]}
             for r in rows]
+
+
+def consent_state(cx, primary_email, member_email):
+    r = cx.execute(
+        "SELECT share_consent, consent_basis, consent_confirmed_at FROM household_members "
+        "WHERE primary_email=? AND member_email=?",
+        (_norm(primary_email), _norm(member_email))).fetchone()
+    if not r:
+        return {"share_consent": 0, "consent_basis": "", "consent_confirmed_at": ""}
+    return {"share_consent": int(r[0] if r[0] is not None else 0),
+            "consent_basis": r[1] or "", "consent_confirmed_at": r[2] or ""}
+
+
+def record_consent(cx, primary_email, member_email, basis, by=""):
+    """Record an operator-captured consent basis (verbal/written) on an EXISTING
+    link, activating sharing. Never overwrites a dependent's caregiver-authority
+    basis. Returns False if the link doesn't exist."""
+    p, m = _norm(primary_email), _norm(member_email)
+    row = cx.execute("SELECT consent_basis FROM household_members "
+                     "WHERE primary_email=? AND member_email=?", (p, m)).fetchone()
+    if not row:
+        return False
+    if (row[0] or "") == "caregiver-authority":
+        return True   # dependent link already consented via caregiver authority
+    cx.execute("UPDATE household_members SET share_consent=1, consent_basis=?, "
+               "consent_recorded_by=? WHERE primary_email=? AND member_email=?",
+               (basis, by or "", p, m))
+    cx.commit()
+    return True
+
+
+def confirm_consent(cx, primary_email, member_email):
+    p, m = _norm(primary_email), _norm(member_email)
+    row = cx.execute("SELECT consent_basis, consent_confirmed_at FROM household_members "
+                     "WHERE primary_email=? AND member_email=?", (p, m)).fetchone()
+    if not row:
+        return False
+    if (row[0] or "") == "caregiver-authority":
+        return True   # dependent link already consented; don't overwrite
+    if row[1]:  # already hard-confirmed — idempotent, never downgrade
+        return True
+    cx.execute("UPDATE household_members SET share_consent=1, consent_basis='portal-confirmed', "
+               "consent_confirmed_at=? WHERE primary_email=? AND member_email=?", (_now(), p, m))
+    cx.commit()
+    return True

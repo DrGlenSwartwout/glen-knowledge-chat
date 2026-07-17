@@ -58,7 +58,7 @@ def app_mod(tmp_db, monkeypatch):
 def test_ff_covered_true_via_family_plan_caregiver(app_mod, tmp_db):
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
-        hh.add_member(cx, CAREGIVER, MEMBER, relationship="spouse")
+        hh.add_member(cx, CAREGIVER, MEMBER, relationship="")  # blank = legacy shared default
         fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
         assert app_mod._ff_covered(cx, MEMBER) is True
 
@@ -73,7 +73,7 @@ def test_ff_covered_false_when_family_plan_flag_off(app_mod, tmp_db, monkeypatch
     monkeypatch.delenv("FAMILY_PLAN_ENABLED", raising=False)
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
-        hh.add_member(cx, CAREGIVER, MEMBER, relationship="spouse")
+        hh.add_member(cx, CAREGIVER, MEMBER, relationship="")  # blank = legacy shared default
         fp.activate(cx, CAREGIVER, next_charge_at="2026-08-09")
         assert app_mod._ff_covered(cx, MEMBER) is False
 
