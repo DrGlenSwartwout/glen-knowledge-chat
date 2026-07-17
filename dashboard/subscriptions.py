@@ -101,6 +101,16 @@ def init_subscriptions_table(cx) -> None:
         cx.execute("ALTER TABLE subscriptions ADD COLUMN order_ref TEXT")
     except sqlite3.OperationalError:
         pass  # already migrated
+    # Atomic dedup backstop: prod runs gunicorn with 2 workers + gevent, so the
+    # redirect (one process) and the Stripe webhook (another process) can both
+    # pass the has_subscription_for_order SELECT before either commits. The
+    # UNIQUE index makes the second INSERT fail instead of double-creating.
+    # Safe with existing NULL order_ref rows: SQLite treats each NULL as
+    # distinct under a UNIQUE index, so they never collide with each other.
+    cx.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_order_ref "
+        "ON subscriptions(order_ref)"
+    )
     cx.commit()
 
 
@@ -174,10 +184,22 @@ def has_subscription_for_order(cx, order_ref) -> bool:
 def create_once(cx, *, order_ref, **create_kwargs):
     """Idempotent create keyed on order_ref: if a row already exists for this
     order_ref, no-op and return None; else create and return the new rowid.
-    Closes the redirect-refresh and redirect-vs-webhook double-create."""
+    Closes the redirect-refresh and redirect-vs-webhook double-create.
+
+    The has_subscription_for_order check is a fast pre-check (cheap, avoids
+    the exception path in the common case) but is NOT itself atomic — prod
+    runs gunicorn with 2 workers + gevent, so the redirect and the webhook
+    can both pass the SELECT before either commits. The UNIQUE index on
+    order_ref (see init_subscriptions_table) is the real atomicity guarantee:
+    if two processes race past the pre-check, only one INSERT wins and the
+    other raises sqlite3.IntegrityError, which we catch here and treat the
+    same as "already exists" — return None."""
     if has_subscription_for_order(cx, order_ref):
         return None
-    return create(cx, order_ref=order_ref, **create_kwargs)
+    try:
+        return create(cx, order_ref=order_ref, **create_kwargs)
+    except sqlite3.IntegrityError:
+        return None  # lost the race to another process; not a double-create
 
 
 def get(cx, sub_id: int) -> dict | None:
