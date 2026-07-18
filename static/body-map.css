@@ -1,44 +1,65 @@
-:root { --bm-ink:#1F5A4D; --bm-accent:#d4a843; --bm-line:#2f6f5e; --bm-bg:#f7f5ef; }
+/* Body Map palette — driven by the app's data-theme toggle (set on <html> by the
+   injected theme-mode.js). Default is light; [data-theme="dark"] flips every
+   surface/text token so the whole page (not just the app shell) themes. */
+:root, :root[data-theme="light"] {
+  --bm-bg:#f7f5ef; --bm-surface:#ffffff; --bm-border:#e3ded2;
+  --bm-text:#22302b; --bm-heading:#1F5A4D; --bm-muted:#4a5a53; --bm-hint:#7c887f;
+  --bm-accent:#d4a843; --bm-line:#2f6f5e; --bm-ink:#1F5A4D;
+  --bm-zone-fill:rgba(47,111,94,0.14);
+  --bm-label:#3a3a3a; --bm-halo:#fbf8f3; --bm-leader:#c9c2b0;
+  --bm-disc:#7a3b2e; --bm-disc-bg:rgba(255,255,255,0.85); --bm-anchor-stroke:#ffffff;
+}
+:root[data-theme="dark"] {
+  --bm-bg:#0f1a14; --bm-surface:#16241d; --bm-border:#2c3c34;
+  --bm-text:#e8e4d6; --bm-heading:#8fd0b4; --bm-muted:#a6b6ab; --bm-hint:#8ba296;
+  --bm-accent:#e2b450; --bm-line:#4f9683; --bm-ink:#2f6f5e;
+  --bm-zone-fill:rgba(143,208,180,0.16);
+  --bm-label:#e8e4d6; --bm-halo:#16241d; --bm-leader:#41564b;
+  --bm-disc:#f0a893; --bm-disc-bg:rgba(0,0,0,0.55); --bm-anchor-stroke:#16241d;
+}
 * { box-sizing: border-box; }
-body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:var(--bm-bg); }
+body { margin:0; font-family: system-ui, sans-serif; color:var(--bm-text); background:var(--bm-bg);
+       transition: background-color .25s, color .25s; }
 .bm-head { padding:24px 20px 8px; }
-.bm-head h1 { margin:0; color:var(--bm-ink); }
-.bm-sub { max-width:60ch; color:#4a5a53; }
+.bm-head h1 { margin:0; color:var(--bm-heading); }
+.bm-sub { max-width:60ch; color:var(--bm-muted); }
 .bm-controls { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:8px 20px; }
-.bm-controls select { padding:4px 8px; }
-.bm-modes button { padding:6px 12px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
+.bm-controls, .bm-layers label { color:var(--bm-text); }
+.bm-controls select { padding:4px 8px; background:var(--bm-surface); color:var(--bm-text); border:1px solid var(--bm-border); }
+.bm-modes button { padding:6px 12px; border:1px solid var(--bm-line); background:var(--bm-surface); color:var(--bm-text); cursor:pointer; }
 .bm-modes button.bm-active { background:var(--bm-ink); color:#fff; }
 .bm-depth { display:flex; gap:4px; align-items:center; }
-.bm-depth-label { font-size:13px; color:var(--bm-ink); margin-right:2px; }
-.bm-depth button { padding:5px 10px; font-size:13px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
-.bm-depth button.bm-active { background:var(--bm-accent); color:#fff; }
+.bm-depth-label { font-size:13px; color:var(--bm-heading); margin-right:2px; }
+.bm-depth button { padding:5px 10px; font-size:13px; border:1px solid var(--bm-line); background:var(--bm-surface); color:var(--bm-text); cursor:pointer; }
+.bm-depth button.bm-active { background:var(--bm-accent); color:#3a2c08; }
 .bm-layers { display:flex; gap:10px; flex-wrap:wrap; }
 .bm-layers label { font-size:14px; }
 .bm-stage { display:flex; flex-wrap:wrap; gap:20px; padding:16px 20px; }
-.bm-canvas { position:relative; width:min(600px,92vw); aspect-ratio:1/1; background:#fff; border:1px solid #e3ded2; }
+.bm-canvas { position:relative; width:min(600px,92vw); aspect-ratio:1/1; background:var(--bm-surface); border:1px solid var(--bm-border); }
 .bm-canvas img, .bm-canvas svg { position:absolute; inset:0; width:100%; height:100%; }
-.bm-zone { fill:rgba(47,111,94,0.14); stroke:var(--bm-line); stroke-width:1; cursor:pointer; }
+.bm-zone { fill:var(--bm-zone-fill); stroke:var(--bm-line); stroke-width:1; cursor:pointer; }
 .bm-zone:hover, .bm-zone.bm-sel { fill:rgba(212,168,67,0.35); stroke:var(--bm-accent); stroke-width:2; }
-.bm-anchor { fill:var(--bm-accent); stroke:#fff; stroke-width:1.5; }
-.bm-disclaimer { position:absolute; left:8px; bottom:8px; margin:0; padding:4px 8px; background:rgba(255,255,255,0.85); font-size:13px; color:#7a3b2e; }
-.bm-panel { flex:1; min-width:240px; border:1px solid #e3ded2; background:#fff; padding:16px; }
-.bm-panel h2 { color:var(--bm-ink); margin-top:0; }
-.bm-hint { color:#8a958f; }
+.bm-anchor { fill:var(--bm-accent); stroke:var(--bm-anchor-stroke); stroke-width:1.5; }
+.bm-disclaimer { position:absolute; left:8px; bottom:8px; margin:0; padding:4px 8px; background:var(--bm-disc-bg); font-size:13px; color:var(--bm-disc); }
+.bm-panel { flex:1; min-width:240px; border:1px solid var(--bm-border); background:var(--bm-surface); padding:16px; }
+.bm-panel h2 { color:var(--bm-heading); margin-top:0; }
+.bm-panel p { color:var(--bm-text); }
+.bm-hint { color:var(--bm-hint); }
 .bm-photo-tools { padding:8px 20px 24px; }
-.bm-anchor-hint { color:var(--bm-ink); font-weight:600; }
-.bm-label { font-size:10px; fill:#3a3a3a; cursor:pointer; paint-order:stroke; stroke:#fbf8f3; stroke-width:2.5px; stroke-linejoin:round; }
+.bm-anchor-hint { color:var(--bm-heading); font-weight:600; }
+.bm-label { font-size:10px; fill:var(--bm-label); cursor:pointer; paint-order:stroke; stroke:var(--bm-halo); stroke-width:2.5px; stroke-linejoin:round; }
 .bm-label:hover, .bm-point:hover { font-weight:600; }
-.bm-label.bm-sel { font-weight:700; fill:var(--bm-ink); }
+.bm-label.bm-sel { font-weight:700; fill:var(--bm-heading); }
 .bm-line { cursor:pointer; }
 .bm-line:hover, .bm-line.bm-sel { stroke-width:4 !important; stroke-opacity:1 !important; }
-.bm-leader { stroke:#c9c2b0; stroke-width:0.75; fill:none; }
+.bm-leader { stroke:var(--bm-leader); stroke-width:0.75; fill:none; }
 .bm-leader.bm-sel { stroke:var(--bm-accent); stroke-width:1.25; }
 .bm-point { cursor:pointer; }
 /* Personalized portal view: the client's finding zones stand out in gold. */
-.bm-zone.bm-lit { fill:var(--bm-accent) !important; fill-opacity:0.55 !important; stroke:var(--bm-ink) !important; stroke-width:2.5 !important; }
-.bm-label.bm-lit { font-weight:700; fill:var(--bm-ink); }
+.bm-zone.bm-lit { fill:var(--bm-accent) !important; fill-opacity:0.55 !important; stroke:var(--bm-line) !important; stroke-width:2.5 !important; }
+.bm-label.bm-lit { font-weight:700; fill:var(--bm-heading); }
 .bm-leader.bm-lit { stroke:var(--bm-accent); stroke-width:1.25; }
 .bm-findings { list-style:none; padding:0; margin:.5rem 0 0; }
 .bm-findings li { margin:.3rem 0; }
-.bm-finding { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--bm-line); background:#fff; border-radius:6px; cursor:pointer; color:var(--bm-ink); font-size:14px; }
-.bm-finding:hover { background:var(--bm-accent); color:#fff; border-color:var(--bm-accent); }
+.bm-finding { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--bm-line); background:var(--bm-surface); border-radius:6px; cursor:pointer; color:var(--bm-heading); font-size:14px; }
+.bm-finding:hover { background:var(--bm-accent); color:#3a2c08; border-color:var(--bm-accent); }

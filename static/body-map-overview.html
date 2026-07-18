@@ -7,25 +7,22 @@
   <link rel="stylesheet" href="/body-map.css">
   <style>
     .ov-wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px 48px; }
-    .ov-cat { margin: 28px 0 10px; color: var(--bm-ink); font-size: 1.15rem;
+    .ov-cat { margin: 28px 0 10px; color: var(--bm-heading); font-size: 1.15rem;
               border-bottom: 2px solid var(--bm-accent); padding-bottom: 6px; }
     .ov-grid { display: grid; gap: 14px;
                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
     .ov-card { display: flex; flex-direction: column; gap: 6px; text-decoration: none;
-               background: #fff; border: 1px solid #e3ded2; border-radius: 12px;
+               background: var(--bm-surface); border: 1px solid var(--bm-border); border-radius: 12px;
                padding: 16px; color: inherit; transition: border-color .12s, box-shadow .12s, transform .12s; }
-    .ov-card:hover { border-color: var(--bm-accent); box-shadow: 0 4px 14px rgba(47,111,94,0.12);
+    .ov-card:hover { border-color: var(--bm-accent); box-shadow: 0 4px 14px rgba(47,111,94,0.16);
                      transform: translateY(-2px); }
-    .ov-card h3 { margin: 0; color: var(--bm-ink); font-size: 1rem; }
-    .ov-card p { margin: 0; color: #4a5a53; font-size: .88rem; line-height: 1.35; flex: 1; }
+    .ov-card h3 { margin: 0; color: var(--bm-heading); font-size: 1rem; }
+    .ov-card p { margin: 0; color: var(--bm-muted); font-size: .88rem; line-height: 1.35; flex: 1; }
     .ov-open { color: var(--bm-line); font-size: .82rem; font-weight: 600; }
     .ov-feats { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
-    .ov-feat { background: #fff; border: 1px solid #e3ded2; border-radius: 20px;
-               padding: 6px 14px; font-size: .82rem; color: var(--bm-ink); }
-    .ov-hint { color: #6b7a72; }
-    @media (prefers-color-scheme: dark) {
-      .ov-card, .ov-feat { background: #1e2724; border-color: #33413b; }
-    }
+    .ov-feat { background: var(--bm-surface); border: 1px solid var(--bm-border); border-radius: 20px;
+               padding: 6px 14px; font-size: .82rem; color: var(--bm-heading); }
+    .ov-hint { color: var(--bm-muted); }
   </style>
 </head>
 <body>
