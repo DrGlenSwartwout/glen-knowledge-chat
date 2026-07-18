@@ -30,7 +30,7 @@
         "y": 0.47
       },
       "anatomy": "LU11 Shaoshang (Lung)",
-      "meaning_standard": "Lung jing-well, radial thumb-nail corner.",
+      "meaning_standard": "Lung jing-well / Voll lung CMP, radial thumb corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -45,11 +45,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.365,
-        "y": 0.12
+        "x": 0.36,
+        "y": 0.125
       },
       "anatomy": "LI1 Shangyang (Large Intestine)",
-      "meaning_standard": "Large-intestine jing-well, radial index-nail corner.",
+      "meaning_standard": "Large-intestine jing-well / Voll CMP, radial index corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -65,7 +65,7 @@
       "geometry": {
         "type": "point",
         "x": 0.5,
-        "y": 0.058
+        "y": 0.055
       },
       "anatomy": "PC9 Zhongchong (Pericardium)",
       "meaning_standard": "Pericardium jing-well, tip of the middle finger.",
@@ -83,11 +83,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.635,
-        "y": 0.128
+        "x": 0.64,
+        "y": 0.13
       },
       "anatomy": "TE1 Guanchong (Triple Energizer)",
-      "meaning_standard": "Triple-energizer jing-well, ulnar ring-nail corner.",
+      "meaning_standard": "Triple-energizer jing-well / Voll endocrine CMP, ulnar ring corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -106,7 +106,7 @@
         "y": 0.205
       },
       "anatomy": "HT9 Shaochong (Heart)",
-      "meaning_standard": "Heart jing-well, radial little-finger nail corner.",
+      "meaning_standard": "Heart jing-well / Voll CMP, radial little-finger corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -121,11 +121,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.715,
-        "y": 0.208
+        "x": 0.718,
+        "y": 0.21
       },
       "anatomy": "SI1 Shaoze (Small Intestine)",
-      "meaning_standard": "Small-intestine jing-well, ulnar little-finger nail corner.",
+      "meaning_standard": "Small-intestine jing-well / Voll CMP, ulnar little-finger corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -140,8 +140,8 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.115,
-        "y": 0.548
+        "x": 0.108,
+        "y": 0.55
       },
       "anatomy": "Lymph vessel (EAV)",
       "meaning_standard": "Voll lymph-vessel CMP, ulnar thumb corner.",
@@ -159,8 +159,8 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.415,
-        "y": 0.12
+        "x": 0.418,
+        "y": 0.125
       },
       "anatomy": "Nerve degeneration (EAV)",
       "meaning_standard": "Voll nerve-degeneration CMP, ulnar index corner.",
@@ -172,17 +172,17 @@
       }
     },
     {
-      "id": "eav-HAl",
+      "id": "eav-HCi",
       "side": "hand",
       "bilateral": false,
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.472,
+        "x": 0.47,
         "y": 0.078
       },
-      "anatomy": "Allergy vessel (EAV)",
-      "meaning_standard": "Voll allergy CMP, radial middle corner.",
+      "anatomy": "Circulation vessel (EAV)",
+      "meaning_standard": "Voll circulation CMP, radial middle corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -197,11 +197,49 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.528,
+        "x": 0.53,
         "y": 0.078
       },
       "anatomy": "Organ degeneration (EAV)",
-      "meaning_standard": "Voll organ-degeneration CMP, ulnar middle corner.",
+      "meaning_standard": "Voll organ/parenchymal-degeneration CMP, ulnar middle corner.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-HAl",
+      "side": "hand",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.582,
+        "y": 0.13
+      },
+      "anatomy": "Allergy / immune vessel (EAV)",
+      "meaning_standard": "Voll allergy CMP, radial ring corner.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-HSk",
+      "side": "hand",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.398,
+        "y": 0.188
+      },
+      "anatomy": "Skin degeneration (EAV)",
+      "meaning_standard": "Voll skin-degeneration vessel, index dorsum.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -216,11 +254,30 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.585,
-        "y": 0.128
+        "x": 0.5,
+        "y": 0.15
       },
       "anatomy": "Fatty degeneration (EAV)",
-      "meaning_standard": "Voll fatty-degeneration CMP, radial ring corner.",
+      "meaning_standard": "Voll fatty-degeneration vessel, middle dorsum.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-HJd",
+      "side": "hand",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.618,
+        "y": 0.192
+      },
+      "anatomy": "Joint degeneration (EAV)",
+      "meaning_standard": "Voll joint-degeneration vessel, ring dorsum.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -235,11 +292,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.205,
-        "y": 0.07
+        "x": 0.2,
+        "y": 0.072
       },
       "anatomy": "SP1 Yinbai (Spleen)",
-      "meaning_standard": "Spleen jing-well, medial big-toe nail corner.",
+      "meaning_standard": "Spleen jing-well, medial big-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -254,11 +311,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.292,
+        "x": 0.295,
         "y": 0.06
       },
       "anatomy": "LR1 Dadun (Liver)",
-      "meaning_standard": "Liver jing-well, lateral big-toe nail corner.",
+      "meaning_standard": "Liver jing-well, lateral big-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -273,11 +330,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.49,
+        "x": 0.492,
         "y": 0.088
       },
       "anatomy": "ST45 Lidui (Stomach)",
-      "meaning_standard": "Stomach jing-well, lateral 2nd-toe nail corner.",
+      "meaning_standard": "Stomach jing-well, lateral 2nd-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -292,11 +349,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.752,
+        "x": 0.755,
         "y": 0.15
       },
       "anatomy": "GB44 Zuqiaoyin (Gallbladder)",
-      "meaning_standard": "Gallbladder jing-well, lateral 4th-toe nail corner.",
+      "meaning_standard": "Gallbladder jing-well, lateral 4th-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -311,11 +368,11 @@
       "group": "acupoint",
       "geometry": {
         "type": "point",
-        "x": 0.852,
-        "y": 0.212
+        "x": 0.855,
+        "y": 0.213
       },
       "anatomy": "BL67 Zhiyin (Bladder)",
-      "meaning_standard": "Bladder jing-well, lateral little-toe nail corner.",
+      "meaning_standard": "Bladder jing-well, lateral little-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -331,10 +388,10 @@
       "geometry": {
         "type": "point",
         "x": 0.232,
-        "y": 0.098
+        "y": 0.1
       },
       "anatomy": "Lymph vessel (EAV)",
-      "meaning_standard": "Voll lymph-vessel CMP, big toe.",
+      "meaning_standard": "Voll lymph-vessel CMP, big toe (medial dorsum).",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -350,10 +407,48 @@
       "geometry": {
         "type": "point",
         "x": 0.258,
-        "y": 0.092
+        "y": 0.088
       },
       "anatomy": "Pancreas (EAV)",
       "meaning_standard": "Voll pancreas CMP, big toe.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-FSt2",
+      "side": "foot",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.435,
+        "y": 0.1
+      },
+      "anatomy": "Stomach branch (EAV)",
+      "meaning_standard": "Voll stomach-branch CMP, medial 2nd-toe corner.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-FSk",
+      "side": "foot",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.575,
+        "y": 0.112
+      },
+      "anatomy": "Skin degeneration (EAV)",
+      "meaning_standard": "Voll skin-degeneration vessel, medial 3rd-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -368,11 +463,30 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.6,
-        "y": 0.1
+        "x": 0.62,
+        "y": 0.098
       },
       "anatomy": "Joint degeneration (EAV)",
-      "meaning_standard": "Voll joint-degeneration CMP, 3rd toe.",
+      "meaning_standard": "Voll joint-degeneration vessel, lateral 3rd-toe corner.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-FAr",
+      "side": "foot",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.7,
+        "y": 0.166
+      },
+      "anatomy": "Articular degeneration (EAV)",
+      "meaning_standard": "Voll articular-degeneration vessel, medial 4th-toe corner.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -387,11 +501,30 @@
       "group": "eav",
       "geometry": {
         "type": "point",
-        "x": 0.808,
-        "y": 0.22
+        "x": 0.812,
+        "y": 0.222
       },
       "anatomy": "Kidney (EAV)",
-      "meaning_standard": "Voll kidney CMP, little toe.",
+      "meaning_standard": "Voll kidney CMP, medial little-toe corner.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "eav-FFd",
+      "side": "foot",
+      "bilateral": false,
+      "group": "eav",
+      "geometry": {
+        "type": "point",
+        "x": 0.468,
+        "y": 0.138
+      },
+      "anatomy": "Fatty degeneration (EAV)",
+      "meaning_standard": "Voll fatty-degeneration vessel, 2nd-toe dorsum.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
