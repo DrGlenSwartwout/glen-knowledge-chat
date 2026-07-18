@@ -22,7 +22,7 @@ def client(tmp_path):
     def fake_catalog():
         return [{"slug": "liver-support", "name": "Liver Support"}]
 
-    def fake_create(customer, lines):
+    def fake_create(customer, lines, replace_open=False, invoice_note=None):
         calls["lines"] = lines
         return {"ok": True, "order_id": 7, "external_ref": "INH-Z", "total_cents": 10000, "error": None,
                 "accepted_slugs": ["biofield-analysis", "liver-support"]}
@@ -55,7 +55,7 @@ def test_invoice_requires_email(tmp_path):
         init_auth_tables(cx)
         tid = create_test(cx, name="", email="", date="")  # no header -> no email
     app = create_app(db_path=db, invoice_fetch_catalog=lambda: [],
-                     invoice_create=lambda *a: {"ok": True},
+                     invoice_create=lambda *a, **k: {"ok": True},
                      invoice_link=lambda *a: {"ok": True, "print_url": ""})
     app.testing = True
     r = app.test_client().post(f"/author/{tid}/invoice")
@@ -69,7 +69,7 @@ def test_invoice_create_failure_is_502(tmp_path):
         tid = create_test(cx, name="D", email="d@x.com", date="2026-07-06")
         add_chain_row(cx, tid, layer=1, head="", most_affected="", remedy="Liver Support")
     app = create_app(db_path=db, invoice_fetch_catalog=lambda: [],
-                     invoice_create=lambda *a: {"ok": False, "error": "Couldn't reach the console."},
+                     invoice_create=lambda *a, **k: {"ok": False, "error": "Couldn't reach the console."},
                      invoice_link=lambda *a: {"ok": False})
     app.testing = True
     r = app.test_client().post(f"/author/{tid}/invoice")
@@ -83,7 +83,7 @@ def test_invoice_warns_when_biofield_line_dropped(tmp_path):
         tid = create_test(cx, name="D", email="d@x.com", date="2026-07-06")
         add_chain_row(cx, tid, layer=1, head="", most_affected="", remedy="Liver Support")
     app = create_app(db_path=db, invoice_fetch_catalog=lambda: [{"slug": "liver-support", "name": "Liver Support"}],
-                     invoice_create=lambda c, l: {"ok": True, "order_id": 9, "external_ref": "INH-W",
+                     invoice_create=lambda c, l, **k: {"ok": True, "order_id": 9, "external_ref": "INH-W",
                                                   "total_cents": 5000, "accepted_slugs": ["liver-support"]},
                      invoice_link=lambda oid: {"ok": True, "print_url": "https://x/invoice/t?print=1"})
     app.testing = True

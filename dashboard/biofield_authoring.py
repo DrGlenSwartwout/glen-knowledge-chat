@@ -48,6 +48,13 @@ def init_auth_tables(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_tests(
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT,
         date_test TEXT, created_at TEXT, updated_at TEXT)""")
+    # Terrain reading from the spoken BSI ('phase P' + 'location of the N is X').
+    # Nullable: FMP-snapshot and older authored tests carry no BSI phase.
+    for col in ("phase INTEGER", "location TEXT"):
+        try:
+            cx.execute(f"ALTER TABLE biofield_auth_tests ADD COLUMN {col}")
+        except Exception:
+            pass
     cx.execute("""CREATE TABLE IF NOT EXISTS biofield_auth_chain(
         id INTEGER PRIMARY KEY AUTOINCREMENT, test_id INTEGER, layer INTEGER,
         head TEXT, most_affected TEXT, remedy TEXT, dosage TEXT, frequency TEXT,
@@ -98,6 +105,26 @@ def update_header(cx, tid, name=None, email=None, date=None):
         sets.append("email=?"); vals.append((email or "").strip().lower())
     if date is not None:
         sets.append("date_test=?"); vals.append((date or "").strip())
+    if not sets:
+        return
+    sets.append("updated_at=?"); vals.append(_now())
+    vals.append(_num(tid))
+    cx.execute(f"UPDATE biofield_auth_tests SET {','.join(sets)} WHERE id=?", vals)
+    cx.commit()
+
+
+def update_terrain(cx, tid, phase=None, location=None):
+    """Persist the scan's terrain reading (BSI 'phase P' + 'location X') on the test.
+    Per-field, like update_header: a pass that read no phase/location must not clobber
+    a value captured earlier. phase is coerced to an int 1-5 (else ignored)."""
+    from dashboard.terrain_phase import phase_num
+    init_auth_tables(cx)
+    sets, vals = [], []
+    p = phase_num(phase)
+    if p is not None:
+        sets.append("phase=?"); vals.append(p)
+    if (location or "").strip():
+        sets.append("location=?"); vals.append(location.strip())
     if not sets:
         return
     sets.append("updated_at=?"); vals.append(_now())
@@ -625,8 +652,11 @@ def authored_report(cx, tid):
     schedule = build_schedule([
         {"name": l["remedy"], "dosage": l["dosage"],
          "frequency": l["frequency"], "timing": l["timing"]} for l in layers])
+    tk = t.keys() if t else []
     return {"test_id": str(tid),
             "client": {"name": (t["name"] if t else "") or "",
                        "email": (t["email"] if t else "") or ""},
             "date": (t["date_test"] if t else "") or "",
+            "phase": (t["phase"] if "phase" in tk else None),
+            "location": ((t["location"] if "location" in tk else "") or ""),
             "layers": layers, "schedule": schedule}

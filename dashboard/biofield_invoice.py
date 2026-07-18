@@ -15,6 +15,26 @@ import urllib.request
 
 BIOFIELD_SLUG = "biofield-analysis"
 
+DEFAULT_INVOICE_NOTE = "Biofield Analysis and remedies. Payable by Credit Card or Zelle."
+
+
+def terrain_note(phase, location=""):
+    """One-line terrain-phase note for the order (BSI 'phase P' + spoken location).
+    '' when no phase was read, so an unread scan adds nothing. No em dashes (house style)."""
+    from dashboard.terrain_phase import phase_display
+    disp = phase_display(phase)
+    if not disp:
+        return ""
+    loc = (location or "").strip()
+    return f"Terrain Phase: {disp}." if not loc else f"Terrain Phase: {disp}. Location: {loc}."
+
+
+def build_invoice_note(phase=None, location=""):
+    """The order's invoice_note: the terrain-phase line (when a phase was read) followed
+    by the standard payment text; just the standard text when no phase was read."""
+    tn = terrain_note(phase, location)
+    return f"{tn} {DEFAULT_INVOICE_NOTE}" if tn else DEFAULT_INVOICE_NOTE
+
 
 def resolve_line_slug(name, catalog):
     """A remedy NAME -> a sellable catalog slug by EXACT (case-insensitive) match.
@@ -113,7 +133,7 @@ def default_fetch_catalog():
         return []
 
 
-def default_create_order(customer, lines, replace_open=False):
+def default_create_order(customer, lines, replace_open=False, invoice_note=None):
     """Create the hand-off invoice on prod. With replace_open=True (a re-hand-off),
     prod first cancels the client's prior OPEN hand-off drafts (proposed, unpaid, not
     yet published) so a repeated hand-off UPDATES rather than piling up duplicates;
@@ -128,7 +148,7 @@ def default_create_order(customer, lines, replace_open=False):
         # from the console when the client actually collects in person.
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "replace_open": bool(replace_open),
-                "invoice_note": "Biofield Analysis and remedies. Payable by Credit Card or Zelle."}
+                "invoice_note": invoice_note or DEFAULT_INVOICE_NOTE}
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
                                      headers={"X-Console-Key": key, "Content-Type": "application/json"})

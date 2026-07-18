@@ -63,3 +63,38 @@ def test_empty_narrative_section_omitted_or_placeholder():
 def test_masthead_includes_logo():
     html = render_present(REPORT, "hello")
     assert 'class="logo"' in html and "data:image/png;base64," in html   # logo embedded upper-left
+
+
+def test_terrain_banner_at_top_when_phase_present():
+    rep = {**REPORT, "phase": 4, "location": "Toxicity"}
+    html = render_present(rep, narrative="x")
+    assert "Terrain Refresh (Phase 4)" in html
+    assert "Toxicity" in html
+    # the terrain reading sits at the very top: before the Remedy Schedule
+    assert html.index("Terrain Refresh") < html.index("Remedy Schedule")
+
+
+def test_no_terrain_banner_without_a_phase():
+    # Base report (FMP-snapshot / older authored) has no BSI phase -> no banner.
+    html = render_present(REPORT, narrative="x")
+    assert "Phase 4" not in html and "Your Terrain" not in html
+
+
+def test_location_omitted_when_blank_but_phase_shown():
+    rep = {**REPORT, "phase": 2, "location": ""}
+    html = render_present(rep, narrative="x")
+    assert "Terrain Repair (Phase 2)" in html
+    assert "Location" not in html
+
+
+def test_terrain_restore_schedule_entry_tagged_with_phase():
+    rep = {**REPORT, "phase": 5, "location": "Kidney",
+           "schedule": {"slots": ["On rising"],
+                        "entries": [{"name": "Terrain Restore", "dosage": "contains: Mimulus",
+                                     "frequency": "daily", "timing": "", "slots": ["On rising"],
+                                     "food": "", "as_directed": False}]}}
+    html = render_present(rep, narrative="x")
+    # the combined Terrain Restore bottle carries the scan's phase name
+    assert "Terrain Relief" in html
+    i = html.index("Terrain Restore")
+    assert "Terrain Relief" in html[i:i + 80]

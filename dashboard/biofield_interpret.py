@@ -12,7 +12,8 @@ import re
 _SYSTEM = (
     "You convert a clinician's spoken biofield-testing transcript (Dr. Glen Swartwout) into a "
     "structured causal chain. Return STRICT JSON ONLY, no prose:\n"
-    '{"header": str, "layers": [{"layer": int, "head": str, "most_affected": str, '
+    '{"header": str, "phase": int, "location": str, '
+    '"layers": [{"layer": int, "head": str, "most_affected": str, '
     '"remedy": str, "dosage": str, "frequency": str, "timing": str}]}\n'
     "A single causal layer can need MORE THAN ONE remedy to balance. When a layer is "
     "balanced by several remedies, list them all in a `remedies` array on that layer "
@@ -20,8 +21,11 @@ _SYSTEM = (
     "plain `remedy` string only when a layer has exactly one. NEVER keep just the first "
     "remedy and drop the rest.\n"
     "Glen's grammar:\n"
-    "- 'BSI N times A to B times C, phase P' and 'the location of the N is X' -> summarize into `header` "
-    "(a short string); do NOT turn the BSI/phase/location into a layer.\n"
+    "- 'BSI N times A to B times C, phase P' and 'the location of the N is X' -> set top-level "
+    "`phase` to the integer P (1-5) and top-level `location` to the spoken location X (a short "
+    "string, e.g. 'toxicity', 'kidney', 'large intestine meridian'); ALSO keep a short `header` "
+    "summary. Do NOT turn the BSI/phase/location into a layer. If no phase/location is spoken, "
+    "leave `phase` null and `location` as an empty string.\n"
     "- 'X is the head and tail of the [first/second/...] causal chain' OR 'the [Nth] layer is X, head and "
     "tail' -> a layer at that number with head = most_affected = X ('head and tail' means the stress is both "
     "the head and the most-affected end of that layer).\n"
@@ -97,7 +101,7 @@ def interpret_transcript(transcript, complete, glossary=""):
     Optional `glossary` (comma-joined catalog terms) lets the model normalize a clearly
     misheard remedy to its catalog spelling; unmatched remedies are kept as spoken."""
     if not (transcript or "").strip():
-        return {"header": "", "layers": []}
+        return {"header": "", "phase": None, "location": "", "layers": []}
     p = build_interpret_prompt(transcript, glossary)
     data = _parse_json(complete(p["system"], p["user"]))
     layers = []
@@ -126,7 +130,11 @@ def interpret_transcript(transcript, complete, glossary=""):
                            "timing": (spec.get("timing") or "").strip()})
     # Stable sort by layer keeps multiple remedies for the same layer in spoken order.
     layers.sort(key=lambda x: (x["layer"] is None, x["layer"] or 0))
-    return {"header": (data.get("header") or "").strip(), "layers": layers}
+    from dashboard.terrain_phase import phase_num
+    return {"header": (data.get("header") or "").strip(),
+            "phase": phase_num(data.get("phase")),
+            "location": (data.get("location") or "").strip(),
+            "layers": layers}
 
 
 _STRESS_SYSTEM = (
