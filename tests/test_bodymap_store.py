@@ -317,6 +317,22 @@ def test_shipped_eav_seed_valid():
     assert {"eav-LU11", "eav-BL67"} <= ids  # jing-well terminal points present
 
 
+def test_shipped_neurotome_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["neurotome"].name == "bodymap-neurotome.json"
+    data = json.loads((repo / "bodymap-neurotome.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert set(data.get("outlines", {})) == {"front", "back"}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"neurotome zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "polygon"
+        views.add(z["side"])
+    assert views == {"front", "back"}
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
