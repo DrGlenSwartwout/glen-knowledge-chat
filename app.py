@@ -11636,6 +11636,13 @@ def init_membership_tables(cx):
           created_at  TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS order_membership_grants (
+          order_ref   TEXT PRIMARY KEY,
+          email       TEXT,
+          tier        TEXT,
+          created_at  TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS membership_reconcile_alerts (
           session_id    TEXT PRIMARY KEY,
           email         TEXT,
@@ -11862,6 +11869,52 @@ def _grant_membership(cx, email, days, source):
          source, source, "", ""))
     _member_join_welcome(cx, email, source)   # does not commit (guard rolls back too)
     return mid
+
+
+# Module-level handle so the grant hook (and its test seam) can resolve the
+# membership_products helpers; kept as an attribute so tests can monkeypatch
+# _mp.owns_group without reaching into the package.
+from dashboard import membership_products as _mp  # noqa: E402
+
+
+def _grant_membership_line_on_paid(cx, order):
+    """On a fully-paid order that carries a membership line, write the REAL
+    membership grant. Idempotent per order (claim row in order_membership_grants),
+    mirroring group_bundle_grants / care_taster_grants. Returns one of:
+      "granted" — a new grant was written for this order
+      "already" — this order was already granted (claim didn't take)
+      "none"    — no membership line on the order (or no order)
+      "member"  — buyer already holds an active paid membership; nothing to grant
+    Caller must ensure the order is fully paid (fires only on the paid transition).
+    """
+    if not order:
+        return "none"
+    tier_key = _mp.cart_has_membership_tier(order.get("items") or [])
+    if not tier_key:
+        return "none"
+    email = (order.get("email") or "").strip().lower()
+    ref = order.get("external_ref") or f"id:{order.get('id')}"
+    # Has THIS order already been granted? (redirect + webhook + Stripe redelivery
+    # all settle the same paid order; the first grant makes owns_group True, so the
+    # claim check must precede the member check or a benign re-run would misreport
+    # "member".) The atomic INSERT ... ON CONFLICT below still guards the true race
+    # where two runs pass this read at the same instant.
+    if cx.execute("SELECT 1 FROM order_membership_grants WHERE order_ref=?",
+                  (ref,)).fetchone():
+        return "already"
+    if _mp.owns_group(cx, email):
+        return "member"  # already a paid member; do NOT claim (keeps the order
+                         # grantable later if this membership lapses)
+    claim = cx.execute(
+        "INSERT INTO order_membership_grants (order_ref, email, tier, created_at) "
+        "VALUES (?,?,?,?) ON CONFLICT(order_ref) DO NOTHING",
+        (ref, email, tier_key, datetime.utcnow().isoformat() + "Z"))
+    if not claim.rowcount:
+        return "already"  # concurrent run claimed between the read and this INSERT
+    days = _mp.grant_days(tier_key, _now_utc().date())
+    _grant_membership(cx, email, days, _mp.get_tier(tier_key)["source"])
+    cx.commit()
+    return "granted"
 
 
 def _grant_prepay_term(cx, email, tier_key):
