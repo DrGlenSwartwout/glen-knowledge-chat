@@ -410,6 +410,23 @@ def test_build_portal_seed_from_authored_flat_format():
     assert content["reorder_items"] == [
         {"slug": "liver-support", "name": "Liver Support"},
         {"slug": "glutathione-syntropy", "name": "Glutathione Syntropy"}]
+    # No BSI spoken for this test -> the seed carries no terrain reading.
+    assert content["phase"] is None and content["location"] == ""
+
+
+def test_build_portal_seed_carries_terrain_reading():
+    import sqlite3
+    from dashboard.biofield_authoring import (
+        init_auth_tables, create_test, add_chain_row, update_terrain)
+    from dashboard import biofield_handoff
+    cx = sqlite3.connect(":memory:")
+    init_auth_tables(cx)
+    tid = create_test(cx, "Bob Ross", "bob@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Liver Meridian", "Liver", "Liver Support", "1 capsule", "daily", "with food")
+    update_terrain(cx, tid, phase=4, location="Toxicity")
+    cx.commit()
+    content = biofield_handoff.build_portal_seed(cx, tid, lambda nm: None, name="Bob Ross")
+    assert content["phase"] == 4 and content["location"] == "Toxicity"
 
 
 def test_handoff_route_graceful(tmp_path):

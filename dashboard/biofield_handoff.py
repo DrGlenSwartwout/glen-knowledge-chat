@@ -13,6 +13,14 @@ def build_portal_seed(cx, test_id, resolve_slug, name=None):
     Pure read of biofield_auth_chain; never raises on a missing slug (that remedy just
     doesn't get a reorder row)."""
     tnum = int(str(test_id).lstrip("a") or 0)
+    # Terrain reading (BSI phase P + spoken location) carried onto the portal report.
+    try:
+        trow = cx.execute("SELECT phase, location FROM biofield_auth_tests WHERE id=?",
+                          (tnum,)).fetchone()
+    except Exception:
+        trow = None
+    phase = trow[0] if trow else None
+    location = (trow[1] if trow and trow[1] else "") or ""
     rows = cx.execute(
         "SELECT layer, head, most_affected, remedy, dosage, frequency, timing "
         "FROM biofield_auth_chain WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>'' "
@@ -34,6 +42,8 @@ def build_portal_seed(cx, test_id, resolve_slug, name=None):
         "greeting": ("Aloha " + first + " \U0001F33A\n\nHere is your Biofield Analysis — the "
                      "patterns your scan revealed, and the remedies matched to support each one. "
                      "Take your time exploring it; I am just a reply away."),
+        "phase": phase,
+        "location": location,
         "layers": layers,
         "reorder_items": reorder,
     }

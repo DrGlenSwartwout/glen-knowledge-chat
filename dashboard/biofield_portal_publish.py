@@ -185,6 +185,10 @@ def build_portal_content(cx, test_id, *, special_price_cents, catalog=None,
     content = {
         "greeting": greeting,
         "video": {"url": "", "label": "Watch your message from Dr. Glen"},
+        # Terrain reading from the scan's BSI (phase P + spoken location). Carried so
+        # the portal report can show it at the top, mirroring the printed report.
+        "phase": rep.get("phase"),
+        "location": rep.get("location") or "",
         "layers": layers,
         "reorder_items": reorder,
         "pricing_note": "",
