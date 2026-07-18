@@ -285,8 +285,8 @@
         "x": 0.44,
         "y": 0.52
       },
-      "anatomy": "Inguinal nodes",
-      "meaning_standard": "Inguinal nodes, drain the leg and perineum.",
+      "anatomy": "Superficial inguinal nodes",
+      "meaning_standard": "Superficial inguinal nodes, drain the leg and perineum.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -304,8 +304,445 @@
         "x": 0.56,
         "y": 0.52
       },
-      "anatomy": "Inguinal nodes",
-      "meaning_standard": "Inguinal nodes, drain the leg and perineum.",
+      "anatomy": "Superficial inguinal nodes",
+      "meaning_standard": "Superficial inguinal nodes, drain the leg and perineum.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-preauricular-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.425,
+        "y": 0.1
+      },
+      "anatomy": "Preauricular nodes",
+      "meaning_standard": "Preauricular nodes, in front of the ear.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-preauricular-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.575,
+        "y": 0.1
+      },
+      "anatomy": "Preauricular nodes",
+      "meaning_standard": "Preauricular nodes, in front of the ear.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-submental",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.128
+      },
+      "anatomy": "Submental nodes",
+      "meaning_standard": "Submental nodes, under the chin.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-jugulodigastric-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.445,
+        "y": 0.14
+      },
+      "anatomy": "Jugulodigastric node",
+      "meaning_standard": "Jugulodigastric (tonsillar) node.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-jugulodigastric-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.555,
+        "y": 0.14
+      },
+      "anatomy": "Jugulodigastric node",
+      "meaning_standard": "Jugulodigastric (tonsillar) node.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-infraclavicular-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.42,
+        "y": 0.216
+      },
+      "anatomy": "Infraclavicular nodes",
+      "meaning_standard": "Infraclavicular / deltopectoral nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-infraclavicular-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.58,
+        "y": 0.216
+      },
+      "anatomy": "Infraclavicular nodes",
+      "meaning_standard": "Infraclavicular / deltopectoral nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-parasternal-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.472,
+        "y": 0.3
+      },
+      "anatomy": "Parasternal nodes",
+      "meaning_standard": "Parasternal (internal thoracic) nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-parasternal-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.528,
+        "y": 0.3
+      },
+      "anatomy": "Parasternal nodes",
+      "meaning_standard": "Parasternal (internal thoracic) nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-hilar",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.312
+      },
+      "anatomy": "Bronchopulmonary (hilar) nodes",
+      "meaning_standard": "Hilar / bronchopulmonary nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-tracheobronchial",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.332
+      },
+      "anatomy": "Tracheobronchial nodes",
+      "meaning_standard": "Tracheobronchial nodes, at the carina.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-celiac",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.372
+      },
+      "anatomy": "Celiac nodes",
+      "meaning_standard": "Celiac nodes, upper abdomen.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-gastric",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.482,
+        "y": 0.382
+      },
+      "anatomy": "Gastric nodes",
+      "meaning_standard": "Gastric nodes, along the stomach.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-hepatic",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.532,
+        "y": 0.372
+      },
+      "anatomy": "Hepatic nodes",
+      "meaning_standard": "Hepatic nodes, porta hepatis.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-splenic",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.565,
+        "y": 0.368
+      },
+      "anatomy": "Splenic / pancreatic nodes",
+      "meaning_standard": "Splenic and pancreatic nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-sup-mesenteric",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.415
+      },
+      "anatomy": "Superior mesenteric nodes",
+      "meaning_standard": "Superior mesenteric nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-inf-mesenteric",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.435
+      },
+      "anatomy": "Inferior mesenteric nodes",
+      "meaning_standard": "Inferior mesenteric nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-common-iliac-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.46,
+        "y": 0.485
+      },
+      "anatomy": "Common iliac nodes",
+      "meaning_standard": "Common iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-common-iliac-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.54,
+        "y": 0.485
+      },
+      "anatomy": "Common iliac nodes",
+      "meaning_standard": "Common iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-external-iliac-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.442,
+        "y": 0.508
+      },
+      "anatomy": "External iliac nodes",
+      "meaning_standard": "External iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-external-iliac-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.558,
+        "y": 0.508
+      },
+      "anatomy": "External iliac nodes",
+      "meaning_standard": "External iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-deep-inguinal-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.458,
+        "y": 0.534
+      },
+      "anatomy": "Deep inguinal nodes",
+      "meaning_standard": "Deep inguinal nodes (node of Cloquet).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-deep-inguinal-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.542,
+        "y": 0.534
+      },
+      "anatomy": "Deep inguinal nodes",
+      "meaning_standard": "Deep inguinal nodes (node of Cloquet).",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -382,6 +819,44 @@
       },
       "anatomy": "Cisterna chyli",
       "meaning_standard": "Cisterna chyli, origin of the thoracic duct.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-peyers",
+      "side": "front",
+      "bilateral": false,
+      "group": "organs",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.425
+      },
+      "anatomy": "Peyer's patches (GALT)",
+      "meaning_standard": "Gut-associated lymphoid tissue (Peyer's patches).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-marrow",
+      "side": "front",
+      "bilateral": false,
+      "group": "organs",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.51
+      },
+      "anatomy": "Red bone marrow",
+      "meaning_standard": "Red bone marrow, primary lymphoid tissue (pelvis / long bones).",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
@@ -561,6 +1036,177 @@
       }
     },
     {
+      "id": "lymph-postauricular-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.092
+      },
+      "anatomy": "Postauricular nodes",
+      "meaning_standard": "Postauricular (mastoid) nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-postauricular-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.092
+      },
+      "anatomy": "Postauricular nodes",
+      "meaning_standard": "Postauricular (mastoid) nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-intercostal-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.44,
+        "y": 0.3
+      },
+      "anatomy": "Intercostal nodes",
+      "meaning_standard": "Intercostal nodes, posterior thorax.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-intercostal-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.56,
+        "y": 0.3
+      },
+      "anatomy": "Intercostal nodes",
+      "meaning_standard": "Intercostal nodes, posterior thorax.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-common-iliac-b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.458,
+        "y": 0.485
+      },
+      "anatomy": "Common iliac nodes",
+      "meaning_standard": "Common iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-common-iliac-b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.542,
+        "y": 0.485
+      },
+      "anatomy": "Common iliac nodes",
+      "meaning_standard": "Common iliac nodes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-internal-iliac-b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.478,
+        "y": 0.52
+      },
+      "anatomy": "Internal iliac nodes",
+      "meaning_standard": "Internal iliac nodes, pelvis.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-internal-iliac-b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.522,
+        "y": 0.52
+      },
+      "anatomy": "Internal iliac nodes",
+      "meaning_standard": "Internal iliac nodes, pelvis.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-sacral-b",
+      "side": "back",
+      "bilateral": false,
+      "group": "nodes",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.54
+      },
+      "anatomy": "Sacral nodes",
+      "meaning_standard": "Sacral nodes, in front of the sacrum.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
       "id": "lymph-thoracic-duct",
       "side": "front",
       "bilateral": false,
@@ -607,6 +1253,78 @@
       },
       "anatomy": "Intestinal trunk",
       "meaning_standard": "Intestinal trunk.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-jugular-trunk",
+      "side": "front",
+      "bilateral": false,
+      "group": "ducts",
+      "geometry": {
+        "type": "path",
+        "d": "M0.4480 0.1580 C0.4450 0.1623 0.4347 0.1783 0.4300 0.1840 C0.4253 0.1897 0.4217 0.1907 0.4200 0.1920"
+      },
+      "anatomy": "Jugular trunk",
+      "meaning_standard": "Jugular trunk.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-subclavian-trunk",
+      "side": "front",
+      "bilateral": false,
+      "group": "ducts",
+      "geometry": {
+        "type": "path",
+        "d": "M0.3680 0.2460 C0.3733 0.2393 0.3913 0.2150 0.4000 0.2060 C0.4087 0.1970 0.4167 0.1943 0.4200 0.1920"
+      },
+      "anatomy": "Subclavian trunk",
+      "meaning_standard": "Subclavian trunk.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-bronchomediastinal",
+      "side": "front",
+      "bilateral": false,
+      "group": "ducts",
+      "geometry": {
+        "type": "path",
+        "d": "M0.5000 0.3000 C0.4977 0.2893 0.4910 0.2530 0.4860 0.2360 C0.4810 0.2190 0.4727 0.2043 0.4700 0.1980"
+      },
+      "anatomy": "Bronchomediastinal trunk",
+      "meaning_standard": "Bronchomediastinal trunk.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-lumbar-trunk",
+      "side": "front",
+      "bilateral": false,
+      "group": "ducts",
+      "geometry": {
+        "type": "path",
+        "d": "M0.4620 0.5060 C0.4653 0.5017 0.4757 0.4873 0.4820 0.4800 C0.4883 0.4727 0.4970 0.4650 0.5000 0.4620"
+      },
+      "anatomy": "Lumbar trunks",
+      "meaning_standard": "Lumbar trunks.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
