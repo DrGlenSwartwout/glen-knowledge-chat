@@ -2,7 +2,8 @@
 (function () {
   const svgNS = "http://www.w3.org/2000/svg";
   const VIEW = 600, CX = 300, CY = 300;
-  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "" };
+  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "",
+                  litZones: new Set(), portalToken: null };
 
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
@@ -197,6 +198,11 @@
       }
     });
     placeLabels(labelSpecs, svg);
+    // Personalized portal view: highlight the zones tied to the client's findings.
+    if (state.litZones.size) {
+      svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
+        e.classList.toggle("bm-lit", state.litZones.has(e.dataset.id)));
+    }
   }
 
   // Place zone labels in two vertical columns (left/right of the chart centre),
@@ -307,6 +313,14 @@
       renderChart();
     }));
     wireOverlay();
+    // Portal-personalized entry: /portal/<token>/bodymap warps the face map onto
+    // the client's own photo with their findings lit, instead of the URL-focus path.
+    const portalMatch = location.pathname.match(/^\/portal\/([^/]+)\/bodymap\/?$/);
+    if (portalMatch) {
+      state.portalToken = decodeURIComponent(portalMatch[1]);
+      bootstrapPortal().then(__bmSelfCheck);
+      return;
+    }
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
     const sel = document.getElementById("bm-system");
@@ -314,6 +328,72 @@
     const initialSystem = known.includes(sys) ? sys : "iridology";
     sel.value = initialSystem;
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
+  }
+
+  // Load the client's personalization, switch to their face map, light their
+  // finding zones, and warp the map onto their own photo (auto-anchored).
+  async function bootstrapPortal() {
+    const token = state.portalToken;
+    let pz = null;
+    try {
+      const res = await fetch("/api/portal/" + encodeURIComponent(token) + "/bodymap");
+      pz = await res.json();
+    } catch (e) { pz = null; }
+    const system = (pz && pz.system) || "face";
+    document.getElementById("bm-system").value = system;
+    await loadSystem(system);
+    if (pz && !pz.error) {
+      if (pz.view) { state.eye = pz.view; document.getElementById("bm-eye").value = pz.view; }
+      state.litZones = new Set(pz.lit_zones || []);
+      renderChart();
+      renderPortalPanel(pz);
+      if (pz.has_photo) loadPortalPhoto(token);
+    }
+  }
+
+  function loadPortalPhoto(token) {
+    const img = document.getElementById("bm-photo");
+    img.onload = function () {
+      setMode(true);
+      document.getElementById("bm-autodetect").hidden = !detectorKind();
+      beginAnchoring();              // resets anchors; keeps state.litZones
+      autoDetect();                  // MediaPipe face landmarks -> warp
+    };
+    img.onerror = function () { setMode(false); };
+    img.src = "/api/portal/" + encodeURIComponent(token) + "/photo?t=" + Date.now();
+  }
+
+  function renderPortalPanel(pz) {
+    const panel = document.getElementById("bm-panel");
+    panel.replaceChildren();
+    const h = document.createElement("h2");
+    h.textContent = pz.count ? "Your findings on this map" : "Your Body Map";
+    panel.appendChild(h);
+    if (!pz.count) {
+      const p = document.createElement("p"); p.className = "bm-hint";
+      p.textContent = pz.has_photo
+        ? "None of your current findings map to the face yet. Explore the map, or get a voice scan to personalize it."
+        : "Add a photo in your portal and get a voice scan to see your findings mapped onto your own face.";
+      panel.appendChild(p);
+      return;
+    }
+    const intro = document.createElement("p"); intro.className = "bm-hint";
+    intro.textContent = "The highlighted zones correspond to your top findings. Tap a zone to read what it maps to.";
+    panel.appendChild(intro);
+    const ul = document.createElement("ul"); ul.className = "bm-findings";
+    pz.findings.forEach(f => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "bm-finding";
+      btn.textContent = f.label + (f.rank != null ? "  ·  priority " + f.rank : "");
+      btn.addEventListener("click", () => {
+        const zid = (f.zones || [])[0];
+        const z = zid && (state.payload.zones || []).find(x => x.id === zid);
+        if (z) selectZone(z);
+      });
+      li.appendChild(btn); ul.appendChild(li);
+    });
+    panel.appendChild(ul);
   }
 
   function __bmSelfCheck() {

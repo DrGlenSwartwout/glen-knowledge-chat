@@ -1,6 +1,7 @@
 """Body Map store: load/validate iris & sclera zone data. No Flask/Pinecone deps."""
 import json
 import os
+import re
 from pathlib import Path
 
 REPO_DATA = Path(__file__).resolve().parent / "data"
@@ -232,3 +233,65 @@ def atlas_target_url(target):
     elif target.get("layer"):
         params["layer"] = target["layer"]
     return "/body-map?" + urlencode(params)
+
+
+# Extra organ terms that a finding name may use but a zone's anatomy spells
+# differently. Keyed by the stemmed term (see _stem); values are stemmed phrases
+# to ALSO try. One-directional: the zone's own spelling matches on its own.
+_ZONE_SYNONYMS = {
+    "colon": ["large intestine"],
+    "large bowel": ["large intestine"],
+    "bowel": ["large intestine", "small intestine"],
+    "gall bladder": ["gallbladder"],
+    "suprarenal": ["adrenal"],
+}
+
+
+def _stem(s):
+    """Lowercase and strip a trailing plural 's' from each word, so an organ name
+    matches whether the finding or the zone spells it singular or plural
+    ('Lung' vs 'Lungs (cheek)', 'Kidney' vs 'Kidneys'). Matching-only; not display."""
+    return re.sub(r"(\w)s\b", r"\1", (s or "").strip().lower())
+
+
+def resolve_finding_zones(system, names, side=None):
+    """Map a client's finding organ/system names to Body Map zone ids in `system`.
+
+    Pure (no DB): matches each name against every zone's `anatomy` on a
+    word-boundary, plural-insensitive basis, so a 'Liver' finding lights every
+    zone whose anatomy names the liver. `side` (e.g. 'diagnosis') restricts to
+    one view/layer. Returns {"zones": [ordered unique ids], "by_name": {name: [ids]}}.
+    A name that matches nothing is simply absent from by_name. Never raises on a
+    missing system -> empty result."""
+    try:
+        zones = load_map(system).get("zones", [])
+    except (KeyError, FileNotFoundError, ValueError):
+        return {"zones": [], "by_name": {}}
+    if side:
+        zones = [z for z in zones if (z.get("side") or z.get("eye")) == side]
+    zdata = [(z.get("id"), _stem(z.get("anatomy", ""))) for z in zones]
+    by_name, ordered, seen = {}, [], set()
+    for raw in (names or []):
+        base = _stem(raw)
+        if not base:
+            continue
+        # Candidates: the whole stemmed phrase, its synonyms, and each significant
+        # word (>=4 chars) so a multi-word finding name like "Liver Driver" lights
+        # via "liver" while noise words ("driver") match no zone. Short single-word
+        # organ names ("eye") still work because `base` is always included.
+        cands = {base}
+        cands.update(_ZONE_SYNONYMS.get(base, []))
+        for w in base.split():
+            if len(w) >= 4:
+                cands.add(w)
+        for w in list(cands):
+            cands.update(_ZONE_SYNONYMS.get(w, []))
+        pats = [re.compile(r"\b" + re.escape(t) + r"\b") for t in cands if t]
+        hits = [zid for zid, anat in zdata if zid and any(p.search(anat) for p in pats)]
+        if hits:
+            by_name[str(raw)] = hits
+            for zid in hits:
+                if zid not in seen:
+                    seen.add(zid)
+                    ordered.append(zid)
+    return {"zones": ordered, "by_name": by_name}
