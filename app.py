@@ -37627,7 +37627,19 @@ import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + 
 # payment path -- so a membership paid outside Stripe still delivers the real grant,
 # in parity with the card path. Kept as an injected hook because dashboard.orders must
 # not import app (circular). Idempotent per order_ref inside _grant_membership_line_on_paid.
-_bos_orders.set_membership_grant_hook(_grant_membership_line_on_paid)
+#
+# CRITICAL: run the grant on its OWN connection, NOT the request cx passed by
+# _record_payment_exec. _grant_membership_line_on_paid writes the claim row and the
+# grant on whatever connection it's handed; on the request cx the claim INSERT would
+# be left PENDING when _grant_membership raises (the hook's own cx.commit() is never
+# reached), _record_payment_exec swallows the exception, and a downstream cx.commit()
+# (append_event) would then FLUSH the orphaned claim with no membership row -- breaking
+# the "claim exists iff grant exists" invariant and permanently blocking the grant on
+# every retry. So we IGNORE the passed-in cx and reuse the card path's own-connection
+# wrapper _grant_membership_line_dep: it opens its own sqlite connection whose `with`
+# block commits the claim+grant together on success and ROLLS BACK the claim on any
+# failure -- atomic, and never leaves a pending claim on the request cx.
+_bos_orders.set_membership_grant_hook(lambda _cx, _o: _grant_membership_line_dep(_o))
 import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (household combined-shipment model + actions)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
