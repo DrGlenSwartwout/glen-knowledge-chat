@@ -18790,17 +18790,34 @@ def _portal_current_biofield_location(cx, email, content):
     return (bf.get("location") or "").strip()
 
 
-def _portal_bodymap_data(cx, email, content):
+# Which systems personalize, and how: the initial VIEW the page opens on, and the
+# `resolve_side` restricting which zones a finding may light (None = all views, so
+# both front & back organ zones light). Face uses the diagnosis layer only so a
+# finding never lights the acu/lymph/nerve/eav layers.
+_PERSONALIZE_SYSTEMS = {
+    "face": {"view": "diagnosis", "resolve_side": "diagnosis"},
+    "organs": {"view": "front", "resolve_side": None},
+    "foot": {"view": "right", "resolve_side": None},
+    "hand": {"view": "right", "resolve_side": None},
+    "iridology": {"view": "right", "resolve_side": None},
+    "sclerology": {"view": "right", "resolve_side": None},
+}
+
+
+def _portal_bodymap_data(cx, email, content, system="face"):
     """Personalization for the portal Body Map: the client's E4L findings + spoken
-    biofield location resolved to face-diagnosis zones, so their OWN findings light
-    up when the face map is warped onto a photo of their face. Read-only; never
-    raises — returns an empty-but-valid shape on any failure."""
+    biofield location resolved to `system`'s zones, so their OWN findings light up
+    on that map (face onto a selfie, the organ atlas onto the body, etc.). Read-only;
+    never raises — returns an empty-but-valid shape on any failure."""
     import bodymap_store as _bm
     from dashboard import biofield_e4l as _e4l
     from dashboard import client_photos as _cph
     import datetime as _dt
-    SYSTEM, VIEW = "face", "diagnosis"
-    out = {"system": SYSTEM, "view": VIEW, "has_photo": False,
+    cfg = _PERSONALIZE_SYSTEMS.get(system) or _PERSONALIZE_SYSTEMS["face"]
+    if system not in _PERSONALIZE_SYSTEMS:
+        system = "face"
+    VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
+    out = {"system": system, "view": VIEW, "has_photo": False,
            "findings": [], "lit_zones": [], "count": 0}
     email = (email or "").strip().lower()
     if not email:
@@ -18825,7 +18842,7 @@ def _portal_bodymap_data(cx, email, content):
         # The finding's own name (ED drivers ARE organ names, e.g. "Liver Driver")
         # plus its tagged organ/system structures -> the terms that light zones.
         terms = ([name] if name else []) + list(organ_map.get(code, []))
-        res = _bm.resolve_finding_zones(SYSTEM, terms, side=VIEW)
+        res = _bm.resolve_finding_zones(system, terms, side=RESOLVE_SIDE)
         if not res["zones"]:
             continue
         findings_out.append({"label": name, "rank": f.get("rank"),
@@ -18839,7 +18856,11 @@ def _portal_bodymap_data(cx, email, content):
     except Exception:
         location = ""
     if location:
-        res = _bm.resolve_finding_zones(SYSTEM, [location], side=VIEW)
+        # The spoken location is free text that may name several organs ("the
+        # spleen and stomach region"); match it organ-by-organ (each word), not as
+        # one phrase, so each named organ lights. Short words (the/and) match nothing.
+        loc_words = [w for w in re.split(r"[^A-Za-z]+", location) if len(w) >= 4]
+        res = _bm.resolve_finding_zones(system, loc_words, side=RESOLVE_SIDE)
         if res["zones"]:
             findings_out.append({"label": location, "rank": None,
                                  "source": "biofield", "zones": res["zones"]})
@@ -18856,14 +18877,16 @@ def _portal_bodymap_data(cx, email, content):
 @app.route("/api/portal/<token>/bodymap")
 def api_portal_bodymap(token):
     """Token-scoped Body Map personalization for the portal card and page: the
-    client's findings resolved to face zones. 404 when the token is unknown."""
+    client's findings resolved to the ?system= map's zones (default 'face').
+    404 when the token is unknown."""
     from dashboard import client_portal as _cp
+    system = (request.args.get("system") or "face").strip().lower()
     with sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
-        data = _portal_bodymap_data(cx, portal.get("email"), portal.get("content"))
+        data = _portal_bodymap_data(cx, portal.get("email"), portal.get("content"), system)
     return jsonify(data)
 
 

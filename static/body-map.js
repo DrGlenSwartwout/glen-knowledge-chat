@@ -304,7 +304,12 @@
   }
 
   function wire() {
-    document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
+    document.getElementById("bm-system").addEventListener("change", e => {
+      // In the portal, switching systems re-personalizes (keeps the client's
+      // findings lit on the new map) instead of loading a blank reference chart.
+      if (state.portalToken) bootstrapPortal(e.target.value, e.target.value === "face");
+      else loadSystem(e.target.value);
+    });
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
     // embryological depth-peel: isolate one germ layer (endoderm/mesoderm/ectoderm)
     document.querySelectorAll("#bm-depth button").forEach(b => b.addEventListener("click", () => {
@@ -330,24 +335,29 @@
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
   }
 
-  // Load the client's personalization, switch to their face map, light their
-  // finding zones, and warp the map onto their own photo (auto-anchored).
-  async function bootstrapPortal() {
+  // Load the client's personalization for `system` (default face), light their
+  // finding zones on that map, and — for the face, auto-warp their own photo.
+  // Other systems show the reference figure lit (a face selfie can't warp onto a
+  // body/foot map); the client can still upload a matching photo to warp it.
+  async function bootstrapPortal(system, autoPhoto) {
+    if (system === undefined) { system = "face"; autoPhoto = true; }
     const token = state.portalToken;
     let pz = null;
     try {
-      const res = await fetch("/api/portal/" + encodeURIComponent(token) + "/bodymap");
-      pz = await res.json();
+      const url = "/api/portal/" + encodeURIComponent(token) + "/bodymap"
+        + (system ? "?system=" + encodeURIComponent(system) : "");
+      pz = await (await fetch(url)).json();
     } catch (e) { pz = null; }
-    const system = (pz && pz.system) || "face";
-    document.getElementById("bm-system").value = system;
-    await loadSystem(system);
+    const loaded = (pz && pz.system) || system || "face";
+    document.getElementById("bm-system").value = loaded;
+    await loadSystem(loaded);
     if (pz && !pz.error) {
       if (pz.view) { state.eye = pz.view; document.getElementById("bm-eye").value = pz.view; }
       state.litZones = new Set(pz.lit_zones || []);
       renderChart();
       renderPortalPanel(pz);
-      if (pz.has_photo) loadPortalPhoto(token);
+      if (autoPhoto && pz.has_photo) loadPortalPhoto(token);
+      else setMode(false);
     }
   }
 
