@@ -465,6 +465,31 @@ def test_resolve_finding_zones_organclock_lights_its_window():
     assert bodymap_store.resolve_finding_zones("organclock", ["Kidney"])["zones"] == ["clock-KI"]
 
 
+def _assert_body_atlas_valid(system, expected_views):
+    """Shared check for a whole-body system atlas: on the body silhouette, every
+    zone valid, groups referenced exist, and the expected views are present."""
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS[system].name == f"bodymap-{system}.json"
+    data = json.loads((repo / f"bodymap-{system}.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    groups = {g["id"] for g in data["groups"]}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"{system} zone {z.get('id')}: {err}"
+        assert z["group"] in groups, f"{system} zone {z['id']} bad group"
+        views.add(z["side"])
+    assert set(expected_views) <= views
+
+
+def test_shipped_nervous_seed_valid():
+    _assert_body_atlas_valid("nervous", ("front", "back"))
+    # a specific nerve finding lights its structure
+    assert bodymap_store.resolve_finding_zones("nervous", ["Sciatic Nerve"])["zones"]
+    assert bodymap_store.resolve_finding_zones("nervous", ["Optic Nerve"])["zones"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")
