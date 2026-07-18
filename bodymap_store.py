@@ -27,10 +27,11 @@ SYSTEMS = {
     "neurotome": DATA_DIR / "bodymap-neurotome.json",
     "lymph": DATA_DIR / "bodymap-lymph.json",
     "face": DATA_DIR / "bodymap-face.json",
+    "organs": DATA_DIR / "bodymap-organs.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -239,12 +240,19 @@ def atlas_target_url(target):
 # differently. Keyed by the stemmed term (see _stem); values are stemmed phrases
 # to ALSO try. One-directional: the zone's own spelling matches on its own.
 _ZONE_SYNONYMS = {
-    "colon": ["large intestine"],
-    "large bowel": ["large intestine"],
-    "bowel": ["large intestine", "small intestine"],
+    "colon": ["large intestine", "colon"],
+    "large intestine": ["colon", "large intestine"],
+    "large bowel": ["large intestine", "colon"],
+    "bowel": ["large intestine", "small intestine", "colon"],
     "gall bladder": ["gallbladder"],
     "suprarenal": ["adrenal"],
 }
+
+# E4L finding names carry non-anatomical noise words ("Liver Driver", "Heart
+# Imprinter"). Stripping them lets the remaining organ phrase match, without
+# splitting genuine two-word organ names ("large intestine") into a shared word
+# ("intestine") that would cross-match the wrong organ.
+_NOISE_WORDS = {"driver", "imprinter", "the", "and", "region", "of", "a", "an"}
 
 
 def _stem(s):
@@ -275,17 +283,18 @@ def resolve_finding_zones(system, names, side=None):
         base = _stem(raw)
         if not base:
             continue
-        # Candidates: the whole stemmed phrase, its synonyms, and each significant
-        # word (>=4 chars) so a multi-word finding name like "Liver Driver" lights
-        # via "liver" while noise words ("driver") match no zone. Short single-word
-        # organ names ("eye") still work because `base` is always included.
-        cands = {base}
-        cands.update(_ZONE_SYNONYMS.get(base, []))
-        for w in base.split():
-            if len(w) >= 4:
-                cands.add(w)
-        for w in list(cands):
-            cands.update(_ZONE_SYNONYMS.get(w, []))
+        # Candidates: the whole stemmed phrase, the phrase with E4L noise words
+        # removed ("Liver Driver" -> "liver"), and synonyms of both. A genuine
+        # two-word organ name ("large intestine") is matched as a phrase, never
+        # split into a shared word ("intestine") that would cross-match a sibling
+        # organ ("small intestine"). Single-word organs still work via `base`.
+        words = [w for w in base.split() if w not in _NOISE_WORDS]
+        phrase = " ".join(words)
+        cands = {base, phrase}
+        if len(words) == 1:
+            cands.add(words[0])
+        for t in list(cands):
+            cands.update(_ZONE_SYNONYMS.get(t, []))
         pats = [re.compile(r"\b" + re.escape(t) + r"\b") for t in cands if t]
         hits = [zid for zid, anat in zdata if zid and any(p.search(anat) for p in pats)]
         if hits:

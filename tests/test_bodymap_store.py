@@ -373,6 +373,40 @@ def test_shipped_face_seed_valid():
     assert {"ellipse", "point", "polygon", "path"} <= gtypes
 
 
+def test_shipped_organs_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["organs"].name == "bodymap-organs.json"
+    data = json.loads((repo / "bodymap-organs.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert data.get("outlines", {}).get("front") and data.get("outlines", {}).get("back")
+    groups = {g["id"] for g in data["groups"]}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"organs zone {z.get('id')}: {err}"
+        assert z["group"] in groups
+        assert z["geometry"]["type"] == "ellipse"
+        views.add(z["side"])
+    assert {"front", "back"} <= views
+
+
+def test_resolve_finding_zones_organs_body_atlas():
+    # whole-body atlas: findings light the real organ location, incl. off-face organs
+    r = bodymap_store.resolve_finding_zones("organs", ["Brain", "Heart", "Kidney"])
+    assert "organ-brain" in r["zones"] and "organ-heart" in r["zones"]
+    assert "organ-kidney-r" in r["zones"] and "organ-kidney-l" in r["zones"]
+
+
+def test_resolve_finding_zones_large_vs_small_intestine():
+    # "Large Intestine" lights the colon, NOT the small intestine (shared word guard)
+    lg = bodymap_store.resolve_finding_zones("organs", ["Large Intestine"])
+    assert "organ-small-intestine" not in lg["zones"]
+    assert any(z.startswith("organ-colon") for z in lg["zones"])
+    sm = bodymap_store.resolve_finding_zones("organs", ["Small Intestine"])
+    assert sm["zones"] == ["organ-small-intestine"]
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
