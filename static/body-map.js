@@ -243,8 +243,12 @@
     state.frame = state.payload.reference_frame || "unit_circle";
     state.chartR = computeChartR(state.payload);
     state.activeLayers.clear();
-    // laterality: relabel + repopulate from the sides present, keep current if still valid
-    const sides = [...new Set((state.payload.zones || []).map(zoneSide))];
+    // laterality: relabel + repopulate from the sides present, keep current if still valid.
+    // Outline systems mirror via outline_side, so both sides are always available
+    // even when every zone is authored bilaterally on one canonical side (e.g. the ear).
+    const sides = state.payload.outline_side
+      ? ["left", "right"]
+      : [...new Set((state.payload.zones || []).map(zoneSide))];
     const sel = document.getElementById("bm-eye");
     sel.replaceChildren();
     sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
@@ -378,7 +382,9 @@
   function applyFocusFromURL(params) {
     if (!state.payload) return;
     const side = params.get("side") || params.get("eye");
-    const sides = new Set((state.payload.zones || []).map(zoneSide));
+    const sides = state.payload.outline_side
+      ? new Set(["left", "right"])
+      : new Set((state.payload.zones || []).map(zoneSide));
     if (side && sides.has(side)) {
       state.eye = side; document.getElementById("bm-eye").value = side; renderChart();
     }

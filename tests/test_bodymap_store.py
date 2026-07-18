@@ -227,6 +227,10 @@ def test_shipped_ear_seed_valid():
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
     keys = {a["key"] for a in data.get("anchors", [])}
     assert {"helix-top", "lobe-bottom", "tragus"} <= keys
+    # auricular points are identical on both ears: bilateral on the canonical left,
+    # mirrored by the renderer via outline_side for the right ear.
+    assert data.get("outline_side") == "left"
+    assert all(z.get("bilateral") for z in data["zones"]), "ear points must be bilateral"
 
 
 def test_foot_system_registered():
