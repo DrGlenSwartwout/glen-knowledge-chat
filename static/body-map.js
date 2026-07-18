@@ -318,8 +318,11 @@
   }
 
   function activeAnchorSteps() {
-    const a = state.payload && state.payload.anchors;
-    return (a && a.length) ? a : ANCHOR_STEPS;
+    const a = (state.payload && state.payload.anchors) || [];
+    // multi-view systems tag anchors with a `view`; use the ones for the current view
+    const forView = a.filter(s => !s.view || s.view === state.eye);
+    if (forView.length) return forView;
+    return a.length ? a : ANCHOR_STEPS;
   }
 
   // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
@@ -366,7 +369,8 @@
       drawAnchors();
     } else {
       document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-      state.transform = (state.payload && state.payload.anchors && state.payload.anchors.length)
+      // two tapped anchors with template coords -> fit a similarity; else the iris 3-tap fallback
+      state.transform = (steps.length >= 2 && steps[0].template && steps[1].template)
         ? fitSimilarity(steps)
         : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
       renderChart(); drawAnchors();

@@ -224,7 +224,14 @@ def main():
         "outline": front,                       # fallback
         "outlines": {"front": front, "back": front, "side": bbo.build_side_outline()},
         "groups": groups,
-        "anchors": [],
+        "anchors": [
+            {"key": "head-f", "view": "front", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-f", "view": "front", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+            {"key": "head-b", "view": "back", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-b", "view": "back", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+            {"key": "head-s", "view": "side", "template": {"x": 0.475, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "foot-s", "view": "side", "template": {"x": 0.55, "y": 0.985}, "hint": "Tap the front of the foot."},
+        ],
         "zones": zones,
     }
     out = ROOT / "data" / "bodymap-meridian.json"

@@ -93,7 +93,12 @@ def main():
         "group_noun": "point type",
         "outlines": {"hand": _outline("hand"), "foot": _outline("foot")},
         "groups": GROUPS,
-        "anchors": [],
+        "anchors": [
+            {"key": "mid-h", "view": "hand", "template": {"x": 0.50, "y": 0.05}, "hint": "Tap the middle-finger tip."},
+            {"key": "wrist-h", "view": "hand", "template": {"x": 0.50, "y": 0.90}, "hint": "Tap the wrist (base of the palm)."},
+            {"key": "toe-f", "view": "foot", "template": {"x": 0.50, "y": 0.06}, "hint": "Tap the tip of the toes."},
+            {"key": "heel-f", "view": "foot", "template": {"x": 0.50, "y": 0.95}, "hint": "Tap the heel."},
+        ],
         "zones": [build_point(*p) for p in POINTS],
     }
     out = ROOT / "data" / "bodymap-eav.json"
