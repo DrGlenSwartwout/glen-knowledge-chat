@@ -516,6 +516,15 @@ def test_shipped_cardiovascular_seed_valid():
     assert bodymap_store.resolve_finding_zones("cardiovascular", ["Aorta"])["zones"]
 
 
+def test_shipped_urogenital_seed_valid():
+    _assert_body_atlas_valid("urogenital", ("female", "male"))
+    # shared urinary organ appears in both views; sex-specific organs per view
+    kidney = bodymap_store.resolve_finding_zones("urogenital", ["Kidney"])["zones"]
+    assert any("female" in z for z in kidney) and any("male" in z for z in kidney)
+    assert bodymap_store.resolve_finding_zones("urogenital", ["Prostate"])["zones"]
+    assert bodymap_store.resolve_finding_zones("urogenital", ["Ovaries"])["zones"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")

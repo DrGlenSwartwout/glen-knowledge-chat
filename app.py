@@ -18816,6 +18816,9 @@ _PERSONALIZE_SYSTEMS = {
                   "theme": {"digestive", "digestion", "gastrointestinal", "gut"}},
     "cardiovascular": {"view": "front", "resolve_side": None,
                        "theme": {"cardiovascular", "circulation", "circulatory", "blood vessel", "vascular"}},
+    # urogenital opens on the female view; the client toggles male/female. resolve
+    # across BOTH so a Kidney/Bladder finding lights in whichever view is shown.
+    "urogenital": {"view": "female", "resolve_side": None},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},
