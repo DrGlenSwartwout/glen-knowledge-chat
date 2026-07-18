@@ -25476,7 +25476,8 @@ def api_points_balance():
 
 
 def _resolve_ship_address(email, body_address):
-    """Ship-to: the request address if given, else the member's last order address, else {}."""
+    """Ship-to: the request address if given, else the member's last order
+    address, else the person's household ship-to (if set), else {}."""
     ship = body_address or {}
     if not ship:
         try:
@@ -25487,6 +25488,24 @@ def _resolve_ship_address(email, body_address):
                 ship = prior[0].get("address") or {}
         except Exception:
             ship = {}
+    if not ship and email:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                prow = cx.execute("SELECT id FROM people WHERE lower(email)=?",
+                                  ((email or "").strip().lower(),)).fetchone()
+                if prow:
+                    slug = _person_household_slug(cx, prow["id"])
+                    if slug:
+                        h = cx.execute("SELECT ship_name, ship_street, ship_street2, "
+                                       "ship_city, ship_state, ship_zip FROM households "
+                                       "WHERE slug=?", (slug,)).fetchone()
+                        if h and (h["ship_street"] or "").strip():
+                            ship = {"name": h["ship_name"] or "", "street": h["ship_street"] or "",
+                                    "street2": h["ship_street2"] or "", "city": h["ship_city"] or "",
+                                    "state": h["ship_state"] or "", "zip": h["ship_zip"] or ""}
+        except Exception:
+            pass
     return ship or {}
 
 
@@ -29218,6 +29237,14 @@ def _init_households_tables():
                 created_by      TEXT NOT NULL
             )
         """)
+        # Structured household ship-to (additive): members with no address of
+        # their own auto-inherit this at order time (see _resolve_ship_address).
+        for _col in ("ship_name", "ship_street", "ship_street2", "ship_city",
+                     "ship_state", "ship_zip"):
+            try:
+                cx.execute(f"ALTER TABLE households ADD COLUMN {_col} TEXT DEFAULT ''")
+            except Exception:
+                pass  # already present
         cx.execute("""
             CREATE TABLE IF NOT EXISTS household_candidates (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29397,6 +29424,23 @@ def _household_slug(name, head_first_name="", existing=None):
     while f"{base}-{n}" in existing:
         n += 1
     return f"{base}-{n}"
+
+
+def _household_ship_to(row):
+    """Build a {name, street, street2, city, state, zip} dict from a households
+    row (sqlite3.Row or dict). Missing/absent columns read as ''. Tolerates
+    older/stub schemas that lack the ship_* columns (returns all-empty)."""
+    keys = row.keys() if hasattr(row, "keys") else row
+    def _get(col):
+        try:
+            return (row[col] if col in keys else "") or ""
+        except (IndexError, KeyError):
+            return ""
+    return {
+        "name": _get("ship_name"), "street": _get("ship_street"),
+        "street2": _get("ship_street2"), "city": _get("ship_city"),
+        "state": _get("ship_state"), "zip": _get("ship_zip"),
+    }
 
 
 def _pair_household_name(cx, head_id, other_id):
@@ -29886,6 +29930,7 @@ def get_household(slug):
         "head_person_id": row["head_person_id"], "address": row["address"],
         "notes": row["notes"], "created_at": row["created_at"],
         "updated_at": row["updated_at"], "created_by": row["created_by"],
+        "ship_to": _household_ship_to(row),
         "members": member_list,
     })
 
@@ -30284,10 +30329,25 @@ def update_household(slug):
             r = cx.execute("SELECT email FROM people WHERE id=?", (new_head,)).fetchone()
             new_head_email = r[0] if r else None
 
-        cx.execute("""
-            UPDATE households SET name=?, address=?, notes=?, head_person_id=?, updated_at=?
+        set_cols = ["name=?", "address=?", "notes=?", "head_person_id=?", "updated_at=?"]
+        set_vals = [new_name, new_address, new_notes, new_head, ts]
+
+        # Structured ship-to: only touched when the caller sends `ship_to`.
+        ship_to = body.get("ship_to")
+        if ship_to is not None:
+            ship_cols = {
+                "ship_name": "name", "ship_street": "street", "ship_street2": "street2",
+                "ship_city": "city", "ship_state": "state", "ship_zip": "zip",
+            }
+            for col, key in ship_cols.items():
+                set_cols.append(f"{col}=?")
+                set_vals.append((ship_to.get(key) or "").strip())
+
+        set_vals.append(slug)
+        cx.execute(f"""
+            UPDATE households SET {", ".join(set_cols)}
             WHERE slug=?
-        """, (new_name, new_address, new_notes, new_head, ts, slug))
+        """, set_vals)
         cx.commit()
 
     # GHL sync outside lock
