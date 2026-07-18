@@ -21,10 +21,11 @@ SYSTEMS = {
     "ear": DATA_DIR / "bodymap-ear.json",
     "foot": DATA_DIR / "bodymap-foot.json",
     "hand": DATA_DIR / "bodymap-hand.json",
+    "meridian": DATA_DIR / "bodymap-meridian.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -48,8 +49,8 @@ def validate_zone(z):
     for key in _REQUIRED_COMMON:
         if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
-    if (z.get("side") or z.get("eye")) not in ("right", "left"):
-        return False, "side/eye must be 'right' or 'left'"
+    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back", "side"):
+        return False, "side/eye must be 'right', 'left', 'front', 'back' or 'side'"
     if not (z.get("group") or z.get("germ_layer")):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
@@ -79,6 +80,11 @@ def validate_zone(z):
             return False, "geometry point x/y must be numbers"
         if not (0.0 <= float(x) <= 1.0 and 0.0 <= float(y) <= 1.0):
             return False, "geometry point x/y must be in [0,1]"
+        return True, None
+    if gtype == "path":
+        d = geo.get("d")
+        if not isinstance(d, str) or not d.strip():
+            return False, "geometry path needs a non-empty 'd' string"
         return True, None
     if gtype == "sector":
         radial = z.get("radial") or {}
@@ -131,6 +137,7 @@ def build_payload(system):
         "germ_layers": data.get("germ_layers", []),
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
+        "outlines": data.get("outlines", {}),
         "outline_side": data.get("outline_side", ""),
         "anchors": data.get("anchors", []),
         "side_noun": data.get("side_noun", ""),

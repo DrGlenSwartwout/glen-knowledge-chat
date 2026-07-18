@@ -282,6 +282,24 @@ def test_shipped_hand_seed_valid():
     assert "hand-R-liver" in ids and "hand-L-heart" in ids
 
 
+def test_shipped_meridian_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["meridian"].name == "bodymap-meridian.json"
+    data = json.loads((repo / "bodymap-meridian.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert set(data.get("outlines", {})) == {"front", "back", "side"}
+    assert len(data.get("groups", [])) == 14, "12 primary channels + Ren + Du"
+    gtypes, views = set(), set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"meridian zone {z.get('id')}: {err}"
+        gtypes.add(z["geometry"]["type"])
+        views.add(z["side"])
+    assert {"path", "point"} <= gtypes, "channels are lines, acupoints are points"
+    assert views <= {"front", "back", "side"} and "side" in views
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
