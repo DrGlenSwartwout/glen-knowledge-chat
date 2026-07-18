@@ -30,7 +30,6 @@
       "label": "Sacral (S1-S5)"
     }
   ],
-  "anchors": [],
   "zones": [
     {
       "id": "neuro-V1",
@@ -2847,6 +2846,44 @@
         "stress_affirmation": null,
         "touch_for_health": null
       }
+    }
+  ],
+  "anchors": [
+    {
+      "key": "head-f",
+      "view": "front",
+      "template": {
+        "x": 0.5,
+        "y": 0.02
+      },
+      "hint": "Tap the top of the head."
+    },
+    {
+      "key": "feet-f",
+      "view": "front",
+      "template": {
+        "x": 0.5,
+        "y": 0.985
+      },
+      "hint": "Tap the point between the ankles."
+    },
+    {
+      "key": "head-b",
+      "view": "back",
+      "template": {
+        "x": 0.5,
+        "y": 0.02
+      },
+      "hint": "Tap the top of the head."
+    },
+    {
+      "key": "feet-b",
+      "view": "back",
+      "template": {
+        "x": 0.5,
+        "y": 0.985
+      },
+      "hint": "Tap the point between the ankles."
     }
   ]
 }

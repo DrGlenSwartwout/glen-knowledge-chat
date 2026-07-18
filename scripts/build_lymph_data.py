@@ -153,7 +153,12 @@ def main():
         "outline": front,
         "outlines": {"front": front, "back": front},
         "groups": GROUPS,
-        "anchors": [],
+        "anchors": [
+            {"key": "head-f", "view": "front", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-f", "view": "front", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+            {"key": "head-b", "view": "back", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-b", "view": "back", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+        ],
         "zones": zones,
     }
     out = ROOT / "data" / "bodymap-lymph.json"

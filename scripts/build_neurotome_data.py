@@ -143,7 +143,13 @@ def main():
         "side_noun": "view", "group_noun": "segment",
         "outline": front,
         "outlines": {"front": front, "back": front},
-        "groups": GROUPS, "anchors": [], "zones": zones,
+        "groups": GROUPS, "zones": zones,
+        "anchors": [
+            {"key": "head-f", "view": "front", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-f", "view": "front", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+            {"key": "head-b", "view": "back", "template": {"x": 0.50, "y": 0.02}, "hint": "Tap the top of the head."},
+            {"key": "feet-b", "view": "back", "template": {"x": 0.50, "y": 0.985}, "hint": "Tap the point between the ankles."},
+        ],
     }
     out = ROOT / "data" / "bodymap-neurotome.json"
     out.write_text(json.dumps(data, indent=2, ensure_ascii=False))
