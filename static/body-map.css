@@ -8,6 +8,10 @@ body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:v
 .bm-controls select { padding:4px 8px; }
 .bm-modes button { padding:6px 12px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
 .bm-modes button.bm-active { background:var(--bm-ink); color:#fff; }
+.bm-depth { display:flex; gap:4px; align-items:center; }
+.bm-depth-label { font-size:13px; color:var(--bm-ink); margin-right:2px; }
+.bm-depth button { padding:5px 10px; font-size:13px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
+.bm-depth button.bm-active { background:var(--bm-accent); color:#fff; }
 .bm-layers { display:flex; gap:10px; flex-wrap:wrap; }
 .bm-layers label { font-size:14px; }
 .bm-stage { display:flex; flex-wrap:wrap; gap:20px; padding:16px 20px; }
