@@ -444,10 +444,14 @@ function renderMembershipOffer(){
   const head='<div class="card" style="border:1px solid #2f7d4f;background:#f4fbf6">';
   const msg='<div id="mem-msg" class="muted" style="margin-top:6px"></div></div>';
   if(hasLine){
+    const line1=(o.net_add_cents>0)
+      ? 'Your products are now at the member price, saving '+money(o.savings_cents)+' on this order. The '
+        +money(o.gross_cents)+' membership added '+money(o.net_add_cents)+' to this order’s total.'
+      : 'Your products are now at the member price. The '+money(o.gross_cents)+' membership pays for itself here, for a net savings of '
+        +money(o.net_savings_cents)+' on this order.';
     el.innerHTML=head
       +'<div style="font-weight:600;color:#22623c">Membership added to this order</div>'
-      +'<div style="margin:6px 0 10px">Your products are now at the member price. After the '
-        +money(o.gross_cents)+' membership, you save '+money(o.net_savings_cents)+' on this order.</div>'
+      +'<div style="margin:6px 0 10px">'+line1+'</div>'
       +'<button class="ghost" onclick="toggleInvoiceMembership(\'remove\')">Remove membership</button>'
       +msg;
   } else {

@@ -90,6 +90,18 @@ def test_paid_invoice_blocked(tmp_path, monkeypatch):
     assert r.status_code == 409
 
 
+def test_cancelled_invoice_blocked(tmp_path, monkeypatch):
+    """A cancelled (still unpaid) order can't be repriced by the customer."""
+    appmod, client, token = _client(tmp_path, monkeypatch)
+    with sqlite3.connect(str(tmp_path / "chat_log.db")) as cx:
+        cx.execute("UPDATE orders SET status='cancelled' WHERE id=1")
+        cx.commit()
+    r = client.post(f"/api/invoice/{token}/membership",
+                    json={"action": "add", "tier": "month"})
+    assert r.status_code == 409
+    assert "no longer be changed" in (r.get_json().get("error") or "")
+
+
 def test_already_member_blocked(tmp_path, monkeypatch):
     """A buyer who already owns a paid membership can't add another."""
     appmod, client, token = _client(tmp_path, monkeypatch, email="already-member@example.com")

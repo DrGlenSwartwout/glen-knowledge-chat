@@ -39904,6 +39904,8 @@ def api_invoice_membership(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     if (order.get("pay_status") or "unpaid") == "paid":
         return jsonify({"ok": False, "error": "invoice already paid"}), 409
+    if order.get("status") == "cancelled":
+        return jsonify({"ok": False, "error": "this invoice can no longer be changed"}), 409
     body = request.get_json(silent=True) or {}
     action = (body.get("action") or "").strip()
     lines = [l for l in (order.get("items") or [])
@@ -39913,7 +39915,7 @@ def api_invoice_membership(token):
         if tier_key not in _mp.invoice_offer_tiers():
             return jsonify({"ok": False, "error": "tier not offered"}), 400
         with _sqlite3.connect(LOG_DB) as _mc:
-            if _mp.owns_group(_mc, (order.get("email") or "").lower()):
+            if _mp.owns_group(_mc, (order.get("email") or "").strip().lower()):
                 return jsonify({"ok": False, "error": "already a member"}), 409
         lines.append({"slug": _mp.line_slug(tier_key), "qty": 1})
     elif action != "remove":
