@@ -57,6 +57,30 @@ def test_build_fills_blank_dosing_from_catalog_standard():
     assert layers[2]["dosing"] == "2 capsules daily with lunch"     # authored wins
 
 
+def test_build_carries_terrain_phase_and_location():
+    from dashboard.biofield_authoring import update_terrain
+    cx = sqlite3.connect(":memory:")
+    tid = create_test(cx, "Terra Test", "terra@example.com", "2026-07-18")
+    aid = f"a{tid}"
+    add_chain_row(cx, aid, layer=1, head="ED6 Heart", most_affected="Heart",
+                  remedy="Vitality", dosage="1 cap", frequency="daily", timing="")
+    update_terrain(cx, aid, phase=4, location="Toxicity")
+    out = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)
+    assert out["content"]["phase"] == 4
+    assert out["content"]["location"] == "Toxicity"
+
+
+def test_build_omits_terrain_when_no_bsi():
+    cx = sqlite3.connect(":memory:")
+    tid = create_test(cx, "No Terra", "noterra@example.com", "2026-07-18")
+    aid = f"a{tid}"
+    add_chain_row(cx, aid, layer=1, head="ED6 Heart", most_affected="Heart",
+                  remedy="Vitality", dosage="1 cap", frequency="daily", timing="")
+    out = bpp.build_portal_content(cx, aid, special_price_cents=5000, catalog=CATALOG)
+    assert out["content"]["phase"] is None
+    assert out["content"]["location"] == ""
+
+
 def test_build_maps_layers_dedups_and_prices(tmp_path):
     cx = sqlite3.connect(":memory:")
     aid = _seed_karin(cx)

@@ -225,6 +225,9 @@
   .upsell-benefits li{margin:.25rem 0}
   /* biofield disclosure + pending-remedy placeholder */
   .disclose{color:var(--muted);font-size:.78rem;margin:.4rem 0 0;display:flex;align-items:center;gap:6px;letter-spacing:.01em}
+  .tr-banner{margin:.2rem 0 .9rem;padding:9px 12px;background:rgba(212,168,67,.10);border:1px solid rgba(212,168,67,.35);border-left:3px solid #d4a843;border-radius:8px;font-weight:600;font-size:.95rem}
+  .tr-k{display:block;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#b8902f;margin-bottom:2px}
+  .tr-loc{font-weight:400;color:var(--muted)}
   .disclose svg{flex:0 0 auto;opacity:.8}
   .rx-pending{margin-top:.9rem;border:1px dashed var(--line);border-radius:8px;
     background:var(--brand-soft);padding:12px 14px;opacity:.72;position:relative}
@@ -317,6 +320,8 @@
   #print-root .pd-k{ color:#8a8a8a; }
   #print-root .pd-greeting{ margin:0 0 14px; }
   #print-root .pd-greeting p{ margin:0 0 8px; }
+  #print-root .pd-terrain{ margin:0 0 12px; padding:8px 11px; border:1px solid #e6e1d5; border-left:3px solid #9a7a1f; border-radius:4px; font-size:13px; font-weight:600; }
+  #print-root .pd-terrain .pd-k{ display:block; font-size:10px; margin-bottom:2px; }
   #print-root .pd-sec{ margin:14px 0; }
   #print-root .pd-sec h3{ font-size:14px; color:#3a5a40; border-bottom:1px solid #e2e2e2; padding-bottom:3px; margin:0 0 8px; }
   #print-root .pd-muted{ color:#777; font-size:11px; margin:0 0 8px; }
@@ -604,6 +609,25 @@ const escGreeting = (s)=>{
 };
 const money = (c)=> (c==null? "" : "$"+(c/100).toFixed(2));
 
+// Terrain phase (the scan's BSI reading) -> the consumer name Dr. Glen reports.
+// Mirrors dashboard/terrain_phase.py. Empty when there is no valid phase 1-5.
+const TERRAIN_PHASE_NAMES = {1:"Terrain Revive",2:"Terrain Repair",3:"Terrain Renew",4:"Terrain Refresh",5:"Terrain Relief"};
+function terrainPhaseName(p){ return TERRAIN_PHASE_NAMES[parseInt(p,10)] || ""; }
+// Terrain banner for the report (screen or print). `kind` picks the class set.
+// "" when no phase was read, so reveal/FMP reports simply omit it.
+function terrainBanner(d, kind){
+  const nm = terrainPhaseName(d && d.phase);
+  if(!nm) return "";
+  const n = parseInt(d.phase,10);
+  const loc = ((d.location||"")+"").trim();
+  if(kind === "print"){
+    const l = loc ? `. Location: ${esc(loc)}` : "";
+    return `<div class="pd-terrain"><span class="pd-k">Your Terrain</span>${esc(nm)} (Phase ${n})${l}</div>`;
+  }
+  const l = loc ? ` <span class="tr-loc">&middot; Location: ${esc(loc)}</span>` : "";
+  return `<div class="tr-banner"><span class="tr-k">Your Terrain</span>${esc(nm)} (Phase ${n})${l}</div>`;
+}
+
 // ── Task 7: three-tab portal nav (Current Analysis / Scan History / Orders &
 // Invoices). Additive, gated on data.scan_history_enabled everywhere it's called
 // from render(); these three helpers are otherwise unused when the flag is off. ──
@@ -761,6 +785,7 @@ function buildReportPrintHtml(d){
       ${name?`<div><span class="pd-k">Prepared for</span> ${esc(name)}</div>`:""}
       ${when?`<div><span class="pd-k">Scan date</span> ${esc(when)}</div>`:""}
     </div>
+    ${terrainBanner(d, "print")}
     ${d.greeting?`<div class="pd-greeting">${escGreeting(d.greeting)}</div>`:""}
     ${path?`<div class="pd-sec"><h3>Your healing path</h3><p class="pd-muted">From the surface layer down to the deepest root, supported in order, so the whole chain unwinds.</p>${path}</div>`:""}
     ${finds}
@@ -1370,6 +1395,7 @@ function render(d, v){
       }
       // DRY the report body: factor into a single string for both branches.
       const reportBody = `${tabs}
+        ${terrainBanner(d, "screen")}
         ${patternsBlock}
         <p class="muted small">From the surface layer down to the deepest root, we support them in order, and the whole chain unwinds.</p>
         <div class="path">${path}</div>

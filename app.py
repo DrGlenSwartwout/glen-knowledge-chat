@@ -18356,6 +18356,11 @@ def api_client_portal(token):
         "biofield_status": bf_status, "blurred": not bf_show,
         "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
         "greeting": bf_content.get("greeting", ""),
+        # Terrain reading (BSI phase 1-5 + spoken location) shown at the top of the
+        # portal report, mirroring the printed report. Absent (null/'') on reveal/FMP
+        # reports that carry no BSI -> the portal just omits the banner.
+        "phase": bf_content.get("phase"),
+        "location": bf_content.get("location", ""),
         "video": bf_content.get("video") or {},
         "audio": (bf_content.get("audio") or {}) if bf_show else {},
         "report_pdf": (bf_content.get("report_pdf") or {}) if bf_show else {},
