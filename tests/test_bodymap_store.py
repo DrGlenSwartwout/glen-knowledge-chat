@@ -333,6 +333,22 @@ def test_shipped_neurotome_seed_valid():
     assert views == {"front", "back"}
 
 
+def test_shipped_lymph_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["lymph"].name == "bodymap-lymph.json"
+    data = json.loads((repo / "bodymap-lymph.json").read_text())
+    assert set(data.get("outlines", {})) == {"front", "back"}
+    gtypes, views = set(), set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"lymph zone {z.get('id')}: {err}"
+        gtypes.add(z["geometry"]["type"])
+        views.add(z["side"])
+    assert {"point", "path"} <= gtypes  # nodes are points, ducts are lines
+    assert views == {"front", "back"}
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
