@@ -1,4 +1,21 @@
-from dashboard.biofield_invoice import BIOFIELD_SLUG, resolve_line_slug, build_invoice_lines
+from dashboard.biofield_invoice import (
+    BIOFIELD_SLUG, resolve_line_slug, build_invoice_lines,
+    DEFAULT_INVOICE_NOTE, terrain_note, build_invoice_note)
+
+
+def test_terrain_note_only_when_phase_present():
+    assert terrain_note(4, "Toxicity") == "Terrain Phase: Terrain Refresh (Phase 4). Location: Toxicity."
+    assert terrain_note(2, "") == "Terrain Phase: Terrain Repair (Phase 2)."
+    assert terrain_note(None, "Toxicity") == ""   # no phase -> no terrain note at all
+    assert terrain_note(9, "x") == ""
+    assert "—" not in terrain_note(4, "Toxicity")   # house style: no em dashes
+
+
+def test_build_invoice_note_prefixes_standard_text():
+    assert build_invoice_note(4, "Toxicity") == (
+        "Terrain Phase: Terrain Refresh (Phase 4). Location: Toxicity. " + DEFAULT_INVOICE_NOTE)
+    # no terrain reading -> just the standard note, unchanged
+    assert build_invoice_note(None, "") == DEFAULT_INVOICE_NOTE
 
 CATALOG = [{"slug": "liver-support", "name": "Liver Support"},
            {"slug": "vitality", "name": "Vitality"},

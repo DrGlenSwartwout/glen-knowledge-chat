@@ -61,6 +61,43 @@ def test_interpret_empty_transcript_returns_empty():
     assert out["layers"] == []
 
 
+def test_prompt_asks_for_structured_phase_and_location():
+    sys = build_interpret_prompt(TRANSCRIPT)["system"].lower()
+    # The BSI 'phase P' + 'location of the N is X' must be pulled out as structured
+    # top-level fields, not just folded into the header prose.
+    assert '"phase"' in sys and '"location"' in sys
+    assert "location" in sys
+
+
+def test_interpret_returns_top_level_phase_and_location():
+    def fake(system, user):
+        return json.dumps({
+            "header": "BSI 21x1 / 1x1; phase 2 = toxicity; location of 21 = toxicity",
+            "phase": 2, "location": "toxicity",
+            "layers": [{"layer": 1, "head": "Acid", "most_affected": "Acid",
+                        "remedy": "Sterol Max"}]})
+    out = interpret_transcript(TRANSCRIPT, fake)
+    assert out["phase"] == 2
+    assert out["location"] == "toxicity"
+
+
+def test_interpret_coerces_and_bounds_phase():
+    def fake(system, user):
+        return json.dumps({"phase": "3", "location": "  Kidney  ", "layers": []})
+    out = interpret_transcript("x", fake)
+    assert out["phase"] == 3 and out["location"] == "Kidney"
+
+    def fake_bad(system, user):
+        return json.dumps({"phase": 9, "location": "", "layers": []})
+    out = interpret_transcript("x", fake_bad)
+    assert out["phase"] is None and out["location"] == ""
+
+
+def test_interpret_empty_transcript_has_no_phase():
+    out = interpret_transcript("   ", lambda s, u: '{"layers":[]}')
+    assert out["phase"] is None and out["location"] == ""
+
+
 def test_prompt_tells_model_a_layer_can_have_multiple_remedies():
     sys = build_interpret_prompt(TRANSCRIPT)["system"].lower()
     # The grammar must instruct that one causal layer can need more than one remedy.

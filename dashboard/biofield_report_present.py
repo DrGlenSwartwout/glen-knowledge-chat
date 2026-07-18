@@ -34,6 +34,12 @@ _CSS = """
   th { background: #faf7ef; }
   .slot { white-space: nowrap; font-weight: 600; }
   .food { color: var(--muted); }
+  .terrain { margin: 0 0 16px; padding: 9px 13px; background: #faf7ef; border: 1px solid var(--hair);
+             border-left: 3px solid var(--gold); border-radius: 4px; font-size: 14px; font-weight: 600; }
+  .terrain-k { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+               letter-spacing: .08em; color: var(--gold); margin-bottom: 2px; }
+  .terrain-loc { font-weight: 400; color: var(--muted); }
+  .terrain-tag { color: var(--gold); font-weight: 600; }
   .narrative p { margin: 0 0 9px; }
   .footer { margin-top: 26px; border-top: 1px solid var(--hair); padding-top: 8px;
             text-align: center; color: var(--muted); font-size: 12px; }
@@ -69,6 +75,31 @@ def _masthead(report):
             f'<div class="sub">Biofield Analysis · {sub}</div></div></div>')
 
 
+def _terrain(report):
+    """The scan's terrain reading (BSI phase + spoken location) as a banner at the very
+    top of the report. '' when no phase was read (FMP-snapshot / older authored tests)."""
+    from dashboard.terrain_phase import phase_display
+    disp = phase_display(report.get("phase"))
+    if not disp:
+        return ""
+    loc = (report.get("location") or "").strip()
+    tail = f' <span class="terrain-loc">· Location: {_e(loc)}</span>' if loc else ""
+    return (f'<div class="terrain"><span class="terrain-k">Your Terrain</span>'
+            f'{_e(disp)}{tail}</div>')
+
+
+def _sched_name(name, report):
+    """Display name for a schedule entry. The one combined 'Terrain Restore' liquid
+    bottle carries the scan's phase name (all its essences share the single scan phase)."""
+    from dashboard.terrain_phase import phase_name
+    label = _e(name)
+    if (name or "").strip().lower() == "terrain restore":
+        pn = phase_name(report.get("phase"))
+        if pn:
+            label += f' <span class="terrain-tag">· {_e(pn)}</span>'
+    return label
+
+
 def _schedule(report):
     sched = report.get("schedule") or {}
     entries = sched.get("entries") or []
@@ -79,14 +110,14 @@ def _schedule(report):
         if not here:
             continue
         cells = "; ".join(
-            f"{_e(e.get('name'))} <span class=food>({_e(e.get('per_slot') or e.get('dosage'))}"
+            f"{_sched_name(e.get('name'), report)} <span class=food>({_e(e.get('per_slot') or e.get('dosage'))}"
             + (f", {_e(e.get('food'))}" if e.get("food") else "") + ")</span>"
             for e in here)
         rows += f"<tr><td class=slot>{_e(slot)}</td><td>{cells}</td></tr>"
     asdir = [e for e in entries if e.get("as_directed")]
     if asdir:
         cells = "; ".join(
-            f"{_e(e.get('name'))} <span class=food>({_e(e.get('timing') or 'as directed')})</span>"
+            f"{_sched_name(e.get('name'), report)} <span class=food>({_e(e.get('timing') or 'as directed')})</span>"
             for e in asdir)
         rows += f"<tr><td class=slot>As directed</td><td>{cells}</td></tr>"
     return ("<h2>Remedy Schedule</h2>"
@@ -136,7 +167,7 @@ def _chain(report):
 
 
 def render_present(report, narrative=""):
-    body = (_masthead(report) + _schedule(report) + _narrative(narrative)
+    body = (_masthead(report) + _terrain(report) + _schedule(report) + _narrative(narrative)
             + _life_stress(report) + _chain(report) + f'<div class="footer">{_e(FOOTER)}</div>')
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<title>Biofield Analysis</title><style>{_CSS}</style></head>"

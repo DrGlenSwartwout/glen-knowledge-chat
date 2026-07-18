@@ -70,7 +70,28 @@ def test_create_order_still_sends_lines_and_replace_open(monkeypatch):
     body = sent[0]
     assert body["replace_open"] is True
     assert body["lines"] == [{"slug": "biofield-analysis", "qty": 1}]
-    assert "Payable by check" in body["invoice_note"]
+    assert body["invoice_note"] == bi.DEFAULT_INVOICE_NOTE
+
+
+def test_create_order_defaults_the_invoice_note(monkeypatch):
+    _env(monkeypatch)
+    sent = []
+    monkeypatch.setattr(bi.urllib.request, "urlopen",
+                        _capturing_urlopen({"ok": True, "order_id": 1, "totals": {}}, sent))
+    bi.default_create_order({"email": "d@x.com"}, [{"slug": "biofield-analysis", "qty": 1}])
+    assert sent[0]["invoice_note"] == bi.DEFAULT_INVOICE_NOTE
+
+
+def test_create_order_carries_a_supplied_invoice_note(monkeypatch):
+    _env(monkeypatch)
+    sent = []
+    monkeypatch.setattr(bi.urllib.request, "urlopen",
+                        _capturing_urlopen({"ok": True, "order_id": 1, "totals": {}}, sent))
+    note = bi.build_invoice_note(4, "Toxicity")
+    bi.default_create_order({"email": "d@x.com"},
+                            [{"slug": "biofield-analysis", "qty": 1}], invoice_note=note)
+    assert sent[0]["invoice_note"] == note
+    assert "Terrain Refresh (Phase 4)" in sent[0]["invoice_note"]
 
 
 def test_create_order_server_not_ok_is_explicit(monkeypatch):
