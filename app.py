@@ -6458,6 +6458,27 @@ def _settle_referral_dep(order, order_ref):
     _settle_referral(order, order_ref=order_ref)
 
 
+def _grant_membership_line_dep(order):
+    """Settlement dep: on a paid checkout order carrying a membership line, write
+    the real membership grant. Opens its own sqlite connection (mirrors
+    _grant_group_bundle's convention -- deps must not share the caller's cx) and
+    delegates to _grant_membership_line_on_paid, which is idempotent per order_ref
+    and commits its own write. No-op (returns "none") when there's no membership
+    line, so it's safe to call for every paid order."""
+    if not order:
+        return
+    # Cheap pre-check BEFORE opening a connection: the card path already gates on
+    # cart_has_membership_tier before invoking the grant, so mirror it here -- most
+    # paid orders carry no membership line, and opening+discarding a sqlite
+    # connection for every one of them is pure waste. (_grant_membership_line_on_paid
+    # re-checks this too; this only avoids the connection when there's nothing to do.)
+    if not _mp.cart_has_membership_tier(order.get("items") or []):
+        return
+    with sqlite3.connect(LOG_DB) as _mcx:
+        _mcx.row_factory = sqlite3.Row
+        _grant_membership_line_on_paid(_mcx, order)
+
+
 from types import SimpleNamespace as _SimpleNamespace  # noqa: E402
 _SETTLEMENT_DEPS = _SimpleNamespace(
     settle_points=_settle_points_dep,
@@ -6466,6 +6487,7 @@ _SETTLEMENT_DEPS = _SimpleNamespace(
     grant_group_bundle=_grant_group_bundle,
     settle_client=_settle_client_effects,
     settle_biofield=_settle_biofield_effects,
+    grant_membership_line=_grant_membership_line_dep,
 )
 
 
@@ -11657,6 +11679,13 @@ def init_membership_tables(cx):
           created_at  TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS order_membership_grants (
+          order_ref   TEXT PRIMARY KEY,
+          email       TEXT,
+          tier        TEXT,
+          created_at  TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS membership_reconcile_alerts (
           session_id    TEXT PRIMARY KEY,
           email         TEXT,
@@ -11855,26 +11884,36 @@ def _validate_lead_magnet_guide_link(token):
     return email
 
 
-def _grant_membership(cx, email, days, source):
+def _grant_membership(cx, email, days, source, skip_customer_upsert=False):
     """Insert a memberships access grant row and return its id.
 
-    Ordering matters. `customers.find_or_create_by_email` calls cx.commit(), so
-    anything already written on this connection becomes durable the moment it
-    runs. Do the people upsert FIRST: a commit cannot make the grant durable
-    ahead of the caller if the grant row does not exist yet.
+    Ordering matters. `customers.find_or_create_by_email` calls cx.commit() (but
+    only when it INSERTS a new person -- an existing row returns without
+    committing), so anything already written on this connection becomes durable
+    the moment a NEW customer is created. Do the people upsert FIRST: a commit
+    cannot make the grant durable ahead of the caller if the grant row does not
+    exist yet.
 
     Otherwise a caller that fails before its own commit leaves an orphaned
     memberships row behind -- and membership access is read straight off this
     table by email, with no token involved, so an orphan is a free membership.
+
+    `skip_customer_upsert=True` (default False -> unchanged for every existing
+    caller) lets a caller that must control WHEN the customer-upsert commit
+    happens do that upsert itself BEFORE opening its own transaction. It exists
+    for _grant_membership_line_on_paid, whose claim-row INSERT must not be sitting
+    pending when find_or_create's commit fires -- that mid-grant commit would make
+    the claim durable ahead of the grant and orphan it if the grant then raised.
     """
     import uuid as _uuid
     mid = str(_uuid.uuid4())
     now = datetime.utcnow()
-    try:
-        from dashboard import customers as _customers
-        _customers.find_or_create_by_email(cx, email=email)   # commits
-    except Exception as _e:
-        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    if not skip_customer_upsert:
+        try:
+            from dashboard import customers as _customers
+            _customers.find_or_create_by_email(cx, email=email)   # commits (new person only)
+        except Exception as _e:
+            print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     # Last write, and nothing below commits: the grant rolls back with the caller.
     cx.execute(
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
@@ -11883,6 +11922,68 @@ def _grant_membership(cx, email, days, source):
          source, source, "", ""))
     _member_join_welcome(cx, email, source)   # does not commit (guard rolls back too)
     return mid
+
+
+# Module-level handle so the grant hook (and its test seam) can resolve the
+# membership_products helpers; kept as an attribute so tests can monkeypatch
+# _mp.owns_group without reaching into the package.
+from dashboard import membership_products as _mp  # noqa: E402
+
+
+def _grant_membership_line_on_paid(cx, order):
+    """On a fully-paid order that carries a membership line, write the REAL
+    membership grant. Idempotent per order (claim row in order_membership_grants),
+    mirroring group_bundle_grants / care_taster_grants. Returns one of:
+      "granted" — a new grant was written for this order
+      "already" — this order was already granted (claim didn't take)
+      "none"    — no membership line on the order (or no order)
+      "member"  — buyer already holds an active paid membership; nothing to grant
+    Caller must ensure the order is fully paid (fires only on the paid transition).
+    """
+    if not order:
+        return "none"
+    tier_key = _mp.cart_has_membership_tier(order.get("items") or [])
+    if not tier_key:
+        return "none"
+    email = (order.get("email") or "").strip().lower()
+    ref = order.get("external_ref") or f"id:{order.get('id')}"
+    # Has THIS order already been granted? (redirect + webhook + Stripe redelivery
+    # all settle the same paid order; the first grant makes owns_group True, so the
+    # claim check must precede the member check or a benign re-run would misreport
+    # "member".) The atomic INSERT ... ON CONFLICT below still guards the true race
+    # where two runs pass this read at the same instant.
+    if cx.execute("SELECT 1 FROM order_membership_grants WHERE order_ref=?",
+                  (ref,)).fetchone():
+        return "already"
+    if _mp.owns_group(cx, email):
+        return "member"  # already a paid member; do NOT claim (keeps the order
+                         # grantable later if this membership lapses)
+    # Do the customer upsert FIRST, while nothing about this grant is pending.
+    # find_or_create_by_email commits when it inserts a new person; if that commit
+    # fired AFTER the claim INSERT below (which is what happens when _grant_membership
+    # does the upsert itself), it would make the claim durable ahead of the grant --
+    # so a failing grant would leave an orphaned claim with no membership row, and
+    # every retry would short-circuit to "already". Pre-warming here means the claim
+    # INSERT and the memberships grant INSERT are the ONLY writes in the transaction
+    # committed by the single cx.commit() below -- atomic: both land or neither does.
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)   # commits (new person only)
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    claim = cx.execute(
+        "INSERT INTO order_membership_grants (order_ref, email, tier, created_at) "
+        "VALUES (?,?,?,?) ON CONFLICT(order_ref) DO NOTHING",
+        (ref, email, tier_key, datetime.utcnow().isoformat() + "Z"))
+    if not claim.rowcount:
+        return "already"  # concurrent run claimed between the read and this INSERT
+    days = _mp.grant_days(tier_key, _now_utc().date())
+    # skip_customer_upsert: we already upserted above (pre-claim), so _grant_membership
+    # must NOT re-run find_or_create's mid-grant commit between the claim and the grant.
+    _grant_membership(cx, email, days, _mp.get_tier(tier_key)["source"],
+                      skip_customer_upsert=True)
+    cx.commit()
+    return "granted"
 
 
 def _grant_prepay_term(cx, email, tier_key):
@@ -37790,6 +37891,23 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+# Inject the app-side membership grant into the alt-pay (Zelle/check/owner-recorded)
+# payment path -- so a membership paid outside Stripe still delivers the real grant,
+# in parity with the card path. Kept as an injected hook because dashboard.orders must
+# not import app (circular). Idempotent per order_ref inside _grant_membership_line_on_paid.
+#
+# CRITICAL: run the grant on its OWN connection, NOT the request cx passed by
+# _record_payment_exec. _grant_membership_line_on_paid writes the claim row and the
+# grant on whatever connection it's handed; on the request cx the claim INSERT would
+# be left PENDING when _grant_membership raises (the hook's own cx.commit() is never
+# reached), _record_payment_exec swallows the exception, and a downstream cx.commit()
+# (append_event) would then FLUSH the orphaned claim with no membership row -- breaking
+# the "claim exists iff grant exists" invariant and permanently blocking the grant on
+# every retry. So we IGNORE the passed-in cx and reuse the card path's own-connection
+# wrapper _grant_membership_line_dep: it opens its own sqlite connection whose `with`
+# block commits the claim+grant together on success and ROLLS BACK the claim on any
+# failure -- atomic, and never leaves a pending claim on the request cx.
+_bos_orders.set_membership_grant_hook(lambda _cx, _o: _grant_membership_line_dep(_o))
 import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (household combined-shipment model + actions)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)
@@ -38714,11 +38832,14 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     Returns a dict of items_rec + the pricing breakdown, or None when no line resolves
     to a real product. Raises CheckoutError for a ship-to the engine rejects."""
     from dashboard import pricing as _pricing
+    from dashboard import membership_products as _mp
     settings = _pricing.load_settings(_pricing_settings())
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
     # Paid membership gates the order-wide mix/match volume rate (Glen 2026-07):
-    # resolved ONCE for the whole order, same as repertoire below.
-    program_member = _is_paid_member(email)
+    # resolved ONCE for the whole order, same as repertoire below. A membership
+    # line in the cart provisionally flips the buyer to member pricing too
+    # (computed only — never persisted until payment; see Task 2 brief).
+    program_member = _is_paid_member(email) or bool(_mp.cart_has_membership_tier(lines_in))
     # A paid member's repertoire SKU set, resolved ONCE for the whole order (Task 5b —
     # this also makes the owner in-house INVOICE honor repertoire pricing for members,
     # not just the portal checkout). Only ever consulted below when a line has no
@@ -38751,6 +38872,15 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     cart, items_rec, subtotal_list = [], [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
+        _mtier = _mp.tier_of_line(ln)
+        if _mtier:
+            t = _mp.get_tier(_mtier)
+            _mrec = {"slug": _mp.line_slug(_mtier), "name": t["label"], "qty": 1,
+                     "unit_cents": t["price_cents"], "line_cents": t["price_cents"],
+                     "kind": "membership", "tier": _mtier}
+            items_rec.append(_mrec)
+            subtotal_list += t["price_cents"]
+            continue
         p = _get_product(slug)
         if not p:
             continue
@@ -39228,12 +39358,15 @@ def api_orders_price_preview():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import pricing as _pricing
+    from dashboard import membership_products as _mp
     settings = _pricing.load_settings(_pricing_settings())
     _body = request.get_json(silent=True) or {}
     lines_in = _body.get("lines") or []
     total_ff_qty = _inhouse_total_ff_qty(lines_in)
     _pemail = (_body.get("email") or "").strip().lower()
-    _ppm = _is_paid_member(_pemail)
+    # A membership line in the cart provisionally flips the buyer to member
+    # pricing (computed only — never persisted until payment; see Task 2 brief).
+    _ppm = _is_paid_member(_pemail) or bool(_mp.cart_has_membership_tier(lines_in))
     # The order-wide mix/match rate — a paid-member-only perk (Glen 2026-07); a
     # non-member's per-line vol_pct is computed inside the loop below, off that
     # line's own qty (same-SKU rate), since it isn't a single order-wide number.
@@ -39264,6 +39397,14 @@ def api_orders_price_preview():
     out_lines, subtotal = [], 0
     for ln in lines_in:
         slug = (ln.get("slug") or "").strip()
+        _mtier = _mp.tier_of_line(ln)
+        if _mtier:
+            t = _mp.get_tier(_mtier)
+            out_lines.append({"slug": _mp.line_slug(_mtier), "name": t["label"], "qty": 1, "is_ff": False,
+                              "list_cents": t["price_cents"], "effective_unit_cents": t["price_cents"],
+                              "line_cents": t["price_cents"], "vol_pct": 0, "savings_cents": 0})
+            subtotal += t["price_cents"]
+            continue
         p = _get_product(slug)
         if not p:
             continue
@@ -39300,6 +39441,63 @@ def api_orders_price_preview():
             "savings_cents": max(0, list_cents - unit)})
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines})
+
+
+def _membership_offer_math(email, product_lines, tier_key):
+    """Server-side (no HTTP, no owner auth) membership-offer economics for a product
+    cart + tier. Prices the product lines twice through _price_inhouse_invoice -- once
+    as-is (list, for a non-member) and once with the membership line appended (member
+    rate) -- and returns the fee, the product savings the membership unlocks on THIS
+    order, and the net add. This is the SAME pricer _reprice_and_persist_invoice uses,
+    so the offer's quoted savings equal what the customer actually gets on add.
+
+    Returns {gross_cents, savings_cents, net_add_cents, net_savings_cents}. Shared by
+    the OWNER offer endpoint and the token-authed customer invoice path (never routes
+    through the owner-gated price-preview HTTP endpoint)."""
+    from dashboard import membership_products as _mp
+    tier = _mp.get_tier(tier_key)
+    gross = int(tier["price_cents"]) if tier else 0
+    email = (email or "").strip().lower()
+
+    def _prod_subtotal(lines):
+        # pickup=True + ship=None: we only read the product subtotal (computed before
+        # shipping), so neutralize shipping/ship-to entirely.
+        priced = _price_inhouse_invoice(lines, email=email, pickup=True, ship=None)
+        if not priced:
+            return 0
+        return sum(int(it.get("line_cents") or 0) for it in priced["items_rec"]
+                   if not str(it.get("slug") or "").startswith("membership:"))
+
+    base_sub = _prod_subtotal(list(product_lines))
+    mem_sub = _prod_subtotal(list(product_lines) + [{"slug": _mp.line_slug(tier_key), "qty": 1}])
+    savings = max(0, base_sub - mem_sub)
+    return {"gross_cents": gross, "savings_cents": savings,
+            "net_add_cents": max(0, gross - savings), "net_savings_cents": savings}
+
+
+@app.route("/api/orders/membership-offer", methods=["POST"])
+def api_orders_membership_offer():
+    """Given a product cart + a membership tier, return the offer economics: gross fee,
+    the product savings the membership unlocks on THIS order, and the net add. Pure read;
+    no persistence. Used by the staff editor.
+
+    OWNER-gated (via _bos_actor): staff-only. The customer invoice path does NOT call
+    this route -- it uses the same _membership_offer_math helper directly (token-authed),
+    so it never needs owner auth. The savings math is fully delegated to that helper."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import membership_products as _mp
+    _body = request.get_json(silent=True) or {}
+    tier_key = (_body.get("tier") or "month").strip()
+    tier = _mp.get_tier(tier_key)
+    if not tier:
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    lines_in = _body.get("lines") or []
+    email = (_body.get("email") or "").strip().lower()
+    math = _membership_offer_math(email, lines_in, tier_key)
+    return jsonify({"ok": True, "tier": tier_key, **math,
+                    "offered_tiers": _mp.invoice_offer_tiers()})
 
 
 @app.route("/api/orders/<int:oid>/payments", methods=["GET"])
@@ -39851,6 +40049,12 @@ def _invoice_line_view(l):
     (unit_cents). Public page can't reach the console catalog API, so resolve here."""
     out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
            "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
+    # A membership line isn't a catalog product — carry its marker through so the page
+    # renders a labelled membership row instead of hunting for a product that isn't there.
+    if l.get("kind") == "membership":
+        out["kind"] = "membership"
+        out["tier"] = l.get("tier")
+        return out
     p = _get_product(l.get("slug") or "")
     if p:
         if p.get("service"):
@@ -39976,6 +40180,7 @@ def api_invoice_get(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     summary = _invoice_summary(order)
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    summary["membership_offer"] = _invoice_membership_offer(order)   # join-and-save (None if paid/member)
     oid = order.get("id")
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
@@ -40004,6 +40209,96 @@ def api_invoice_get(token):
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
     return jsonify({"ok": True, "order": summary})
+
+
+def _invoice_membership_offer(order):
+    """Customer-facing join-and-save offer for an UNPAID invoice whose buyer is not
+    already a paid member. Returns {tier, offered_tiers, gross_cents, savings_cents,
+    net_add_cents, net_savings_cents} for the default offered tier, or None when the
+    order is paid, the buyer already owns a membership, or no product line resolves.
+    Uses the same _membership_offer_math helper as the OWNER offer endpoint (no owner
+    auth, no HTTP round-trip). Never raises."""
+    try:
+        from dashboard import membership_products as _mp
+        if (order.get("pay_status") or "unpaid") == "paid":
+            return None
+        email = (order.get("email") or "").strip().lower()
+        if email:
+            with _sqlite3.connect(LOG_DB) as _mc:
+                if _mp.owns_group(_mc, email):
+                    return None
+        tiers = _mp.invoice_offer_tiers()
+        if not tiers:
+            return None
+        tier_key = tiers[0]
+        # Product lines only (strip any membership line already present), preserving
+        # owner overrides so member pricing only moves the un-frozen lines — the same
+        # payload shape the reprice endpoint builds.
+        product_lines = []
+        for it in (order.get("items") or []):
+            slug = (it.get("slug") or "").strip()
+            if not slug or slug.startswith("membership:"):
+                continue
+            ln = {"slug": slug, "qty": int(it.get("qty") or 1)}
+            if it.get("override"):
+                ln["unit_cents"] = it.get("unit_cents")
+            product_lines.append(ln)
+        if not product_lines:
+            return None
+        math = _membership_offer_math(email, product_lines, tier_key)
+        return {"tier": tier_key, "offered_tiers": tiers, **math}
+    except Exception as _e:  # noqa: BLE001 — offer is cosmetic; never break the invoice
+        print(f"[invoice] membership offer skipped: {_e!r}", flush=True)
+        return None
+
+
+@app.route("/api/invoice/<token>/membership", methods=["POST"])
+def api_invoice_membership(token):
+    """Customer-facing: add or remove the membership line on their own (unpaid) invoice
+    and reprice. Token-authed (never owner). Guards: only unpaid orders; on add the tier
+    must be currently offered and the buyer must not already be a paid member. The
+    membership line is stripped then (for add) re-appended, so add is idempotent and
+    remove is clean. Provisional pricing only — no membership is granted here."""
+    from dashboard import membership_products as _mp
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if (order.get("pay_status") or "unpaid") == "paid":
+        return jsonify({"ok": False, "error": "invoice already paid"}), 409
+    if order.get("status") == "cancelled":
+        return jsonify({"ok": False, "error": "this invoice can no longer be changed"}), 409
+    body = request.get_json(silent=True) or {}
+    action = (body.get("action") or "").strip()
+    lines = [l for l in (order.get("items") or [])
+             if not str(l.get("slug") or "").startswith("membership:")]
+    if action == "add":
+        tier_key = (body.get("tier") or "month").strip()
+        if tier_key not in _mp.invoice_offer_tiers():
+            return jsonify({"ok": False, "error": "tier not offered"}), 400
+        with _sqlite3.connect(LOG_DB) as _mc:
+            if _mp.owns_group(_mc, (order.get("email") or "").strip().lower()):
+                return jsonify({"ok": False, "error": "already a member"}), 409
+        lines.append({"slug": _mp.line_slug(tier_key), "qty": 1})
+    elif action != "remove":
+        return jsonify({"ok": False, "error": "action must be add or remove"}), 400
+    # Rebuild the reprice payload: slug + qty, carrying an owner override forward.
+    payload = [{"slug": l["slug"], "qty": int(l.get("qty") or 1),
+                **({"unit_cents": l["unit_cents"]} if l.get("override") else {})}
+               for l in lines]
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        priced, _was_paid = _reprice_and_persist_invoice(
+            cx, order, payload, pickup=(order.get("channel") == "pickup"))
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+    if priced is None:
+        # No line resolved to a real product -> the invoice was NOT repriced or
+        # persisted. Don't fall through to api_invoice_get, which would return the
+        # STALE pre-edit summary with a 200 and mask the failure.
+        return jsonify({"ok": False, "error": "no valid products"}), 400
+    return api_invoice_get(token)     # return the fresh summary (same shape as GET)
 
 
 def _order_savings_offer(order):

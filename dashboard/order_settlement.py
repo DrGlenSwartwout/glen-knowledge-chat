@@ -55,4 +55,15 @@ def settle_paid_order_effects(*, kind, order, md, pi_id, sid, deps):
     elif kind == "biofield":
         _do("biofield", lambda: deps.settle_biofield(md, sid))
 
+    # Membership-line grant: a checkout order of ANY kind may carry a membership
+    # line (kind-agnostic, like group_bundle -- gated here on the line's presence,
+    # not on kind). Reuse membership_products' pure detector as the single source
+    # of truth (no app/LOG_DB dependency), so this only fires for orders that
+    # actually bought a membership. The dep is idempotent per order_ref; both the
+    # redirect and the webhook route through here, so a closed tab still delivers.
+    if order:
+        from . import membership_products as _mp
+        if _mp.cart_has_membership_tier(order.get("items") or []):
+            _do("membership_line", lambda: deps.grant_membership_line(order))
+
     return {"kind": kind, "settled": settled, "skipped": skipped}
