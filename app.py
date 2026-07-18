@@ -18163,6 +18163,14 @@ def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
 
 
+@app.route("/portal/<token>/bodymap")
+def client_portal_bodymap_page(token):
+    """Personalized Body Map for a client: the same /body-map page, which detects
+    the /portal/<token>/bodymap path and warps the face map onto the client's own
+    photo with their findings lit. Token-scoped data comes from the APIs below."""
+    return send_from_directory(STATIC, "body-map.html")
+
+
 @app.route("/api/portal/<token>")
 def api_client_portal(token):
     from dashboard import client_portal as _cp
@@ -18764,6 +18772,99 @@ def api_portal_photo_serve(token):
     resp = Response(rec["blob"], mimetype=rec["content_type"])
     resp.headers["Cache-Control"] = "private, no-store"
     return resp
+
+
+def _portal_current_biofield_location(cx, email, content):
+    """The spoken anatomical `location` from the client's CURRENT biofield report
+    (same report the portal picks: content.current_scan_date -> newest). '' when
+    none. The location text is matched organ-by-organ to light face zones."""
+    from dashboard import portal_biofield_reports as _pbr
+    _pbr.init_table(cx)
+    dates = _pbr.list_report_dates(cx, email) if email else []
+    if dates:
+        cur = (content or {}).get("current_scan_date")
+        picked = cur if (cur and cur in dates) else dates[0]
+        bf = (_pbr.get_report(cx, email, picked) or {}).get("content") or {}
+    else:
+        bf = content or {}
+    return (bf.get("location") or "").strip()
+
+
+def _portal_bodymap_data(cx, email, content):
+    """Personalization for the portal Body Map: the client's E4L findings + spoken
+    biofield location resolved to face-diagnosis zones, so their OWN findings light
+    up when the face map is warped onto a photo of their face. Read-only; never
+    raises — returns an empty-but-valid shape on any failure."""
+    import bodymap_store as _bm
+    from dashboard import biofield_e4l as _e4l
+    from dashboard import client_photos as _cph
+    import datetime as _dt
+    SYSTEM, VIEW = "face", "diagnosis"
+    out = {"system": SYSTEM, "view": VIEW, "has_photo": False,
+           "findings": [], "lit_zones": [], "count": 0}
+    email = (email or "").strip().lower()
+    if not email:
+        return out
+    try:
+        out["has_photo"] = bool(_cph.has(cx, email))
+    except Exception:
+        pass
+    findings_out, lit, seen = [], [], set()
+    try:
+        sc = _e4l.scan_context(email, _dt.date.today().isoformat())
+        raw_findings = sc.get("findings") or []
+    except Exception:
+        raw_findings = []
+    try:
+        organ_map = _e4l.organs_for_codes([f.get("code") for f in raw_findings])
+    except Exception:
+        organ_map = {}
+    for f in raw_findings:
+        code = (f.get("code") or "").strip()
+        name = (f.get("name") or code).strip()
+        # The finding's own name (ED drivers ARE organ names, e.g. "Liver Driver")
+        # plus its tagged organ/system structures -> the terms that light zones.
+        terms = ([name] if name else []) + list(organ_map.get(code, []))
+        res = _bm.resolve_finding_zones(SYSTEM, terms, side=VIEW)
+        if not res["zones"]:
+            continue
+        findings_out.append({"label": name, "rank": f.get("rank"),
+                             "source": "e4l", "zones": res["zones"]})
+        for zid in res["zones"]:
+            if zid not in seen:
+                seen.add(zid)
+                lit.append(zid)
+    try:
+        location = _portal_current_biofield_location(cx, email, content)
+    except Exception:
+        location = ""
+    if location:
+        res = _bm.resolve_finding_zones(SYSTEM, [location], side=VIEW)
+        if res["zones"]:
+            findings_out.append({"label": location, "rank": None,
+                                 "source": "biofield", "zones": res["zones"]})
+            for zid in res["zones"]:
+                if zid not in seen:
+                    seen.add(zid)
+                    lit.append(zid)
+    out["findings"] = findings_out
+    out["lit_zones"] = lit
+    out["count"] = len(findings_out)
+    return out
+
+
+@app.route("/api/portal/<token>/bodymap")
+def api_portal_bodymap(token):
+    """Token-scoped Body Map personalization for the portal card and page: the
+    client's findings resolved to face zones. 404 when the token is unknown."""
+    from dashboard import client_portal as _cp
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        data = _portal_bodymap_data(cx, portal.get("email"), portal.get("content"))
+    return jsonify(data)
 
 
 @app.route("/api/portal/<token>/share-consent", methods=["POST"])

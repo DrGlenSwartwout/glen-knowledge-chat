@@ -412,3 +412,46 @@ def test_upsert_zone_rejects_invalid(tmp_path, monkeypatch):
         bodymap_store.upsert_zone("foot", _poly_zone(anatomy=None)); assert False
     except ValueError:
         pass
+
+
+# ---- resolve_finding_zones: light Body Map zones from a client's finding names ----
+
+def test_resolve_finding_zones_matches_organ_on_face():
+    r = bodymap_store.resolve_finding_zones("face", ["Liver"], side="diagnosis")
+    assert "face-glabella" in r["zones"]
+    assert r["by_name"]["Liver"]  # non-empty hit list
+
+def test_resolve_finding_zones_driver_suffix_via_word():
+    # a multi-word finding name ("Liver Driver") still lights via the word "liver"
+    r = bodymap_store.resolve_finding_zones("face", ["Liver Driver"], side="diagnosis")
+    assert "face-glabella" in r["zones"]
+
+def test_resolve_finding_zones_bladder_not_gallbladder():
+    # word-boundary match: a Bladder finding must NOT light gallbladder-only zones
+    r = bodymap_store.resolve_finding_zones("face", ["Bladder"], side="diagnosis")
+    assert "face-forehead-bladder" in r["zones"]
+    assert "face-temple-R" not in r["zones"]  # "Gallbladder (temple)"
+
+def test_resolve_finding_zones_colon_synonym():
+    r = bodymap_store.resolve_finding_zones("face", ["Colon"], side="diagnosis")
+    assert "face-forehead-li" in r["zones"]  # "Large intestine (mid forehead)"
+
+def test_resolve_finding_zones_plural_insensitive():
+    # E4L "Lung" (singular) matches the zone "Lungs (cheek)" (plural)
+    r = bodymap_store.resolve_finding_zones("face", ["Lung"], side="diagnosis")
+    assert "face-cheek-R" in r["zones"] and "face-cheek-L" in r["zones"]
+
+def test_resolve_finding_zones_side_filter_and_noise():
+    # noise words match nothing; side filter keeps it to the diagnosis layer
+    r = bodymap_store.resolve_finding_zones("face", ["Source Driver", "Cell"], side="diagnosis")
+    assert r["zones"] == [] and r["by_name"] == {}
+
+def test_resolve_finding_zones_unknown_system_empty():
+    r = bodymap_store.resolve_finding_zones("nope", ["Liver"])
+    assert r == {"zones": [], "by_name": {}}
+
+def test_resolve_finding_zones_dedupes_and_orders():
+    # two findings hitting overlapping zones -> each zone id appears once
+    r = bodymap_store.resolve_finding_zones("face", ["Kidney", "Bladder"], side="diagnosis")
+    assert len(r["zones"]) == len(set(r["zones"]))
+    assert "face-chin" in r["zones"]  # chin = "Kidney / bladder / hormones"

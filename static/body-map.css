@@ -34,3 +34,11 @@ body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:v
 .bm-leader { stroke:#c9c2b0; stroke-width:0.75; fill:none; }
 .bm-leader.bm-sel { stroke:var(--bm-accent); stroke-width:1.25; }
 .bm-point { cursor:pointer; }
+/* Personalized portal view: the client's finding zones stand out in gold. */
+.bm-zone.bm-lit { fill:var(--bm-accent) !important; fill-opacity:0.55 !important; stroke:var(--bm-ink) !important; stroke-width:2.5 !important; }
+.bm-label.bm-lit { font-weight:700; fill:var(--bm-ink); }
+.bm-leader.bm-lit { stroke:var(--bm-accent); stroke-width:1.25; }
+.bm-findings { list-style:none; padding:0; margin:.5rem 0 0; }
+.bm-findings li { margin:.3rem 0; }
+.bm-finding { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--bm-line); background:#fff; border-radius:6px; cursor:pointer; color:var(--bm-ink); font-size:14px; }
+.bm-finding:hover { background:var(--bm-accent); color:#fff; border-color:var(--bm-accent); }

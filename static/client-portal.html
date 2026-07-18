@@ -1105,9 +1105,9 @@ function render(d, v){
     </div>`;
   }
 
-  html += `<div class="card quiet"><h2>Body Map: Iris &amp; Sclera</h2>
-    <p class="muted small" style="margin:.3rem 0 .7rem">Explore the map of the iris and sclera, or map the zones onto a photo of your own eye.</p>
-    <a class="btn full" href="/body-map">Open the Body Map</a></div>`;
+  html += `<div class="card quiet"><h2>Your Body Map</h2>
+    <p class="muted small" style="margin:.3rem 0 .7rem">See your findings mapped onto a photo of your own face, or explore the full atlas of reflex maps — iris, sclera, ear, hands, feet and more.</p>
+    <a class="btn full" href="/portal/${encodeURIComponent(seg)}/bodymap">Open your Body Map</a></div>`;
 
   // Account snapshot — always shown when we have an identity.
   if(v && v.account){
