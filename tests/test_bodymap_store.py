@@ -349,6 +349,22 @@ def test_shipped_lymph_seed_valid():
     assert views == {"front", "back"}
 
 
+def test_shipped_face_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["face"].name == "bodymap-face.json"
+    data = json.loads((repo / "bodymap-face.json").read_text())
+    assert data["reference_frame"] == "face_outline"
+    assert data.get("outline") and len(data.get("anchors", [])) == 2
+    groups = {g["id"] for g in data["groups"]}
+    assert groups == {"wood", "fire", "earth", "metal", "water"}
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"face zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "ellipse"
+        assert z["group"] in groups
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
