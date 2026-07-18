@@ -496,6 +496,12 @@ def test_shipped_endocrine_seed_valid():
     assert bodymap_store.resolve_finding_zones("endocrine", ["Adrenal Gland"])["zones"]
 
 
+def test_shipped_respiratory_seed_valid():
+    _assert_body_atlas_valid("respiratory", ("front", "back"))
+    assert bodymap_store.resolve_finding_zones("respiratory", ["Lung"])["zones"]
+    assert bodymap_store.resolve_finding_zones("respiratory", ["Bronchi"])["zones"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")

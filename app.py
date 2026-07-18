@@ -18911,6 +18911,8 @@ _PERSONALIZE_SYSTEMS = {
                 "theme": {"nerve", "nervous", "neuro", "neurological"}},
     "endocrine": {"view": "front", "resolve_side": None,
                   "theme": {"endocrine", "gland", "hormone", "hormonal"}},
+    "respiratory": {"view": "front", "resolve_side": None,
+                    "theme": {"respiratory", "respiration", "breath", "breathing"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},
