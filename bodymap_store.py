@@ -42,6 +42,45 @@ SYSTEMS = {
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
                "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json", "bodymap-organclock.json", "bodymap-nervous.json", "bodymap-endocrine.json", "bodymap-respiratory.json", "bodymap-digestive.json", "bodymap-cardiovascular.json", "bodymap-urogenital.json")
+# Systems overview catalog: display metadata for the landing page, grouped by
+# category (order preserved). Every SYSTEMS key must appear exactly once here —
+# test_system_catalog_covers_all_systems enforces it so the two can't drift.
+SYSTEM_CATALOG = [
+    # Eyes & reflex microsystems
+    ("iridology", "Iridology (iris)", "Eyes & reflex microsystems", "The iris read as a map of organs and body systems, in radial germ-layer rings."),
+    ("sclerology", "Sclerology (sclera)", "Eyes & reflex microsystems", "The red vessels in the white of the eye and what they signal."),
+    ("ear", "Ear (auricular)", "Eyes & reflex microsystems", "The ear as an inverted homunculus — the whole body on the auricle."),
+    ("foot", "Foot reflexology", "Eyes & reflex microsystems", "Reflex zones across the soles that correspond to the organs."),
+    ("hand", "Hand reflexology", "Eyes & reflex microsystems", "Reflex zones across the palms that correspond to the organs."),
+    ("face", "Facial diagnosis", "Eyes & reflex microsystems", "Five layers: TCM organ zones, acupoints, lymph, nerves, and EAV points."),
+    # Meridian & energetic
+    ("meridian", "Meridians (acupuncture)", "Meridian & energetic", "The fourteen acupuncture channels and their key points on the body."),
+    ("eav", "Acupuncture & EAV points", "Meridian & energetic", "Jing-well terminals and Voll (EAV) points on the hands and feet."),
+    ("dental", "Dental / meridian chart", "Meridian & energetic", "Each tooth and the meridian and organs it relates to."),
+    ("organclock", "Chinese organ clock", "Meridian & energetic", "The 24-hour cycle of when each organ meridian peaks."),
+    # Body systems
+    ("organs", "Organ atlas", "Body systems", "The major internal organs at their positions on the whole body."),
+    ("skeleton", "Skeleton", "Body systems", "The bones and joints, front and back."),
+    ("muscle", "Muscles", "Body systems", "The major muscle groups, front and back."),
+    ("nervous", "Nervous system", "Body systems", "Brain, spinal cord, peripheral nerves and autonomic ganglia."),
+    ("endocrine", "Endocrine system", "Body systems", "The hormone-producing glands, head to pelvis."),
+    ("respiratory", "Respiratory system", "Body systems", "The airway, lungs by lobe, pleura and diaphragm."),
+    ("digestive", "Digestive system", "Body systems", "The GI tract from mouth to rectum plus the accessory organs."),
+    ("cardiovascular", "Cardiovascular system", "Body systems", "The heart, great vessels and the major arteries and veins."),
+    ("urogenital", "Urogenital system", "Body systems", "The urinary tract and reproductive organs, male and female."),
+    ("lymph", "Immune, lymphatic & connective tissue", "Body systems", "Lymph nodes and ducts, the immune organs, and connective tissue."),
+    # Nerve maps
+    ("neurotome", "Dermatomes (neurotomes)", "Nerve maps", "The skin regions each mapped to their spinal nerve segment."),
+]
+
+
+def system_catalog():
+    """The overview catalog as a flat ordered list of dicts (id, name, category,
+    description). The landing page groups by category, preserving order."""
+    return [{"id": s, "name": n, "category": c, "description": d}
+            for (s, n, c, d) in SYSTEM_CATALOG]
+
+
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 

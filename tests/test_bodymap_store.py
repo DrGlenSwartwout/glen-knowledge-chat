@@ -465,6 +465,16 @@ def test_resolve_finding_zones_organclock_lights_its_window():
     assert bodymap_store.resolve_finding_zones("organclock", ["Kidney"])["zones"] == ["clock-KI"]
 
 
+def test_system_catalog_covers_all_systems():
+    cat = bodymap_store.system_catalog()
+    cat_ids = [c["id"] for c in cat]
+    # every registered system has exactly one catalog entry, and vice versa
+    assert len(cat_ids) == len(set(cat_ids)), "duplicate catalog ids"
+    assert set(cat_ids) == set(bodymap_store.SYSTEMS), "catalog vs SYSTEMS drift"
+    for c in cat:
+        assert c["name"] and c["category"] and c["description"], f"incomplete catalog entry {c['id']}"
+
+
 def _assert_body_atlas_valid(system, expected_views):
     """Shared check for a whole-body system atlas: on the body silhouette, every
     zone valid, groups referenced exist, and the expected views are present."""
