@@ -26,7 +26,9 @@ _CSS = """
               border-bottom: 2px solid var(--gold); padding-bottom: 12px; margin-bottom: 18px; }
   .masthead .logo { width: 54px; height: auto; flex: 0 0 auto; }
   .masthead .mh-text { flex: 1 1 auto; }
+  .masthead .wordmark-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
   .masthead .wordmark { font-weight: 700; letter-spacing: .04em; font-size: 20px; }
+  .masthead .mh-name { font-weight: 700; font-size: 20px; text-align: right; margin-left: auto; white-space: nowrap; }
   .masthead .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
   h2 { color: var(--gold); font-size: 16px; border-bottom: 1px solid var(--hair); padding-bottom: 3px; margin: 22px 0 8px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -67,12 +69,16 @@ def _logo_data_uri():
 
 def _masthead(report):
     c = report.get("client") or {}
-    sub = " · ".join(x for x in (_e(c.get("name")), _e(report.get("date"))) if x)
+    name = _e(c.get("name"))
+    date = _e(report.get("date"))
     logo = _logo_data_uri()
     img = f'<img class="logo" src="{logo}" alt="">' if logo else ""
+    name_el = f'<div class="mh-name">{name}</div>' if name else ""
+    sub = "Biofield Analysis" + (f" · {date}" if date else "")
     return (f'<div class="masthead">{img}'
-            f'<div class="mh-text"><div class="wordmark">{_e(WORDMARK)}</div>'
-            f'<div class="sub">Biofield Analysis · {sub}</div></div></div>')
+            f'<div class="mh-text">'
+            f'<div class="wordmark-row"><div class="wordmark">{_e(WORDMARK)}</div>{name_el}</div>'
+            f'<div class="sub">{sub}</div></div></div>')
 
 
 def _terrain(report):
