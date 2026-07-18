@@ -5632,6 +5632,27 @@ def _catalog_products():
     return [dict(p, slug=s) for s, p in (_PRODUCTS.get("products") or {}).items()]
 
 
+def _order_physical_units(order):
+    """Total physical shipping units (bottles, bundles expanded) for a stored order
+    dict. Accepts either an order already carrying a parsed `items` list (as
+    returned by dashboard.orders.get_order/list_orders) or a raw `items_json`
+    string column (as returned by a hand-rolled SQL SELECT). Read-only display
+    field — never raises."""
+    order = order or {}
+    items = order.get("items")
+    if items is None:
+        import json as _json
+        try:
+            items = _json.loads(order.get("items_json") or "[]")
+        except Exception:
+            items = []
+    try:
+        catalog = {p.get("slug"): p for p in _catalog_products()}
+        return _bos_orders.physical_units(items, catalog)
+    except Exception:
+        return 0
+
+
 def _get_product(slug):
     """The sellable product for a slug, following a retired duplicate to its live twin.
 
@@ -37807,7 +37828,7 @@ def _published_invoices_for(cx, email):
         return []
     try:
         rows = cx.execute(
-            "SELECT total_cents, invoice_token FROM orders "
+            "SELECT total_cents, invoice_token, COALESCE(items_json,'[]') FROM orders "
             "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
             "AND coalesce(pay_status,'')<>'paid' AND coalesce(invoice_token,'')<>'' "
             "AND coalesce(status,'') NOT IN ('cancelled','delivered','done') "
@@ -37816,7 +37837,8 @@ def _published_invoices_for(cx, email):
         return []
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(total_cents or 0) / 100:.2f}",
-             "link": f"{base}/invoice/{tok}"} for total_cents, tok in rows]
+             "physical_units": _order_physical_units({"items_json": items_json}),
+             "link": f"{base}/invoice/{tok}"} for total_cents, tok, items_json in rows]
 
 
 def _past_invoices_for(cx, email):
@@ -37830,7 +37852,7 @@ def _past_invoices_for(cx, email):
     try:
         rows = cx.execute(
             "SELECT total_cents, COALESCE(invoice_token,''), "
-            "COALESCE(paid_at, updated_at, created_at, '') FROM orders "
+            "COALESCE(paid_at, updated_at, created_at, ''), COALESCE(items_json,'[]') FROM orders "
             "WHERE lower(coalesce(email,''))=? AND coalesce(pay_status,'')='paid' "
             "AND coalesce(status,'')<>'cancelled' ORDER BY id DESC", (email,)).fetchall()
     except Exception:
@@ -37838,7 +37860,8 @@ def _past_invoices_for(cx, email):
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(tc or 0) / 100:.2f}",
              "paid": True, "when": (when or "")[:10],
-             "link": (f"{base}/invoice/{tok}" if tok else "")} for tc, tok, when in rows]
+             "physical_units": _order_physical_units({"items_json": items_json}),
+             "link": (f"{base}/invoice/{tok}" if tok else "")} for tc, tok, when, items_json in rows]
 
 
 @app.route("/api/console/order/<int:oid>/publish-to-portal", methods=["POST"])
@@ -37944,7 +37967,11 @@ def console_client_invoice():
         return jsonify({"ok": True, "order": None, **biofield_paid})
     lines = []
     try:
-        for it in (json.loads(r["items"]) or []):
+        items = json.loads(r["items"]) or []
+    except Exception:
+        items = []
+    try:
+        for it in items:
             cents = it.get("line_cents")
             lines.append({"name": it.get("name") or it.get("slug") or "",
                           "qty": it.get("qty") or 1,
@@ -37958,6 +37985,7 @@ def console_client_invoice():
     return jsonify({"ok": True, "order": {
         "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
+        "physical_units": _order_physical_units({"items": items}),
         "edit_url": edit_url, "lines": lines}, **biofield_paid})
 
 
@@ -39698,6 +39726,7 @@ def _invoice_summary(order):
         "name": _invoice_display_name(order),
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
+        "physical_units": _order_physical_units(order),
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "adjustment_cents": int(order.get("adjustment_cents") or 0),
@@ -40619,6 +40648,15 @@ def bos_orders_create():
                     o["backorder_units"] = back
             except Exception as _e:
                 print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
+            # Total physical product count (shipping units): bundles expand to their
+            # component bottles, services/info-only/shipping/adjustments count 0.
+            # Catalog built once and reused across every order on the board.
+            try:
+                _phys_catalog = {p.get("slug"): p for p in _catalog_products()}
+                for o in rows:
+                    o["physical_units"] = _bos_orders.physical_units(o.get("items") or [], _phys_catalog)
+            except Exception as _e:
+                print(f"[orders] physical_units annotate skipped: {_e!r}", flush=True)
             # Display-name fallback: many orders carry only a shipping name, which is
             # blank for portal/reorder flows that don't re-collect it. Backfill the
             # display name from the people table by email (one grouped query).
