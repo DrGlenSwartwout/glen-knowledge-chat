@@ -37570,6 +37570,18 @@ def body_map_page():
     return send_from_directory(STATIC, "body-map.html")
 
 
+@app.route("/body-map/overview")
+def body_map_overview_page():
+    """Systems-overview landing page — a grouped gallery of every Body Map system."""
+    return send_from_directory(STATIC, "body-map-overview.html")
+
+
+@app.route("/body-map/systems")
+def body_map_systems():
+    """The systems catalog (id, name, category, description) for the overview page."""
+    return jsonify({"systems": bodymap_store.system_catalog()})
+
+
 @app.route("/body-map.js")
 def body_map_js():
     return send_from_directory(STATIC, "body-map.js")
