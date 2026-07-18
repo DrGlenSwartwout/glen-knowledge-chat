@@ -133,6 +133,49 @@ GROUP_LABELS = {
 }
 
 
+# Full classical point count per channel (sums to 361).
+POINT_COUNTS = {
+    "LU": 11, "LI": 20, "ST": 45, "SP": 21, "HT": 9, "SI": 19, "BL": 67, "KI": 27,
+    "PC": 9, "TE": 23, "GB": 44, "LR": 14, "CV": 24, "GV": 28,
+}
+# Well-known pinyin names for select points (point number -> name).
+NAMED = {
+    "LU": {1: "Zhongfu", 5: "Chize", 7: "Lieque", 9: "Taiyuan", 11: "Shaoshang"},
+    "LI": {1: "Shangyang", 4: "Hegu", 11: "Quchi", 15: "Jianyu", 20: "Yingxiang"},
+    "ST": {1: "Chengqi", 9: "Renying", 12: "Quepen", 25: "Tianshu", 36: "Zusanli", 40: "Fenglong", 44: "Neiting"},
+    "SP": {1: "Yinbai", 3: "Taibai", 6: "Sanyinjiao", 9: "Yinlingquan", 10: "Xuehai", 21: "Dabao"},
+    "HT": {3: "Shaohai", 7: "Shenmen", 9: "Shaochong"},
+    "SI": {1: "Shaoze", 3: "Houxi", 8: "Xiaohai", 19: "Tinggong"},
+    "BL": {1: "Jingming", 10: "Tianzhu", 13: "Feishu", 23: "Shenshu", 40: "Weizhong", 60: "Kunlun", 67: "Zhiyin"},
+    "KI": {1: "Yongquan", 3: "Taixi", 7: "Fuliu", 27: "Shufu"},
+    "PC": {3: "Quze", 6: "Neiguan", 8: "Laogong", 9: "Zhongchong"},
+    "TE": {1: "Guanchong", 5: "Waiguan", 14: "Jianliao", 23: "Sizhukong"},
+    "GB": {20: "Fengchi", 21: "Jianjing", 30: "Huantiao", 34: "Yanglingquan", 40: "Qiuxu", 44: "Zuqiaoyin"},
+    "LR": {1: "Dadun", 3: "Taichong", 8: "Ququan", 14: "Qimen"},
+    "CV": {1: "Huiyin", 4: "Guanyuan", 6: "Qihai", 8: "Shenque", 12: "Zhongwan", 17: "Shanzhong", 22: "Tiantu", 24: "Chengjiang"},
+    "GV": {1: "Changqiang", 4: "Mingmen", 14: "Dazhui", 20: "Baihui", 26: "Renzhong"},
+}
+
+
+def sample_polyline(pts, n):
+    """n points evenly spaced by arc length from pts[0] (point 1) to pts[-1]."""
+    seg = [((pts[i + 1][0] - pts[i][0]) ** 2 + (pts[i + 1][1] - pts[i][1]) ** 2) ** 0.5
+           for i in range(len(pts) - 1)]
+    total = sum(seg) or 1.0
+    out = []
+    for i in range(n):
+        target = (0.0 if n == 1 else i / (n - 1)) * total
+        acc = 0.0
+        for j in range(len(seg)):
+            if acc + seg[j] >= target or j == len(seg) - 1:
+                f = (target - acc) / seg[j] if seg[j] > 0 else 0.0
+                out.append((round(pts[j][0] + (pts[j + 1][0] - pts[j][0]) * f, 4),
+                            round(pts[j][1] + (pts[j + 1][1] - pts[j][1]) * f, 4)))
+                break
+            acc += seg[j]
+    return out
+
+
 def _mk(zid, side, group, geometry, anatomy, meaning):
     return {
         "id": zid, "side": side, "bilateral": False, "group": group,
@@ -145,20 +188,29 @@ def _mk(zid, side, group, geometry, anatomy, meaning):
 def main():
     zones = []
     groups = []
-    for key, name, side, bilateral, waypoints, points in CHANNELS:
+    for key, name, side, bilateral, waypoints, _curated in CHANNELS:
         groups.append({"id": key, "label": GROUP_LABELS[key]})
-        copies = [("R", waypoints, points)]
+        # full classical point set, distributed along the channel path
+        n = POINT_COUNTS[key]
+        sampled = sample_polyline(waypoints, n)
+        pts = []
+        for k in range(1, n + 1):
+            x, y = sampled[k - 1]
+            pin = NAMED.get(key, {}).get(k)
+            pname = f"{key}{k} {pin}" if pin else f"{key}{k}"
+            pts.append((f"{key}{k}", pname, x, y))
+        copies = [("R", waypoints, pts)]
         if bilateral:
             wl = [(round(1 - x, 4), y) for (x, y) in waypoints]
-            pl = [(s, n, round(1 - x, 4), y) for (s, n, x, y) in points]
+            pl = [(s, nm, round(1 - x, 4), y) for (s, nm, x, y) in pts]
             copies.append(("L", wl, pl))
-        for tag, wps, pts in copies:
+        for tag, wps, ppts in copies:
             suffix = f"-{tag}" if bilateral else ""
             zones.append(_mk(
                 f"mer-{key}{suffix}-line", side, key,
                 {"type": "path", "d": catmull_rom_open(wps)},
                 f"{name} channel", f"The {name} channel."))
-            for slug, pname, x, y in pts:
+            for slug, pname, x, y in ppts:
                 zones.append(_mk(
                     f"mer-{slug}{suffix}", side, key,
                     {"type": "point", "x": x, "y": y},
