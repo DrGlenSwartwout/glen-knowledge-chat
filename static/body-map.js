@@ -62,7 +62,8 @@
   }
 
   // Distinct region colors, assigned by a group's position in the payload's group list.
-  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86"];
+  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86",
+    "#b5447a", "#2f8f8f", "#8a6d2f", "#6a4ac0", "#c05a2a", "#3a7a5f", "#a03a6a", "#4a6aae"];
   function groupColor(z) {
     const groups = groupsOf(state.payload);
     const idx = groups.findIndex(g => g.id === zoneGroup(z));
@@ -143,6 +144,21 @@
         dot.setAttribute("fill", col); dot.setAttribute("stroke", "#fff"); dot.setAttribute("stroke-width", "1");
         dot.addEventListener("click", () => selectZone(z));
         svg.appendChild(dot); addLabel(s.x, s.y);
+      } else if (geo.type === "path") {
+        // a stroked line (e.g. an acupuncture meridian) rather than a filled area
+        const line = document.createElementNS(svgNS, "path");
+        line.setAttribute("d", transformPathD(geo.d, (p) => N(p.x, p.y)));
+        line.setAttribute("class", "bm-zone bm-line"); line.dataset.id = z.id;
+        line.setAttribute("fill", "none"); line.setAttribute("stroke", col);
+        line.setAttribute("stroke-width", "2.5"); line.setAttribute("stroke-opacity", "0.85");
+        line.setAttribute("stroke-linecap", "round"); line.setAttribute("stroke-linejoin", "round");
+        line.addEventListener("click", () => selectZone(z));
+        svg.appendChild(line);
+        // label at a coordinate pair near the middle of the path
+        const nums = (geo.d.match(/-?\d*\.?\d+/g) || []).map(Number);
+        const m = Math.max(0, (Math.floor(nums.length / 4) * 2) - ((Math.floor(nums.length / 4) * 2) % 2));
+        const lc = N(nums[m] ?? 0.5, nums[m + 1] ?? 0.5);
+        addLabel(lc.x, lc.y);
       } else {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
