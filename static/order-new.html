@@ -141,6 +141,12 @@
     <div id="cprices-note" class="muted" style="margin-top:6px"></div>
   </div>
 
+  <div id="membership-offer" class="section" style="display:none">
+    <h2>Group coaching membership</h2>
+    <div id="membership-offer-copy" class="muted"></div>
+    <button class="ghost" id="membership-toggle" onclick="toggleMembership()">Add membership</button>
+  </div>
+
   <div id="pay-panel" class="section" style="display:none">
     <h2>Payments</h2>
     <div id="pay-rows"></div>
@@ -170,6 +176,7 @@ let POINTS_BAL = 0;        // selected customer's redeemable points balance (cen
 let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
 let previewTimer = null;
 let PAY_ROWS = {};         // payments ledger rows keyed by id, for lookup from inline handlers (avoids interpolating free text into onclick)
+let MEMBERSHIP_TIER = 'month';  // resolved from the offer endpoint's offered_tiers[0]; there is no page-global default
 
 function toast(msg, kind="ok"){ const t=document.getElementById("toast"); t.textContent=msg; t.className="show "+kind; setTimeout(()=>t.className=kind,2200); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -318,7 +325,7 @@ function rmLine(i){ LINES.splice(i,1); renderLines(); }
 function linesPayload(){ return LINES.map(l=> l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}); }
 function refreshPreview(){
   clearTimeout(previewTimer);
-  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; recalc(); return; }
+  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; recalc(); refreshMembershipOffer(); return; }
   previewTimer = setTimeout(async ()=>{
     try{
       const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload(), email:$("c-email").value.trim()})});
@@ -337,7 +344,54 @@ function refreshPreview(){
       });
       recalc();
     }catch(e){ /* keep client estimate */ }
+    refreshMembershipOffer();
   }, 250);
+}
+// ── membership: provisional add/remove on this order (staff-side). Adding the line
+// does NOT grant membership by itself — grant-on-paid happens server-side once the
+// invoice is actually paid. Toggling the line just reprices this proposed invoice at
+// member rates (Task 2 handles that once a `membership:<tier>` line is present).
+// Copy mirrors invoice.html's renderMembershipOffer() for one consistent house voice:
+// no em dashes, no shouting.
+function hasMembershipLine(){ return LINES.some(l => (l.slug||'').startsWith('membership:')); }
+function toggleMembership(){
+  if (hasMembershipLine()){
+    LINES = LINES.filter(l => !(l.slug||'').startsWith('membership:'));
+  } else {
+    LINES.push({slug:'membership:'+MEMBERSHIP_TIER, name:'Membership', qty:1, unit_cents:0,
+                edited:false, kind:'membership', tier:MEMBERSHIP_TIER});
+  }
+  renderLines(); refreshPreview(); refreshMembershipOffer();
+}
+async function refreshMembershipOffer(){
+  const box = $("membership-offer");
+  // Only the product lines feed the offer math — the membership line itself isn't
+  // a product to price and would double-count if sent back to the endpoint.
+  const prod = LINES.filter(l => !(l.slug||'').startsWith('membership:')).map(l => ({slug:l.slug, qty:l.qty}));
+  if (!prod.length){ box.style.display = "none"; return; }
+  let j;
+  try{
+    const r = await fetch("/api/orders/membership-offer", {method:"POST", headers:HEADERS,
+      body: JSON.stringify({email:$("c-email").value.trim(), tier:MEMBERSHIP_TIER, lines:prod})});
+    j = await r.json();
+  }catch(e){ return; }  // network hiccup: leave the control as it was
+  if (!j || !j.ok){ box.style.display = "none"; return; }
+  MEMBERSHIP_TIER = (j.offered_tiers && j.offered_tiers[0]) || j.tier || "month";
+  box.style.display = "";
+  const hasLine = hasMembershipLine();
+  $("membership-toggle").textContent = hasLine ? "Remove membership" : "Add membership";
+  const g=dollars(j.gross_cents), s=dollars(j.savings_cents), n=dollars(j.net_add_cents), ns=dollars(j.net_savings_cents);
+  let copy;
+  if (hasLine){
+    copy = (j.net_add_cents > 0)
+      ? "Products are now at the member price, saving "+s+" on this order. The "+g+" membership added "+n+" to this order’s total."
+      : "Products are now at the member price. The "+g+" membership pays for itself here, for a net savings of "+ns+" on this order.";
+  } else {
+    copy = (j.net_add_cents > 0)
+      ? "Add membership for "+g+" and unlock "+s+" in member pricing on these products. That is only "+n+" more on this order today."
+      : "Add membership for "+g+" and unlock "+s+" in member pricing on these products. That covers the membership and still saves "+ns+" on this order.";
+  }
+  $("membership-offer-copy").textContent = copy;
 }
 // Adjustment (signed) and Total are two views of the same knob: enter either and
 // the other auto-calculates around the line subtotal (− discount − points).
@@ -427,6 +481,7 @@ async function loadOrderForEdit(oid){
   if (o.invoice_note) $("o-note").value = o.invoice_note;
   setMethod(o.pay_method);          // restore this order's own recorded method (edit mode)
   renderLines();
+  refreshMembershipOffer();         // reflects an existing membership line (or its absence) right away
   loadPickupDefault(o.email||"");   // shows the client's default; EDIT_OID keeps it from overriding this order
   // Payments ledger: not part of the /api/orders list payload, so load it separately.
   $("pay-panel").style.display = "block";
