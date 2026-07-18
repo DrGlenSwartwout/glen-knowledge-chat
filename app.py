@@ -39083,16 +39083,47 @@ def api_orders_price_preview():
                     "subtotal_cents": subtotal, "lines": out_lines})
 
 
+def _membership_offer_math(email, product_lines, tier_key):
+    """Server-side (no HTTP, no owner auth) membership-offer economics for a product
+    cart + tier. Prices the product lines twice through _price_inhouse_invoice -- once
+    as-is (list, for a non-member) and once with the membership line appended (member
+    rate) -- and returns the fee, the product savings the membership unlocks on THIS
+    order, and the net add. This is the SAME pricer _reprice_and_persist_invoice uses,
+    so the offer's quoted savings equal what the customer actually gets on add.
+
+    Returns {gross_cents, savings_cents, net_add_cents, net_savings_cents}. Shared by
+    the OWNER offer endpoint and the token-authed customer invoice path (never routes
+    through the owner-gated price-preview HTTP endpoint)."""
+    from dashboard import membership_products as _mp
+    tier = _mp.get_tier(tier_key)
+    gross = int(tier["price_cents"]) if tier else 0
+    email = (email or "").strip().lower()
+
+    def _prod_subtotal(lines):
+        # pickup=True + ship=None: we only read the product subtotal (computed before
+        # shipping), so neutralize shipping/ship-to entirely.
+        priced = _price_inhouse_invoice(lines, email=email, pickup=True, ship=None)
+        if not priced:
+            return 0
+        return sum(int(it.get("line_cents") or 0) for it in priced["items_rec"]
+                   if not str(it.get("slug") or "").startswith("membership:"))
+
+    base_sub = _prod_subtotal(list(product_lines))
+    mem_sub = _prod_subtotal(list(product_lines) + [{"slug": _mp.line_slug(tier_key), "qty": 1}])
+    savings = max(0, base_sub - mem_sub)
+    return {"gross_cents": gross, "savings_cents": savings,
+            "net_add_cents": max(0, gross - savings), "net_savings_cents": savings}
+
+
 @app.route("/api/orders/membership-offer", methods=["POST"])
 def api_orders_membership_offer():
     """Given a product cart + a membership tier, return the offer economics: gross fee,
     the product savings the membership unlocks on THIS order, and the net add. Pure read;
-    no persistence. Used by the staff editor and the customer invoice controls.
+    no persistence. Used by the staff editor.
 
-    Gated the same as /api/orders/price-preview (OWNER via _bos_actor): the savings
-    math re-invokes that endpoint in-process, so an unauthorized caller can never get
-    real numbers out of it anyway -- gating here turns that into a clean 401 instead
-    of a 500 (KeyError on the nested endpoint's unauthorized response body)."""
+    OWNER-gated (via _bos_actor): staff-only. The customer invoice path does NOT call
+    this route -- it uses the same _membership_offer_math helper directly (token-authed),
+    so it never needs owner auth. The savings math is fully delegated to that helper."""
     actor = _bos_actor()
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
@@ -39104,30 +39135,9 @@ def api_orders_membership_offer():
         return jsonify({"ok": False, "error": "unknown tier"}), 400
     lines_in = _body.get("lines") or []
     email = (_body.get("email") or "").strip().lower()
-    # Forward the caller's console-key auth into the nested price-preview call below --
-    # test_request_context() builds a fresh WSGI environ that does NOT inherit the
-    # outer request's headers, and api_orders_price_preview() gates on _bos_actor()
-    # reading X-Console-Key off that fresh request. Without forwarding it, the nested
-    # call 401s and there is no "lines" key to read.
-    _console_key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
-    # Price the product lines twice: as-is (list for a non-member) and with the membership
-    # line present (member). Savings = the delta the membership unlocks.
-    def _subtotal(lines):
-        with app.test_request_context(
-                "/api/orders/price-preview", method="POST",
-                json={"email": email, "lines": lines},
-                headers={"X-Console-Key": _console_key}):
-            resp = api_orders_price_preview()
-        data = resp.get_json() if hasattr(resp, "get_json") else resp[0].get_json()
-        prod = [l for l in data["lines"] if not str(l["slug"]).startswith("membership:")]
-        return sum(l["line_cents"] for l in prod), prod
-    base_sub, _ = _subtotal(lines_in)
-    mem_sub, _ = _subtotal(lines_in + [{"slug": _mp.line_slug(tier_key), "qty": 1}])
-    savings = max(0, base_sub - mem_sub)
-    gross = int(tier["price_cents"])
-    return jsonify({"ok": True, "tier": tier_key, "gross_cents": gross,
-                    "savings_cents": savings, "net_add_cents": max(0, gross - savings),
-                    "net_savings_cents": savings, "offered_tiers": _mp.invoice_offer_tiers()})
+    math = _membership_offer_math(email, lines_in, tier_key)
+    return jsonify({"ok": True, "tier": tier_key, **math,
+                    "offered_tiers": _mp.invoice_offer_tiers()})
 
 
 @app.route("/api/orders/<int:oid>/payments", methods=["GET"])
