@@ -18909,6 +18909,8 @@ _PERSONALIZE_SYSTEMS = {
     "organclock": {"view": "clock", "resolve_side": None},
     "nervous": {"view": "front", "resolve_side": None,
                 "theme": {"nerve", "nervous", "neuro", "neurological"}},
+    "endocrine": {"view": "front", "resolve_side": None,
+                  "theme": {"endocrine", "gland", "hormone", "hormonal"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},
