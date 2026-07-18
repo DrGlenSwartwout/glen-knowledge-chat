@@ -18913,6 +18913,8 @@ _PERSONALIZE_SYSTEMS = {
                   "theme": {"endocrine", "gland", "hormone", "hormonal"}},
     "respiratory": {"view": "front", "resolve_side": None,
                     "theme": {"respiratory", "respiration", "breath", "breathing"}},
+    "digestive": {"view": "front", "resolve_side": None,
+                  "theme": {"digestive", "digestion", "gastrointestinal", "gut"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},

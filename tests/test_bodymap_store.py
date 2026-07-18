@@ -502,6 +502,14 @@ def test_shipped_respiratory_seed_valid():
     assert bodymap_store.resolve_finding_zones("respiratory", ["Bronchi"])["zones"]
 
 
+def test_shipped_digestive_seed_valid():
+    _assert_body_atlas_valid("digestive", ("front",))
+    assert bodymap_store.resolve_finding_zones("digestive", ["Liver"])["zones"]
+    # accessory organ + large/small intestine separation holds here too
+    lg = bodymap_store.resolve_finding_zones("digestive", ["Large Intestine"])["zones"]
+    assert "dig-jejunum-ileum" not in lg and any("colon" in z for z in lg)
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")
