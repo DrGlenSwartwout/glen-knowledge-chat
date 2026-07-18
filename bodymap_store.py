@@ -37,10 +37,11 @@ SYSTEMS = {
     "respiratory": DATA_DIR / "bodymap-respiratory.json",
     "digestive": DATA_DIR / "bodymap-digestive.json",
     "cardiovascular": DATA_DIR / "bodymap-cardiovascular.json",
+    "urogenital": DATA_DIR / "bodymap-urogenital.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json", "bodymap-organclock.json", "bodymap-nervous.json", "bodymap-endocrine.json", "bodymap-respiratory.json", "bodymap-digestive.json", "bodymap-cardiovascular.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json", "bodymap-organclock.json", "bodymap-nervous.json", "bodymap-endocrine.json", "bodymap-respiratory.json", "bodymap-digestive.json", "bodymap-cardiovascular.json", "bodymap-urogenital.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -265,10 +266,11 @@ _NOISE_WORDS = {"driver", "imprinter", "the", "and", "region", "of", "a", "an"}
 
 
 def _stem(s):
-    """Lowercase and strip a trailing plural 's' from each word, so an organ name
-    matches whether the finding or the zone spells it singular or plural
-    ('Lung' vs 'Lungs (cheek)', 'Kidney' vs 'Kidneys'). Matching-only; not display."""
-    return re.sub(r"(\w)s\b", r"\1", (s or "").strip().lower())
+    """Lowercase and singularize each word so an organ name matches whether the
+    finding or the zone spells it singular or plural: '-ies'->'-y' (ovaries->ovary,
+    arteries->artery) then a trailing '-s' ('Lungs'->'lung'). Matching-only; not display."""
+    s = re.sub(r"(\w)ies\b", r"\1y", (s or "").strip().lower())
+    return re.sub(r"(\w)s\b", r"\1", s)
 
 
 def zone_ids(system, side=None):
