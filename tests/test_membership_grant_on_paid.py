@@ -141,3 +141,76 @@ def test_altpay_failed_grant_rolls_back_claim_and_is_retryable(tmp_path, monkeyp
         "SELECT COUNT(*) FROM order_membership_grants WHERE order_ref=?",
         (ref,)).fetchone()[0] == 1
     assert app_mod._is_paid_member(email) is True
+
+
+def test_grant_failing_AFTER_customer_commit_leaves_no_orphan_claim(tmp_path, monkeypatch):
+    """The dangerous window the old ordering ignored: find_or_create_by_email commits
+    mid-grant (when it inserts a NEW person). Under the old ordering, where the claim
+    INSERT preceded _grant_membership, that commit made the PENDING claim durable, and
+    THEN the `INSERT INTO memberships` ran. If that memberships write raised, the claim
+    was already committed and could not roll back: an orphaned claim with NO membership
+    row, and every retry short-circuited to "already", permanently starving the grant.
+
+    The old _boom test replaced _grant_membership with a function that raised BEFORE
+    find_or_create's commit, so the claim was never made durable -- it never exercised
+    this post-commit window. This test injects the failure AFTER a real customer-upsert
+    commit: the stand-in does the REAL find_or_create_by_email (which commits, because
+    the customer is brand new) and only THEN raises, standing in for a failing
+    `INSERT INTO memberships`. The invariant that must hold: NO committed
+    order_membership_grants claim survives without a membership grant, and a later retry
+    still grants. Under the old ordering the claim count is 1 here (orphan); the fix
+    makes it 0."""
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_mod, "LOG_DB", db)
+    c = sqlite3.connect(db)
+    c.row_factory = sqlite3.Row
+    orders.init_orders_table(c)
+    app_mod.init_membership_tables(c)
+    app_mod._init_people_table()   # the people table find_or_create_by_email commits into
+    monkeypatch.setattr(orders, "settle_order_points", lambda *a, **k: None)
+
+    email, ref = "postcommit@example.com", "INH-POSTCOMMIT"
+    oid = orders.upsert_order(
+        c, source="inhouse", external_ref=ref,
+        email=email, total_cents=9900,
+        items=[{"slug": "membership:month", "name": "Monthly Membership",
+                "qty": 1, "unit_cents": 9900, "line_cents": 9900,
+                "kind": "membership", "tier": "month"}])
+    # Sanity: this email has NO people row yet, so find_or_create WILL insert + commit
+    # mid-grant -- the precondition that makes the post-commit window reachable.
+    assert c.execute("SELECT COUNT(*) FROM people WHERE lower(email)=?",
+                     (email,)).fetchone()[0] == 0
+
+    # 1. Stand in for a _grant_membership whose customer-upsert COMMITS and whose
+    #    memberships write then FAILS. Doing the real find_or_create first reproduces the
+    #    exact mid-grant commit; raising after it stands in for the failing memberships
+    #    INSERT. (owns_group still reads the intact memberships table -- the pre-check is
+    #    untouched, so the failure lands precisely in the post-customer-commit window.)
+    def _commit_then_boom(_cx, _email, _days, _source, **_kw):
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(_cx, email=_email)   # commits (new person)
+        raise RuntimeError("memberships INSERT failed")
+    monkeypatch.setattr(app_mod, "_grant_membership", _commit_then_boom)
+
+    # 2. Drive the real alt-pay path. Grant failure is swallowed; payment is recorded.
+    res = orders._record_payment_exec({"order_id": oid, "method": "Zelle"}, {"cx": c})
+    assert res["pay_status"] == "paid"
+
+    # THE INVARIANT: no orphaned claim survived the failed grant. Under the old ordering
+    # find_or_create's commit had already made this claim durable, so it would be 1 here.
+    assert c.execute(
+        "SELECT COUNT(*) FROM order_membership_grants WHERE order_ref=?",
+        (ref,)).fetchone()[0] == 0
+    # find_or_create's commit is allowed to persist the people row -- that's harmless;
+    # only a committed CLAIM with no grant breaks the money->entitlement invariant.
+    assert app_mod._is_paid_member(email) is False
+
+    # 3. Retry once the grant works again. Because no orphan claim blocks it, the retry
+    #    is NOT falsely short-circuited to "already" -- it grants for real.
+    monkeypatch.undo()                          # restore the real _grant_membership
+    monkeypatch.setattr(app_mod, "LOG_DB", db)  # re-pin LOG_DB for the own-conn dep
+    orders._membership_grant_hook(c, orders.get_order(c, oid))
+    assert c.execute(
+        "SELECT COUNT(*) FROM order_membership_grants WHERE order_ref=?",
+        (ref,)).fetchone()[0] == 1
+    assert app_mod._is_paid_member(email) is True

@@ -6446,6 +6446,13 @@ def _grant_membership_line_dep(order):
     line, so it's safe to call for every paid order."""
     if not order:
         return
+    # Cheap pre-check BEFORE opening a connection: the card path already gates on
+    # cart_has_membership_tier before invoking the grant, so mirror it here -- most
+    # paid orders carry no membership line, and opening+discarding a sqlite
+    # connection for every one of them is pure waste. (_grant_membership_line_on_paid
+    # re-checks this too; this only avoids the connection when there's nothing to do.)
+    if not _mp.cart_has_membership_tier(order.get("items") or []):
+        return
     with sqlite3.connect(LOG_DB) as _mcx:
         _mcx.row_factory = sqlite3.Row
         _grant_membership_line_on_paid(_mcx, order)
@@ -11856,26 +11863,36 @@ def _validate_lead_magnet_guide_link(token):
     return email
 
 
-def _grant_membership(cx, email, days, source):
+def _grant_membership(cx, email, days, source, skip_customer_upsert=False):
     """Insert a memberships access grant row and return its id.
 
-    Ordering matters. `customers.find_or_create_by_email` calls cx.commit(), so
-    anything already written on this connection becomes durable the moment it
-    runs. Do the people upsert FIRST: a commit cannot make the grant durable
-    ahead of the caller if the grant row does not exist yet.
+    Ordering matters. `customers.find_or_create_by_email` calls cx.commit() (but
+    only when it INSERTS a new person -- an existing row returns without
+    committing), so anything already written on this connection becomes durable
+    the moment a NEW customer is created. Do the people upsert FIRST: a commit
+    cannot make the grant durable ahead of the caller if the grant row does not
+    exist yet.
 
     Otherwise a caller that fails before its own commit leaves an orphaned
     memberships row behind -- and membership access is read straight off this
     table by email, with no token involved, so an orphan is a free membership.
+
+    `skip_customer_upsert=True` (default False -> unchanged for every existing
+    caller) lets a caller that must control WHEN the customer-upsert commit
+    happens do that upsert itself BEFORE opening its own transaction. It exists
+    for _grant_membership_line_on_paid, whose claim-row INSERT must not be sitting
+    pending when find_or_create's commit fires -- that mid-grant commit would make
+    the claim durable ahead of the grant and orphan it if the grant then raised.
     """
     import uuid as _uuid
     mid = str(_uuid.uuid4())
     now = datetime.utcnow()
-    try:
-        from dashboard import customers as _customers
-        _customers.find_or_create_by_email(cx, email=email)   # commits
-    except Exception as _e:
-        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
+    if not skip_customer_upsert:
+        try:
+            from dashboard import customers as _customers
+            _customers.find_or_create_by_email(cx, email=email)   # commits (new person only)
+        except Exception as _e:
+            print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     # Last write, and nothing below commits: the grant rolls back with the caller.
     cx.execute(
         "INSERT INTO memberships (id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
@@ -11920,6 +11937,19 @@ def _grant_membership_line_on_paid(cx, order):
     if _mp.owns_group(cx, email):
         return "member"  # already a paid member; do NOT claim (keeps the order
                          # grantable later if this membership lapses)
+    # Do the customer upsert FIRST, while nothing about this grant is pending.
+    # find_or_create_by_email commits when it inserts a new person; if that commit
+    # fired AFTER the claim INSERT below (which is what happens when _grant_membership
+    # does the upsert itself), it would make the claim durable ahead of the grant --
+    # so a failing grant would leave an orphaned claim with no membership row, and
+    # every retry would short-circuit to "already". Pre-warming here means the claim
+    # INSERT and the memberships grant INSERT are the ONLY writes in the transaction
+    # committed by the single cx.commit() below -- atomic: both land or neither does.
+    try:
+        from dashboard import customers as _customers
+        _customers.find_or_create_by_email(cx, email=email)   # commits (new person only)
+    except Exception as _e:
+        print(f"[grant-membership] people upsert skipped: {_e!r}", flush=True)
     claim = cx.execute(
         "INSERT INTO order_membership_grants (order_ref, email, tier, created_at) "
         "VALUES (?,?,?,?) ON CONFLICT(order_ref) DO NOTHING",
@@ -11927,7 +11957,10 @@ def _grant_membership_line_on_paid(cx, order):
     if not claim.rowcount:
         return "already"  # concurrent run claimed between the read and this INSERT
     days = _mp.grant_days(tier_key, _now_utc().date())
-    _grant_membership(cx, email, days, _mp.get_tier(tier_key)["source"])
+    # skip_customer_upsert: we already upserted above (pre-claim), so _grant_membership
+    # must NOT re-run find_or_create's mid-grant commit between the claim and the grant.
+    _grant_membership(cx, email, days, _mp.get_tier(tier_key)["source"],
+                      skip_customer_upsert=True)
     cx.commit()
     return "granted"
 
@@ -40011,12 +40044,17 @@ def api_invoice_membership(token):
                for l in lines]
     cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
-        _reprice_and_persist_invoice(cx, order, payload,
-                                     pickup=(order.get("channel") == "pickup"))
+        priced, _was_paid = _reprice_and_persist_invoice(
+            cx, order, payload, pickup=(order.get("channel") == "pickup"))
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
     finally:
         cx.close()
+    if priced is None:
+        # No line resolved to a real product -> the invoice was NOT repriced or
+        # persisted. Don't fall through to api_invoice_get, which would return the
+        # STALE pre-edit summary with a 200 and mask the failure.
+        return jsonify({"ok": False, "error": "no valid products"}), 400
     return api_invoice_get(token)     # return the fresh summary (same shape as GET)
 
 
