@@ -53,8 +53,11 @@ def validate_zone(z):
     for key in _REQUIRED_COMMON:
         if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
-    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back", "side", "hand", "foot"):
-        return False, "side/eye must be 'right', 'left', 'front', 'back', 'side', 'hand' or 'foot'"
+    # `side`/`eye` is the laterality OR view/layer selector (left/right, front/back/side,
+    # hand/foot, or a named map layer like diagnosis/acu/lymph). Any non-empty string.
+    _side = z.get("side") or z.get("eye")
+    if not isinstance(_side, str) or not _side.strip():
+        return False, "side/eye (laterality or view) must be a non-empty string"
     if not (z.get("group") or z.get("germ_layer")):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}

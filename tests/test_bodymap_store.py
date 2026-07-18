@@ -37,9 +37,12 @@ def test_validate_zone_rejects_bad_sector_range():
     assert ok is False and "sector" in err
 
 
-def test_validate_zone_rejects_bad_eye():
-    ok, err = bodymap_store.validate_zone(_zone(eye="middle"))
-    assert ok is False and "eye" in err
+def test_validate_zone_rejects_empty_eye():
+    # side/eye is a free-form laterality/view selector now; only empty/non-string is rejected
+    ok, err = bodymap_store.validate_zone(_zone(eye=""))
+    assert ok is False and ("side" in err or "eye" in err)
+    ok2, _ = bodymap_store.validate_zone(_zone(eye="diagnosis"))
+    assert ok2 is True
 
 
 def test_reseed_seeds_when_missing_and_respects_force(tmp_path, monkeypatch):
@@ -357,12 +360,17 @@ def test_shipped_face_seed_valid():
     assert data["reference_frame"] == "face_outline"
     assert data.get("outline") and len(data.get("anchors", [])) == 2
     groups = {g["id"] for g in data["groups"]}
-    assert groups == {"wood", "fire", "earth", "metal", "water"}
+    assert {"wood", "fire", "earth", "metal", "water"} <= groups  # diagnosis elements
+    views, gtypes = set(), set()
     for z in data["zones"]:
         ok, err = bodymap_store.validate_zone(z)
         assert ok, f"face zone {z.get('id')}: {err}"
-        assert z["geometry"]["type"] == "ellipse"
         assert z["group"] in groups
+        views.add(z["side"])
+        gtypes.add(z["geometry"]["type"])
+    # five map layers, multiple geometries
+    assert {"diagnosis", "acu", "lymph", "nerve", "eav"} <= views
+    assert {"ellipse", "point", "polygon", "path"} <= gtypes
 
 
 def _poly_zone(**over):
