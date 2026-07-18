@@ -22,10 +22,11 @@ SYSTEMS = {
     "foot": DATA_DIR / "bodymap-foot.json",
     "hand": DATA_DIR / "bodymap-hand.json",
     "meridian": DATA_DIR / "bodymap-meridian.json",
+    "eav": DATA_DIR / "bodymap-eav.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -49,8 +50,8 @@ def validate_zone(z):
     for key in _REQUIRED_COMMON:
         if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
-    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back", "side"):
-        return False, "side/eye must be 'right', 'left', 'front', 'back' or 'side'"
+    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back", "side", "hand", "foot"):
+        return False, "side/eye must be 'right', 'left', 'front', 'back', 'side', 'hand' or 'foot'"
     if not (z.get("group") or z.get("germ_layer")):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
