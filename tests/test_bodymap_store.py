@@ -417,6 +417,31 @@ def test_shipped_skeleton_and_muscle_seeds_valid():
         assert {"front", "back"} <= views
 
 
+def test_shipped_dental_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["dental"].name == "bodymap-dental.json"
+    data = json.loads((repo / "bodymap-dental.json").read_text())
+    assert data["reference_frame"] == "dental_outline"
+    assert len(data["zones"]) == 32
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"dental zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "ellipse"
+        assert isinstance(z.get("meridian_organs"), list) and z["meridian_organs"]
+
+
+def test_resolve_finding_zones_dental_meridian_organs():
+    # a tooth lights for its associated meridian organ (not just its anatomy name)
+    kidney = bodymap_store.resolve_finding_zones("dental", ["Kidney"])["zones"]
+    assert len(kidney) == 8 and all("tooth-" in z for z in kidney)  # incisors, both arches
+    liver = bodymap_store.resolve_finding_zones("dental", ["Liver"])["zones"]
+    assert len(liver) == 4  # canines
+    # upper/lower reciprocal: Lung lights upper premolars + lower molars
+    lung = set(bodymap_store.resolve_finding_zones("dental", ["Lung"])["zones"])
+    assert "tooth-upper-4" in lung and "tooth-lower-30" in lung
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")
