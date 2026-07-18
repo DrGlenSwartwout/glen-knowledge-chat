@@ -49,8 +49,8 @@ def validate_zone(z):
     for key in _REQUIRED_COMMON:
         if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
-    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back"):
-        return False, "side/eye must be 'right', 'left', 'front' or 'back'"
+    if (z.get("side") or z.get("eye")) not in ("right", "left", "front", "back", "side"):
+        return False, "side/eye must be 'right', 'left', 'front', 'back' or 'side'"
     if not (z.get("group") or z.get("germ_layer")):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
@@ -137,6 +137,7 @@ def build_payload(system):
         "germ_layers": data.get("germ_layers", []),
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
+        "outlines": data.get("outlines", {}),
         "outline_side": data.get("outline_side", ""),
         "anchors": data.get("anchors", []),
         "side_noun": data.get("side_noun", ""),

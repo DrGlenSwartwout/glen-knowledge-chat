@@ -83,11 +83,14 @@
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
     if (isOutlineFrame()) {
-      if (state.payload.outline) {
+      // per-view outline (e.g. front/back share a silhouette, side is a profile);
+      // falls back to the single `outline` for systems that have just one.
+      const outlineD = (state.payload.outlines && state.payload.outlines[state.eye]) || state.payload.outline;
+      if (outlineD) {
         const path = document.createElementNS(svgNS, "path");
         const oMir = state.payload.outline_side && state.payload.outline_side !== state.eye;
         const oMapFn = oMir ? (p) => mapFn({ x: 1 - p.x, y: p.y }) : mapFn;
-        path.setAttribute("d", transformPathD(state.payload.outline, oMapFn));
+        path.setAttribute("d", transformPathD(outlineD, oMapFn));
         path.setAttribute("fill", "#00000008"); path.setAttribute("stroke", "#b8a678"); path.setAttribute("stroke-width", "1.5");
         svg.appendChild(path);
       }

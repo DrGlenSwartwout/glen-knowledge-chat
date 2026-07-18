@@ -73,8 +73,48 @@ def body_points():
     return RIGHT_HALF + left_half
 
 
+# Lateral (side) profile, facing right: front of the body = +x, back = -x.
+# Traced clockwise from the crown, down the FRONT, around the foot, up the BACK.
+SIDE_PROFILE = [
+    (0.470, 0.020),   # crown
+    (0.558, 0.045),   # forehead
+    (0.592, 0.078),   # brow
+    (0.626, 0.098),   # nose tip
+    (0.600, 0.112),   # upper lip
+    (0.574, 0.136),   # chin
+    (0.545, 0.162),   # throat
+    (0.582, 0.222),   # upper chest
+    (0.602, 0.272),   # chest
+    (0.586, 0.380),   # abdomen
+    (0.560, 0.476),   # lower belly
+    (0.546, 0.536),   # groin (front)
+    (0.562, 0.632),   # front thigh
+    (0.552, 0.760),   # front knee
+    (0.560, 0.870),   # shin
+    (0.548, 0.946),   # front ankle
+    (0.612, 0.986),   # toes
+    (0.468, 0.986),   # heel
+    (0.474, 0.946),   # back ankle
+    (0.434, 0.856),   # calf
+    (0.470, 0.760),   # back knee
+    (0.430, 0.642),   # hamstring
+    (0.394, 0.540),   # buttock
+    (0.430, 0.470),   # sacrum
+    (0.450, 0.400),   # low back
+    (0.440, 0.300),   # mid back
+    (0.424, 0.236),   # upper back
+    (0.460, 0.166),   # nape
+    (0.420, 0.090),   # occiput
+    (0.444, 0.032),   # back of crown
+]
+
+
 def build_outline():
     return catmull_rom_closed(body_points())
+
+
+def build_side_outline():
+    return catmull_rom_closed(SIDE_PROFILE)
 
 
 if __name__ == "__main__":
