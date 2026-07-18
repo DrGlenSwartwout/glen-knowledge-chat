@@ -18915,6 +18915,8 @@ _PERSONALIZE_SYSTEMS = {
                     "theme": {"respiratory", "respiration", "breath", "breathing"}},
     "digestive": {"view": "front", "resolve_side": None,
                   "theme": {"digestive", "digestion", "gastrointestinal", "gut"}},
+    "cardiovascular": {"view": "front", "resolve_side": None,
+                       "theme": {"cardiovascular", "circulation", "circulatory", "blood vessel", "vascular"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},

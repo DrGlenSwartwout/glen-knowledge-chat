@@ -510,6 +510,12 @@ def test_shipped_digestive_seed_valid():
     assert "dig-jejunum-ileum" not in lg and any("colon" in z for z in lg)
 
 
+def test_shipped_cardiovascular_seed_valid():
+    _assert_body_atlas_valid("cardiovascular", ("front", "back"))
+    assert bodymap_store.resolve_finding_zones("cardiovascular", ["Heart"])["zones"]
+    assert bodymap_store.resolve_finding_zones("cardiovascular", ["Aorta"])["zones"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")
