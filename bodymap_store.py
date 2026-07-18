@@ -30,10 +30,11 @@ SYSTEMS = {
     "organs": DATA_DIR / "bodymap-organs.json",
     "skeleton": DATA_DIR / "bodymap-skeleton.json",
     "muscle": DATA_DIR / "bodymap-muscle.json",
+    "dental": DATA_DIR / "bodymap-dental.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -280,8 +281,9 @@ def zone_ids(system, side=None):
 def resolve_finding_zones(system, names, side=None):
     """Map a client's finding organ/system names to Body Map zone ids in `system`.
 
-    Pure (no DB): matches each name against every zone's `anatomy` on a
-    word-boundary, plural-insensitive basis, so a 'Liver' finding lights every
+    Pure (no DB): matches each name against every zone's `anatomy` (and its
+    optional `meridian_organs` list, so a tooth lights for its associated organs)
+    on a word-boundary, plural-insensitive basis, so a 'Liver' finding lights every
     zone whose anatomy names the liver. `side` (e.g. 'diagnosis') restricts to
     one view/layer. Returns {"zones": [ordered unique ids], "by_name": {name: [ids]}}.
     A name that matches nothing is simply absent from by_name. Never raises on a
@@ -292,7 +294,8 @@ def resolve_finding_zones(system, names, side=None):
         return {"zones": [], "by_name": {}}
     if side:
         zones = [z for z in zones if (z.get("side") or z.get("eye")) == side]
-    zdata = [(z.get("id"), _stem(z.get("anatomy", ""))) for z in zones]
+    zdata = [(z.get("id"), _stem(z.get("anatomy", "") + " " + " ".join(z.get("meridian_organs") or [])))
+             for z in zones]
     by_name, ordered, seen = {}, [], set()
     for raw in (names or []):
         base = _stem(raw)

@@ -18804,6 +18804,7 @@ _PERSONALIZE_SYSTEMS = {
                  "theme": {"bone", "skeleton", "skeletal", "cartilage", "vertebra", "vertebrae"}},
     "muscle": {"view": "front", "resolve_side": None,
                "theme": {"muscle", "muscular", "musculature", "connective tissue"}},
+    "dental": {"view": "chart", "resolve_side": None},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},

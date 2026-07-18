@@ -1,0 +1,862 @@
+{
+  "system": "dental",
+  "reference_frame": "dental_outline",
+  "side_noun": "chart",
+  "group_noun": "tooth type",
+  "outline": "M 0.1882 0.4850 L 0.1734 0.4652 L 0.1613 0.4446 L 0.1518 0.4234 L 0.1450 0.4016 L 0.1411 0.3795 L 0.1400 0.3572 L 0.1418 0.3350 L 0.1464 0.3129 L 0.1539 0.2913 L 0.1641 0.2701 L 0.1769 0.2497 L 0.1923 0.2302 L 0.2102 0.2117 L 0.2303 0.1944 L 0.2526 0.1784 L 0.2769 0.1638 L 0.3029 0.1508 L 0.3305 0.1394 L 0.3595 0.1298 L 0.3895 0.1221 L 0.4205 0.1162 L 0.4520 0.1122 L 0.4840 0.1102 L 0.5160 0.1102 L 0.5480 0.1122 L 0.5795 0.1162 L 0.6105 0.1221 L 0.6405 0.1298 L 0.6695 0.1394 L 0.6971 0.1508 L 0.7231 0.1638 L 0.7474 0.1784 L 0.7697 0.1944 L 0.7898 0.2117 L 0.8077 0.2302 L 0.8231 0.2497 L 0.8359 0.2701 L 0.8461 0.2913 L 0.8536 0.3129 L 0.8582 0.3350 L 0.8600 0.3572 L 0.8589 0.3795 L 0.8550 0.4016 L 0.8482 0.4234 L 0.8387 0.4446 L 0.8266 0.4652 L 0.8118 0.4850 M 0.1882 0.5150 L 0.1734 0.5348 L 0.1613 0.5554 L 0.1518 0.5766 L 0.1450 0.5984 L 0.1411 0.6205 L 0.1400 0.6428 L 0.1418 0.6650 L 0.1464 0.6871 L 0.1539 0.7087 L 0.1641 0.7299 L 0.1769 0.7503 L 0.1923 0.7698 L 0.2102 0.7883 L 0.2303 0.8056 L 0.2526 0.8216 L 0.2769 0.8362 L 0.3029 0.8492 L 0.3305 0.8606 L 0.3595 0.8702 L 0.3895 0.8779 L 0.4205 0.8838 L 0.4520 0.8878 L 0.4840 0.8898 L 0.5160 0.8898 L 0.5480 0.8878 L 0.5795 0.8838 L 0.6105 0.8779 L 0.6405 0.8702 L 0.6695 0.8606 L 0.6971 0.8492 L 0.7231 0.8362 L 0.7474 0.8216 L 0.7697 0.8056 L 0.7898 0.7883 L 0.8077 0.7698 L 0.8231 0.7503 L 0.8359 0.7299 L 0.8461 0.7087 L 0.8536 0.6871 L 0.8582 0.6650 L 0.8600 0.6428 L 0.8589 0.6205 L 0.8550 0.5984 L 0.8482 0.5766 L 0.8387 0.5554 L 0.8266 0.5348 L 0.8118 0.5150",
+  "outlines": {
+    "chart": "M 0.1882 0.4850 L 0.1734 0.4652 L 0.1613 0.4446 L 0.1518 0.4234 L 0.1450 0.4016 L 0.1411 0.3795 L 0.1400 0.3572 L 0.1418 0.3350 L 0.1464 0.3129 L 0.1539 0.2913 L 0.1641 0.2701 L 0.1769 0.2497 L 0.1923 0.2302 L 0.2102 0.2117 L 0.2303 0.1944 L 0.2526 0.1784 L 0.2769 0.1638 L 0.3029 0.1508 L 0.3305 0.1394 L 0.3595 0.1298 L 0.3895 0.1221 L 0.4205 0.1162 L 0.4520 0.1122 L 0.4840 0.1102 L 0.5160 0.1102 L 0.5480 0.1122 L 0.5795 0.1162 L 0.6105 0.1221 L 0.6405 0.1298 L 0.6695 0.1394 L 0.6971 0.1508 L 0.7231 0.1638 L 0.7474 0.1784 L 0.7697 0.1944 L 0.7898 0.2117 L 0.8077 0.2302 L 0.8231 0.2497 L 0.8359 0.2701 L 0.8461 0.2913 L 0.8536 0.3129 L 0.8582 0.3350 L 0.8600 0.3572 L 0.8589 0.3795 L 0.8550 0.4016 L 0.8482 0.4234 L 0.8387 0.4446 L 0.8266 0.4652 L 0.8118 0.4850 M 0.1882 0.5150 L 0.1734 0.5348 L 0.1613 0.5554 L 0.1518 0.5766 L 0.1450 0.5984 L 0.1411 0.6205 L 0.1400 0.6428 L 0.1418 0.6650 L 0.1464 0.6871 L 0.1539 0.7087 L 0.1641 0.7299 L 0.1769 0.7503 L 0.1923 0.7698 L 0.2102 0.7883 L 0.2303 0.8056 L 0.2526 0.8216 L 0.2769 0.8362 L 0.3029 0.8492 L 0.3305 0.8606 L 0.3595 0.8702 L 0.3895 0.8779 L 0.4205 0.8838 L 0.4520 0.8878 L 0.4840 0.8898 L 0.5160 0.8898 L 0.5480 0.8878 L 0.5795 0.8838 L 0.6105 0.8779 L 0.6405 0.8702 L 0.6695 0.8606 L 0.6971 0.8492 L 0.7231 0.8362 L 0.7474 0.8216 L 0.7697 0.8056 L 0.7898 0.7883 L 0.8077 0.7698 L 0.8231 0.7503 L 0.8359 0.7299 L 0.8461 0.7087 L 0.8536 0.6871 L 0.8582 0.6650 L 0.8600 0.6428 L 0.8589 0.6205 L 0.8550 0.5984 L 0.8482 0.5766 L 0.8387 0.5554 L 0.8266 0.5348 L 0.8118 0.5150"
+  },
+  "groups": [
+    {
+      "id": "incisor",
+      "label": "Incisors — Kidney / Bladder"
+    },
+    {
+      "id": "canine",
+      "label": "Canines — Liver / Gallbladder"
+    },
+    {
+      "id": "premolar",
+      "label": "Premolars"
+    },
+    {
+      "id": "molar",
+      "label": "Molars"
+    },
+    {
+      "id": "wisdom",
+      "label": "Wisdom — Heart / Small Intestine"
+    }
+  ],
+  "anchors": [
+    {
+      "key": "arch-top",
+      "view": "chart",
+      "template": {
+        "x": 0.5,
+        "y": 0.13
+      },
+      "hint": "Tap between your two top front teeth."
+    },
+    {
+      "key": "arch-bottom",
+      "view": "chart",
+      "template": {
+        "x": 0.5,
+        "y": 0.87
+      },
+      "hint": "Tap between your two bottom front teeth."
+    }
+  ],
+  "zones": [
+    {
+      "id": "tooth-upper-1",
+      "side": "chart",
+      "bilateral": false,
+      "group": "wisdom",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2056,
+        "cy": 0.475,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right third molar (wisdom)",
+      "meridian_organs": [
+        "Heart",
+        "Small Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Heart, Small Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-2",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1701,
+        "cy": 0.4156,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right second molar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-3",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1602,
+        "cy": 0.352,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right first molar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-4",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1766,
+        "cy": 0.2889,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right second premolar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-5",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2181,
+        "cy": 0.2314,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right first premolar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-6",
+      "side": "chart",
+      "bilateral": false,
+      "group": "canine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2815,
+        "cy": 0.1838,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right canine",
+      "meridian_organs": [
+        "Liver",
+        "Gallbladder"
+      ],
+      "meaning_standard": "Related meridian organs: Liver, Gallbladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-7",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.3617,
+        "cy": 0.1499,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right lateral incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-8",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.4527,
+        "cy": 0.1322,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper right central incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-9",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5473,
+        "cy": 0.1322,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left central incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-10",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.6383,
+        "cy": 0.1499,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left lateral incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-11",
+      "side": "chart",
+      "bilateral": false,
+      "group": "canine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7185,
+        "cy": 0.1838,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left canine",
+      "meridian_organs": [
+        "Liver",
+        "Gallbladder"
+      ],
+      "meaning_standard": "Related meridian organs: Liver, Gallbladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-12",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7819,
+        "cy": 0.2314,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left first premolar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-13",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8234,
+        "cy": 0.2889,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left second premolar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-14",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8398,
+        "cy": 0.352,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left first molar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-15",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8299,
+        "cy": 0.4156,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left second molar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-upper-16",
+      "side": "chart",
+      "bilateral": false,
+      "group": "wisdom",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7944,
+        "cy": 0.475,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Upper left third molar (wisdom)",
+      "meridian_organs": [
+        "Heart",
+        "Small Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Heart, Small Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-17",
+      "side": "chart",
+      "bilateral": false,
+      "group": "wisdom",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2056,
+        "cy": 0.525,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right third molar (wisdom)",
+      "meridian_organs": [
+        "Heart",
+        "Small Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Heart, Small Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-18",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1701,
+        "cy": 0.5844,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right second molar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-19",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1602,
+        "cy": 0.648,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right first molar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-20",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.1766,
+        "cy": 0.7111,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right second premolar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-21",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2181,
+        "cy": 0.7686,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right first premolar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-22",
+      "side": "chart",
+      "bilateral": false,
+      "group": "canine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.2815,
+        "cy": 0.8162,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right canine",
+      "meridian_organs": [
+        "Liver",
+        "Gallbladder"
+      ],
+      "meaning_standard": "Related meridian organs: Liver, Gallbladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-23",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.3617,
+        "cy": 0.8501,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right lateral incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-24",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.4527,
+        "cy": 0.8678,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower right central incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-25",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.5473,
+        "cy": 0.8678,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left central incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-26",
+      "side": "chart",
+      "bilateral": false,
+      "group": "incisor",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.6383,
+        "cy": 0.8501,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left lateral incisor",
+      "meridian_organs": [
+        "Kidney",
+        "Bladder"
+      ],
+      "meaning_standard": "Related meridian organs: Kidney, Bladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-27",
+      "side": "chart",
+      "bilateral": false,
+      "group": "canine",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7185,
+        "cy": 0.8162,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left canine",
+      "meridian_organs": [
+        "Liver",
+        "Gallbladder"
+      ],
+      "meaning_standard": "Related meridian organs: Liver, Gallbladder.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-28",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7819,
+        "cy": 0.7686,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left first premolar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-29",
+      "side": "chart",
+      "bilateral": false,
+      "group": "premolar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8234,
+        "cy": 0.7111,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left second premolar",
+      "meridian_organs": [
+        "Stomach",
+        "Spleen",
+        "Pancreas"
+      ],
+      "meaning_standard": "Related meridian organs: Stomach, Spleen, Pancreas.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-30",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8398,
+        "cy": 0.648,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left first molar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-31",
+      "side": "chart",
+      "bilateral": false,
+      "group": "molar",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.8299,
+        "cy": 0.5844,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left second molar",
+      "meridian_organs": [
+        "Lung",
+        "Large Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Lung, Large Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "tooth-lower-32",
+      "side": "chart",
+      "bilateral": false,
+      "group": "wisdom",
+      "geometry": {
+        "type": "ellipse",
+        "cx": 0.7944,
+        "cy": 0.525,
+        "rx": 0.017,
+        "ry": 0.017
+      },
+      "anatomy": "Lower left third molar (wisdom)",
+      "meridian_organs": [
+        "Heart",
+        "Small Intestine"
+      ],
+      "meaning_standard": "Related meridian organs: Heart, Small Intestine.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": "ectoderm",
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
+  ]
+}
