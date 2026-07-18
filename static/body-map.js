@@ -2,10 +2,29 @@
 (function () {
   const svgNS = "http://www.w3.org/2000/svg";
   const VIEW = 600, CX = 300, CY = 300;
-  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null };
+  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "" };
 
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
+
+  // Embryological germ layer of a zone (for the depth-peel). Prefer an explicit
+  // germ_layer / embryo tag, else infer from the anatomy name. Order matters:
+  // neural/sensory (ectoderm) and viscera (endoderm) are checked before the
+  // structural/circulatory catch-all (mesoderm).
+  const EMBRYO_KW = [
+    ["ectoderm", /brain|cerebr|cerebell|medulla|brainstem|pineal|pituitar|nerv|sciatic|neuro|sensor|subcortex|occiput|\bmind\b|mental|ego|comprehens|speech|\bmotor|skin|epiderm|\beye|vision|\bear\b|hearing|\bnose\b|sinus|\bface|forehead|scalp|tooth|teeth|mammary|breast/i],
+    ["endoderm", /liver|lung|bronch|trachea|pharynx|larynx|thyroid|parathyroid|thymus|stomach|duoden|intestin|colon|cecum|append|ileocecal|sigmoid|rectum|pancrea|gallbladder|\bbladder|urethra|prostate|tonsil|esophag|oesophag|digest/i],
+    ["mesoderm", /kidney|adrenal|heart|circulat|aorta|vessel|blood|spleen|lymph|node|muscle|bone|skelet|vertebra|spine|cervical|thoracic|lumbar|sacr|coccyx|\brib|sternum|femur|pelvi|\bhip|joint|knee|elbow|wrist|ankle|shoulder|\barm\b|\bleg\b|limb|clavicle|connective|cartilage|dermis|gonad|ovar|test|uter|reproduct|genital|peritoneum|diaphragm|hernia|articular/i],
+  ];
+  function embryoLayer(z) {
+    const g = z.germ_layer;
+    if (g === "endoderm" || g === "mesoderm" || g === "ectoderm") return g;
+    const e = z.embryo || (z.layers && z.layers.embryological_depth);
+    if (e === "endoderm" || e === "mesoderm" || e === "ectoderm") return e;
+    const hay = (z.anatomy || "") + " " + (z.id || "");
+    for (const [layer, re] of EMBRYO_KW) if (re.test(hay)) return layer;
+    return null; // untagged -> visible at every depth
+  }
   function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
   function isOutlineFrame() { return state.frame && state.frame !== "unit_circle"; }
 
@@ -74,7 +93,8 @@
     if (!state.payload) return [];
     return state.payload.zones.filter(z =>
       (z.bilateral || zoneSide(z) === state.eye) &&
-      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
+      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))) &&
+      (!state.depth || embryoLayer(z) === state.depth));
   }
 
   function renderChart() {
@@ -280,6 +300,12 @@
   function wire() {
     document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
+    // embryological depth-peel: isolate one germ layer (endoderm/mesoderm/ectoderm)
+    document.querySelectorAll("#bm-depth button").forEach(b => b.addEventListener("click", () => {
+      state.depth = b.dataset.depth;
+      document.querySelectorAll("#bm-depth button").forEach(x => x.classList.toggle("bm-active", x === b));
+      renderChart();
+    }));
     wireOverlay();
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
