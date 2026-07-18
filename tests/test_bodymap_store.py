@@ -442,6 +442,29 @@ def test_resolve_finding_zones_dental_meridian_organs():
     assert "tooth-upper-4" in lung and "tooth-lower-30" in lung
 
 
+def test_shipped_organclock_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["organclock"].name == "bodymap-organclock.json"
+    data = json.loads((repo / "bodymap-organclock.json").read_text())
+    assert data["reference_frame"] == "unit_circle"
+    assert len(data["zones"]) == 12  # 12 meridians
+    secs = []
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"organclock zone {z.get('id')}: {err}"
+        secs.append((z["sector"]["start_deg"], z["sector"]["end_deg"]))
+    secs.sort()
+    # 12 contiguous 30-degree sectors covering the whole circle, no wrap past 0
+    assert secs[0][0] == 0 and secs[-1][1] == 360
+    assert all(secs[i][1] == secs[i + 1][0] for i in range(len(secs) - 1))
+
+
+def test_resolve_finding_zones_organclock_lights_its_window():
+    assert bodymap_store.resolve_finding_zones("organclock", ["Liver"])["zones"] == ["clock-LR"]
+    assert bodymap_store.resolve_finding_zones("organclock", ["Kidney"])["zones"] == ["clock-KI"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")

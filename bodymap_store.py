@@ -31,10 +31,11 @@ SYSTEMS = {
     "skeleton": DATA_DIR / "bodymap-skeleton.json",
     "muscle": DATA_DIR / "bodymap-muscle.json",
     "dental": DATA_DIR / "bodymap-dental.json",
+    "organclock": DATA_DIR / "bodymap-organclock.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json", "bodymap-organclock.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 

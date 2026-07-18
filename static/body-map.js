@@ -299,7 +299,11 @@
     sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
     if (!sides.includes(state.eye)) state.eye = sides[0] || "right";
     sel.value = state.eye;
-    document.getElementById("bm-side-label").textContent = isOutlineFrame() ? "Side" : "Eye";
+    // Label the view control: outline systems = "Side"; unit-circle systems use
+    // their own noun ("eye" for iris/sclera, "clock" for the organ clock) else "Eye".
+    const _sn = state.payload.side_noun;
+    document.getElementById("bm-side-label").textContent =
+      isOutlineFrame() ? "Side" : (_sn ? _sn.charAt(0).toUpperCase() + _sn.slice(1) : "Eye");
     renderLayerToggles(); renderChart();
   }
 

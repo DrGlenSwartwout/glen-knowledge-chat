@@ -1,0 +1,294 @@
+{
+  "system": "organclock",
+  "reference_frame": "unit_circle",
+  "side_noun": "clock",
+  "group_noun": "element",
+  "groups": [
+    {
+      "id": "metal",
+      "label": "Metal — Lung / Large Intestine"
+    },
+    {
+      "id": "earth",
+      "label": "Earth — Stomach / Spleen"
+    },
+    {
+      "id": "fire",
+      "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"
+    },
+    {
+      "id": "water",
+      "label": "Water — Kidney / Bladder"
+    },
+    {
+      "id": "wood",
+      "label": "Wood — Gallbladder / Liver"
+    }
+  ],
+  "zones": [
+    {
+      "id": "clock-LU",
+      "side": "clock",
+      "bilateral": false,
+      "group": "metal",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 0,
+        "end_deg": 30
+      },
+      "anatomy": "Lung (3–5 AM)",
+      "meaning_standard": "Lung meridian peaks 3–5 AM. Taking in, letting go; the breath and the day begin.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-LI",
+      "side": "clock",
+      "bilateral": false,
+      "group": "metal",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 30,
+        "end_deg": 60
+      },
+      "anatomy": "Large intestine (5–7 AM)",
+      "meaning_standard": "Large intestine meridian peaks 5–7 AM. Elimination and release; a natural time for a bowel movement.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-ST",
+      "side": "clock",
+      "bilateral": false,
+      "group": "earth",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 60,
+        "end_deg": 90
+      },
+      "anatomy": "Stomach (7–9 AM)",
+      "meaning_standard": "Stomach meridian peaks 7–9 AM. Digestion at its strongest; the ideal time for the main meal.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-SP",
+      "side": "clock",
+      "bilateral": false,
+      "group": "earth",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 90,
+        "end_deg": 120
+      },
+      "anatomy": "Spleen (9–11 AM)",
+      "meaning_standard": "Spleen meridian peaks 9–11 AM. Transforming food to energy; peak mental focus.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-HT",
+      "side": "clock",
+      "bilateral": false,
+      "group": "fire",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 120,
+        "end_deg": 150
+      },
+      "anatomy": "Heart (11 AM–1 PM)",
+      "meaning_standard": "Heart meridian peaks 11 AM–1 PM. Circulation and joy; the Heart houses the spirit (Shen).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-SI",
+      "side": "clock",
+      "bilateral": false,
+      "group": "fire",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 150,
+        "end_deg": 180
+      },
+      "anatomy": "Small intestine (1–3 PM)",
+      "meaning_standard": "Small intestine meridian peaks 1–3 PM. Sorting pure from impure; assimilation and discernment.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-BL",
+      "side": "clock",
+      "bilateral": false,
+      "group": "water",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 180,
+        "end_deg": 210
+      },
+      "anatomy": "Bladder (3–5 PM)",
+      "meaning_standard": "Bladder meridian peaks 3–5 PM. Storing and clearing fluids; good time for study and work.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-KI",
+      "side": "clock",
+      "bilateral": false,
+      "group": "water",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 210,
+        "end_deg": 240
+      },
+      "anatomy": "Kidney (5–7 PM)",
+      "meaning_standard": "Kidney meridian peaks 5–7 PM. Storing essence (Jing); the root of vitality and will.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-PC",
+      "side": "clock",
+      "bilateral": false,
+      "group": "fire",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 240,
+        "end_deg": 270
+      },
+      "anatomy": "Pericardium (7–9 PM)",
+      "meaning_standard": "Pericardium meridian peaks 7–9 PM. The Heart's protector; intimacy, relationship, circulation.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-TE",
+      "side": "clock",
+      "bilateral": false,
+      "group": "fire",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 270,
+        "end_deg": 300
+      },
+      "anatomy": "Triple burner (9–11 PM)",
+      "meaning_standard": "Triple burner meridian peaks 9–11 PM. Balancing the whole; metabolism and thermoregulation settle for sleep.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-GB",
+      "side": "clock",
+      "bilateral": false,
+      "group": "wood",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 300,
+        "end_deg": 330
+      },
+      "anatomy": "Gallbladder (11 PM–1 AM)",
+      "meaning_standard": "Gallbladder meridian peaks 11 PM–1 AM. Decisions and courage; deep regeneration begins.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "clock-LR",
+      "side": "clock",
+      "bilateral": false,
+      "group": "wood",
+      "radial": {
+        "r_inner": 0.42,
+        "r_outer": 0.95
+      },
+      "sector": {
+        "start_deg": 330,
+        "end_deg": 360
+      },
+      "anatomy": "Liver (1–3 AM)",
+      "meaning_standard": "Liver meridian peaks 1–3 AM. Detoxification and blood storage; deepest repair.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
+  ]
+}
