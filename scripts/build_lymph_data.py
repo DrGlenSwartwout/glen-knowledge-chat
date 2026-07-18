@@ -22,9 +22,10 @@ _spec.loader.exec_module(bbo)
 
 GROUPS = [
     {"id": "nodes", "label": "Lymph node clusters"},
-    {"id": "organs", "label": "Lymphoid organs"},
+    {"id": "organs", "label": "Lymphoid & immune organs"},
     {"id": "ducts", "label": "Ducts / trunks"},
     {"id": "watershed", "label": "Watershed divides"},
+    {"id": "connective", "label": "Connective tissue"},
 ]
 
 # NODES / ORGANS: (slug, name, view, group, bilateral, x, y)
@@ -62,6 +63,14 @@ POINTS = [
     ("cisterna", "Cisterna chyli", "front", "organs", False, 0.500, 0.462, "Cisterna chyli, origin of the thoracic duct."),
     ("peyers", "Peyer's patches (GALT)", "front", "organs", False, 0.500, 0.425, "Gut-associated lymphoid tissue (Peyer's patches)."),
     ("marrow", "Red bone marrow", "front", "organs", False, 0.560, 0.510, "Red bone marrow, primary lymphoid tissue (pelvis / long bones)."),
+    ("adenoids", "Adenoids", "front", "organs", False, 0.500, 0.106, "Nasopharyngeal tonsil (adenoids), immune tissue of the upper airway."),
+    ("appendix-galt", "Appendix (GALT)", "front", "organs", False, 0.442, 0.492, "Appendix — gut-associated lymphoid tissue."),
+    ("malt", "Mucosa-associated tissue (MALT)", "front", "organs", False, 0.470, 0.400, "MALT — immune tissue lining the mucous membranes."),
+    # ---- connective tissue ----
+    ("fascia", "Fascia (connective tissue)", "front", "connective", False, 0.500, 0.320, "Fascia — the body-wide connective-tissue web."),
+    ("tendons", "Tendons & ligaments", "front", "connective", True, 0.360, 0.500, "Tendons and ligaments — dense connective tissue at the joints."),
+    ("cartilage", "Cartilage", "back", "connective", True, 0.456, 0.740, "Cartilage — connective tissue cushioning the joints."),
+    ("dermis", "Dermis (skin)", "back", "connective", False, 0.500, 0.250, "Dermis — the connective-tissue layer of the skin."),
     # ---- BACK nodes ----
     ("occipital", "Occipital nodes", "back", "nodes", False, 0.500, 0.062, "Occipital nodes, back of the head."),
     ("post-cervical", "Posterior cervical nodes", "back", "nodes", True, 0.437, 0.146, "Posterior cervical node chain."),

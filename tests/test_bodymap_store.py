@@ -525,6 +525,16 @@ def test_shipped_urogenital_seed_valid():
     assert bodymap_store.resolve_finding_zones("urogenital", ["Ovaries"])["zones"]
 
 
+def test_lymph_immune_and_connective_extension():
+    # extended lymph map carries immune organs + a connective-tissue group
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    data = json.loads((repo / "bodymap-lymph.json").read_text())
+    assert "connective" in {g["id"] for g in data["groups"]}
+    assert bodymap_store.resolve_finding_zones("lymph", ["Spleen"])["zones"]  # immune organ
+    assert bodymap_store.resolve_finding_zones("lymph", ["Connective Tissue"])["zones"]
+
+
 def test_zone_ids_whole_system_and_side():
     all_bones = bodymap_store.zone_ids("skeleton")
     front_bones = bodymap_store.zone_ids("skeleton", side="front")
