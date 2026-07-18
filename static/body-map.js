@@ -368,12 +368,7 @@
       document.getElementById("bm-anchor-hint").textContent = steps[anchorIdx].hint;
       drawAnchors();
     } else {
-      document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-      // two tapped anchors with template coords -> fit a similarity; else the iris 3-tap fallback
-      state.transform = (steps.length >= 2 && steps[0].template && steps[1].template)
-        ? fitSimilarity(steps)
-        : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
-      renderChart(); drawAnchors();
+      placeOverlay(steps);
       console.log("[bodymap] overlay placed");
     }
   }
@@ -387,18 +382,113 @@
     });
   }
 
+  // Two tapped/detected anchors with template coords -> similarity; else iris fallback.
+  function placeOverlay(steps) {
+    document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
+    state.transform = (steps.length >= 2 && steps[0].template && steps[1].template)
+      ? fitSimilarity(steps)
+      : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+    renderChart(); drawAnchors();
+  }
+
+  // ---- ML auto-anchoring: detect the anchor landmarks on the photo client-side.
+  // MediaPipe runs in-browser (WASM), so the photo still never leaves the device.
+  const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  const MP_MODELS = {
+    face: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    pose: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+    hand: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  };
+  let _mp = null; const _lmk = {};
+
+  function detectorKind() {
+    const sys = state.payload && state.payload.system;
+    if (sys === "face") return "face";
+    if (sys === "hand") return "hand";
+    if (sys === "eav") return state.eye === "foot" ? "pose" : "hand";
+    if (sys === "foot" || sys === "meridian" || sys === "neurotome" || sys === "lymph") return "pose";
+    return null; // iris / sclera / ear -> manual for now
+  }
+
+  async function getLandmarker(kind) {
+    if (_lmk[kind]) return _lmk[kind];
+    if (!_mp) _mp = await import(MP_BASE);
+    const { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } = _mp;
+    const fileset = await FilesetResolver.forVisionTasks(MP_BASE + "/wasm");
+    const opts = { baseOptions: { modelAssetPath: MP_MODELS[kind] }, runningMode: "IMAGE" };
+    _lmk[kind] = await (kind === "face" ? FaceLandmarker : kind === "pose" ? PoseLandmarker : HandLandmarker)
+      .createFromOptions(fileset, opts);
+    return _lmk[kind];
+  }
+
+  function landmarksFromResult(kind, res) {
+    return kind === "face" ? (res.faceLandmarks || [])[0] : (res.landmarks || [])[0];
+  }
+
+  // resolve an anchor-step key -> normalized {x,y} from the detected landmarks
+  function landmarkFor(kind, lms, key) {
+    const k = key.toLowerCase();
+    if (kind === "face") {
+      if (k.includes("hairline") || k.includes("head")) return lms[10];   // forehead top
+      if (k.includes("chin")) return lms[152];
+    } else if (kind === "pose") {
+      if (k.includes("head") || k.includes("hairline")) {
+        const nose = lms[0]; return { x: nose.x, y: Math.max(0, nose.y - 0.06) };
+      }
+      if (k.includes("feet") || k.includes("foot") || k.includes("ankle")) {
+        const a = lms[27], b = lms[28]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+    } else if (kind === "hand") {
+      if (k.includes("wrist")) return lms[0];
+      if (k.includes("mid") || k.includes("middle")) return lms[12];
+      if (k.includes("toe") || k.includes("tip")) return lms[12];
+      if (k.includes("thumb")) return lms[4];
+    }
+    return null;
+  }
+
+  async function autoDetect() {
+    const hint = document.getElementById("bm-anchor-hint");
+    const kind = detectorKind();
+    const steps = activeAnchorSteps();
+    if (!kind || !(steps.length >= 2 && steps[0].template)) {
+      hint.textContent = "Auto-detect isn't available here — tap the points manually."; return;
+    }
+    hint.textContent = "Detecting landmarks…";
+    try {
+      const L = await getLandmarker(kind);
+      const lms = landmarksFromResult(kind, L.detect(document.getElementById("bm-photo")));
+      if (!lms) throw new Error("no landmarks found");
+      Object.keys(anchors).forEach(kk => delete anchors[kk]);
+      for (const s of steps) {
+        const n = landmarkFor(kind, lms, s.key);
+        if (!n) throw new Error("unmapped anchor " + s.key);
+        anchors[s.key] = { x: n.x * VIEW, y: n.y * VIEW };
+      }
+      anchorIdx = steps.length;
+      placeOverlay(steps);
+    } catch (e) {
+      console.warn("[bodymap] auto-detect failed", e);
+      anchorIdx = 0; Object.keys(anchors).forEach(kk => delete anchors[kk]);
+      state.transform = null; renderChart();
+      hint.textContent = "Couldn't auto-detect — tap manually, starting with: " + steps[0].hint;
+    }
+  }
+
   function onUpload(evt) {
     const file = evt.target.files && evt.target.files[0];
     if (!file) return;
     const img = document.getElementById("bm-photo");
     img.src = URL.createObjectURL(file); // stays in-browser; never uploaded
     img.hidden = false; setMode(true); beginAnchoring();
+    document.getElementById("bm-autodetect").hidden = !detectorKind();
   }
 
   function wireOverlay() {
     document.getElementById("bm-mode-ref").addEventListener("click", () => setMode(false));
     document.getElementById("bm-mode-photo").addEventListener("click", () => setMode(true));
     document.getElementById("bm-upload").addEventListener("change", onUpload);
+    document.getElementById("bm-autodetect").addEventListener("click", autoDetect);
     document.getElementById("bm-svg").addEventListener("click", onCanvasClick);
   }
 
