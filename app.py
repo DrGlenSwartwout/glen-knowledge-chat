@@ -18819,6 +18819,8 @@ _PERSONALIZE_SYSTEMS = {
     # urogenital opens on the female view; the client toggles male/female. resolve
     # across BOTH so a Kidney/Bladder finding lights in whichever view is shown.
     "urogenital": {"view": "female", "resolve_side": None},
+    "lymph": {"view": "front", "resolve_side": None,
+              "theme": {"immune", "immunity", "lymph", "lymphatic"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},

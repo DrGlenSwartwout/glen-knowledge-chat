@@ -15,7 +15,7 @@
     },
     {
       "id": "organs",
-      "label": "Lymphoid organs"
+      "label": "Lymphoid & immune organs"
     },
     {
       "id": "ducts",
@@ -24,6 +24,10 @@
     {
       "id": "watershed",
       "label": "Watershed divides"
+    },
+    {
+      "id": "connective",
+      "label": "Connective tissue"
     }
   ],
   "anchors": [
@@ -894,6 +898,177 @@
       },
       "anatomy": "Red bone marrow",
       "meaning_standard": "Red bone marrow, primary lymphoid tissue (pelvis / long bones).",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-adenoids",
+      "side": "front",
+      "bilateral": false,
+      "group": "organs",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.106
+      },
+      "anatomy": "Adenoids",
+      "meaning_standard": "Nasopharyngeal tonsil (adenoids), immune tissue of the upper airway.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-appendix-galt",
+      "side": "front",
+      "bilateral": false,
+      "group": "organs",
+      "geometry": {
+        "type": "point",
+        "x": 0.442,
+        "y": 0.492
+      },
+      "anatomy": "Appendix (GALT)",
+      "meaning_standard": "Appendix — gut-associated lymphoid tissue.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-malt",
+      "side": "front",
+      "bilateral": false,
+      "group": "organs",
+      "geometry": {
+        "type": "point",
+        "x": 0.47,
+        "y": 0.4
+      },
+      "anatomy": "Mucosa-associated tissue (MALT)",
+      "meaning_standard": "MALT — immune tissue lining the mucous membranes.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-fascia",
+      "side": "front",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.32
+      },
+      "anatomy": "Fascia (connective tissue)",
+      "meaning_standard": "Fascia — the body-wide connective-tissue web.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-tendons-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.36,
+        "y": 0.5
+      },
+      "anatomy": "Tendons & ligaments",
+      "meaning_standard": "Tendons and ligaments — dense connective tissue at the joints.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-tendons-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.64,
+        "y": 0.5
+      },
+      "anatomy": "Tendons & ligaments",
+      "meaning_standard": "Tendons and ligaments — dense connective tissue at the joints.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-cartilage-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.456,
+        "y": 0.74
+      },
+      "anatomy": "Cartilage",
+      "meaning_standard": "Cartilage — connective tissue cushioning the joints.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-cartilage-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.544,
+        "y": 0.74
+      },
+      "anatomy": "Cartilage",
+      "meaning_standard": "Cartilage — connective tissue cushioning the joints.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "lymph-dermis",
+      "side": "back",
+      "bilateral": false,
+      "group": "connective",
+      "geometry": {
+        "type": "point",
+        "x": 0.5,
+        "y": 0.25
+      },
+      "anatomy": "Dermis (skin)",
+      "meaning_standard": "Dermis — the connective-tissue layer of the skin.",
       "meaning_glen": "",
       "layers": {
         "embryological_depth": null,
