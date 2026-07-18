@@ -37623,6 +37623,11 @@ import dashboard.actions_tasks  # noqa: F401  (registers tasks.* actions)
 import dashboard.actions_rewards  # noqa: F401  (registers rewards.process_payout MONEY_SEND action)
 import dashboard.signals as _bos_signals  # noqa: F401 (registers module signals)
 import dashboard.orders as _bos_orders  # noqa: F401 (registers order actions + signal)
+# Inject the app-side membership grant into the alt-pay (Zelle/check/owner-recorded)
+# payment path -- so a membership paid outside Stripe still delivers the real grant,
+# in parity with the card path. Kept as an injected hook because dashboard.orders must
+# not import app (circular). Idempotent per order_ref inside _grant_membership_line_on_paid.
+_bos_orders.set_membership_grant_hook(_grant_membership_line_on_paid)
 import dashboard.combined_shipments as _bos_combined_shipments  # noqa: F401 (household combined-shipment model + actions)
 import dashboard.coaching as _coaching_actions  # noqa: F401 (registers coaching.grant action)
 import dashboard.finance as _bos_finance  # noqa: F401 (registers money signal + finance actions)

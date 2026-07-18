@@ -903,6 +903,21 @@ def _confirm_exec(params, ctx):
             "message": f"Proposed invoice #{oid} confirmed — awaiting payment."}
 
 
+# App-layer post-full-payment hook. Injected by app.py via
+# set_membership_grant_hook() so the alt-pay path can deliver the real membership
+# grant WITHOUT importing app (which would be circular: app imports this module).
+# Mirrors dashboard.set_owner_token_check's inject-a-callback seam. Signature:
+# hook(cx, order). Best-effort + idempotent per order inside the hook.
+_membership_grant_hook = None
+
+
+def set_membership_grant_hook(fn):
+    """Register the app-side membership-line grant (fn(cx, order)); keeps this
+    module free of an app import."""
+    global _membership_grant_hook
+    _membership_grant_hook = fn
+
+
 def _record_payment_exec(params, ctx):
     cx = (ctx or {}).get("cx") or (params or {}).get("cx")
     if cx is None:
@@ -947,6 +962,17 @@ def _record_payment_exec(params, ctx):
             _qsale.book_sale_on_payment(cx, _o)
     except Exception as _qe:
         print(f"[orders] qbo sale booking skipped for #{oid}: {_qe!r}", flush=True)
+    # Alt-pay parity: a membership bought by Zelle/check/owner-recorded payment must
+    # deliver the real membership grant too -- the card path does this via the
+    # settlement hub (_SETTLEMENT_DEPS.grant_membership_line). Fires ONLY here, on the
+    # full-payment (mark-paid) transition. Injected hook -> no app import (circular).
+    # Idempotent per order_ref inside the hook; best-effort so a grant hiccup never
+    # fails the payment record.
+    if _membership_grant_hook and _o:
+        try:
+            _membership_grant_hook(cx, _o)
+        except Exception as _me:
+            print(f"[orders] membership grant on payment skipped for #{oid}: {_me!r}", flush=True)
     return {"order_id": oid, "status": "new", "pay_status": "paid",
             "pay_method": method, "paid_cents": amount_cents,
             "message": f"Payment recorded for order #{oid}"
