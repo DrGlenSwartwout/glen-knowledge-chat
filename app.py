@@ -39679,6 +39679,12 @@ def _invoice_line_view(l):
     (unit_cents). Public page can't reach the console catalog API, so resolve here."""
     out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
            "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
+    # A membership line isn't a catalog product — carry its marker through so the page
+    # renders a labelled membership row instead of hunting for a product that isn't there.
+    if l.get("kind") == "membership":
+        out["kind"] = "membership"
+        out["tier"] = l.get("tier")
+        return out
     p = _get_product(l.get("slug") or "")
     if p:
         if p.get("service"):

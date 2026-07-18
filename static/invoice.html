@@ -194,6 +194,7 @@ async function load() {
   if (ORDER.name){ $('billto-nm').textContent = ORDER.name; $('billto').style.display = ''; }
   $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'');
   LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
+    kind:l.kind, tier:l.tier,
     service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
@@ -334,7 +335,9 @@ function renderLines() {
   // Services to the top; keep the ORIGINAL index for the qty controls (LINES order
   // is unchanged, so bump/setQty/pushUpdate still address the right line).
   $('lines').innerHTML = svcFirst(LINES).map(([l,i]) => {
-    const qty = l.service ? '<span class="muted">×'+l.qty+'</span>'
+    // Membership lines carry a fixed qty of 1 and are added/removed via the offer
+    // card, not the per-line stepper — show them like a service row (muted ×1).
+    const qty = (l.service || l.kind==='membership') ? '<span class="muted">×'+l.qty+'</span>'
       : (ORDER.editable ? '<span class="qty"><button onclick="bump('+i+',-1)">−</button>'
           + '<input type="number" min="0" value="'+l.qty+'" onchange="setQty('+i+',this.value)">'
           + '<button onclick="bump('+i+',1)">+</button></span>' : '<span class="muted">×'+l.qty+'</span>');
