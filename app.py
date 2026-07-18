@@ -39819,6 +39819,7 @@ def api_invoice_get(token):
         return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
     summary = _invoice_summary(order)
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
+    summary["membership_offer"] = _invoice_membership_offer(order)   # join-and-save (None if paid/member)
     oid = order.get("id")
     cx = _sqlite3.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
@@ -39847,6 +39848,89 @@ def api_invoice_get(token):
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
     return jsonify({"ok": True, "order": summary})
+
+
+def _invoice_membership_offer(order):
+    """Customer-facing join-and-save offer for an UNPAID invoice whose buyer is not
+    already a paid member. Returns {tier, offered_tiers, gross_cents, savings_cents,
+    net_add_cents, net_savings_cents} for the default offered tier, or None when the
+    order is paid, the buyer already owns a membership, or no product line resolves.
+    Uses the same _membership_offer_math helper as the OWNER offer endpoint (no owner
+    auth, no HTTP round-trip). Never raises."""
+    try:
+        from dashboard import membership_products as _mp
+        if (order.get("pay_status") or "unpaid") == "paid":
+            return None
+        email = (order.get("email") or "").strip().lower()
+        if email:
+            with _sqlite3.connect(LOG_DB) as _mc:
+                if _mp.owns_group(_mc, email):
+                    return None
+        tiers = _mp.invoice_offer_tiers()
+        if not tiers:
+            return None
+        tier_key = tiers[0]
+        # Product lines only (strip any membership line already present), preserving
+        # owner overrides so member pricing only moves the un-frozen lines — the same
+        # payload shape the reprice endpoint builds.
+        product_lines = []
+        for it in (order.get("items") or []):
+            slug = (it.get("slug") or "").strip()
+            if not slug or slug.startswith("membership:"):
+                continue
+            ln = {"slug": slug, "qty": int(it.get("qty") or 1)}
+            if it.get("override"):
+                ln["unit_cents"] = it.get("unit_cents")
+            product_lines.append(ln)
+        if not product_lines:
+            return None
+        math = _membership_offer_math(email, product_lines, tier_key)
+        return {"tier": tier_key, "offered_tiers": tiers, **math}
+    except Exception as _e:  # noqa: BLE001 — offer is cosmetic; never break the invoice
+        print(f"[invoice] membership offer skipped: {_e!r}", flush=True)
+        return None
+
+
+@app.route("/api/invoice/<token>/membership", methods=["POST"])
+def api_invoice_membership(token):
+    """Customer-facing: add or remove the membership line on their own (unpaid) invoice
+    and reprice. Token-authed (never owner). Guards: only unpaid orders; on add the tier
+    must be currently offered and the buyer must not already be a paid member. The
+    membership line is stripped then (for add) re-appended, so add is idempotent and
+    remove is clean. Provisional pricing only — no membership is granted here."""
+    from dashboard import membership_products as _mp
+    order = _invoice_order_for_token(token)
+    if not order:
+        return jsonify({"ok": False, "error": "invalid or expired invoice"}), 404
+    if (order.get("pay_status") or "unpaid") == "paid":
+        return jsonify({"ok": False, "error": "invoice already paid"}), 409
+    body = request.get_json(silent=True) or {}
+    action = (body.get("action") or "").strip()
+    lines = [l for l in (order.get("items") or [])
+             if not str(l.get("slug") or "").startswith("membership:")]
+    if action == "add":
+        tier_key = (body.get("tier") or "month").strip()
+        if tier_key not in _mp.invoice_offer_tiers():
+            return jsonify({"ok": False, "error": "tier not offered"}), 400
+        with _sqlite3.connect(LOG_DB) as _mc:
+            if _mp.owns_group(_mc, (order.get("email") or "").lower()):
+                return jsonify({"ok": False, "error": "already a member"}), 409
+        lines.append({"slug": _mp.line_slug(tier_key), "qty": 1})
+    elif action != "remove":
+        return jsonify({"ok": False, "error": "action must be add or remove"}), 400
+    # Rebuild the reprice payload: slug + qty, carrying an owner override forward.
+    payload = [{"slug": l["slug"], "qty": int(l.get("qty") or 1),
+                **({"unit_cents": l["unit_cents"]} if l.get("override") else {})}
+               for l in lines]
+    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    try:
+        _reprice_and_persist_invoice(cx, order, payload,
+                                     pickup=(order.get("channel") == "pickup"))
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        cx.close()
+    return api_invoice_get(token)     # return the fresh summary (same shape as GET)
 
 
 def _order_savings_offer(order):
