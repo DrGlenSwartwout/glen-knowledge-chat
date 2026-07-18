@@ -6437,6 +6437,20 @@ def _settle_referral_dep(order, order_ref):
     _settle_referral(order, order_ref=order_ref)
 
 
+def _grant_membership_line_dep(order):
+    """Settlement dep: on a paid checkout order carrying a membership line, write
+    the real membership grant. Opens its own sqlite connection (mirrors
+    _grant_group_bundle's convention -- deps must not share the caller's cx) and
+    delegates to _grant_membership_line_on_paid, which is idempotent per order_ref
+    and commits its own write. No-op (returns "none") when there's no membership
+    line, so it's safe to call for every paid order."""
+    if not order:
+        return
+    with sqlite3.connect(LOG_DB) as _mcx:
+        _mcx.row_factory = sqlite3.Row
+        _grant_membership_line_on_paid(_mcx, order)
+
+
 from types import SimpleNamespace as _SimpleNamespace  # noqa: E402
 _SETTLEMENT_DEPS = _SimpleNamespace(
     settle_points=_settle_points_dep,
@@ -6445,6 +6459,7 @@ _SETTLEMENT_DEPS = _SimpleNamespace(
     grant_group_bundle=_grant_group_bundle,
     settle_client=_settle_client_effects,
     settle_biofield=_settle_biofield_effects,
+    grant_membership_line=_grant_membership_line_dep,
 )
 
 

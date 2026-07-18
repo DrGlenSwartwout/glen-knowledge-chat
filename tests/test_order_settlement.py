@@ -15,6 +15,7 @@ class _Deps:
     def grant_group_bundle(self, md, pi_id): self._rec("group_bundle")
     def settle_client(self, md): self._rec("client")
     def settle_biofield(self, md, sid): self._rec("biofield")
+    def grant_membership_line(self, order): self._rec("membership_line")
 
 _ORDER = {"id": 1, "email": "a@b.com"}
 _MD = {"invoice_id": "tok1", "kind": "retail"}
@@ -84,6 +85,26 @@ def test_no_order_skips_common_points_referral():
 def test_unknown_kind_noop():
     d = _Deps(); out = _run("membership_product", d)
     assert d.calls == []
+
+_MEMBERSHIP_ORDER = {"id": 2, "email": "m@b.com",
+                     "items": [{"slug": "membership:month", "kind": "membership",
+                                "tier": "month"}]}
+
+def test_membership_line_dispatched_only_when_line_present():
+    # No membership line on the order -> the grant dep is NOT dispatched (existing
+    # non-membership orders are untouched).
+    d = _Deps(); _run("retail", d)
+    assert "membership_line" not in d.calls
+    # Order carries a membership line -> the grant dep fires (kind-agnostic).
+    d2 = _Deps(); out = _run("retail", d2, order=_MEMBERSHIP_ORDER)
+    assert d2.calls == ["points", "referral", "membership_line"]
+    assert "membership_line" in out["settled"]
+
+def test_membership_grant_that_raises_lands_in_skipped():
+    d = _Deps(raise_on={"membership_line"})
+    out = _run("retail", d, order=_MEMBERSHIP_ORDER)
+    assert "membership_line" in out["skipped"]
+    assert "membership_line" not in out["settled"]
 
 def test_group_bundle_grant_that_raises_lands_in_skipped():
     # Orchestrator-level guard: if the injected grant_group_bundle dep raises
