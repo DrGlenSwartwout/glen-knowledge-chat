@@ -398,6 +398,39 @@ def test_resolve_finding_zones_organs_body_atlas():
     assert "organ-kidney-r" in r["zones"] and "organ-kidney-l" in r["zones"]
 
 
+def test_shipped_skeleton_and_muscle_seeds_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    for system, prefix in (("skeleton", "bone-"), ("muscle", "muscle-")):
+        assert bodymap_store.SYSTEMS[system].name == f"bodymap-{system}.json"
+        data = json.loads((repo / f"bodymap-{system}.json").read_text())
+        assert data["reference_frame"] == "body_outline"
+        assert data.get("outlines", {}).get("front") and data.get("outlines", {}).get("back")
+        groups = {g["id"] for g in data["groups"]}
+        views = set()
+        for z in data["zones"]:
+            ok, err = bodymap_store.validate_zone(z)
+            assert ok, f"{system} zone {z.get('id')}: {err}"
+            assert z["group"] in groups and z["id"].startswith(prefix)
+            assert z["geometry"]["type"] == "ellipse"
+            views.add(z["side"])
+        assert {"front", "back"} <= views
+
+
+def test_zone_ids_whole_system_and_side():
+    all_bones = bodymap_store.zone_ids("skeleton")
+    front_bones = bodymap_store.zone_ids("skeleton", side="front")
+    assert len(all_bones) > len(front_bones) > 0
+    assert all(z.startswith("bone-") for z in all_bones)
+    assert bodymap_store.zone_ids("nope") == []
+
+
+def test_resolve_finding_zones_specific_bone_and_muscle():
+    assert "bone-femur-r" in bodymap_store.resolve_finding_zones("skeleton", ["Femur"])["zones"]
+    assert bodymap_store.resolve_finding_zones("skeleton", ["Hip Joint"])["zones"]  # joint match
+    assert "muscle-biceps-r" in bodymap_store.resolve_finding_zones("muscle", ["Biceps"])["zones"]
+
+
 def test_resolve_finding_zones_large_vs_small_intestine():
     # "Large Intestine" lights the colon, NOT the small intestine (shared word guard)
     lg = bodymap_store.resolve_finding_zones("organs", ["Large Intestine"])

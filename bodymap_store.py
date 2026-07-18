@@ -28,10 +28,12 @@ SYSTEMS = {
     "lymph": DATA_DIR / "bodymap-lymph.json",
     "face": DATA_DIR / "bodymap-face.json",
     "organs": DATA_DIR / "bodymap-organs.json",
+    "skeleton": DATA_DIR / "bodymap-skeleton.json",
+    "muscle": DATA_DIR / "bodymap-muscle.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -260,6 +262,19 @@ def _stem(s):
     matches whether the finding or the zone spells it singular or plural
     ('Lung' vs 'Lungs (cheek)', 'Kidney' vs 'Kidneys'). Matching-only; not display."""
     return re.sub(r"(\w)s\b", r"\1", (s or "").strip().lower())
+
+
+def zone_ids(system, side=None):
+    """All zone ids in `system` (optionally restricted to one view/side). Used to
+    light a whole system for a system-level finding (e.g. a 'Bone' finding lights
+    the entire skeleton). Never raises on a missing system -> []."""
+    try:
+        zones = load_map(system).get("zones", [])
+    except (KeyError, FileNotFoundError, ValueError):
+        return []
+    if side:
+        zones = [z for z in zones if (z.get("side") or z.get("eye")) == side]
+    return [z.get("id") for z in zones if z.get("id")]
 
 
 def resolve_finding_zones(system, names, side=None):

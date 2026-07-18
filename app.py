@@ -18794,14 +18794,32 @@ def _portal_current_biofield_location(cx, email, content):
 # `resolve_side` restricting which zones a finding may light (None = all views, so
 # both front & back organ zones light). Face uses the diagnosis layer only so a
 # finding never lights the acu/lymph/nerve/eav layers.
+# `theme`: system-level finding terms that light the WHOLE map (a generic "Bone"
+# finding has no single zone — it flags the entire skeleton). Specific structures
+# (Femur, Hip Joint) still light their own zone via anatomy match.
 _PERSONALIZE_SYSTEMS = {
     "face": {"view": "diagnosis", "resolve_side": "diagnosis"},
     "organs": {"view": "front", "resolve_side": None},
+    "skeleton": {"view": "front", "resolve_side": None,
+                 "theme": {"bone", "skeleton", "skeletal", "cartilage", "vertebra", "vertebrae"}},
+    "muscle": {"view": "front", "resolve_side": None,
+               "theme": {"muscle", "muscular", "musculature", "connective tissue"}},
     "foot": {"view": "right", "resolve_side": None},
     "hand": {"view": "right", "resolve_side": None},
     "iridology": {"view": "right", "resolve_side": None},
     "sclerology": {"view": "right", "resolve_side": None},
 }
+
+
+def _bodymap_theme_hit(terms, theme):
+    """True if any finding term is a system-level theme term (stemmed, whole or
+    per-word), e.g. 'Bone Driver' -> 'bone' hits the skeleton theme."""
+    import bodymap_store as _bm
+    for t in terms:
+        s = _bm._stem(t)
+        if s in theme or any(w in theme for w in s.split()):
+            return True
+    return False
 
 
 def _portal_bodymap_data(cx, email, content, system="face"):
@@ -18817,6 +18835,7 @@ def _portal_bodymap_data(cx, email, content, system="face"):
     if system not in _PERSONALIZE_SYSTEMS:
         system = "face"
     VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
+    THEME = cfg.get("theme") or set()
     out = {"system": system, "view": VIEW, "has_photo": False,
            "findings": [], "lit_zones": [], "count": 0}
     email = (email or "").strip().lower()
@@ -18842,12 +18861,17 @@ def _portal_bodymap_data(cx, email, content, system="face"):
         # The finding's own name (ED drivers ARE organ names, e.g. "Liver Driver")
         # plus its tagged organ/system structures -> the terms that light zones.
         terms = ([name] if name else []) + list(organ_map.get(code, []))
-        res = _bm.resolve_finding_zones(system, terms, side=RESOLVE_SIDE)
-        if not res["zones"]:
+        # A system-level finding ("Bone", "Muscle") lights the whole map; a specific
+        # one (Femur, Hip Joint) lights its own zone via anatomy match.
+        if THEME and _bodymap_theme_hit(terms, THEME):
+            zlist = _bm.zone_ids(system, RESOLVE_SIDE)
+        else:
+            zlist = _bm.resolve_finding_zones(system, terms, side=RESOLVE_SIDE)["zones"]
+        if not zlist:
             continue
         findings_out.append({"label": name, "rank": f.get("rank"),
-                             "source": "e4l", "zones": res["zones"]})
-        for zid in res["zones"]:
+                             "source": "e4l", "zones": zlist})
+        for zid in zlist:
             if zid not in seen:
                 seen.add(zid)
                 lit.append(zid)
