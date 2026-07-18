@@ -5632,6 +5632,27 @@ def _catalog_products():
     return [dict(p, slug=s) for s, p in (_PRODUCTS.get("products") or {}).items()]
 
 
+def _order_physical_units(order):
+    """Total physical shipping units (bottles, bundles expanded) for a stored order
+    dict. Accepts either an order already carrying a parsed `items` list (as
+    returned by dashboard.orders.get_order/list_orders) or a raw `items_json`
+    string column (as returned by a hand-rolled SQL SELECT). Read-only display
+    field — never raises."""
+    order = order or {}
+    items = order.get("items")
+    if items is None:
+        import json as _json
+        try:
+            items = _json.loads(order.get("items_json") or "[]")
+        except Exception:
+            items = []
+    try:
+        catalog = {p.get("slug"): p for p in _catalog_products()}
+        return _bos_orders.physical_units(items, catalog)
+    except Exception:
+        return 0
+
+
 def _get_product(slug):
     """The sellable product for a slug, following a retired duplicate to its live twin.
 
@@ -18243,6 +18264,14 @@ def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
 
 
+@app.route("/portal/<token>/bodymap")
+def client_portal_bodymap_page(token):
+    """Personalized Body Map for a client: the same /body-map page, which detects
+    the /portal/<token>/bodymap path and warps the face map onto the client's own
+    photo with their findings lit. Token-scoped data comes from the APIs below."""
+    return send_from_directory(STATIC, "body-map.html")
+
+
 @app.route("/api/portal/<token>")
 def api_client_portal(token):
     from dashboard import client_portal as _cp
@@ -18436,6 +18465,11 @@ def api_client_portal(token):
         "biofield_status": bf_status, "blurred": not bf_show,
         "actionable": bf_actionable, "scan_date": bf_scan_date, "scan_dates": bf_scan_dates,
         "greeting": bf_content.get("greeting", ""),
+        # Terrain reading (BSI phase 1-5 + spoken location) shown at the top of the
+        # portal report, mirroring the printed report. Absent (null/'') on reveal/FMP
+        # reports that carry no BSI -> the portal just omits the banner.
+        "phase": bf_content.get("phase"),
+        "location": bf_content.get("location", ""),
         "video": bf_content.get("video") or {},
         "audio": (bf_content.get("audio") or {}) if bf_show else {},
         "report_pdf": (bf_content.get("report_pdf") or {}) if bf_show else {},
@@ -18839,6 +18873,147 @@ def api_portal_photo_serve(token):
     resp = Response(rec["blob"], mimetype=rec["content_type"])
     resp.headers["Cache-Control"] = "private, no-store"
     return resp
+
+
+def _portal_current_biofield_location(cx, email, content):
+    """The spoken anatomical `location` from the client's CURRENT biofield report
+    (same report the portal picks: content.current_scan_date -> newest). '' when
+    none. The location text is matched organ-by-organ to light face zones."""
+    from dashboard import portal_biofield_reports as _pbr
+    _pbr.init_table(cx)
+    dates = _pbr.list_report_dates(cx, email) if email else []
+    if dates:
+        cur = (content or {}).get("current_scan_date")
+        picked = cur if (cur and cur in dates) else dates[0]
+        bf = (_pbr.get_report(cx, email, picked) or {}).get("content") or {}
+    else:
+        bf = content or {}
+    return (bf.get("location") or "").strip()
+
+
+# Which systems personalize, and how: the initial VIEW the page opens on, and the
+# `resolve_side` restricting which zones a finding may light (None = all views, so
+# both front & back organ zones light). Face uses the diagnosis layer only so a
+# finding never lights the acu/lymph/nerve/eav layers.
+# `theme`: system-level finding terms that light the WHOLE map (a generic "Bone"
+# finding has no single zone — it flags the entire skeleton). Specific structures
+# (Femur, Hip Joint) still light their own zone via anatomy match.
+_PERSONALIZE_SYSTEMS = {
+    "face": {"view": "diagnosis", "resolve_side": "diagnosis"},
+    "organs": {"view": "front", "resolve_side": None},
+    "skeleton": {"view": "front", "resolve_side": None,
+                 "theme": {"bone", "skeleton", "skeletal", "cartilage", "vertebra", "vertebrae"}},
+    "muscle": {"view": "front", "resolve_side": None,
+               "theme": {"muscle", "muscular", "musculature", "connective tissue"}},
+    "dental": {"view": "chart", "resolve_side": None},
+    "foot": {"view": "right", "resolve_side": None},
+    "hand": {"view": "right", "resolve_side": None},
+    "iridology": {"view": "right", "resolve_side": None},
+    "sclerology": {"view": "right", "resolve_side": None},
+}
+
+
+def _bodymap_theme_hit(terms, theme):
+    """True if any finding term is a system-level theme term (stemmed, whole or
+    per-word), e.g. 'Bone Driver' -> 'bone' hits the skeleton theme."""
+    import bodymap_store as _bm
+    for t in terms:
+        s = _bm._stem(t)
+        if s in theme or any(w in theme for w in s.split()):
+            return True
+    return False
+
+
+def _portal_bodymap_data(cx, email, content, system="face"):
+    """Personalization for the portal Body Map: the client's E4L findings + spoken
+    biofield location resolved to `system`'s zones, so their OWN findings light up
+    on that map (face onto a selfie, the organ atlas onto the body, etc.). Read-only;
+    never raises — returns an empty-but-valid shape on any failure."""
+    import bodymap_store as _bm
+    from dashboard import biofield_e4l as _e4l
+    from dashboard import client_photos as _cph
+    import datetime as _dt
+    cfg = _PERSONALIZE_SYSTEMS.get(system) or _PERSONALIZE_SYSTEMS["face"]
+    if system not in _PERSONALIZE_SYSTEMS:
+        system = "face"
+    VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
+    THEME = cfg.get("theme") or set()
+    out = {"system": system, "view": VIEW, "has_photo": False,
+           "findings": [], "lit_zones": [], "count": 0}
+    email = (email or "").strip().lower()
+    if not email:
+        return out
+    try:
+        out["has_photo"] = bool(_cph.has(cx, email))
+    except Exception:
+        pass
+    findings_out, lit, seen = [], [], set()
+    try:
+        sc = _e4l.scan_context(email, _dt.date.today().isoformat())
+        raw_findings = sc.get("findings") or []
+    except Exception:
+        raw_findings = []
+    try:
+        organ_map = _e4l.organs_for_codes([f.get("code") for f in raw_findings])
+    except Exception:
+        organ_map = {}
+    for f in raw_findings:
+        code = (f.get("code") or "").strip()
+        name = (f.get("name") or code).strip()
+        # The finding's own name (ED drivers ARE organ names, e.g. "Liver Driver")
+        # plus its tagged organ/system structures -> the terms that light zones.
+        terms = ([name] if name else []) + list(organ_map.get(code, []))
+        # A system-level finding ("Bone", "Muscle") lights the whole map; a specific
+        # one (Femur, Hip Joint) lights its own zone via anatomy match.
+        if THEME and _bodymap_theme_hit(terms, THEME):
+            zlist = _bm.zone_ids(system, RESOLVE_SIDE)
+        else:
+            zlist = _bm.resolve_finding_zones(system, terms, side=RESOLVE_SIDE)["zones"]
+        if not zlist:
+            continue
+        findings_out.append({"label": name, "rank": f.get("rank"),
+                             "source": "e4l", "zones": zlist})
+        for zid in zlist:
+            if zid not in seen:
+                seen.add(zid)
+                lit.append(zid)
+    try:
+        location = _portal_current_biofield_location(cx, email, content)
+    except Exception:
+        location = ""
+    if location:
+        # The spoken location is free text that may name several organs ("the
+        # spleen and stomach region"); match it organ-by-organ (each word), not as
+        # one phrase, so each named organ lights. Short words (the/and) match nothing.
+        loc_words = [w for w in re.split(r"[^A-Za-z]+", location) if len(w) >= 4]
+        res = _bm.resolve_finding_zones(system, loc_words, side=RESOLVE_SIDE)
+        if res["zones"]:
+            findings_out.append({"label": location, "rank": None,
+                                 "source": "biofield", "zones": res["zones"]})
+            for zid in res["zones"]:
+                if zid not in seen:
+                    seen.add(zid)
+                    lit.append(zid)
+    out["findings"] = findings_out
+    out["lit_zones"] = lit
+    out["count"] = len(findings_out)
+    return out
+
+
+@app.route("/api/portal/<token>/bodymap")
+def api_portal_bodymap(token):
+    """Token-scoped Body Map personalization for the portal card and page: the
+    client's findings resolved to the ?system= map's zones (default 'face').
+    404 when the token is unknown."""
+    from dashboard import client_portal as _cp
+    system = (request.args.get("system") or "face").strip().lower()
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        data = _portal_bodymap_data(cx, portal.get("email"), portal.get("content"), system)
+    return jsonify(data)
 
 
 @app.route("/api/portal/<token>/share-consent", methods=["POST"])
@@ -25556,7 +25731,8 @@ def api_points_balance():
 
 
 def _resolve_ship_address(email, body_address):
-    """Ship-to: the request address if given, else the member's last order address, else {}."""
+    """Ship-to: the request address if given, else the member's last order
+    address, else the person's household ship-to (if set), else {}."""
     ship = body_address or {}
     if not ship:
         try:
@@ -25567,6 +25743,24 @@ def _resolve_ship_address(email, body_address):
                 ship = prior[0].get("address") or {}
         except Exception:
             ship = {}
+    if not ship and email:
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                prow = cx.execute("SELECT id FROM people WHERE lower(email)=?",
+                                  ((email or "").strip().lower(),)).fetchone()
+                if prow:
+                    slug = _person_household_slug(cx, prow["id"])
+                    if slug:
+                        h = cx.execute("SELECT ship_name, ship_street, ship_street2, "
+                                       "ship_city, ship_state, ship_zip FROM households "
+                                       "WHERE slug=?", (slug,)).fetchone()
+                        if h and (h["ship_street"] or "").strip():
+                            ship = {"name": h["ship_name"] or "", "street": h["ship_street"] or "",
+                                    "street2": h["ship_street2"] or "", "city": h["ship_city"] or "",
+                                    "state": h["ship_state"] or "", "zip": h["ship_zip"] or ""}
+        except Exception:
+            pass
     return ship or {}
 
 
@@ -29298,6 +29492,14 @@ def _init_households_tables():
                 created_by      TEXT NOT NULL
             )
         """)
+        # Structured household ship-to (additive): members with no address of
+        # their own auto-inherit this at order time (see _resolve_ship_address).
+        for _col in ("ship_name", "ship_street", "ship_street2", "ship_city",
+                     "ship_state", "ship_zip"):
+            try:
+                cx.execute(f"ALTER TABLE households ADD COLUMN {_col} TEXT DEFAULT ''")
+            except Exception:
+                pass  # already present
         cx.execute("""
             CREATE TABLE IF NOT EXISTS household_candidates (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29477,6 +29679,23 @@ def _household_slug(name, head_first_name="", existing=None):
     while f"{base}-{n}" in existing:
         n += 1
     return f"{base}-{n}"
+
+
+def _household_ship_to(row):
+    """Build a {name, street, street2, city, state, zip} dict from a households
+    row (sqlite3.Row or dict). Missing/absent columns read as ''. Tolerates
+    older/stub schemas that lack the ship_* columns (returns all-empty)."""
+    keys = row.keys() if hasattr(row, "keys") else row
+    def _get(col):
+        try:
+            return (row[col] if col in keys else "") or ""
+        except (IndexError, KeyError):
+            return ""
+    return {
+        "name": _get("ship_name"), "street": _get("ship_street"),
+        "street2": _get("ship_street2"), "city": _get("ship_city"),
+        "state": _get("ship_state"), "zip": _get("ship_zip"),
+    }
 
 
 def _pair_household_name(cx, head_id, other_id):
@@ -29966,6 +30185,7 @@ def get_household(slug):
         "head_person_id": row["head_person_id"], "address": row["address"],
         "notes": row["notes"], "created_at": row["created_at"],
         "updated_at": row["updated_at"], "created_by": row["created_by"],
+        "ship_to": _household_ship_to(row),
         "members": member_list,
     })
 
@@ -30364,10 +30584,25 @@ def update_household(slug):
             r = cx.execute("SELECT email FROM people WHERE id=?", (new_head,)).fetchone()
             new_head_email = r[0] if r else None
 
-        cx.execute("""
-            UPDATE households SET name=?, address=?, notes=?, head_person_id=?, updated_at=?
+        set_cols = ["name=?", "address=?", "notes=?", "head_person_id=?", "updated_at=?"]
+        set_vals = [new_name, new_address, new_notes, new_head, ts]
+
+        # Structured ship-to: only touched when the caller sends `ship_to`.
+        ship_to = body.get("ship_to")
+        if ship_to is not None:
+            ship_cols = {
+                "ship_name": "name", "ship_street": "street", "ship_street2": "street2",
+                "ship_city": "city", "ship_state": "state", "ship_zip": "zip",
+            }
+            for col, key in ship_cols.items():
+                set_cols.append(f"{col}=?")
+                set_vals.append((ship_to.get(key) or "").strip())
+
+        set_vals.append(slug)
+        cx.execute(f"""
+            UPDATE households SET {", ".join(set_cols)}
             WHERE slug=?
-        """, (new_name, new_address, new_notes, new_head, ts, slug))
+        """, set_vals)
         cx.commit()
 
     # GHL sync outside lock
@@ -37925,7 +38160,7 @@ def _published_invoices_for(cx, email):
         return []
     try:
         rows = cx.execute(
-            "SELECT total_cents, invoice_token FROM orders "
+            "SELECT total_cents, invoice_token, COALESCE(items_json,'[]') FROM orders "
             "WHERE lower(coalesce(email,''))=? AND portal_published=1 "
             "AND coalesce(pay_status,'')<>'paid' AND coalesce(invoice_token,'')<>'' "
             "AND coalesce(status,'') NOT IN ('cancelled','delivered','done') "
@@ -37934,7 +38169,8 @@ def _published_invoices_for(cx, email):
         return []
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(total_cents or 0) / 100:.2f}",
-             "link": f"{base}/invoice/{tok}"} for total_cents, tok in rows]
+             "physical_units": _order_physical_units({"items_json": items_json}),
+             "link": f"{base}/invoice/{tok}"} for total_cents, tok, items_json in rows]
 
 
 def _past_invoices_for(cx, email):
@@ -37948,7 +38184,7 @@ def _past_invoices_for(cx, email):
     try:
         rows = cx.execute(
             "SELECT total_cents, COALESCE(invoice_token,''), "
-            "COALESCE(paid_at, updated_at, created_at, '') FROM orders "
+            "COALESCE(paid_at, updated_at, created_at, ''), COALESCE(items_json,'[]') FROM orders "
             "WHERE lower(coalesce(email,''))=? AND coalesce(pay_status,'')='paid' "
             "AND coalesce(status,'')<>'cancelled' ORDER BY id DESC", (email,)).fetchall()
     except Exception:
@@ -37956,7 +38192,8 @@ def _past_invoices_for(cx, email):
     base = PUBLIC_BASE_URL.rstrip("/")
     return [{"token": tok, "amount_dollars": f"{(tc or 0) / 100:.2f}",
              "paid": True, "when": (when or "")[:10],
-             "link": (f"{base}/invoice/{tok}" if tok else "")} for tc, tok, when in rows]
+             "physical_units": _order_physical_units({"items_json": items_json}),
+             "link": (f"{base}/invoice/{tok}" if tok else "")} for tc, tok, when, items_json in rows]
 
 
 @app.route("/api/console/order/<int:oid>/publish-to-portal", methods=["POST"])
@@ -38062,7 +38299,11 @@ def console_client_invoice():
         return jsonify({"ok": True, "order": None, **biofield_paid})
     lines = []
     try:
-        for it in (json.loads(r["items"]) or []):
+        items = json.loads(r["items"]) or []
+    except Exception:
+        items = []
+    try:
+        for it in items:
             cents = it.get("line_cents")
             lines.append({"name": it.get("name") or it.get("slug") or "",
                           "qty": it.get("qty") or 1,
@@ -38076,6 +38317,7 @@ def console_client_invoice():
     return jsonify({"ok": True, "order": {
         "id": r["id"], "status": r["status"], "portal_published": bool(r["pub"]),
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
+        "physical_units": _order_physical_units({"items": items}),
         "edit_url": edit_url, "lines": lines}, **biofield_paid})
 
 
@@ -39902,6 +40144,7 @@ def _invoice_summary(order):
         "name": _invoice_display_name(order),
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
+        "physical_units": _order_physical_units(order),
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "adjustment_cents": int(order.get("adjustment_cents") or 0),
@@ -40914,6 +41157,15 @@ def bos_orders_create():
                     o["backorder_units"] = back
             except Exception as _e:
                 print(f"[orders] backorder annotate skipped: {_e!r}", flush=True)
+            # Total physical product count (shipping units): bundles expand to their
+            # component bottles, services/info-only/shipping/adjustments count 0.
+            # Catalog built once and reused across every order on the board.
+            try:
+                _phys_catalog = {p.get("slug"): p for p in _catalog_products()}
+                for o in rows:
+                    o["physical_units"] = _bos_orders.physical_units(o.get("items") or [], _phys_catalog)
+            except Exception as _e:
+                print(f"[orders] physical_units annotate skipped: {_e!r}", flush=True)
             # Display-name fallback: many orders carry only a shipping name, which is
             # blank for portal/reorder flows that don't re-collect it. Backfill the
             # display name from the people table by email (one grouped query).

@@ -40,7 +40,7 @@ from dashboard.biofield_authoring import (
     add_chain_row, authored_report, confirm_all, confirm_row, create_test,
     delete_chain_row, delete_test, list_authored, merge_dosing, remedy_catalog,
     remedy_dosing, resolve_remedy_name, resolve_stress_name, stress_suggestions,
-    stress_vocab, update_chain_row, update_header)
+    stress_vocab, update_chain_row, update_header, update_terrain)
 from dashboard.biofield_dimensions import (
     DEPTH_KEY, dimension_values, seed_dimensions, tag as dim_tag)
 from dashboard.biofield_interpret import interpret_transcript
@@ -929,7 +929,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                     "note": (f"Biofield Analysis already paid (order #{paid.get('order_id')}) — "
                              "no remedies to invoice, so no new invoice was raised."),
                     "print_url": "", "orders_url": "", "external_ref": "", "total_dollars": ""}
-        created = invoice_create({"name": client.get("name"), "email": email}, built["lines"])
+        note = biofield_invoice.build_invoice_note(rep.get("phase"), rep.get("location"))
+        created = invoice_create({"name": client.get("name"), "email": email}, built["lines"],
+                                 invoice_note=note)
         if not created.get("ok"):
             return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
         link = invoice_link(created.get("order_id"))
@@ -1005,8 +1007,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                            "note": f"Biofield Analysis already paid (order #{paid.get('order_id')}); no new invoice raised."}
             else:
                 # replace_open: a re-hand-off cancels prior open drafts, so no pileup.
+                note = biofield_invoice.build_invoice_note(rep.get("phase"), rep.get("location"))
                 created = invoice_create({"name": client.get("name"), "email": email},
-                                         built["lines"], replace_open=True)
+                                         built["lines"], replace_open=True, invoice_note=note)
                 if created.get("ok"):
                     total = created.get("total_cents")
                     invoice = {"ok": True, "order_id": created.get("order_id"),
@@ -1572,7 +1575,12 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 add_chain_row(cx, test_id, l.get("layer"), head, most_affected,
                               remedy, dosage, frequency, timing, confirmed=0)  # voice -> unconfirmed
                 added += 1
-        return {"added": added, "header": result.get("header", "")}
+            # Persist the scan's terrain reading (BSI 'phase P' + spoken location) on
+            # the test. Per-field, so a re-interpret with no phase spoken won't wipe it.
+            update_terrain(cx, test_id, phase=result.get("phase"),
+                           location=result.get("location"))
+        return {"added": added, "header": result.get("header", ""),
+                "phase": result.get("phase"), "location": result.get("location", "")}
 
     @app.route("/author/<test_id>/delete", methods=["POST"])
     def author_delete(test_id):

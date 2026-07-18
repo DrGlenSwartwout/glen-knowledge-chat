@@ -64,10 +64,10 @@
   #print-root .pd-logo{ width:76px; height:76px; object-fit:contain; }
   #print-root .pd-org-name{ font-size:18px; font-weight:700; color:#3a5a40; }
   #print-root .pd-org-line{ font-size:11px; color:#444; }
-  #print-root .pd-title{ margin-left:auto; text-align:right; font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
-  #print-root .pd-billto{ margin:2px 0 10px; }
-  #print-root .pd-billto-k{ display:block; font-size:10.5px; letter-spacing:.2px; color:#8a8a8a; margin-bottom:1px; }
-  #print-root .pd-billto-nm{ font-size:19px; font-weight:700; color:#1b1b1b; }
+  #print-root .pd-title{ margin-left:auto; text-align:right; }
+  #print-root .pd-title-k{ font-size:11px; letter-spacing:.4px; text-transform:uppercase; color:#b8902f; font-weight:700; }
+  #print-root .pd-title-nm{ font-size:20px; font-weight:700; color:#1b1b1b; letter-spacing:.2px; }
+  #print-root .pd-title-only{ font-size:20px; font-weight:700; color:#b8902f; letter-spacing:.4px; }
   #print-root .pd-meta{ display:flex; flex-wrap:wrap; gap:8px 26px; font-size:12px; margin-bottom:14px; }
   #print-root .pd-k{ color:#8a8a8a; }
   #print-root table.pd-lines{ width:100%; border-collapse:collapse; font-size:12.5px; margin:6px 0 12px; }
@@ -271,7 +271,7 @@ async function load() {
 
 // ── Print / Save-as-PDF: a self-contained invoice (logo header + line items +
 // totals only) into #print-root; @media print hides the rest (chat, pay UI). ──
-const PRINT_HEADER = (title)=>`
+const PRINT_HEADER = (title, name)=>`
   <div class="pd-head">
     <img class="pd-logo" src="/static/favicon.png" alt="Remedy Match LLC logo">
     <div class="pd-org">
@@ -279,7 +279,9 @@ const PRINT_HEADER = (title)=>`
       <div class="pd-org-line">351 Wailuku Drive, Hilo, Hawai‘i 96720</div>
       <div class="pd-org-line">(808) 217-9647 · illtowell.com</div>
     </div>
-    <div class="pd-title">${esc(title)}</div>
+    <div class="pd-title">${name
+      ? `<div class="pd-title-k">${esc(title)}</div><div class="pd-title-nm">${esc(name)}</div>`
+      : `<div class="pd-title-only">${esc(title)}</div>`}</div>
   </div>`;
 function buildInvoicePrintHtml(o){
   o = o || {};
@@ -307,8 +309,7 @@ function buildInvoicePrintHtml(o){
   if(savings>0) tot += r('You save', savings, false, 'save');
   const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
   return `<div class="pd invoice">
-    ${PRINT_HEADER("Invoice")}
-    ${o.name?`<div class="pd-billto"><span class="pd-billto-k">Billed to</span><span class="pd-billto-nm">${esc(o.name)}</span></div>`:""}
+    ${PRINT_HEADER("Invoice", o.name)}
     <div class="pd-meta">
       ${o.external_ref?`<div><span class="pd-k">Invoice</span> ${esc(o.external_ref)}</div>`:""}
       <div><span class="pd-k">Date</span> ${esc(today)}</div>

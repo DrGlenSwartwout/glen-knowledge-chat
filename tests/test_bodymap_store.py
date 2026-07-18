@@ -37,9 +37,12 @@ def test_validate_zone_rejects_bad_sector_range():
     assert ok is False and "sector" in err
 
 
-def test_validate_zone_rejects_bad_eye():
-    ok, err = bodymap_store.validate_zone(_zone(eye="middle"))
-    assert ok is False and "eye" in err
+def test_validate_zone_rejects_empty_eye():
+    # side/eye is a free-form laterality/view selector now; only empty/non-string is rejected
+    ok, err = bodymap_store.validate_zone(_zone(eye=""))
+    assert ok is False and ("side" in err or "eye" in err)
+    ok2, _ = bodymap_store.validate_zone(_zone(eye="diagnosis"))
+    assert ok2 is True
 
 
 def test_reseed_seeds_when_missing_and_respects_force(tmp_path, monkeypatch):
@@ -227,6 +230,10 @@ def test_shipped_ear_seed_valid():
         assert z["group"] in group_ids, f"{z['id']} bad group {z['group']}"
     keys = {a["key"] for a in data.get("anchors", [])}
     assert {"helix-top", "lobe-bottom", "tragus"} <= keys
+    # auricular points are identical on both ears: bilateral on the canonical left,
+    # mirrored by the renderer via outline_side for the right ear.
+    assert data.get("outline_side") == "left"
+    assert all(z.get("bilateral") for z in data["zones"]), "ear points must be bilateral"
 
 
 def test_foot_system_registered():
@@ -278,6 +285,186 @@ def test_shipped_hand_seed_valid():
     assert "hand-R-liver" in ids and "hand-L-heart" in ids
 
 
+def test_shipped_meridian_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["meridian"].name == "bodymap-meridian.json"
+    data = json.loads((repo / "bodymap-meridian.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert set(data.get("outlines", {})) == {"front", "back", "side"}
+    assert len(data.get("groups", [])) == 14, "12 primary channels + Ren + Du"
+    gtypes, views = set(), set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"meridian zone {z.get('id')}: {err}"
+        gtypes.add(z["geometry"]["type"])
+        views.add(z["side"])
+    assert {"path", "point"} <= gtypes, "channels are lines, acupoints are points"
+    assert views <= {"front", "back", "side"} and "side" in views
+
+
+def test_shipped_eav_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["eav"].name == "bodymap-eav.json"
+    data = json.loads((repo / "bodymap-eav.json").read_text())
+    assert set(data.get("outlines", {})) == {"hand", "foot"}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"eav zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "point"
+        views.add(z["side"])
+    assert views == {"hand", "foot"}
+    ids = {z["id"] for z in data["zones"]}
+    assert {"eav-LU11", "eav-BL67"} <= ids  # jing-well terminal points present
+
+
+def test_shipped_neurotome_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["neurotome"].name == "bodymap-neurotome.json"
+    data = json.loads((repo / "bodymap-neurotome.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert set(data.get("outlines", {})) == {"front", "back"}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"neurotome zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "polygon"
+        views.add(z["side"])
+    assert views == {"front", "back"}
+
+
+def test_shipped_lymph_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["lymph"].name == "bodymap-lymph.json"
+    data = json.loads((repo / "bodymap-lymph.json").read_text())
+    assert set(data.get("outlines", {})) == {"front", "back"}
+    gtypes, views = set(), set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"lymph zone {z.get('id')}: {err}"
+        gtypes.add(z["geometry"]["type"])
+        views.add(z["side"])
+    assert {"point", "path"} <= gtypes  # nodes are points, ducts are lines
+    assert views == {"front", "back"}
+
+
+def test_shipped_face_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["face"].name == "bodymap-face.json"
+    data = json.loads((repo / "bodymap-face.json").read_text())
+    assert data["reference_frame"] == "face_outline"
+    assert data.get("outline") and len(data.get("anchors", [])) == 2
+    groups = {g["id"] for g in data["groups"]}
+    assert {"wood", "fire", "earth", "metal", "water"} <= groups  # diagnosis elements
+    views, gtypes = set(), set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"face zone {z.get('id')}: {err}"
+        assert z["group"] in groups
+        views.add(z["side"])
+        gtypes.add(z["geometry"]["type"])
+    # five map layers, multiple geometries
+    assert {"diagnosis", "acu", "lymph", "nerve", "eav"} <= views
+    assert {"ellipse", "point", "polygon", "path"} <= gtypes
+
+
+def test_shipped_organs_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["organs"].name == "bodymap-organs.json"
+    data = json.loads((repo / "bodymap-organs.json").read_text())
+    assert data["reference_frame"] == "body_outline"
+    assert data.get("outlines", {}).get("front") and data.get("outlines", {}).get("back")
+    groups = {g["id"] for g in data["groups"]}
+    views = set()
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"organs zone {z.get('id')}: {err}"
+        assert z["group"] in groups
+        assert z["geometry"]["type"] == "ellipse"
+        views.add(z["side"])
+    assert {"front", "back"} <= views
+
+
+def test_resolve_finding_zones_organs_body_atlas():
+    # whole-body atlas: findings light the real organ location, incl. off-face organs
+    r = bodymap_store.resolve_finding_zones("organs", ["Brain", "Heart", "Kidney"])
+    assert "organ-brain" in r["zones"] and "organ-heart" in r["zones"]
+    assert "organ-kidney-r" in r["zones"] and "organ-kidney-l" in r["zones"]
+
+
+def test_shipped_skeleton_and_muscle_seeds_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    for system, prefix in (("skeleton", "bone-"), ("muscle", "muscle-")):
+        assert bodymap_store.SYSTEMS[system].name == f"bodymap-{system}.json"
+        data = json.loads((repo / f"bodymap-{system}.json").read_text())
+        assert data["reference_frame"] == "body_outline"
+        assert data.get("outlines", {}).get("front") and data.get("outlines", {}).get("back")
+        groups = {g["id"] for g in data["groups"]}
+        views = set()
+        for z in data["zones"]:
+            ok, err = bodymap_store.validate_zone(z)
+            assert ok, f"{system} zone {z.get('id')}: {err}"
+            assert z["group"] in groups and z["id"].startswith(prefix)
+            assert z["geometry"]["type"] == "ellipse"
+            views.add(z["side"])
+        assert {"front", "back"} <= views
+
+
+def test_shipped_dental_seed_valid():
+    import pathlib
+    repo = pathlib.Path(bodymap_store.__file__).resolve().parent / "data"
+    assert bodymap_store.SYSTEMS["dental"].name == "bodymap-dental.json"
+    data = json.loads((repo / "bodymap-dental.json").read_text())
+    assert data["reference_frame"] == "dental_outline"
+    assert len(data["zones"]) == 32
+    for z in data["zones"]:
+        ok, err = bodymap_store.validate_zone(z)
+        assert ok, f"dental zone {z.get('id')}: {err}"
+        assert z["geometry"]["type"] == "ellipse"
+        assert isinstance(z.get("meridian_organs"), list) and z["meridian_organs"]
+
+
+def test_resolve_finding_zones_dental_meridian_organs():
+    # a tooth lights for its associated meridian organ (not just its anatomy name)
+    kidney = bodymap_store.resolve_finding_zones("dental", ["Kidney"])["zones"]
+    assert len(kidney) == 8 and all("tooth-" in z for z in kidney)  # incisors, both arches
+    liver = bodymap_store.resolve_finding_zones("dental", ["Liver"])["zones"]
+    assert len(liver) == 4  # canines
+    # upper/lower reciprocal: Lung lights upper premolars + lower molars
+    lung = set(bodymap_store.resolve_finding_zones("dental", ["Lung"])["zones"])
+    assert "tooth-upper-4" in lung and "tooth-lower-30" in lung
+
+
+def test_zone_ids_whole_system_and_side():
+    all_bones = bodymap_store.zone_ids("skeleton")
+    front_bones = bodymap_store.zone_ids("skeleton", side="front")
+    assert len(all_bones) > len(front_bones) > 0
+    assert all(z.startswith("bone-") for z in all_bones)
+    assert bodymap_store.zone_ids("nope") == []
+
+
+def test_resolve_finding_zones_specific_bone_and_muscle():
+    assert "bone-femur-r" in bodymap_store.resolve_finding_zones("skeleton", ["Femur"])["zones"]
+    assert bodymap_store.resolve_finding_zones("skeleton", ["Hip Joint"])["zones"]  # joint match
+    assert "muscle-biceps-r" in bodymap_store.resolve_finding_zones("muscle", ["Biceps"])["zones"]
+
+
+def test_resolve_finding_zones_large_vs_small_intestine():
+    # "Large Intestine" lights the colon, NOT the small intestine (shared word guard)
+    lg = bodymap_store.resolve_finding_zones("organs", ["Large Intestine"])
+    assert "organ-small-intestine" not in lg["zones"]
+    assert any(z.startswith("organ-colon") for z in lg["zones"])
+    sm = bodymap_store.resolve_finding_zones("organs", ["Small Intestine"])
+    assert sm["zones"] == ["organ-small-intestine"]
+
+
 def _poly_zone(**over):
     base = {"id": "foot-liver", "side": "right", "bilateral": False, "group": "digestive",
             "geometry": {"type": "polygon", "points": [[0.6,0.44],[0.66,0.46],[0.64,0.53],[0.58,0.51]]},
@@ -317,3 +504,46 @@ def test_upsert_zone_rejects_invalid(tmp_path, monkeypatch):
         bodymap_store.upsert_zone("foot", _poly_zone(anatomy=None)); assert False
     except ValueError:
         pass
+
+
+# ---- resolve_finding_zones: light Body Map zones from a client's finding names ----
+
+def test_resolve_finding_zones_matches_organ_on_face():
+    r = bodymap_store.resolve_finding_zones("face", ["Liver"], side="diagnosis")
+    assert "face-glabella" in r["zones"]
+    assert r["by_name"]["Liver"]  # non-empty hit list
+
+def test_resolve_finding_zones_driver_suffix_via_word():
+    # a multi-word finding name ("Liver Driver") still lights via the word "liver"
+    r = bodymap_store.resolve_finding_zones("face", ["Liver Driver"], side="diagnosis")
+    assert "face-glabella" in r["zones"]
+
+def test_resolve_finding_zones_bladder_not_gallbladder():
+    # word-boundary match: a Bladder finding must NOT light gallbladder-only zones
+    r = bodymap_store.resolve_finding_zones("face", ["Bladder"], side="diagnosis")
+    assert "face-forehead-bladder" in r["zones"]
+    assert "face-temple-R" not in r["zones"]  # "Gallbladder (temple)"
+
+def test_resolve_finding_zones_colon_synonym():
+    r = bodymap_store.resolve_finding_zones("face", ["Colon"], side="diagnosis")
+    assert "face-forehead-li" in r["zones"]  # "Large intestine (mid forehead)"
+
+def test_resolve_finding_zones_plural_insensitive():
+    # E4L "Lung" (singular) matches the zone "Lungs (cheek)" (plural)
+    r = bodymap_store.resolve_finding_zones("face", ["Lung"], side="diagnosis")
+    assert "face-cheek-R" in r["zones"] and "face-cheek-L" in r["zones"]
+
+def test_resolve_finding_zones_side_filter_and_noise():
+    # noise words match nothing; side filter keeps it to the diagnosis layer
+    r = bodymap_store.resolve_finding_zones("face", ["Source Driver", "Cell"], side="diagnosis")
+    assert r["zones"] == [] and r["by_name"] == {}
+
+def test_resolve_finding_zones_unknown_system_empty():
+    r = bodymap_store.resolve_finding_zones("nope", ["Liver"])
+    assert r == {"zones": [], "by_name": {}}
+
+def test_resolve_finding_zones_dedupes_and_orders():
+    # two findings hitting overlapping zones -> each zone id appears once
+    r = bodymap_store.resolve_finding_zones("face", ["Kidney", "Bladder"], side="diagnosis")
+    assert len(r["zones"]) == len(set(r["zones"]))
+    assert "face-chin" in r["zones"]  # chin = "Kidney / bladder / hormones"

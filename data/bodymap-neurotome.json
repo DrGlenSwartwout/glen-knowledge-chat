@@ -1,0 +1,2889 @@
+{
+  "system": "neurotome",
+  "reference_frame": "body_outline",
+  "side_noun": "view",
+  "group_noun": "segment",
+  "outline": "M0.5000 0.0120 C0.5173 0.0120 0.5415 0.0183 0.5520 0.0280 C0.5625 0.0377 0.5637 0.0567 0.5630 0.0700 C0.5623 0.0833 0.5553 0.0970 0.5480 0.1080 C0.5407 0.1190 0.5232 0.1273 0.5190 0.1360 C0.5148 0.1447 0.5132 0.1540 0.5230 0.1600 C0.5328 0.1660 0.5548 0.1677 0.5780 0.1720 C0.6012 0.1763 0.6403 0.1787 0.6620 0.1860 C0.6837 0.1933 0.7005 0.1990 0.7080 0.2160 C0.7155 0.2330 0.7083 0.2627 0.7070 0.2880 C0.7057 0.3133 0.6990 0.3413 0.7000 0.3680 C0.7010 0.3947 0.7070 0.4180 0.7130 0.4480 C0.7190 0.4780 0.7283 0.5207 0.7360 0.5480 C0.7437 0.5753 0.7568 0.5947 0.7590 0.6120 C0.7612 0.6293 0.7557 0.6483 0.7490 0.6520 C0.7423 0.6557 0.7280 0.6490 0.7190 0.6340 C0.7100 0.6190 0.7013 0.5917 0.6950 0.5620 C0.6887 0.5323 0.6860 0.4927 0.6810 0.4560 C0.6760 0.4193 0.6713 0.3697 0.6650 0.3420 C0.6587 0.3143 0.6520 0.2893 0.6430 0.2900 C0.6340 0.2907 0.6237 0.3277 0.6110 0.3460 C0.5983 0.3643 0.5643 0.3733 0.5670 0.4000 C0.5697 0.4267 0.6167 0.4767 0.6270 0.5060 C0.6373 0.5353 0.6320 0.5453 0.6290 0.5760 C0.6260 0.6067 0.6153 0.6567 0.6090 0.6900 C0.6027 0.7233 0.5927 0.7483 0.5910 0.7760 C0.5893 0.8037 0.6030 0.8278 0.5990 0.8560 C0.5950 0.8842 0.5647 0.9233 0.5670 0.9450 C0.5693 0.9667 0.6203 0.9788 0.6130 0.9860 C0.6057 0.9932 0.5390 0.9947 0.5230 0.9880 C0.5070 0.9813 0.5170 0.9773 0.5170 0.9460 C0.5170 0.9147 0.5223 0.8510 0.5230 0.8000 C0.5237 0.7490 0.5238 0.6823 0.5210 0.6400 C0.5182 0.5977 0.5095 0.5660 0.5060 0.5460 C0.5025 0.5260 0.5020 0.5200 0.5000 0.5200 C0.4980 0.5200 0.4975 0.5260 0.4940 0.5460 C0.4905 0.5660 0.4818 0.5977 0.4790 0.6400 C0.4762 0.6823 0.4763 0.7490 0.4770 0.8000 C0.4777 0.8510 0.4830 0.9147 0.4830 0.9460 C0.4830 0.9773 0.4930 0.9813 0.4770 0.9880 C0.4610 0.9947 0.3943 0.9932 0.3870 0.9860 C0.3797 0.9788 0.4307 0.9667 0.4330 0.9450 C0.4353 0.9233 0.4050 0.8842 0.4010 0.8560 C0.3970 0.8278 0.4107 0.8037 0.4090 0.7760 C0.4073 0.7483 0.3973 0.7233 0.3910 0.6900 C0.3847 0.6567 0.3740 0.6067 0.3710 0.5760 C0.3680 0.5453 0.3627 0.5353 0.3730 0.5060 C0.3833 0.4767 0.4303 0.4267 0.4330 0.4000 C0.4357 0.3733 0.4017 0.3643 0.3890 0.3460 C0.3763 0.3277 0.3660 0.2907 0.3570 0.2900 C0.3480 0.2893 0.3413 0.3143 0.3350 0.3420 C0.3287 0.3697 0.3240 0.4193 0.3190 0.4560 C0.3140 0.4927 0.3113 0.5323 0.3050 0.5620 C0.2987 0.5917 0.2900 0.6190 0.2810 0.6340 C0.2720 0.6490 0.2577 0.6557 0.2510 0.6520 C0.2443 0.6483 0.2388 0.6293 0.2410 0.6120 C0.2432 0.5947 0.2563 0.5753 0.2640 0.5480 C0.2717 0.5207 0.2810 0.4780 0.2870 0.4480 C0.2930 0.4180 0.2990 0.3947 0.3000 0.3680 C0.3010 0.3413 0.2943 0.3133 0.2930 0.2880 C0.2917 0.2627 0.2845 0.2330 0.2920 0.2160 C0.2995 0.1990 0.3163 0.1933 0.3380 0.1860 C0.3597 0.1787 0.3988 0.1763 0.4220 0.1720 C0.4452 0.1677 0.4672 0.1660 0.4770 0.1600 C0.4868 0.1540 0.4852 0.1447 0.4810 0.1360 C0.4768 0.1273 0.4593 0.1190 0.4520 0.1080 C0.4447 0.0970 0.4377 0.0833 0.4370 0.0700 C0.4363 0.0567 0.4375 0.0377 0.4480 0.0280 C0.4585 0.0183 0.4827 0.0120 0.5000 0.0120 Z",
+  "outlines": {
+    "front": "M0.5000 0.0120 C0.5173 0.0120 0.5415 0.0183 0.5520 0.0280 C0.5625 0.0377 0.5637 0.0567 0.5630 0.0700 C0.5623 0.0833 0.5553 0.0970 0.5480 0.1080 C0.5407 0.1190 0.5232 0.1273 0.5190 0.1360 C0.5148 0.1447 0.5132 0.1540 0.5230 0.1600 C0.5328 0.1660 0.5548 0.1677 0.5780 0.1720 C0.6012 0.1763 0.6403 0.1787 0.6620 0.1860 C0.6837 0.1933 0.7005 0.1990 0.7080 0.2160 C0.7155 0.2330 0.7083 0.2627 0.7070 0.2880 C0.7057 0.3133 0.6990 0.3413 0.7000 0.3680 C0.7010 0.3947 0.7070 0.4180 0.7130 0.4480 C0.7190 0.4780 0.7283 0.5207 0.7360 0.5480 C0.7437 0.5753 0.7568 0.5947 0.7590 0.6120 C0.7612 0.6293 0.7557 0.6483 0.7490 0.6520 C0.7423 0.6557 0.7280 0.6490 0.7190 0.6340 C0.7100 0.6190 0.7013 0.5917 0.6950 0.5620 C0.6887 0.5323 0.6860 0.4927 0.6810 0.4560 C0.6760 0.4193 0.6713 0.3697 0.6650 0.3420 C0.6587 0.3143 0.6520 0.2893 0.6430 0.2900 C0.6340 0.2907 0.6237 0.3277 0.6110 0.3460 C0.5983 0.3643 0.5643 0.3733 0.5670 0.4000 C0.5697 0.4267 0.6167 0.4767 0.6270 0.5060 C0.6373 0.5353 0.6320 0.5453 0.6290 0.5760 C0.6260 0.6067 0.6153 0.6567 0.6090 0.6900 C0.6027 0.7233 0.5927 0.7483 0.5910 0.7760 C0.5893 0.8037 0.6030 0.8278 0.5990 0.8560 C0.5950 0.8842 0.5647 0.9233 0.5670 0.9450 C0.5693 0.9667 0.6203 0.9788 0.6130 0.9860 C0.6057 0.9932 0.5390 0.9947 0.5230 0.9880 C0.5070 0.9813 0.5170 0.9773 0.5170 0.9460 C0.5170 0.9147 0.5223 0.8510 0.5230 0.8000 C0.5237 0.7490 0.5238 0.6823 0.5210 0.6400 C0.5182 0.5977 0.5095 0.5660 0.5060 0.5460 C0.5025 0.5260 0.5020 0.5200 0.5000 0.5200 C0.4980 0.5200 0.4975 0.5260 0.4940 0.5460 C0.4905 0.5660 0.4818 0.5977 0.4790 0.6400 C0.4762 0.6823 0.4763 0.7490 0.4770 0.8000 C0.4777 0.8510 0.4830 0.9147 0.4830 0.9460 C0.4830 0.9773 0.4930 0.9813 0.4770 0.9880 C0.4610 0.9947 0.3943 0.9932 0.3870 0.9860 C0.3797 0.9788 0.4307 0.9667 0.4330 0.9450 C0.4353 0.9233 0.4050 0.8842 0.4010 0.8560 C0.3970 0.8278 0.4107 0.8037 0.4090 0.7760 C0.4073 0.7483 0.3973 0.7233 0.3910 0.6900 C0.3847 0.6567 0.3740 0.6067 0.3710 0.5760 C0.3680 0.5453 0.3627 0.5353 0.3730 0.5060 C0.3833 0.4767 0.4303 0.4267 0.4330 0.4000 C0.4357 0.3733 0.4017 0.3643 0.3890 0.3460 C0.3763 0.3277 0.3660 0.2907 0.3570 0.2900 C0.3480 0.2893 0.3413 0.3143 0.3350 0.3420 C0.3287 0.3697 0.3240 0.4193 0.3190 0.4560 C0.3140 0.4927 0.3113 0.5323 0.3050 0.5620 C0.2987 0.5917 0.2900 0.6190 0.2810 0.6340 C0.2720 0.6490 0.2577 0.6557 0.2510 0.6520 C0.2443 0.6483 0.2388 0.6293 0.2410 0.6120 C0.2432 0.5947 0.2563 0.5753 0.2640 0.5480 C0.2717 0.5207 0.2810 0.4780 0.2870 0.4480 C0.2930 0.4180 0.2990 0.3947 0.3000 0.3680 C0.3010 0.3413 0.2943 0.3133 0.2930 0.2880 C0.2917 0.2627 0.2845 0.2330 0.2920 0.2160 C0.2995 0.1990 0.3163 0.1933 0.3380 0.1860 C0.3597 0.1787 0.3988 0.1763 0.4220 0.1720 C0.4452 0.1677 0.4672 0.1660 0.4770 0.1600 C0.4868 0.1540 0.4852 0.1447 0.4810 0.1360 C0.4768 0.1273 0.4593 0.1190 0.4520 0.1080 C0.4447 0.0970 0.4377 0.0833 0.4370 0.0700 C0.4363 0.0567 0.4375 0.0377 0.4480 0.0280 C0.4585 0.0183 0.4827 0.0120 0.5000 0.0120 Z",
+    "back": "M0.5000 0.0120 C0.5173 0.0120 0.5415 0.0183 0.5520 0.0280 C0.5625 0.0377 0.5637 0.0567 0.5630 0.0700 C0.5623 0.0833 0.5553 0.0970 0.5480 0.1080 C0.5407 0.1190 0.5232 0.1273 0.5190 0.1360 C0.5148 0.1447 0.5132 0.1540 0.5230 0.1600 C0.5328 0.1660 0.5548 0.1677 0.5780 0.1720 C0.6012 0.1763 0.6403 0.1787 0.6620 0.1860 C0.6837 0.1933 0.7005 0.1990 0.7080 0.2160 C0.7155 0.2330 0.7083 0.2627 0.7070 0.2880 C0.7057 0.3133 0.6990 0.3413 0.7000 0.3680 C0.7010 0.3947 0.7070 0.4180 0.7130 0.4480 C0.7190 0.4780 0.7283 0.5207 0.7360 0.5480 C0.7437 0.5753 0.7568 0.5947 0.7590 0.6120 C0.7612 0.6293 0.7557 0.6483 0.7490 0.6520 C0.7423 0.6557 0.7280 0.6490 0.7190 0.6340 C0.7100 0.6190 0.7013 0.5917 0.6950 0.5620 C0.6887 0.5323 0.6860 0.4927 0.6810 0.4560 C0.6760 0.4193 0.6713 0.3697 0.6650 0.3420 C0.6587 0.3143 0.6520 0.2893 0.6430 0.2900 C0.6340 0.2907 0.6237 0.3277 0.6110 0.3460 C0.5983 0.3643 0.5643 0.3733 0.5670 0.4000 C0.5697 0.4267 0.6167 0.4767 0.6270 0.5060 C0.6373 0.5353 0.6320 0.5453 0.6290 0.5760 C0.6260 0.6067 0.6153 0.6567 0.6090 0.6900 C0.6027 0.7233 0.5927 0.7483 0.5910 0.7760 C0.5893 0.8037 0.6030 0.8278 0.5990 0.8560 C0.5950 0.8842 0.5647 0.9233 0.5670 0.9450 C0.5693 0.9667 0.6203 0.9788 0.6130 0.9860 C0.6057 0.9932 0.5390 0.9947 0.5230 0.9880 C0.5070 0.9813 0.5170 0.9773 0.5170 0.9460 C0.5170 0.9147 0.5223 0.8510 0.5230 0.8000 C0.5237 0.7490 0.5238 0.6823 0.5210 0.6400 C0.5182 0.5977 0.5095 0.5660 0.5060 0.5460 C0.5025 0.5260 0.5020 0.5200 0.5000 0.5200 C0.4980 0.5200 0.4975 0.5260 0.4940 0.5460 C0.4905 0.5660 0.4818 0.5977 0.4790 0.6400 C0.4762 0.6823 0.4763 0.7490 0.4770 0.8000 C0.4777 0.8510 0.4830 0.9147 0.4830 0.9460 C0.4830 0.9773 0.4930 0.9813 0.4770 0.9880 C0.4610 0.9947 0.3943 0.9932 0.3870 0.9860 C0.3797 0.9788 0.4307 0.9667 0.4330 0.9450 C0.4353 0.9233 0.4050 0.8842 0.4010 0.8560 C0.3970 0.8278 0.4107 0.8037 0.4090 0.7760 C0.4073 0.7483 0.3973 0.7233 0.3910 0.6900 C0.3847 0.6567 0.3740 0.6067 0.3710 0.5760 C0.3680 0.5453 0.3627 0.5353 0.3730 0.5060 C0.3833 0.4767 0.4303 0.4267 0.4330 0.4000 C0.4357 0.3733 0.4017 0.3643 0.3890 0.3460 C0.3763 0.3277 0.3660 0.2907 0.3570 0.2900 C0.3480 0.2893 0.3413 0.3143 0.3350 0.3420 C0.3287 0.3697 0.3240 0.4193 0.3190 0.4560 C0.3140 0.4927 0.3113 0.5323 0.3050 0.5620 C0.2987 0.5917 0.2900 0.6190 0.2810 0.6340 C0.2720 0.6490 0.2577 0.6557 0.2510 0.6520 C0.2443 0.6483 0.2388 0.6293 0.2410 0.6120 C0.2432 0.5947 0.2563 0.5753 0.2640 0.5480 C0.2717 0.5207 0.2810 0.4780 0.2870 0.4480 C0.2930 0.4180 0.2990 0.3947 0.3000 0.3680 C0.3010 0.3413 0.2943 0.3133 0.2930 0.2880 C0.2917 0.2627 0.2845 0.2330 0.2920 0.2160 C0.2995 0.1990 0.3163 0.1933 0.3380 0.1860 C0.3597 0.1787 0.3988 0.1763 0.4220 0.1720 C0.4452 0.1677 0.4672 0.1660 0.4770 0.1600 C0.4868 0.1540 0.4852 0.1447 0.4810 0.1360 C0.4768 0.1273 0.4593 0.1190 0.4520 0.1080 C0.4447 0.0970 0.4377 0.0833 0.4370 0.0700 C0.4363 0.0567 0.4375 0.0377 0.4480 0.0280 C0.4585 0.0183 0.4827 0.0120 0.5000 0.0120 Z"
+  },
+  "groups": [
+    {
+      "id": "cranial",
+      "label": "Cranial (trigeminal V1-V3)"
+    },
+    {
+      "id": "cervical",
+      "label": "Cervical (C2-C8)"
+    },
+    {
+      "id": "thoracic",
+      "label": "Thoracic (T1-T12)"
+    },
+    {
+      "id": "lumbar",
+      "label": "Lumbar (L1-L5)"
+    },
+    {
+      "id": "sacral",
+      "label": "Sacral (S1-S5)"
+    }
+  ],
+  "zones": [
+    {
+      "id": "neuro-V1",
+      "side": "front",
+      "bilateral": false,
+      "group": "cranial",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.44,
+            0.02
+          ],
+          [
+            0.56,
+            0.02
+          ],
+          [
+            0.558,
+            0.058
+          ],
+          [
+            0.442,
+            0.058
+          ]
+        ]
+      },
+      "anatomy": "V1 (ophthalmic)",
+      "meaning_standard": "V1 (ophthalmic) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-V2",
+      "side": "front",
+      "bilateral": false,
+      "group": "cranial",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.448,
+            0.058
+          ],
+          [
+            0.552,
+            0.058
+          ],
+          [
+            0.548,
+            0.09
+          ],
+          [
+            0.452,
+            0.09
+          ]
+        ]
+      },
+      "anatomy": "V2 (maxillary)",
+      "meaning_standard": "V2 (maxillary) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-V3",
+      "side": "front",
+      "bilateral": false,
+      "group": "cranial",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.456,
+            0.09
+          ],
+          [
+            0.544,
+            0.09
+          ],
+          [
+            0.536,
+            0.126
+          ],
+          [
+            0.464,
+            0.126
+          ]
+        ]
+      },
+      "anatomy": "V3 (mandibular)",
+      "meaning_standard": "V3 (mandibular) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C2f",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.462,
+            0.126
+          ],
+          [
+            0.538,
+            0.126
+          ],
+          [
+            0.542,
+            0.15
+          ],
+          [
+            0.458,
+            0.15
+          ]
+        ]
+      },
+      "anatomy": "C2",
+      "meaning_standard": "C2 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C3f",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.458,
+            0.15
+          ],
+          [
+            0.542,
+            0.15
+          ],
+          [
+            0.552,
+            0.174
+          ],
+          [
+            0.448,
+            0.174
+          ]
+        ]
+      },
+      "anatomy": "C3",
+      "meaning_standard": "C3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C2b",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.452,
+            0.04
+          ],
+          [
+            0.548,
+            0.04
+          ],
+          [
+            0.552,
+            0.1
+          ],
+          [
+            0.448,
+            0.1
+          ]
+        ]
+      },
+      "anatomy": "C2 (occiput)",
+      "meaning_standard": "C2 (occiput) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C3b",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.458,
+            0.1
+          ],
+          [
+            0.542,
+            0.1
+          ],
+          [
+            0.548,
+            0.14
+          ],
+          [
+            0.452,
+            0.14
+          ]
+        ]
+      },
+      "anatomy": "C3",
+      "meaning_standard": "C3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C4b",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.452,
+            0.14
+          ],
+          [
+            0.548,
+            0.14
+          ],
+          [
+            0.552,
+            0.174
+          ],
+          [
+            0.448,
+            0.174
+          ]
+        ]
+      },
+      "anatomy": "C4",
+      "meaning_standard": "C4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C5f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.66,
+            0.19
+          ],
+          [
+            0.72,
+            0.216
+          ],
+          [
+            0.718,
+            0.32
+          ],
+          [
+            0.665,
+            0.3
+          ]
+        ]
+      },
+      "anatomy": "C5 (lateral arm)",
+      "meaning_standard": "C5 (lateral arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C5f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.34,
+            0.19
+          ],
+          [
+            0.28,
+            0.216
+          ],
+          [
+            0.282,
+            0.32
+          ],
+          [
+            0.335,
+            0.3
+          ]
+        ]
+      },
+      "anatomy": "C5 (lateral arm)",
+      "meaning_standard": "C5 (lateral arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C6f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.7,
+            0.36
+          ],
+          [
+            0.752,
+            0.45
+          ],
+          [
+            0.788,
+            0.6
+          ],
+          [
+            0.742,
+            0.606
+          ],
+          [
+            0.7,
+            0.462
+          ]
+        ]
+      },
+      "anatomy": "C6 (forearm/thumb)",
+      "meaning_standard": "C6 (forearm/thumb) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C6f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3,
+            0.36
+          ],
+          [
+            0.248,
+            0.45
+          ],
+          [
+            0.212,
+            0.6
+          ],
+          [
+            0.258,
+            0.606
+          ],
+          [
+            0.3,
+            0.462
+          ]
+        ]
+      },
+      "anatomy": "C6 (forearm/thumb)",
+      "meaning_standard": "C6 (forearm/thumb) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C7f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.73,
+            0.582
+          ],
+          [
+            0.775,
+            0.61
+          ],
+          [
+            0.76,
+            0.646
+          ],
+          [
+            0.72,
+            0.622
+          ]
+        ]
+      },
+      "anatomy": "C7 (middle finger)",
+      "meaning_standard": "C7 (middle finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C7f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.27,
+            0.582
+          ],
+          [
+            0.225,
+            0.61
+          ],
+          [
+            0.24,
+            0.646
+          ],
+          [
+            0.28,
+            0.622
+          ]
+        ]
+      },
+      "anatomy": "C7 (middle finger)",
+      "meaning_standard": "C7 (middle finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C8f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.718,
+            0.602
+          ],
+          [
+            0.756,
+            0.628
+          ],
+          [
+            0.742,
+            0.65
+          ],
+          [
+            0.71,
+            0.628
+          ]
+        ]
+      },
+      "anatomy": "C8 (little finger)",
+      "meaning_standard": "C8 (little finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C8f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.282,
+            0.602
+          ],
+          [
+            0.244,
+            0.628
+          ],
+          [
+            0.258,
+            0.65
+          ],
+          [
+            0.29,
+            0.628
+          ]
+        ]
+      },
+      "anatomy": "C8 (little finger)",
+      "meaning_standard": "C8 (little finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T1f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.664,
+            0.342
+          ],
+          [
+            0.696,
+            0.442
+          ],
+          [
+            0.686,
+            0.552
+          ],
+          [
+            0.656,
+            0.442
+          ]
+        ]
+      },
+      "anatomy": "T1 (medial arm)",
+      "meaning_standard": "T1 (medial arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T1f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.336,
+            0.342
+          ],
+          [
+            0.304,
+            0.442
+          ],
+          [
+            0.314,
+            0.552
+          ],
+          [
+            0.344,
+            0.442
+          ]
+        ]
+      },
+      "anatomy": "T1 (medial arm)",
+      "meaning_standard": "T1 (medial arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C5b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.66,
+            0.196
+          ],
+          [
+            0.716,
+            0.22
+          ],
+          [
+            0.716,
+            0.33
+          ],
+          [
+            0.666,
+            0.31
+          ]
+        ]
+      },
+      "anatomy": "C5 (posterior arm)",
+      "meaning_standard": "C5 (posterior arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C5b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.34,
+            0.196
+          ],
+          [
+            0.284,
+            0.22
+          ],
+          [
+            0.284,
+            0.33
+          ],
+          [
+            0.334,
+            0.31
+          ]
+        ]
+      },
+      "anatomy": "C5 (posterior arm)",
+      "meaning_standard": "C5 (posterior arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C6b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.7,
+            0.36
+          ],
+          [
+            0.752,
+            0.45
+          ],
+          [
+            0.786,
+            0.6
+          ],
+          [
+            0.742,
+            0.606
+          ],
+          [
+            0.702,
+            0.462
+          ]
+        ]
+      },
+      "anatomy": "C6 (posterior forearm)",
+      "meaning_standard": "C6 (posterior forearm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C6b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3,
+            0.36
+          ],
+          [
+            0.248,
+            0.45
+          ],
+          [
+            0.214,
+            0.6
+          ],
+          [
+            0.258,
+            0.606
+          ],
+          [
+            0.298,
+            0.462
+          ]
+        ]
+      },
+      "anatomy": "C6 (posterior forearm)",
+      "meaning_standard": "C6 (posterior forearm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C7b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.73,
+            0.582
+          ],
+          [
+            0.772,
+            0.61
+          ],
+          [
+            0.758,
+            0.646
+          ],
+          [
+            0.72,
+            0.622
+          ]
+        ]
+      },
+      "anatomy": "C7 (middle finger)",
+      "meaning_standard": "C7 (middle finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C7b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.27,
+            0.582
+          ],
+          [
+            0.228,
+            0.61
+          ],
+          [
+            0.242,
+            0.646
+          ],
+          [
+            0.28,
+            0.622
+          ]
+        ]
+      },
+      "anatomy": "C7 (middle finger)",
+      "meaning_standard": "C7 (middle finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C8b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.716,
+            0.6
+          ],
+          [
+            0.756,
+            0.628
+          ],
+          [
+            0.742,
+            0.652
+          ],
+          [
+            0.708,
+            0.628
+          ]
+        ]
+      },
+      "anatomy": "C8 (little finger)",
+      "meaning_standard": "C8 (little finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C8b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.284,
+            0.6
+          ],
+          [
+            0.244,
+            0.628
+          ],
+          [
+            0.258,
+            0.652
+          ],
+          [
+            0.292,
+            0.628
+          ]
+        ]
+      },
+      "anatomy": "C8 (little finger)",
+      "meaning_standard": "C8 (little finger) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T1b-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.664,
+            0.342
+          ],
+          [
+            0.696,
+            0.442
+          ],
+          [
+            0.686,
+            0.552
+          ],
+          [
+            0.656,
+            0.442
+          ]
+        ]
+      },
+      "anatomy": "T1 (medial arm)",
+      "meaning_standard": "T1 (medial arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T1b-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.336,
+            0.342
+          ],
+          [
+            0.304,
+            0.442
+          ],
+          [
+            0.314,
+            0.552
+          ],
+          [
+            0.344,
+            0.442
+          ]
+        ]
+      },
+      "anatomy": "T1 (medial arm)",
+      "meaning_standard": "T1 (medial arm) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L2f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.52,
+            0.53
+          ],
+          [
+            0.628,
+            0.545
+          ],
+          [
+            0.622,
+            0.645
+          ],
+          [
+            0.528,
+            0.64
+          ]
+        ]
+      },
+      "anatomy": "L2 (upper thigh)",
+      "meaning_standard": "L2 (upper thigh) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L2f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.48,
+            0.53
+          ],
+          [
+            0.372,
+            0.545
+          ],
+          [
+            0.378,
+            0.645
+          ],
+          [
+            0.472,
+            0.64
+          ]
+        ]
+      },
+      "anatomy": "L2 (upper thigh)",
+      "meaning_standard": "L2 (upper thigh) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L3f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.512,
+            0.645
+          ],
+          [
+            0.604,
+            0.65
+          ],
+          [
+            0.596,
+            0.772
+          ],
+          [
+            0.522,
+            0.77
+          ]
+        ]
+      },
+      "anatomy": "L3 (thigh/knee)",
+      "meaning_standard": "L3 (thigh/knee) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L3f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.488,
+            0.645
+          ],
+          [
+            0.396,
+            0.65
+          ],
+          [
+            0.404,
+            0.772
+          ],
+          [
+            0.478,
+            0.77
+          ]
+        ]
+      },
+      "anatomy": "L3 (thigh/knee)",
+      "meaning_standard": "L3 (thigh/knee) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L4f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.514,
+            0.772
+          ],
+          [
+            0.56,
+            0.774
+          ],
+          [
+            0.556,
+            0.905
+          ],
+          [
+            0.516,
+            0.905
+          ]
+        ]
+      },
+      "anatomy": "L4 (medial leg)",
+      "meaning_standard": "L4 (medial leg) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L4f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.486,
+            0.772
+          ],
+          [
+            0.44,
+            0.774
+          ],
+          [
+            0.444,
+            0.905
+          ],
+          [
+            0.484,
+            0.905
+          ]
+        ]
+      },
+      "anatomy": "L4 (medial leg)",
+      "meaning_standard": "L4 (medial leg) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L5f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.57,
+            0.774
+          ],
+          [
+            0.608,
+            0.784
+          ],
+          [
+            0.618,
+            0.96
+          ],
+          [
+            0.58,
+            0.96
+          ]
+        ]
+      },
+      "anatomy": "L5 (lateral leg/dorsum)",
+      "meaning_standard": "L5 (lateral leg/dorsum) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L5f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.43,
+            0.774
+          ],
+          [
+            0.392,
+            0.784
+          ],
+          [
+            0.382,
+            0.96
+          ],
+          [
+            0.42,
+            0.96
+          ]
+        ]
+      },
+      "anatomy": "L5 (lateral leg/dorsum)",
+      "meaning_standard": "L5 (lateral leg/dorsum) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1f-R",
+      "side": "front",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.578,
+            0.958
+          ],
+          [
+            0.62,
+            0.965
+          ],
+          [
+            0.61,
+            0.988
+          ],
+          [
+            0.568,
+            0.988
+          ]
+        ]
+      },
+      "anatomy": "S1 (lateral foot)",
+      "meaning_standard": "S1 (lateral foot) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1f-L",
+      "side": "front",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.422,
+            0.958
+          ],
+          [
+            0.38,
+            0.965
+          ],
+          [
+            0.39,
+            0.988
+          ],
+          [
+            0.432,
+            0.988
+          ]
+        ]
+      },
+      "anatomy": "S1 (lateral foot)",
+      "meaning_standard": "S1 (lateral foot) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S2Lb-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.518,
+            0.578
+          ],
+          [
+            0.612,
+            0.585
+          ],
+          [
+            0.604,
+            0.7
+          ],
+          [
+            0.526,
+            0.696
+          ]
+        ]
+      },
+      "anatomy": "S2 (posterior thigh)",
+      "meaning_standard": "S2 (posterior thigh) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S2Lb-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.482,
+            0.578
+          ],
+          [
+            0.388,
+            0.585
+          ],
+          [
+            0.396,
+            0.7
+          ],
+          [
+            0.474,
+            0.696
+          ]
+        ]
+      },
+      "anatomy": "S2 (posterior thigh)",
+      "meaning_standard": "S2 (posterior thigh) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1Lb-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.526,
+            0.7
+          ],
+          [
+            0.604,
+            0.704
+          ],
+          [
+            0.596,
+            0.87
+          ],
+          [
+            0.534,
+            0.868
+          ]
+        ]
+      },
+      "anatomy": "S1/L5 (posterior calf)",
+      "meaning_standard": "S1/L5 (posterior calf) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1Lb-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.474,
+            0.7
+          ],
+          [
+            0.396,
+            0.704
+          ],
+          [
+            0.404,
+            0.87
+          ],
+          [
+            0.466,
+            0.868
+          ]
+        ]
+      },
+      "anatomy": "S1/L5 (posterior calf)",
+      "meaning_standard": "S1/L5 (posterior calf) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1Hb-R",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.534,
+            0.868
+          ],
+          [
+            0.596,
+            0.872
+          ],
+          [
+            0.618,
+            0.984
+          ],
+          [
+            0.556,
+            0.988
+          ]
+        ]
+      },
+      "anatomy": "S1 (sole/heel)",
+      "meaning_standard": "S1 (sole/heel) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1Hb-L",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.466,
+            0.868
+          ],
+          [
+            0.404,
+            0.872
+          ],
+          [
+            0.382,
+            0.984
+          ],
+          [
+            0.444,
+            0.988
+          ]
+        ]
+      },
+      "anatomy": "S1 (sole/heel)",
+      "meaning_standard": "S1 (sole/heel) dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C4f",
+      "side": "front",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.345,
+            0.174
+          ],
+          [
+            0.655,
+            0.174
+          ],
+          [
+            0.6378,
+            0.205
+          ],
+          [
+            0.3622,
+            0.205
+          ]
+        ]
+      },
+      "anatomy": "C4",
+      "meaning_standard": "C4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T2",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3622,
+            0.205
+          ],
+          [
+            0.6378,
+            0.205
+          ],
+          [
+            0.6264,
+            0.22727272727272727
+          ],
+          [
+            0.3736,
+            0.22727272727272727
+          ]
+        ]
+      },
+      "anatomy": "T2",
+      "meaning_standard": "T2 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T3",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3736,
+            0.22727272727272727
+          ],
+          [
+            0.6264,
+            0.22727272727272727
+          ],
+          [
+            0.6152,
+            0.24954545454545454
+          ],
+          [
+            0.3848,
+            0.24954545454545454
+          ]
+        ]
+      },
+      "anatomy": "T3",
+      "meaning_standard": "T3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T4",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3848,
+            0.24954545454545454
+          ],
+          [
+            0.6152,
+            0.24954545454545454
+          ],
+          [
+            0.6063,
+            0.2718181818181818
+          ],
+          [
+            0.3937,
+            0.2718181818181818
+          ]
+        ]
+      },
+      "anatomy": "T4",
+      "meaning_standard": "T4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T5",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3937,
+            0.2718181818181818
+          ],
+          [
+            0.6063,
+            0.2718181818181818
+          ],
+          [
+            0.5974,
+            0.29409090909090907
+          ],
+          [
+            0.4026,
+            0.29409090909090907
+          ]
+        ]
+      },
+      "anatomy": "T5",
+      "meaning_standard": "T5 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T6",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4026,
+            0.29409090909090907
+          ],
+          [
+            0.5974,
+            0.29409090909090907
+          ],
+          [
+            0.5917,
+            0.31636363636363635
+          ],
+          [
+            0.4083,
+            0.31636363636363635
+          ]
+        ]
+      },
+      "anatomy": "T6",
+      "meaning_standard": "T6 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T7",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4083,
+            0.31636363636363635
+          ],
+          [
+            0.5917,
+            0.31636363636363635
+          ],
+          [
+            0.5873,
+            0.3386363636363636
+          ],
+          [
+            0.4127,
+            0.3386363636363636
+          ]
+        ]
+      },
+      "anatomy": "T7",
+      "meaning_standard": "T7 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T8",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4127,
+            0.3386363636363636
+          ],
+          [
+            0.5873,
+            0.3386363636363636
+          ],
+          [
+            0.5828,
+            0.3609090909090909
+          ],
+          [
+            0.4172,
+            0.3609090909090909
+          ]
+        ]
+      },
+      "anatomy": "T8",
+      "meaning_standard": "T8 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T9",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4172,
+            0.3609090909090909
+          ],
+          [
+            0.5828,
+            0.3609090909090909
+          ],
+          [
+            0.5784,
+            0.3831818181818182
+          ],
+          [
+            0.4216,
+            0.3831818181818182
+          ]
+        ]
+      },
+      "anatomy": "T9",
+      "meaning_standard": "T9 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T10",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4216,
+            0.3831818181818182
+          ],
+          [
+            0.5784,
+            0.3831818181818182
+          ],
+          [
+            0.5739,
+            0.40545454545454546
+          ],
+          [
+            0.4261,
+            0.40545454545454546
+          ]
+        ]
+      },
+      "anatomy": "T10",
+      "meaning_standard": "T10 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T11",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4261,
+            0.40545454545454546
+          ],
+          [
+            0.5739,
+            0.40545454545454546
+          ],
+          [
+            0.5695,
+            0.42772727272727273
+          ],
+          [
+            0.4305,
+            0.42772727272727273
+          ]
+        ]
+      },
+      "anatomy": "T11",
+      "meaning_standard": "T11 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T12",
+      "side": "front",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4305,
+            0.42772727272727273
+          ],
+          [
+            0.5695,
+            0.42772727272727273
+          ],
+          [
+            0.565,
+            0.45
+          ],
+          [
+            0.435,
+            0.45
+          ]
+        ]
+      },
+      "anatomy": "T12",
+      "meaning_standard": "T12 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L1f",
+      "side": "front",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.435,
+            0.45
+          ],
+          [
+            0.565,
+            0.45
+          ],
+          [
+            0.6,
+            0.52
+          ],
+          [
+            0.4,
+            0.52
+          ]
+        ]
+      },
+      "anatomy": "L1",
+      "meaning_standard": "L1 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-C4bt",
+      "side": "back",
+      "bilateral": false,
+      "group": "cervical",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.345,
+            0.174
+          ],
+          [
+            0.655,
+            0.174
+          ],
+          [
+            0.6378,
+            0.205
+          ],
+          [
+            0.3622,
+            0.205
+          ]
+        ]
+      },
+      "anatomy": "C4",
+      "meaning_standard": "C4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T1",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3622,
+            0.205
+          ],
+          [
+            0.6378,
+            0.205
+          ],
+          [
+            0.6277,
+            0.22458333333333333
+          ],
+          [
+            0.3723,
+            0.22458333333333333
+          ]
+        ]
+      },
+      "anatomy": "T1",
+      "meaning_standard": "T1 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T2",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3723,
+            0.22458333333333333
+          ],
+          [
+            0.6277,
+            0.22458333333333333
+          ],
+          [
+            0.6179,
+            0.24416666666666664
+          ],
+          [
+            0.3821,
+            0.24416666666666664
+          ]
+        ]
+      },
+      "anatomy": "T2",
+      "meaning_standard": "T2 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T3",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3821,
+            0.24416666666666664
+          ],
+          [
+            0.6179,
+            0.24416666666666664
+          ],
+          [
+            0.6095,
+            0.26375
+          ],
+          [
+            0.3905,
+            0.26375
+          ]
+        ]
+      },
+      "anatomy": "T3",
+      "meaning_standard": "T3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T4",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3905,
+            0.26375
+          ],
+          [
+            0.6095,
+            0.26375
+          ],
+          [
+            0.6017,
+            0.2833333333333333
+          ],
+          [
+            0.3983,
+            0.2833333333333333
+          ]
+        ]
+      },
+      "anatomy": "T4",
+      "meaning_standard": "T4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T5",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3983,
+            0.2833333333333333
+          ],
+          [
+            0.6017,
+            0.2833333333333333
+          ],
+          [
+            0.5944,
+            0.30291666666666667
+          ],
+          [
+            0.4056,
+            0.30291666666666667
+          ]
+        ]
+      },
+      "anatomy": "T5",
+      "meaning_standard": "T5 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T6",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4056,
+            0.30291666666666667
+          ],
+          [
+            0.5944,
+            0.30291666666666667
+          ],
+          [
+            0.5905,
+            0.3225
+          ],
+          [
+            0.4095,
+            0.3225
+          ]
+        ]
+      },
+      "anatomy": "T6",
+      "meaning_standard": "T6 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T7",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4095,
+            0.3225
+          ],
+          [
+            0.5905,
+            0.3225
+          ],
+          [
+            0.5866,
+            0.3420833333333333
+          ],
+          [
+            0.4134,
+            0.3420833333333333
+          ]
+        ]
+      },
+      "anatomy": "T7",
+      "meaning_standard": "T7 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T8",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4134,
+            0.3420833333333333
+          ],
+          [
+            0.5866,
+            0.3420833333333333
+          ],
+          [
+            0.5827,
+            0.3616666666666667
+          ],
+          [
+            0.4173,
+            0.3616666666666667
+          ]
+        ]
+      },
+      "anatomy": "T8",
+      "meaning_standard": "T8 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T9",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4173,
+            0.3616666666666667
+          ],
+          [
+            0.5827,
+            0.3616666666666667
+          ],
+          [
+            0.5787,
+            0.38125
+          ],
+          [
+            0.4212,
+            0.38125
+          ]
+        ]
+      },
+      "anatomy": "T9",
+      "meaning_standard": "T9 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T10",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4212,
+            0.38125
+          ],
+          [
+            0.5787,
+            0.38125
+          ],
+          [
+            0.5748,
+            0.4008333333333334
+          ],
+          [
+            0.4252,
+            0.4008333333333334
+          ]
+        ]
+      },
+      "anatomy": "T10",
+      "meaning_standard": "T10 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T11",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4252,
+            0.4008333333333334
+          ],
+          [
+            0.5748,
+            0.4008333333333334
+          ],
+          [
+            0.5709,
+            0.42041666666666666
+          ],
+          [
+            0.4291,
+            0.42041666666666666
+          ]
+        ]
+      },
+      "anatomy": "T11",
+      "meaning_standard": "T11 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-T12",
+      "side": "back",
+      "bilateral": false,
+      "group": "thoracic",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.4291,
+            0.42041666666666666
+          ],
+          [
+            0.5709,
+            0.42041666666666666
+          ],
+          [
+            0.567,
+            0.44
+          ],
+          [
+            0.433,
+            0.44
+          ]
+        ]
+      },
+      "anatomy": "T12",
+      "meaning_standard": "T12 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L1",
+      "side": "back",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.433,
+            0.44
+          ],
+          [
+            0.567,
+            0.44
+          ],
+          [
+            0.571,
+            0.462
+          ],
+          [
+            0.429,
+            0.462
+          ]
+        ]
+      },
+      "anatomy": "L1",
+      "meaning_standard": "L1 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L2",
+      "side": "back",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.429,
+            0.462
+          ],
+          [
+            0.571,
+            0.462
+          ],
+          [
+            0.582,
+            0.48400000000000004
+          ],
+          [
+            0.418,
+            0.48400000000000004
+          ]
+        ]
+      },
+      "anatomy": "L2",
+      "meaning_standard": "L2 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L3",
+      "side": "back",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.418,
+            0.48400000000000004
+          ],
+          [
+            0.582,
+            0.48400000000000004
+          ],
+          [
+            0.593,
+            0.506
+          ],
+          [
+            0.407,
+            0.506
+          ]
+        ]
+      },
+      "anatomy": "L3",
+      "meaning_standard": "L3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L4",
+      "side": "back",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.407,
+            0.506
+          ],
+          [
+            0.593,
+            0.506
+          ],
+          [
+            0.601,
+            0.528
+          ],
+          [
+            0.399,
+            0.528
+          ]
+        ]
+      },
+      "anatomy": "L4",
+      "meaning_standard": "L4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-L5",
+      "side": "back",
+      "bilateral": false,
+      "group": "lumbar",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.399,
+            0.528
+          ],
+          [
+            0.601,
+            0.528
+          ],
+          [
+            0.6038,
+            0.55
+          ],
+          [
+            0.3962,
+            0.55
+          ]
+        ]
+      },
+      "anatomy": "L5",
+      "meaning_standard": "L5 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S1",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.3962,
+            0.55
+          ],
+          [
+            0.6038,
+            0.55
+          ],
+          [
+            0.605,
+            0.5630000000000001
+          ],
+          [
+            0.395,
+            0.5630000000000001
+          ]
+        ]
+      },
+      "anatomy": "S1",
+      "meaning_standard": "S1 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S2",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.395,
+            0.5630000000000001
+          ],
+          [
+            0.605,
+            0.5630000000000001
+          ],
+          [
+            0.605,
+            0.5760000000000001
+          ],
+          [
+            0.395,
+            0.5760000000000001
+          ]
+        ]
+      },
+      "anatomy": "S2",
+      "meaning_standard": "S2 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S3",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.395,
+            0.5760000000000001
+          ],
+          [
+            0.605,
+            0.5760000000000001
+          ],
+          [
+            0.605,
+            0.589
+          ],
+          [
+            0.395,
+            0.589
+          ]
+        ]
+      },
+      "anatomy": "S3",
+      "meaning_standard": "S3 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S4",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.395,
+            0.589
+          ],
+          [
+            0.605,
+            0.589
+          ],
+          [
+            0.605,
+            0.602
+          ],
+          [
+            0.395,
+            0.602
+          ]
+        ]
+      },
+      "anatomy": "S4",
+      "meaning_standard": "S4 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    },
+    {
+      "id": "neuro-S5",
+      "side": "back",
+      "bilateral": false,
+      "group": "sacral",
+      "geometry": {
+        "type": "polygon",
+        "points": [
+          [
+            0.395,
+            0.602
+          ],
+          [
+            0.605,
+            0.602
+          ],
+          [
+            0.605,
+            0.615
+          ],
+          [
+            0.395,
+            0.615
+          ]
+        ]
+      },
+      "anatomy": "S5",
+      "meaning_standard": "S5 dermatome / nerve territory.",
+      "meaning_glen": "",
+      "layers": {
+        "embryological_depth": null,
+        "stress_affirmation": null,
+        "touch_for_health": null
+      }
+    }
+  ],
+  "anchors": [
+    {
+      "key": "head-f",
+      "view": "front",
+      "template": {
+        "x": 0.5,
+        "y": 0.02
+      },
+      "hint": "Tap the top of the head."
+    },
+    {
+      "key": "feet-f",
+      "view": "front",
+      "template": {
+        "x": 0.5,
+        "y": 0.985
+      },
+      "hint": "Tap the point between the ankles."
+    },
+    {
+      "key": "head-b",
+      "view": "back",
+      "template": {
+        "x": 0.5,
+        "y": 0.02
+      },
+      "hint": "Tap the top of the head."
+    },
+    {
+      "key": "feet-b",
+      "view": "back",
+      "template": {
+        "x": 0.5,
+        "y": 0.985
+      },
+      "hint": "Tap the point between the ankles."
+    }
+  ]
+}

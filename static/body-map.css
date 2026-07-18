@@ -8,6 +8,10 @@ body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:v
 .bm-controls select { padding:4px 8px; }
 .bm-modes button { padding:6px 12px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
 .bm-modes button.bm-active { background:var(--bm-ink); color:#fff; }
+.bm-depth { display:flex; gap:4px; align-items:center; }
+.bm-depth-label { font-size:13px; color:var(--bm-ink); margin-right:2px; }
+.bm-depth button { padding:5px 10px; font-size:13px; border:1px solid var(--bm-line); background:#fff; cursor:pointer; }
+.bm-depth button.bm-active { background:var(--bm-accent); color:#fff; }
 .bm-layers { display:flex; gap:10px; flex-wrap:wrap; }
 .bm-layers label { font-size:14px; }
 .bm-stage { display:flex; flex-wrap:wrap; gap:20px; padding:16px 20px; }
@@ -25,6 +29,16 @@ body { margin:0; font-family: system-ui, sans-serif; color:#22302b; background:v
 .bm-label { font-size:10px; fill:#3a3a3a; cursor:pointer; paint-order:stroke; stroke:#fbf8f3; stroke-width:2.5px; stroke-linejoin:round; }
 .bm-label:hover, .bm-point:hover { font-weight:600; }
 .bm-label.bm-sel { font-weight:700; fill:var(--bm-ink); }
+.bm-line { cursor:pointer; }
+.bm-line:hover, .bm-line.bm-sel { stroke-width:4 !important; stroke-opacity:1 !important; }
 .bm-leader { stroke:#c9c2b0; stroke-width:0.75; fill:none; }
 .bm-leader.bm-sel { stroke:var(--bm-accent); stroke-width:1.25; }
 .bm-point { cursor:pointer; }
+/* Personalized portal view: the client's finding zones stand out in gold. */
+.bm-zone.bm-lit { fill:var(--bm-accent) !important; fill-opacity:0.55 !important; stroke:var(--bm-ink) !important; stroke-width:2.5 !important; }
+.bm-label.bm-lit { font-weight:700; fill:var(--bm-ink); }
+.bm-leader.bm-lit { stroke:var(--bm-accent); stroke-width:1.25; }
+.bm-findings { list-style:none; padding:0; margin:.5rem 0 0; }
+.bm-findings li { margin:.3rem 0; }
+.bm-finding { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--bm-line); background:#fff; border-radius:6px; cursor:pointer; color:var(--bm-ink); font-size:14px; }
+.bm-finding:hover { background:var(--bm-accent); color:#fff; border-color:var(--bm-accent); }

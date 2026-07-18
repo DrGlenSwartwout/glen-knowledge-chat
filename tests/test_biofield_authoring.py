@@ -190,3 +190,26 @@ def test_update_header(tmp_path):
     update_header(cx, tid, name="Jane Q", date="2026-07-01")
     rep = authored_report(cx, tid)
     assert rep["client"]["name"] == "Jane Q" and rep["date"] == "2026-07-01"
+
+
+def test_terrain_phase_persists_and_renders(tmp_path):
+    from dashboard.biofield_authoring import update_terrain
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    # A brand-new test has no terrain reading yet.
+    rep = authored_report(cx, tid)
+    assert rep["phase"] is None and rep["location"] == ""
+    update_terrain(cx, tid, phase=4, location="Toxicity")
+    rep = authored_report(cx, tid)
+    assert rep["phase"] == 4 and rep["location"] == "Toxicity"
+
+
+def test_update_terrain_is_per_field(tmp_path):
+    # Re-interpreting with no phase spoken must not wipe a phase already read.
+    from dashboard.biofield_authoring import update_terrain
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    update_terrain(cx, tid, phase=2, location="Kidney")
+    update_terrain(cx, tid, phase=None, location="")  # nothing spoken this pass
+    rep = authored_report(cx, tid)
+    assert rep["phase"] == 2 and rep["location"] == "Kidney"

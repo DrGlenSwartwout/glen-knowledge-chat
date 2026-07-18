@@ -1,6 +1,7 @@
 """Body Map store: load/validate iris & sclera zone data. No Flask/Pinecone deps."""
 import json
 import os
+import re
 from pathlib import Path
 
 REPO_DATA = Path(__file__).resolve().parent / "data"
@@ -21,10 +22,19 @@ SYSTEMS = {
     "ear": DATA_DIR / "bodymap-ear.json",
     "foot": DATA_DIR / "bodymap-foot.json",
     "hand": DATA_DIR / "bodymap-hand.json",
+    "meridian": DATA_DIR / "bodymap-meridian.json",
+    "eav": DATA_DIR / "bodymap-eav.json",
+    "neurotome": DATA_DIR / "bodymap-neurotome.json",
+    "lymph": DATA_DIR / "bodymap-lymph.json",
+    "face": DATA_DIR / "bodymap-face.json",
+    "organs": DATA_DIR / "bodymap-organs.json",
+    "skeleton": DATA_DIR / "bodymap-skeleton.json",
+    "muscle": DATA_DIR / "bodymap-muscle.json",
+    "dental": DATA_DIR / "bodymap-dental.json",
 }
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
-               "bodymap-foot.json", "bodymap-hand.json")
+               "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json")
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")
 
 
@@ -48,8 +58,11 @@ def validate_zone(z):
     for key in _REQUIRED_COMMON:
         if key not in z or z.get(key) is None:
             return False, f"missing required field: {key}"
-    if (z.get("side") or z.get("eye")) not in ("right", "left"):
-        return False, "side/eye must be 'right' or 'left'"
+    # `side`/`eye` is the laterality OR view/layer selector (left/right, front/back/side,
+    # hand/foot, or a named map layer like diagnosis/acu/lymph). Any non-empty string.
+    _side = z.get("side") or z.get("eye")
+    if not isinstance(_side, str) or not _side.strip():
+        return False, "side/eye (laterality or view) must be a non-empty string"
     if not (z.get("group") or z.get("germ_layer")):
         return False, "missing grouping (group or germ_layer)"
     geo = z.get("geometry") or {}
@@ -79,6 +92,11 @@ def validate_zone(z):
             return False, "geometry point x/y must be numbers"
         if not (0.0 <= float(x) <= 1.0 and 0.0 <= float(y) <= 1.0):
             return False, "geometry point x/y must be in [0,1]"
+        return True, None
+    if gtype == "path":
+        d = geo.get("d")
+        if not isinstance(d, str) or not d.strip():
+            return False, "geometry path needs a non-empty 'd' string"
         return True, None
     if gtype == "sector":
         radial = z.get("radial") or {}
@@ -131,6 +149,7 @@ def build_payload(system):
         "germ_layers": data.get("germ_layers", []),
         "groups": data.get("groups", []),
         "outline": data.get("outline", ""),
+        "outlines": data.get("outlines", {}),
         "outline_side": data.get("outline_side", ""),
         "anchors": data.get("anchors", []),
         "side_noun": data.get("side_noun", ""),
@@ -218,3 +237,88 @@ def atlas_target_url(target):
     elif target.get("layer"):
         params["layer"] = target["layer"]
     return "/body-map?" + urlencode(params)
+
+
+# Extra organ terms that a finding name may use but a zone's anatomy spells
+# differently. Keyed by the stemmed term (see _stem); values are stemmed phrases
+# to ALSO try. One-directional: the zone's own spelling matches on its own.
+_ZONE_SYNONYMS = {
+    "colon": ["large intestine", "colon"],
+    "large intestine": ["colon", "large intestine"],
+    "large bowel": ["large intestine", "colon"],
+    "bowel": ["large intestine", "small intestine", "colon"],
+    "gall bladder": ["gallbladder"],
+    "suprarenal": ["adrenal"],
+}
+
+# E4L finding names carry non-anatomical noise words ("Liver Driver", "Heart
+# Imprinter"). Stripping them lets the remaining organ phrase match, without
+# splitting genuine two-word organ names ("large intestine") into a shared word
+# ("intestine") that would cross-match the wrong organ.
+_NOISE_WORDS = {"driver", "imprinter", "the", "and", "region", "of", "a", "an"}
+
+
+def _stem(s):
+    """Lowercase and strip a trailing plural 's' from each word, so an organ name
+    matches whether the finding or the zone spells it singular or plural
+    ('Lung' vs 'Lungs (cheek)', 'Kidney' vs 'Kidneys'). Matching-only; not display."""
+    return re.sub(r"(\w)s\b", r"\1", (s or "").strip().lower())
+
+
+def zone_ids(system, side=None):
+    """All zone ids in `system` (optionally restricted to one view/side). Used to
+    light a whole system for a system-level finding (e.g. a 'Bone' finding lights
+    the entire skeleton). Never raises on a missing system -> []."""
+    try:
+        zones = load_map(system).get("zones", [])
+    except (KeyError, FileNotFoundError, ValueError):
+        return []
+    if side:
+        zones = [z for z in zones if (z.get("side") or z.get("eye")) == side]
+    return [z.get("id") for z in zones if z.get("id")]
+
+
+def resolve_finding_zones(system, names, side=None):
+    """Map a client's finding organ/system names to Body Map zone ids in `system`.
+
+    Pure (no DB): matches each name against every zone's `anatomy` (and its
+    optional `meridian_organs` list, so a tooth lights for its associated organs)
+    on a word-boundary, plural-insensitive basis, so a 'Liver' finding lights every
+    zone whose anatomy names the liver. `side` (e.g. 'diagnosis') restricts to
+    one view/layer. Returns {"zones": [ordered unique ids], "by_name": {name: [ids]}}.
+    A name that matches nothing is simply absent from by_name. Never raises on a
+    missing system -> empty result."""
+    try:
+        zones = load_map(system).get("zones", [])
+    except (KeyError, FileNotFoundError, ValueError):
+        return {"zones": [], "by_name": {}}
+    if side:
+        zones = [z for z in zones if (z.get("side") or z.get("eye")) == side]
+    zdata = [(z.get("id"), _stem(z.get("anatomy", "") + " " + " ".join(z.get("meridian_organs") or [])))
+             for z in zones]
+    by_name, ordered, seen = {}, [], set()
+    for raw in (names or []):
+        base = _stem(raw)
+        if not base:
+            continue
+        # Candidates: the whole stemmed phrase, the phrase with E4L noise words
+        # removed ("Liver Driver" -> "liver"), and synonyms of both. A genuine
+        # two-word organ name ("large intestine") is matched as a phrase, never
+        # split into a shared word ("intestine") that would cross-match a sibling
+        # organ ("small intestine"). Single-word organs still work via `base`.
+        words = [w for w in base.split() if w not in _NOISE_WORDS]
+        phrase = " ".join(words)
+        cands = {base, phrase}
+        if len(words) == 1:
+            cands.add(words[0])
+        for t in list(cands):
+            cands.update(_ZONE_SYNONYMS.get(t, []))
+        pats = [re.compile(r"\b" + re.escape(t) + r"\b") for t in cands if t]
+        hits = [zid for zid, anat in zdata if zid and any(p.search(anat) for p in pats)]
+        if hits:
+            by_name[str(raw)] = hits
+            for zid in hits:
+                if zid not in seen:
+                    seen.add(zid)
+                    ordered.append(zid)
+    return {"zones": ordered, "by_name": by_name}

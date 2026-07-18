@@ -241,6 +241,7 @@
         + (o.external_ref?' &middot; '+esc(o.external_ref):'')
         + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
         + (total?' &middot; '+total:'')
+        + (o.physical_units>0?' &middot; '+Number(o.physical_units)+' unit'+(Number(o.physical_units)===1?'':'s'):'')
         + (o.ledger_balance_cents!=null
             ? ' &middot; <span class="led-bal '+(o.ledger_balance_cents>0?'owed':'settled')+'">Paid $'
               +((o.ledger_paid_cents||0)/100).toFixed(2)+' &middot; Bal $'+(o.ledger_balance_cents/100).toFixed(2)+'</span>'
@@ -474,9 +475,11 @@
       }).join('<br>') + '</div>';
     var stLabel = allPaid ? esc(st)
       : ('awaiting payment ('+(ms.length-unpaid.length)+'/'+ms.length+' paid)');
+    var totalUnits = ms.reduce(function(sum,m){ return sum + Number(m.physical_units||0); }, 0);
     var head = '<div class="card-head" onclick="toggleCard(this)"><div class="who">'+who
       + '<span class="hh-badge">shipment #'+Number(sid)+'</span><span class="chev">&#9656;</span></div>'
-      + '<div class="meta">'+stLabel+(tn?' &middot; tracking '+esc(tn):'')+'</div></div>';
+      + '<div class="meta">'+stLabel+(tn?' &middot; tracking '+esc(tn):'')
+      + (totalUnits>0?' &middot; '+totalUnits+' unit'+(totalUnits===1?'':'s'):'')+'</div></div>';
     var body = '<div class="card-body">'
       + (items?'<div class="meta prods">'+items+'</div>':'')
       + memberList

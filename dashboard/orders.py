@@ -578,6 +578,42 @@ def order_backorder_units(cx, order_id):
     return sum(l["backordered"] for l in fulfillment_for_order(cx, order_id))
 
 
+def physical_units(items, catalog):
+    """Total physical shipping units in an order's line items. Bundles expand to
+    their component bottles; services / info-only lines count 0. `items` is the
+    parsed items_json list ({slug, qty, ...}); `catalog` is {slug: product}."""
+    from dashboard import shipping as _sh
+    catalog = catalog or {}
+    # bundle_component_products() expects an iterable of product dicts (the shape
+    # app.py's _catalog_products() returns), not the {slug: product} mapping this
+    # function's own O(1) lookups use -- build that list once, lazily.
+    catalog_list = None
+    total = 0
+    for it in (items or []):
+        try:
+            qty = int(it.get("qty") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        if qty <= 0:
+            continue
+        p = catalog.get(it.get("slug") or "") or {}
+        if not _sh.is_shippable(p):
+            continue  # service / info-only -> 0
+        if p.get("bundle"):
+            if catalog_list is None:
+                catalog_list = list(catalog.values())
+            try:
+                total += len(_sh.bundle_component_products(p, catalog_list)) * qty
+            except _sh.UnknownBundleComponent:
+                # display count must not raise; fall back to declared component qtys
+                comps = p.get("bundle_component_slugs") or []
+                n = sum(int(c.get("qty") or 1) for c in comps) if comps else 1
+                total += n * qty
+        else:
+            total += qty
+    return total
+
+
 # Pre-payment invoices (proposed/confirmed) are not committed demand, so they are
 # excluded from the reorder rollup along with done/cancelled.
 _NOT_BACKORDERABLE = ("done", "cancelled", "proposed", "confirmed")

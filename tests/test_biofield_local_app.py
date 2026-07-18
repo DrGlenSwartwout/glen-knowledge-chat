@@ -278,7 +278,7 @@ def test_invoice_route_returns_order_id_and_links(tmp_path):
     def fake_catalog():
         return [{"name": "Liver Support", "slug": "liver-support"}]
 
-    def fake_create(customer, lines, replace_open=False):
+    def fake_create(customer, lines, replace_open=False, invoice_note=None):
         return {"ok": True, "order_id": 42, "external_ref": "ER42", "total_cents": 30000,
                 "accepted_slugs": [l["slug"] for l in lines]}
 
@@ -410,6 +410,23 @@ def test_build_portal_seed_from_authored_flat_format():
     assert content["reorder_items"] == [
         {"slug": "liver-support", "name": "Liver Support"},
         {"slug": "glutathione-syntropy", "name": "Glutathione Syntropy"}]
+    # No BSI spoken for this test -> the seed carries no terrain reading.
+    assert content["phase"] is None and content["location"] == ""
+
+
+def test_build_portal_seed_carries_terrain_reading():
+    import sqlite3
+    from dashboard.biofield_authoring import (
+        init_auth_tables, create_test, add_chain_row, update_terrain)
+    from dashboard import biofield_handoff
+    cx = sqlite3.connect(":memory:")
+    init_auth_tables(cx)
+    tid = create_test(cx, "Bob Ross", "bob@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Liver Meridian", "Liver", "Liver Support", "1 capsule", "daily", "with food")
+    update_terrain(cx, tid, phase=4, location="Toxicity")
+    cx.commit()
+    content = biofield_handoff.build_portal_seed(cx, tid, lambda nm: None, name="Bob Ross")
+    assert content["phase"] == 4 and content["location"] == "Toxicity"
 
 
 def test_handoff_route_graceful(tmp_path):
@@ -480,7 +497,7 @@ def test_handoff_skips_raise_when_analysis_paid(tmp_path, monkeypatch):
     client = create_app(
         db,
         invoice_fetch_catalog=lambda: [],   # remedy doesn't resolve -> skipped, like Steve's $300-only
-        invoice_create=lambda c, lines, replace_open=False: created_calls.append(lines) or {"ok": True, "order_id": 9},
+        invoice_create=lambda c, lines, replace_open=False, invoice_note=None: created_calls.append(lines) or {"ok": True, "order_id": 9},
         invoice_paid_check=lambda email: {"paid": True, "order_id": 37},
     ).test_client()
     j = client.post("/author/%s/handoff" % tid, json={}).get_json()
@@ -506,7 +523,7 @@ def test_handoff_raises_remedies_only_when_paid(tmp_path, monkeypatch):
     client = create_app(
         db,
         invoice_fetch_catalog=lambda: [{"name": "Liver Support", "slug": "liver-support"}],
-        invoice_create=lambda c, lines, replace_open=False: captured.update(lines=lines) or {"ok": True, "order_id": 5, "total_cents": 3000},
+        invoice_create=lambda c, lines, replace_open=False, invoice_note=None: captured.update(lines=lines) or {"ok": True, "order_id": 5, "total_cents": 3000},
         invoice_paid_check=lambda email: {"paid": True, "order_id": 37},
     ).test_client()
     j = client.post("/author/%s/handoff" % tid, json={}).get_json()
@@ -531,7 +548,7 @@ def test_handoff_route_raises_invoice(tmp_path, monkeypatch):
     # portal push succeeds (bypass prod); capture the order lines the raise sends
     monkeypatch.setattr(biofield_invoice, "default_handoff_push", lambda *a, **k: {"ok": True})
     captured = {}
-    def fake_create(cust, lines, replace_open=False):
+    def fake_create(cust, lines, replace_open=False, invoice_note=None):
         captured["lines"] = lines
         return {"ok": True, "order_id": 77, "total_cents": 130000, "external_ref": "INH-x"}
     client = create_app(

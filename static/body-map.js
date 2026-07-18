@@ -2,10 +2,30 @@
 (function () {
   const svgNS = "http://www.w3.org/2000/svg";
   const VIEW = 600, CX = 300, CY = 300;
-  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null };
+  const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "",
+                  litZones: new Set(), portalToken: null };
 
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
+
+  // Embryological germ layer of a zone (for the depth-peel). Prefer an explicit
+  // germ_layer / embryo tag, else infer from the anatomy name. Order matters:
+  // neural/sensory (ectoderm) and viscera (endoderm) are checked before the
+  // structural/circulatory catch-all (mesoderm).
+  const EMBRYO_KW = [
+    ["ectoderm", /brain|cerebr|cerebell|medulla|brainstem|pineal|pituitar|nerv|sciatic|neuro|sensor|subcortex|occiput|\bmind\b|mental|ego|comprehens|speech|\bmotor|skin|epiderm|\beye|vision|\bear\b|hearing|\bnose\b|sinus|\bface|forehead|scalp|tooth|teeth|mammary|breast/i],
+    ["endoderm", /liver|lung|bronch|trachea|pharynx|larynx|thyroid|parathyroid|thymus|stomach|duoden|intestin|colon|cecum|append|ileocecal|sigmoid|rectum|pancrea|gallbladder|\bbladder|urethra|prostate|tonsil|esophag|oesophag|digest/i],
+    ["mesoderm", /kidney|adrenal|heart|circulat|aorta|vessel|blood|spleen|lymph|node|muscle|bone|skelet|vertebra|spine|cervical|thoracic|lumbar|sacr|coccyx|\brib|sternum|femur|pelvi|\bhip|joint|knee|elbow|wrist|ankle|shoulder|\barm\b|\bleg\b|limb|clavicle|connective|cartilage|dermis|gonad|ovar|test|uter|reproduct|genital|peritoneum|diaphragm|hernia|articular/i],
+  ];
+  function embryoLayer(z) {
+    const g = z.germ_layer;
+    if (g === "endoderm" || g === "mesoderm" || g === "ectoderm") return g;
+    const e = z.embryo || (z.layers && z.layers.embryological_depth);
+    if (e === "endoderm" || e === "mesoderm" || e === "ectoderm") return e;
+    const hay = (z.anatomy || "") + " " + (z.id || "");
+    for (const [layer, re] of EMBRYO_KW) if (re.test(hay)) return layer;
+    return null; // untagged -> visible at every depth
+  }
   function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
   function isOutlineFrame() { return state.frame && state.frame !== "unit_circle"; }
 
@@ -62,7 +82,8 @@
   }
 
   // Distinct region colors, assigned by a group's position in the payload's group list.
-  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86"];
+  const GROUP_PALETTE = ["#2f6f5e", "#c07f2a", "#7a5aa6", "#3f7cae", "#b0503a", "#5f8a3a", "#9a7b39", "#4a8a86",
+    "#b5447a", "#2f8f8f", "#8a6d2f", "#6a4ac0", "#c05a2a", "#3a7a5f", "#a03a6a", "#4a6aae"];
   function groupColor(z) {
     const groups = groupsOf(state.payload);
     const idx = groups.findIndex(g => g.id === zoneGroup(z));
@@ -73,7 +94,8 @@
     if (!state.payload) return [];
     return state.payload.zones.filter(z =>
       (z.bilateral || zoneSide(z) === state.eye) &&
-      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))));
+      (state.activeLayers.size === 0 || state.activeLayers.has(zoneGroup(z))) &&
+      (!state.depth || embryoLayer(z) === state.depth));
   }
 
   function renderChart() {
@@ -82,11 +104,14 @@
     svg.innerHTML = "";
     const mapFn = state.transform ? (p) => state.transform(p) : refToScreen;
     if (isOutlineFrame()) {
-      if (state.payload.outline) {
+      // per-view outline (e.g. front/back share a silhouette, side is a profile);
+      // falls back to the single `outline` for systems that have just one.
+      const outlineD = (state.payload.outlines && state.payload.outlines[state.eye]) || state.payload.outline;
+      if (outlineD) {
         const path = document.createElementNS(svgNS, "path");
         const oMir = state.payload.outline_side && state.payload.outline_side !== state.eye;
         const oMapFn = oMir ? (p) => mapFn({ x: 1 - p.x, y: p.y }) : mapFn;
-        path.setAttribute("d", transformPathD(state.payload.outline, oMapFn));
+        path.setAttribute("d", transformPathD(outlineD, oMapFn));
         path.setAttribute("fill", "#00000008"); path.setAttribute("stroke", "#b8a678"); path.setAttribute("stroke-width", "1.5");
         svg.appendChild(path);
       }
@@ -143,15 +168,41 @@
         dot.setAttribute("fill", col); dot.setAttribute("stroke", "#fff"); dot.setAttribute("stroke-width", "1");
         dot.addEventListener("click", () => selectZone(z));
         svg.appendChild(dot); addLabel(s.x, s.y);
+      } else if (geo.type === "path") {
+        // a stroked line (e.g. an acupuncture meridian) rather than a filled area
+        const line = document.createElementNS(svgNS, "path");
+        line.setAttribute("d", transformPathD(geo.d, (p) => N(p.x, p.y)));
+        line.setAttribute("class", "bm-zone bm-line"); line.dataset.id = z.id;
+        line.setAttribute("fill", "none"); line.setAttribute("stroke", col);
+        line.setAttribute("stroke-width", "2.5"); line.setAttribute("stroke-opacity", "0.85");
+        line.setAttribute("stroke-linecap", "round"); line.setAttribute("stroke-linejoin", "round");
+        line.addEventListener("click", () => selectZone(z));
+        svg.appendChild(line);
+        // label at a coordinate pair near the middle of the path
+        const nums = (geo.d.match(/-?\d*\.?\d+/g) || []).map(Number);
+        const m = Math.max(0, (Math.floor(nums.length / 4) * 2) - ((Math.floor(nums.length / 4) * 2) % 2));
+        const lc = N(nums[m] ?? 0.5, nums[m + 1] ?? 0.5);
+        addLabel(lc.x, lc.y);
       } else {
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
         path.setAttribute("class", "bm-zone"); path.dataset.id = z.id;
         path.addEventListener("click", () => selectZone(z));
         svg.appendChild(path);
+        // label at the sector centroid (mid-angle, mid-radius)
+        const midA = (z.sector.start_deg + z.sector.end_deg) / 2;
+        const midR = (z.radial.r_inner + z.radial.r_outer) / 2;
+        const u = clockToNormalized(midA);
+        const sc = mapFn({ x: u.x * midR, y: u.y * midR });
+        addLabel(sc.x, sc.y);
       }
     });
     placeLabels(labelSpecs, svg);
+    // Personalized portal view: highlight the zones tied to the client's findings.
+    if (state.litZones.size) {
+      svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
+        e.classList.toggle("bm-lit", state.litZones.has(e.dataset.id)));
+    }
   }
 
   // Place zone labels in two vertical columns (left/right of the chart centre),
@@ -237,8 +288,12 @@
     state.frame = state.payload.reference_frame || "unit_circle";
     state.chartR = computeChartR(state.payload);
     state.activeLayers.clear();
-    // laterality: relabel + repopulate from the sides present, keep current if still valid
-    const sides = [...new Set((state.payload.zones || []).map(zoneSide))];
+    // laterality: relabel + repopulate from the sides present, keep current if still valid.
+    // Outline systems mirror via outline_side, so both sides are always available
+    // even when every zone is authored bilaterally on one canonical side (e.g. the ear).
+    const sides = state.payload.outline_side
+      ? ["left", "right"]
+      : [...new Set((state.payload.zones || []).map(zoneSide))];
     const sel = document.getElementById("bm-eye");
     sel.replaceChildren();
     sides.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s.charAt(0).toUpperCase() + s.slice(1); sel.appendChild(o); });
@@ -249,9 +304,28 @@
   }
 
   function wire() {
-    document.getElementById("bm-system").addEventListener("change", e => loadSystem(e.target.value));
+    document.getElementById("bm-system").addEventListener("change", e => {
+      // In the portal, switching systems re-personalizes (keeps the client's
+      // findings lit on the new map) instead of loading a blank reference chart.
+      if (state.portalToken) bootstrapPortal(e.target.value, e.target.value === "face");
+      else loadSystem(e.target.value);
+    });
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
+    // embryological depth-peel: isolate one germ layer (endoderm/mesoderm/ectoderm)
+    document.querySelectorAll("#bm-depth button").forEach(b => b.addEventListener("click", () => {
+      state.depth = b.dataset.depth;
+      document.querySelectorAll("#bm-depth button").forEach(x => x.classList.toggle("bm-active", x === b));
+      renderChart();
+    }));
     wireOverlay();
+    // Portal-personalized entry: /portal/<token>/bodymap warps the face map onto
+    // the client's own photo with their findings lit, instead of the URL-focus path.
+    const portalMatch = location.pathname.match(/^\/portal\/([^/]+)\/bodymap\/?$/);
+    if (portalMatch) {
+      state.portalToken = decodeURIComponent(portalMatch[1]);
+      bootstrapPortal().then(__bmSelfCheck);
+      return;
+    }
     const params = new URLSearchParams(location.search);
     const sys = params.get("system");
     const sel = document.getElementById("bm-system");
@@ -259,6 +333,77 @@
     const initialSystem = known.includes(sys) ? sys : "iridology";
     sel.value = initialSystem;
     loadSystem(initialSystem).then(function () { applyFocusFromURL(params); __bmSelfCheck(); });
+  }
+
+  // Load the client's personalization for `system` (default face), light their
+  // finding zones on that map, and — for the face, auto-warp their own photo.
+  // Other systems show the reference figure lit (a face selfie can't warp onto a
+  // body/foot map); the client can still upload a matching photo to warp it.
+  async function bootstrapPortal(system, autoPhoto) {
+    if (system === undefined) { system = "face"; autoPhoto = true; }
+    const token = state.portalToken;
+    let pz = null;
+    try {
+      const url = "/api/portal/" + encodeURIComponent(token) + "/bodymap"
+        + (system ? "?system=" + encodeURIComponent(system) : "");
+      pz = await (await fetch(url)).json();
+    } catch (e) { pz = null; }
+    const loaded = (pz && pz.system) || system || "face";
+    document.getElementById("bm-system").value = loaded;
+    await loadSystem(loaded);
+    if (pz && !pz.error) {
+      if (pz.view) { state.eye = pz.view; document.getElementById("bm-eye").value = pz.view; }
+      state.litZones = new Set(pz.lit_zones || []);
+      renderChart();
+      renderPortalPanel(pz);
+      if (autoPhoto && pz.has_photo) loadPortalPhoto(token);
+      else setMode(false);
+    }
+  }
+
+  function loadPortalPhoto(token) {
+    const img = document.getElementById("bm-photo");
+    img.onload = function () {
+      setMode(true);
+      document.getElementById("bm-autodetect").hidden = !detectorKind();
+      beginAnchoring();              // resets anchors; keeps state.litZones
+      autoDetect();                  // MediaPipe face landmarks -> warp
+    };
+    img.onerror = function () { setMode(false); };
+    img.src = "/api/portal/" + encodeURIComponent(token) + "/photo?t=" + Date.now();
+  }
+
+  function renderPortalPanel(pz) {
+    const panel = document.getElementById("bm-panel");
+    panel.replaceChildren();
+    const h = document.createElement("h2");
+    h.textContent = pz.count ? "Your findings on this map" : "Your Body Map";
+    panel.appendChild(h);
+    if (!pz.count) {
+      const p = document.createElement("p"); p.className = "bm-hint";
+      p.textContent = pz.has_photo
+        ? "None of your current findings map to the face yet. Explore the map, or get a voice scan to personalize it."
+        : "Add a photo in your portal and get a voice scan to see your findings mapped onto your own face.";
+      panel.appendChild(p);
+      return;
+    }
+    const intro = document.createElement("p"); intro.className = "bm-hint";
+    intro.textContent = "The highlighted zones correspond to your top findings. Tap a zone to read what it maps to.";
+    panel.appendChild(intro);
+    const ul = document.createElement("ul"); ul.className = "bm-findings";
+    pz.findings.forEach(f => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "bm-finding";
+      btn.textContent = f.label + (f.rank != null ? "  ·  priority " + f.rank : "");
+      btn.addEventListener("click", () => {
+        const zid = (f.zones || [])[0];
+        const z = zid && (state.payload.zones || []).find(x => x.id === zid);
+        if (z) selectZone(z);
+      });
+      li.appendChild(btn); ul.appendChild(li);
+    });
+    panel.appendChild(ul);
   }
 
   function __bmSelfCheck() {
@@ -289,8 +434,11 @@
   }
 
   function activeAnchorSteps() {
-    const a = state.payload && state.payload.anchors;
-    return (a && a.length) ? a : ANCHOR_STEPS;
+    const a = (state.payload && state.payload.anchors) || [];
+    // multi-view systems tag anchors with a `view`; use the ones for the current view
+    const forView = a.filter(s => !s.view || s.view === state.eye);
+    if (forView.length) return forView;
+    return a.length ? a : ANCHOR_STEPS;
   }
 
   // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
@@ -336,11 +484,7 @@
       document.getElementById("bm-anchor-hint").textContent = steps[anchorIdx].hint;
       drawAnchors();
     } else {
-      document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-      state.transform = (state.payload && state.payload.anchors && state.payload.anchors.length)
-        ? fitSimilarity(steps)
-        : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
-      renderChart(); drawAnchors();
+      placeOverlay(steps);
       console.log("[bodymap] overlay placed");
     }
   }
@@ -354,25 +498,122 @@
     });
   }
 
+  // Two tapped/detected anchors with template coords -> similarity; else iris fallback.
+  function placeOverlay(steps) {
+    document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
+    state.transform = (steps.length >= 2 && steps[0].template && steps[1].template)
+      ? fitSimilarity(steps)
+      : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+    renderChart(); drawAnchors();
+  }
+
+  // ---- ML auto-anchoring: detect the anchor landmarks on the photo client-side.
+  // MediaPipe runs in-browser (WASM), so the photo still never leaves the device.
+  const MP_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  const MP_MODELS = {
+    face: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+    pose: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+    hand: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  };
+  let _mp = null; const _lmk = {};
+
+  function detectorKind() {
+    const sys = state.payload && state.payload.system;
+    if (sys === "face") return "face";
+    if (sys === "hand") return "hand";
+    if (sys === "eav") return state.eye === "foot" ? "pose" : "hand";
+    if (sys === "foot" || sys === "meridian" || sys === "neurotome" || sys === "lymph") return "pose";
+    return null; // iris / sclera / ear -> manual for now
+  }
+
+  async function getLandmarker(kind) {
+    if (_lmk[kind]) return _lmk[kind];
+    if (!_mp) _mp = await import(MP_BASE);
+    const { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } = _mp;
+    const fileset = await FilesetResolver.forVisionTasks(MP_BASE + "/wasm");
+    const opts = { baseOptions: { modelAssetPath: MP_MODELS[kind] }, runningMode: "IMAGE" };
+    _lmk[kind] = await (kind === "face" ? FaceLandmarker : kind === "pose" ? PoseLandmarker : HandLandmarker)
+      .createFromOptions(fileset, opts);
+    return _lmk[kind];
+  }
+
+  function landmarksFromResult(kind, res) {
+    return kind === "face" ? (res.faceLandmarks || [])[0] : (res.landmarks || [])[0];
+  }
+
+  // resolve an anchor-step key -> normalized {x,y} from the detected landmarks
+  function landmarkFor(kind, lms, key) {
+    const k = key.toLowerCase();
+    if (kind === "face") {
+      if (k.includes("hairline") || k.includes("head")) return lms[10];   // forehead top
+      if (k.includes("chin")) return lms[152];
+    } else if (kind === "pose") {
+      if (k.includes("head") || k.includes("hairline")) {
+        const nose = lms[0]; return { x: nose.x, y: Math.max(0, nose.y - 0.06) };
+      }
+      if (k.includes("feet") || k.includes("foot") || k.includes("ankle")) {
+        const a = lms[27], b = lms[28]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+    } else if (kind === "hand") {
+      if (k.includes("wrist")) return lms[0];
+      if (k.includes("mid") || k.includes("middle")) return lms[12];
+      if (k.includes("toe") || k.includes("tip")) return lms[12];
+      if (k.includes("thumb")) return lms[4];
+    }
+    return null;
+  }
+
+  async function autoDetect() {
+    const hint = document.getElementById("bm-anchor-hint");
+    const kind = detectorKind();
+    const steps = activeAnchorSteps();
+    if (!kind || !(steps.length >= 2 && steps[0].template)) {
+      hint.textContent = "Auto-detect isn't available here — tap the points manually."; return;
+    }
+    hint.textContent = "Detecting landmarks…";
+    try {
+      const L = await getLandmarker(kind);
+      const lms = landmarksFromResult(kind, L.detect(document.getElementById("bm-photo")));
+      if (!lms) throw new Error("no landmarks found");
+      Object.keys(anchors).forEach(kk => delete anchors[kk]);
+      for (const s of steps) {
+        const n = landmarkFor(kind, lms, s.key);
+        if (!n) throw new Error("unmapped anchor " + s.key);
+        anchors[s.key] = { x: n.x * VIEW, y: n.y * VIEW };
+      }
+      anchorIdx = steps.length;
+      placeOverlay(steps);
+    } catch (e) {
+      console.warn("[bodymap] auto-detect failed", e);
+      anchorIdx = 0; Object.keys(anchors).forEach(kk => delete anchors[kk]);
+      state.transform = null; renderChart();
+      hint.textContent = "Couldn't auto-detect — tap manually, starting with: " + steps[0].hint;
+    }
+  }
+
   function onUpload(evt) {
     const file = evt.target.files && evt.target.files[0];
     if (!file) return;
     const img = document.getElementById("bm-photo");
     img.src = URL.createObjectURL(file); // stays in-browser; never uploaded
     img.hidden = false; setMode(true); beginAnchoring();
+    document.getElementById("bm-autodetect").hidden = !detectorKind();
   }
 
   function wireOverlay() {
     document.getElementById("bm-mode-ref").addEventListener("click", () => setMode(false));
     document.getElementById("bm-mode-photo").addEventListener("click", () => setMode(true));
     document.getElementById("bm-upload").addEventListener("change", onUpload);
+    document.getElementById("bm-autodetect").addEventListener("click", autoDetect);
     document.getElementById("bm-svg").addEventListener("click", onCanvasClick);
   }
 
   function applyFocusFromURL(params) {
     if (!state.payload) return;
     const side = params.get("side") || params.get("eye");
-    const sides = new Set((state.payload.zones || []).map(zoneSide));
+    const sides = state.payload.outline_side
+      ? new Set(["left", "right"])
+      : new Set((state.payload.zones || []).map(zoneSide));
     if (side && sides.has(side)) {
       state.eye = side; document.getElementById("bm-eye").value = side; renderChart();
     }
