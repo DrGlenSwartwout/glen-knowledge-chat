@@ -18428,9 +18428,28 @@ def api_client_portal(token):
         bf_actionable = (bf_status != "confirmed") and _pbr.is_actionable(
             picked, _dt.date.today().isoformat())
     else:
-        bf_content = content
-        bf_status = content.get("biofield_status") or "confirmed"
-        bf_scan_date, bf_scan_dates, bf_actionable = None, [], False
+        # System A: the funnel reveal (biofield_reveals). Rendered as the portal scan
+        # when the client has no System B report. Best-effort — a read failure must
+        # never break the portal load; falls back to the legacy `content` path.
+        _revs = []
+        try:
+            from dashboard import biofield_reveals as _brv
+            from dashboard import portal_view as _pv
+            _brv.init_table(cx_r)
+            _revs = _brv.list_for_email(cx_r, email_for_reports) if email_for_reports else []
+        except Exception as _re:
+            print(f"[portal-reveal] read skipped: {_re!r}", flush=True)
+        if _revs:
+            _rev_dates = [r["scan_date"] for r in _revs]
+            _picked = req_date if req_date in _rev_dates else _rev_dates[0]
+            _row = next((r for r in _revs if r["scan_date"] == _picked), _revs[0])
+            bf_content = _pv._reveal_as_report_content(_row)
+            bf_status = "confirmed"
+            bf_scan_date, bf_scan_dates, bf_actionable = _picked, _rev_dates, False
+        else:
+            bf_content = content
+            bf_status = content.get("biofield_status") or "confirmed"
+            bf_scan_date, bf_scan_dates, bf_actionable = None, [], False
     cx_r.close()
     bf_confirmed = bf_status == "confirmed"
     # Remedies/audio/PDF un-blur only when the report is confirmed AND the client

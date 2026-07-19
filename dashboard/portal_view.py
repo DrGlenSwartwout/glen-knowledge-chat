@@ -106,6 +106,24 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
         return _assemble_biofield(cx, content, status, scan_date=picked,
                                   scan_dates=dates, actionable=actionable, unlocked=unlocked)
+    # System A: the funnel reveal (biofield_reveals). Rendered as the portal scan
+    # when the client has no System B report. Blur is binary (paid -> remedies).
+    try:
+        from dashboard import biofield_reveals as _br
+        _reveals = _br.list_for_email(cx, email)
+    except Exception:
+        _reveals = []
+    if _reveals:
+        _rev_dates = [r["scan_date"] for r in _reveals]
+        _picked = scan_date if (scan_date in _rev_dates) else _rev_dates[0]
+        _row = next((r for r in _reveals if r["scan_date"] == _picked), _reveals[0])
+        _content = _reveal_as_report_content(_row)
+        if not _content["layers"] and not _content["greeting"]:
+            return {"visible": False}
+        # status 'confirmed' so the assembler's show-gate depends only on `unlocked`
+        # (paid) — binary blur, identical to a paid System B report.
+        return _assemble_biofield(cx, _content, "confirmed", scan_date=_picked,
+                                  scan_dates=_rev_dates, actionable=False, unlocked=unlocked)
     # Legacy fallback: single confirmed report, no tabs.
     try:
         rec = _cp.get_portal_content_by_email(cx, email)
@@ -142,6 +160,32 @@ def _assemble_biofield(cx, content, status, *, scan_date, scan_dates, actionable
             "actionable": actionable, "scan_date": scan_date, "scan_dates": scan_dates,
             "greeting": content.get("greeting", ""), "video": content.get("video") or {},
             "layers": layers, "pricing_note": content.get("pricing_note", "") if show else ""}
+
+
+def _reveal_as_report_content(reveal):
+    """Normalize a biofield_reveals row into the portal report-content shape so the
+    existing assemblers render it identically to a System B report. Remedy/dosing
+    are strings; the caller's blur gate decides whether they leave the server."""
+    greeting = ((reveal.get("interpretation") or {}).get("greeting") or "").strip()
+    layers = []
+    raw = reveal.get("layers") or []
+    if raw:
+        for L in raw:
+            rem = L.get("remedy") if isinstance(L.get("remedy"), dict) else {}
+            layers.append({
+                "n": L.get("n"),
+                "title": L.get("title", "") or "",
+                "meaning": (L.get("meaning") or L.get("summary") or ""),
+                "remedy": (rem.get("name") or ""),
+                "dosing": (rem.get("dosing") or ""),
+            })
+    else:
+        for i, r in enumerate(reveal.get("remedies") or []):
+            if not isinstance(r, dict):
+                continue
+            layers.append({"n": i + 1, "title": "", "meaning": (r.get("meaning") or ""),
+                           "remedy": (r.get("name") or ""), "dosing": (r.get("dosing") or "")})
+    return {"greeting": greeting, "layers": layers, "video": {}}
 
 
 def _upgrade_block(cx, email, roles, enabled_keys):
