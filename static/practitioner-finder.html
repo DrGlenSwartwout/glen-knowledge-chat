@@ -532,6 +532,10 @@
   <div class="drill-down" id="drill-regenerative_farms">
     <div class="sub-chips">
       <button class="sub-chip" data-sub="__all__" aria-pressed="true">All Farms</button>
+      <button class="sub-chip" data-sub="farmers_market" aria-pressed="false">Farmers Markets</button>
+      <button class="sub-chip" data-sub="csa" aria-pressed="false">CSA</button>
+      <button class="sub-chip" data-sub="food_hub" aria-pressed="false">Food Hubs</button>
+      <button class="sub-chip" data-sub="on_farm_market" aria-pressed="false">On-Farm Markets</button>
       <button class="sub-chip" data-sub="pasture_raised" aria-pressed="false">Pasture-Raised</button>
       <button class="sub-chip" data-sub="grass_fed" aria-pressed="false">Grass-Fed</button>
       <button class="sub-chip" data-sub="grass_finished" aria-pressed="false">Grass-Finished</button>
@@ -973,7 +977,10 @@
 
     // Human-readable labels for farm practice slugs (stored in specialties[]).
     const FARM_PRACTICE_LABELS = {
-      regenerative_farms: 'Regenerative', pasture_raised: 'Pasture-Raised',
+      regenerative_farms: 'Regenerative',
+      farmers_market: 'Farmers Market', csa: 'CSA', food_hub: 'Food Hub',
+      on_farm_market: 'On-Farm Market', agritourism: 'Agritourism',
+      pasture_raised: 'Pasture-Raised',
       grass_fed: 'Grass-Fed', grass_finished: 'Grass-Finished',
       rotational_grazing: 'Rotational Grazing', no_till: 'No-Till',
       cover_crops: 'Cover Crops', usda_organic: 'USDA Organic',

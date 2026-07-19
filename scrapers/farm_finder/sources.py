@@ -26,10 +26,15 @@ def _foodforhumans(limit=None, sleep=0.5) -> list[NormalizedFarmRow]:
     return scrape(limit=limit, sleep=sleep)
 
 
+def _usda(limit=None, sleep=1.0) -> list[NormalizedFarmRow]:
+    from scrapers.farm_finder.usda import scrape
+    return scrape(limit=limit, sleep=sleep)
+
+
 # Most-trusted first — see module docstring (dedupe keeps first occurrence).
 _SOURCES: list[tuple[str, FarmScrape]] = [
     ("foodforhumans", _foodforhumans),
-    # ("usda", _usda),          # USDA Local Food Directories (needs API key)
+    ("usda", _usda),            # USDA Local Food Directories (keyless bulk export)
     # ("realmilk", _realmilk),  # A Campaign for Real Milk (wpbdp sitemap crawl)
     # ("eatwild", _eatwild),    # EatWild state pages (needs geocode fallback)
 ]
