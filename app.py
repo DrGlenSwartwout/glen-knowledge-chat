@@ -5289,6 +5289,46 @@ def qbo_query():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/qbo/payment/<txn_id>/void", methods=["POST"])
+def qbo_void_payment(txn_id):
+    """Owner-only: remove ONE QBO Payment by its QBO txn id, leaving the ledger alone.
+
+    Why this exists: QBO invoicing is being retired and the order_payments ledger is
+    the source of truth. Every payment the app pushed to QBO duplicates money that
+    already reaches QBO on its own as a bank deposit (cards via eProcessing/PayPal/
+    Authorize.net, Zelle via the BofA feed), so those pushed rows have to come out.
+    The only existing route to qbo_billing.void_payment is the LEDGER void path
+    (order_payments), which would also subtract the payment from the ledger -- wrong
+    here, because the ledger figures are correct and must not move. Hence a QBO-only
+    door.
+
+    NOTE it DELETES, it does not zero. QBO has no void-in-place for a Payment the way
+    it does for an Invoice (a voided invoice survives at $0.00 with PrivateNote
+    'Voided'); qbo_billing.void_payment issues operation=delete. The row leaves the
+    register and survives only in QBO's Audit Log. Irreversible -- hence confirmed.
+
+    Must run on prod: Intuit rotates the refresh token per use and caches the
+    replacement to /data/qb_refresh_token on the Render disk. Same reasoning as
+    /api/qbo/query.
+    """
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    if not str(txn_id).isdigit():
+        return jsonify({"ok": False, "error": "txn_id must be numeric"}), 400
+    body = request.get_json(silent=True) or {}
+    if not body.get("confirmed"):
+        # Deliberate speed bump: this is an irreversible financial delete.
+        return jsonify({"ok": False, "error": "confirmed:true required"}), 400
+    try:
+        from dashboard import qbo_billing as qb
+        qb.void_payment(txn_id)
+        print(f"[qbo-void-payment] DELETED QBO Payment {txn_id} (ledger untouched)", flush=True)
+        return jsonify({"ok": True, "txn_id": str(txn_id), "action": "deleted",
+                        "ledger_touched": False})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/qbo/diagnostics", methods=["GET"])
 def qbo_diagnostics():
     """Read-only: confirm QBO write-layer prerequisites (items + income accounts)."""
