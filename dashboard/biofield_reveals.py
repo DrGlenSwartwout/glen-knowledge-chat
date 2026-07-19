@@ -217,12 +217,15 @@ def list_approved(cx, limit=50):
 
 
 def list_for_email(cx, email):
-    """All reveals for an email, newest scan_date first (row dicts via _row)."""
+    """All reveals for an email, newest scan_date first (row dicts via _row).
+    Portal read path: apply the same curated remedy substitutions as the funnel
+    client read path (get_by_token_hash) so a paid portal client never sees an
+    unpurchasable matched remedy name."""
     email = (email or "").strip().lower()
     rows = _rows_cursor(cx).execute(
         "SELECT * FROM biofield_reveals WHERE email=? ORDER BY scan_date DESC, id DESC",
         (email,)).fetchall()
-    return [_row(r) for r in rows]
+    return [apply_remedy_substitutions(_row(r)) for r in rows]
 
 
 def set_notified(cx, rid):
