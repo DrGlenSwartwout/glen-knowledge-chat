@@ -1,8 +1,14 @@
 name: tests
 
-# PR gate for glen-knowledge-chat. Runs the hermetic (no-secrets, no-network) business-logic
-# suites listed in ci/hermetic-tests.txt. See that file for why it is an allowlist rather
-# than the whole suite.
+# PR gate for glen-knowledge-chat.
+#
+# Runs the whole suite with NO real secrets. A dummy PINECONE_API_KEY gets past the Pinecone
+# client constructor (it wants a non-empty key but makes no network call), which is what
+# app.py needs at import -- so the ~265 app-importing suites run too. The files that go
+# further and hit a live service are listed in ci/excluded-tests.txt and passed as --ignore.
+#
+# Everything not excluded is gated, including future test files. See ci/excluded-tests.txt
+# for why this is not solved with a Doppler CI token.
 
 on:
   pull_request:
@@ -15,10 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  hermetic:
-    name: hermetic logic tests
+  suite:
+    name: test suite (secretless)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    env:
+      # Not a real key. Satisfies the Pinecone constructor so app.py imports; any call that
+      # actually reaches Pinecone 401s, which is why those suites are excluded.
+      PINECONE_API_KEY: dummy-ci-key
     steps:
       - uses: actions/checkout@v4
 
@@ -34,13 +44,11 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run hermetic tests
+      - name: Run test suite
         run: |
           set -euo pipefail
-          # Strip comments/blank lines, then let xargs pass each path as its own argument
-          # (portable: does not rely on shell word-splitting, which zsh does not do).
-          if [ -z "$(grep -vE '^[[:space:]]*(#|$)' ci/hermetic-tests.txt)" ]; then
-            echo "::error::ci/hermetic-tests.txt lists no test files"; exit 1
-          fi
-          grep -vE '^[[:space:]]*(#|$)' ci/hermetic-tests.txt \
-            | xargs pytest -q -p no:cacheprovider -rfE
+          # Strip comments/blank lines, turn each into --ignore=, and let xargs pass them as
+          # separate arguments (not relying on shell word-splitting).
+          grep -vE '^[[:space:]]*(#|$)' ci/excluded-tests.txt \
+            | sed 's#^#--ignore=#' \
+            | xargs pytest tests/ -q -p no:cacheprovider --tb=short -rfE
