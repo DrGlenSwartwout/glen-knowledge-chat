@@ -15320,6 +15320,25 @@ def api_console_reviews_list():
     return jsonify({"ok": True, "pending": pending, "recent": []})
 
 
+def _biofield_requested(cx, email):
+    """True when the client explicitly asked for a review of their biofield scan —
+    the signal that promotes a reveal from the cold 'Awaiting request' lane into
+    'Review these'. Mirrors the review-queue definition (api_console_biofield_review_queue):
+    a portal_biofield_reports row at status='requested', or the legacy client_portals
+    biofield_status. Best-effort; never raises (missing tables -> not requested)."""
+    e = (email or "").strip().lower()
+    if not e:
+        return False
+    try:
+        if cx.execute("SELECT 1 FROM portal_biofield_reports WHERE lower(email)=? "
+                      "AND status='requested' LIMIT 1", (e,)).fetchone():
+            return True
+        from dashboard import client_portal as _cp
+        return _cp.get_biofield_status(cx, e) == "requested"
+    except Exception:
+        return False
+
+
 def _biofield_status_brief(cx, email):
     """Board signals for a reveal's owner email: paid (active member) + order rollup.
     Drives the reveals board columns + order badge. Best-effort, never raises."""
@@ -15402,13 +15421,18 @@ def api_console_biofield_reveals():
         if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import biofield_reveals as _br
+    from dashboard import portal_biofield_reports as _pbr
+    from dashboard import client_portal as _cp
     with sqlite3.connect(LOG_DB) as cx:
         _br.init_table(cx)
+        _pbr.init_table(cx)          # so _biofield_requested can query status
+        _cp.init_client_portal_table(cx)
         drafts = _br.list_pending(cx)
         approved = _br.list_approved(cx)
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
             d.update(_biofield_status_brief(cx, d.get("email")))
+            d["requested"] = _biofield_requested(cx, d.get("email"))
         # Read-receipts (Task 5): additive, best-effort — a client's explicit
         # report open (see /api/portal/<token>/open), keyed the same way the
         # portal payload keys it (email|scan_date).

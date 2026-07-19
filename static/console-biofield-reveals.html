@@ -22,6 +22,10 @@
   .col-head .count{ color:var(--muted); font-weight:500; }
   .col-head .col-sub{ font-size:11px; font-weight:400; color:var(--muted); margin-top:2px; }
   .col-empty{ color:var(--muted); font-size:13px; padding:10px 0; }
+  .col-collapsed{ opacity:.65; }
+  .col-collapsed .col-body{ display:none; }
+  .col-collapsed .col-head{ cursor:pointer; }
+  .col-head .caret-col{ color:var(--muted); font-weight:400; margin-right:3px; }
   @media(max-width:820px){ .board{ flex-direction:column; } }
   h1{ font-size:20px; margin:0 0 4px; }
   h2{ font-size:14px; margin:0 0 10px; color:var(--muted); font-weight:500; }
@@ -269,12 +273,18 @@ async function loadList(){
   }
 
   // Bucket by lifecycle stage. Paid wins over approval: a paying member sees the
-  // full stack regardless of approval. Else approved => top remedy live. Else review.
-  var cols = { review: [], top: [], unlocked: [] };
+  // full stack regardless of approval (All Unlocked = the member scans). Else
+  // approved => top remedy live. Else, among pending reveals, split by whether the
+  // client has asked for a review: requested => "Review these" (act here); no
+  // request => "Awaiting request" (collapsed cold lane / ingestion monitor). This
+  // keeps the auto-ingested pile visible so a stall is obvious, without burying the
+  // scans you actually need to review. See design 2026-07-18.
+  var cols = { review: [], awaiting: [], top: [], unlocked: [] };
   all.forEach(function(d){
     if(d.paid) cols.unlocked.push(d);
     else if(d.first_approved) cols.top.push(d);
-    else cols.review.push(d);
+    else if(d.requested) cols.review.push(d);
+    else cols.awaiting.push(d);
   });
 
   var toolbar = document.createElement('div');
@@ -316,18 +326,27 @@ async function loadList(){
 
   var board = document.createElement('div');
   board.className = 'board';
-  board.appendChild(buildColumn('Needs Review', cols.review, 'you act here'));
+  board.appendChild(buildColumn('Review these', cols.review, 'client requested — act here'));
   board.appendChild(buildColumn('Top Remedy Live', cols.top, 'free taste — waiting on client'));
   board.appendChild(buildColumn('All Unlocked', cols.unlocked, 'paid member — full stack'));
+  board.appendChild(buildColumn('Awaiting request', cols.awaiting,
+    'no request yet — ingestion monitor', {collapsed:true}));
   el.appendChild(board);
 }
 
-function buildColumn(title, items, sub){
+function buildColumn(title, items, sub, opts){
+  opts = opts || {};
   var col = document.createElement('div');
-  col.className = 'col';
+  col.className = 'col' + (opts.collapsed ? ' col-collapsed' : '');
   var head = document.createElement('div');
   head.className = 'col-head';
   var t = document.createElement('span');
+  if(opts.collapsed){
+    var caret = document.createElement('span');
+    caret.className = 'caret-col';
+    caret.textContent = '▸';
+    head.appendChild(caret);
+  }
   t.textContent = title + ' ';
   var c = document.createElement('span');
   c.className = 'count';
@@ -341,13 +360,24 @@ function buildColumn(title, items, sub){
     head.appendChild(s);
   }
   col.appendChild(head);
+  var body = document.createElement('div');
+  body.className = 'col-body';
   if(!items.length){
     var e = document.createElement('div');
     e.className = 'col-empty';
     e.textContent = '—';
-    col.appendChild(e);
+    body.appendChild(e);
   } else {
-    items.forEach(function(d){ col.appendChild(buildCard(d)); });
+    items.forEach(function(d){ body.appendChild(buildCard(d)); });
+  }
+  col.appendChild(body);
+  if(opts.collapsed){
+    head.title = 'click to expand / collapse';
+    head.addEventListener('click', function(){
+      col.classList.toggle('col-collapsed');
+      var cr = head.querySelector('.caret-col');
+      if(cr) cr.textContent = col.classList.contains('col-collapsed') ? '▸' : '▾';
+    });
   }
   return col;
 }
