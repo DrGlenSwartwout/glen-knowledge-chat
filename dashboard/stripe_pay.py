@@ -34,8 +34,12 @@ def _get(path: str) -> dict:
 
 
 def _checkout_params(amount_cents, *, customer_email, description, metadata,
-                     success_url, cancel_url, currency="usd") -> dict:
-    """Pure: build the form params for a one-time-payment Checkout Session."""
+                     success_url, cancel_url, currency="usd",
+                     collect_shipping=False) -> dict:
+    """Pure: build the form params for a one-time-payment Checkout Session.
+    collect_shipping=True adds Stripe shipping-address collection (US only) for
+    physical-product checkouts; default False leaves params byte-for-byte
+    unchanged for every other caller."""
     p = {
         "mode": "payment",
         "success_url": success_url,
@@ -47,6 +51,8 @@ def _checkout_params(amount_cents, *, customer_email, description, metadata,
     }
     if customer_email:
         p["customer_email"] = customer_email
+    if collect_shipping:
+        p["shipping_address_collection[allowed_countries][0]"] = "US"
     for k, v in (metadata or {}).items():
         if v is None:
             continue
@@ -56,10 +62,12 @@ def _checkout_params(amount_cents, *, customer_email, description, metadata,
 
 
 def create_checkout_session(amount_cents, *, customer_email, description, metadata,
-                            success_url, cancel_url, save_card=False) -> dict:
+                            success_url, cancel_url, save_card=False,
+                            collect_shipping=False) -> dict:
     params = _checkout_params(amount_cents, customer_email=customer_email,
                               description=description, metadata=metadata,
-                              success_url=success_url, cancel_url=cancel_url)
+                              success_url=success_url, cancel_url=cancel_url,
+                              collect_shipping=collect_shipping)
     if save_card:
         params["customer_creation"] = "always"
         params["payment_intent_data[setup_future_usage]"] = "off_session"
@@ -121,7 +129,31 @@ def get_session(session_id) -> dict:
     return {"id": j.get("id"), "payment_status": j.get("payment_status"),
             "amount_total": j.get("amount_total"), "metadata": j.get("metadata") or {},
             "payment_intent": j.get("payment_intent"),
-            "setup_intent": j.get("setup_intent")}
+            "setup_intent": j.get("setup_intent"),
+            "shipping_details": j.get("shipping_details")}
+
+
+def shipping_details_to_address(shipping_details) -> dict:
+    """Map a Stripe Checkout Session's `shipping_details` field ({name,
+    address:{line1,line2,city,state,postal_code,country}}) to the order address
+    shape ({name, street, address2, city, state, zip, country}). Returns {} when
+    no shipping address was captured (collection not enabled on this checkout,
+    the field is absent, or it carries no street line) -- callers must treat {}
+    as "leave the existing order address alone", never as "blank it out"."""
+    sd = shipping_details or {}
+    addr = sd.get("address") or {}
+    street = (addr.get("line1") or "").strip()
+    if not street:
+        return {}
+    return {
+        "name": (sd.get("name") or "").strip(),
+        "street": street,
+        "address2": (addr.get("line2") or "").strip(),
+        "city": (addr.get("city") or "").strip(),
+        "state": (addr.get("state") or "").strip(),
+        "zip": (addr.get("postal_code") or "").strip(),
+        "country": (addr.get("country") or "").strip(),
+    }
 
 
 def get_payment_intent(pi_id: str) -> dict:
