@@ -1233,9 +1233,78 @@ def get_today_coupon_code():
     return _COUPONS.get("default_code", "") or ""
 
 
-def build_product_directive(snippets_text: str = ""):
+def _catalog_page_url(slug: str) -> str:
+    """Canonical in-app sales page for any products.json slug.
+
+    Every catalog slug renders a real sales page at this path (see the
+    /begin/product/<slug> route), so this is always a valid buy destination —
+    unlike the `url` field, which only 304 of ~1,013 products carry.
+    """
+    return f"{PUBLIC_BASE_URL}/begin/product/{slug}"
+
+
+def _catalog_link_matches(text: str, aliases: dict, limit: int = 12) -> dict:
+    """Resolve catalog products named in `text` to their in-app sales pages.
+
+    Backstop for the curated alias table: the aliases cover ~230 names, but the
+    catalog holds ~1,013 sellable products. Without this, the bot has no
+    authorized URL for the other ~780 and (correctly) refuses to invent one —
+    which is how product questions ended up being deflected to email/Practice
+    Better instead of answered. Curated aliases still win; this only fills gaps.
+
+    Matching is deliberately conservative: word-boundary, and names shorter than
+    8 chars are skipped because the catalog contains generic short names
+    ("Comfort", "Relax", "Rescue", "ES5") that would false-positive constantly.
+    """
+    if not text:
+        return {}
+    products = (_PRODUCTS or {}).get("products", {}) or {}
+    if not products:
+        return {}
+    alias_lower = {k.lower() for k in aliases}
+    lowered = text.lower()
+    found = {}
+    claimed = []  # (start, end) spans already taken by a longer product name
+
+    # Longest name first: "WholOmega 120 Capsules" must win over "WholOmega",
+    # which word-boundary-matches inside it. Dict order would otherwise decide,
+    # silently linking the wrong (shorter) product.
+    for slug, info in sorted(products.items(),
+                             key=lambda kv: -len((kv[1].get("name") or ""))):
+        if len(found) >= limit:
+            break
+        name = (info.get("name") or "").strip()
+        if len(name) < 8 or info.get("info_only"):
+            continue
+        # Retired products still match, but only to hand off to their successor.
+        # They are all flagged inactive, so skipping them outright would let a
+        # shorter name win the span instead ("WholOmega 120 Capsules" losing to
+        # "WholOmega") and link the customer to the wrong product.
+        successor = info.get("superseded_by")
+        if info.get("inactive") and not (successor and successor in products):
+            continue
+        if name.lower() in alias_lower:
+            continue  # curated entry already covers it
+        m = re.search(rf"\b{re.escape(name.lower())}\b", lowered)
+        if not m:
+            continue
+        if any(m.start() < c_end and c_start < m.end() for c_start, c_end in claimed):
+            continue  # inside a longer product name already matched
+        claimed.append((m.start(), m.end()))
+        found[name] = _catalog_page_url(successor or slug)
+    return found
+
+
+def build_product_directive(snippets_text: str = "", query_text: str = ""):
     """Build the per-request product-routing directive injected into the
     synthesis prompt. Includes the alias map and today's coupon if any.
+
+    `query_text` is the user's own question. It is matched alongside the
+    retrieved snippets because a product the user names directly often does NOT
+    appear in retrieval at all — asking "what's the link for the Therapeutic
+    Nightlight" retrieves clinical prose that never says the product name, so
+    matching snippets alone left the bot with no link for the very product it
+    was asked about.
 
     If snippets_text is provided, scans for product-name mentions and
     proactively resolves (creating on-the-fly) the truly.vip/truly.so
@@ -1253,8 +1322,9 @@ def build_product_directive(snippets_text: str = ""):
     # each match without an existing truly.vip/truly.so URL, attempt to
     # create one. The resolved URL is used in the directive table below.
     resolved_urls = {}
-    if snippets_text:
-        snippets_lower = snippets_text.lower()
+    match_text = " ".join(t for t in (snippets_text, query_text) if t)
+    if match_text:
+        snippets_lower = match_text.lower()
         for clinical_name, info in aliases.items():
             if not info.get("canonical_url") and not info.get("url"):
                 continue
@@ -1279,6 +1349,9 @@ def build_product_directive(snippets_text: str = ""):
             lines.append(f"  • {clinical_name} → {url}")
         elif info.get("note"):
             lines.append(f"  • {clinical_name} → DESCRIBE-ONLY: {info['note']}")
+
+    for name, url in sorted(_catalog_link_matches(match_text, aliases).items()):
+        lines.append(f"  • {name} → {url}")
 
     if code:
         lines.append(
@@ -1724,6 +1797,8 @@ RULES:
 - CO-AUTHORSHIP: Snippets with [AUTHORSHIP NOTE: ...] reflect a co-author's view. Cite the co-author, then state Glen's current position from clinical-qa entries. Never present a co-authored section as Glen's view without the flag.
 - E4L SCAN OFFER: When the user mentions a specific condition or asks for personalized guidance, the action link should be the free BWS voice scan: https://Truly.VIP/E4L — "30 seconds, count 1 to 10, matches you to formulations your bioenergetic patterns are asking for."
 - PRODUCT REFERENCES: Each request includes a PRODUCT LINK INJECTION TABLE listing every Glen Swartwout formulation by its clinical name and the canonical URL to use. When you mention a product, append the URL as a markdown link immediately after the name, e.g. [Terrain Restore](URL). Do NOT invent URLs. If a product isn't in the table, link to the search URL pattern from the table or the store homepage instead.
+- ANSWER PRODUCT QUESTIONS DIRECTLY: If someone asks where to buy a product or asks for its link, GIVE THE LINK. Every product Glen sells has a sales page, and the injection table carries the URL. Do not answer a direct question with a referral to a human, an email address, a login, or a portal. Customer support is paramount: a direct question gets a direct answer in the same reply. Only if the product is genuinely absent from the table do you say you'll get them the exact link, and then point at the store homepage — never at an account system.
+- NEVER ROUTE BUYERS TO PRACTICE BETTER: Practice Better (healingoasis.practicebetter.io, my.practicebetter.io, app.practicebetter.io) CANNOT sell products and is being retired. Never send anyone there to buy, browse, or find a product link, and never present it as the place to get product information — not even as a fallback when you lack a URL. Practice Better may only be named for its actual remaining purpose: existing free-community course access for members already enrolled there. Purchases, product pages, and product links ALWAYS resolve to the product's sales page.
 - FORMULATION-FIRST ORDERING (symptoms & conditions): When answering about a symptom or condition, lead the recommendations with Glen's Functional Formulations — the Advanced Botanical Formulations and Advanced Nutritional Formulations — as the FIRST category, before any list of individual natural ingredients or single nutrients. The formulations are pre-combined for the terrain pattern, so they simplify implementation versus assembling separate ingredients. If you group recommendations under headings, an "Advanced Botanical Formulations" and/or "Advanced Nutritional Formulations" heading comes first; present individual ingredients only afterward, as an optional layer or as the mechanism behind the formulations. Within a formulation category, list the most condition-specific formulation first.
 - ACTIVE DISCOUNT CODE: When the request includes an ACTIVE DISCOUNT block, include today's code naturally — once per response, only when at least one product is recommended.
 - DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://remedymatch.com/resources/439-molecular-hydrogen) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). The "Electrolyte Mineral Manna" is also DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Dental Regen Powder" is DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Endocrine Restore" and plain "Comfort" products are CONSOLIDATED into their canonical versions — recommend "Endocrine Restore Powder" and "Comfort Synovial Syntropy" instead, and do not name the old "Endocrine Restore" or plain "Comfort". Do NOT recommend "AllerFree" (AllerFree HomeoEnergetic Drops); recommend "Immune Modulation" instead. Only recommend "Fungifuge" as a follow-on to a Candida Cleanse, never as a standalone recommendation. "Bioavailability Blend" (and "Bioavailability Blend Powder") IS sellable, but ONLY as an adjunct — a small-dose enhancer taken together with other remedies (ours or others') to improve their bioavailability and delivery. Do NOT recommend it as a stand-alone remedy, and never suggest it on a Biofield reveal program. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
@@ -4472,7 +4547,8 @@ def chat():
         # directive builder so on-the-fly Rebrandly creation only fires for
         # products actually likely to be mentioned in this response.
         product_directive = build_product_directive(
-            snippets_text=(context_str or "") + " " + (extracted_text or "")
+            snippets_text=(context_str or "") + " " + (extracted_text or ""),
+            query_text=query or "",
         )
         product_block = f"{product_directive}\n\n" if product_directive else ""
 
@@ -10540,7 +10616,8 @@ def _generate_full_answer(query: str, level: str, is_logged_in: bool = False):
 
     context_str, sources_list = build_context(matches)
     product_directive = build_product_directive(
-        snippets_text=(context_str or "")
+        snippets_text=(context_str or ""),
+        query_text=query or "",
     )
     product_block = f"{product_directive}\n\n" if product_directive else ""
 
@@ -10709,7 +10786,8 @@ def _full_report_stream(log_id, query, level, session_id,
 
         context_str, sources_list = build_context(matches)
         product_directive = build_product_directive(
-            snippets_text=(context_str or "")
+            snippets_text=(context_str or ""),
+            query_text=query or "",
         )
         product_block = f"{product_directive}\n\n" if product_directive else ""
 
