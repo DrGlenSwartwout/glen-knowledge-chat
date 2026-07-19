@@ -15495,8 +15495,12 @@ def api_console_biofield_reveals():
         _br.init_table(cx)
         _pbr.init_table(cx)          # so _biofield_requested can query status
         _cp.init_client_portal_table(cx)
+        try:
+            _lim = max(1, min(int(request.args.get("limit", 50) or 50), 5000))
+        except (TypeError, ValueError):
+            _lim = 50
         drafts = _br.list_pending(cx)
-        approved = _br.list_approved(cx)
+        approved = _br.list_approved(cx, limit=_lim)
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
             d.update(_biofield_status_brief(cx, d.get("email")))
