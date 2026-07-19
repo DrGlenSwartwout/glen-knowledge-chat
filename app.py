@@ -24992,7 +24992,8 @@ def api_e4l_reveal_draft():
                 if _suppressed:
                     print(f"[suppressed] skip reveal-ready email to {email}", flush=True)
                 else:
-                    portal_url = _ensure_portal_link(_scx, email, "")
+                    with _db_lock:
+                        portal_url = _ensure_portal_link(_scx, email, "")
                     url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
                     body = _reveal_email_body(url, portal_url)
                     if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
