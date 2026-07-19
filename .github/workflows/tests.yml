@@ -2,13 +2,12 @@ name: tests
 
 # PR gate for glen-knowledge-chat.
 #
-# Runs the whole suite with NO real secrets. A dummy PINECONE_API_KEY gets past the Pinecone
-# client constructor (it wants a non-empty key but makes no network call), which is what
-# app.py needs at import -- so the ~265 app-importing suites run too. The files that go
-# further and hit a live service are listed in ci/excluded-tests.txt and passed as --ignore.
+# Intentionally thin: all logic lives in ci/run-tests.sh so it can be changed with an
+# ordinary push. Editing anything under .github/workflows/ requires the `workflow` OAuth
+# scope, which the usual gh token lacks, so changes here need a web-UI edit -- avoid them.
 #
-# Everything not excluded is gated, including future test files. See ci/excluded-tests.txt
-# for why this is not solved with a Doppler CI token.
+# The gate runs the whole suite with NO real secrets. See ci/run-tests.sh for how, and
+# ci/excluded-tests.txt for the files that need live credentials and are skipped.
 
 on:
   pull_request:
@@ -25,10 +24,6 @@ jobs:
     name: test suite (secretless)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # Not a real key. Satisfies the Pinecone constructor so app.py imports; any call that
-      # actually reaches Pinecone 401s, which is why those suites are excluded.
-      PINECONE_API_KEY: dummy-ci-key
     steps:
       - uses: actions/checkout@v4
 
@@ -42,13 +37,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
 
       - name: Run test suite
-        run: |
-          set -euo pipefail
-          # Strip comments/blank lines, turn each into --ignore=, and let xargs pass them as
-          # separate arguments (not relying on shell word-splitting).
-          grep -vE '^[[:space:]]*(#|$)' ci/excluded-tests.txt \
-            | sed 's#^#--ignore=#' \
-            | xargs pytest tests/ -q -p no:cacheprovider --tb=short -rfE
+        run: bash ci/run-tests.sh
