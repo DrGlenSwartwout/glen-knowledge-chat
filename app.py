@@ -9905,6 +9905,15 @@ def begin_checkout_return():
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
                                     _bos_orders.set_order_stripe_pi(_cxo, _o["id"], pi_id)
+                                    # Shipping address collected on physical (retail/
+                                    # reorder/portal-reorder) checkouts (Stripe
+                                    # shipping_address_collection). {} when this
+                                    # checkout didn't collect one -- never blanks an
+                                    # address already on the order.
+                                    _ship_addr = _sp.shipping_details_to_address(
+                                        sess.get("shipping_details"))
+                                    if _ship_addr:
+                                        _bos_orders.set_order_address(_cxo, _o["id"], _ship_addr)
                                     _o_for_points = _o  # plain dict; safe after close
                             finally:
                                 _cxo.close()
@@ -16631,7 +16640,7 @@ def _stripe_checkout_url_for_retail(out, email, slug, group_bundle_months=0):
             metadata=metadata,
             success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/begin/buy/{slug}",
-            save_card=save_card)
+            save_card=save_card, collect_shipping=True)
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe-retail] session create failed: {e!r}", flush=True)
@@ -16777,7 +16786,8 @@ def _stripe_checkout_url_for_reorder(out, email):
             metadata={"invoice_id": out.get("invoice_id"),
                       "customer_id": out.get("customer_id"), "kind": "reorder"},
             success_url=success,
-            cancel_url=f"{PUBLIC_BASE_URL}/reorder")
+            cancel_url=f"{PUBLIC_BASE_URL}/reorder",
+            collect_shipping=True)
         return sess.get("url") or ""
     except Exception as e:
         print(f"[stripe-reorder] session create failed: {e!r}", flush=True)
@@ -27845,6 +27855,15 @@ def webhook_stripe():
                             try:
                                 _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
                                 if _wo and _wo["qbo_lines_json"]:
+                                    # Shipping address collected on physical (retail/
+                                    # reorder/portal-reorder) checkouts, closed-tab safe
+                                    # (webhook always fires). {} when this checkout
+                                    # didn't collect one -- never blanks an address
+                                    # already on the order. Idempotent on redelivery.
+                                    _wship_addr = _sp2.shipping_details_to_address(
+                                        sess.get("shipping_details"))
+                                    if _wship_addr:
+                                        _bos_orders.set_order_address(_wcx, _wo["id"], _wship_addr)
                                     # Book the receipt only if not already booked (atomic-claim guarded).
                                     if not _wo["qbo_sales_receipt_id"]:
                                         _wpi = sess.get("payment_intent")

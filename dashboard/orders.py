@@ -437,6 +437,18 @@ def set_order_stripe_pi(cx, order_id, payment_intent):
     return cur.rowcount > 0
 
 
+def set_order_address(cx, order_id, address):
+    """Overwrite an order's stored ship-to address (address_json). Used to enrich
+    a retail/reorder order with the real shipping address Stripe Checkout
+    collected at payment time. Caller must only call this with a non-empty
+    address (never blanks an address set elsewhere). Returns True if the order
+    existed."""
+    cur = cx.execute("UPDATE orders SET address_json=?, updated_at=? WHERE id=?",
+                     (json.dumps(address or {}), _now(), order_id))
+    cx.commit()
+    return cur.rowcount > 0
+
+
 def set_order_qbo_lines(cx, external_ref, payload):
     """Store the exact QBO line payload for the order with this external_ref, so the
     paid handler can book a line-faithful Sales Receipt. Returns False if no such row."""
