@@ -298,7 +298,11 @@ def _run_farm_scrape() -> tuple[int, int, int]:
     # the practitioner re-crawl (no aggressive staleness removal). The multi-crawl
     # is the slowest adapter in the weekly run, but weekly is fine.
     from scrapers.farm_finder.ingest import ingest
-    summary = ingest(apply=True, log=lambda *a, **k: print("  " + " ".join(str(x) for x in a)))
+    from scrapers.farm_finder.sources import WEEKLY_SOURCES
+    # Weekly pass = the light sources only. realmilk (~12h crawl) runs on its own
+    # monthly lane (`ingest --only realmilk --apply`), never inline here.
+    summary = ingest(apply=True, only=WEEKLY_SOURCES,
+                     log=lambda *a, **k: print("  " + " ".join(str(x) for x in a)))
     print(f"  farms: scraped={summary['scraped']} deduped={summary['deduped']} "
           f"written={summary['written']} sources={summary['per_source']}")
     return summary["scraped"], summary["mapped"], summary["mapped"]

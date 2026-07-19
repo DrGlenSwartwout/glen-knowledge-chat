@@ -31,13 +31,25 @@ def _usda(limit=None, sleep=1.0) -> list[NormalizedFarmRow]:
     return scrape(limit=limit, sleep=sleep)
 
 
+def _realmilk(limit=None, sleep=10.0) -> list[NormalizedFarmRow]:
+    from scrapers.farm_finder.realmilk import scrape
+    return scrape(limit=limit, sleep=sleep)
+
+
 # Most-trusted first — see module docstring (dedupe keeps first occurrence).
 _SOURCES: list[tuple[str, FarmScrape]] = [
     ("foodforhumans", _foodforhumans),
     ("usda", _usda),            # USDA Local Food Directories (keyless bulk export)
-    # ("realmilk", _realmilk),  # A Campaign for Real Milk (wpbdp sitemap crawl)
+    ("realmilk", _realmilk),    # A Campaign for Real Milk (wpbdp sitemap crawl)
     # ("eatwild", _eatwild),    # EatWild state pages (needs geocode fallback)
 ]
+
+# Sources light enough for the weekly run_all farm pass (minutes): the API/bulk
+# and sitemap-light sources. realmilk is a ~12h crawl (≈4.5k listings × the
+# robots-mandated 10s Crawl-delay), so it runs on its OWN monthly lane
+# (`ingest --only realmilk --apply`) — never inline in the weekly run.
+WEEKLY_SOURCES = ["foodforhumans", "usda"]
+SLOW_SOURCES = ["realmilk"]
 
 
 def get_sources(only: Optional[list[str]] = None) -> list[tuple[str, FarmScrape]]:
