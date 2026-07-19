@@ -32,10 +32,19 @@ def test_every_sellable_catalog_product_has_a_reachable_page_url():
         assert app._catalog_page_url(slug) == f"https://illtowell.com/begin/product/{slug}"
 
 
-def test_curated_alias_wins_over_catalog_backstop():
-    """Glen's curated remedymatch/shortlink URLs must not be displaced."""
+def test_curated_alias_is_not_duplicated_by_the_catalog_backstop():
+    """A curated alias still owns its row — the fuzzy backstop must not add a
+    second, competing row for the same product.
+
+    (Until 2026-07-19 this also asserted the curated remedymatch.com URL won.
+    That policy is reversed: the in-funnel page is now the destination, per
+    dashboard/order_destination.py and because GrooveKart checkout was failing.)
+    """
     directive = app.build_product_directive(query_text="tell me about Terrain Restore")
-    assert "Terrain Restore → https://illtowell.com/begin/product/" not in directive
+    rows = [l for l in directive.splitlines()
+            if l.strip().startswith("• Terrain Restore ")]
+    assert len(rows) == 1, rows
+    assert "/begin/product/" in rows[0], rows[0]
 
 
 def test_fuzzy_match_tolerates_dropped_sku_qualifier():
@@ -109,3 +118,33 @@ def test_system_prompt_forbids_sending_anyone_to_practice_better():
 def test_system_prompt_requires_a_direct_answer_to_a_direct_question():
     prompt = app.get_system_prompt("self-healing")
     assert "ANSWER PRODUCT QUESTIONS DIRECTLY" in prompt
+
+
+def test_curated_aliases_point_in_funnel_not_at_groovekart():
+    """Clients have been unable to check out on the GrooveKart storefront, and
+    dashboard/order_destination.py already makes /begin/product/<slug> the one
+    order destination. The chat link table has to obey the same rule."""
+    directive = app.build_product_directive(query_text="what do you recommend")
+    rows = [l for l in directive.splitlines() if l.strip().startswith("•")]
+    in_funnel = [l for l in rows if "/begin/product/" in l]
+    storefront = [l for l in rows if "remedymatch.com" in l]
+    assert len(in_funnel) > 200, f"only {len(in_funnel)} of {len(rows)} rows in-funnel"
+    # The few left are aliases with no catalog entry yet (the migration backlog).
+    assert len(storefront) <= 10, [l.strip() for l in storefront]
+
+
+def test_retired_alias_gets_no_purchase_link_at_all():
+    """A retired SKU must not fall back to its old storefront URL — that hands
+    out a buy link for a product the prompt forbids recommending."""
+    directive = app.build_product_directive(query_text="what do you recommend")
+    for name in ("Dental Regen Powder", "Endocrine Restore", "Electrolyte Mineral Manna"):
+        row = [l for l in directive.splitlines() if l.strip().startswith(f"• {name} ")]
+        assert row, f"{name} missing from table"
+        assert "DESCRIBE-ONLY" in row[0], row[0]
+        assert "http" not in row[0], f"{name} still carries a purchase URL: {row[0]}"
+
+
+def test_alias_follows_superseded_sku_to_its_successor():
+    slug, retired = app._alias_catalog_slug(
+        "WholOmega 120 Capsules", {"catalog_name": "WholOmega 120 Capsules"})
+    assert slug == "wholomega-120-gelcaps" and not retired
