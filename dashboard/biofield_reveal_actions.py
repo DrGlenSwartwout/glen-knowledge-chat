@@ -150,6 +150,21 @@ def _exec_send(params, ctx):
     return {"sent": bool(send and send(rid))}
 
 
+def _exec_resend(params, ctx):
+    """Re-send the reveal-ready link WITHOUT approving. Unlike _exec_send (which
+    requires first_approved), this emails a fresh magic link for ANY existing reveal
+    so the client can open the still-blurred reveal and click 'request review'. Used
+    to reach clients who were emailed before the request button existed."""
+    rid = int(params.get("id") or 0)
+    if not rid:
+        raise ValueError("id required")
+    rev = _br.get(ctx["cx"], rid)
+    if not rev:
+        return {"sent": False, "reason": "not_found"}
+    send = _DEPS.get("send_reveal_link")
+    return {"sent": bool(send and send(rid))}
+
+
 def _exec_send_all(params, ctx):
     rows = _br.list_approved_unnotified(ctx["cx"], limit=50)
     send = _DEPS.get("send_reveal_link")
@@ -186,3 +201,8 @@ def register():
         key="biofield_reveal.send_all", module="biofield_reveal", title="Send all approved un-notified",
         description="Email every approved, not-yet-notified client their reveal link.",
         risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_send_all))
+    register_action(Action(
+        key="biofield_reveal.resend", module="biofield_reveal", title="Re-send reveal link",
+        description="Email the client a fresh reveal-ready link WITHOUT approving/un-blurring, "
+                    "so they can open the reveal and request a review.",
+        risk_tier=LOW_WRITE, permission=(OWNER, OPS), executor=_exec_resend))
