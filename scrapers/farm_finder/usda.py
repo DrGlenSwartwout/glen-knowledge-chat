@@ -62,6 +62,48 @@ DIRECTORIES = ["farmersmarket", "csa", "foodhub", "onfarmmarket"]
 _ZIP_RE = re.compile(r"(\d{4,5})(?:-\d{4})?\s*$")
 
 
+# Street-type tokens used to find where a glued "street city" run splits.
+# Deliberately EXCLUDES bare directionals (North/South/E/W...) — they appear
+# mid-street ("1400 North Courthouse Road Arlington") and anchoring on them
+# would cut the street in half.
+_STREET_SUFFIX = (
+    r"(?:street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|way|"
+    r"court|ct|circle|cir|highway|hwy|route|pike|parkway|pkwy|place|pl|"
+    r"terrace|trail|trl|square|sq|loop|plaza|broadway|turnpike)"
+)
+# Greedy `.*` so we anchor on the LAST suffix token, keeping multi-word cities
+# ("8700 N. Rodney Parham Road Little Rock") intact.
+_GLUED_RE = re.compile(
+    r"^(?P<street>\d+\s+.*\b" + _STREET_SUFFIX + r")\b\.?\s+"
+    r"(?P<city>[A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*)*)$",
+    re.I,
+)
+# A quadrant/directional left stranded at the head of the city ("801 F St NW
+# Washington") belongs to the street.
+_LEADING_DIR_RE = re.compile(
+    r"^(?P<dir>(?:N|S|E|W|NE|NW|SE|SW|North|South|East|West)\.?)\s+(?P<rest>.+)$",
+    re.I,
+)
+
+
+def _split_glued_street_city(segment: str) -> tuple[Optional[str], str]:
+    """Split a comma-less 'STREET CITY' run into (street, city).
+
+    Some USDA addresses omit the comma between street and city ("1112 Broadway
+    Denver, Colorado 80203"), which would otherwise store the whole run as the
+    city. Returns (None, segment) when there's no confident split — never
+    guesses, so an unsplittable run is left exactly as it was."""
+    m = _GLUED_RE.match(segment.strip())
+    if not m:
+        return None, segment.strip()
+    street, city = m.group("street").strip(), m.group("city").strip()
+    d = _LEADING_DIR_RE.match(city)
+    if d:
+        street = f"{street} {d.group('dir')}"
+        city = d.group("rest").strip()
+    return street or None, city or segment.strip()
+
+
 def _resolve_state(text: Optional[str]) -> Optional[str]:
     """Resolve a 2-letter state code from a 'state' fragment that may be a full
     name ('Colorado'), a code ('CO'), or a name+code tail ('Tennessee TN')."""
@@ -147,6 +189,14 @@ def _parse_address(raw: Optional[str]) -> tuple[Optional[str], Optional[str],
 
     city = rest[-1] if rest else None
     street = ", ".join(rest[:-1]) if len(rest) > 1 else None
+
+    # No separate street segment, but the city run starts with a house number:
+    # the source omitted the comma ("1112 Broadway Denver"). Split it back out.
+    if city and street is None and re.match(r"^\d", city):
+        split_street, split_city = _split_glued_street_city(city)
+        if split_street:
+            street, city = split_street, split_city
+
     return street or None, city or None, state or None, postal
 
 

@@ -99,6 +99,45 @@ def test_parse_address_trailing_state_code():
     assert st == "TN"
 
 
+def test_glued_street_city_is_split():
+    # Source omits the comma between street and city.
+    s, c, st, z = _parse_address("1112 Broadway Denver, Colorado 80203")
+    assert s == "1112 Broadway"
+    assert c == "Denver"
+    assert (st, z) == ("CO", "80203")
+
+
+def test_glued_split_keeps_multiword_city():
+    s, c, _st, _z = _parse_address("8700 N. Rodney Parham Road Little Rock, Arkansas 72227")
+    assert s == "8700 N. Rodney Parham Road"
+    assert c == "Little Rock"
+
+
+def test_glued_split_does_not_cut_on_mid_street_directional():
+    # 'North' is mid-street; anchoring on it would yield street='1400 North'.
+    s, c, _st, _z = _parse_address("1400 North Courthouse Road Arlington, Virginia 22201")
+    assert s == "1400 North Courthouse Road"
+    assert c == "Arlington"
+
+
+def test_glued_split_moves_stranded_quadrant_to_street():
+    s, c, _st, _z = _parse_address("801 F St NW Washington, District of Columbia 20004")
+    assert s == "801 F St NW"
+    assert c == "Washington"
+
+
+def test_glued_split_leaves_unsplittable_run_untouched():
+    # No street-suffix token -> never guess; behave exactly as before.
+    _s, c, _st, _z = _parse_address("6351 South 900 East Murray, Utah 84121")
+    assert c == "6351 South 900 East Murray"
+
+
+def test_normal_comma_separated_address_unaffected():
+    s, c, _st, _z = _parse_address("7350 Pine Creek Road, Colorado Springs, Colorado 80919")
+    assert s == "7350 Pine Creek Road"
+    assert c == "Colorado Springs"
+
+
 def test_parse_address_strips_country_suffix():
     s, c, st, z = _parse_address("1400 Buttermilk Rd, Lenoir City, Tennessee 37771, United States")
     assert st == "TN"
