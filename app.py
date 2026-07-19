@@ -98,8 +98,36 @@ from dashboard import life_stress
 from dashboard import life_stress_selection
 _oa  = _build_openai_client()
 _pc  = Pinecone(api_key=os.environ.get("PINECONE_API_KEY", ""))
-_idx = _pc.Index(PINECONE_INDEX)
 _cl  = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+
+
+class _LazyIndex:
+    """Defers `Pinecone.Index(...)` until the index is actually used.
+
+    `_pc.Index(name)` performs a live describe_index HTTP call, so building it
+    at import time meant `import app` could not succeed without valid Pinecone
+    credentials and network. That made the test suite unrunnable anywhere
+    without prod secrets — the reason this repo has no CI — and it put a
+    third-party round trip on process startup.
+
+    Every use of `_idx` is a method call (query/upsert/...), so proxying
+    attribute access is a drop-in: the first real call builds and caches the
+    index exactly as before.
+    """
+
+    # No __slots__ on purpose: tests stub the index with
+    # `monkeypatch.setattr(app._idx, "query", ...)`, which needs a real
+    # __dict__ to write to. An instance attribute also shadows __getattr__,
+    # so a stubbed method never builds the live index.
+    _real = None
+
+    def __getattr__(self, name):
+        if _LazyIndex._real is None:
+            _LazyIndex._real = _pc.Index(PINECONE_INDEX)
+        return getattr(_LazyIndex._real, name)
+
+
+_idx = _LazyIndex()
 
 
 # ── Phase 3 — product alias map + daily coupon ───────────────────────────────
