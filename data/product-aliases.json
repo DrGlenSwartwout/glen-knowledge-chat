@@ -1,6 +1,6 @@
 {
   "_comment": "Product clinical-name -> canonical URL for the chat link-injection table. Homepage catalog merged 2026-05-28. truly.vip shortlinks / deprecated / described-only entries preserved.",
-  "_updated": "2026-05-28",
+  "_updated": "2026-07-19",
   "_source": "remedymatch.com homepage full Syntropy catalog (108 products) + curated extras",
   "aliases": {
     "Synergy C": {
@@ -83,16 +83,16 @@
     },
     "Molecular Hydrogen": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
-      "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-      "note": "Portable molecular-hydrogen bottle — Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis."
+      "note": "Portable molecular-hydrogen bottle — Glen's recommended replacement for the discontinued Living Water Bottle. Generates molecular-hydrogen-rich water via electrolysis.",
+      "slug": "molecular-hydrogen-bottle"
     },
     "Hydrogen Bottle": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
-      "url": "https://remedymatch.com/resources/439-molecular-hydrogen"
+      "slug": "molecular-hydrogen-bottle"
     },
     "Portable Molecular Hydrogen Bottle": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
-      "url": "https://remedymatch.com/resources/439-molecular-hydrogen"
+      "slug": "molecular-hydrogen-bottle"
     },
     "Litewater": {
       "catalog_name": "Litewater",
@@ -116,8 +116,8 @@
     },
     "Scar Soft": {
       "catalog_name": "Scar Soft",
-      "url": "https://remedymatch.com/search?controller=search&search_query=Scar+Soft",
-      "note": "New product — check current availability at remedymatch.com. Bot phrasing: \"Scar Soft (new — check availability).\""
+      "note": "New product — check current availability at remedymatch.com. Bot phrasing: \"Scar Soft (new — check availability).\"",
+      "slug": "scar-soft-drink"
     },
     "AngiogenX": {
       "catalog_name": "AngiogenX",
@@ -166,8 +166,8 @@
     },
     "Living Water": {
       "catalog_name": "Molecular Hydrogen (portable bottle)",
-      "url": "https://remedymatch.com/resources/439-molecular-hydrogen",
-      "note": "Living Water is the CONCEPT — alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold."
+      "note": "Living Water is the CONCEPT — alkaline ionized + molecular hydrogen. The recommended PRODUCT for clients is the portable Molecular Hydrogen bottle at the URL. The earlier 'Living Water Bottle' (prill-bead system) is DEPRECATED and no longer sold.",
+      "slug": "molecular-hydrogen-bottle"
     },
     "Vitality": {
       "catalog_name": "Vitality",
@@ -827,11 +827,11 @@
     },
     "NeurOmega": {
       "catalog_name": "NeurOmega",
-      "url": "https://remedymatch.com/remedies/syntropy/237-wholomega-120-capsules"
+      "slug": "wholomega-120-gelcaps"
     },
     "Holy Grail Full Spectrum ORMUS": {
       "catalog_name": "Holy Grail Full Spectrum ORMUS",
-      "url": "https://remedymatch.com/remedies/syntropy/240-holy-grail-full-spectrum-ormus"
+      "slug": "holy-grail-ormus"
     },
     "Vagus Nerve Support": {
       "catalog_name": "Vagus Nerve Support",
@@ -867,7 +867,7 @@
     },
     "AllerFree": {
       "catalog_name": "AllerFree",
-      "url": "https://remedymatch.com/remedies/syntropy/362-allerfree"
+      "note": "DEPRECATED — do not offer a purchase link. Recommend Immune Modulation instead."
     },
     "Relax": {
       "catalog_name": "Relax",

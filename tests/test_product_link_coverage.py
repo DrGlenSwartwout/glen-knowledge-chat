@@ -148,3 +148,34 @@ def test_alias_follows_superseded_sku_to_its_successor():
     slug, retired = app._alias_catalog_slug(
         "WholOmega 120 Capsules", {"catalog_name": "WholOmega 120 Capsules"})
     assert slug == "wholomega-120-gelcaps" and not retired
+
+
+def test_no_alias_points_at_the_groovekart_storefront():
+    """The storefront checkout fails clients — no row may route there."""
+    directive = app.build_product_directive(query_text="what do you recommend")
+    stragglers = [l.strip() for l in directive.splitlines()
+                  if l.strip().startswith("•") and "remedymatch.com" in l]
+    assert stragglers == [], stragglers
+
+
+def test_pinned_slug_survives_naming_divergence():
+    """Storefront and catalog are two naming universes; an explicit slug pins
+    the mapping so a near-miss can't drop the product back to the storefront."""
+    for alias, expected in (("Holy Grail Full Spectrum ORMUS", "holy-grail-ormus"),
+                            ("Scar Soft", "scar-soft-drink"),
+                            ("Living Water", "molecular-hydrogen-bottle")):
+        info = app._PRODUCT_ALIASES["aliases"][alias]
+        slug, retired = app._alias_catalog_slug(alias, info)
+        assert slug == expected and not retired, (alias, slug, retired)
+
+
+def test_pinned_slug_that_does_not_exist_never_falls_back_to_storefront():
+    slug, retired = app._alias_catalog_slug("X", {"slug": "no-such-product",
+                                                  "url": "https://remedymatch.com/x"})
+    assert slug == "" and not retired
+
+
+def test_molecular_hydrogen_bottle_is_sellable():
+    p = app._get_product("molecular-hydrogen-bottle")
+    assert p and p["price_cents"] == 24997
+    assert p["bottle_type"] == "own-box", "device must not pack as a bottle"
