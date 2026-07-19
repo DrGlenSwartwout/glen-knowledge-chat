@@ -1,0 +1,978 @@
+From: noreply-ecns@usps.com
+To: shipping@example.com
+Subject: USPS - Click-N-Ship(R) Payment Confirmation
+Date: Mon, 12 Jan 2026 21:33:37 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+
+<!doctype html>
+<html lang="en">
+
+   <head>
+   <meta charset="utf-8">
+   <meta http-equiv="X-UA-Compatible" content="IE=edge">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <meta name="x-apple-disable-message-reformatting">
+   <!--[if mso]>
+   <style>
+      .main-table {
+      width: 600px;
+      }
+      .inline-link {
+      color: #3573b1;
+      text-decoration: underline;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: bold;
+      line-height: 22px;
+      }                                        
+      sup {
+      mso-text-raise: 10%;
+      }
+   </style>
+   <![endif]-->
+   <style type="text/css">
+      /* GENERAL STYLING */
+      body {
+      width: 100%;
+      margin: 0;
+      padding: 0 !important;
+      }
+      table {
+      /* width: 100%; */
+      margin: 0;
+      padding: 0;
+      border-spacing: 0;
+      }
+      td {
+      margin: 0;
+      padding: 0;
+      }
+      p {
+      margin: 0;
+      padding: 0;
+      line-height: 20px;
+      }
+      p, a, li, th, td {
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: normal;
+      font-size: 14px;
+      }
+      a {
+      color: #3573b1;
+      }			
+      b, .bold {
+      font-weight: bold;
+      }
+      u {
+      text-decoration-color: #e71921;
+      }
+      ol, ul, li {
+      margin-top: 0px;
+      margin-bottom: 0px;
+      padding-top: 0px;
+      padding-bottom: 0px;
+      }	
+      .main-table {
+      max-width: 600px;
+      min-width: 376px;
+      /* margin: 0 auto !important; */
+      }
+      .content-wrapper {
+      padding-left: 30px;
+      padding-right: 30px;
+      /* margin-bottom: 60px; */
+      }
+      .pt-5 {
+      padding-top: 5px;
+      }
+      .pt-10 {
+      padding-top: 10px;
+      }
+      .pt-15 {
+      padding-top: 15px;
+      }
+      .pt-20 {
+      padding-top: 20px;
+      }
+      .pt-30 {
+      padding-top: 30px;
+      }
+      .pt-60 {
+      padding-top: 60px;
+      }
+      .ft-12 {
+      font-size: 12px;
+      }
+      .ft-14 {
+      font-size: 14px;
+      }
+      .ft-16 {
+      font-size: 16px;
+      }
+      .ft-18 {
+      font-size: 18px;
+      }
+      .header {
+      font-size: 16px;
+      color: #333366;
+      }
+      .inline-link {
+      color: #3573b1;
+      text-decoration: underline;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: bold;
+      line-height: 22px;
+      }
+      .bullet-list p, .number-list p {
+      margin-top: 5px;
+      }
+      .bullet-list-options p {
+      margin-top: 20px;
+      }
+      .notice-header-wrapper {
+      vertical-align: top;
+      white-space: nowrap;
+      padding-top: 20px;
+      white-space:nowrap;
+      border-collapse:collapse;
+      word-break:normal;
+      word-wrap: none;
+      }
+      .notice-content-wrapper {
+      padding-top: 20px;
+      padding-left: 10px;
+      }
+      .notice-header {
+      font-weight: bold;
+      color: #333366;
+      border-bottom: 2px solid #e71921;
+      }
+      .notice-header span {
+      border-bottom: none !important;
+      }
+      /* .notice-content {
+      font-weight: bold;
+      } */
+      .section-divider-wrapper, .divider-wrapper {
+      width: 100%;
+      }
+      .section-divider {
+      border-bottom: 1px solid #9a9a9a;
+      margin-left: -30px !important;
+      margin-right: -30px !important;
+      padding-top: 10px;
+      }
+      .section-divider-alt {
+      border-bottom: 1px solid #9a9a9a;
+      margin-left: -30px !important;
+      margin-right: -30px !important;
+      padding-top: 10px;
+      }
+      .section-header {
+      display: block;
+      text-align: center;
+      margin-bottom: 30px;
+      }
+      .divider {
+      /* display: block; */
+      border-bottom: 1px solid #9a9a9a;
+      /* padding-top: 20px; */
+      /* height: 2px !important; */
+      }
+      .left-header {
+      color: #333366;
+      font-size: 16px;
+      margin-top: 15px;
+      }
+      .left-header span {
+      color: #000000;
+      font-size: 14px;
+      }
+      .column-half {
+      width: 50%;
+      }
+      /* END GENERAL STYLING */
+      /* START EMAIL HEADER */
+      .header-table {
+      width: 100%;
+      text-align: center;
+      border: none;
+      border-spacing: 0;
+      cellpadding: 0;
+      border-bottom: 1px solid #e71921;
+      border-collapse: collapse;
+      }
+      .header-account {
+      background-color: #ffffff;
+      text-align: right;
+      vertical-align: middle;
+      }
+      .header-account p {
+      padding-top: 3px;
+      padding-bottom: 3px;
+      }
+      .header-image-wrapper {
+      background-color: #333366;
+      margin-top: 15px!important;
+      padding-top: 15px;
+      padding-bottom: 12px;
+      text-align: center;
+      vertical-align: middle;
+      }
+      .header-image {
+      Width: 155px !important;
+      }
+      .header-confirmation {
+      padding-top: 5px;
+      padding-bottom: 5px;
+      background-color: #ededed;
+      text-align: center;
+      }
+      .header-confirmation p {
+      font-size: 14px;
+      color: #000000;
+      }
+      .header-confirmation a {
+      font-weight: bold;
+      color: #3573b1;
+      }
+      /* END EMAIL HEADER */
+      /* START SECTION 1 */
+      .content-table {
+      width: 100%;
+      }
+      .button-table-wrapper{
+      width: 100%;
+      cellspacing: 0;
+      cellpadding: 0;
+      margin-top: 1rem;
+      }
+      .order-details-button{
+      width: 35%;
+      cellspacing: 0;
+      cellpadding: 0;
+      margin: auto;
+      }
+      .section-header-start {
+      display: block;
+      text-align: center;
+      margin-bottom: 15px;
+      }
+      .section-header-start-left {
+      display: block;
+      text-align: left;
+      margin-bottom: 15px;
+      }
+      .button{
+      target: _blank;
+      width: 100%;
+      text-align: center;
+      padding: 15px 0px;
+      border: 2px solid #333366;
+      border-radius: 5px;
+      font-size: 14px;
+      color: #ffffff;
+      background-color: #333366;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+      }
+      sup {
+      vertical-align: super;
+      line-height: 0;
+      font-size: 85%;
+      }
+      /* END SECTION 1 */
+      /* START SECTION 2 */
+      .order-details-table {
+      width: 100%;
+      }
+      .order-details-table td {
+      vertical-align: top;
+      }
+      .details-top-header, .details-top-content {
+      padding-top: 20px;
+      }
+      .fast-top{
+      padding-top: 20px
+      }
+      .details-header, .details-content {
+      padding-top: 15px;
+      }
+      .details-top-header, .details-header {
+      width: 110px;
+      }
+      .details-top-content, .details-content {
+      padding-left: 10px;
+      }
+      .shipping-details-table td {
+      vertical-align: top;
+      }
+      .nowrap-text {
+      white-space: nowrap;
+      }
+      .red {
+      	color: #fae2e3;
+      }
+      /* END SECTION 2 */
+      /* START SECTION 3 */
+      .shipping-details-table {
+      width: 100%;
+      }
+      .basic-row-table td {
+      vertical-align: top;
+      }
+      .row-right-td {
+      padding-left: 10px;
+      }
+      /* END SECTION 3 */
+      /* START SECTION 4 */
+      .item-header-table, .item-contents-table, .item-price-table {
+      width: 100%;
+      }
+      .item-header {
+      width: 80%;
+      padding-left: 5px;
+      }
+      .cart-button{
+            width: 35%;
+            cellspacing: 0;
+            cellpadding: 0;
+            margin: auto;
+            }
+      .total-header  {
+      width: 20%;
+      }
+      .item-header, .total-header {
+      padding-top: 30px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #e71921;
+      }
+      .item-header-n {
+      padding-top: 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #e71921;
+      text-align: left;
+      padding-left: 10px;
+      }
+      .total-header-n {
+      padding-top: 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #e71921;
+      text-align: right;
+      padding-right: 10px;
+      }
+      .item-header, .item-image-column {
+      text-align: left;
+      }
+      .total-header, .item-total-column {
+      text-align: right;
+      padding-right: 10px;
+      }
+      .supply-header-p {
+      text-align: start;
+      padding: 1.5rem 1rem;
+      color: #333366;
+      font-weight: bold;
+      }
+      .supply-header-q {
+      text-align: end;
+      padding: 1.5rem 1rem;
+      color: #333366;
+      font-weight: bold;
+      }
+      .item-img {
+      width: 80px;
+      }
+      .item-image-column, .item-contents-column, .item-total-column {
+      vertical-align: top;
+      padding-top: 20px;
+      padding-bottom: 20px;
+      }
+      .item-image-column {
+      text-align: left;
+      width: 15%;
+      padding-right: 5px;
+      padding-left: 5px;
+      }
+      .item-contents-column {
+      text-align: left;
+      font-size: 0;
+      width: 65%;
+      padding-right: 10px;
+      padding-left: 15px;
+      }
+      .item-total-column {
+      text-align: right;
+      width: 20%;
+      }
+      .item-contents-column p , .item-total-column p {
+      line-height: 18px;
+      }
+      .summary-item-top, .amount-top {
+      padding-top: 16px;
+      border-top: 2px solid #333366;
+      }
+      .summary-item-top, .summary-item {
+      width: 80%;
+      padding-right: 5px;
+      text-align: right;
+      }
+      .summary-item-top-n{
+      padding-top: 10px;
+      border-top: 2px solid #333366;
+      postision: absolute;
+      left: 50%;
+      right: 0;
+      width: 80%;
+      padding-right: 5px;
+      text-align: right;
+      }
+      .amount-top, .amount {
+      width: 20%;
+      padding-right: 10px;
+      padding-left: 10px;
+      text-align: right;
+      }
+      .summary-item, .amount {
+      padding-top: 16px; !important;
+      }
+      .price-col-p {
+      white-space: nowrap;
+      }
+      .blue {
+        color: #333366;
+      }
+      .bottom-spacing{
+        padding-bottom: 16px;
+      }
+      /* END SECTION 4 */
+      /* START SECTION 5 */
+
+      .end-button-table-wrapper{
+      width: 100%;
+      cellspacing: 0;
+      cellpadding: 0;
+      margin-bottom: 1rem;
+      }
+      .end-button-table{
+      width: 25%;
+      cellspacing: 0;
+      cellpadding: 0;
+      margin: auto;
+      }
+      .end-button{
+      target: _blank;
+      width: 100%;
+      text-align: center;
+      padding: 10px 0px;
+      border: 2px solid #333366;
+      border-radius: 5px;
+      font-size: 12px;
+      color: #333366;
+      text-decoration: none;
+      font-weight: bold;
+      display: inline-block;
+      }
+      /* END SECTION 5 */
+      /* START FOOTER */
+
+      .footer-icons-table {
+      width: 100%;
+      text-align: center;
+      background: #ededed;
+      /* padding: 20px !important; */
+      /* padding-top: 60px; */
+      }
+      .footer-icons-wrapper {
+      padding: 20px;
+      }
+      .social-icon-table {
+      /* width: 100%;
+      text-align: center; */
+      /* padding-left: 80px;
+      padding-right: 80px; */
+      /* background: #ededed; */
+      margin: auto !important;
+      }
+      .icon-wrapper {
+      /* width: 80px !important; */
+      padding-right: 15px;
+      padding-left: 15px;
+      }
+      .app-download-table {
+      width: 100%;
+      }
+      .download-text {
+      padding-top: 20px;
+      text-align: center;
+      }
+      .download-badge-google, .download-badge-apple {
+      padding-top: 5px !important;
+      }
+      .download-badge-google {
+      text-align: right;
+      }
+      .download-badge-apple {
+      text-align: left;
+      }
+      .usps-footer-table {
+      width: 100%;
+      text-align: center;
+      background: #333366;
+      /* padding: 20px 30px 20px 30px !important; */		
+      }
+      .usps-footer-wrapper {
+      /* padding: 20px 30px 20px 30px !important; */
+      padding-top: 20px;
+      padding-bottom: 20px;
+      padding-left: 30px;
+      padding-right: 30px;
+      }
+      .usps-footer-table td, .usps-footer-table p, .usps-footer-table a {
+      color: #ffffff;
+      }
+      .usps-footer-table td, .usps-footer-table p {
+      font-size: 10px;
+      }
+      .usps-links-table {
+      /* width: 100%; */
+      /* padding-left: 120px;
+      padding-right: 120px; */
+      margin: auto !important;
+      }
+      .footer-link {
+      font-size: 12px;
+      }
+      .footer-divider {
+      /* width: 30px; */
+      padding-left: 15px;
+      padding-right: 15px;
+      }
+      /* .automated-message-wrapper {
+      padding: 30px 30px 0px 30px;
+      } */
+      .automated-message-wrapper {
+      padding-top: 25px;
+      text-align: left;
+      }
+      .automated-message-wrapper p {
+      line-height: 14px;
+      }
+      .copyright-wrapper {
+      padding-top: 10px;
+      text-align: center;
+      }
+      .unsubscribe-wrapper {
+      padding-top: 10px;
+      }
+      .unsubscribe-wrapper p {
+      text-align: center;
+      }
+      .unsubscribe-wrapper p, .unsubscribe-wrapper a {
+      font-size: 10px;
+      }
+      .pickupAtClass {
+         text-decoration: underline;
+         padding-top: 5px;
+      }
+
+      /* END FOOTER */
+   </style>
+</head>   
+   <body>
+      <center>
+         <table class="main-table">
+            <tbody>
+               <tr>
+                  <td>
+                     <table class="header-table">
+                        <tbody>
+                           <tr>
+                              <td class="header-image-wrapper">
+                                 <a href="https://www.usps.com/">
+                                 <img width="155" class="header-image" alt="Image of the USPS Icon." src="https://www.usps.com/email/usps-logo.png">
+                                 </a>
+                              </td>
+                           </tr>
+                           <tr>
+                              <td class="header-confirmation">
+                                 <p>Order #: <a href="https://cnsb.usps.com/confirmation-page?orderUUID=00000000-0000-4000-8000-000000000001">00000000-0000-4000-8000-000000000001</a></p>
+                              </td>
+                           </tr>
+                        </tbody>
+                     </table>
+                     <table class="content-table">
+                        <tbody>
+                           <tr>
+                              <td class="content-wrapper">
+                                 <!-- START SECTION 1 -->
+                                 <strong class="pt-30 header bold section-header-start">
+                                 Thank you for your order.
+                                 </strong>
+                                 <table style="width: 100%;">
+                                    <tbody>
+                                       <tr>
+                                          <td style="text-align: center;">
+                                             <p>Review details in USPS Click-N-Ship<sup>&reg;</sup> shipping history.</p>
+                                          </td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <table class="button-table-wrapper">
+                                    <tr>
+                                       <td>
+                                          <table class="order-details-button">
+                                             <tr>
+                                                <td>
+                                                   <a class="button" href="https://cnsb.usps.com/history/orders/00000000-0000-4000-8000-000000000001">View Order Details</a>
+                                                </td>
+                                             </tr>
+                                          </table>
+                                       </td>
+                                    </tr>
+                                 </table>
+                                 <!-- END SECTION 1 -->
+                                 <table class="section-divider-wrapper">
+                                    <tbody>
+                                       <tr>
+                                          <td class="section-divider">&nbsp;</td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <!-- START SECTION 2 -->
+                                 <strong class="pt-30 header bold section-header">
+                                 ORDER DETAILS
+                                 </strong>
+                                 <table class="order-details-table">
+                                    <tbody>
+                                       <tr>
+                                          <td class="details-top-header">
+                                             <p class="header nowrap-text">Account #:</p>
+                                          </td>
+                                          <td class="details-top-content">
+                                             <p class="nowrap-text">95497957</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="details-top-header">
+                                             <p class="header">Order #:</p>
+                                          </td>
+                                          <td class="details-top-content">
+                                             <p class="nowrap-text"><a href="https://cnsb.usps.com/confirmation-page?orderUUID=00000000-0000-4000-8000-000000000001">00000000-0000-4000-8000-000000000001</a></p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="details-header">
+                                             <p class="header">Placed on:</p>
+                                          </td>
+                                          <td class="details-content">
+                                             <p>Jan 12, 2026</p>
+                                             <p>21:33:19 PM UTC</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="details-header">
+                                             <p class="header">Payment Method:</p>
+                                          </td>
+                                          <td class="details-content">
+                                             <p>VISA-2122</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="details-header">
+                                             <p class="header">Status:</p>
+                                          </td>
+                                          <td class="details-content">
+                                             <p>PAID</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="details-header">
+                                             <p class="header">Email:</p>
+                                          </td>
+                                          <td class="details-content">
+                                             <p>suerae1111@gmail.com</p>
+                                          </td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <table class="section-divider-wrapper">
+                                    <tbody>
+                                       <tr>
+                                          <td class="section-divider">&nbsp;</td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <!-- END SECTION 2 -->
+                                 <!-- START SECTION 4 -->
+                                 <strong class="pt-30 header bold section-header">
+                                 ORDER SUMMARY
+                                 </strong>
+                                 <table class="item-header-table">
+                                    <thead>
+                                       <tr class="item-header-row" style="background-color: #eeeeee;">
+                                          <th class="item-header-n">
+                                             <p class="header bold">Item</p>
+                                          </th>
+                                          <th class="total-header-n">
+                                             <p class="header bold">Total</p>
+                                          </th>
+                                       </tr>
+                                    </thead>
+                                 </table>
+                                 <table class="item-contents-table">
+                                    <tbody>
+                                       <tr>
+                                          <td class="item-contents-column">
+                                             <table class="item-contents-table">
+                                                <tbody>
+                                                   <tr>
+                                                      <td>
+                                                         <p class="bold"> Priority Mail®</p>
+                                                         <a href=https://tools.usps.com/go/TrackConfirmAction!input.action?tLabels=42062704000094055118995600001111> 42062704000094055118995600001111</a>
+                                                         <p class="bold">Scheduled delivery date: 01/16/2026</p>
+                                                         <p class="bold">Shipped To:</p>
+                                                         <p class="pt-5">Jordan Sample</p>
+                                                         <p class="pt-5">100 Example Ave</p>
+                                                         <p class="pt-5">SPRINGFIELD IL 62704-0000 US</p>
+                                                      </td>
+                                                   </tr>
+                                                </tbody>
+                                             </table>
+                                          </td>
+                                          <td class="item-total-column">
+                                             <p class="price-col-p">$19.20</p>
+                                          </td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <table class="item-contents-table">
+                                    <tbody>
+                                       <tr>
+                                          <td class="item-contents-column">
+                                             <table class="item-contents-table">
+                                                <tbody>
+                                                   <tr>
+                                                      <td>
+                                                         <p class="bold"> Priority Mail®</p>
+                                                         <a href=https://tools.usps.com/go/TrackConfirmAction!input.action?tLabels=42097201000094055118995600002222> 42097201000094055118995600002222</a>
+                                                         <p class="bold">Shipped To:</p>
+                                                         <p class="pt-5">Alex Placeholder</p>
+                                                         <p class="pt-5">Restorative Medicine</p>
+                                                         <p class="pt-5">200 Testing Rd</p>
+                                                         <p class="pt-5">PORTLAND OR 97201-0000 US</p>
+                                                      </td>
+                                                   </tr>
+                                                </tbody>
+                                             </table>
+                                          </td>
+                                          <td class="item-total-column">
+                                             <p class="price-col-p">$19.20</p>
+                                          </td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <table class="item-price-table">
+                                    <tbody>
+                                       <tr>
+                                          <td class="summary-item-top">
+                                             <p>Subtotal:</p>
+                                          </td>
+                                          <td class="amount-top">
+                                             <p class="price-col-p">$38.40</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="summary-item bottom-spacing">
+                                             <p>Shipping:</p>
+                                          </td>
+                                          <td class="amount bottom-spacing">
+                                             <p class="price-col-p">$0.00</p>
+                                          </td>
+                                       </tr>
+                                       <tr>
+                                          <td class="summary-item-top">
+                                             <p class="bold blue">Total:</p>
+                                          </td>
+                                          <td class="amount-top">
+                                             <p class="price-col-p bold blue">$38.40</p>
+                                          </td>
+                                       </tr>
+                                    </tbody>
+                                 </table>
+                                 <!-- END SECTION 4 -->
+                                 <table class="section-divider-wrapper">
+                                    <tr>
+                                       <td class="section-divider">&nbsp;</td>
+                                    </tr>
+                                 </table>
+                                 <!-- START SECTION 5 -->
+                                 <strong class="pt-30 header bold section-header">
+                                 NEED HELP?
+                                 </strong>
+                                 <span style="display: block; text-align: center; margin-bottom: 2rem">
+                                 If you need help, please visit the Frequently Asked Questions.
+                                 </span>
+                                 <table class="end-button-table-wrapper">
+                                    <tr>
+                                       <td>
+                                          <table class="end-button-table">
+                                             <tr>
+                                                <td>
+                                                   <a class="end-button" href="https://faq.usps.com/s/"
+                                                      >Go to FAQ's</a>
+                                                </td>
+                                             </tr>
+                                          </table>
+                                       </td>
+                                    </tr>
+                                 </table>
+                                 <table class="section-divider-wrapper">
+                                    <tr>
+                                       <td class="section-divider-alt">&nbsp;</td>
+                                    </tr>
+                                 </table>
+                                 <strong class="pt-30 header bold section-header">
+                                 SAVE TIME, CREATE LABELS
+                                 </strong>
+                                 <table class="end-button-table-wrapper" style="margin-bottom: 2rem;">
+                                    <tr>
+                                       <td>
+                                          <table class="end-button-table">
+                                             <tr>
+                                                <td>
+                                                   <a class="end-button" href="https://cnsb.usps.com/home"> Go to Click-N-Ship </a>
+                                                </td>
+                                             </tr>
+                                          </table>
+                                       </td>
+                                    </tr>
+                                 </table>
+                                 <!-- END SECTION 5 -->
+                              </td>
+                           </tr>
+                        </tbody>
+                     </table>
+<!-- START FOOTER -->
+<table class="footer-icons-table">
+   <tbody>
+      <tr>
+         <td class="footer-icons-wrapper">
+            <table class="social-icon-table">
+               <tbody>
+                  <tr>
+                     <td class="icon-wrapper">
+                        <a href="https://www.facebook.com/USPS?rf=108501355848630">
+                        <img class="social-icon-img" alt="Image of Facebook social media icon." height="35" src="https://www.usps.com/email/footer/facebook-icon.png">
+                        </a>
+                     </td>
+                     <td class="icon-wrapper">
+                        <a href="http://instagram.com/uspostalservice">
+                        <img class="social-icon-img" alt="Image of Instagram social media icon." height="35" src="https://www.usps.com/email/footer/instagram-icon.png">
+                        </a>
+                     </td>
+                     <td class="icon-wrapper">    
+                        <a href="http://www.pinterest.com/uspsstamps/">
+                        <img class="social-icon-img" alt="Image of Pinterest social media icon." height="35" src="https://www.usps.com/email/footer/pinterest-icon.png">
+                        </a>
+                     </td>
+                     <td class="icon-wrapper">
+                        <a href="https://www.threads.net/@uspostalservice?hl=en">
+                           <img class="social-icon-img" alt="Image of Threads social media icon." height="35" src="https://www.usps.com/email/footer/threads-icon.png">
+                        </a>
+                     </td>
+                     <td class="icon-wrapper">
+                        <a href="https://x.com/usps">
+                        <img class="social-icon-img" alt="Image of X social media icon." height="35" src="https://www.usps.com/email/footer/x-icon.png">
+                        </a>
+                     </td>
+                     <td class="icon-wrapper">
+                        <a href="https://www.youtube.com/usps">
+                        <img class="social-icon-img" alt="Image of Youtube social media icon." height="35" src="https://www.usps.com/email/footer/youtube-icon.png">
+                        </a>    
+                     </td>
+                  </tr>
+               </tbody>
+            </table>
+            <table class="app-download-table">
+               <tbody>
+                  <tr>
+                     <td class="download-text">
+                        <p>Download <b>USPS Mobile<sup>&reg;</sup></b></p>
+                     </td>
+                  </tr>
+               </tbody>
+            </table>
+            <table class="app-download-table">
+               <tbody>
+                  <tr>
+                     <td class="download-badge-google">
+                        <a href="https://play.google.com/store/apps/details?id=com.usps.app" target="_blank">
+                        <img class="download-badge-img" width="150" alt="Image of the Google Play Icon." src="https://www.usps.com/email/badge-googleplay.png">
+                        </a>
+                     </td>
+                     <td class="download-badge-apple">
+                        <a href="https://itunes.apple.com/us/app/usps-mobile/id339597578?mt=8" target="_blank">
+                        <img class="download-badge-img" width="150" alt="Image of the App Store Icon." src="https://www.usps.com/email/badge-appleappstore.png">
+                        </a>
+                     </td>
+                  </tr>
+               </tbody>
+            </table>
+         </td>
+      </tr>
+   </tbody>
+</table>
+<table class="usps-footer-table">
+   <tbody>
+      <tr>
+         <td class="usps-footer-wrapper">
+            <table class="usps-links-table">
+               <tbody>
+                  <tr>
+                     <td class="footer-link-wrapper">
+                        <a class="footer-link" href="https://www.usps.com/">USPS.com</a>
+                     </td>
+                     <td class="footer-divider">|</td>
+                     <td class="footer-link-wrapper">
+                        <a class="footer-link" href="https://about.usps.com/who/legal/privacy-policy/">Privacy Policy</a>
+                     </td>
+                     <td class="footer-divider">|</td>
+                     <td class="footer-link-wrapper">
+                        <a class="footer-link" href="https://www.usps.com/help/contact-us.htm">Support</a>
+                     </td>
+                     <td class="footer-divider">|</td>
+                     <td class="footer-link-wrapper">
+                        <a class="footer-link" href="https://faq.usps.com">FAQs</a>
+                     </td>
+                  </tr>
+               </tbody>
+            </table>
+            <table class="automated-message-table">
+               <tbody>
+                  <tr>
+                     <td class="automated-message-wrapper">
+                        <p>This is an automated email; please do not reply to this message. This message is for the designated recipient only and may contain privileged, proprietary, or otherwise private information. If you have received it in error, please delete. Any other use of the email by you is prohibited.</p>
+                     </td>
+                  </tr>
+                  <tr>
+                     <td class="copyright-wrapper">
+                        <p>Copyright &copy; 2026 USPS. All Rights Reserved.</p>
+                     </td>
+                  </tr>
+               </tbody>
+            </table>
+         </td>
+      </tr>
+   </tbody>
+</table>
+<!-- END FOOTER -->                  </td>
+               </tr>
+            </tbody>
+         </table>
+      </center>
+   </body>
+   
+</html>
