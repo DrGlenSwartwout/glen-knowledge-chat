@@ -156,36 +156,54 @@ def _mark_sync(cx, pid, *, qbo_txn_id=None, state):
 
 
 def _push_payment(cx, pid):
+    """Mark a payment row synced. Creating a QBO Payment here is DISABLED by design.
+
+    Every payment reaches QuickBooks on its own as a BANK DEPOSIT — cards via
+    eProcessing/PayPal/Authorize.net, Zelle via the Bank of America feed. So a
+    payment pushed from the ledger is a straight duplicate of a deposit QBO is
+    already going to receive, and QBO cannot tell them apart (it happily holds
+    both, inflating income). On 2026-07-19 that had produced 6 duplicate QBO
+    Payments which had to be deleted by hand.
+
+    Note the scope: QBO is retired for INVOICING, not as a system. QuickBooks is
+    still the accounting system of record and still gets the money — from the bank
+    feed rather than from us. So the fix is not to sever QBO, it is to stop being a
+    second source of the same payment.
+
+    Rows are marked synced with a NULL txn id (the same shape skip_qbo_push has
+    always produced), which the guard below then treats as terminal, so nothing
+    re-pushes later. Linking an EXISTING QBO txn via qbo_txn_id still works and is
+    still the preferred move — it short-circuits on the guard before reaching here.
+
+    Refunds are deliberately NOT changed: _push_refund still pushes, because
+    whether an outbound refund also arrives via the bank feed has not been
+    confirmed. Do not "make it consistent" without checking that first.
+    """
     row = _row(cx, pid)
     if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
         return  # already synced — idempotent. Honor qbo_sync too, not just txn_id:
                 # a legacy-backfill row is synced with a NULL txn_id and must NEVER
                 # be pushed (its payment already exists in QBO — pushing = double-count).
-    try:
-        cid, inv_id = _qbo_ctx(cx, row["order_id"])
-        if not cid or not inv_id:
-            raise RuntimeError("no QBO invoice/customer for order")
-        res = qbo_billing.record_payment(cid, row["amount_cents"], inv_id,
-                                         method=row["method"])
-        _mark_sync(cx, pid, qbo_txn_id=(res or {}).get("Id"), state="synced")
-    except Exception:
-        _mark_sync(cx, pid, state="error")
+    _mark_sync(cx, pid, state="synced")
 
 
 def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                 external_ref=None, paid_at=None, note=None, actor=None,
                 qbo_txn_id=None, skip_qbo_push=False):
-    """Record a payment. By default this also CREATES a QBO payment.
+    """Record a payment in the ledger. This NEVER creates a QBO payment any more.
 
-    For a payment that already exists in QBO (recorded before the ledger, or
-    entered directly in QuickBooks), pushing again double-credits the customer.
-    Two ways to avoid that:
-      - qbo_txn_id=<id>: link the EXISTING QBO txn. Preferred — the ledger then
-        mirrors QBO exactly, and a later void()/resync() acts on the real txn.
-      - skip_qbo_push=True: record as synced with a NULL txn id (the legacy
-        backfill shape) when the QBO id isn't known.
-    Both mark the row 'synced' BEFORE the push step, so _push_payment's
-    already-synced guard short-circuits and nothing new is created in QBO."""
+    It used to push one by default. It no longer does: every payment reaches
+    QuickBooks on its own as a bank deposit, so pushing made a duplicate of money
+    QBO was already getting. See _push_payment for the full reasoning.
+
+    Still worth passing:
+      - qbo_txn_id=<id>: link an EXISTING QBO txn. Preferred when the id is known —
+        the ledger then mirrors QBO exactly, and a later void() acts on the real txn.
+      - skip_qbo_push=True: now VESTIGIAL. It was the way to opt out of the push;
+        the push is gone, so this changes nothing. Accepted so existing callers keep
+        working. Nothing new should pass it.
+
+    Rows end up 'synced' either way, so nothing re-pushes later."""
     if int(amount_cents) <= 0:
         raise ValueError("amount_cents must be positive")
     if external_ref:

@@ -48,32 +48,48 @@ def test_stripe_payment_idempotent_on_external_ref(cx):
     assert len([r for r in rows if r["kind"] == "payment"]) == 1
 
 
-def test_add_payment_syncs_to_qbo(cx, monkeypatch):
+def test_add_payment_does_not_push_to_qbo(cx, monkeypatch):
+    # Was test_add_payment_syncs_to_qbo, which asserted the opposite: that add_payment
+    # CREATES a QBO payment. That behaviour is deliberately gone -- every payment already
+    # reaches QuickBooks as a bank deposit (cards via eProcessing/PayPal/Authorize.net,
+    # Zelle via the BofA feed), so pushing made a duplicate. Six such duplicates had to be
+    # deleted by hand on 2026-07-19.
     from dashboard import qbo_billing
     monkeypatch.setattr(qbo_billing, "get_invoice",
                         lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "412.82"})
     calls = {}
     monkeypatch.setattr(qbo_billing, "record_payment",
-                        lambda cid, amt, iid, method=None: calls.update(
-                            cid=cid, amt=amt, iid=iid, method=method) or {"Id": "P9"})
+                        lambda *a, **k: calls.update(called=True) or {"Id": "P9"})
     oid = _oid(cx)
     row = op.add_payment(cx, oid, 13100, "Zelle")
+    assert calls == {}                  # QBO was never asked to create anything
+    assert row["qbo_txn_id"] is None    # nothing to mirror
+    assert row["qbo_sync"] == "synced"  # terminal, so it cannot re-push later
+
+
+def test_add_payment_links_an_existing_qbo_txn(cx, monkeypatch):
+    # Linking survives and stays the preferred move when the QBO id is known.
+    from dashboard import qbo_billing
+    calls = {}
+    monkeypatch.setattr(qbo_billing, "record_payment",
+                        lambda *a, **k: calls.update(called=True) or {"Id": "P9"})
+    oid = _oid(cx)
+    row = op.add_payment(cx, oid, 13100, "Zelle", qbo_txn_id="P9")
+    assert calls == {}
     assert row["qbo_txn_id"] == "P9"
     assert row["qbo_sync"] == "synced"
-    assert calls == {"cid": "42", "amt": 13100, "iid": "INV-1", "method": "Zelle"}
 
 
 def test_void_excludes_from_balance_and_calls_qbo(cx, monkeypatch):
     from dashboard import qbo_billing
-    monkeypatch.setattr(qbo_billing, "get_invoice",
-                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
-    monkeypatch.setattr(qbo_billing, "record_payment",
-                        lambda *a, **k: {"Id": "P9"})
     voided = {}
     monkeypatch.setattr(qbo_billing, "void_payment",
                         lambda txn: voided.update(txn=txn))
     oid = _oid(cx)
-    row = op.add_payment(cx, oid, 13100, "Zelle")
+    # The ledger no longer CREATES QBO payments (it would duplicate the bank deposit),
+    # so a row acquires its txn id by LINKING an existing one. This test is about void
+    # behaviour, which is unchanged.
+    row = op.add_payment(cx, oid, 13100, "Zelle", qbo_txn_id="P9")
     op.void(cx, row["id"], "keyed wrong amount")
     assert op.balance(cx, oid)["paid_cents"] == 0
     assert voided == {"txn": "P9"}
@@ -85,27 +101,27 @@ def test_void_excludes_from_balance_and_calls_qbo(cx, monkeypatch):
 
 def test_void_null_txn_skips_qbo(cx, monkeypatch):
     from dashboard import qbo_billing
-    monkeypatch.setattr(qbo_billing, "get_invoice", lambda iid: None)  # push fails
     called = {"n": 0}
     monkeypatch.setattr(qbo_billing, "void_payment",
                         lambda txn: called.__setitem__("n", called["n"] + 1))
     oid = _oid(cx)
-    row = op.add_payment(cx, oid, 100, "Cash")   # qbo_sync becomes 'error', no txn
-    assert row["qbo_sync"] == "error" and row["qbo_txn_id"] is None
+    # No push any more, so an unlinked row lands 'synced' with a NULL txn id (it used
+    # to land 'error' when the push could not resolve a QBO invoice). Either way there
+    # is no QBO txn, so void must not call QBO.
+    row = op.add_payment(cx, oid, 100, "Cash")
+    assert row["qbo_sync"] == "synced" and row["qbo_txn_id"] is None
     op.void(cx, row["id"], "typo")
     assert called["n"] == 0
 
 
 def test_void_qbo_failure_is_flagged_not_swallowed(cx, monkeypatch):
     from dashboard import qbo_billing
-    monkeypatch.setattr(qbo_billing, "get_invoice",
-                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
-    monkeypatch.setattr(qbo_billing, "record_payment",
-                        lambda *a, **k: {"Id": "P9"})
     monkeypatch.setattr(qbo_billing, "void_payment",
                         lambda txn: (_ for _ in ()).throw(RuntimeError("QBO down")))
     oid = _oid(cx)
-    row = op.add_payment(cx, oid, 13100, "Zelle")
+    # txn id comes from LINKING now, not from a push (the ledger no longer creates
+    # QBO payments -- that duplicated the bank deposit).
+    row = op.add_payment(cx, oid, 13100, "Zelle", qbo_txn_id="P9")
     voided = op.void(cx, row["id"], "keyed wrong amount")
     assert voided["status"] == "void"
     assert voided["qbo_sync"] == "void_error"
@@ -115,14 +131,12 @@ def test_void_qbo_failure_is_flagged_not_swallowed(cx, monkeypatch):
 
 def test_resync_repairs_a_flagged_void(cx, monkeypatch):
     from dashboard import qbo_billing
-    monkeypatch.setattr(qbo_billing, "get_invoice",
-                        lambda iid: {"CustomerRef": {"value": "42"}, "Balance": "1"})
-    monkeypatch.setattr(qbo_billing, "record_payment",
-                        lambda *a, **k: {"Id": "P9"})
     monkeypatch.setattr(qbo_billing, "void_payment",
                         lambda txn: (_ for _ in ()).throw(RuntimeError("QBO down")))
     oid = _oid(cx)
-    row = op.add_payment(cx, oid, 13100, "Zelle")
+    # txn id comes from LINKING now, not from a push (the ledger no longer creates
+    # QBO payments -- that duplicated the bank deposit).
+    row = op.add_payment(cx, oid, 13100, "Zelle", qbo_txn_id="P9")
     voided = op.void(cx, row["id"], "keyed wrong amount")
     assert voided["qbo_sync"] == "void_error"
 
