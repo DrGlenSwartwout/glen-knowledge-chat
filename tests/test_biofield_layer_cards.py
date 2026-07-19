@@ -55,6 +55,9 @@ def test_reorder_frees_unconfirmed_scan_row():
 
 def test_reorder_layers_route(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     db = str(tmp_path / "c.db")
     client = create_app(db, scan_lookup=lambda e: {"status": "none", "found": False,
                                                     "findings": [], "fresh": False}).test_client()

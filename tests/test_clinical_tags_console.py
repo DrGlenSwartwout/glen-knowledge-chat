@@ -43,6 +43,9 @@ def test_review_queue_and_confirm_reject(tmp_path):
 
 def test_routes_confirm_via_test_client(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     db = _seed_db(tmp_path)
     # ledger lives in the e4l db, which the routes read via e4l_db (not the app's db_path)
     client = create_app(db, e4l_db=db).test_client()
@@ -60,6 +63,9 @@ def test_routes_confirm_via_test_client(tmp_path, monkeypatch):
 
 def test_home_page_links_to_clinical_tags(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     db = _seed_db(tmp_path)
     client = create_app(db).test_client()
     r = client.get("/")

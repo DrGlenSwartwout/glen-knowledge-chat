@@ -13,6 +13,9 @@ from dashboard.biofield_narrative import save_video_script
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     monkeypatch.setenv("PORTAL_PUBLISH_BASE_URL", "https://h")
     # stub the network + PDF render used by _do_publish
     monkeypatch.setattr(bla, "report_pdf_bytes", lambda html: b"PDF")

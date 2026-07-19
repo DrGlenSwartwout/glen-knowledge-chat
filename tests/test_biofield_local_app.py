@@ -11,6 +11,9 @@ from dashboard.biofield_stress import add_voice_stress, init_stress_tables
 def _no_console_gate(monkeypatch):
     # Functional tests run without the console key (the gate is tested separately).
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
 
 
 def _seed(db):

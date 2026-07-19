@@ -81,6 +81,9 @@ def _db(tmp_path):
 
 def test_spoken_frequency_does_not_suppress_catalog_dosage_and_timing(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     db, tid = _db(tmp_path)
 
     # The model returns ONLY what was spoken: a frequency. (Post-fix prompt behavior.)

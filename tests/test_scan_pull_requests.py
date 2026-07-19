@@ -58,6 +58,9 @@ import pytest
 def _app(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)   # auth open in test
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     monkeypatch.setenv("SCAN_PULL_ENABLED", "1")
     repo = Path(__file__).resolve().parent.parent
     if str(repo) not in sys.path:

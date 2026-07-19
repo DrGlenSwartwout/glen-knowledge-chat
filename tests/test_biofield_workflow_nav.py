@@ -23,6 +23,9 @@ def test_active_tab_highlighted(monkeypatch):
 def test_no_secret_omits_key_query(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://illtowell.com")
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     html = _workflow_nav("biofield")
     assert "?key=" not in html
     assert "https://illtowell.com/console/biofield-portal\"" in html

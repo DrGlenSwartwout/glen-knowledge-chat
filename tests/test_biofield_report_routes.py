@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     monkeypatch.setenv("BIOFIELD_DB", str(tmp_path / "chat_log.db"))
     monkeypatch.setenv("BIOFIELD_REPORTS_DIR", str(tmp_path / "reports"))
     import biofield_local_app as bla

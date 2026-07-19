@@ -13,6 +13,9 @@ def _client(tmp_path, monkeypatch):
         cx.execute("INSERT INTO formulations (id,name) VALUES (1,'Brain Blend')")
         cx.commit()
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     repo = Path(__file__).resolve().parent.parent
     if str(repo) not in sys.path:
         sys.path.insert(0, str(repo))

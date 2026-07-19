@@ -204,6 +204,9 @@ def test_dispatch_approve_flips_state(monkeypatch, tmp_path):
 def test_console_list_and_load(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     import dashboard as _d
     _d.CONSOLE_SECRET = ""  # auth passes through when unset
     slug = next(iter(appmod._PRODUCTS["products"].keys()))

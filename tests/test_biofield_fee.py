@@ -53,6 +53,9 @@ def test_build_fee_state_unavailable():
 
 def test_default_fee_get_no_secret_is_unavailable(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     got = bf.default_fee_get("j@x.com")
     assert got == {"available": False, "courtesy_cents": None, "note": ""}
 
@@ -97,6 +100,9 @@ def test_default_fee_get_malformed_prices_row_is_unavailable(monkeypatch):
 
 def test_default_fee_set_no_secret_is_not_ok(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     assert bf.default_fee_set("j@x.com", 10000, "n") == {"ok": False}
 
 
