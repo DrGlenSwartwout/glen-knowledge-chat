@@ -12,7 +12,12 @@
       "bottle_type": "own-box",
       "flat_shipping_cents": 1300,
       "description": "A comfortable baseball cap lined with real Mithreal silver to help shield your head from everyday EMF exposure.",
-      "competitor": {"brand": "DefenderShield", "name": "EMF Radiation Protection Baseball Cap", "price_cents": 6499, "regular_cents": 8499},
+      "competitor": {
+        "brand": "DefenderShield",
+        "name": "EMF Radiation Protection Baseball Cap",
+        "price_cents": 6499,
+        "regular_cents": 8499
+      },
       "source": "manual-add-2026-07-17-mithreal"
     },
     "mithreal-silver-ivy-hat": {
@@ -33,7 +38,11 @@
       "bottle_type": "own-box",
       "flat_shipping_cents": 2300,
       "description": "A blue zip-up hoodie lined with real Mithreal silver to help shield your body from everyday EMF exposure.",
-      "competitor": {"brand": "DefenderShield", "name": "EMF Radiation Protection Hooded Jacket", "price_cents": 37999},
+      "competitor": {
+        "brand": "DefenderShield",
+        "name": "EMF Radiation Protection Hooded Jacket",
+        "price_cents": 37999
+      },
       "source": "manual-add-2026-07-17-mithreal"
     },
     "biofield-analysis": {
@@ -20207,6 +20216,15 @@
       ],
       "bundle_description": "Support for restful, regenerative, cleansing sleep: Brain Cleanse, Sleep Synergy, and biocompatible lighting.",
       "price_cents": 35095
+    },
+    "molecular-hydrogen-bottle": {
+      "name": "Molecular Hydrogen (portable bottle)",
+      "price_cents": 24997,
+      "regular_cents": 26997,
+      "bottle_type": "own-box",
+      "intro": "A portable bottle that generates molecular-hydrogen-rich water by electrolysis — Glen's recommended replacement for the discontinued Living Water Bottle.",
+      "description": "Molecular Hydrogen is the perfect antioxidant. It is the smallest molecule that delivers electrons to even the smallest spaces in our cells, and it is the only antioxidant that cannot be overdosed — in excess, other antioxidants can block the body's own signalling. This portable bottle generates molecular-hydrogen-rich water on demand via electrolysis, so hydrogen-rich water travels with the client rather than being tied to a countertop system.",
+      "source": "gk-migration-2026-07-19"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"

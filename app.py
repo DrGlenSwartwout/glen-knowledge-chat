@@ -1307,6 +1307,22 @@ def _alias_catalog_slug(clinical_name: str, info: dict) -> tuple:
             by[re.sub(r"[^a-z0-9]", "", slug.lower())] = slug
             by.setdefault(re.sub(r"[^a-z0-9]", "", (p.get("name") or "").lower()), slug)
         _ALIAS_SLUG_CACHE = by
+    # An explicit `slug` is authoritative. Name matching alone is brittle here:
+    # the storefront and the catalog are two naming universes ("Holy Grail Full
+    # Spectrum ORMUS" vs "Holy Grail Full Spectrum M-10 ORMUS", "Scar Soft" vs
+    # "Scar Soft Drink"), and a near-miss silently drops the product back to the
+    # old storefront URL.
+    pinned = (info.get("slug") or "").strip()
+    if pinned:
+        if pinned not in products:
+            return "", False
+        successor = (products[pinned] or {}).get("superseded_by")
+        if successor and successor in products:
+            pinned = successor
+        if (products.get(pinned) or {}).get("inactive"):
+            return "", True
+        return pinned, False
+
     for candidate in (info.get("catalog_name"), clinical_name):
         slug = _ALIAS_SLUG_CACHE.get(re.sub(r"[^a-z0-9]", "", (candidate or "").lower()))
         if not slug:
@@ -1942,7 +1958,7 @@ RULES:
   - DO NOT ANNOUNCE PRACTICE BETTER'S STATUS. The move is still in progress and clients may still have active course access there, so never tell anyone it "has been retired", "is shut down", or "has moved" — that is not yet true and it strands people who are still using it. Do not volunteer the name at all. Just give the correct destination above. Only if the user raises Practice Better themselves: say their courses and orders are being brought together in a new home, give them the link, and do not claim Practice Better is gone.
 - FORMULATION-FIRST ORDERING (symptoms & conditions): When answering about a symptom or condition, lead the recommendations with Glen's Functional Formulations — the Advanced Botanical Formulations and Advanced Nutritional Formulations — as the FIRST category, before any list of individual natural ingredients or single nutrients. The formulations are pre-combined for the terrain pattern, so they simplify implementation versus assembling separate ingredients. If you group recommendations under headings, an "Advanced Botanical Formulations" and/or "Advanced Nutritional Formulations" heading comes first; present individual ingredients only afterward, as an optional layer or as the mechanism behind the formulations. Within a formulation category, list the most condition-specific formulation first.
 - ACTIVE DISCOUNT CODE: When the request includes an ACTIVE DISCOUNT block, include today's code naturally — once per response, only when at least one product is recommended.
-- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://remedymatch.com/resources/439-molecular-hydrogen) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). The "Electrolyte Mineral Manna" is also DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Dental Regen Powder" is DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Endocrine Restore" and plain "Comfort" products are CONSOLIDATED into their canonical versions — recommend "Endocrine Restore Powder" and "Comfort Synovial Syntropy" instead, and do not name the old "Endocrine Restore" or plain "Comfort". Do NOT recommend "AllerFree" (AllerFree HomeoEnergetic Drops); recommend "Immune Modulation" instead. Only recommend "Fungifuge" as a follow-on to a Candida Cleanse, never as a standalone recommendation. "Bioavailability Blend" (and "Bioavailability Blend Powder") IS sellable, but ONLY as an adjunct — a small-dose enhancer taken together with other remedies (ours or others') to improve their bioavailability and delivery. Do NOT recommend it as a stand-alone remedy, and never suggest it on a Biofield reveal program. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
+- DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://illtowell.com/begin/product/molecular-hydrogen-bottle) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://illtowell.com/begin/product/molecular-hydrogen-tablets). The "Electrolyte Mineral Manna" is also DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Dental Regen Powder" is DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Endocrine Restore" and plain "Comfort" products are CONSOLIDATED into their canonical versions — recommend "Endocrine Restore Powder" and "Comfort Synovial Syntropy" instead, and do not name the old "Endocrine Restore" or plain "Comfort". Do NOT recommend "AllerFree" (AllerFree HomeoEnergetic Drops); recommend "Immune Modulation" instead. Only recommend "Fungifuge" as a follow-on to a Candida Cleanse, never as a standalone recommendation. "Bioavailability Blend" (and "Bioavailability Blend Powder") IS sellable, but ONLY as an adjunct — a small-dose enhancer taken together with other remedies (ours or others') to improve their bioavailability and delivery. Do NOT recommend it as a stand-alone remedy, and never suggest it on a Biofield reveal program. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
 
 _LEVEL_INSTRUCTIONS = {
     "self-healing": """
