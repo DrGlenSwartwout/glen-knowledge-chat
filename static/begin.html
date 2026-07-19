@@ -653,20 +653,29 @@
   .journey-card.status-done { border-color: var(--gold); }
   @media (max-width: 760px) { #journey-cards { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 420px) { #journey-cards { grid-template-columns: 1fr; } }
-  /* Fireside invitation — prominent warm entry above the funnel */
-  #fireside-invite { max-width: 900px; margin: 22px auto 6px; padding: 0 20px; }
-  #fireside-invite .fi-inner { position: relative; text-align: center; overflow: hidden;
-    border: 1px solid rgba(212,168,67,0.35); border-radius: var(--radius); padding: 34px 24px;
-    background: radial-gradient(ellipse at 50% 130%, rgba(212,168,67,0.18), rgba(20,12,6,0) 70%), rgba(20,12,6,0.5); }
-  #fireside-invite .fi-title { font-size: 26px; line-height: 1.2; margin: 0 0 8px; color: var(--warm, #f3e2c7); }
-  #fireside-invite .fi-sub { font-size: 15px; color: var(--muted); margin: 0 auto 20px; max-width: 560px; }
-  #fireside-invite .fi-cta { display: inline-block; text-decoration: none; color: #1a0f06;
-    background: linear-gradient(#caa86a,#8a6a38); border-radius: 30px; padding: 14px 38px;
-    font-size: 18px; font-weight: 600; box-shadow: 0 0 24px 5px rgba(220,180,90,0.5);
-    animation: fiGlow 2.6s ease-in-out infinite; }
-  @keyframes fiGlow { 0%,100% { box-shadow: 0 0 20px 4px rgba(220,180,90,.45); }
-    50% { box-shadow: 0 0 38px 12px rgba(240,200,110,.85); } }
-  @media (max-width: 760px) { #fireside-invite .fi-title { font-size: 22px; } }
+  /* Fireside invitation tile — deliberately small so it never pushes the chat
+     input below the fold on a phone. 160px, not a hero video. */
+  .fs-invite { display:flex; align-items:center; gap:14px; margin:0 0 14px;
+    flex-wrap:wrap; }
+  .fs-invite.hidden { display:none !important; }
+  .fs-invite-tap { position:relative; width:160px; height:160px; padding:0;
+    border:1px solid var(--border); border-radius:var(--radius);
+    background:var(--surface); overflow:hidden; cursor:pointer; flex:0 0 auto; }
+  .fs-invite-video { width:100%; height:100%; object-fit:cover; display:block; }
+  .fs-invite-hint { position:absolute; left:0; right:0; bottom:0;
+    padding:6px 8px; font-size:12px; letter-spacing:.02em; color:#f3e6cf;
+    background:linear-gradient(transparent, rgba(20,12,6,.82)); }
+  .fs-invite-hint.hidden { display:none !important; }
+  .fs-invite-choices { display:flex; flex-direction:column; gap:8px;
+    align-items:flex-start; }
+  .fs-invite-choices.hidden { display:none !important; }
+  .fs-invite-go { display:inline-block; padding:10px 18px; border-radius:24px;
+    background:linear-gradient(#caa86a,#8a6a38); color:#1a0f06;
+    text-decoration:none; font-size:15px; }
+  .fs-invite-stay { background:none; border:none; color:var(--muted);
+    font:inherit; font-size:14px; text-decoration:underline; cursor:pointer;
+    padding:0; }
+  @media (prefers-reduced-motion: reduce) { .fs-invite-video { display:none; } }
 </style>
   <script src="/static/theme-toggle.js"></script>
 </head>
@@ -830,6 +839,20 @@
 
     <!-- ASK A QUESTION — multi-turn funnel-mode chat (piece 3) -->
     <section class="shell ask reveal">
+      <!-- Fireside invitation — muted autoplay; the tap is also the audio-unlock gesture -->
+      <div id="fireside-invite" class="fs-invite hidden">
+        <button id="fs-invite-tap" class="fs-invite-tap" type="button"
+                aria-label="Hear Dr. Glen's invitation">
+          <video id="fs-invite-video" class="fs-invite-video"
+                 playsinline muted loop preload="metadata"
+                 poster="/static/fireside/video/intro-poster.jpg"></video>
+          <span id="fs-invite-hint" class="fs-invite-hint">tap to hear</span>
+        </button>
+        <div id="fs-invite-choices" class="fs-invite-choices hidden">
+          <a class="fs-invite-go" href="/begin/fireside">Come sit by the fire</a>
+          <button class="fs-invite-stay" type="button">Ask here instead</button>
+        </div>
+      </div>
       <iframe id="begin-chat" src="/embed?mode=funnel" title="Ask Dr. Glen" loading="eager"
         style="width:100%; height:520px; max-height:74vh; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);"></iframe>
       <p class="reveal" style="text-align:center;margin-top:14px;font-size:14px;color:var(--muted);">
@@ -1622,5 +1645,6 @@
     });
   })();
   </script>
+<script type="module" src="/static/begin/invitation-mount.js"></script>
 </body>
 </html>
