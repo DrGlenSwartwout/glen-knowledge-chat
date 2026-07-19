@@ -663,11 +663,14 @@
           remedyCard.appendChild(usedMsg);
 
         } else {
-          // Not yet approved
+          // Not yet approved -- invite a review request (CTA in the shared non-paid
+          // block below), or confirm it's in progress once they've asked.
           var pendingMsg = document.createElement("p");
           pendingMsg.style.color = "var(--muted)";
           pendingMsg.style.fontSize = "15px";
-          pendingMsg.textContent = "Your top match is being finalized.";
+          pendingMsg.textContent = data.requested
+            ? "Your top match is being finalized."
+            : "Ask Dr. Glen to review your scan to reveal your top match.";
           remedyCard.appendChild(pendingMsg);
         }
 
@@ -712,6 +715,44 @@
       //    Runs for BOTH layered (!data.paid) and non-paid-flat paths.
       //    Skipped entirely when data.paid (paid flat path handles its own display above). --
       if (!data.paid) {
+        // -- Request-review CTA (Option B): when the scan hasn't been approved yet,
+        //    let the client ask Dr. Glen to review it -> promotes it into the console
+        //    "Review these" lane. Shown for both layered and flat non-paid paths. --
+        if (!data.first_approved && !data.top_unlocked) {
+          var reqCard = document.createElement("div");
+          reqCard.className = "card";
+          if (data.requested) {
+            var reqDone = document.createElement("p");
+            reqDone.style.cssText = "color:var(--muted);font-size:15px;margin:0;";
+            reqDone.textContent = "Requested — Dr. Glen is reviewing your scan. You'll get your top match by email.";
+            reqCard.appendChild(reqDone);
+          } else {
+            var reqBtn = document.createElement("button");
+            reqBtn.className = "free-reveal-btn";
+            reqBtn.textContent = "Have Dr. Glen review my scan";
+            var reqMsg = document.createElement("p");
+            reqMsg.className = "free-reveal-msg";
+            reqBtn.addEventListener("click", function(){
+              reqBtn.disabled = true;
+              fetch("/begin/biofield/" + _token + "/request", {method:"POST"})
+                .then(function(r){ return r.json(); })
+                .then(function(j){
+                  if (j && j.ok) {
+                    reqBtn.style.display = "none";
+                    reqMsg.textContent = "Requested — Dr. Glen is reviewing your scan. You'll get your top match by email.";
+                  } else {
+                    reqBtn.disabled = false;
+                    reqMsg.textContent = "Please try again in a moment.";
+                  }
+                })
+                .catch(function(){ reqBtn.disabled = false; reqMsg.textContent = "Please try again in a moment."; });
+            });
+            reqCard.appendChild(reqBtn);
+            reqCard.appendChild(reqMsg);
+          }
+          root.appendChild(reqCard);
+        }
+
         // Free-reveal button (layered: reloads page so layer 0 remedy then shows;
         //                     flat: removes btn and renders remedy inline)
         if (data.free_available) {
