@@ -101,6 +101,9 @@ def test_system_prompt_forbids_sending_anyone_to_practice_better():
         # course access has to survive the ban
         assert "https://truly.vip/Intro" in prompt
         assert "https://truly.vip/GetWell" in prompt
+        # must not announce a retirement that hasn't happened — clients still
+        # have active course access there
+        assert "DO NOT ANNOUNCE PRACTICE BETTER'S STATUS" in prompt
 
 
 def test_system_prompt_requires_a_direct_answer_to_a_direct_question():
