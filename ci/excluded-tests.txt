@@ -103,6 +103,7 @@ tests/test_continuity_landing.py
 tests/test_continuous_care_repoint.py
 tests/test_data_sharing_flag.py
 tests/test_delivery_activation_core.py
+tests/test_digital_skus.py
 tests/test_dispensary_altpay_margin.py
 tests/test_dispensary_checkout_capture.py
 tests/test_dispensary_l2_card_return.py
