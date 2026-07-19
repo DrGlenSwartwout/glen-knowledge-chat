@@ -10,16 +10,6 @@ before any test module is imported, so by the time app.py calls patch_all() the
 modules are already patched and it's a no-op. Guarded so it's a no-op if some
 earlier import already patched (or if gevent isn't installed).
 """
-import os
-import tempfile
-from pathlib import Path
-
-# Set up a temporary database directory for app initialization before app is imported.
-# This allows _init_shortlink_cache() to succeed even in test environments where
-# /data is read-only or doesn't exist.
-_test_tmp_dir = tempfile.gettempdir()
-os.environ["DATA_DIR"] = _test_tmp_dir
-
 try:
     from gevent import monkey
     if not monkey.is_module_patched("ssl"):
