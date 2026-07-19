@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Map — Tissue Layer Editor</title>
+  <link rel="stylesheet" href="/body-map.css">
+  <style>
+    .te-wrap { max-width: 900px; margin: 0 auto; padding: 0 20px 48px; }
+    .te-key { display:flex; gap:10px; align-items:center; margin: 6px 0 14px; }
+    .te-key input { padding:6px 10px; border:1px solid var(--bm-border); border-radius:6px;
+                    background:var(--bm-surface); color:var(--bm-text); min-width:220px; }
+    .te-status { color: var(--bm-muted); min-height: 1.2em; }
+    .te-layer { margin: 22px 0 6px; color: var(--bm-heading);
+                border-bottom: 2px solid var(--bm-accent); padding-bottom: 5px; }
+    .te-sub { margin: 12px 0 6px; color: var(--bm-heading); font-size: .95rem; opacity:.9; }
+    .te-organ { display:flex; align-items:center; justify-content:space-between; gap:12px;
+                padding:7px 10px; border:1px solid var(--bm-border); border-radius:8px;
+                background:var(--bm-surface); margin:5px 0; }
+    .te-organ span { color: var(--bm-text); }
+    .te-organ select { padding:5px 8px; border:1px solid var(--bm-line); border-radius:6px;
+                       background:var(--bm-surface); color:var(--bm-text); }
+    .te-saved { color: var(--bm-line); font-size:.8rem; }
+  </style>
+</head>
+<body>
+  <header class="bm-head">
+    <h1>Tissue Layer Editor</h1>
+    <p class="bm-sub">Assign each organ to one of the 5 embryological tissue layers (each with two sub-layers). This drives the Body Map depth-peel. <a href="/body-map/overview" style="color:var(--bm-line)">◂ Body Map</a></p>
+  </header>
+  <main class="te-wrap">
+    <div class="te-key">
+      <label>Console key <input type="password" id="te-key" placeholder="console key"></label>
+      <span class="te-status" id="te-status">Loading…</span>
+    </div>
+    <div id="te-list"></div>
+  </main>
+  <script>
+    (function () {
+      const listEl = document.getElementById("te-list");
+      const statusEl = document.getElementById("te-status");
+      const keyEl = document.getElementById("te-key");
+      keyEl.value = localStorage.getItem("rm-console-key") || "";
+      keyEl.addEventListener("change", () => localStorage.setItem("rm-console-key", keyEl.value));
+      let cat = null;
+
+      function optionsHtml(sel) {
+        return cat.layers.map((L, i) =>
+          `<optgroup label="${i + 1} · ${L.name}">` +
+          L.sublayers.map(sl => `<option value="${sl.id}"${sl.id === sel ? " selected" : ""}>${sl.name}</option>`).join("") +
+          `</optgroup>`).join("");
+      }
+
+      function render() {
+        listEl.replaceChildren();
+        cat.layers.forEach((L, i) => {
+          const h = document.createElement("h2"); h.className = "te-layer";
+          h.textContent = `${i + 1} · ${L.name}`;
+          listEl.appendChild(h);
+          L.sublayers.forEach(sl => {
+            const sh = document.createElement("h3"); sh.className = "te-sub"; sh.textContent = sl.name;
+            listEl.appendChild(sh);
+            const organs = cat.organs.filter(o => o.sublayer === sl.id);
+            if (!organs.length) {
+              const e = document.createElement("p"); e.className = "bm-hint"; e.textContent = "—";
+              listEl.appendChild(e);
+            }
+            organs.forEach(o => listEl.appendChild(organRow(o)));
+          });
+        });
+      }
+
+      function organRow(o) {
+        const row = document.createElement("div"); row.className = "te-organ";
+        const name = document.createElement("span"); name.textContent = o.name;
+        const saved = document.createElement("span"); saved.className = "te-saved";
+        const sel = document.createElement("select"); sel.innerHTML = optionsHtml(o.sublayer);
+        sel.addEventListener("change", async () => {
+          const newSub = sel.value;
+          saved.textContent = "saving…";
+          try {
+            const res = await fetch("/admin/body-map/tissue-layers/assign", {
+              method: "POST",
+              headers: { "X-Console-Key": keyEl.value, "Content-Type": "application/json" },
+              body: JSON.stringify({ organ_id: o.id, sublayer_id: newSub }),
+            });
+            const j = await res.json();
+            if (!res.ok || !j.ok) throw new Error((j && j.error) || res.status);
+            o.sublayer = newSub;
+            render();               // re-group under the new sub-layer
+          } catch (e) {
+            saved.textContent = "save failed: " + e.message;
+          }
+        });
+        row.append(name, sel, saved);
+        return row;
+      }
+
+      fetch("/body-map/tissue-layers").then(r => r.json()).then(c => {
+        cat = c; statusEl.textContent = `${c.organs.length} organs across ${c.layers.length} layers. Change a dropdown to reassign (needs the console key).`;
+        render();
+      }).catch(() => statusEl.textContent = "Couldn't load the tissue-layer catalog.");
+    })();
+  </script>
+</body>
+</html>

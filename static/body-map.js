@@ -8,23 +8,62 @@
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
 
-  // Embryological germ layer of a zone (for the depth-peel). Prefer an explicit
-  // germ_layer / embryo tag, else infer from the anatomy name. Order matters:
-  // neural/sensory (ectoderm) and viscera (endoderm) are checked before the
-  // structural/circulatory catch-all (mesoderm).
-  const EMBRYO_KW = [
-    ["ectoderm", /brain|cerebr|cerebell|medulla|brainstem|pineal|pituitar|nerv|sciatic|neuro|sensor|subcortex|occiput|\bmind\b|mental|ego|comprehens|speech|\bmotor|skin|epiderm|\beye|vision|\bear\b|hearing|\bnose\b|sinus|\bface|forehead|scalp|tooth|teeth|mammary|breast/i],
-    ["endoderm", /liver|lung|bronch|trachea|pharynx|larynx|thyroid|parathyroid|thymus|stomach|duoden|intestin|colon|cecum|append|ileocecal|sigmoid|rectum|pancrea|gallbladder|\bbladder|urethra|prostate|tonsil|esophag|oesophag|digest/i],
-    ["mesoderm", /kidney|adrenal|heart|circulat|aorta|vessel|blood|spleen|lymph|node|muscle|bone|skelet|vertebra|spine|cervical|thoracic|lumbar|sacr|coccyx|\brib|sternum|femur|pelvi|\bhip|joint|knee|elbow|wrist|ankle|shoulder|\barm\b|\bleg\b|limb|clavicle|connective|cartilage|dermis|gonad|ovar|test|uter|reproduct|genital|peritoneum|diaphragm|hernia|articular/i],
-  ];
+  // Embryological tissue layer of a zone (for the depth-peel), from Glen's 5
+  // Tissue Layers. Resolved by matching the zone's anatomy to a canonical organ
+  // (the organ whose LONGEST keyword matches wins), then organ -> sub-layer ->
+  // layer, using the catalog served at /body-map/tissue-layers. A zone that
+  // matches no organ (e.g. an acupoint) stays visible at every depth.
+  let tissueCat = null;                 // { layers:[...], organs:[...] }
+  let subToLayer = {};                  // sublayer id -> layer id
+  const tissueCache = new Map();        // anatomy -> layer id (or null)
+
   function embryoLayer(z) {
-    const g = z.germ_layer;
-    if (g === "endoderm" || g === "mesoderm" || g === "ectoderm") return g;
-    const e = z.embryo || (z.layers && z.layers.embryological_depth);
-    if (e === "endoderm" || e === "mesoderm" || e === "ectoderm") return e;
-    const hay = (z.anatomy || "") + " " + (z.id || "");
-    for (const [layer, re] of EMBRYO_KW) if (re.test(hay)) return layer;
-    return null; // untagged -> visible at every depth
+    if (!tissueCat) return null;
+    const anat = (z.anatomy || "");
+    if (tissueCache.has(anat)) return tissueCache.get(anat);
+    const hay = " " + anat.toLowerCase() + " ";
+    let best = null, bestLen = 0;
+    for (const o of tissueCat.organs) {
+      for (const kw of (o.keywords || [])) {
+        if (kw.length > bestLen && new RegExp("\\b" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(hay)) {
+          best = o; bestLen = kw.length;
+        }
+      }
+    }
+    const layer = best ? (subToLayer[best.sublayer] || null) : null;
+    tissueCache.set(anat, layer);
+    return layer;
+  }
+
+  async function loadTissueLayers() {
+    try {
+      tissueCat = await (await fetch("/body-map/tissue-layers")).json();
+      subToLayer = {};
+      (tissueCat.layers || []).forEach(L => (L.sublayers || []).forEach(sl => subToLayer[sl.id] = L.id));
+      tissueCache.clear();
+      buildDepthButtons();
+    } catch (e) { tissueCat = null; }
+  }
+
+  // Build the peel controls from the 5-layer taxonomy (+ All), replacing any
+  // placeholder buttons so the peel always matches the current model.
+  function buildDepthButtons() {
+    const box = document.getElementById("bm-depth");
+    if (!box || !tissueCat) return;
+    box.querySelectorAll("button").forEach(b => b.remove());
+    const mk = (depth, label) => {
+      const b = document.createElement("button");
+      b.dataset.depth = depth; b.textContent = label;
+      if (depth === state.depth) b.classList.add("bm-active");
+      b.addEventListener("click", () => {
+        state.depth = b.dataset.depth;
+        box.querySelectorAll("button").forEach(x => x.classList.toggle("bm-active", x === b));
+        renderChart();
+      });
+      box.appendChild(b);
+    };
+    (tissueCat.layers || []).forEach(L => mk(L.id, L.name));
+    mk("", "All");
   }
   function groupsOf(p) { return (p && (p.groups && p.groups.length ? p.groups : p.germ_layers)) || []; }
   function isOutlineFrame() { return state.frame && state.frame !== "unit_circle"; }
@@ -315,12 +354,9 @@
       else loadSystem(e.target.value);
     });
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
-    // embryological depth-peel: isolate one germ layer (endoderm/mesoderm/ectoderm)
-    document.querySelectorAll("#bm-depth button").forEach(b => b.addEventListener("click", () => {
-      state.depth = b.dataset.depth;
-      document.querySelectorAll("#bm-depth button").forEach(x => x.classList.toggle("bm-active", x === b));
-      renderChart();
-    }));
+    // embryological depth-peel: buttons are built from the 5-tissue-layer taxonomy
+    // once the catalog loads (buildDepthButtons); resolution is by organ.
+    loadTissueLayers();
     wireOverlay();
     // Portal-personalized entry: /portal/<token>/bodymap warps the face map onto
     // the client's own photo with their findings lit, instead of the URL-focus path.
