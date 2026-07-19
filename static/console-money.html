@@ -303,7 +303,7 @@
           + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'orders.cancel\','+escAttr(JSON.stringify({order_id:iid}))+')">Cancel</button>';
       } else {
         var params_reminder = JSON.stringify({invoice_id:iid, doc:r.doc||'', email:r.email||'', amount:r.balance});
-        var params_void     = JSON.stringify({invoice_id:iid});
+        var params_void     = JSON.stringify({invoice_id:iid, _doc:r.doc||'', _who:r.customer||r.email||'', _amount:r.balance});
         acts = '<button onclick="MoneyReceivables.recordPayment('+iid+','+(Number(r.balance)||0)+')">Record payment</button>'
           + '<button onclick="MoneyReceivables.act('+iid+',\'finance.send_payment_reminder\','+escAttr(params_reminder)+')">Send reminder</button>'
           + '<button class="void" onclick="MoneyReceivables.act('+iid+',\'finance.void_invoice\','+escAttr(params_void)+')">Void</button>';

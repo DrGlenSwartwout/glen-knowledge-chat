@@ -107,6 +107,23 @@ def test_void_invoice_action_registered():
     assert a.module == "money"
     assert a.permission == ("owner", "ops")  # not va
     assert a.risk_tier == A.IRREVERSIBLE  # a void is permanent
+    assert a.confirm_summary is not None  # the confirm dialog is not the generic fallback
+
+
+def test_void_confirm_summary_rich_and_fallback():
+    from dashboard import finance as F, actions as A
+    fn = A.get_action("finance.void_invoice").confirm_summary
+    # Rich: the panel passes _doc/_who/_amount for a readable prompt.
+    rich = fn({"invoice_id": 24434, "_doc": "1016",
+               "_who": "backdoc.molina@gmail.com", "_amount": 225})
+    assert "invoice 1016" in rich
+    assert "backdoc.molina@gmail.com" in rich
+    assert "$225.00" in rich
+    assert "cannot be undone" in rich
+    # Fallback: a bare call (e.g. Justus) still yields a sane, id-based prompt.
+    bare = fn({"invoice_id": 24434})
+    assert "invoice 24434" in bare
+    assert "cannot be undone" in bare
 
 
 def test_refund_action_registered():
