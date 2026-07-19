@@ -20225,6 +20225,24 @@
       "intro": "A portable bottle that generates molecular-hydrogen-rich water by electrolysis — Glen's recommended replacement for the discontinued Living Water Bottle.",
       "description": "Molecular Hydrogen is the perfect antioxidant. It is the smallest molecule that delivers electrons to even the smallest spaces in our cells, and it is the only antioxidant that cannot be overdosed — in excess, other antioxidants can block the body's own signalling. This portable bottle generates molecular-hydrogen-rich water on demand via electrolysis, so hydrogen-rich water travels with the client rather than being tied to a countertop system.",
       "source": "gk-migration-2026-07-19"
+    },
+    "book-dry-eye-relief-ebook": {
+      "name": "Dry Eye Relief (ebook)",
+      "price_cents": 997,
+      "digital": true,
+      "intro": "Digital edition of Dr. Glen Swartwout's Dry Eye Relief. Delivered as a file — no shipping.",
+      "description": "Digital edition of Dr. Glen Swartwout's Dry Eye Relief. Delivered as a file — no shipping. The print edition is sold separately and ships as a book.",
+      "source": "gk-migration-2026-07-19",
+      "_note": "Digital edition of book-dry-eye-relief (print $19.97, ships). Digital is $9.97 and must never be packed or charged postage. Delivery is MANUAL today — the app has no automated file delivery."
+    },
+    "book-macular-regeneration-ebook": {
+      "name": "Macular Degeneration → Macular Regeneration (ebook)",
+      "price_cents": 997,
+      "digital": true,
+      "intro": "Digital edition of Macular Degeneration → Macular Regeneration. Delivered as a file — no shipping.",
+      "description": "Digital edition of Macular Degeneration → Macular Regeneration. Delivered as a file — no shipping. The print edition is sold separately and ships as a book.",
+      "source": "gk-migration-2026-07-19",
+      "_note": "Digital edition of book-macular-regeneration (print $19.97, ships). Digital is $9.97 and must never be packed or charged postage. Delivery is MANUAL today — the app has no automated file delivery."
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"

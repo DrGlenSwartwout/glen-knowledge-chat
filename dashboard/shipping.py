@@ -725,13 +725,18 @@ def bundle_component_products(product, catalog):
 def is_shippable(product) -> bool:
     """True when a catalog product is a physical good the packer should count.
 
-    Services (`service`) and digital/info-only listings (`info_only`) have no
-    bottle, so counting them would push the "default" placeholder type into
-    quote() and charge for a phantom bottle. Anything else stays shippable —
-    a physical product with a missing bottle mapping must still fail loudly
-    rather than silently ship for free."""
+    Services (`service`), info-only listings (`info_only`), and digital goods
+    (`digital` — ebooks, audiobooks) have no bottle, so counting them would push
+    the "default" placeholder type into quote() and charge for a phantom bottle.
+    Anything else stays shippable — a physical product with a missing bottle
+    mapping must still fail loudly rather than silently ship for free.
+
+    `digital` is its own flag rather than reusing `service`: a digital good is
+    genuinely purchasable (unlike `info_only`) and is not a consultation
+    (unlike `service`), and the print edition of the same title ships normally,
+    so an ebook must not inherit the book's postage."""
     p = product or {}
-    return not (p.get("service") or p.get("info_only"))
+    return not (p.get("service") or p.get("info_only") or p.get("digital"))
 
 
 def resolve_bottle_type(slug, product, db_path=None):
