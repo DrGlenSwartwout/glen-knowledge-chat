@@ -250,9 +250,28 @@ def _void_invoice_exec(params, ctx):
             "message": f"Invoice {inv.get('DocNumber', iid)} voided."}
 
 
+def _void_confirm_summary(params):
+    # _doc/_who/_amount are display-only context the Receivables panel passes for a
+    # readable prompt; the executor ignores them and reads only invoice_id. Falls back
+    # gracefully (e.g. a bare Justus call) to just the invoice id.
+    iid = params.get("invoice_id", "?")
+    doc = (params.get("_doc") or "").strip()
+    who = (params.get("_who") or "").strip()
+    label = f"invoice {doc}" if doc else f"invoice {iid}"
+    for_who = f" for {who}" if who else ""
+    amt = ""
+    try:
+        if params.get("_amount") is not None:
+            amt = f" (${float(params['_amount']):.2f})"
+    except (TypeError, ValueError):
+        amt = ""
+    return (f"Void {label}{for_who}{amt}? This zeroes it in QuickBooks and cannot be "
+            f"undone. Confirm?")
+
+
 action(key="finance.void_invoice", module="money", title="Void invoice",
        description="Void an unpaid QBO invoice (zeroes it).", risk_tier=IRREVERSIBLE,
-       permission=(OWNER, OPS))(_void_invoice_exec)
+       permission=(OWNER, OPS), confirm_summary=_void_confirm_summary)(_void_invoice_exec)
 
 
 def _refund_confirm_summary(params):
