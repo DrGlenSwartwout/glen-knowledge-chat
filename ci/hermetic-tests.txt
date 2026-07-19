@@ -50,3 +50,6 @@ tests/test_pf_db_upsert_many.py
 
 # Owner-only QBO read endpoint guard (read-only / no stacked statements).
 tests/test_qbo_query_guard.py
+
+# Ledger: recording an already-in-QBO payment must not double-push.
+tests/test_order_payments_nopush.py
