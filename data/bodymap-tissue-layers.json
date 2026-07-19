@@ -1,0 +1,713 @@
+{
+  "organs": [
+    {
+      "id": "kidney",
+      "name": "Kidney",
+      "sublayer": "urogenital",
+      "keywords": [
+        "kidney",
+        "renal"
+      ]
+    },
+    {
+      "id": "bladder",
+      "name": "Bladder",
+      "sublayer": "urogenital",
+      "keywords": [
+        "bladder"
+      ]
+    },
+    {
+      "id": "ureter",
+      "name": "Ureter",
+      "sublayer": "urogenital",
+      "keywords": [
+        "ureter"
+      ]
+    },
+    {
+      "id": "urethra",
+      "name": "Urethra",
+      "sublayer": "urogenital",
+      "keywords": [
+        "urethra"
+      ]
+    },
+    {
+      "id": "prostate",
+      "name": "Prostate",
+      "sublayer": "urogenital",
+      "keywords": [
+        "prostate"
+      ]
+    },
+    {
+      "id": "testis",
+      "name": "Testis",
+      "sublayer": "urogenital",
+      "keywords": [
+        "testis",
+        "testes",
+        "testicle"
+      ]
+    },
+    {
+      "id": "ovary",
+      "name": "Ovary",
+      "sublayer": "urogenital",
+      "keywords": [
+        "ovary",
+        "ovaries"
+      ]
+    },
+    {
+      "id": "uterus",
+      "name": "Uterus",
+      "sublayer": "urogenital",
+      "keywords": [
+        "uterus",
+        "womb"
+      ]
+    },
+    {
+      "id": "fallopian-tube",
+      "name": "Fallopian tube",
+      "sublayer": "urogenital",
+      "keywords": [
+        "fallopian"
+      ]
+    },
+    {
+      "id": "cervix",
+      "name": "Cervix",
+      "sublayer": "urogenital",
+      "keywords": [
+        "cervix"
+      ]
+    },
+    {
+      "id": "vagina",
+      "name": "Vagina",
+      "sublayer": "urogenital",
+      "keywords": [
+        "vagina"
+      ]
+    },
+    {
+      "id": "penis",
+      "name": "Penis",
+      "sublayer": "urogenital",
+      "keywords": [
+        "penis"
+      ]
+    },
+    {
+      "id": "epididymis",
+      "name": "Epididymis",
+      "sublayer": "urogenital",
+      "keywords": [
+        "epididymis"
+      ]
+    },
+    {
+      "id": "seminal-vesicles",
+      "name": "Seminal vesicles",
+      "sublayer": "urogenital",
+      "keywords": [
+        "seminal"
+      ]
+    },
+    {
+      "id": "reproductive-organs",
+      "name": "Reproductive organs",
+      "sublayer": "urogenital",
+      "keywords": [
+        "reproductive",
+        "genital",
+        "gonad",
+        "vas deferens"
+      ]
+    },
+    {
+      "id": "skeletal-muscle",
+      "name": "Skeletal muscle",
+      "sublayer": "muscle",
+      "keywords": [
+        "muscle",
+        "muscular",
+        "deltoid",
+        "biceps",
+        "triceps",
+        "pectoralis",
+        "trapezius",
+        "latissimus",
+        "quadriceps",
+        "hamstring",
+        "gluteus",
+        "gastrocnemius",
+        "calf",
+        "sternocleidomastoid",
+        "oblique",
+        "abdominis",
+        "erector",
+        "tibialis",
+        "sartorius",
+        "forearm flexor"
+      ]
+    },
+    {
+      "id": "skull",
+      "name": "Skull",
+      "sublayer": "bone",
+      "keywords": [
+        "skull",
+        "cranium",
+        "occiput",
+        "mandible"
+      ]
+    },
+    {
+      "id": "spine",
+      "name": "Spine",
+      "sublayer": "bone",
+      "keywords": [
+        "spine",
+        "vertebra",
+        "vertebrae",
+        "cervical",
+        "thoracic",
+        "lumbar",
+        "sacrum",
+        "sacral",
+        "coccyx"
+      ]
+    },
+    {
+      "id": "ribs-sternum",
+      "name": "Ribs & sternum",
+      "sublayer": "bone",
+      "keywords": [
+        "rib",
+        "sternum",
+        "clavicle",
+        "scapula"
+      ]
+    },
+    {
+      "id": "pelvis",
+      "name": "Pelvis",
+      "sublayer": "bone",
+      "keywords": [
+        "pelvis",
+        "ilium",
+        "iliac crest"
+      ]
+    },
+    {
+      "id": "limb-bones",
+      "name": "Limb bones",
+      "sublayer": "bone",
+      "keywords": [
+        "femur",
+        "patella",
+        "tibia",
+        "fibula",
+        "humerus",
+        "radius",
+        "ulna",
+        "hand bones",
+        "foot bones"
+      ]
+    },
+    {
+      "id": "joints",
+      "name": "Joints",
+      "sublayer": "bone",
+      "keywords": [
+        "joint",
+        "cartilage",
+        "articular"
+      ]
+    },
+    {
+      "id": "tendons-ligaments",
+      "name": "Tendons & ligaments",
+      "sublayer": "bone",
+      "keywords": [
+        "tendon",
+        "ligament"
+      ]
+    },
+    {
+      "id": "fascia",
+      "name": "Fascia",
+      "sublayer": "bone",
+      "keywords": [
+        "fascia"
+      ]
+    },
+    {
+      "id": "connective-tissue",
+      "name": "Connective tissue",
+      "sublayer": "bone",
+      "keywords": [
+        "connective",
+        "dermis (skin)"
+      ]
+    },
+    {
+      "id": "heart",
+      "name": "Heart",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "heart"
+      ]
+    },
+    {
+      "id": "great-vessels",
+      "name": "Great vessels",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "aorta",
+        "vena cava",
+        "pulmonary vessel",
+        "pulmonary"
+      ]
+    },
+    {
+      "id": "arteries",
+      "name": "Arteries",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "artery",
+        "arteries",
+        "carotid"
+      ]
+    },
+    {
+      "id": "veins",
+      "name": "Veins",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "vein",
+        "portal",
+        "jugular"
+      ]
+    },
+    {
+      "id": "blood-vessels",
+      "name": "Blood vessels",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "blood vessel",
+        "vessel",
+        "circulation",
+        "vascular"
+      ]
+    },
+    {
+      "id": "lymph-nodes",
+      "name": "Lymph nodes",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "lymph node",
+        "node"
+      ]
+    },
+    {
+      "id": "lymphatic-vessels",
+      "name": "Lymphatic vessels",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "lymphatic",
+        "duct",
+        "trunk",
+        "cisterna",
+        "watershed"
+      ]
+    },
+    {
+      "id": "spleen",
+      "name": "Spleen",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "spleen",
+        "splenic"
+      ]
+    },
+    {
+      "id": "thymus",
+      "name": "Thymus",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "thymus"
+      ]
+    },
+    {
+      "id": "tonsils",
+      "name": "Tonsils",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "tonsil",
+        "adenoid",
+        "waldeyer"
+      ]
+    },
+    {
+      "id": "bone-marrow",
+      "name": "Bone marrow",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "marrow"
+      ]
+    },
+    {
+      "id": "gut-associated-lymphoid-galt",
+      "name": "Gut-associated lymphoid (GALT)",
+      "sublayer": "cardiovascular",
+      "keywords": [
+        "galt",
+        "peyer",
+        "malt",
+        "mucosa-associated"
+      ]
+    },
+    {
+      "id": "stomach",
+      "name": "Stomach",
+      "sublayer": "digestive",
+      "keywords": [
+        "stomach",
+        "gastric"
+      ]
+    },
+    {
+      "id": "liver",
+      "name": "Liver",
+      "sublayer": "digestive",
+      "keywords": [
+        "liver",
+        "hepatic"
+      ]
+    },
+    {
+      "id": "gallbladder",
+      "name": "Gallbladder",
+      "sublayer": "digestive",
+      "keywords": [
+        "gallbladder",
+        "gall bladder",
+        "bile"
+      ]
+    },
+    {
+      "id": "pancreas",
+      "name": "Pancreas",
+      "sublayer": "digestive",
+      "keywords": [
+        "pancreas",
+        "pancreatic"
+      ]
+    },
+    {
+      "id": "small-intestine",
+      "name": "Small intestine",
+      "sublayer": "digestive",
+      "keywords": [
+        "small intestine",
+        "duodenum",
+        "jejunum",
+        "ileum"
+      ]
+    },
+    {
+      "id": "large-intestine",
+      "name": "Large intestine",
+      "sublayer": "digestive",
+      "keywords": [
+        "large intestine",
+        "colon",
+        "cecum",
+        "appendix",
+        "ileocecal",
+        "sigmoid",
+        "rectum"
+      ]
+    },
+    {
+      "id": "esophagus",
+      "name": "Esophagus",
+      "sublayer": "digestive",
+      "keywords": [
+        "esophagus",
+        "oesophagus"
+      ]
+    },
+    {
+      "id": "salivary-glands",
+      "name": "Salivary glands",
+      "sublayer": "digestive",
+      "keywords": [
+        "salivary"
+      ]
+    },
+    {
+      "id": "lungs",
+      "name": "Lungs",
+      "sublayer": "respiratory",
+      "keywords": [
+        "lung"
+      ]
+    },
+    {
+      "id": "bronchi-trachea",
+      "name": "Bronchi & trachea",
+      "sublayer": "respiratory",
+      "keywords": [
+        "bronchi",
+        "bronchus",
+        "trachea"
+      ]
+    },
+    {
+      "id": "larynx",
+      "name": "Larynx",
+      "sublayer": "respiratory",
+      "keywords": [
+        "larynx"
+      ]
+    },
+    {
+      "id": "pharynx",
+      "name": "Pharynx",
+      "sublayer": "respiratory",
+      "keywords": [
+        "pharynx"
+      ]
+    },
+    {
+      "id": "nose-sinuses",
+      "name": "Nose & sinuses",
+      "sublayer": "respiratory",
+      "keywords": [
+        "nose",
+        "nasal",
+        "sinus"
+      ]
+    },
+    {
+      "id": "pleura",
+      "name": "Pleura",
+      "sublayer": "respiratory",
+      "keywords": [
+        "pleura"
+      ]
+    },
+    {
+      "id": "diaphragm",
+      "name": "Diaphragm",
+      "sublayer": "respiratory",
+      "keywords": [
+        "diaphragm"
+      ]
+    },
+    {
+      "id": "brain",
+      "name": "Brain",
+      "sublayer": "nerve",
+      "keywords": [
+        "brain",
+        "cerebrum",
+        "cerebral",
+        "frontal lobe",
+        "occipital",
+        "limbic",
+        "subcortex"
+      ]
+    },
+    {
+      "id": "cerebellum-brainstem",
+      "name": "Cerebellum & brainstem",
+      "sublayer": "nerve",
+      "keywords": [
+        "cerebellum",
+        "brainstem",
+        "medulla",
+        "pons"
+      ]
+    },
+    {
+      "id": "spinal-cord",
+      "name": "Spinal cord",
+      "sublayer": "nerve",
+      "keywords": [
+        "spinal cord",
+        "cord",
+        "cauda equina"
+      ]
+    },
+    {
+      "id": "peripheral-nerves",
+      "name": "Peripheral nerves",
+      "sublayer": "nerve",
+      "keywords": [
+        "nerve",
+        "sciatic",
+        "plexus",
+        "femoral nerve"
+      ]
+    },
+    {
+      "id": "autonomic-ganglia",
+      "name": "Autonomic & ganglia",
+      "sublayer": "nerve",
+      "keywords": [
+        "autonomic",
+        "ganglia",
+        "ganglion",
+        "sympathetic",
+        "vagus",
+        "solar plexus",
+        "celiac plexus"
+      ]
+    },
+    {
+      "id": "cranial-special-senses",
+      "name": "Cranial & special senses",
+      "sublayer": "nerve",
+      "keywords": [
+        "cranial nerve",
+        "optic",
+        "sensory"
+      ]
+    },
+    {
+      "id": "pituitary",
+      "name": "Pituitary",
+      "sublayer": "endocrine",
+      "keywords": [
+        "pituitary"
+      ]
+    },
+    {
+      "id": "pineal",
+      "name": "Pineal",
+      "sublayer": "endocrine",
+      "keywords": [
+        "pineal"
+      ]
+    },
+    {
+      "id": "thyroid-parathyroid",
+      "name": "Thyroid & parathyroid",
+      "sublayer": "endocrine",
+      "keywords": [
+        "thyroid",
+        "parathyroid"
+      ]
+    },
+    {
+      "id": "adrenal-glands",
+      "name": "Adrenal glands",
+      "sublayer": "endocrine",
+      "keywords": [
+        "adrenal",
+        "suprarenal"
+      ]
+    },
+    {
+      "id": "hypothalamus",
+      "name": "Hypothalamus",
+      "sublayer": "endocrine",
+      "keywords": [
+        "hypothalamus"
+      ]
+    },
+    {
+      "id": "endocrine-glands",
+      "name": "Endocrine glands",
+      "sublayer": "endocrine",
+      "keywords": [
+        "endocrine",
+        "hormone",
+        "islet"
+      ]
+    },
+    {
+      "id": "mouth-oral-cavity",
+      "name": "Mouth & oral cavity",
+      "sublayer": "oroderm",
+      "keywords": [
+        "mouth",
+        "oral",
+        "palate",
+        "throat"
+      ]
+    },
+    {
+      "id": "tongue",
+      "name": "Tongue",
+      "sublayer": "oroderm",
+      "keywords": [
+        "tongue"
+      ]
+    },
+    {
+      "id": "teeth",
+      "name": "Teeth",
+      "sublayer": "oroderm",
+      "keywords": [
+        "tooth",
+        "teeth",
+        "incisor",
+        "canine",
+        "premolar",
+        "molar",
+        "gum"
+      ]
+    },
+    {
+      "id": "mucous-membranes",
+      "name": "Mucous membranes",
+      "sublayer": "oroderm",
+      "keywords": [
+        "mucous",
+        "mucosa",
+        "mucous membrane"
+      ]
+    },
+    {
+      "id": "skin",
+      "name": "Skin",
+      "sublayer": "integument",
+      "keywords": [
+        "skin",
+        "epidermis",
+        "integument"
+      ]
+    },
+    {
+      "id": "hair-nails",
+      "name": "Hair & nails",
+      "sublayer": "integument",
+      "keywords": [
+        "hair",
+        "nail"
+      ]
+    },
+    {
+      "id": "sensory-skin-eye-ear",
+      "name": "Sensory skin (eye/ear)",
+      "sublayer": "integument",
+      "keywords": [
+        "eye",
+        "iris",
+        "sclera",
+        "ear",
+        "auricle",
+        "retina",
+        "cornea"
+      ]
+    }
+  ]
+}

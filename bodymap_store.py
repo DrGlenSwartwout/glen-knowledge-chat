@@ -42,6 +42,11 @@ SYSTEMS = {
 
 _SEED_NAMES = ("bodymap-iridology.json", "bodymap-sclerology.json", "bodymap-ear.json",
                "bodymap-foot.json", "bodymap-hand.json", "bodymap-meridian.json", "bodymap-eav.json", "bodymap-neurotome.json", "bodymap-lymph.json", "bodymap-face.json", "bodymap-organs.json", "bodymap-skeleton.json", "bodymap-muscle.json", "bodymap-dental.json", "bodymap-organclock.json", "bodymap-nervous.json", "bodymap-endocrine.json", "bodymap-respiratory.json", "bodymap-digestive.json", "bodymap-cardiovascular.json", "bodymap-urogenital.json")
+# NOTE: bodymap-tissue-layers.json is deliberately NOT in _SEED_NAMES. It is
+# Glen-curated (the tissue-layer editor), so the boot-time force-reseed must never
+# clobber his saved assignments. load_tissue_organs() falls back to the repo seed
+# when no persisted copy exists yet (fresh disk), so a new deploy still ships the
+# defaults; once Glen edits, his DATA_DIR copy persists across deploys.
 # Systems overview catalog: display metadata for the landing page, grouped by
 # category (order preserved). Every SYSTEMS key must appear exactly once here —
 # test_system_catalog_covers_all_systems enforces it so the two can't drift.
@@ -79,6 +84,69 @@ def system_catalog():
     description). The landing page groups by category, preserving order."""
     return [{"id": s, "name": n, "category": c, "description": d}
             for (s, n, c, d) in SYSTEM_CATALOG]
+
+
+# Dr. Glen Swartwout's 5 Embryological Tissue Layers (the tissue 5 C's), deepest ->
+# most superficial, each with two sub-layers. FIXED taxonomy; organ assignments are
+# editable (data/bodymap-tissue-layers.json). Drives the embryological depth-peel.
+TISSUE_LAYERS = [
+    {"id": "compression", "name": "Compression", "depth": 1,
+     "sublayers": [{"id": "urogenital", "name": "Urogenital"}, {"id": "muscle", "name": "Muscle"}]},
+    {"id": "connection", "name": "Connection", "depth": 2,
+     "sublayers": [{"id": "bone", "name": "Bone/Connective Tissue"}, {"id": "cardiovascular", "name": "Cardiovascular/Immune"}]},
+    {"id": "conversion", "name": "Conversion", "depth": 3,
+     "sublayers": [{"id": "digestive", "name": "Digestive"}, {"id": "respiratory", "name": "Respiratory"}]},
+    {"id": "communication", "name": "Communication", "depth": 4,
+     "sublayers": [{"id": "nerve", "name": "Nerve"}, {"id": "endocrine", "name": "Endocrine"}]},
+    {"id": "containment", "name": "Containment", "depth": 5,
+     "sublayers": [{"id": "oroderm", "name": "Oroderm"}, {"id": "integument", "name": "Integument"}]},
+]
+_SUBLAYER_TO_LAYER = {sl["id"]: L["id"] for L in TISSUE_LAYERS for sl in L["sublayers"]}
+_VALID_SUBLAYERS = set(_SUBLAYER_TO_LAYER)
+_TISSUE_FILE = "bodymap-tissue-layers.json"
+
+
+def sublayer_to_layer(sublayer_id):
+    """The layer id a sub-layer belongs to (None if unknown)."""
+    return _SUBLAYER_TO_LAYER.get(sublayer_id)
+
+
+def _tissue_path():
+    """Persisted organ-assignment file (DATA_DIR when writable, else the repo seed)."""
+    return DATA_DIR / _TISSUE_FILE
+
+
+def load_tissue_organs():
+    """The organ -> sub-layer assignments (list of {id, name, sublayer, keywords}).
+    Reads the persisted copy, falling back to the repo seed. [] on any failure."""
+    for path in (_tissue_path(), REPO_DATA / _TISSUE_FILE):
+        try:
+            if path.exists():
+                return (json.loads(path.read_text(encoding="utf-8")) or {}).get("organs", [])
+        except (OSError, ValueError):
+            continue
+    return []
+
+
+def tissue_catalog():
+    """{layers: TISSUE_LAYERS, organs: [...]} — everything the editor and the
+    depth-peel need in one call."""
+    return {"layers": TISSUE_LAYERS, "organs": load_tissue_organs()}
+
+
+def set_organ_sublayer(organ_id, sublayer_id):
+    """Reassign one organ to a sub-layer and persist. Returns the updated organ dict.
+    Raises KeyError (unknown organ) / ValueError (unknown sub-layer)."""
+    if sublayer_id not in _VALID_SUBLAYERS:
+        raise ValueError(f"unknown sub-layer: {sublayer_id}")
+    organs = load_tissue_organs()
+    for o in organs:
+        if o.get("id") == organ_id:
+            o["sublayer"] = sublayer_id
+            _tissue_path().write_text(json.dumps({"organs": organs}, indent=2, ensure_ascii=False),
+                                      encoding="utf-8")
+            return o
+    raise KeyError(organ_id)
 
 
 _REQUIRED_COMMON = ("id", "anatomy", "meaning_standard")

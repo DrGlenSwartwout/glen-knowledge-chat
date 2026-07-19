@@ -37640,6 +37640,35 @@ def admin_body_map_draw_page():
     return send_from_directory(STATIC, "admin-body-map-draw.html")
 
 
+@app.route("/body-map/tissue-layers")
+def body_map_tissue_layers():
+    """The 5 embryological tissue layers (+ sub-layers) and the organ->sub-layer
+    assignments. Public read: the depth-peel and the editor both fetch this."""
+    return jsonify(bodymap_store.tissue_catalog())
+
+
+@app.route("/admin/body-map/tissue-layers")
+def admin_body_map_tissue_editor_page():
+    """Editor to adjust which tissue sub-layer each organ sits in (drives the peel)."""
+    return send_from_directory(STATIC, "body-map-tissue-editor.html")
+
+
+@app.route("/admin/body-map/tissue-layers/assign", methods=["POST"])
+@require_console_key
+def admin_body_map_tissue_assign():
+    body = request.get_json(silent=True) or {}
+    organ_id, sublayer_id = body.get("organ_id"), body.get("sublayer_id")
+    if not organ_id or not sublayer_id:
+        return fail("organ_id and sublayer_id required", 400)
+    try:
+        updated = bodymap_store.set_organ_sublayer(organ_id, sublayer_id)
+    except ValueError as e:
+        return fail(str(e), 400)
+    except KeyError:
+        return fail("unknown organ id", 404)
+    return ok({"organ": updated})
+
+
 @app.route("/admin/body-map/zone/upsert", methods=["POST"])
 @require_console_key
 def admin_body_map_zone_upsert():

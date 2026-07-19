@@ -465,6 +465,53 @@ def test_resolve_finding_zones_organclock_lights_its_window():
     assert bodymap_store.resolve_finding_zones("organclock", ["Kidney"])["zones"] == ["clock-KI"]
 
 
+def test_tissue_layers_taxonomy():
+    layers = bodymap_store.TISSUE_LAYERS
+    assert len(layers) == 5
+    names = [L["name"] for L in layers]
+    assert names == ["Compression", "Connection", "Conversion", "Communication", "Containment"]
+    for L in layers:
+        assert len(L["sublayers"]) == 2  # 5 layers x 2 sub-layers
+    # sub-layer -> layer mapping is exhaustive and unique
+    subs = [sl["id"] for L in layers for sl in L["sublayers"]]
+    assert len(subs) == 10 and len(set(subs)) == 10
+    assert bodymap_store.sublayer_to_layer("urogenital") == "compression"
+    assert bodymap_store.sublayer_to_layer("integument") == "containment"
+    assert bodymap_store.sublayer_to_layer("nope") is None
+
+
+def test_tissue_catalog_seed_valid():
+    cat = bodymap_store.tissue_catalog()
+    assert cat["layers"] is bodymap_store.TISSUE_LAYERS
+    organs = cat["organs"]
+    assert len(organs) >= 40
+    ids = [o["id"] for o in organs]
+    assert len(ids) == len(set(ids)), "duplicate organ id"
+    valid = {sl["id"] for L in bodymap_store.TISSUE_LAYERS for sl in L["sublayers"]}
+    for o in organs:
+        assert o["sublayer"] in valid, f"{o['id']} bad sublayer {o['sublayer']}"
+        assert o.get("keywords"), f"{o['id']} has no keywords"
+
+
+def test_set_organ_sublayer_persists(tmp_path, monkeypatch):
+    seed = {"organs": [{"id": "liver", "name": "Liver", "sublayer": "digestive", "keywords": ["liver"]}]}
+    p = tmp_path / "bodymap-tissue-layers.json"
+    p.write_text(json.dumps(seed))
+    monkeypatch.setattr(bodymap_store, "DATA_DIR", tmp_path)
+    updated = bodymap_store.set_organ_sublayer("liver", "endocrine")
+    assert updated["sublayer"] == "endocrine"
+    assert json.loads(p.read_text())["organs"][0]["sublayer"] == "endocrine"
+    # guards
+    try:
+        bodymap_store.set_organ_sublayer("liver", "bogus"); assert False
+    except ValueError:
+        pass
+    try:
+        bodymap_store.set_organ_sublayer("nope", "digestive"); assert False
+    except KeyError:
+        pass
+
+
 def test_system_catalog_covers_all_systems():
     cat = bodymap_store.system_catalog()
     cat_ids = [c["id"] for c in cat]
