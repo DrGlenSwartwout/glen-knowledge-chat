@@ -216,6 +216,15 @@ def list_approved(cx, limit=50):
     return [_row(r) for r in rows]
 
 
+def list_for_email(cx, email):
+    """All reveals for an email, newest scan_date first (row dicts via _row)."""
+    email = (email or "").strip().lower()
+    rows = _rows_cursor(cx).execute(
+        "SELECT * FROM biofield_reveals WHERE email=? ORDER BY scan_date DESC, id DESC",
+        (email,)).fetchall()
+    return [_row(r) for r in rows]
+
+
 def set_notified(cx, rid):
     cx.execute("UPDATE biofield_reveals SET notified_at=?, updated_at=? WHERE id=?",
                (_now(), _now(), rid))
