@@ -5253,6 +5253,42 @@ def _qbo_auth_ok():
     return True
 
 
+@app.route("/api/qbo/query", methods=["GET"])
+def qbo_query():
+    """Owner read-only: run one QBO SELECT on prod, where QBO auth is live.
+
+    Why this exists: reconciliation needs to SEE QBO rows (Payment, Deposit,
+    Customer, SalesReceipt) and every other /api/qbo/* read runs a FIXED query,
+    so there was no way to answer "did this customer's Zelle payment land in
+    QBO?" without guessing.
+
+    Why it must run here and not from a laptop: Intuit ROTATES the refresh token
+    on every use, and the replacement is cached to /data/qb_refresh_token on the
+    Render disk. Refreshing off-prod mints a token prod can never read and
+    silently invalidates the live one — i.e. it breaks accounting sync. Keeping
+    the call on prod keeps rotation where the cache is.
+
+    Read-only by construction, belt and braces:
+      - QBO's /query API executes SELECT only; it has no write verbs.
+      - We additionally require a single leading SELECT and reject stacked
+        statements, so this can never be repurposed into a write path.
+      - Results are capped (MAXRESULTS appended when the caller omits it).
+    """
+    if not _qbo_auth_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import qbo_query_guard
+    q, err = qbo_query_guard.sanitize(request.args.get("q"))
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    try:
+        from dashboard import qbo_billing as qb
+        rs = qb._query(q) or {}
+        return jsonify({"ok": True, "query": q,
+                        "response": rs.get("QueryResponse", {})})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/qbo/diagnostics", methods=["GET"])
 def qbo_diagnostics():
     """Read-only: confirm QBO write-layer prerequisites (items + income accounts)."""

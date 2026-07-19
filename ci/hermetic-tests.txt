@@ -47,3 +47,6 @@ tests/test_ff_realmilk.py
 tests/test_ff_multisource.py
 tests/test_ff_phase3.py
 tests/test_pf_db_upsert_many.py
+
+# Owner-only QBO read endpoint guard (read-only / no stacked statements).
+tests/test_qbo_query_guard.py
