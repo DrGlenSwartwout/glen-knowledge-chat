@@ -14,8 +14,7 @@
 # To add a file: run it with no secrets and no doppler, e.g.
 #   pytest tests/test_foo.py -q
 # It qualifies only if it passes standalone AND still passes when run alongside the whole
-# list below (some suites are order-dependent -- test_payments_ledger passes alone but fails
-# in a larger set, so it is deliberately NOT here).
+# list below.
 #
 # Blank lines and #-comments are ignored.
 
@@ -34,6 +33,7 @@ tests/test_repertoire_pricing.py
 tests/test_product_data_volume_tiers.py
 tests/test_orders_pricing_columns.py
 tests/test_order_payments.py
+tests/test_payments_ledger.py
 tests/test_points_ledger.py
 tests/test_packing.py
 tests/test_bundle_packing.py
