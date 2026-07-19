@@ -37,6 +37,8 @@ def _headers() -> dict:
 
 
 def _upsert_contact(email: str, name: str = "") -> str:
+    # LIVE CRM WRITE. Private on purpose: its only caller is send_via_ghl, which carries the
+    # pytest guard. Keep it that way -- a new caller must guard itself.
     body = {"locationId": os.environ["GHL_LOCATION_ID"], "email": email}
     if name:
         body["name"] = name
@@ -54,6 +56,18 @@ def send_via_ghl(to_email: str, subject: str, *, html: str | None = None,
     """Send one Email via GHL v2. Returns {'id', 'via': 'ghl'}. Raises on failure."""
     if not is_configured():
         raise RuntimeError("GHL v2 not configured (GHL_PIT / GHL_LOCATION_ID)")
+    # Never touch the live CRM or send real email under pytest. This path has TWO live
+    # mutations -- _upsert_contact writes a real contact, then the POST below sends a real
+    # message -- so the guard sits above both. Mirrors the guard on the shared Gmail
+    # transport in inbox.send_email. Until now this was safe only by accident: GHL_PIT is
+    # absent from the dev config, so is_configured() was False. Adding creds there would
+    # have made a full-suite run write to the CRM.
+    # Deliberately placed AFTER the is_configured() check so behaviour is unchanged when
+    # creds are absent (the case every current test runs in); it only bites when they exist.
+    # Returns rather than raises: raising would make inbox.send_bulk log a misleading
+    # "GHL send failed" and take the Gmail fallback to reach the same no-op.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return {"id": None, "via": "ghl", "skipped": "pytest"}
     contact_id = _upsert_contact(to_email, from_name and "" or "")
     body = {"type": "Email", "contactId": contact_id, "subject": subject}
     if html:

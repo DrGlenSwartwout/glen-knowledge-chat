@@ -24,7 +24,13 @@ def test_analyze_returns_transcript_and_suggestions():
     assert d["transcript"] == "hello"
 
 
-def test_publish_cuts_and_publishes():
+def test_publish_cuts_and_publishes(monkeypatch):
+    # /publish reads os.environ["CONSOLE_SECRET"] (bracket access -> KeyError -> 500 when
+    # unset). Set it here rather than relying on an ambient value: this passed locally only
+    # because a dev shell, or leakage from test_biofield_local_app, happened to define it,
+    # and failed on a clean CI runner. monkeypatch restores it automatically, so it can't
+    # leak into other tests.
+    monkeypatch.setenv("CONSOLE_SECRET", "test-console-secret")
     c = _client()
     with mock.patch.object(cla, "cut_outtakes",
                            return_value=[{"title": "clip", "interest_tags": [], "path": "/tmp/o0.mp4"}]) as cut, \
