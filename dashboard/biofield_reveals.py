@@ -73,7 +73,16 @@ def _row(r):
 # (swapping only the display would post a slug checkout then rejects).
 # "Relax" (syntropy 364-relax) has no purchasable SKU -> "Stress Release"
 # (syntropy 249-stress-release, /begin/buy/stress-release resolves). Glen 2026-07-14.
-# Keyed by lowercased slug OR lowercased trimmed name; idempotent (the swapped-in
+#
+# The map ALSO carries preference substitutions — a remedy Glen no longer wants
+# recommended in a reveal, swapped for the product he wants recommended in its
+# place (both sellable). "AllerFree" -> "Immune Modulation" and "Bone Builder"
+# -> "Neuro-Magnesium" (immune-modulation and neuro-magnesium both resolve at
+# /begin/buy/ at $69.97). Reveal-scoped by design (per Glen 2026-07-19): the
+# chatbot FF matcher is untouched. Same mechanism as Relax — swap once on the
+# shared row so display, entitlement, pricing, and checkout stay in sync.
+#
+# Keyed by lowercased slug OR lowercased trimmed name; idempotent (each swapped-in
 # slug isn't itself a key).
 REMEDY_SUBSTITUTIONS = {
     "relax": {
@@ -81,6 +90,36 @@ REMEDY_SUBSTITUTIONS = {
         "slug": "stress-release",
         "meaning": ("Stress Release is a CBD-synergy botanical formulation that supports "
                     "a calm, balanced nervous system and multi-phase relief from everyday stress."),
+    },
+    # AllerFree -> Immune Modulation (Glen 2026-07-19; also matcher-excluded in app._FF_EXCLUDED_SUBSTRINGS)
+    "allerfree": {
+        "name": "Immune Modulation",
+        "slug": "immune-modulation",
+        "meaning": ("Immune Modulation is a syntropy botanical formula that strengthens your immune "
+                    "defense against infection and toxins while calming the chronic, symptomatic "
+                    "inflammation behind allergies and autoimmune flare-ups."),
+    },
+    "allerfree homeoenergetic drops": {
+        "name": "Immune Modulation",
+        "slug": "immune-modulation",
+        "meaning": ("Immune Modulation is a syntropy botanical formula that strengthens your immune "
+                    "defense against infection and toxins while calming the chronic, symptomatic "
+                    "inflammation behind allergies and autoimmune flare-ups."),
+    },
+    # Bone Builder -> Neuro-Magnesium (Glen 2026-07-19)
+    "bone builder": {
+        "name": "Neuro-Magnesium",
+        "slug": "neuro-magnesium",
+        "meaning": ("Neuro-Magnesium delivers the two forms of magnesium that cross the blood-brain "
+                    "and blood-retinal barriers, supporting brain and retinal function, restful calm, "
+                    "and healthy mineral balance throughout the body."),
+    },
+    "bone-builder": {
+        "name": "Neuro-Magnesium",
+        "slug": "neuro-magnesium",
+        "meaning": ("Neuro-Magnesium delivers the two forms of magnesium that cross the blood-brain "
+                    "and blood-retinal barriers, supporting brain and retinal function, restful calm, "
+                    "and healthy mineral balance throughout the body."),
     },
 }
 
