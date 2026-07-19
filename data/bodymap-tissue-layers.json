@@ -44,7 +44,7 @@
     {
       "id": "testis",
       "name": "Testis",
-      "sublayer": "urogenital",
+      "sublayer": "endocrine",
       "keywords": [
         "testis",
         "testes",
@@ -54,7 +54,7 @@
     {
       "id": "ovary",
       "name": "Ovary",
-      "sublayer": "urogenital",
+      "sublayer": "endocrine",
       "keywords": [
         "ovary",
         "ovaries"
@@ -88,7 +88,7 @@
     {
       "id": "vagina",
       "name": "Vagina",
-      "sublayer": "urogenital",
+      "sublayer": "oroderm",
       "keywords": [
         "vagina"
       ]
@@ -338,7 +338,7 @@
     {
       "id": "thymus",
       "name": "Thymus",
-      "sublayer": "cardiovascular",
+      "sublayer": "endocrine",
       "keywords": [
         "thymus"
       ]
@@ -488,7 +488,7 @@
     {
       "id": "nose-sinuses",
       "name": "Nose & sinuses",
-      "sublayer": "respiratory",
+      "sublayer": "oroderm",
       "keywords": [
         "nose",
         "nasal",
@@ -506,7 +506,7 @@
     {
       "id": "diaphragm",
       "name": "Diaphragm",
-      "sublayer": "respiratory",
+      "sublayer": "muscle",
       "keywords": [
         "diaphragm"
       ]
@@ -618,7 +618,7 @@
     {
       "id": "hypothalamus",
       "name": "Hypothalamus",
-      "sublayer": "endocrine",
+      "sublayer": "nerve",
       "keywords": [
         "hypothalamus"
       ]
@@ -647,7 +647,7 @@
     {
       "id": "tongue",
       "name": "Tongue",
-      "sublayer": "oroderm",
+      "sublayer": "muscle",
       "keywords": [
         "tongue"
       ]
@@ -655,7 +655,7 @@
     {
       "id": "teeth",
       "name": "Teeth",
-      "sublayer": "oroderm",
+      "sublayer": "bone",
       "keywords": [
         "tooth",
         "teeth",
@@ -698,7 +698,7 @@
     {
       "id": "sensory-skin-eye-ear",
       "name": "Sensory skin (eye/ear)",
-      "sublayer": "integument",
+      "sublayer": "oroderm",
       "keywords": [
         "eye",
         "iris",
