@@ -207,5 +207,17 @@ def test_backfill_dry_run_reports_counts_without_writing():
     sessions = {"cs_a": {"payment_intent": "pi_a", "amount_total": 100},
                 "cs_unpaid": {"payment_intent": None}}
     res = P.backfill_trial_orders(cx, lambda sid: sessions[sid], dry_run=True)
-    assert res == {"created": 1, "skipped": 0, "unpaid": 1, "failed": 0}
+    # reconciled stays 0 here: the reconcile pass is skipped under dry_run.
+    assert res == {"created": 1, "skipped": 0, "unpaid": 1, "failed": 0, "reconciled": 0}
     assert P.list_payments(cx) == []  # nothing written
+
+
+def test_backfill_return_shape_is_stable_on_error_path():
+    # The grants query failing (no biofield_trial_grants table) takes an early return.
+    # It must still report every counter, or a caller reading res["reconciled"] blows up
+    # on the error path only -- the JSON shape must not depend on which branch ran.
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    res = P.backfill_trial_orders(cx, lambda sid: {})
+    assert set(res) == {"created", "skipped", "unpaid", "failed", "reconciled"}
+    assert set(res.values()) == {0}

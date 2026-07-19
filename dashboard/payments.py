@@ -111,7 +111,9 @@ def backfill_trial_orders(cx, fetch_session, *, dry_run=False, now=None):
         grants = cx.execute(
             "SELECT session_id, email FROM biofield_trial_grants").fetchall()
     except Exception:
-        return {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0}
+        # Same key set as the happy path -- callers jsonify this straight through, so the
+        # response shape must not depend on which branch ran.
+        return {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0, "reconciled": 0}
     out = {"created": 0, "skipped": 0, "unpaid": 0, "failed": 0, "reconciled": 0}
     # Reconcile trial orders created before they were marked paid: a biofield_trial
     # order only exists because its $1 was captured, so an 'unpaid' one is a stale

@@ -1,0 +1,46 @@
+name: tests
+
+# PR gate for glen-knowledge-chat. Runs the hermetic (no-secrets, no-network) business-logic
+# suites listed in ci/hermetic-tests.txt. See that file for why it is an allowlist rather
+# than the whole suite.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch supersedes an in-flight run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hermetic:
+    name: hermetic logic tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run hermetic tests
+        run: |
+          set -euo pipefail
+          # Strip comments/blank lines, then let xargs pass each path as its own argument
+          # (portable: does not rely on shell word-splitting, which zsh does not do).
+          if [ -z "$(grep -vE '^[[:space:]]*(#|$)' ci/hermetic-tests.txt)" ]; then
+            echo "::error::ci/hermetic-tests.txt lists no test files"; exit 1
+          fi
+          grep -vE '^[[:space:]]*(#|$)' ci/hermetic-tests.txt \
+            | xargs pytest -q -p no:cacheprovider -rfE

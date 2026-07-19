@@ -507,17 +507,57 @@ def remedy_catalog(cx, q="", limit=20):
     return out
 
 
+# Reveal remedy names diverge from FMP product names in ways a suffix match can't
+# bridge. Glen-confirmed aliases (reveal name lowercased -> FMP product name).
+# Extend as new divergences surface. See reference_reveal_dose_backfill.
+_DOSE_ALIASES = {
+    "neuro magnesium": "Focus Neuro-Magnesium Powder",
+    "neuro-magnesium": "Focus Neuro-Magnesium Powder",
+    "neuroceramides": "Myelin Repair Neuroceramides",
+    "serene blue green": "Serenity Blue Green Balance",
+    "aller-free aid for inhalant allergies": "AllerFree HomeoEnergetic Drops",
+    "holy grail full spectrum m-10 ormus": "Holy Grail Full Spectrum Drops",
+    "gi repair helicobacter pylori terrain support": "GI Repair",
+    "rejuvenation": "Rejuv Infoceutical",
+}
+
+
+def _dose_row(cx, name):
+    """A fmp_snap_products dose row for `name`: exact, else the SHORTEST forward-
+    suffix product ('Adrenal Syntropy' -> 'Adrenal Syntropy Powder'). None if neither."""
+    nm = _clean_product_name(name)
+    if not nm:
+        return None
+    r = cx.execute(
+        "SELECT dosage, dosage_freq AS frequency, dosage_timing AS timing "
+        "FROM fmp_snap_products WHERE LOWER(TRIM(RTRIM(product_name,'* ')))=LOWER(TRIM(?)) LIMIT 1",
+        (nm,)).fetchone()
+    if r:
+        return r
+    return cx.execute(
+        "SELECT dosage, dosage_freq AS frequency, dosage_timing AS timing "
+        "FROM fmp_snap_products WHERE LOWER(TRIM(RTRIM(product_name,'* '))) LIKE LOWER(?) "
+        "ORDER BY LENGTH(product_name) ASC LIMIT 1", (nm + " %",)).fetchone()
+
+
 def remedy_dosing(cx, name):
-    """Default dosing for a product name, to auto-fill a chain remedy."""
+    """Default dosing for a product name, to auto-fill a chain remedy. Resolves the
+    reveal's remedy name to an FMP product in stages so a new reveal auto-fills the
+    same way the 2026-07 backfill did: exact -> shortest forward-suffix (short reveal
+    name vs the fuller FMP name) -> Synergy->Syntropy rename -> a small alias map for
+    genuinely divergent names. Returns {dosage, frequency, timing}; all '' when
+    unresolved (infoceuticals / E4L drivers have no physical dose)."""
     blank = {"dosage": "", "frequency": "", "timing": ""}
     if not _has(cx, "fmp_snap_products"):
         return blank
     cx.row_factory = sqlite3.Row
-    r = cx.execute(
-        "SELECT dosage, dosage_freq AS frequency, dosage_timing AS timing "
-        "FROM fmp_snap_products "
-        "WHERE LOWER(TRIM(RTRIM(product_name,'* ')))=LOWER(TRIM(?)) LIMIT 1",
-        (_clean_product_name(name),)).fetchone()
+    r = _dose_row(cx, name)
+    if r is None and re.search(r"\bsynergy\b", name or "", re.I):
+        r = _dose_row(cx, re.sub(r"\bsynergy\b", "Syntropy", name, flags=re.I))
+    if r is None:
+        prod = _DOSE_ALIASES.get(_clean_product_name(name).lower())
+        if prod:
+            r = _dose_row(cx, prod)
     return {k: (r[k] or "") for k in blank} if r else blank
 
 

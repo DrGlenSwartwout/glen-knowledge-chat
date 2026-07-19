@@ -213,3 +213,43 @@ def test_update_terrain_is_per_field(tmp_path):
     update_terrain(cx, tid, phase=None, location="")  # nothing spoken this pass
     rep = authored_report(cx, tid)
     assert rep["phase"] == 2 and rep["location"] == "Kidney"
+
+
+def _seed_fmp(cx, rows):
+    cx.execute("CREATE TABLE IF NOT EXISTS fmp_snap_products"
+               "(id_pk TEXT,product_name TEXT,dosage TEXT,dosage_freq TEXT,dosage_timing TEXT)")
+    cx.executemany("INSERT INTO fmp_snap_products VALUES(?,?,?,?,?)",
+                   [(str(i), *r) for i, r in enumerate(rows)])
+    cx.commit()
+
+
+def test_remedy_dosing_exact(tmp_path):
+    cx = _cx(tmp_path)
+    _seed_fmp(cx, [("Neuroprotect", "1 capsule", "daily", "with food")])
+    assert remedy_dosing(cx, "Neuroprotect") == {"dosage": "1 capsule", "frequency": "daily", "timing": "with food"}
+
+
+def test_remedy_dosing_forward_suffix(tmp_path):
+    # short reveal name resolves to the fuller FMP product name
+    cx = _cx(tmp_path)
+    _seed_fmp(cx, [("Adrenal Syntropy Powder", "1 scoop", "dissolved in the mouth", "early in the day")])
+    assert remedy_dosing(cx, "Adrenal Syntropy")["dosage"] == "1 scoop"
+
+
+def test_remedy_dosing_synergy_to_syntropy(tmp_path):
+    cx = _cx(tmp_path)
+    _seed_fmp(cx, [("Sleep Syntropy", "1 capsule", "daily", "before bed")])
+    assert remedy_dosing(cx, "Sleep Synergy")["timing"] == "before bed"
+
+
+def test_remedy_dosing_alias(tmp_path):
+    cx = _cx(tmp_path)
+    _seed_fmp(cx, [("Focus Neuro-Magnesium Powder", "1 scoop", "2 times a day", "in water")])
+    assert remedy_dosing(cx, "Neuro Magnesium")["frequency"] == "2 times a day"
+
+
+def test_remedy_dosing_blank_for_infoceutical(tmp_path):
+    cx = _cx(tmp_path)
+    _seed_fmp(cx, [("Neuroprotect", "1 capsule", "daily", "with food")])
+    # an E4L driver has no product row -> stays blank (not guessed)
+    assert remedy_dosing(cx, "ED1 Source Driver") == {"dosage": "", "frequency": "", "timing": ""}
