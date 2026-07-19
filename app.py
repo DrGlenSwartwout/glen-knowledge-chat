@@ -3227,6 +3227,7 @@ def begin_biofield_reveal(token):
             "free_available": free_available,
             "top_unlocked": top_unlocked,
             "top": _biofield_top_payload(row) if top_unlocked else None,
+            "requested": bool(row.get("requested_at")),
             "paid": False,
             "trial_enabled": BIOFIELD_TRIAL_ENABLED,
             "cart_enabled": BIOFIELD_CART_ENABLED,
@@ -3284,6 +3285,29 @@ def begin_biofield_reveal_top(token):
         return jsonify({"ok": True, "top": top})
     except Exception as e:
         print(f"[biofield-reveal-top] {e!r}", flush=True)
+        return jsonify({"ok": False, "reason": "error"})
+
+
+@app.route("/begin/biofield/<token>/request", methods=["POST"])
+def begin_biofield_request_review(token):
+    """Client asks Dr. Glen to review this scan (Option B). Stamps requested_at so
+    the reveal is promoted into the console 'Review these' lane. Member (ToS) gated
+    like the reveal itself; idempotent (re-clicking is a harmless no-op)."""
+    from dashboard import biofield_reveals as _br
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "reason": "invalid"})
+        email = (row.get("email") or "").strip().lower()
+        if not is_member(email=email):
+            return jsonify({"ok": False, "reason": "tos"})
+        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            _br.init_table(cx)
+            _br.mark_requested(cx, row["id"])
+        return jsonify({"ok": True, "requested": True})
+    except Exception as e:
+        print(f"[biofield-request] {e!r}", flush=True)
         return jsonify({"ok": False, "reason": "error"})
 
 
@@ -15432,7 +15456,7 @@ def api_console_biofield_reveals():
         for d in drafts + approved:
             d.update(_people_brief(cx, d.get("email")))
             d.update(_biofield_status_brief(cx, d.get("email")))
-            d["requested"] = _biofield_requested(cx, d.get("email"))
+            d["requested"] = bool(d.get("requested_at")) or _biofield_requested(cx, d.get("email"))
         # Read-receipts (Task 5): additive, best-effort — a client's explicit
         # report open (see /api/portal/<token>/open), keyed the same way the
         # portal payload keys it (email|scan_date).

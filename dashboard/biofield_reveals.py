@@ -44,6 +44,12 @@ def init_table(cx):
         cx.execute("ALTER TABLE biofield_reveals ADD COLUMN notified_at TEXT")
     except Exception:
         pass
+    # Client's "request review" action (Option B): the reveal-page button stamps
+    # this, and the console bucketing promotes a requested reveal into "Review these".
+    try:
+        cx.execute("ALTER TABLE biofield_reveals ADD COLUMN requested_at TEXT")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -175,6 +181,18 @@ def set_dropped(cx, rid, names):
 def delete(cx, rid):
     cx.execute("DELETE FROM biofield_reveals WHERE id=?", (int(rid),))
     cx.commit()
+
+
+def mark_requested(cx, rid):
+    """Stamp the client's 'request review' action on this reveal, once. Idempotent:
+    returns True only on the first request; later calls are no-ops that preserve the
+    original timestamp."""
+    cur = cx.execute(
+        "UPDATE biofield_reveals SET requested_at=?, updated_at=? "
+        "WHERE id=? AND (requested_at IS NULL OR requested_at='')",
+        (_now(), _now(), rid))
+    cx.commit()
+    return cur.rowcount == 1
 
 
 def approve_first(cx, rid, by):
