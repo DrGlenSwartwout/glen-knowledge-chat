@@ -226,6 +226,45 @@ def test_payload_paid_shows_all_layer_remedies(monkeypatch, tmp_path):
     assert all(not L["remedy_blurred"] for L in d["layers"])
 
 
+def _seed_dosed_layer(app_module, db, email="dose@x.com"):
+    import secrets as _s
+    from datetime import datetime, timezone, timedelta
+    from dashboard import biofield_reveals as br
+    token = "tk_" + _s.token_urlsafe(8)
+    th = app_module._hash_token(token)
+    rem = {"name": "Top", "slug": "rx-aaa", "meaning": "m",
+           "dosing": "1 capsule daily, between meals"}
+    with sqlite3.connect(db) as cx:
+        rid, _ = br.upsert(cx, email, "2026-06-20", {"greeting": "Hi", "body": "b"}, [rem], "s",
+                           layers=[{"n": 1, "title": "Surface", "summary": "s1",
+                                    "patterns": [], "remedy": rem}])
+        br.set_token(cx, rid, th); br.approve_first(cx, rid, "glen")
+        cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) VALUES (?,?,?,?,?)",
+                   (th, email, "biofield_reveal", datetime.now(timezone.utc).isoformat(),
+                    (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()))
+        cx.commit()
+    return token
+
+
+def test_payload_emits_dosing_on_unblurred_remedy(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: {"ok": True})  # paid
+    token = _seed_dosed_layer(app_module, db)
+    d = _reveal_payload(app_module, token)
+    assert d["layers"][0]["remedy"]["dosing"] == "1 capsule daily, between meals"
+
+
+def test_dosing_withheld_when_remedy_blurred(monkeypatch, tmp_path):
+    app_module, db = _app_db(monkeypatch, tmp_path)
+    monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
+    monkeypatch.setattr(app_module, "_active_membership_for_email", lambda e: None)  # not paid
+    token = _seed_dosed_layer(app_module, db)
+    d = _reveal_payload(app_module, token)
+    assert d["layers"][0]["remedy"] is None and d["layers"][0]["remedy_blurred"]
+    assert "between meals" not in __import__("json").dumps(d)   # dosing never leaks while blurred
+
+
 def test_member_page_ships_layer_render(monkeypatch, tmp_path):
     app_module, db = _app_db(monkeypatch, tmp_path)
     monkeypatch.setattr(app_module, "is_member", lambda session_id="", email="": True)
