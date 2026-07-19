@@ -144,6 +144,32 @@ def _assemble_biofield(cx, content, status, *, scan_date, scan_dates, actionable
             "layers": layers, "pricing_note": content.get("pricing_note", "") if show else ""}
 
 
+def _reveal_as_report_content(reveal):
+    """Normalize a biofield_reveals row into the portal report-content shape so the
+    existing assemblers render it identically to a System B report. Remedy/dosing
+    are strings; the caller's blur gate decides whether they leave the server."""
+    greeting = ((reveal.get("interpretation") or {}).get("greeting") or "").strip()
+    layers = []
+    raw = reveal.get("layers") or []
+    if raw:
+        for L in raw:
+            rem = L.get("remedy") if isinstance(L.get("remedy"), dict) else {}
+            layers.append({
+                "n": L.get("n"),
+                "title": L.get("title", "") or "",
+                "meaning": (L.get("meaning") or L.get("summary") or ""),
+                "remedy": (rem.get("name") or ""),
+                "dosing": (rem.get("dosing") or ""),
+            })
+    else:
+        for i, r in enumerate(reveal.get("remedies") or []):
+            if not isinstance(r, dict):
+                continue
+            layers.append({"n": i + 1, "title": "", "meaning": (r.get("meaning") or ""),
+                           "remedy": (r.get("name") or ""), "dosing": (r.get("dosing") or "")})
+    return {"greeting": greeting, "layers": layers, "video": {}}
+
+
 def _upgrade_block(cx, email, roles, enabled_keys):
     """The single next eligible ladder rung, or disabled when none/flags off."""
     if not enabled_keys:
