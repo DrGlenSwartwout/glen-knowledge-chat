@@ -104,12 +104,15 @@ def test_mapped_row_carries_farm_columns_and_maps_geocode_quality():
 
 # --- ingest runner (dry run writes nothing, no DB import) ---
 
-def test_ingest_dry_run_maps_but_writes_nothing(monkeypatch):
+def test_ingest_dry_run_maps_but_writes_nothing():
     from scrapers.farm_finder import ingest as ingest_mod
 
-    monkeypatch.setattr(ingest_mod, "scrape", lambda **kw: [_row()])
-    summary = ingest_mod.ingest(apply=False, log=lambda *_: None)
+    # Inject a single fake source rather than monkeypatching a module import —
+    # the multi-source ingest takes a `sources` override for exactly this.
+    fake = [("foodforhumans", lambda limit=None, sleep=0: [_row()])]
+    summary = ingest_mod.ingest(sources=fake, apply=False, log=lambda *_: None)
     assert summary == {
-        "scraped": 1, "mapped": 1, "written": 0, "applied": False,
+        "per_source": {"foodforhumans": 1},
+        "scraped": 1, "deduped": 1, "mapped": 1, "written": 0, "applied": False,
         "with_geo": 1, "with_website": 1,
     }

@@ -38,3 +38,12 @@ tests/test_points_ledger.py
 tests/test_packing.py
 tests/test_bundle_packing.py
 tests/test_resolver_composer_default.py
+
+# Farm Finder (multi-source: Food for Humans + USDA + Real Milk) -- fixture-driven
+# parsers, source registry/dedupe, and the batched upsert write path. All pure.
+tests/test_ff_foodforhumans.py
+tests/test_ff_usda.py
+tests/test_ff_realmilk.py
+tests/test_ff_multisource.py
+tests/test_ff_phase3.py
+tests/test_pf_db_upsert_many.py

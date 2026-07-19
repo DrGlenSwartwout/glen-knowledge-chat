@@ -115,14 +115,38 @@ def upsert_sql_and_params(row_dict: dict) -> Tuple[str, list]:
     return sql, params
 
 
-def run_upsert(row_dict: dict) -> None:
+def _normalize_for_write(row_dict: dict) -> dict:
     # Normalize the country to an ISO-2 code at the single write boundary so
     # every scraped row stores a clean value (adapters stay unchanged).
     if "country" in row_dict:
         row_dict["country"] = normalize_country(row_dict.get("country"))
+    return row_dict
+
+
+def run_upsert(row_dict: dict) -> None:
+    row_dict = _normalize_for_write(row_dict)
     sql, params = upsert_sql_and_params(row_dict)
     with supabase_cursor() as cur:
         cur.execute(sql, params)
+
+
+def run_upsert_many(rows: list[dict]) -> int:
+    """Upsert many rows over ONE connection. Returns the number written.
+
+    run_upsert() opens a fresh connection per row, which is fine for the small
+    practitioner adapters but pathological for bulk farm sources (USDA alone is
+    ~14k rows = ~14k SSL handshakes, i.e. hours). Same SQL, same normalization —
+    only the connection is shared, and the whole batch commits atomically on
+    exit."""
+    if not rows:
+        return 0
+    written = 0
+    with supabase_cursor() as cur:
+        for row_dict in rows:
+            sql, params = upsert_sql_and_params(_normalize_for_write(row_dict))
+            cur.execute(sql, params)
+            written += 1
+    return written
 
 
 def run_search(
