@@ -760,6 +760,40 @@ def _household_cc_report(member_email, member_label_or_subject):
         print(f"[household-cc] report fanout: {_e!r}", flush=True)
 
 
+def _reveal_email_body(reveal_url, portal_url=None):
+    """Reveal-ready email body. Adds the client-portal line only when a portal URL
+    is provided (slice 2, flag-gated); with portal_url falsy it is byte-identical to
+    the original wording."""
+    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+            f"{reveal_url}\n")
+    if portal_url:
+        body += ("\nYour personal client portal — where your scans and matches live — "
+                 f"is here:\n{portal_url}\n")
+    body += "\nIn wellness,\nDr. Glen and Rae\n"
+    return body
+
+
+def _portal_link_in_reveal_enabled():
+    return (os.environ.get("PORTAL_LINK_IN_REVEAL_ENABLED", "").strip().lower()
+            in ("1", "true", "yes", "on"))
+
+
+def _ensure_portal_link(cx, email, name=""):
+    """Provision a BARE client portal (no System B report) and return its
+    /portal/<token> URL. Flag-gated + best-effort: returns None when the flag is off
+    or on any error, so the reveal email still sends with just the funnel link.
+    Idempotent (ensure_token returns the same stable token on repeat calls)."""
+    if not _portal_link_in_reveal_enabled():
+        return None
+    try:
+        from dashboard import client_portal as _cp
+        tok = _cp.ensure_token(cx, (email or "").strip().lower(), name or "")
+        return portal_link(tok) if tok else None
+    except Exception as e:
+        print(f"[portal-provision] {e!r}", flush=True)
+        return None
+
+
 def _send_reveal_link(rid):
     """Mint a fresh reveal token (biofield_reveals.token_hash + auth_tokens), email the
     'ready' link, and mark notified only on a successful send. Returns True if sent.
@@ -786,10 +820,10 @@ def _send_reveal_link(rid):
                    "VALUES (?,?,?,?,?)",
                    (_hash_token(tok), email, "biofield_reveal", now.isoformat(),
                     (now + timedelta(days=30)).isoformat()))
+        portal_url = _ensure_portal_link(cx, email, "")
         cx.commit()
     url = f"{PUBLIC_BASE_URL}/begin/biofield/{tok}"
-    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
-            f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+    body = _reveal_email_body(url, portal_url)
     sent = _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
     if sent:
         with _db_lock, sqlite3.connect(LOG_DB) as cx:
@@ -24958,9 +24992,10 @@ def api_e4l_reveal_draft():
                 if _suppressed:
                     print(f"[suppressed] skip reveal-ready email to {email}", flush=True)
                 else:
+                    with _db_lock:
+                        portal_url = _ensure_portal_link(_scx, email, "")
                     url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
-                    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
-                            f"{url}\n\nIn wellness,\nDr. Glen and Rae\n")
+                    body = _reveal_email_body(url, portal_url)
                     if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
                         with _db_lock, sqlite3.connect(LOG_DB) as cx:
                             _br.set_notified(cx, rid)
