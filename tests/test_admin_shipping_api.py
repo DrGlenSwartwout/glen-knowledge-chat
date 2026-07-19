@@ -22,6 +22,9 @@ def _client(tmp_path, monkeypatch):
     with sqlite3.connect(db) as cx:
         init_shipping_schema(cx)
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)  # no auth in test
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     # Reload so _shipping picks up DATA_DIR and app re-reads CONSOLE_SECRET
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:

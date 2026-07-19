@@ -7,6 +7,9 @@ from biofield_local_app import create_app
 @pytest.fixture(autouse=True)
 def _no_gate(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
 
 
 _NONE = {"status": "none", "found": False, "findings": [], "days_ago": None, "fresh": False}

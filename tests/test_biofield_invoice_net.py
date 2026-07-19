@@ -104,6 +104,9 @@ def test_create_order_server_not_ok_is_explicit(monkeypatch):
 
 def test_create_order_no_console_is_explicit(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     out = bi.default_create_order({"email": "d@x.com"}, [{"slug": "biofield-analysis", "qty": 1}])
     assert out["ok"] is False and out["error"]
 

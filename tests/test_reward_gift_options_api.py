@@ -7,6 +7,9 @@ def _app(monkeypatch, tmp_db):
     repo = Path(__file__).resolve().parent.parent
     if str(repo) not in sys.path: sys.path.insert(0, str(repo))
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)  # open console auth in test (mirror sibling console tests)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     try:
         import app
         importlib.reload(app)  # CONSOLE_SECRET is read at import time; reload so delenv takes effect

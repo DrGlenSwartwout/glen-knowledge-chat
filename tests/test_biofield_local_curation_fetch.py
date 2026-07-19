@@ -85,6 +85,9 @@ def test_blank_email_returns_none_without_network_call(monkeypatch):
 
 def test_missing_console_secret_returns_none_without_network_call(monkeypatch):
     monkeypatch.delenv("CONSOLE_SECRET", raising=False)
+    # dashboard/__init__.py captures CONSOLE_SECRET at import; reloading
+    # app does not reset it, so clear the copy the guard actually reads.
+    import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     called = {"hit": False}
 
     def fake_urlopen(req, timeout=None):
