@@ -15,10 +15,11 @@ set -euo pipefail
 #              it. Do NOT "fix" this by adding Pillow to requirements.txt.
 pip install --quiet pytest pillow
 
-# Not a real key. It only has to be non-empty: the Pinecone client validates that in its
-# constructor without making a network call, which is what app.py needs at import so the
-# ~265 app-importing suites can run. Anything that actually reaches Pinecone 401s, which
-# is why those suites are listed in ci/excluded-tests.txt.
+# Not a real key. It only has to be non-empty: the Pinecone client checks that in its
+# constructor without making a network call. That is what stops 122 files hard-erroring
+# during COLLECTION, which would abort the run for everything else.
+# It does NOT make app.py usable -- app.py issues a live Pinecone call at import, which
+# 401s on a fake key, so app-importing tests skip themselves. See ci/excluded-tests.txt.
 export PINECONE_API_KEY="${PINECONE_API_KEY:-dummy-ci-key}"
 
 if [ -z "$(grep -vE '^[[:space:]]*(#|$)' ci/excluded-tests.txt)" ]; then

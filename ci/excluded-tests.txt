@@ -6,10 +6,16 @@
 # someone consciously adds it here.
 #
 # Why these are excluded: CI runs with NO real secrets. It sets a DUMMY PINECONE_API_KEY,
-# which is enough to get past the Pinecone client constructor (it validates a non-empty key
-# without a network call) so that app.py imports and ~265 app-importing suites can run. The
-# files below go further and actually reach a live service at import or at runtime, so with a
-# dummy key they 401. They need real credentials and cannot run in a secretless CI.
+# which gets past the Pinecone client CONSTRUCTOR (it only checks the key is non-empty, with
+# no network call). That matters because without it 122 files hard-error during COLLECTION,
+# which aborts the run for everything else.
+#
+# It does NOT make app.py usable: app.py issues a live Pinecone call at import, which 401s on
+# a fake key. Tests that import app therefore skip themselves (the repo convention is a
+# try/except around the import + pytest.skip) rather than run. So the ~3700 gated tests are
+# overwhelmingly the pure-logic suites; app-route coverage still needs real credentials.
+#
+# The files below fail outright rather than skipping cleanly, so they are excluded.
 #
 # Deliberately NOT solved with a Doppler CI token: the remedy-match dev config carries live
 # production money credentials (QuickBooks PROD, Authorize.net, Wise, PayPal, Stripe) plus a

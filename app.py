@@ -11447,6 +11447,13 @@ def ghl_upsert_contact(email, first_name="", last_name="", phone="", source_tag=
     or via a separate PUT after creation for new contacts."""
     if not GHL_API_KEY:
         return None, False, "GHL_API_KEY not set"
+    # Never write to the live CRM under pytest. Five callers reach this, and it creates or
+    # mutates a real contact. Same shape as the not-configured return above, so callers that
+    # already handle that error path need no change. Placed after the key check so behaviour
+    # is unchanged when GHL_API_KEY is absent (every current test run); it only bites when a
+    # real key is present, which is exactly the case that would pollute the CRM.
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None, False, "skipped: pytest"
 
     all_new_tags = set()
     if source_tag:
