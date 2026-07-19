@@ -95,6 +95,12 @@ test('tap unmutes, restarts, stops looping, and hides the hint', () => {
   assert.equal(hint.classList.contains('hidden'), true);
 });
 
+test('tap is a no-op with no clip', () => {
+  const { inv, video } = build({ clip: null });
+  assert.equal(inv.tap(), false);
+  assert.equal(video._played, 0);
+});
+
 test('tap posts the unlock message once, to the given origin', () => {
   const { inv, frame } = build();
   inv.start();
