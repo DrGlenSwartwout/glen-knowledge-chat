@@ -1,9 +1,15 @@
-"""Recording a payment that ALREADY exists in QBO must not create a second one.
+"""The ledger must never create a QBO payment.
 
-Regression cover for a live double-credit: backfilling Dana Tamraz's order #66
-card payment into the ledger pushed a duplicate QBO payment (24772) alongside
-the real one (24458). These tests pin that qbo_txn_id / skip_qbo_push suppress
-the push, and that the DEFAULT still pushes (so normal payments keep working).
+Originally regression cover for a live double-credit: backfilling Dana Tamraz's
+order #66 card payment pushed a duplicate QBO payment (24772) alongside the real
+one (24458). At the time only qbo_txn_id / skip_qbo_push suppressed the push and
+the DEFAULT still pushed.
+
+That default is now gone. Every payment reaches QuickBooks on its own as a BANK
+DEPOSIT (cards via eProcessing/PayPal/Authorize.net, Zelle via the BofA feed), so
+any push is a duplicate -- the "normal payment" case was itself the bug. Six such
+duplicates were deleted by hand on 2026-07-19. Note the scope: QBO is retired for
+INVOICING, not as a system; it still gets the money, from the bank feed.
 
 Hermetic: in-memory sqlite + monkeypatched qbo_billing. No secrets, no network.
 """
@@ -53,13 +59,14 @@ def test_skip_flag_marks_synced_with_null_txn_and_does_not_push(cx, pushes):
     assert row["qbo_sync"] == "synced"
 
 
-def test_default_still_pushes_to_qbo(cx, pushes):
-    # The normal path must be unchanged — a genuinely new payment books in QBO.
+def test_default_does_not_push_to_qbo(cx, pushes):
+    # Inverted deliberately. This used to assert the default PUSHED; that default was
+    # the duplicate factory. Note the fixture gives a resolvable QBO context, so a push
+    # WOULD succeed if one were attempted — nothing here is masking it.
     row = op.add_payment(cx, 66, 9239, "Zelle")
-    assert len(pushes) == 1
-    assert pushes[0]["amount_cents"] == 9239
-    assert row["qbo_txn_id"] == "NEW-QBO-ID"
-    assert row["qbo_sync"] == "synced"
+    assert pushes == []                 # QBO gets this money via the bank deposit
+    assert row["qbo_txn_id"] is None    # nothing to mirror
+    assert row["qbo_sync"] == "synced"  # terminal, so it cannot re-push later
 
 
 def test_balance_counts_nonpushed_payments(cx, pushes, monkeypatch):
