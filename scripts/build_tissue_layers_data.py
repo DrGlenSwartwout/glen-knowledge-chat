@@ -15,6 +15,10 @@ refines. A zone resolves to the organ whose LONGEST matching keyword wins, so
 import json
 from pathlib import Path
 
+# NOTE: the shipped data/bodymap-tissue-layers.json is Glen-curated via the
+# tissue-layer editor. These ORGANS defaults are kept in sync with his prod
+# edits so a re-run reproduces the current state, but DO NOT blindly re-run and
+# overwrite the committed file without folding in any newer editor changes first.
 ROOT = Path(__file__).resolve().parent.parent
 
 # (organ display name, sublayer id, [keywords])  — keywords are lowercase, matched
@@ -26,12 +30,12 @@ ORGANS = [
     ("Ureter", "urogenital", ["ureter"]),
     ("Urethra", "urogenital", ["urethra"]),
     ("Prostate", "urogenital", ["prostate"]),
-    ("Testis", "urogenital", ["testis", "testes", "testicle"]),
-    ("Ovary", "urogenital", ["ovary", "ovaries"]),
+    ("Testis", "endocrine", ["testis", "testes", "testicle"]),
+    ("Ovary", "endocrine", ["ovary", "ovaries"]),
     ("Uterus", "urogenital", ["uterus", "womb"]),
     ("Fallopian tube", "urogenital", ["fallopian"]),
     ("Cervix", "urogenital", ["cervix"]),
-    ("Vagina", "urogenital", ["vagina"]),
+    ("Vagina", "oroderm", ["vagina"]),
     ("Penis", "urogenital", ["penis"]),
     ("Epididymis", "urogenital", ["epididymis"]),
     ("Seminal vesicles", "urogenital", ["seminal"]),
@@ -60,7 +64,7 @@ ORGANS = [
     ("Lymph nodes", "cardiovascular", ["lymph node", "node"]),
     ("Lymphatic vessels", "cardiovascular", ["lymphatic", "duct", "trunk", "cisterna", "watershed"]),
     ("Spleen", "cardiovascular", ["spleen", "splenic"]),
-    ("Thymus", "cardiovascular", ["thymus"]),
+    ("Thymus", "endocrine", ["thymus"]),
     ("Tonsils", "cardiovascular", ["tonsil", "adenoid", "waldeyer"]),
     ("Bone marrow", "cardiovascular", ["marrow"]),
     ("Gut-associated lymphoid (GALT)", "cardiovascular", ["galt", "peyer", "malt", "mucosa-associated"]),
@@ -78,9 +82,9 @@ ORGANS = [
     ("Bronchi & trachea", "respiratory", ["bronchi", "bronchus", "trachea"]),
     ("Larynx", "respiratory", ["larynx"]),
     ("Pharynx", "respiratory", ["pharynx"]),
-    ("Nose & sinuses", "respiratory", ["nose", "nasal", "sinus"]),
+    ("Nose & sinuses", "oroderm", ["nose", "nasal", "sinus"]),
     ("Pleura", "respiratory", ["pleura"]),
-    ("Diaphragm", "respiratory", ["diaphragm"]),
+    ("Diaphragm", "muscle", ["diaphragm"]),
     # ---- Communication / Nerve (4a) ----
     ("Brain", "nerve", ["brain", "cerebrum", "cerebral", "frontal lobe", "occipital", "limbic", "subcortex"]),
     ("Cerebellum & brainstem", "nerve", ["cerebellum", "brainstem", "medulla", "pons"]),
@@ -93,17 +97,17 @@ ORGANS = [
     ("Pineal", "endocrine", ["pineal"]),
     ("Thyroid & parathyroid", "endocrine", ["thyroid", "parathyroid"]),
     ("Adrenal glands", "endocrine", ["adrenal", "suprarenal"]),
-    ("Hypothalamus", "endocrine", ["hypothalamus"]),
+    ("Hypothalamus", "nerve", ["hypothalamus"]),
     ("Endocrine glands", "endocrine", ["endocrine", "hormone", "islet"]),
     # ---- Containment / Oroderm (5a) ----
     ("Mouth & oral cavity", "oroderm", ["mouth", "oral", "palate", "throat"]),
-    ("Tongue", "oroderm", ["tongue"]),
-    ("Teeth", "oroderm", ["tooth", "teeth", "incisor", "canine", "premolar", "molar", "gum"]),
+    ("Tongue", "muscle", ["tongue"]),
+    ("Teeth", "bone", ["tooth", "teeth", "incisor", "canine", "premolar", "molar", "gum"]),
     ("Mucous membranes", "oroderm", ["mucous", "mucosa", "mucous membrane"]),
     # ---- Containment / Integument (5b) ----
     ("Skin", "integument", ["skin", "epidermis", "integument"]),
     ("Hair & nails", "integument", ["hair", "nail"]),
-    ("Sensory skin (eye/ear)", "integument", ["eye", "iris", "sclera", "ear", "auricle", "retina", "cornea"]),
+    ("Sensory skin (eye/ear)", "oroderm", ["eye", "iris", "sclera", "ear", "auricle", "retina", "cornea"]),
 ]
 
 
