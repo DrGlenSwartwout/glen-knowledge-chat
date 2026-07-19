@@ -51,11 +51,11 @@ def ingest(limit=None, sleep=0.5, apply=False, only=None, sources=None,
 
     written = 0
     if apply:
-        # Import lazily so a dry run never touches the DB layer.
-        from scrapers.practitioner_finder.db import run_upsert
-        for r in rows:
-            run_upsert(r)
-            written += 1
+        # Import lazily so a dry run never touches the DB layer. Batched write:
+        # farm sources are bulk (USDA ~14k), and a per-row connection would mean
+        # ~14k SSL handshakes. run_upsert_many shares one connection.
+        from scrapers.practitioner_finder.db import run_upsert_many
+        written = run_upsert_many(rows)
 
     summary = {
         "per_source": per_source,
