@@ -26,6 +26,15 @@ def test_registry_only_filter():
     assert get_sources(only=["nonexistent"]) == []
 
 
+def test_realmilk_excluded_from_weekly_run():
+    # realmilk is a ~12h crawl (10s robots delay) -> its own monthly lane, NEVER
+    # inline in the weekly run_all pass. Guard against a regression that adds it.
+    from scrapers.farm_finder.sources import WEEKLY_SOURCES, SLOW_SOURCES
+    assert "realmilk" not in WEEKLY_SOURCES
+    assert "realmilk" in SLOW_SOURCES
+    assert "usda" in WEEKLY_SOURCES
+
+
 def test_ingest_dedupes_across_sources_dry_run():
     src_a = ("a", lambda limit=None, sleep=0: [
         _farm("Green Acres", website="https://greenacres.com", source_org="A"),
