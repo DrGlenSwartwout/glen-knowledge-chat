@@ -173,7 +173,19 @@ def _push_payment(cx, pid):
 
 
 def add_payment(cx, order_id, amount_cents, method, *, source="manual",
-                external_ref=None, paid_at=None, note=None, actor=None):
+                external_ref=None, paid_at=None, note=None, actor=None,
+                qbo_txn_id=None, skip_qbo_push=False):
+    """Record a payment. By default this also CREATES a QBO payment.
+
+    For a payment that already exists in QBO (recorded before the ledger, or
+    entered directly in QuickBooks), pushing again double-credits the customer.
+    Two ways to avoid that:
+      - qbo_txn_id=<id>: link the EXISTING QBO txn. Preferred — the ledger then
+        mirrors QBO exactly, and a later void()/resync() acts on the real txn.
+      - skip_qbo_push=True: record as synced with a NULL txn id (the legacy
+        backfill shape) when the QBO id isn't known.
+    Both mark the row 'synced' BEFORE the push step, so _push_payment's
+    already-synced guard short-circuits and nothing new is created in QBO."""
     if int(amount_cents) <= 0:
         raise ValueError("amount_cents must be positive")
     if external_ref:
@@ -187,6 +199,8 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                   method=method, source=source, external_ref=external_ref,
                   refunds_payment_id=None, paid_at=paid_at, note=note,
                   actor=actor)
+    if qbo_txn_id or skip_qbo_push:
+        _mark_sync(cx, row["id"], qbo_txn_id=qbo_txn_id, state="synced")
     _push_payment(cx, row["id"])
     return _row(cx, row["id"])
 

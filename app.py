@@ -40001,7 +40001,11 @@ def api_order_payments_add(oid):
             cx, oid, round(float(b.get("amount") or 0) * 100),
             b.get("method") or "", source=b.get("source") or "manual",
             external_ref=b.get("external_ref"), paid_at=b.get("paid_at"),
-            note=b.get("note"), actor=actor.name)
+            note=b.get("note"), actor=actor.name,
+            # Reconciling a payment that ALREADY exists in QBO: link it (or mark
+            # it synced) so the ledger mirrors QBO instead of double-crediting.
+            qbo_txn_id=b.get("qbo_txn_id"),
+            skip_qbo_push=bool(b.get("skip_qbo_push")))
         return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
