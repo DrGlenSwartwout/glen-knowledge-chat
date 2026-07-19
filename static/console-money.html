@@ -272,7 +272,15 @@
       return '<span class="badge">due in '+esc(Math.abs(d))+'d</span>';
     }
 
-    function escAttr(s){ return "'"+s.replace(/'/g,'&#39;')+"'"; }
+    // Wrap a value as a single-quoted JS string literal inside a double-quoted
+    // onclick="" attribute. Must HTML-encode & " ' so JSON payloads (which carry
+    // double quotes) don't terminate the attribute early. Encode & first.
+    function escAttr(s){
+      return "'" + String(s)
+        .replace(/&/g,'&amp;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;') + "'";
+    }
 
     function srcPill(src){
       var label = (src === 'inhouse') ? 'In-house' : 'QuickBooks';
