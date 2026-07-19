@@ -760,6 +760,19 @@ def _household_cc_report(member_email, member_label_or_subject):
         print(f"[household-cc] report fanout: {_e!r}", flush=True)
 
 
+def _reveal_email_body(reveal_url, portal_url=None):
+    """Reveal-ready email body. Adds the client-portal line only when a portal URL
+    is provided (slice 2, flag-gated); with portal_url falsy it is byte-identical to
+    the original wording."""
+    body = ("Aloha,\n\nYour Biofield Analysis is ready. View your reading here:\n"
+            f"{reveal_url}\n")
+    if portal_url:
+        body += ("\nYour personal client portal — where your scans and matches live — "
+                 f"is here:\n{portal_url}\n")
+    body += "\nIn wellness,\nDr. Glen and Rae\n"
+    return body
+
+
 def _send_reveal_link(rid):
     """Mint a fresh reveal token (biofield_reveals.token_hash + auth_tokens), email the
     'ready' link, and mark notified only on a successful send. Returns True if sent.
