@@ -38,6 +38,35 @@ def test_curated_alias_wins_over_catalog_backstop():
     assert "Terrain Restore → https://illtowell.com/begin/product/" not in directive
 
 
+def test_fuzzy_match_tolerates_dropped_sku_qualifier():
+    """Customers drop catalog prefixes: "MB5 Emotional Stress Release Hologram"
+    gets asked for as "Emotional Stress Release Hologram"."""
+    matches = app._catalog_link_matches(
+        "do you have the Emotional Stress Release Hologram", {})
+    assert "mb5-emotional-stress-release-hologram" in " ".join(matches.values())
+
+
+def test_fuzzy_match_tolerates_compound_word_split():
+    """"night light" must reach "Nightlight" — the exact customer phrasing."""
+    for phrasing in ("I want the therapeutic night light",
+                     "what's the link for the Therapeutic Nightlight"):
+        matches = app._catalog_link_matches(phrasing, {})
+        assert "begin/product/therapeutic-nightlight" in " ".join(matches.values()), phrasing
+
+
+def test_ambiguous_phrase_links_nothing_rather_than_guessing():
+    """A confidently wrong product link is worse than none."""
+    # "Cerebral Cortex Hologram" maps to two distinct SKUs in the catalog.
+    assert app._catalog_link_matches("tell me about the Cerebral Cortex Hologram", {}) == {}
+    assert app._catalog_link_matches("what eye drops do you have", {}) == {}
+
+
+def test_ordinary_prose_matches_nothing():
+    """Symptom talk must not sprout product links."""
+    assert app._catalog_link_matches(
+        "I have trouble sleeping and feel tired all day", {}) == {}
+
+
 def test_generic_short_names_do_not_false_positive():
     """Catalog holds short generic names ('Comfort', 'Relax') — never auto-link."""
     matches = app._catalog_link_matches(
@@ -57,10 +86,21 @@ def test_superseded_product_links_to_its_successor():
             assert p["superseded_by"] in list(matches.values())[0]
 
 
-def test_system_prompt_forbids_routing_buyers_to_practice_better():
-    prompt = app.get_system_prompt("self-healing")
-    assert "NEVER ROUTE BUYERS TO PRACTICE BETTER" in prompt
-    assert "practicebetter.io" in prompt  # the domains are named so the rule binds
+def test_system_prompt_forbids_sending_anyone_to_practice_better():
+    """Blanket ban, every language level — PB is being retired."""
+    for level in ("self-healing", "health-care", "science"):
+        prompt = app.get_system_prompt(level)
+        assert "NEVER SEND ANYONE TO PRACTICE BETTER" in prompt
+        # the domains are named so the rule binds to the actual URLs
+        for domain in ("healingoasis.practicebetter.io",
+                       "my.practicebetter.io",
+                       "app.practicebetter.io"):
+            assert domain in prompt
+        # must beat the stale clinical-qa corpus entries that still name PB
+        assert "OVERRIDES any snippet" in prompt
+        # course access has to survive the ban
+        assert "https://truly.vip/Intro" in prompt
+        assert "https://truly.vip/GetWell" in prompt
 
 
 def test_system_prompt_requires_a_direct_answer_to_a_direct_question():

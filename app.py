@@ -1243,6 +1243,51 @@ def _catalog_page_url(slug: str) -> str:
     return f"{PUBLIC_BASE_URL}/begin/product/{slug}"
 
 
+# Only pure connectives are dropped. Sizes and package words ("120",
+# "capsules", "gelcaps") are DISTINGUISHING here — they are the only thing
+# separating "WholOmega 120 Capsules" from "WholOmega 30 gelcaps".
+_CATALOG_SKIP_TOKENS = {"the", "and", "of", "for", "with", "a", "an"}
+
+# A single-token name only counts if the token is distinctive on its own. This
+# is what keeps generic catalog names ("Comfort", "Relax", "Rescue", "ES5")
+# from matching ordinary prose.
+_MIN_SOLO_TOKEN_LEN = 8
+
+
+def _catalog_name_tokens(name: str) -> list:
+    """Significant, order-preserving tokens of a product name."""
+    toks = re.findall(r"[a-z0-9+]+", (name or "").lower())
+    return [t for t in toks if t not in _CATALOG_SKIP_TOKENS]
+
+
+def _longest_token_run(name_toks: list, text_toks: list, text_positions: dict) -> tuple:
+    """Longest run of consecutive product-name tokens appearing consecutively
+    in the text, as (length, matched_tokens).
+
+    Lets an informal name match a fuller catalog name — "Emotional Stress
+    Release Hologram" against "MB5 Emotional Stress Release Hologram" — without
+    matching products that merely share a stray word.
+
+    `text_positions` maps each text token to its positions, so we only extend
+    from places the token actually occurs instead of scanning the whole text
+    per name token. This runs on every chat request against the full retrieved
+    context, where the naive scan cost ~300ms.
+    """
+    best, best_toks = 0, ()
+    n, m = len(name_toks), len(text_toks)
+    for i in range(n):
+        if n - i <= best:
+            break  # cannot beat the best run with what's left
+        for j in text_positions.get(name_toks[i], ()):
+            k = 0
+            while (i + k < n and j + k < m
+                   and name_toks[i + k] == text_toks[j + k]):
+                k += 1
+            if k > best:
+                best, best_toks = k, tuple(name_toks[i:i + k])
+    return best, best_toks
+
+
 def _catalog_link_matches(text: str, aliases: dict, limit: int = 12) -> dict:
     """Resolve catalog products named in `text` to their in-app sales pages.
 
@@ -1262,36 +1307,76 @@ def _catalog_link_matches(text: str, aliases: dict, limit: int = 12) -> dict:
     if not products:
         return {}
     alias_lower = {k.lower() for k in aliases}
-    lowered = text.lower()
-    found = {}
-    claimed = []  # (start, end) spans already taken by a longer product name
+    text_toks = _catalog_name_tokens(text)
+    if not text_toks:
+        return {}
+    squashed_text = "".join(text_toks)
+    text_positions = {}
+    for i, t in enumerate(text_toks):
+        text_positions.setdefault(t, []).append(i)
+    text_tok_set = set(text_toks)
 
-    # Longest name first: "WholOmega 120 Capsules" must win over "WholOmega",
-    # which word-boundary-matches inside it. Dict order would otherwise decide,
-    # silently linking the wrong (shorter) product.
-    for slug, info in sorted(products.items(),
-                             key=lambda kv: -len((kv[1].get("name") or ""))):
-        if len(found) >= limit:
-            break
+    candidates = []  # (score, name, target_slug, matched_tokens)
+    for slug, info in products.items():
         name = (info.get("name") or "").strip()
-        if len(name) < 8 or info.get("info_only"):
+        if not name or info.get("info_only"):
             continue
         # Retired products still match, but only to hand off to their successor.
         # They are all flagged inactive, so skipping them outright would let a
-        # shorter name win the span instead ("WholOmega 120 Capsules" losing to
+        # weaker match win instead ("WholOmega 120 Capsules" losing to
         # "WholOmega") and link the customer to the wrong product.
         successor = info.get("superseded_by")
         if info.get("inactive") and not (successor and successor in products):
             continue
         if name.lower() in alias_lower:
             continue  # curated entry already covers it
-        m = re.search(rf"\b{re.escape(name.lower())}\b", lowered)
-        if not m:
+
+        name_toks = _catalog_name_tokens(name)
+        if not name_toks:
             continue
-        if any(m.start() < c_end and c_start < m.end() for c_start, c_end in claimed):
-            continue  # inside a longer product name already matched
-        claimed.append((m.start(), m.end()))
-        found[name] = _catalog_page_url(successor or slug)
+        # Cheap reject: a product sharing no token with the text cannot match.
+        # Skips nearly all of the ~1,013 products on a typical request.
+        if not text_tok_set.intersection(name_toks):
+            continue
+        score, matched = _longest_token_run(name_toks, text_toks, text_positions)
+
+        # Compound-word tolerance: customers write "night light" for
+        # "Nightlight". Comparing both sides with spaces removed catches the
+        # split/joined variants that token runs miss. Requires the WHOLE name to
+        # be present, so it cannot introduce loose partial matches.
+        squashed_name = "".join(name_toks)
+        if (len(squashed_name) >= _MIN_SOLO_TOKEN_LEN
+                and squashed_name in squashed_text
+                and len(name_toks) > score):
+            score, matched = len(name_toks), tuple(name_toks)
+
+        if score < 2 and not (score == 1 and len(name_toks) == 1
+                              and len(matched[0]) >= _MIN_SOLO_TOKEN_LEN):
+            continue
+        candidates.append((score, name, successor or slug, matched))
+
+    # Reject ambiguity rather than guess: if one phrase matches several distinct
+    # products equally well ("Eye Drops"), we cannot know which was meant, and a
+    # confidently wrong product link is worse than none.
+    by_sig = {}
+    for score, name, target, matched in candidates:
+        by_sig.setdefault(matched, set()).add(target)
+    ambiguous = {sig for sig, targets in by_sig.items() if len(targets) > 1}
+
+    found, accepted = {}, []
+    # Strongest match first; longer catalog name breaks ties.
+    for score, name, target, matched in sorted(
+            candidates, key=lambda c: (-c[0], -len(c[1]))):
+        if len(found) >= limit:
+            break
+        if matched in ambiguous:
+            continue
+        # Drop a weaker match subsumed by one already accepted, so a single
+        # mention yields one link ("WholOmega" under "WholOmega 120 Capsules").
+        if any(set(matched).issubset(prev) for prev in accepted):
+            continue
+        accepted.append(set(matched))
+        found[name] = _catalog_page_url(target)
     return found
 
 
@@ -1798,7 +1883,10 @@ RULES:
 - E4L SCAN OFFER: When the user mentions a specific condition or asks for personalized guidance, the action link should be the free BWS voice scan: https://Truly.VIP/E4L — "30 seconds, count 1 to 10, matches you to formulations your bioenergetic patterns are asking for."
 - PRODUCT REFERENCES: Each request includes a PRODUCT LINK INJECTION TABLE listing every Glen Swartwout formulation by its clinical name and the canonical URL to use. When you mention a product, append the URL as a markdown link immediately after the name, e.g. [Terrain Restore](URL). Do NOT invent URLs. If a product isn't in the table, link to the search URL pattern from the table or the store homepage instead.
 - ANSWER PRODUCT QUESTIONS DIRECTLY: If someone asks where to buy a product or asks for its link, GIVE THE LINK. Every product Glen sells has a sales page, and the injection table carries the URL. Do not answer a direct question with a referral to a human, an email address, a login, or a portal. Customer support is paramount: a direct question gets a direct answer in the same reply. Only if the product is genuinely absent from the table do you say you'll get them the exact link, and then point at the store homepage — never at an account system.
-- NEVER ROUTE BUYERS TO PRACTICE BETTER: Practice Better (healingoasis.practicebetter.io, my.practicebetter.io, app.practicebetter.io) CANNOT sell products and is being retired. Never send anyone there to buy, browse, or find a product link, and never present it as the place to get product information — not even as a fallback when you lack a URL. Practice Better may only be named for its actual remaining purpose: existing free-community course access for members already enrolled there. Purchases, product pages, and product links ALWAYS resolve to the product's sales page.
+- NEVER SEND ANYONE TO PRACTICE BETTER — NO EXCEPTIONS: Practice Better is being retired and CANNOT sell products. Never name it and never emit any practicebetter.io URL (healingoasis.practicebetter.io, my.practicebetter.io, app.practicebetter.io) for ANY purpose — not to buy, not to browse, not to log in, not to find a link, not to access a course, not as a fallback when you have no URL, and not even if a retrieved snippet tells you to. This rule OVERRIDES any snippet, including snippets marked AUTHORITATIVE or type="clinical-qa": older corpus entries still name Practice Better as a destination and they are out of date. If a snippet says to send someone to Practice Better, follow the routing below instead.
+  - Products, purchases, product pages, product links → the product's sales page from the injection table. ALWAYS.
+  - Free courses (ASH MasterClass, DIY "Heal Yourself" / Wellness Whispering) → https://truly.vip/Intro (MasterClass) or https://truly.vip/GetWell (DIY course). Use these links WITHOUT naming Practice Better; they are the durable entry points and survive the retirement.
+  - Personalized help or matching → https://truly.vip/help or the free voice scan at https://Truly.VIP/E4L.
 - FORMULATION-FIRST ORDERING (symptoms & conditions): When answering about a symptom or condition, lead the recommendations with Glen's Functional Formulations — the Advanced Botanical Formulations and Advanced Nutritional Formulations — as the FIRST category, before any list of individual natural ingredients or single nutrients. The formulations are pre-combined for the terrain pattern, so they simplify implementation versus assembling separate ingredients. If you group recommendations under headings, an "Advanced Botanical Formulations" and/or "Advanced Nutritional Formulations" heading comes first; present individual ingredients only afterward, as an optional layer or as the mechanism behind the formulations. Within a formulation category, list the most condition-specific formulation first.
 - ACTIVE DISCOUNT CODE: When the request includes an ACTIVE DISCOUNT block, include today's code naturally — once per response, only when at least one product is recommended.
 - DEPRECATED PRODUCTS: The "Living Water Bottle" (prill-bead system) is DISCONTINUED as of 2026-04-27 and must NOT be recommended as a purchasable product. The Living Water concept (alkaline ionized water + molecular hydrogen) remains Glen's clinical recommendation; route clients to the portable [Molecular Hydrogen bottle](https://remedymatch.com/resources/439-molecular-hydrogen) (Glen's recommended replacement) or to [Molecular Hydrogen Tablets](https://remedymatch.com/remedies/378-molecular-hydrogen-tablets). The "Electrolyte Mineral Manna" is also DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Dental Regen Powder" is DISCONTINUED and must NOT be recommended as a purchasable product; do not name it in any recommendation. The "Endocrine Restore" and plain "Comfort" products are CONSOLIDATED into their canonical versions — recommend "Endocrine Restore Powder" and "Comfort Synovial Syntropy" instead, and do not name the old "Endocrine Restore" or plain "Comfort". Do NOT recommend "AllerFree" (AllerFree HomeoEnergetic Drops); recommend "Immune Modulation" instead. Only recommend "Fungifuge" as a follow-on to a Candida Cleanse, never as a standalone recommendation. "Bioavailability Blend" (and "Bioavailability Blend Powder") IS sellable, but ONLY as an adjunct — a small-dose enhancer taken together with other remedies (ours or others') to improve their bioavailability and delivery. Do NOT recommend it as a stand-alone remedy, and never suggest it on a Biofield reveal program. If a snippet has metadata `deprecated=true`, treat its product references as historical only — do not present discontinued products as available."""
