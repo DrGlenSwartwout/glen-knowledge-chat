@@ -106,6 +106,24 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
         return _assemble_biofield(cx, content, status, scan_date=picked,
                                   scan_dates=dates, actionable=actionable, unlocked=unlocked)
+    # System A: the funnel reveal (biofield_reveals). Rendered as the portal scan
+    # when the client has no System B report. Blur is binary (paid -> remedies).
+    try:
+        from dashboard import biofield_reveals as _br
+        _reveals = _br.list_for_email(cx, email)
+    except Exception:
+        _reveals = []
+    if _reveals:
+        _rev_dates = [r["scan_date"] for r in _reveals]
+        _picked = scan_date if (scan_date in _rev_dates) else _rev_dates[0]
+        _row = next((r for r in _reveals if r["scan_date"] == _picked), _reveals[0])
+        _content = _reveal_as_report_content(_row)
+        if not _content["layers"] and not _content["greeting"]:
+            return {"visible": False}
+        # status 'confirmed' so the assembler's show-gate depends only on `unlocked`
+        # (paid) — binary blur, identical to a paid System B report.
+        return _assemble_biofield(cx, _content, "confirmed", scan_date=_picked,
+                                  scan_dates=_rev_dates, actionable=False, unlocked=unlocked)
     # Legacy fallback: single confirmed report, no tabs.
     try:
         rec = _cp.get_portal_content_by_email(cx, email)
