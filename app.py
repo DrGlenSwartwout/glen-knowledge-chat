@@ -23531,6 +23531,27 @@ def api_console_portal_backfill_findings():
                     "patched_portal": patched_portal, "patched_reports": patched_reports})
 
 
+@app.route("/api/console/portal-backfill", methods=["POST"])
+def api_console_portal_backfill():
+    """Provision-only backfill: bare portals for reveal clients lacking one. No email.
+    Dry-run unless commit is set. Owner/console gated. Idempotent."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    commit = str(data.get("commit") or request.args.get("commit") or "").strip().lower() in ("1", "true", "yes", "on")
+    raw_limit = data.get("limit") or request.args.get("limit")
+    try:
+        limit = int(raw_limit) if raw_limit else None
+    except (TypeError, ValueError):
+        limit = None
+    from dashboard import portal_backfill as _pb, client_portal as _cp, biofield_reveals as _br
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _br.init_table(cx)
+        res = _pb.backfill_portals(cx, commit=commit, limit=limit)
+    return jsonify(res)
+
+
 @app.route("/api/console/family-plan", methods=["GET", "POST"])
 def api_console_family_plan():
     """Owner: enrol a caregiver on the Family Plan, or read who it covers.
