@@ -1,5 +1,6 @@
 import os
 import pytest
+import sqlite3
 
 if not os.environ.get("PINECONE_API_KEY"):
     pytest.skip("needs doppler env for import app", allow_module_level=True)
@@ -109,3 +110,67 @@ def test_sample_page_has_no_intake_elements(client):
     assert "type=\"tel\"" not in lowered
     for needle in ("calendly", "acuityscheduling", "schedule"):
         assert needle not in lowered, f"intake widget marker present: {needle}"
+
+
+def _seed_affiliate(db_path, slug="prof-jane-doe"):
+    cx = sqlite3.connect(db_path)
+    cx.executescript("""
+      CREATE TABLE IF NOT EXISTS affiliate_signups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT, name TEXT,
+        email TEXT, organization TEXT DEFAULT '', website TEXT DEFAULT '',
+        promo_method TEXT DEFAULT '', slug TEXT, token TEXT,
+        status TEXT DEFAULT 'approved', notes TEXT DEFAULT '',
+        referred_by TEXT DEFAULT '', short_url TEXT DEFAULT '');
+    """)
+    cx.execute(
+        "INSERT INTO affiliate_signups (created_at,name,email,organization,slug,token,status)"
+        " VALUES ('2026-01-01','Jane Doe','jane@example.com','Doe Wellness',?,'tok','approved')",
+        (slug,))
+    cx.commit()
+    cx.close()
+
+
+@pytest.fixture
+def client_with_affiliate(monkeypatch, tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    _seed_affiliate(db)
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "1")
+    appmod.app.config["TESTING"] = True
+    return appmod.app.test_client()
+
+
+def test_storefront_page_renders(client_with_affiliate):
+    r = client_with_affiliate.get("/p/prof-jane-doe")
+    assert r.status_code == 200
+    assert r.headers.get("X-Robots-Tag") == "noindex"
+
+
+def test_storefront_unknown_slug_404s(client_with_affiliate):
+    assert client_with_affiliate.get("/p/no-such-person").status_code == 404
+
+
+def test_storefront_sets_attribution_cookie(client_with_affiliate):
+    r = client_with_affiliate.get("/p/prof-jane-doe")
+    assert "rm_ref=prof-jane-doe" in r.headers.get("Set-Cookie", "")
+
+
+def test_storefront_api_returns_whitelisted_payload(client_with_affiliate):
+    body = client_with_affiliate.get("/api/p/prof-jane-doe").get_json()
+    assert body["practitioner_name"] == "Jane Doe"
+    assert "profit_disclosure" in body
+
+
+def test_storefront_body_leaks_no_commercial_terms(client_with_affiliate):
+    """The Thorne lesson: Thorne shipped wholesalePrice beside retailPrice in
+    plain page source, letting patients compute their practitioner's margin."""
+    page = client_with_affiliate.get("/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
+    api = client_with_affiliate.get("/api/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
+    for needle in ("wholesale", "margin", "markup", "msrp", "revenue", "commission"):
+        assert needle not in page, f"leaked {needle} in page"
+        assert needle not in api, f"leaked {needle} in api"
+
+
+def test_dispensary_route_still_works(client_with_affiliate):
+    """Old links must never break. /dispensary/<code> is untouched by this work."""
+    assert appmod.app.url_map.bind("localhost").match("/dispensary/abc123")[0] == "dispensary_landing"

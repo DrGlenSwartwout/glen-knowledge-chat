@@ -16666,6 +16666,45 @@ def dispensary_continuous_care(code):
         return jsonify({"ok": False, "error": "checkout_failed"}), 200
 
 
+@app.route("/api/p/<slug>")
+def api_practitioner_storefront(slug):
+    """Public storefront payload. Whitelisted — see dashboard/public_surface.py."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        view = _ps.build_practitioner_storefront(cx, slug)
+    if not view:
+        return ("", 404)
+    resp = jsonify(view)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/p/<slug>")
+def practitioner_storefront(slug):
+    """Public practitioner storefront. Sets the referral attribution cookie.
+    /dispensary/<code> is untouched and keeps working — old links never break."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        if not _ps.build_practitioner_storefront(cx, slug):
+            return ("", 404)
+    resp = send_from_directory(STATIC, "practitioner-storefront.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
+                    samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/api/client/<code>/catalog")
 def api_client_catalog(code):
     """Return sellable Functional Formulations at the practitioner's price (>= MAP).
