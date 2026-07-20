@@ -603,6 +603,16 @@
 
   const BASE = window.location.origin;
 
+  // The landing page's invitation tile forwards its tap here. That tap is the
+  // browser gesture that permits audio, so from this point on replies speak
+  // themselves instead of waiting for a Listen click.
+  window.__audioUnlocked = false;
+  window.addEventListener('message', function (e) {
+    if (e.origin !== window.location.origin) return;
+    var d = e.data;
+    if (d && d.type === 'begin:audio-unlocked') window.__audioUnlocked = true;
+  });
+
   function setLevel(btn) {
     document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -1167,7 +1177,11 @@
     if (role === 'assistant' && window.TTS) {
       const bar  = div.querySelector('.msg-actions');
       const body = div.querySelector('.message-body');
-      if (bar && body) window.TTS.attach(bar, body.innerText);
+      if (bar && body) {
+        // attachAndSpeak renders the same Listen button, then speaks once.
+        if (window.__audioUnlocked) window.TTS.attachAndSpeak(bar, body.innerText);
+        else                        window.TTS.attach(bar, body.innerText);
+      }
     }
 
     msgs.scrollTop = msgs.scrollHeight;

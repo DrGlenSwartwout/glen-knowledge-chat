@@ -72,6 +72,8 @@
       style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
     <button id="muteBtn" aria-label="Toggle ambient sound"
       style="position:absolute;right:12px;bottom:12px;background:rgba(20,12,6,.72);border:1px solid #6b5436;color:var(--warm);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;z-index:2;">🔊</button>
+    <button id="fsBtn" aria-label="Enter fullscreen"
+      style="position:absolute;right:56px;bottom:12px;background:rgba(20,12,6,.72);border:1px solid #6b5436;color:var(--warm);border-radius:50%;width:36px;height:36px;font-size:15px;cursor:pointer;z-index:2;">⛶</button>
   </div>
   <div id="vignette"></div>
   <div id="subtitle" aria-live="polite"></div>
@@ -135,6 +137,47 @@
   var mic = document.getElementById('mic');
   var micHint = document.getElementById('mic-hint');
   var typeToggle = document.getElementById('type-toggle');
+
+  // ── fullscreen ────────────────────────────────────────────────────────────
+  // The page already fakes immersion with position:fixed + 100dvh + a
+  // visualViewport handler. This makes it real where the browser allows it.
+  // iOS Safari only fullscreens <video> elements, never arbitrary containers,
+  // so there the button hides and the CSS treatment remains the fallback.
+  var fsBtn = document.getElementById('fsBtn');
+  var fsTarget = document.getElementById('fireside');
+  var fsEnter = fsTarget && (fsTarget.requestFullscreen || fsTarget.webkitRequestFullscreen);
+  var fsExit  = document.exitFullscreen || document.webkitExitFullscreen;
+
+  function fsCurrent() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  function fsSync() {
+    if (!fsBtn) return;
+    var on = !!fsCurrent();
+    fsBtn.innerHTML = on ? '✕' : '⛶';
+    fsBtn.setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+  }
+
+  if (fsBtn) {
+    if (!fsEnter) {
+      fsBtn.classList.add('hidden');
+    } else {
+      fsBtn.addEventListener('click', function () {
+        try {
+          if (fsCurrent()) { if (fsExit) fsExit.call(document); }
+          else {
+            var p = fsEnter.call(fsTarget);
+            if (p && p.catch) p.catch(function (e) { console.warn('fullscreen denied', e); });
+          }
+        } catch (e) { /* denied by the browser: stay windowed */ }
+      });
+      document.addEventListener('fullscreenchange', fsSync);
+      document.addEventListener('webkitfullscreenchange', fsSync);
+      fsSync();
+    }
+  }
+
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var voiceMode = false, rec = null, recActive = false, voiceAuto = false, autoListenTimer = null;
   var silenceTimer = null, voiceFinal = '', voiceInterim = '', PAUSE_MS = 1200;  // ~1.2s quiet = end of the traveler's turn
