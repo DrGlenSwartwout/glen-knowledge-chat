@@ -2240,9 +2240,36 @@ def embed(text):
 
 def query_ns(vec, ns, k):
     try:
-        return _idx.query(vector=vec, top_k=k, namespace=ns, include_metadata=True).matches
+        matches = _idx.query(vector=vec, top_k=k, namespace=ns,
+                             include_metadata=True).matches
+        # Stamp the source namespace onto each match so build_context knows where
+        # it came from regardless of whether the vector's own metadata carries it.
+        for m in matches:
+            if m.metadata is not None:
+                m.metadata["_source_ns"] = ns
+        return matches
     except Exception:
         return []
+
+
+# Namespaces that are raw transcripts of Glen's consults/classes. Any dollar
+# figure in them is conversational noise — an internal cost note, a marketing
+# aside, a number from an unrelated tangent — NEVER an authoritative retail
+# price. 24% of consultation vectors carry one, and on a price question 4-5 of
+# the top 5 consult results do, so the model kept quoting them (the NIR helmet's
+# fabricated "$754 ($622 + $132 shipping)" came straight from a consult note).
+# Authoritative prices live in the product injection table, not here.
+_TRANSCRIPT_NAMESPACES = {"consultations"}
+_MONEY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d{2})?")
+
+
+def _redact_transcript_prices(text, meta):
+    """Strip dollar figures from raw-transcript snippets so the model cannot
+    quote a consult's internal cost note as a retail price."""
+    ns = (meta or {}).get("_source_ns") or (meta or {}).get("namespace")
+    if ns in _TRANSCRIPT_NAMESPACES:
+        return _MONEY_RE.sub("$[amount omitted]", text)
+    return text
 
 
 def query_all_namespaces(vec):
@@ -2378,7 +2405,7 @@ def build_context(matches):
             continue
         seen.add(m.id)
         meta = m.metadata or {}
-        text = meta.get("text", "").strip()
+        text = _redact_transcript_prices(meta.get("text", "").strip(), meta)
         if not text or total + len(text) > MAX_CONTEXT_CHARS:
             continue
         name  = meta.get("name") or meta.get("book") or meta.get("source") or "Unknown"
