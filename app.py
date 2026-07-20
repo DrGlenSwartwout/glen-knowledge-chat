@@ -6519,6 +6519,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     country = (ship.get("country") or "US").strip().upper()
     settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
+    total_cello = 0
     flat_ship_cents = 0   # sum of per-product fixed shipping overrides (own-parcel items)
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
@@ -6532,7 +6533,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # fulfillment note folded into the display name (kanban) and QBO line description
         # (invoice). "bottle"/unset -> plain product name. Keeps the QBO line NAME clean
         # for item mapping; only the description is decorated.
-        _fmt_label = _FORMAT_LABELS.get((c.get("format") or "").strip().lower(), "")
+        _fmt = (c.get("format") or "").strip().lower()
+        _fmt_label = _FORMAT_LABELS.get(_fmt, "")
         _disp_name = f'{p["name"]} ({_fmt_label})' if _fmt_label else p["name"]
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": _disp_name})
@@ -6570,13 +6572,19 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                     # undercharge. CheckoutError surfaces as a 400, not a 500.
                     raise CheckoutError(str(e))
                 for _comp in _comps:
-                    _bt = _shipping.resolve_bottle_type(_comp["slug"], _comp)
+                    _bt = _shipping.packing_bottle_type(_comp, _fmt)
                     box_counts[_bt] = box_counts.get(_bt, 0) + qty
-                    total_bottles += qty
+                    if _bt == _shipping.CELLO_BOTTLE_TYPE:
+                        total_cello += qty
+                    else:
+                        total_bottles += qty
             else:
-                bt = _shipping.resolve_bottle_type(slug, p)
+                bt = _shipping.packing_bottle_type(p, _fmt)
                 box_counts[bt] = box_counts.get(bt, 0) + qty
-                total_bottles += qty
+                if bt == _shipping.CELLO_BOTTLE_TYPE:
+                    total_cello += qty
+                else:
+                    total_bottles += qty
     # US-only shipping — but only a cart with something to ship has an opinion
     # about the address. An overseas client buying a service prices fine.
     if (box_counts or flat_ship_cents) and country not in ("US", "USA", ""):
@@ -6598,6 +6606,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         "discount_cents": priced["discount_cents"],
         "points_redeemed_cents": priced["points_redeemed_cents"],
         "shipping_cents": shipping_cents,
+        "bottle_units": total_bottles,
+        "cello_pack_units": total_cello,
     }
 
 
