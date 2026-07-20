@@ -226,7 +226,7 @@ def test_gift_actions_approve_swap_reject(monkeypatch, tmp_path):
 def test_console_reviews_includes_gift_and_catalog(monkeypatch, tmp_path):
     appmod = _reload_gift_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     import sqlite3
     from dashboard import product_reviews as pr, review_gifts as rg
     with sqlite3.connect(appmod.LOG_DB) as cx:
@@ -244,7 +244,8 @@ def test_order_entry_adds_gift_line_and_fulfills(monkeypatch, tmp_path):
     appmod = _reload_gift_app(monkeypatch, tmp_path)
     # the in-house order route is OWNER-gated; resolve_actor returns OWNER for the console key
     import dashboard as _d
-    _d.CONSOLE_SECRET = "k"; appmod.CONSOLE_SECRET = "k"
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "k", raising=False)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "k", raising=False)
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     p = appmod._get_product(slug)
     import sqlite3

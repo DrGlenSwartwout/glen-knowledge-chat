@@ -245,7 +245,7 @@ def test_worker_noop_when_flag_off(monkeypatch, tmp_path):
 def test_console_reviews_exposes_video_fields(monkeypatch, tmp_path):
     appmod = _reload_video_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     import sqlite3
     from dashboard import product_reviews as pr
     slug = next(iter(appmod._PRODUCTS["products"].keys()))

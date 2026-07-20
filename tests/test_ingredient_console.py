@@ -340,7 +340,7 @@ def test_console_list_returns_pages(monkeypatch, tmp_path):
     """GET /api/console/ingredient-pages returns draft pages."""
     app_module = _fresh_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""   # bypass auth
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)  # bypass auth
 
     from dashboard import ingredient_pages as _ip2
     with sqlite3.connect(str(tmp_path / "chat_log.db")) as cx:
@@ -360,7 +360,7 @@ def test_console_list_gated_when_secret_set(monkeypatch, tmp_path):
     """GET /api/console/ingredient-pages returns 401 when key is missing."""
     app_module = _fresh_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = "secret123"
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "secret123", raising=False)
     monkeypatch.setattr(app_module, "CONSOLE_SECRET", "secret123", raising=False)
 
     c = app_module.app.test_client()
@@ -372,7 +372,7 @@ def test_console_page_served(monkeypatch, tmp_path):
     """GET /console/ingredient-pages serves the HTML page."""
     app_module = _fresh_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
 
     c = app_module.app.test_client()
     r = c.get("/console/ingredient-pages")
