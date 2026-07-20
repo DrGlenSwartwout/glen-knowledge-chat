@@ -59,10 +59,18 @@ export class Invitation {
     if (typeof window !== 'undefined' && window.TTS && window.TTS.stop) window.TTS.stop();
     this.audio.src = this.src;
     this.audio.currentTime = 0;
-    this.audio.onended = () => { this.playing = false; this._label('idle'); };
-    this.audio.play();
+    this.audio.onended = () => this._free();
+    // Mark playing BEFORE starting: a refused play() can reject synchronously,
+    // and _free() must not be overwritten by a later `playing = true`.
     this.playing = true;
     this._label('playing');
+    clearTimeout(this._guard);
+    this._guard = setTimeout(() => { if (this.playing) this._free(); }, 20000);
+    // Never strand a waiting reply. If playback is refused (autoplay policy) or
+    // stalls, `ended` never fires — so release the channel on rejection, and
+    // again on the ceiling above, well past this clip's ~4.3s.
+    const p = this.audio.play();
+    if (p && p.catch) p.catch(() => this._free());
     this.notifyUnlock();
     return true;
   }
@@ -70,8 +78,28 @@ export class Invitation {
   stop() {
     if (!this.audio) return;
     this.audio.pause();
+    this._free();
+  }
+
+  // Run cb once the invitation is no longer holding the audio channel — either
+  // because it finished or because it was stopped. Immediate if it isn't
+  // playing. Only the most recent caller is kept: if two replies land during
+  // one welcome, speaking both afterwards would overlap, which is the very
+  // thing this exists to prevent.
+  whenFree(cb) {
+    if (typeof cb !== 'function') return false;
+    if (!this.playing) { cb(); return true; }
+    this._pending = cb;
+    return true;
+  }
+
+  _free() {
+    clearTimeout(this._guard);
     this.playing = false;
     this._label('idle');
+    const cb = this._pending;
+    this._pending = null;
+    if (cb) cb();
   }
 
   toggle() {

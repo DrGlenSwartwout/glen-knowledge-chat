@@ -162,3 +162,55 @@ test('play() still works when TTS is absent', () => {
   assert.doesNotThrow(() => inv.play());
   assert.equal(audio._played, 1);
 });
+
+// ── the invitation is never cut off ─────────────────────────────────────────
+test('whenFree runs immediately when nothing is playing', () => {
+  const { inv } = build();
+  let ran = 0;
+  inv.whenFree(() => { ran++; });
+  assert.equal(ran, 1);
+});
+
+test('whenFree defers until the invitation finishes', () => {
+  const { inv, audio } = build();
+  let ran = 0;
+  inv.play();
+  inv.whenFree(() => { ran++; });
+  assert.equal(ran, 0, 'must NOT speak over the invitation');
+  audio.onended();
+  assert.equal(ran, 1, 'must speak once the invitation ends');
+  assert.equal(inv.playing, false);
+});
+
+test('stopping the invitation also releases a waiting reply', () => {
+  const { inv } = build();
+  let ran = 0;
+  inv.play();
+  inv.whenFree(() => { ran++; });
+  inv.stop();
+  assert.equal(ran, 1, 'a manual stop must not strand the queued reply');
+});
+
+test('only the most recent waiting reply speaks', () => {
+  const { inv, audio } = build();
+  const order = [];
+  inv.play();
+  inv.whenFree(() => order.push('first'));
+  inv.whenFree(() => order.push('second'));
+  audio.onended();
+  assert.deepEqual(order, ['second'], 'queueing both would overlap');
+});
+
+test('whenFree ignores a non-function', () => {
+  const { inv } = build();
+  assert.equal(inv.whenFree(null), false);
+});
+
+test('a refused play() releases the waiting reply instead of stranding it', () => {
+  const { inv, audio } = build();
+  audio.play = function(){ this._played++; return { catch(cb){ cb(new Error('NotAllowedError')); } }; };
+  let ran = 0;
+  inv.play();
+  inv.whenFree(() => { ran++; });
+  assert.equal(ran, 1, 'a blocked invitation must not silence replies forever');
+});

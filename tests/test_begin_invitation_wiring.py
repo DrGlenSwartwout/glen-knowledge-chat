@@ -152,5 +152,18 @@ def test_invitation_and_replies_do_not_overlap(monkeypatch, tmp_path):
     inv = c.get("/static/begin/invitation.js").get_data(as_text=True)
     mount = c.get("/static/begin/invitation-mount.js").get_data(as_text=True)
     assert "window.__invitation" in mount, "the invitation must be reachable to stop it"
-    assert "window.__invitation.stop()" in page, "a reply must silence the invitation"
+    assert "inv.whenFree(" in page, "a reply must WAIT for the invitation, not cut it off"
+    assert "window.__invitation.stop()" not in page, "the invitation must never be cut off"
+    assert "whenFree(cb)" in inv, "Invitation must expose the wait hook"
     assert "window.TTS.stop()" in inv, "the invitation must silence a speaking reply"
+
+
+def test_fullscreen_button_sits_above_the_entry_overlay(monkeypatch, tmp_path):
+    """It rendered under #begin-overlay (z-index 5), so it LOOKED available and
+    silently did nothing until 'Sit by the fire' was clicked."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    i = body.index('id="fsBtn"')
+    style = body[i : i + 400]
+    z = int(style.split("z-index:")[1].split(";")[0].split('"')[0])
+    assert z > 5, f"fsBtn z-index {z} is under the entry overlay (5)"
