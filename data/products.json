@@ -20732,7 +20732,7 @@
       "price_cents": 797,
       "bottle_type": "own-box",
       "flat_shipping_cents": 1300,
-      "_note": "Name taken from the slug: the GrooveKart source page is mis-titled (size-4 page reads 'Size 00'; square canopy page reads 'Circular'). Storefront copy needs fixing separately.",
+      "_note": "Name taken from the slug at import because the GrooveKart source SEO meta title was mis-copied from its sibling (read 'Empty Vegicaps Size 00'). Storefront meta title corrected to 'Empty Vegicaps Size 4' on 2026-07-20; product name and slug were already correct.",
       "source": "gk-apparel-import-2026-07-20"
     },
     "large-mithreal-silver-lined-blanket": {
@@ -20761,7 +20761,7 @@
       "price_cents": 99700,
       "bottle_type": "own-box",
       "flat_shipping_cents": 3200,
-      "_note": "Name taken from the slug: the GrooveKart source page is mis-titled (size-4 page reads 'Size 00'; square canopy page reads 'Circular'). Storefront copy needs fixing separately.",
+      "_note": "Name taken from the slug at import because the GrooveKart source SEO meta title was mis-copied from its sibling (read 'Circular Silver Sleep Canopy'). Storefront meta title corrected to 'Square Mithreal™ Silver Sleep Canopy' on 2026-07-20; product name and slug were already correct.",
       "source": "gk-apparel-import-2026-07-20"
     },
     "course-peripheral-awareness-vision": {
