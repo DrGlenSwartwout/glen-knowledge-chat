@@ -1,11 +1,14 @@
 # tests/test_consult_intake_gate.py
-import os
-os.environ.setdefault("DATA_DIR", "/tmp/intake-gate")
 import importlib, sqlite3, pytest
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    # Set DATA_DIR before the reload, never at module import. A module-level
+    # os.environ.setdefault("DATA_DIR", ...) runs during COLLECTION -- pytest imports every
+    # collected module before any test runs -- so it leaked a global DATA_DIR into the whole
+    # session and pointed unrelated tests at a shared /tmp DB. See test_intake_routes.py.
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
     import app as appmod
     importlib.reload(appmod)
 
