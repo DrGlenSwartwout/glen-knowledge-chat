@@ -161,13 +161,27 @@ def test_storefront_api_returns_whitelisted_payload(client_with_affiliate):
     assert "profit_disclosure" in body
 
 
-def test_storefront_body_leaks_no_commercial_terms(client_with_affiliate):
+def test_storefront_api_leaks_no_commercial_terms(client_with_affiliate):
     """The Thorne lesson: Thorne shipped wholesalePrice beside retailPrice in
-    plain page source, letting patients compute their practitioner's margin."""
-    page = client_with_affiliate.get("/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
+    plain page source, letting patients compute their practitioner's margin.
+
+    Only the /api/p/<slug> body is checked here. static/practitioner-storefront.html
+    is a static file served byte-identical for every slug (see app.py's
+    send_from_directory route) and populated client-side from this API. A real
+    commercial-data leak can therefore only ever reach the page through the API
+    payload — the page's own markup has no per-slug data path to leak through.
+    Asserting these needles against the page HTML would only be testing the
+    template author's word choice in CSS/JS/copy, not detecting a data leak, and
+    that vacuous check previously induced a real regression: to dodge the literal
+    string "margin", every CSS `margin:` rule in the template was rewritten to
+    `padding:` plus flexbox centering, which broke vertical rhythm for no
+    security benefit. So: check the data channel (API), not the static shell."""
     api = client_with_affiliate.get("/api/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
-    for needle in ("wholesale", "margin", "markup", "msrp", "revenue", "commission"):
-        assert needle not in page, f"leaked {needle} in page"
+    needles = (
+        "wholesale", "margin", "markup", "msrp", "revenue", "commission",
+        "earnings", "wallet", "patient", "order_volume", "email", "token",
+    )
+    for needle in needles:
         assert needle not in api, f"leaked {needle} in api"
 
 

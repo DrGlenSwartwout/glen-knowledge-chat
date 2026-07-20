@@ -7,14 +7,14 @@
 <title>Practitioner</title>
 <style>
   :root { --ink:#1F5A4D; --line:#e6e6e6; }
-  body { font:16px/1.5 system-ui, sans-serif; color:#222; display:flex; justify-content:center; }
-  .wrap { max-width:860px; padding:32px 16px 64px; width:100%; }
-  h1 { color:var(--ink); padding-bottom:4px; }
-  .practice { color:#666; padding-bottom:24px; }
-  .card { border:1px solid var(--line); border-radius:10px; padding:16px; }
+  body { font:16px/1.5 system-ui, sans-serif; color:#222; margin:0; }
+  .wrap { max-width:860px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { color:var(--ink); margin:0 0 4px; }
+  .practice { color:#666; margin:0 0 24px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
+  .card p { margin:0; }
   .disclosure { font-size:.9rem; color:#555; border-left:3px solid var(--ink);
-                padding:8px 12px; }
-  p { padding-top:16px; padding-bottom:16px; }
+                padding:8px 12px; margin:16px 0; }
   @media (prefers-color-scheme: dark) {
     body { background:#121212; color:#eee; }
     .card { border-color:#333; } .practice, .disclosure { color:#aaa; }
