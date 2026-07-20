@@ -222,3 +222,51 @@ def test_storefront_page_has_no_intake_elements(client_with_affiliate):
 def test_dispensary_route_still_works(client_with_affiliate):
     """Old links must never break. /dispensary/<code> is untouched by this work."""
     assert appmod.app.url_map.bind("localhost").match("/dispensary/abc123")[0] == "dispensary_landing"
+
+
+def test_sample_slug_unknown_renders_bare_demo_not_404(client_with_affiliate):
+    """A 404 would disclose which slugs exist. Render the bare demo instead."""
+    r = client_with_affiliate.get("/sample/no-such-person")
+    assert r.status_code == 200
+    assert client_with_affiliate.get("/api/sample/no-such-person").get_json()["header"] is None
+
+
+def test_sample_slug_without_approved_header_has_no_header(client_with_affiliate):
+    body = client_with_affiliate.get("/api/sample/prof-jane-doe").get_json()
+    assert body["sample"] is True
+    assert body["header"] is None
+
+
+def test_sample_slug_with_approved_header_includes_it(client_with_affiliate, tmp_path):
+    from dashboard import share_header as sh
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
+    sh.approve(cx, "jane@example.com")
+    cx.close()
+    body = client_with_affiliate.get("/api/sample/prof-jane-doe").get_json()
+    assert body["header"] == {"display_name": "Jane", "body": "Six months in."}
+
+
+def test_sample_slug_sets_attribution_cookie(client_with_affiliate):
+    r = client_with_affiliate.get("/sample/prof-jane-doe")
+    assert "rm_ref=prof-jane-doe" in r.headers.get("Set-Cookie", "")
+
+
+def test_sample_slug_is_noindex(client_with_affiliate):
+    assert client_with_affiliate.get("/sample/prof-jane-doe").headers.get("X-Robots-Tag") == "noindex"
+
+
+def test_public_routes_never_call_get_portal_view(client_with_affiliate, monkeypatch):
+    """Catches a future refactor quietly reconnecting the public surfaces to
+    the private assembler."""
+    from dashboard import portal_view as _pv
+
+    def _boom(*a, **k):
+        raise AssertionError("public route called get_portal_view")
+
+    monkeypatch.setattr(_pv, "get_portal_view", _boom)
+    for path in ("/sample", "/sample/prof-jane-doe", "/p/prof-jane-doe",
+                 "/api/sample", "/api/sample/prof-jane-doe", "/api/p/prof-jane-doe"):
+        assert client_with_affiliate.get(path).status_code == 200, path

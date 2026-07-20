@@ -3766,6 +3766,39 @@ def sample_portal():
     return resp
 
 
+@app.route("/api/sample/<slug>")
+def api_sample_for_slug(slug):
+    """Sample payload plus the sharer's APPROVED self-authored header, if any.
+    Unknown slug returns the bare demo — never 404, which would disclose
+    which slugs exist."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    view = _ps.build_demo_view()
+    view["header"] = None
+    if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            view["header"] = _ps.build_share_header(cx, slug)
+    resp = jsonify(view)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/sample/<slug>")
+def sample_portal_for_slug(slug):
+    """Public sample portal attributed to `slug`. Always 200."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    resp = send_from_directory(STATIC, "sample-portal.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
+                        samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/api/prepay/tiers")
 def prepay_tiers():
     """Public tier descriptors for the picker (price, per-month, savings %, badge)."""

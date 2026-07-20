@@ -53,7 +53,20 @@
       row.children[1].textContent = right(items[i]);
     });
   }
-  fetch("/api/sample").then(function (r) { return r.json(); }).then(function (v) {
+  var parts = location.pathname.split("/").filter(Boolean);
+  var slug = (parts.length > 1) ? parts[1] : "";
+  var url = slug ? ("/api/sample/" + encodeURIComponent(slug)) : "/api/sample";
+  fetch(url).then(function (r) { return r.json(); }).then(function (v) {
+    if (v.header) {
+      var h = document.createElement("div");
+      h.className = "card";
+      var who = document.createElement("strong");
+      who.textContent = v.header.display_name;
+      var said = document.createElement("p");
+      said.textContent = v.header.body;
+      h.appendChild(who); h.appendChild(said);
+      document.querySelector(".wrap").insertBefore(h, document.getElementById("greeting"));
+    }
     document.getElementById("greeting").textContent = v.greeting;
     document.getElementById("phase").textContent = "Phase: " + v.phase;
     rows(document.getElementById("layers"), v.layers,
