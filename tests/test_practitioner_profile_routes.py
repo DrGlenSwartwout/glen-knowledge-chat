@@ -26,6 +26,13 @@ def client(monkeypatch):
     monkeypatch.setattr(_ps, "init_settings_table", lambda cx: None)
     monkeypatch.setattr(_ps, "get_settings",
                         lambda cx, pid: {"branding": {}, "pricing": {}, "chat_enabled": False})
+    # Stub the sqlite writes too. The POST handler calls set_branding/set_pricing,
+    # which open LOG_DB — a real write that these profile-focused tests don't
+    # exercise and that fails order-dependently in the full suite when an earlier
+    # test has left LOG_DB pointing at a torn-down tmp path. Tests that assert on
+    # these (e.g. the partial-write test) override them with their own counters.
+    monkeypatch.setattr(_ps, "set_branding", lambda *a, **k: None)
+    monkeypatch.setattr(_ps, "set_pricing", lambda *a, **k: None)
     appmod.app.config["TESTING"] = True
     return appmod.app.test_client()
 
