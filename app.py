@@ -21489,6 +21489,74 @@ def _send_triage_digest():
     return count
 
 
+def _load_answer_audit():
+    """Load scripts/answer_audit.py as a module. A seam so tests can inject a
+    stub with a scripted ask() instead of hitting the network."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "answer_audit", os.path.join(os.path.dirname(__file__),
+                                     "scripts", "answer_audit.py"))
+    aa = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(aa)
+    return aa
+
+
+def _run_answer_audit():
+    """Ask the live bot its buying questions, check facts vs the catalog, and
+    email Dr. Glen ONLY when something is flagged. Returns (asked, findings).
+
+    Runs in the web container so it can send mail (the Gmail token is on this
+    disk, not the cron container's). It calls the PUBLIC /chat over HTTP on
+    purpose — testing the surface a customer actually hits, not an internal
+    shortcut. Reports, never fixes: a flagged figure is a claim to verify.
+    """
+    aa = _load_answer_audit()
+    products = aa.load_catalog()
+    base = PUBLIC_BASE_URL
+    asked, flagged = 0, []
+    for group, q in aa.QUESTIONS:
+        try:
+            answer = aa.ask(base, q)
+        except Exception as e:  # noqa: BLE001 — one bad question must not abort the run
+            flagged.append((q, [f"ASK FAILED: {e!r}"]))
+            continue
+        asked += 1
+        findings = aa.audit(answer, products)
+        if findings:
+            flagged.append((q, findings))
+
+    if flagged:
+        lines = ["The weekly answer audit flagged claims the live bot made that the "
+                 "catalog does not support. Each is a claim to VERIFY, not an "
+                 "auto-fix — a wrong price or wrong-product link reaches customers.\n"]
+        for q, findings in flagged:
+            lines.append(f"Q: {q}")
+            for f in findings:
+                lines.append(f"   - {f}")
+            lines.append("")
+        _send_full_report_email("drglenswartwout@gmail.com", "Dr. Glen",
+                                f"[Answer audit] {len(flagged)} question(s) flagged",
+                                "\n".join(lines))
+    return asked, flagged
+
+
+@app.route("/api/cron/answer-audit", methods=["POST"])
+def api_cron_answer_audit():
+    """Weekly: ask the live bot buying questions, flag any price/link/routing
+    claim the catalog does not support, email Dr. Glen only on findings.
+    Cron-gated (X-Cron-Secret == CRON_SECRET, falls back to CONSOLE_SECRET)."""
+    key = (request.headers.get("X-Cron-Secret", "") or request.args.get("key", "")).strip()
+    expected = os.environ.get("CRON_SECRET") or os.environ.get("CONSOLE_SECRET", "")
+    if not expected or key != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        asked, flagged = _run_answer_audit()
+        return jsonify({"ok": True, "asked": asked, "flagged": len(flagged),
+                        "emailed": len(flagged) > 0})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(e)[:200]}), 500
+
+
 @app.route("/api/cron/triage-digest", methods=["POST"])
 def api_cron_triage_digest():
     """Daily digest of open triage items -> emailed to Dr. Glen. Cron-gated

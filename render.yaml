@@ -158,6 +158,26 @@ services:
           name: glen-knowledge-chat
           envVarKey: CRON_SECRET
 
+  # Weekly answer audit — asks the live bot real buying questions and emails Glen
+  # ONLY if it states a price/link/routing fact the catalog does not support.
+  # Exists because unit tests check structure, not truth: two customer-facing
+  # money bugs (a $754 quote for a $4,997 device; a wrong-product link) shipped
+  # 2026-07-20 and no test could catch them. Cross-container: the cron just curls
+  # the web service, which holds the catalog + Gmail token.
+  - type: cron
+    name: glen-answer-audit-weekly
+    runtime: python
+    schedule: "0 18 * * 1"     # Mondays 8 AM HST (HST is UTC-10)
+    buildCommand: "true"       # stdlib-only, no deps to install
+    startCommand: python scripts/run_answer_audit_cron.py
+    envVars:
+      - key: WEB_URL
+        value: https://glen-knowledge-chat.onrender.com
+      - fromService:
+          type: web
+          name: glen-knowledge-chat
+          envVarKey: CRON_SECRET
+
   # Weekly USPS Flat Rate watcher — scrapes USPS retail prices, stages any
   # changes as pending updates at /admin/shipping for Glen to confirm. Same
   # cross-container pattern as glen-personal-email-daily: cron just curls
