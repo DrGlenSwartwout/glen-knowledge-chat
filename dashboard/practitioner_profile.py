@@ -61,3 +61,38 @@ def format_location(city, state):
     if city and state:
         return f"{city}, {state}"
     return city or ""
+
+
+def profile_for_slug(cx, slug):
+    """Self-authored storefront profile for `slug`, or {} if unknown / scraped /
+    error. `cx` is the sqlite connection (row_factory=sqlite3.Row); Postgres is
+    reached internally. Fails closed: any exception returns {}."""
+    try:
+        row = cx.execute(
+            "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
+            (slug,)).fetchone()
+        if not row:
+            return {}
+        email = (row["email"] or "").strip().lower()
+        if not email:
+            return {}
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute(
+                "SELECT bio, photo_url, logo_url, specialties, city, state, "
+                "accepting_new_patients, profile_self_authored_at "
+                "FROM practitioners WHERE lower(email)=lower(%s) LIMIT 1", (email,))
+            p = cur.fetchone()
+        if not p or not p.get("profile_self_authored_at"):
+            return {}
+        view = {
+            "bio": p.get("bio") or "",
+            "photo_url": p.get("photo_url") or "",
+            "logo_url": p.get("logo_url") or "",
+            "services": list(p.get("specialties") or []),
+            "location": format_location(p.get("city"), p.get("state")),
+            "accepting_clients": bool(p.get("accepting_new_patients")),
+        }
+        return {k: v for k, v in view.items() if k in PROFILE_PUBLIC_FIELDS}
+    except Exception:
+        return {}

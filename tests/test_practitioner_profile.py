@@ -92,3 +92,91 @@ def test_format_location_variants():
 def test_profile_public_fields_frozen():
     assert pp.PROFILE_PUBLIC_FIELDS == frozenset(
         {"bio", "photo_url", "logo_url", "services", "location", "accepting_clients"})
+
+
+# --- Task 3: profile_for_slug — provenance-gated read ---
+
+import sqlite3
+
+
+class _FakeCur:
+    """Serves one configurable practitioners row for the SELECT; records nothing else."""
+    def __init__(self, row):
+        self._row = row
+    def execute(self, sql, params=()):
+        self._last = " ".join(sql.split())
+    def fetchone(self):
+        return self._row
+    def close(self):
+        pass
+
+
+class _FakeCtx:
+    def __init__(self, cur): self.cur = cur
+    def __enter__(self): return self.cur
+    def __exit__(self, *a): return False
+
+
+def _cx_with_slug(slug="prof-jane-doe", email="jane@example.com"):
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    cx.executescript(
+        "CREATE TABLE affiliate_signups (slug TEXT, email TEXT, status TEXT);")
+    cx.execute("INSERT INTO affiliate_signups VALUES (?,?, 'approved')", (slug, email))
+    cx.commit()
+    return cx
+
+
+def _patch_supabase(monkeypatch, row):
+    import db_supabase
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(_FakeCur(row)))
+
+
+def test_profile_for_slug_unknown_slug_returns_empty(monkeypatch):
+    _patch_supabase(monkeypatch, None)
+    assert pp.profile_for_slug(_cx_with_slug(), "no-such-slug") == {}
+
+
+def test_profile_for_slug_scraped_row_returns_empty(monkeypatch):
+    """PROVENANCE MUTATION TEST: a row WITH a bio but null timestamp must publish
+    nothing. Proves the gate filters, not that the happy path happens to be empty."""
+    scraped = {"bio": "scraped text", "photo_url": "p", "logo_url": "",
+               "specialties": ["x"], "city": "Hilo", "state": "HI",
+               "accepting_new_patients": True, "profile_self_authored_at": None}
+    _patch_supabase(monkeypatch, scraped)
+    assert pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe") == {}
+
+
+def test_profile_for_slug_self_authored_row_publishes(monkeypatch):
+    authored = {"bio": "I heal", "photo_url": "https://x/p.jpg", "logo_url": "",
+                "specialties": ["Acupuncture", "Nutrition"], "city": "Hilo",
+                "state": "HI", "accepting_new_patients": True,
+                "profile_self_authored_at": "2026-07-20T00:00:00Z"}
+    _patch_supabase(monkeypatch, authored)
+    v = pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe")
+    assert v["bio"] == "I heal"
+    assert v["services"] == ["Acupuncture", "Nutrition"]
+    assert v["location"] == "Hilo, HI"
+    assert v["accepting_clients"] is True
+
+
+def test_profile_for_slug_never_returns_street_address(monkeypatch):
+    """address1/postal must never appear even if present on the row."""
+    authored = {"bio": "b", "photo_url": "", "logo_url": "", "specialties": [],
+                "city": "Hilo", "state": "HI", "accepting_new_patients": True,
+                "profile_self_authored_at": "2026-07-20T00:00:00Z",
+                "address1": "123 Secret St", "postal": "96720"}
+    _patch_supabase(monkeypatch, authored)
+    v = pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe")
+    assert "123 Secret St" not in str(v.values())
+    assert "96720" not in str(v.values())
+    assert set(v) <= pp.PROFILE_PUBLIC_FIELDS
+
+
+def test_profile_for_slug_supabase_down_returns_empty(monkeypatch):
+    """A DB fault must degrade to {}, never raise — the storefront stays up."""
+    import db_supabase
+    def _boom():
+        raise RuntimeError("supabase down")
+    monkeypatch.setattr(db_supabase, "supabase_cursor", _boom)
+    assert pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe") == {}
