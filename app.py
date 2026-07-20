@@ -2259,6 +2259,10 @@ def query_ns(vec, ns, k):
 # the top 5 consult results do, so the model kept quoting them (the NIR helmet's
 # fabricated "$754 ($622 + $132 shipping)" came straight from a consult note).
 # Authoritative prices live in the product injection table, not here.
+# `training` was measured 2026-07-20 and deliberately NOT included: 12% of its
+# vectors carry a $ figure, but they are course/business chatter ("$20" course
+# guide, AI-training asides), and product-price queries pull 0/5 priced results
+# from it — the vectors are semantically too far from product questions to leak.
 _TRANSCRIPT_NAMESPACES = {"consultations"}
 _MONEY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d{2})?")
 
