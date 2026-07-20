@@ -57,7 +57,9 @@ def test_sample_page_404s_when_flag_off(monkeypatch, tmp_path):
     monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
     monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "")
     c = appmod.app.test_client()
-    assert c.get("/sample").status_code == 404
+    r = c.get("/sample")
+    assert r.status_code == 404
+    assert r.data == b""
 
 
 def test_sample_page_loads_no_third_party_scripts(client):
@@ -72,10 +74,28 @@ def test_sample_page_loads_no_third_party_scripts(client):
 
 def test_sample_page_loads_no_remote_assets(client):
     """No off-origin script/style/img/iframe at all — the strong form of the
-    no-tracker rule, and the one a future marketing change would violate first."""
+    no-tracker rule, and the one a future marketing change would violate first.
+
+    Covers: src=/href= with http://, https://, or protocol-relative "//";
+    CSS url(...) references (inline <style> blocks or style= attributes);
+    and @import (bare-string or url() form). Same-origin relative paths
+    (e.g. href="/api/sample") are intentionally allowed."""
     import re as _re
     html = client.get("/sample").data.decode("utf-8", "replace")
-    remote = _re.findall(r'(?:src|href)\s*=\s*["\'](https?://[^"\']+)', html, _re.I)
+
+    remote = []
+    # src="..."/href="..." pointing off-origin (absolute http(s) or protocol-relative //)
+    remote += _re.findall(
+        r'(?:src|href)\s*=\s*["\'](?:https?:)?//[^"\']*', html, _re.I
+    )
+    # CSS url(...) references, quoted or bare, off-origin
+    remote += _re.findall(
+        r'url\(\s*["\']?(?:https?:)?//[^)"\']*', html, _re.I
+    )
+    # @import, either "url(...)" form or bare quoted-string form
+    remote += _re.findall(
+        r'@import\s+["\']?(?:url\(\s*)?["\']?(?:https?:)?//[^;)"\']*', html, _re.I
+    )
     assert remote == [], f"off-origin assets: {remote}"
 
 
@@ -83,4 +103,9 @@ def test_sample_page_has_no_intake_elements(client):
     """No scheduling widget, symptom checker, or login form on a public page."""
     lowered = client.get("/sample").data.decode("utf-8", "replace").lower()
     assert "<form" not in lowered
+    assert "<iframe" not in lowered
     assert "type=\"password\"" not in lowered
+    assert "type=\"email\"" not in lowered
+    assert "type=\"tel\"" not in lowered
+    for needle in ("calendly", "acuityscheduling", "schedule"):
+        assert needle not in lowered, f"intake widget marker present: {needle}"
