@@ -4,7 +4,7 @@
 
 **Goal:** Add a speaker button to the landing page's existing hero avatar whose tap plays Dr. Glen's spoken invitation and unlocks browser audio so chat replies speak themselves, plus real fullscreen on the fireside stage.
 
-**Architecture:** All logic lives in one ES module, `static/begin/invitation.js`, pure enough to unit-test in Node against fake DOM objects. A thin, untested mount script fetches the fireside manifest and wires it to a speaker button added inside the page's existing hero-avatar anchor. The tap plays a voice-over mp3 (the avatar's own video has no audio track) and posts a same-origin `postMessage` into the `#begin-chat` iframe; `embed.html` listens and switches from `window.TTS.attach` to `window.TTS.attachAndSpeak`. Fullscreen is a self-contained block appended to the existing fireside IIFE.
+**Architecture:** All logic lives in one ES module, `static/begin/invitation.js`, pure enough to unit-test in Node against fake DOM objects. A thin, untested mount script fetches the fireside manifest and wires it to a speaker button added as a sibling of the page's existing hero-avatar anchor, inside a `.avatar-wrap` wrapper. The tap plays a voice-over mp3 (the avatar's own video has no audio track) and posts a same-origin `postMessage` into the `#begin-chat` iframe; `embed.html` listens and switches from `window.TTS.attach` to `window.TTS.attachAndSpeak`. Fullscreen is a self-contained block appended to the existing fireside IIFE.
 
 **Tech Stack:** Vanilla ES modules (no build step, no bundler), Node's built-in `node:test` runner with zero dependencies, Flask test client for served-HTML wiring assertions.
 
@@ -162,12 +162,20 @@ test('play posts the unlock message once, to the given origin', () => {
   assert.equal(frame.sent[0].origin, 'https://illtowell.com');
 });
 
-test('playing twice still posts only one unlock message', () => {
+test('replaying re-posts the unlock (the receiver is idempotent)', () => {
   const { inv, frame } = build();
   inv.play();
   inv.stop();
   inv.play();
-  assert.equal(frame.sent.length, 1);
+  assert.equal(frame.sent.length, 2, 'a lost first post must be recoverable by replaying');
+  assert.deepEqual(frame.sent[1].msg, { type: UNLOCK_MSG });
+});
+
+test('notifyUnlock reports the state change only once', () => {
+  const { inv } = build();
+  assert.equal(inv.notifyUnlock(), true);
+  assert.equal(inv.notifyUnlock(), false);
+  assert.equal(inv.unlocked, true);
 });
 
 test('play with no frame does not throw and still marks unlocked', () => {
@@ -254,7 +262,7 @@ export class Invitation {
     this.audio    = opts.audio || null;
     this.button   = opts.button || null;
     this.frame    = opts.frame || null;
-    this.origin   = opts.origin || '*';
+    this.origin   = opts.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : '*');
     this.src      = opts.src || null;
     this.unlocked = false;
     this.playing  = false;
@@ -298,13 +306,18 @@ export class Invitation {
     return this.play();
   }
 
+  // Always post when a frame is available. The #begin-chat iframe is a large
+  // document loading in parallel with the small manifest fetch, so an early tap
+  // can post before its listener exists — and postMessage discards that
+  // silently. The receiver only sets a boolean, so repeat sends are harmless;
+  // `unlocked` records the state change, it must NOT suppress the send.
   notifyUnlock() {
-    if (this.unlocked) return false;
+    var first = !this.unlocked;
     this.unlocked = true;
     if (this.frame && this.frame.contentWindow) {
       this.frame.contentWindow.postMessage({ type: UNLOCK_MSG }, this.origin);
     }
-    return true;
+    return first;
   }
 }
 ```
@@ -363,15 +376,17 @@ def test_speaker_starts_hidden(monkeypatch, tmp_path):
     assert "hidden" in body[idx - 200 : idx + 200]
 
 
-def test_speaker_lives_inside_the_existing_avatar_anchor(monkeypatch, tmp_path):
-    """The single fireside door is the avatar; the speaker rides on it rather
-    than becoming a second entry (see commit ec233b56)."""
+def test_speaker_is_a_sibling_of_the_avatar_anchor(monkeypatch, tmp_path):
+    """The speaker rides on the avatar without nesting interactive content
+    inside the anchor, which is invalid HTML and breaks screen readers."""
     appmod = _reload_app(monkeypatch, tmp_path)
     body = appmod.app.test_client().get("/begin").get_data(as_text=True)
     anchor = body.index('<a class="avatar"')
-    speaker = body.index('id="avatar-speaker"')
     closing = body.index("</a>", anchor)
-    assert anchor < speaker < closing
+    speaker = body.index('id="avatar-speaker"')
+    assert speaker > closing, "speaker must not be nested inside the anchor"
+    wrap = body.index('class="avatar-wrap"')
+    assert wrap < anchor, "both must live inside the positioned wrapper"
 
 
 def test_no_second_fireside_cta_was_added(monkeypatch, tmp_path):
@@ -403,7 +418,7 @@ cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest
 
 Expected: FAIL — `assert 'id="avatar-speaker"' in body`.
 
-- [ ] **Step 8a: Add the speaker button inside the existing avatar anchor**
+- [ ] **Step 8a: Add the speaker button as a sibling of the avatar anchor**
 
 In `static/begin.html`, find this exact block (around line 761):
 
@@ -417,11 +432,19 @@ In `static/begin.html`, find this exact block (around line 761):
         </a>
 ```
 
-Add the speaker button as the last child of the anchor, immediately before `</a>`:
+Wrap that anchor in a positioned `.avatar-wrap` and add the speaker button AFTER the
+closing `</a>`, as its sibling. Interactive content must never be nested inside an
+anchor — it is invalid HTML and screen readers flatten it into the link's accessible
+name (WCAG 4.1.2). The anchor's own attributes and children must not change.
 
 ```html
+        <div class="avatar-wrap">
+          <a class="avatar" href="/begin/fireside" aria-label="Sit by the fire with Dr. Glen">
+            ... existing children unchanged ...
+          </a>
           <button id="avatar-speaker" class="avatar-speaker hidden" type="button"
                   aria-label="Hear Dr. Glen&rsquo;s invitation">&#128264;</button>
+        </div>
         </a>
 ```
 
@@ -475,13 +498,20 @@ import { pickInvitationAudio, Invitation } from './invitation.js';
         src:    src,
       });
 
-      // The speaker lives inside the fireside anchor. Both calls are required:
-      // preventDefault stops the navigation, stopPropagation keeps the click
-      // away from the anchor's engagement handler.
+      // The speaker is a SIBLING of the fireside anchor, not a descendant, so the
+      // click cannot reach the anchor or its engagement handler. preventDefault is
+      // kept only as a guard against any future re-nesting; stopPropagation is not
+      // needed and is deliberately absent.
       button.addEventListener('click', function (e) {
         e.preventDefault();
-        e.stopPropagation();
         inv.toggle();
+      });
+
+      // Re-arm: an early tap may have been posted before the iframe registered
+      // its listener, and postMessage discards that silently.
+      var chat = document.getElementById('begin-chat');
+      if (chat) chat.addEventListener('load', function () {
+        if (inv.unlocked) inv.notifyUnlock();
       });
 
       inv.mount();
