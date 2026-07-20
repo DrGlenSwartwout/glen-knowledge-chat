@@ -86,3 +86,20 @@ def test_embed_unlock_listener_checks_origin(monkeypatch, tmp_path):
     body = appmod.app.test_client().get("/embed?mode=funnel").get_data(as_text=True)
     idx = body.index("begin:audio-unlocked")
     assert "location.origin" in body[idx - 400 : idx + 400]
+
+
+def test_fireside_has_a_fullscreen_button(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    assert 'id="fsBtn"' in body
+    assert "requestFullscreen" in body
+
+
+def test_fireside_fullscreen_is_feature_detected(monkeypatch, tmp_path):
+    """iOS Safari cannot fullscreen arbitrary elements; the button must hide
+    there rather than sit on the page doing nothing."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    assert "webkitRequestFullscreen" in body
+    idx = body.index("webkitRequestFullscreen")
+    assert "hidden" in body[idx : idx + 600]
