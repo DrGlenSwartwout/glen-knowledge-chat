@@ -52,3 +52,57 @@ def build_demo_view():
     Takes no connection by design. See module docstring.
     """
     return copy.deepcopy(DEMO_FIXTURE)
+
+
+# Every key a practitioner storefront may publish. Adding a key here is a
+# deliberate decision to make that data public — treat edits to this set as a
+# privacy change, not a refactor.
+PRACTITIONER_PUBLIC_FIELDS = frozenset({
+    "slug",
+    "practitioner_name",
+    "practice_name",
+    "bio",
+    "photo_url",
+    "logo_url",
+    "services",
+    "location",          # city/state only, never a street address
+    "accepting_clients",
+    "featured_products",  # retail prices only
+    "catalog_url",
+    "profit_disclosure",
+})
+
+PROFIT_DISCLOSURE = (
+    "Your practitioner earns a portion of what you spend here. "
+    "Your price is the same either way."
+)
+
+
+def build_practitioner_storefront(cx, slug):
+    """Build the public storefront payload for `slug`, or None if unknown.
+
+    Whitelisted: the returned dict is filtered against PRACTITIONER_PUBLIC_FIELDS
+    as the last step, so a new column on affiliate_signups can never silently
+    become public.
+    """
+    row = cx.execute(
+        "SELECT name, organization, slug FROM affiliate_signups"
+        " WHERE slug=? AND status='approved'", (slug,)).fetchone()
+    if not row:
+        return None
+
+    view = {
+        "slug": row["slug"],
+        "practitioner_name": row["name"] or "",
+        "practice_name": row["organization"] or "",
+        "bio": "",
+        "photo_url": "",
+        "logo_url": "",
+        "services": [],
+        "location": "",
+        "accepting_clients": True,
+        "featured_products": [],
+        "catalog_url": "/begin/explore",
+        "profit_disclosure": PROFIT_DISCLOSURE,
+    }
+    return {k: v for k, v in view.items() if k in PRACTITIONER_PUBLIC_FIELDS}
