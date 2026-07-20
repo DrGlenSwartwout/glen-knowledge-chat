@@ -184,3 +184,35 @@ def test_share_header_exposes_only_two_keys():
     sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
     sh.approve(cx, "jane@example.com")
     assert set(ps.build_share_header(cx, "prof-jane-doe")) == {"display_name", "body"}
+
+
+def test_share_header_honors_a_narrowed_whitelist():
+    """Wiring test: build_share_header must apply SHARE_HEADER_PUBLIC_FIELDS
+    at call time, not just happen to return an already-whitelist-shaped dict.
+    get_approved()'s own SELECT already returns exactly the two whitelisted
+    columns, so no fixture can inject a forbidden key through the DB row
+    (that's why the original mutation test was vacuous). Instead, shrink the
+    whitelist itself: if the guard is wired up, the output shrinks with it.
+    If the guard were bypassed (bare `return dict(hdr)`), the output would
+    ignore the narrowed whitelist entirely and still include 'body'.
+    Mirrors test_storefront_honors_a_narrowed_whitelist."""
+    cx = _cx_with_affiliate()
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
+    sh.approve(cx, "jane@example.com")
+    original = ps.SHARE_HEADER_PUBLIC_FIELDS
+    try:
+        ps.SHARE_HEADER_PUBLIC_FIELDS = frozenset({"display_name"})
+        hdr = ps.build_share_header(cx, "prof-jane-doe")
+        assert "body" not in hdr
+    finally:
+        ps.SHARE_HEADER_PUBLIC_FIELDS = original
+
+
+def test_share_header_missing_table_fails_closed():
+    """A fresh deployment where init_share_headers_table has never been
+    called must not 500 the public page — build_share_header should fail
+    closed (return None) rather than let sqlite3.OperationalError propagate."""
+    cx = _cx_with_affiliate()
+    # Deliberately do NOT call sh.init_share_headers_table(cx).
+    assert ps.build_share_header(cx, "prof-jane-doe") is None

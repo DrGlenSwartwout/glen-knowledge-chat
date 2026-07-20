@@ -15,6 +15,9 @@ functions as an implied health claim.
 """
 
 import copy
+import sqlite3
+
+from dashboard import share_header as _sh
 
 DEMO_FIXTURE = {
     "sample": True,
@@ -121,14 +124,21 @@ def build_share_header(cx, slug):
 
     Only two fields ever reach the public page. Nothing from get_portal_view
     touches this path.
+
+    Fails closed: a missing share_headers table (e.g. a fresh deployment
+    that has never called init_share_headers_table) means "no header",
+    not a 500. This function is a read path on a public surface and must
+    not perform a schema write, so it does not create the table itself.
     """
     row = cx.execute(
         "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
         (slug,)).fetchone()
     if not row:
         return None
-    from dashboard import share_header as _sh
-    hdr = _sh.get_approved(cx, row["email"])
+    try:
+        hdr = _sh.get_approved(cx, row["email"])
+    except sqlite3.OperationalError:
+        return None
     if not hdr:
         return None
-    return {k: v for k, v in hdr.items() if k in SHARE_HEADER_PUBLIC_FIELDS}
+    return _public_only(hdr, SHARE_HEADER_PUBLIC_FIELDS)
