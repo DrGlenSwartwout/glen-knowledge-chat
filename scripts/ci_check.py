@@ -70,7 +70,18 @@ def main():
     print(summary or "(no pytest summary line found)")
 
     if args.update:
-        BASELINE.write_text("\n".join(sorted(failures)) + "\n")
+        # Preserve any leading #-comment block. Without this every --update wiped the
+        # header explaining WHY entries are in the baseline, so the reasoning survived
+        # exactly one regeneration.
+        header = []
+        if BASELINE.exists():
+            for line in BASELINE.read_text().splitlines():
+                if line.startswith("#") or not line.strip():
+                    header.append(line)
+                else:
+                    break
+        body = "\n".join(sorted(failures)) + "\n"
+        BASELINE.write_text(("\n".join(header) + "\n" + body) if header else body)
         print(f"baseline updated: {len(failures)} known failures")
         return 0
 

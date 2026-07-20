@@ -3,7 +3,9 @@
 
 One-time / repeatable local build step. Outputs are committed under
 static/journey/; nothing here runs at request time, so Pillow is a *build*
-dependency only and is intentionally NOT added to requirements.txt.
+dependency only. It IS declared in requirements.txt as of #1042 -- a dependency
+the tests import but nobody declares is the more fragile state, and the cost is
+one small wheel prod never calls.
 
 Usage:
     python3 scripts/build_journey_assets.py [SOURCE_PNG]
