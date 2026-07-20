@@ -51,6 +51,17 @@ def test_unknown_slug_counts_qty_since_is_shippable_empty_is_true():
     assert physical_units(items, CATALOG) == 4
 
 
+def test_membership_line_counts_zero():
+    # A membership grants access — it ships no bottle. Its slug is deliberately not a
+    # catalog product, so without an explicit skip it would fall through the
+    # unknown-slug rule and over-count as a phantom shipping unit.
+    assert physical_units([{"slug": "membership:month", "qty": 1}], CATALOG) == 0
+    assert physical_units([{"slug": "x", "kind": "membership", "qty": 1}], CATALOG) == 0
+    # ...and it doesn't inflate a real order's bottle count.
+    items = [{"slug": "bottle-a", "qty": 2}, {"slug": "membership:year", "qty": 1}]
+    assert physical_units(items, CATALOG) == 2
+
+
 def test_missing_or_zero_qty_is_skipped():
     items = [
         {"slug": "bottle-a", "qty": 0, "name": "Bottle A"},
