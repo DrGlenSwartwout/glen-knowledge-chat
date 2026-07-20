@@ -111,3 +111,24 @@ def build_practitioner_storefront(cx, slug):
         "profit_disclosure": PROFIT_DISCLOSURE,
     }
     return _public_only(view, PRACTITIONER_PUBLIC_FIELDS)
+
+
+SHARE_HEADER_PUBLIC_FIELDS = frozenset({"display_name", "body"})
+
+
+def build_share_header(cx, slug):
+    """Return the APPROVED self-authored header for `slug`, or None.
+
+    Only two fields ever reach the public page. Nothing from get_portal_view
+    touches this path.
+    """
+    row = cx.execute(
+        "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
+        (slug,)).fetchone()
+    if not row:
+        return None
+    from dashboard import share_header as _sh
+    hdr = _sh.get_approved(cx, row["email"])
+    if not hdr:
+        return None
+    return {k: v for k, v in hdr.items() if k in SHARE_HEADER_PUBLIC_FIELDS}

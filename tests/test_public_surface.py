@@ -151,3 +151,36 @@ def test_storefront_returns_none_for_non_approved_affiliate():
     same as a slug that doesn't exist at all."""
     cx = _cx_with_affiliate(status="pending")
     assert ps.build_practitioner_storefront(cx, "prof-jane-doe") is None
+
+
+from dashboard import share_header as sh
+
+
+def test_share_header_none_for_unknown_slug():
+    cx = _cx_with_affiliate()
+    sh.init_share_headers_table(cx)
+    assert ps.build_share_header(cx, "nope") is None
+
+
+def test_share_header_none_when_not_approved():
+    cx = _cx_with_affiliate()
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
+    assert ps.build_share_header(cx, "prof-jane-doe") is None
+
+
+def test_share_header_returns_approved_header():
+    cx = _cx_with_affiliate()
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
+    sh.approve(cx, "jane@example.com")
+    hdr = ps.build_share_header(cx, "prof-jane-doe")
+    assert hdr == {"display_name": "Jane", "body": "Six months in."}
+
+
+def test_share_header_exposes_only_two_keys():
+    cx = _cx_with_affiliate()
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "jane@example.com", "Jane", "Six months in.")
+    sh.approve(cx, "jane@example.com")
+    assert set(ps.build_share_header(cx, "prof-jane-doe")) == {"display_name", "body"}
