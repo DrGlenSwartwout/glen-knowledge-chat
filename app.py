@@ -3754,6 +3754,18 @@ def api_sample():
     return resp
 
 
+@app.route("/sample")
+def sample_portal():
+    """Public sample portal. Synthetic data only — see dashboard/public_surface.py."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    resp = send_from_directory(STATIC, "sample-portal.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/api/prepay/tiers")
 def prepay_tiers():
     """Public tier descriptors for the picker (price, per-month, savings %, badge)."""
