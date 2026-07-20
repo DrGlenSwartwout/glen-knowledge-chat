@@ -208,7 +208,7 @@ def test_console_list_and_load(monkeypatch, tmp_path):
     # app does not reset it, so clear the copy the guard actually reads.
     import dashboard as _d; monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""  # auth passes through when unset
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)  # auth passes through when unset
     slug = next(iter(appmod._PRODUCTS["products"].keys()))
     from dashboard import sales_pages as sp2
     with sqlite3.connect(appmod.LOG_DB) as cx:
@@ -232,7 +232,7 @@ def test_console_page_served(monkeypatch, tmp_path):
 def test_console_list_gated_when_secret_set(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = "topsecret"
-    appmod.CONSOLE_SECRET = "topsecret"
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "topsecret", raising=False)
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "topsecret", raising=False)
     r = appmod.app.test_client().get("/api/console/sales-pages")  # no key
     assert r.status_code == 401

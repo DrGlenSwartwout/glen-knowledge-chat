@@ -194,7 +194,7 @@ def test_practitioner_attribution_from_token(monkeypatch, tmp_path):
 def test_console_list_labels_testimonial(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""  # pass-through when unset
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)  # pass-through when unset
     from dashboard import product_reviews as _pr
     with sqlite3.connect(appmod.LOG_DB) as cx:
         _pr.upsert_review(cx, "_results", "a@x.com", "Ann", 5, body="b",
@@ -210,7 +210,7 @@ def test_source_tag_captured_from_query_and_listed(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     _pass_scorer(monkeypatch)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     c = appmod.app.test_client()
     j = c.post("/api/testimonials",
                json={"name": "Ann", "email": "ann@x.com", "rating": 5,
@@ -271,7 +271,7 @@ def test_dimension_scores_stored_and_listed(monkeypatch, tmp_path):
     """A scored testimonial stores the 4 dimensions and the console queue surfaces them."""
     appmod = _reload_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)
     from dashboard import review_scoring as rs
     monkeypatch.setattr(rs, "score_review", lambda *a, **k: {
         "compliance_ok": True, "reasons": "ok", "quality_points": 2, "recommend_publish": True,

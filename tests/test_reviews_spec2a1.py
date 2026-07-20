@@ -264,7 +264,7 @@ def test_review_actions_approve_reject_feature(monkeypatch, tmp_path):
 def test_console_reviews_endpoint(monkeypatch, tmp_path):
     appmod = _reload_reviews_app(monkeypatch, tmp_path)
     import dashboard as _d
-    _d.CONSOLE_SECRET = ""  # pass-through when unset
+    monkeypatch.setattr(_d, "CONSOLE_SECRET", "", raising=False)  # pass-through when unset
     import sqlite3
     from dashboard import product_reviews as pr
     with sqlite3.connect(appmod.LOG_DB) as cx:
