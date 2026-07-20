@@ -191,3 +191,16 @@ def test_fireside_typing_is_not_a_one_way_door(monkeypatch, tmp_path):
     assert "/static/mic-input.js" in body, "typing interface needs its own mic"
     i = body.index('id="say"')
     assert "data-mic" in body[i : i + 300], "the fireside text input must be mic-wired"
+
+
+def test_fireside_has_a_way_out(monkeypatch, tmp_path):
+    """The page carried no link anywhere, and fullscreen hides the browser's own
+    back button — so a visitor who went fullscreen was trapped."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    assert 'id="leaveBtn"' in body
+    i = body.index('id="leaveBtn"')
+    block = body[i - 100 : i + 400]
+    assert 'href="/begin"' in block, "the exit must actually navigate somewhere"
+    z = int(block.split("z-index:")[1].split(";")[0])
+    assert z > 5, f"exit z-index {z} would sit under the entry overlay"
