@@ -182,6 +182,60 @@ def test_profile_for_slug_supabase_down_returns_empty(monkeypatch):
     assert pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe") == {}
 
 
+class _MultiRowCur:
+    """Models multiple `practitioners` rows sharing an email (the table has no
+    unique constraint on email). fetchone() returns the row an
+    `ORDER BY profile_self_authored_at DESC NULLS LAST LIMIT 1` would pick --
+    but ONLY when the executed SQL actually contains that clause. Without it,
+    fetchone() returns rows in raw insertion order (the scraped row is seeded
+    first), so a future removal of the ORDER BY makes this test fail rather
+    than silently pass."""
+    def __init__(self, rows):
+        self._rows = rows
+        self.last_sql = ""
+
+    def execute(self, sql, params=()):
+        self.last_sql = " ".join(sql.split())
+
+    def fetchone(self):
+        if "order by profile_self_authored_at desc" in self.last_sql.lower():
+            ordered = sorted(
+                self._rows,
+                key=lambda r: r.get("profile_self_authored_at") is None)
+            return ordered[0]
+        return self._rows[0]
+
+    def close(self):
+        pass
+
+
+def test_profile_for_slug_prefers_authored_row_when_email_duplicated(monkeypatch):
+    """IMPORTANT fix: practitioners.email has NO unique constraint. If two
+    scraped rows share an email, the read must return the self-authored row
+    (the one the write path stamped) over a scraped duplicate -- otherwise a
+    practitioner's saved profile can silently be shadowed by another row."""
+    scraped = {"bio": "scraped text", "photo_url": "scraped.jpg", "logo_url": "",
+               "specialties": ["scraped-svc"], "city": "Nowhere", "state": "XX",
+               "accepting_new_patients": True, "profile_self_authored_at": None}
+    authored = {"bio": "I heal", "photo_url": "https://x/p.jpg", "logo_url": "",
+                "specialties": ["Acupuncture"], "city": "Hilo", "state": "HI",
+                "accepting_new_patients": True,
+                "profile_self_authored_at": "2026-07-20T00:00:00Z"}
+    cur = _MultiRowCur([scraped, authored])  # scraped seeded FIRST
+    import db_supabase
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(cur))
+
+    v = pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe")
+
+    assert v["bio"] == "I heal"
+    assert v["services"] == ["Acupuncture"]
+    assert v["location"] == "Hilo, HI"
+    # Prove the ordering was actually requested, not just that the fake
+    # happened to return the right row -- a future removal of the ORDER BY
+    # clause must fail this test.
+    assert "profile_self_authored_at desc" in cur.last_sql.lower()
+
+
 # --- Task 5: save_profile — the write path ---
 
 class _RecordingCur:

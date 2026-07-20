@@ -81,7 +81,8 @@ def profile_for_slug(cx, slug):
             cur.execute(
                 "SELECT bio, photo_url, logo_url, specialties, city, state, "
                 "accepting_new_patients, profile_self_authored_at "
-                "FROM practitioners WHERE lower(email)=lower(%s) LIMIT 1", (email,))
+                "FROM practitioners WHERE lower(email)=lower(%s) "
+                "ORDER BY profile_self_authored_at DESC NULLS LAST LIMIT 1", (email,))
             p = cur.fetchone()
         if not p or not p.get("profile_self_authored_at"):
             return {}
