@@ -203,3 +203,37 @@ def test_allerfree_is_buyable_but_never_volunteered():
 def test_allerfree_catalog_entry_stays_sellable():
     p = app._get_product("allerfree-homeoenergetic-drops")
     assert p and not p.get("inactive") and not p.get("info_only")
+
+
+def test_injection_table_carries_authoritative_prices():
+    """A client asking "how much?" must not leave the model guessing.
+
+    Live regression 2026-07-20: the NIR Brain Frequency Helmet ($4,997 + $32
+    shipping) was quoted to a client as "$754 (includes $132 shipping)" — and
+    the $132 was the Healing Tools Package's shipping figure leaking across
+    products. The table carried URLs but no prices, so the model invented one.
+    """
+    directive = app.build_product_directive(
+        query_text="how much is the NIR Brain Frequency Helmet")
+    row = [l for l in directive.splitlines()
+           if l.strip().startswith("• NIR Brain Frequency Helmet ")]
+    assert row, "helmet missing from table"
+    assert "$4,997.00 list" in row[0], row[0]
+
+
+def test_priced_rows_dominate_the_table():
+    """Nearly every row should carry a price; a bare row is where invention starts."""
+    directive = app.build_product_directive(query_text="what do you recommend")
+    rows = [l for l in directive.splitlines()
+            if l.strip().startswith("•") and "http" in l]
+    priced = [l for l in rows if " list" in l]
+    assert len(rows) > 100
+    assert len(priced) / len(rows) > 0.9, f"only {len(priced)}/{len(rows)} rows priced"
+
+
+def test_prompt_forbids_inventing_prices():
+    prompt = app.get_system_prompt("self-healing")
+    assert "NEVER INVENT A PRICE" in prompt
+    # the two specific failure modes that produced the $754/$132 answer
+    assert "retrieved snippet" in prompt
+    assert "carry a price or shipping figure over from another product" in prompt
