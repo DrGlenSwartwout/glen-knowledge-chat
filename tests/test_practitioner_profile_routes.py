@@ -89,3 +89,42 @@ def test_post_profile_bad_bio_returns_400(client, monkeypatch):
     monkeypatch.setattr(_pp, "save_profile", _boom)
     r = client.post("/api/practitioner/settings", json={"profile": {"bio": "x" * 601}})
     assert r.status_code == 400
+
+
+def test_post_bad_bio_does_not_partially_persist_branding(client, monkeypatch):
+    """A bundled request (branding + a too-long bio) must 400 WITHOUT writing
+    the branding change first. The editor UI sends everything in one payload,
+    so a bio-length failure must not silently persist branding/pricing."""
+    from dashboard import practitioner_settings as _ps
+    from dashboard import practitioner_profile as _pp
+
+    branding_calls = {"n": 0}
+    pricing_calls = {"n": 0}
+    save_profile_calls = {"n": 0}
+
+    def _fake_set_branding(cx, pid, branding, *, chat_enabled=None):
+        branding_calls["n"] += 1
+
+    def _fake_set_pricing(cx, pid, pricing):
+        pricing_calls["n"] += 1
+
+    def _fake_save_profile(pid, profile):
+        # Mirrors the real save_profile: validates (and can raise ValueError
+        # on a too-long bio) before "writing" — just like production.
+        save_profile_calls["n"] += 1
+        bio = _pp.sanitize_bio(profile.get("bio", ""))
+        return {"bio": bio}
+
+    monkeypatch.setattr(_ps, "set_branding", _fake_set_branding)
+    monkeypatch.setattr(_ps, "set_pricing", _fake_set_pricing)
+    monkeypatch.setattr(_pp, "save_profile", _fake_save_profile)
+
+    r = client.post("/api/practitioner/settings", json={
+        "branding": {"practice_name": "New Name"},
+        "profile": {"bio": "x" * 601},
+    })
+
+    assert r.status_code == 400
+    assert branding_calls["n"] == 0
+    assert pricing_calls["n"] == 0
+    assert save_profile_calls["n"] == 0

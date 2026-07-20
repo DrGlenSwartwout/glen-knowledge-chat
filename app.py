@@ -16657,6 +16657,16 @@ def api_practitioner_settings_post():
     from dashboard import practitioner_settings as _ps
     from dashboard import practitioner_pricing as _ppr
     body = request.get_json(silent=True) or {}
+
+    # Validate the bio before any write, so a too-long bio can't 400 the
+    # request AFTER branding/pricing/show_contact have already been persisted.
+    if isinstance(body.get("profile"), dict):
+        from dashboard import practitioner_profile as _pp
+        try:
+            _pp.sanitize_bio((body["profile"] or {}).get("bio", ""))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
     branding_in = body.get("branding") or {}
     pricing_in = body.get("pricing") or {}
 
