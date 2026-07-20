@@ -16618,9 +16618,35 @@ def api_practitioner_settings_get():
     except Exception as e:
         print(f"[practitioner-settings] show_contact read failed: {e!r}", flush=True)
 
-    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False),
-                    "show_contact": show_contact})
+    # profile lives on the Supabase practitioners row too; read it the same
+    # way as show_contact and never let a failure 500 the page.
+    profile = None
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT bio, photo_url, specialties, city, state, "
+                        "accepting_new_patients, profile_self_authored_at "
+                        "FROM practitioners WHERE id=%s", (pid,))
+            p = cur.fetchone()
+        if p:
+            profile = {
+                "bio": p.get("bio") or "",
+                "photo_url": p.get("photo_url") or "",
+                "services": list(p.get("specialties") or []),
+                "city": p.get("city") or "",
+                "state": p.get("state") or "",
+                "accepting_clients": bool(p.get("accepting_new_patients")),
+                "self_authored": bool(p.get("profile_self_authored_at")),
+            }
+    except Exception as e:
+        print(f"[practitioner-settings] profile read failed: {e!r}", flush=True)
+
+    resp = {"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
+            "chat_enabled": settings.get("chat_enabled", False),
+            "show_contact": show_contact}
+    if profile is not None:
+        resp["profile"] = profile
+    return jsonify(resp)
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
