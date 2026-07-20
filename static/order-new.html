@@ -133,7 +133,7 @@
       <div class="row"><span>Subtotal</span><span id="t-sub">$0.00</span></div>
       <div class="row"><span>Discount</span><span id="t-disc">—</span></div>
       <div class="row"><span>Adjustment</span><span id="t-adjust">—</span></div>
-      <div class="row"><span>Shipping</span><span id="t-ship">computed on create</span></div>
+      <div class="row"><span>Shipping <button id="ship-quote-btn" class="mini" type="button" onclick="priceShipping()">Price shipping</button></span><span id="t-ship">computed on create</span></div>
       <div class="row"><span>Hawai‘i GET (recorded, absorbed)</span><span id="t-get">—</span></div>
       <div class="row"><span>Points applied</span><span id="t-points">—</span></div>
       <div class="row grand"><span>Total</span><span id="t-total">$0.00</span></div>
@@ -187,6 +187,7 @@ let LAST_ORDER = null;     // {order_id, external_ref, totals}
 const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edit mode if set
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
 let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
+let SHIP_CENTS = null;     // last quoted shipping (cents) from the Price-shipping button; null = not quoted yet
 let previewTimer = null;
 let PAY_ROWS = {};         // payments ledger rows keyed by id, for lookup from inline handlers (avoids interpolating free text into onclick)
 let MEMBERSHIP_TIER = 'month';  // resolved from the offer endpoint's offered_tiers[0]; there is no page-global default
@@ -253,6 +254,7 @@ function addLine(){
   const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
   LINES.push({slug, name:p.name, qty, unit_cents, edited, note:""});
   $("prod-qty").value=1; $("prod-unit").value="";
+  SHIP_CENTS=null;   // new line changes packing -> require a reprice
   renderLines();
 }
 // ── shipping visibility ──
@@ -335,8 +337,8 @@ function renderLines(){
   recalc();
   syncShippingUI();
 }
-function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } renderLines(); }
-function rmLine(i){ LINES.splice(i,1); renderLines(); }
+function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } SHIP_CENTS=null; renderLines(); }
+function rmLine(i){ LINES.splice(i,1); SHIP_CENTS=null; renderLines(); }
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
 function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; return b; }); }
@@ -457,10 +459,41 @@ function recalc(){
   const baseline = sub - disc - pts;           // pre-adjustment, pre-shipping
   const adj = _adjCents();
   $("t-adjust").textContent = adj ? ((adj<0?"−":"+")+dollars(Math.abs(adj))) : "—";
-  const total = Math.max(0, baseline + adj);
-  // Keep the "Set total" field in sync — but never overwrite it while it's being typed.
-  if (document.activeElement !== $("o-total")) $("o-total").value = (total/100).toFixed(2);
-  $("t-total").textContent = dollars(total) + " + shipping";
+  const preShip = Math.max(0, baseline + adj);
+  // Keep the "Set total" field PRE-shipping — it drives the adjustment link, which is
+  // computed before shipping. Never overwrite it while it's being typed.
+  if (document.activeElement !== $("o-total")) $("o-total").value = (preShip/100).toFixed(2);
+  // Shipping: 0 for pickup / nothing-to-ship; the quoted amount once Price-shipping
+  // has run; otherwise still "+ shipping" (computed on save).
+  const pickup = $("pickup").checked, noShip = !hasShippableLine();
+  let shipCents = 0, shipSuffix = "";
+  const tship = $("t-ship"), btn = $("ship-quote-btn");
+  if (pickup || noShip){ if (tship) tship.textContent = dollars(0); }
+  else if (SHIP_CENTS !== null){ shipCents = SHIP_CENTS; if (tship) tship.textContent = dollars(SHIP_CENTS); }
+  else { shipSuffix = " + shipping"; if (tship) tship.textContent = "computed on create"; }
+  if (btn){ btn.textContent = (SHIP_CENTS !== null) ? "Reprice shipping" : "Price shipping";
+            btn.style.display = (pickup || noShip) ? "none" : ""; }
+  $("t-total").textContent = dollars(preShip + shipCents) + shipSuffix;
+}
+// Quote shipping for the current cart + typed ship-to (same engine as save). Folds the
+// result into the Total; any change to lines/address/pickup clears it so it never goes stale.
+function addrFromForm(){ return { address1:$("a-addr1").value.trim(), address2:$("a-addr2").value.trim(),
+  city:$("a-city").value.trim(), state:$("a-state").value.trim(), zip:$("a-zip").value.trim(),
+  country:($("a-country").value.trim()||"US") }; }
+function resetShipQuote(){ if (SHIP_CENTS !== null){ SHIP_CENTS = null; recalc(); } }
+async function priceShipping(){
+  if (!LINES.length){ toast("Add a line item first","error"); return; }
+  const btn=$("ship-quote-btn"); if(btn) btn.disabled=true;
+  try{
+    const r=await fetch("/api/orders/shipping-preview",{method:"POST",headers:HEADERS,
+      body:JSON.stringify({lines:linesPayload(), address:addrFromForm(), pickup:$("pickup").checked,
+        email:$("c-email").value.trim(), name:$("c-name").value.trim()})});
+    const j=await r.json();
+    if(!j.ok){ toast(j.error||"Could not price shipping","error"); return; }
+    SHIP_CENTS = Number(j.shipping_cents)||0; recalc();
+    toast(j.pickup ? "Pickup — no shipping" : "Shipping priced: "+dollars(SHIP_CENTS));
+  }catch(e){ toast(e.message,"error"); }
+  finally{ if(btn) btn.disabled=false; }
 }
 // Typing a target total back-computes the adjustment (the other direction of the link).
 function onTotalInput(){
@@ -475,6 +508,10 @@ function onTotalInput(){
 $("o-discount").addEventListener("input", recalc);
 $("o-points").addEventListener("input", recalc);
 $("o-adjust").addEventListener("input", recalc);
+// A changed ship-to or pickup state invalidates any quoted shipping — clear it so the
+// operator reprices rather than saving against a stale rate.
+["a-addr1","a-addr2","a-city","a-state","a-zip","a-country"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", resetShipQuote); });
+$("pickup").addEventListener("change", ()=>{ resetShipQuote(); syncShippingUI(); recalc(); });
 $("o-total").addEventListener("input", onTotalInput);
 // Membership gates volume pricing, so re-price when the customer email changes.
 // Typing/pasting an email directly (bypassing cust-search → pickPerson) must still
@@ -587,7 +624,7 @@ async function resyncPay(pid){
 async function editInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
   const dRaw=$("o-discount").value.trim();
-  const body = { lines: linesPayload(), pickup: $("pickup").checked, invoice_note: $("o-note").value.trim() };
+  const body = { lines: linesPayload(), pickup: $("pickup").checked, invoice_note: $("o-note").value.trim(), address: addrFromForm() };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
   const aRaw=$("o-adjust").value.trim();
   if (aRaw!=="") body.adjustment_cents = Math.round(parseFloat(aRaw)*100);   // signed
