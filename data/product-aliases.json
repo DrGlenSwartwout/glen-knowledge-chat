@@ -957,6 +957,27 @@
     "Harmony Laser": {
       "catalog_name": "Harmony Laser",
       "slug": "harmony-laser"
+    },
+    "Monthly Membership": {
+      "url": "https://illtowell.com/membership"
+    },
+    "Membership": {
+      "url": "https://illtowell.com/membership"
+    },
+    "Home Healing Oasis": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Travel Healing Oasis": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Consultant Healing Oasis": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Enterprise Healing Oasis": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Accelerated Self Healing Training": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
     }
   },
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",
