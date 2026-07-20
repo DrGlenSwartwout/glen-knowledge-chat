@@ -78,12 +78,26 @@ changes to pricing, QBO, or the existing order-level `invoice_note`.
   control, not one per row). It lists stored messages, each with a ✕ that calls the
   DELETE endpoint and refreshes the in-page dropdowns.
 
-### R5 — Total units to ship
+### R5 — Total units to ship (shippable goods only)
 - On the New Order form, display **"Total units to ship: N"** at the top of the Line
-  Items section, above the Qty column — the sum of all line `qty` values.
-- Recomputed whenever a qty changes, hooked into the existing `renderLines()` /
-  recompute path so it stays in sync on add / remove / qty edit. Present in both create
-  and edit mode (same file).
+  Items section, above the Qty column. **N counts only shippable goods** — services /
+  info-only lines count 0, and bundles expand to their component bottle count.
+- **Use the canonical count, not a re-implemented sum.** The authoritative logic is
+  `dashboard/orders.py:593` `physical_units(items, catalog)` (excludes non-shippable via
+  `shipping.is_shippable(p)`, expands bundles), surfaced app-wide as
+  `_order_physical_units(order)` (`app.py:6259`). Matching it by hand in JS would
+  diverge on bundles.
+- **Server:** the New Order form already calls `POST /api/orders/price-preview`
+  (debounced, on every line change; result held in JS `PREVIEW`). Add a
+  `physical_units` field to that endpoint's response, computed from the priced lines via
+  the existing `_order_physical_units(...)` / `physical_units(...)`. (Confirm the exact
+  endpoint handler + response shape during the plan; it lives near the other
+  `/api/orders/*` routes in `app.py`.)
+- **Client (`order-new.html`):** display `PREVIEW.physical_units` in the new
+  "Total units to ship" element, refreshed wherever `PREVIEW` is applied (same path that
+  updates the subtotal). This inherits the preview's existing debounce — consistent with
+  how the subtotal already updates. No separate client-side shippability/bundle math.
+- Present in both create and edit mode (same file), since both use the same preview path.
 
 ### R6 — Customer-facing display
 - The customer sees line items on exactly **one** surface: the tokenized invoice page
@@ -129,7 +143,8 @@ changes to pricing, QBO, or the existing order-level `invoice_note`.
 New Order form / editor (order-new.html)
   page load ── GET /api/invoice-snippets ──> populate per-row dropdowns + manage list
   owner types note OR picks from dropdown ──> LINES[i].note
-  qty change ──> renderLines() ──> "Total units to ship" recompute
+  qty change ──> POST /api/orders/price-preview ──> PREVIEW.physical_units
+                                                 ──> "Total units to ship: N" (shippable only)
   submit ──> linesPayload() includes note per line
        │
        ▼
