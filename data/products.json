@@ -20669,6 +20669,34 @@
       "bottle_type": "own-box",
       "flat_shipping_cents": 1300,
       "source": "gk-physical-goods-import-2026-07-20"
+    },
+    "book-alternative-medicine": {
+      "name": "Alternative Medicine (book)",
+      "price_cents": 4997,
+      "bottle_type": "book",
+      "source": "gk-print-books-import-2026-07-20",
+      "intro": "70% of Americans currently use some form of alternative medicine. &amp;nbsp;This book is considered the &quot;Bible&quot; of Alternative Medicine. &amp;nbsp;Learn the health secrets that millions of r"
+    },
+    "book-natural-eye-care": {
+      "name": "Natural Eye Care (book)",
+      "price_cents": 4997,
+      "bottle_type": "book",
+      "source": "gk-print-books-import-2026-07-20",
+      "intro": "Drawing on the wisdom of both ancient and modern-day healers, Dr. Glen Swartwout and&amp;nbsp;Dr. Marc Grossman, authors of Natural Eye Care: An Encyclopedia offer a unique approach to improving visio"
+    },
+    "book-transforming-your-life-iv": {
+      "name": "Transforming Your Life Volume IV (book)",
+      "price_cents": 1795,
+      "bottle_type": "book",
+      "source": "gk-print-books-import-2026-07-20",
+      "intro": "Rae&#039;s review:\r\n&amp;nbsp;\r\nTransforming Your Life is a very inspiring book. \r\n&amp;nbsp;\r\nI am a life coach and health coach, and I love to see how my clients are able to change their lives in re"
+    },
+    "book-achievement-of-excellence": {
+      "name": "Achievement of Excellence — A Transformational Solution (book)",
+      "price_cents": 2997,
+      "bottle_type": "book",
+      "source": "gk-print-books-import-2026-07-20",
+      "intro": "Eliminate distractions, SMASH procrastination, and crank your productivity up to a high level you&#039;ve never seen before!\r\n&amp;nbsp;\r\nThis book is going to help you break through the walls that ha"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
