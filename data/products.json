@@ -20614,6 +20614,54 @@
       "flat_shipping_cents": 1300,
       "source": "gk-physical-goods-import-2026-07-20",
       "intro": "A Faraday cage for your cell phone..."
+    },
+    "book-refreshing-vision-ebook": {
+      "name": "Refreshing Vision ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-cataract-solutions-ebook": {
+      "name": "Cataract Solutions ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-healing-glaucoma-ebook": {
+      "name": "Healing Glaucoma ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-emf-pollution-solutions-ebook": {
+      "name": "Electromagnetic Pollution Solutions ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-materia-medica-ebook": {
+      "name": "Materia Medica ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-anima-medica-ebook": {
+      "name": "Anima Medica ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-the-shire-ebook": {
+      "name": "The Shire ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
+    },
+    "book-living-universe-ebook": {
+      "name": "The Living Universe ebook",
+      "price_cents": 997,
+      "digital": true,
+      "source": "gk-ebook-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
