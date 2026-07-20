@@ -1,10 +1,18 @@
-import os
-os.environ.setdefault("DATA_DIR", "/tmp/intake-rt")
 import json, importlib, sqlite3, pytest
 
 
 @pytest.fixture
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    # DATA_DIR must be set before app is (re)loaded, but NOT at module import time. It used
+    # to be `os.environ.setdefault("DATA_DIR", "/tmp/intake-rt")` at module level, which runs
+    # during COLLECTION -- pytest imports every collected module before running any test, so
+    # that leaked a global DATA_DIR into the whole session and sent unrelated tests at a
+    # shared /tmp DB. It broke ~10 tests in the full run that passed in isolation (e.g.
+    # test_begin_checkout_paid_only), and setdefault made it silent: first importer wins and
+    # nothing ever overwrites it.
+    # tmp_path also gives each test its own DB, which is why the manual table-clearing below
+    # is no longer load-bearing.
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
     import app as appmod
     importlib.reload(appmod)
     from dashboard import intake

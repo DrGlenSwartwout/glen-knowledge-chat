@@ -1,3 +1,21 @@
+# Accepted failing tests. CI (scripts/ci_check.py via ci/run-tests.sh) fails only on a failure
+# NOT listed here, so the ratchet can only tighten. Regenerate with the SAME env CI uses --
+# `bash ci/run-tests.sh` pins it, or by hand:
+#
+#   env -u DOPPLER_TOKEN CONSOLE_SECRET=ci-fake-console-secret PINECONE_API_KEY=pcsk_fake \
+#       OPENAI_API_KEY=sk-fake ANTHROPIC_API_KEY=sk-ant-fake SECRET_KEY=ci \
+#       python3 scripts/ci_check.py --update
+#
+# CONSOLE_SECRET must be SET (a fake is fine), not unset: unset leaves the console gate open,
+# so every test asserting a 401 fails and you get ~32 phantom "new failures".
+#
+# If a test passes alone but fails in the full run, suspect an IMPORT-TIME side effect, not
+# run order. pytest imports every collected module during COLLECTION, before any test runs, so
+# a file 800 positions later still lands its module-level state first. That is what caused the
+# ~10 order-dependent failures cleared on 2026-07-20: three test files ran
+# os.environ.setdefault("DATA_DIR", "/tmp/intake-*") at module level, silently pointing
+# unrelated tests at a shared DB. Set env in a FIXTURE (monkeypatch.setenv), never at import.
+#
 tests/test_admin_formulations_import.py::test_dry_run_no_write
 tests/test_admin_ingredients_import.py::test_dry_run_no_write
 tests/test_admin_materials_import.py::test_dry_run_no_write
@@ -8,14 +26,7 @@ tests/test_affiliate_journey.py::test_apply_form_survives_journey_failure
 tests/test_affiliate_journey.py::test_apply_json_creates_journey_row_choose_path
 tests/test_ask_endpoint.py::test_ask_no_matches_graceful
 tests/test_ask_endpoint.py::test_ask_returns_grounded_answer_with_sources
-tests/test_begin_checkout_engine.py::test_begin_checkout_engine_records_discount_and_shipping
-tests/test_begin_checkout_engine.py::test_begin_checkout_guest_no_order_total_rate
 tests/test_begin_checkout_engine.py::test_begin_checkout_member_gets_order_total_rate
-tests/test_begin_checkout_paid_only.py::test_begin_checkout_applies_ship_credit_to_charge_not_just_receipt
-tests/test_begin_checkout_paid_only.py::test_begin_checkout_charges_subtotal_plus_shipping_not_get
-tests/test_begin_checkout_paid_only.py::test_begin_checkout_creates_no_qbo_invoice
-tests/test_begin_checkout_paid_only.py::test_begin_checkout_persists_qbo_lines_and_token_ref
-tests/test_begin_checkout_paid_only.py::test_begin_checkout_ship_credit_floors_charge_at_zero
 tests/test_begin_funnel.py::test_card_href_external_threads_utm
 tests/test_begin_funnel.py::test_resolve_want_live_targets
 tests/test_begin_hero_identity.py::test_begin_serves_hero
