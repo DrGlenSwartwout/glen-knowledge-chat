@@ -63,3 +63,26 @@ def test_invitation_modules_are_served(monkeypatch, tmp_path):
     c = appmod.app.test_client()
     assert c.get("/static/begin/invitation.js").status_code == 200
     assert c.get("/static/begin/invitation-mount.js").status_code == 200
+
+
+def test_embed_listens_for_the_unlock_message(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/embed?mode=funnel").get_data(as_text=True)
+    assert "begin:audio-unlocked" in body
+    assert "__audioUnlocked" in body
+
+
+def test_embed_can_auto_speak_and_keeps_the_listen_button(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/embed?mode=funnel").get_data(as_text=True)
+    # both paths must survive: automatic playback AND the manual control
+    assert "TTS.attachAndSpeak" in body
+    assert "TTS.attach(" in body
+
+
+def test_embed_unlock_listener_checks_origin(monkeypatch, tmp_path):
+    """A cross-origin frame must not be able to force audio playback."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/embed?mode=funnel").get_data(as_text=True)
+    idx = body.index("begin:audio-unlocked")
+    assert "location.origin" in body[idx - 400 : idx + 400]
