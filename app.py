@@ -14665,9 +14665,15 @@ def _send_practitioner_magic_link(to_email, name, magic_url):
 
 
 def _practitioner_session_pid():
+    # Three transports, in the order the front end uses them: ?token= (portal
+    # pages), JSON-body token (some POSTs), and the X-Practitioner-Token header
+    # (the settings page, static/practitioner-settings.html). The header was
+    # unsupported, which silently 401'd every settings save.
     token = (request.args.get("token") or "").strip()
     if not token:
         token = ((request.get_json(silent=True) or {}).get("token") or "").strip()
+    if not token:
+        token = (request.headers.get("X-Practitioner-Token") or "").strip()
     return _pp.practitioner_id_from_session(token) if token else None
 
 
