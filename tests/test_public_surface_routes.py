@@ -73,16 +73,14 @@ def test_sample_page_loads_no_third_party_scripts(client):
         assert needle not in lowered, f"third-party tracker present: {needle}"
 
 
-def test_sample_page_loads_no_remote_assets(client):
-    """No off-origin script/style/img/iframe at all — the strong form of the
-    no-tracker rule, and the one a future marketing change would violate first.
+def _check_no_remote_assets(html, page_name="page"):
+    """Helper: verify HTML has no off-origin script/style/img/iframe.
 
     Covers: src=/href= with http://, https://, or protocol-relative "//";
     CSS url(...) references (inline <style> blocks or style= attributes);
     and @import (bare-string or url() form). Same-origin relative paths
     (e.g. href="/api/sample") are intentionally allowed."""
     import re as _re
-    html = client.get("/sample").data.decode("utf-8", "replace")
 
     remote = []
     # src="..."/href="..." pointing off-origin (absolute http(s) or protocol-relative //)
@@ -97,19 +95,37 @@ def test_sample_page_loads_no_remote_assets(client):
     remote += _re.findall(
         r'@import\s+["\']?(?:url\(\s*)?["\']?(?:https?:)?//[^;)"\']*', html, _re.I
     )
-    assert remote == [], f"off-origin assets: {remote}"
+    assert remote == [], f"{page_name}: off-origin assets: {remote}"
+
+
+def _check_no_intake_elements(html, page_name="page"):
+    """Helper: verify HTML has no scheduling widget, symptom checker, or login form."""
+    lowered = html.lower()
+    assert "<form" not in lowered, f"{page_name}: found <form"
+    assert "<iframe" not in lowered, f"{page_name}: found <iframe"
+    assert "type=\"password\"" not in lowered, f"{page_name}: found password input"
+    assert "type=\"email\"" not in lowered, f"{page_name}: found email input"
+    assert "type=\"tel\"" not in lowered, f"{page_name}: found tel input"
+    for needle in ("calendly", "acuityscheduling", "schedule"):
+        assert needle not in lowered, f"{page_name}: intake widget marker present: {needle}"
+
+
+def test_sample_page_loads_no_remote_assets(client):
+    """No off-origin script/style/img/iframe at all — the strong form of the
+    no-tracker rule, and the one a future marketing change would violate first.
+
+    Covers: src=/href= with http://, https://, or protocol-relative "//";
+    CSS url(...) references (inline <style> blocks or style= attributes);
+    and @import (bare-string or url() form). Same-origin relative paths
+    (e.g. href="/api/sample") are intentionally allowed."""
+    html = client.get("/sample").data.decode("utf-8", "replace")
+    _check_no_remote_assets(html, page_name="/sample")
 
 
 def test_sample_page_has_no_intake_elements(client):
     """No scheduling widget, symptom checker, or login form on a public page."""
-    lowered = client.get("/sample").data.decode("utf-8", "replace").lower()
-    assert "<form" not in lowered
-    assert "<iframe" not in lowered
-    assert "type=\"password\"" not in lowered
-    assert "type=\"email\"" not in lowered
-    assert "type=\"tel\"" not in lowered
-    for needle in ("calendly", "acuityscheduling", "schedule"):
-        assert needle not in lowered, f"intake widget marker present: {needle}"
+    html = client.get("/sample").data.decode("utf-8", "replace")
+    _check_no_intake_elements(html, page_name="/sample")
 
 
 def _seed_affiliate(db_path, slug="prof-jane-doe"):
@@ -183,6 +199,24 @@ def test_storefront_api_leaks_no_commercial_terms(client_with_affiliate):
     )
     for needle in needles:
         assert needle not in api, f"leaked {needle} in api"
+
+
+def test_storefront_page_loads_no_remote_assets(client_with_affiliate):
+    """No off-origin script/style/img/iframe at all — storefront must be as
+    isolated as /sample, even though it's affiliate-personalized.
+
+    Covers: src=/href= with http://, https://, or protocol-relative "//";
+    CSS url(...) references (inline <style> blocks or style= attributes);
+    and @import (bare-string or url() form). Same-origin relative paths
+    (e.g. href="/api/p/...") are intentionally allowed."""
+    html = client_with_affiliate.get("/p/prof-jane-doe").data.decode("utf-8", "replace")
+    _check_no_remote_assets(html, page_name="/p/<slug>")
+
+
+def test_storefront_page_has_no_intake_elements(client_with_affiliate):
+    """No scheduling widget, symptom checker, or login form on storefront."""
+    html = client_with_affiliate.get("/p/prof-jane-doe").data.decode("utf-8", "replace")
+    _check_no_intake_elements(html, page_name="/p/<slug>")
 
 
 def test_dispensary_route_still_works(client_with_affiliate):
