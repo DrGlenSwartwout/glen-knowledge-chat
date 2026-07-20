@@ -1,6 +1,6 @@
 {
   "_comment": "Product clinical-name -> canonical URL for the chat link-injection table. Homepage catalog merged 2026-05-28. truly.vip shortlinks / deprecated / described-only entries preserved.",
-  "_updated": "2026-07-19",
+  "_updated": "2026-07-20",
   "_source": "remedymatch.com homepage full Syntropy catalog (108 products) + curated extras",
   "aliases": {
     "Synergy C": {
@@ -945,6 +945,18 @@
     "Pollen Power": {
       "catalog_name": "Pollen Power",
       "url": "https://remedymatch.com/remedies/syntropy/92-pollen-power"
+    },
+    "Harmony Soft Laser": {
+      "catalog_name": "Harmony Laser",
+      "slug": "harmony-laser"
+    },
+    "Harmony Soft Laser 172 Hz": {
+      "catalog_name": "Harmony Laser",
+      "slug": "harmony-laser"
+    },
+    "Harmony Laser": {
+      "catalog_name": "Harmony Laser",
+      "slug": "harmony-laser"
     }
   },
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",

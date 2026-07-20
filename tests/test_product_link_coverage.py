@@ -237,3 +237,30 @@ def test_prompt_forbids_inventing_prices():
     # the two specific failure modes that produced the $754/$132 answer
     assert "retrieved snippet" in prompt
     assert "carry a price or shipping figure over from another product" in prompt
+
+
+def test_inserted_word_does_not_break_the_match():
+    """Live regression 2026-07-20: the storefront says "Harmony Soft Laser",
+    the catalog says "Harmony Laser". The inserted "Soft" split [harmony,
+    laser] into contiguous runs of 1, below the 2-token floor — so the product
+    never entered the link table, and the model attached CLARITY's URL to it.
+    A link that opens the wrong product page is worse than no link.
+    """
+    for phrasing in ("tell me about the Harmony Soft Laser 172 Hz",
+                     "how much is the harmony soft laser"):
+        d = app.build_product_directive(query_text=phrasing)
+        row = [l for l in d.splitlines() if "harmony-laser" in l]
+        assert row, phrasing
+        assert "clarity" not in row[0], row[0]
+
+
+def test_gap_tolerance_stays_tight():
+    """Gaps must not let unrelated words bridge a match."""
+    far = ("harmony is the goal of every protocol, and much later in a very "
+           "different sentence we might mention a laser")
+    assert "harmony-laser" not in str(app._catalog_link_matches(far, {}))
+
+
+def test_prompt_forbids_borrowing_another_products_url():
+    prompt = app.get_system_prompt("self-healing")
+    assert "A TABLE URL BELONGS TO ITS OWN PRODUCT ONLY" in prompt
