@@ -42,3 +42,33 @@ def test_no_digital_product_carries_a_bottle_type():
     for slug, p in app._PRODUCTS["products"].items():
         if p.get("digital"):
             assert not p.get("bottle_type"), slug
+
+
+def test_vendor_shipped_devices_are_not_packed():
+    """Glen 2026-07-20: Kloud mats ship from Centropix, NES miHealth from NES.
+
+    We never pack these, so they must not enter the box packer. This cannot be
+    expressed as flat_shipping_cents: 0 — app.py tests `_flat > 0`, so a zero
+    falls through to the packer and an own-box device that quote() can't fit
+    drops the cart to the coarse qty rule.
+    """
+    for slug in ("kloud-pemf-mini", "kloud-pemf-maxi", "nes-mihealth"):
+        p = app._get_product(slug)
+        assert p, slug
+        assert p.get("vendor_shipped") is True, slug
+        assert shipping.is_shippable(p) is False, f"{slug} must not be packed"
+        assert not p.get("inactive"), f"{slug} must stay sellable"
+
+
+def test_molecular_hydrogen_tablets_are_discontinued():
+    """Discontinued 2026-07-20 — the ionizers produce molecular-hydrogen water."""
+    assert app._get_product("molecular-hydrogen-tablets") is None  # inactive
+    prompt = app.get_system_prompt("self-healing")
+    assert "begin/product/molecular-hydrogen-tablets" not in prompt, \
+        "prompt must not link a discontinued product"
+    assert "Water Ionizer" in prompt
+
+
+def test_portable_hydrogen_bottle_still_sellable():
+    p = app._get_product("molecular-hydrogen-bottle")
+    assert p and not p.get("inactive") and p["price_cents"] == 24997
