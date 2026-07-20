@@ -17,3 +17,4 @@ numpy
 scikit-learn
 boto3
 imageio-ffmpeg
+Pillow
