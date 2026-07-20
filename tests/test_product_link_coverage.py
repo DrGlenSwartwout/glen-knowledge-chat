@@ -179,3 +179,27 @@ def test_molecular_hydrogen_bottle_is_sellable():
     p = app._get_product("molecular-hydrogen-bottle")
     assert p and p["price_cents"] == 24997
     assert p["bottle_type"] == "own-box", "device must not pack as a bottle"
+
+
+def test_allerfree_is_buyable_but_never_volunteered():
+    """Glen 2026-07-20: "AllerFree not retired, but not recommended by AI."
+
+    Not-recommended is about what the bot proactively suggests. It must never
+    become "you cannot buy this" — an earlier pass suppressed the link entirely
+    and the bot started telling clients AllerFree had been retired, which is
+    false and blocks a real sale.
+    """
+    directive = app.build_product_directive(query_text="where can I buy AllerFree")
+    row = [l for l in directive.splitlines() if l.strip().startswith("• AllerFree ")]
+    assert row, "AllerFree missing from the injection table"
+    assert "/begin/product/allerfree-homeoenergetic-drops" in row[0], row[0]
+
+    prompt = app.get_system_prompt("self-healing")
+    assert "SELLABLE BUT NOT RECOMMENDED" in prompt
+    # must not be taught as discontinued
+    assert 'Do NOT recommend "AllerFree"' not in prompt
+
+
+def test_allerfree_catalog_entry_stays_sellable():
+    p = app._get_product("allerfree-homeoenergetic-drops")
+    assert p and not p.get("inactive") and not p.get("info_only")
