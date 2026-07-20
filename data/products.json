@@ -20429,6 +20429,63 @@
       "bottle_type": "handcradle",
       "intro": "The",
       "source": "gk-device-import-2026-07-20"
+    },
+    "whole-house-neutralizer": {
+      "name": "Whole House Neutralizer",
+      "price_cents": 8500,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "The Aulterra&trade;&nbsp; Whole House USB neutralizes EMF&rsquo;s coming from all electrical devices plugged into the inside or outside of the home an",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "breath-tuning-fork-1283hz": {
+      "name": "Breath Tuning Fork 1283 Hz",
+      "price_cents": 2997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "1283 Hz frequency is used for healing the lungs.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "mind-tuning-fork-5000hz": {
+      "name": "Mind Tuning Fork 5000 Hz",
+      "price_cents": 4997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "5,000 Hz and 10,000 Hz are octave harmonic frequencies that reduce stress and balance the autonomic nervous system.\r\nThe 5000 Hz Tuning Fork brings st",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "spirit-tuning-fork-172hz": {
+      "name": "Spirit Tuning Fork 172 Hz",
+      "price_cents": 4997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Attract superconductive spirit minerals to feed your immortal conscious body with 172 Hz healing energy.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "frosted-quartz-tuning-fork-172hz": {
+      "name": "Frosted Quartz Tuning Fork 172 Hz",
+      "price_cents": 29700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "172 Hz Frosted Quartz Tuning Fork attracts ORMUS",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "blue-blocking-photochromic-sunglasses": {
+      "name": "Blue Blocking Photochromic Sunglasses",
+      "price_cents": 12997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Our Blue Bocking Glasses look normal as they only block the key blue frequencies that suppress pineal function and aggravate oxidative processes in th",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "healing-tools-package": {
+      "name": "Healing Tools Package",
+      "price_cents": 799700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 13200,
+      "intro": "For 40 years I&rsquo;ve been collecting healing tools and therapies in what we call our Healing Oasis. Prior to COVID, we were already working with 85",
+      "_note": "Our shipping covers the Large box ($32) plus the Water Ionizer's own parcel ($100). The Kloud PEMF mat ships from Centropix, who determine and charge their own freight fee directly — it is NOT included here and NOT billed by us.",
+      "source": "gk-device-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
