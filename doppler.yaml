@@ -1,0 +1,18 @@
+# Doppler scope for this repo, so a fresh clone or git worktree does not have to
+# remember the project name.
+#
+# One-time per working directory:
+#
+#     doppler setup --no-interactive
+#
+# After that, `doppler run -- <cmd>` resolves project and config from here and
+# needs no --project/--config flags. Without that setup step a bare
+# `doppler run` still fails with "You must specify a project" — this file is
+# read by `doppler setup`, not by `doppler run` itself.
+#
+# NOTE ON `dev`: this config carries live third-party credentials, not
+# throwaway sandbox ones. Treat a local `doppler run` as capable of reaching
+# real services. Never point tests at `prd`.
+setup:
+  project: remedy-match
+  config: dev
