@@ -40009,7 +40009,8 @@ def _harvest_line_note_snippets(cx, items):
 
 
 def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_in=None,
-                                 adjustment_cents_in=None, invoice_note=None):
+                                 adjustment_cents_in=None, invoice_note=None,
+                                 address_override=None):
     """Reprice an order's line items at the current pricing (membership-aware) and
     persist the invoice. Shared by the manual invoice editor (/api/orders/<oid>/edit)
     and the one-click grant-and-reprice button. Carries the order's existing points +
@@ -40020,7 +40021,11 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
     invoice_note=None leaves the stored note untouched (upsert_order skips it on update);
     pass a string to replace it."""
     email = order.get("email") or ""
-    addr = order.get("address") or {}
+    # address_override (from the editor form) makes the editor authoritative for the
+    # ship-to: reprice AND persist against it. None -> use the order's stored address
+    # and leave it untouched (the grant-and-reprice + membership-toggle callers pass
+    # nothing, so their behavior is unchanged).
+    addr = address_override if isinstance(address_override, dict) else (order.get("address") or {})
     ship = {"name": order.get("name") or "",
             "street": addr.get("street") or addr.get("address1") or "",
             "address2": addr.get("address2") or "", "city": addr.get("city") or "",
@@ -40050,6 +40055,12 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
     for _g in (order.get("items") or []):
         if _g.get("gift"):
             priced["items_rec"].append(_g)
+    # Persist the ship-to ONLY when the caller supplied an override (upsert_order leaves
+    # address_json untouched when address=None), so non-editor callers never touch it.
+    _persist_addr = ({"name": order.get("name") or "", "street": ship["street"],
+                      "address2": ship["address2"], "city": ship["city"],
+                      "state": ship["state"], "zip": ship["zip"], "country": ship["country"]}
+                     if isinstance(address_override, dict) else None)
     _bos_orders.upsert_order(
         cx, source=order["source"], external_ref=order["external_ref"],
         email=email, name=order.get("name") or "", phone=order.get("phone") or "",
@@ -40060,6 +40071,7 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
         points_redeemed_cents=priced["points_redeemed_cents"],
         shipping_cents=priced["shipping_cents"],
         ship_credit_applied_cents=existing_ship_credit,
+        address=_persist_addr,
         invoice_note=(invoice_note.strip() if isinstance(invoice_note, str) else None))
     _harvest_line_note_snippets(cx, priced["items_rec"])
     return priced, (order.get("pay_status") == "paid")
@@ -40094,11 +40106,13 @@ def api_orders_edit(oid):
         if order.get("status") == "cancelled":
             return jsonify({"ok": False, "error": "a cancelled order can't be edited"}), 400
         try:
+            _addr_in = body.get("address")
             priced, was_paid = _reprice_and_persist_invoice(
                 cx, order, lines_in, pickup=pickup,
                 discount_cents_in=body.get("discount_cents"),
                 adjustment_cents_in=body.get("adjustment_cents"),
-                invoice_note=body.get("invoice_note"))
+                invoice_note=body.get("invoice_note"),
+                address_override=(_addr_in if isinstance(_addr_in, dict) else None))
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         if priced is None:
@@ -40452,6 +40466,43 @@ def api_orders_price_preview():
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines,
                     "physical_units": _order_physical_units({"items": lines_in})})
+
+
+@app.route("/api/orders/shipping-preview", methods=["POST"])
+def api_orders_shipping_preview():
+    """OWNER: quote shipping (+ absorbed GET) for the order-entry form's current cart
+    and typed ship-to, WITHOUT creating/editing an order. Uses the same _price_cart
+    engine + pickup rule as create/edit, so the quote equals what gets charged on save.
+    Pickup -> 0. A ship-to the engine rejects (e.g. non-US) returns ok:false with the
+    reason so the operator can fix the address."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    lines_in = body.get("lines") or []
+    pickup = bool(body.get("pickup"))
+    a = body.get("address") or {}
+    ship = {"name": (body.get("name") or ""),
+            "street": a.get("street") or a.get("address1") or "",
+            "address2": a.get("address2") or "", "city": a.get("city") or "",
+            "state": a.get("state") or "", "zip": a.get("zip") or "",
+            "country": (a.get("country") or "US").upper()}
+    # Only real catalog products carry a bottle; membership/unknown slugs are skipped by
+    # _price_cart, matching how shipping is computed at create/edit.
+    cart = [{"slug": (l.get("slug") or "").strip(), "qty": l.get("qty")}
+            for l in lines_in if (l.get("slug") or "").strip()]
+    if pickup:
+        return jsonify({"ok": True, "shipping_cents": 0, "get_cents": 0, "pickup": True})
+    if not cart:
+        return jsonify({"ok": False, "error": "add a product first"}), 400
+    try:
+        pc = _price_cart(cart, ship=ship, channel="retail", email=(body.get("email") or None))
+        shipping_cents = _bos_orders.effective_shipping_cents(False, pc.get("shipping_cents"))
+        get_cents = int((pc.get("priced") or {}).get("get_cents") or 0)
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "shipping_cents": shipping_cents,
+                    "get_cents": get_cents, "pickup": False})
 
 
 @app.route("/api/invoice-snippets", methods=["GET"])
