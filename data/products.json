@@ -20232,7 +20232,9 @@
       "bottle_type": "own-box",
       "intro": "A portable bottle that generates molecular-hydrogen-rich water by electrolysis — Glen's recommended replacement for the discontinued Living Water Bottle.",
       "description": "Molecular Hydrogen is the perfect antioxidant. It is the smallest molecule that delivers electrons to even the smallest spaces in our cells, and it is the only antioxidant that cannot be overdosed — in excess, other antioxidants can block the body's own signalling. This portable bottle generates molecular-hydrogen-rich water on demand via electrolysis, so hydrogen-rich water travels with the client rather than being tied to a countertop system.",
-      "source": "gk-migration-2026-07-19"
+      "source": "gk-migration-2026-07-19",
+      "flat_shipping_cents": 3200,
+      "_note": "Ships in a USPS Large Flat Rate box — $32 as of 2026-07-20 (Glen). The $100/unit rate belongs to the WATER IONIZERS, not this. NOTE: this is a hardcoded flat rate, so it does NOT track usps_rates when USPS raises the L-box price; the packer-driven items do."
     },
     "book-dry-eye-relief-ebook": {
       "name": "Dry Eye Relief (ebook)",

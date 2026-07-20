@@ -72,3 +72,19 @@ def test_molecular_hydrogen_tablets_are_discontinued():
 def test_portable_hydrogen_bottle_still_sellable():
     p = app._get_product("molecular-hydrogen-bottle")
     assert p and not p.get("inactive") and p["price_cents"] == 24997
+
+
+def test_hydrogen_bottle_ships_large_box_not_ionizer_rate():
+    """Glen 2026-07-20, correcting an earlier answer: the $100/unit rate belongs
+    to the WATER IONIZERS. The Molecular Hydrogen bottle "would be a large box
+    (now $32)".
+
+    $32 is the USPS Large Flat Rate box under Glen's rounding rule ($31.50
+    retail, >=50c rounds up). It is ours to ship, so not vendor_shipped.
+    """
+    p = app._get_product("molecular-hydrogen-bottle")
+    assert p["flat_shipping_cents"] == 3200, "large box, not the ionizer rate"
+    assert not p.get("vendor_shipped"), "we ship this, not the vendor"
+    assert shipping.is_shippable(p) is True
+    # the ionizers keep their own, higher rate
+    assert app._get_product("water-ionizer-5plate")["flat_shipping_cents"] == 10000
