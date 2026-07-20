@@ -58,9 +58,24 @@ genuine user-gesture clicks rather than synthetic events.
 | Icon and aria-label swap on play | ✅ `🔈`/"Hear Dr. Glen's invitation" → `⏹`/"Stop the invitation" |
 | Toggle stops and replays | ✅ |
 
+## 2b. Confirmed on production after deploy (2026-07-20)
+
+Merged as `0b8248b5` and deployed. Re-checked against live `illtowell.com`, which — unlike
+the local static server — serves the real `/embed` iframe:
+
+| Behavior | Result |
+|---|---|
+| Speaker present, sized, one fireside link, orphaned CSS gone | ✅ live markup |
+| Click plays the invitation and does not navigate | ✅ |
+| **Receiving end of the unlock** | ✅ `__audioUnlocked === true` **inside the real iframe** |
+| `/chat/tts` returns real audio in production | ✅ HTTP 200, `audio/mpeg`, 25,539 bytes |
+| Invitation audible | ✅ confirmed by Glen in his own browser |
+
+The unlock's receiving end was the largest gap in section 3 and is now closed.
+
 ## 3. NOT verified — human passes still required
 
-Do not read section 2 as covering these.
+Do not read sections 2 and 2b as covering these.
 
 - **Fullscreen on `/begin/fireside`.** Could not be exercised. Fullscreen is blocked in
   this automation context: an independent control button calling
@@ -69,15 +84,22 @@ Do not read section 2 as covering these.
   out, not the code. Static checks did confirm `#fsBtn` renders, is feature-detected as
   supported on this desktop, targets `MAIN#fireside`, and sits 8px clear of `#muteBtn`.
   **A human must click it and press Escape in a normal browser.**
-- **Audio actually being audible.** `play()` was called with the right file; whether sound
-  reached a speaker was not observed.
-- **The receiving end of the unlock.** Only the *posting* side ran, because the static
-  server does not serve `/embed`. That a reply then speaks itself is still covered only by
-  text-presence assertions. **A human must confirm end-to-end on a real reply.**
+- **A reply actually speaking itself.** The unlock is confirmed to reach the iframe and
+  `/chat/tts` is confirmed to return audio, but the final hop — the chat calling
+  `attachAndSpeak` on a real reply — was deliberately not run: sending a message to the
+  live bot writes to the production chat log and can create a lead record. **A human must
+  ask the bot one question after tapping the speaker.**
 - **iOS Safari.** Nothing was run there. The `#fsBtn` hiding path and muted-video behavior
   are unexercised.
 - **The never-tapped control case.** Confirming an untouched page behaves exactly as before
   was not run end-to-end against the live app.
+
+### Corrected: the "black avatar" was an automation artifact
+
+An earlier draft of this record flagged the hero avatar rendering as a solid black
+rectangle on production (`readyState 0`, no error, asset serving 200). **That was the
+automated browser profile, not a defect** — the video plays normally in an ordinary
+browser, confirmed by Glen. Recorded so nobody investigates a bug that does not exist.
 
 ## 4. Incidental findings
 
