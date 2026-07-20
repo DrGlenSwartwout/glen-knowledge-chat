@@ -21,12 +21,11 @@ import { pickInvitationAudio, Invitation } from './invitation.js';
         src:    src,
       });
 
-      // The speaker lives inside the fireside anchor. Both calls are required:
-      // preventDefault stops the navigation, stopPropagation keeps the click
-      // away from the anchor's engagement handler.
+      // The speaker is a sibling of the fireside anchor, not nested inside it,
+      // so the click cannot reach the anchor's engagement handler. preventDefault
+      // is kept only as a harmless guard against future re-nesting.
       button.addEventListener('click', function (e) {
         e.preventDefault();
-        e.stopPropagation();
         inv.toggle();
       });
 

@@ -584,18 +584,19 @@
   .proof .sig { border: 1px solid var(--border); border-radius: 10px; background: #0c1e14; overflow: hidden; cursor: pointer; }
   .proof .sig canvas { width: 100%; height: 120px; display: block; }
   .avatar { position: relative; display: block; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); text-decoration: none; background: radial-gradient(120% 100% at 50% 118%, rgba(212,140,50,0.5), rgba(90,45,15,0.25) 42%, #0c1e14 75%); }
+  .avatar-wrap { position: relative; }
   .avatar .ember { position: absolute; inset: 0; z-index: 0; background: radial-gradient(58% 42% at 50% 112%, rgba(240,175,80,0.6), transparent 68%); animation: flicker 3.6s ease-in-out infinite; }
   .avatar .avatar-video { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; }
   .avatar .avcap { position: absolute; left: 0; right: 0; bottom: 10px; z-index: 2; text-align: center; color: var(--cream); font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
   /* Speaker rides on the avatar. 44px minimum tap target, cornered clear of
      the caption, so a mis-tap opens fireside rather than doing nothing. */
-  .avatar .avatar-speaker { position: absolute; top: 8px; right: 8px; z-index: 3;
+  .avatar-wrap .avatar-speaker { position: absolute; top: 8px; right: 8px; z-index: 3;
     width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
     background: rgba(20,12,6,0.72); border: 1px solid #6b5436; color: var(--cream);
     font-size: 17px; line-height: 1; display: flex; align-items: center;
     justify-content: center; }
-  .avatar .avatar-speaker:hover { background: rgba(20,12,6,0.9); }
-  .avatar .avatar-speaker.hidden { display: none !important; }
+  .avatar-wrap .avatar-speaker:hover { background: rgba(20,12,6,0.9); }
+  .avatar-wrap .avatar-speaker.hidden { display: none !important; }
   @keyframes flicker { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .avatar .ember { animation: none; } }
   .proof .lt { font-size: 14px; line-height: 1.5; color: var(--muted); margin: 0; }
@@ -744,15 +745,17 @@
     </div>
     <div class="hero-grid">
       <div class="proof reveal">
-        <a class="avatar" href="/begin/fireside" aria-label="Sit by the fire with Dr. Glen">
-          <span class="ember" aria-hidden="true"></span>
-          <video class="avatar-video" autoplay muted loop playsinline preload="auto" poster="/static/media/glendalf-poster.jpg" aria-hidden="true">
-            <source src="/static/media/glendalf-welcome.mp4" type="video/mp4">
-          </video>
-          <span class="avcap">Sit by the fire with Dr. Glen &rarr;</span>
+        <div class="avatar-wrap">
+          <a class="avatar" href="/begin/fireside" aria-label="Sit by the fire with Dr. Glen">
+            <span class="ember" aria-hidden="true"></span>
+            <video class="avatar-video" autoplay muted loop playsinline preload="auto" poster="/static/media/glendalf-poster.jpg" aria-hidden="true">
+              <source src="/static/media/glendalf-welcome.mp4" type="video/mp4">
+            </video>
+            <span class="avcap">Sit by the fire with Dr. Glen &rarr;</span>
+          </a>
           <button id="avatar-speaker" class="avatar-speaker hidden" type="button"
                   aria-label="Hear Dr. Glen&rsquo;s invitation">&#128264;</button>
-        </a>
+        </div>
         <p class="lt">Guided by the lifework of <strong>Dr. Glen Swartwout, O.D., N.D.</strong>, featured in USA&nbsp;Today: <em>&ldquo;Revolutionizing the World of Medicine with Natural Therapies.&rdquo;</em></p>
       </div>
       <div class="hero-chat" id="hero-chat">

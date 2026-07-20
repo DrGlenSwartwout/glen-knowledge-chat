@@ -31,15 +31,17 @@ def test_speaker_starts_hidden(monkeypatch, tmp_path):
     assert "hidden" in body[idx - 200 : idx + 200]
 
 
-def test_speaker_lives_inside_the_existing_avatar_anchor(monkeypatch, tmp_path):
-    """The single fireside door is the avatar; the speaker rides on it rather
-    than becoming a second entry (see commit ec233b56)."""
+def test_speaker_is_a_sibling_of_the_avatar_anchor(monkeypatch, tmp_path):
+    """The speaker rides on the avatar without nesting interactive content
+    inside the anchor, which is invalid HTML and breaks screen readers."""
     appmod = _reload_app(monkeypatch, tmp_path)
     body = appmod.app.test_client().get("/begin").get_data(as_text=True)
     anchor = body.index('<a class="avatar"')
-    speaker = body.index('id="avatar-speaker"')
     closing = body.index("</a>", anchor)
-    assert anchor < speaker < closing
+    speaker = body.index('id="avatar-speaker"')
+    assert speaker > closing, "speaker must not be nested inside the anchor"
+    wrap = body.index('class="avatar-wrap"')
+    assert wrap < anchor, "both must live inside the positioned wrapper"
 
 
 def test_no_second_fireside_cta_was_added(monkeypatch, tmp_path):
