@@ -1,28 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickWelcomeClip, Invitation, UNLOCK_MSG } from '../../static/begin/invitation.js';
+import { pickInvitationAudio, Invitation, UNLOCK_MSG } from '../../static/begin/invitation.js';
 
 const M = {
-  intro_welcomes: ['/a.mp4', '/b.mp4', '/c.mp4'],
-  intro_welcome: '/w.mp4',
-  intro_video: '/v.mp4',
+  intro_welcome_audios: ['/a.mp3', '/b.mp3', '/c.mp3'],
+  intro_welcome_audio: '/w.mp3',
 };
 
-function fakeVideo() {
+function fakeAudio() {
   return {
-    src: '', muted: true, loop: false, currentTime: 0, onended: null, _played: 0,
-    play() { this._played++; return { catch() {} }; },
+    src: '', currentTime: 0, paused: true, onended: null, _played: 0, _paused: 0,
+    play() { this._played++; this.paused = false; return { catch() {} }; },
+    pause() { this._paused++; this.paused = true; },
   };
 }
 
-function fakeEl(initiallyHidden = true) {
-  const cls = new Set(initiallyHidden ? ['hidden'] : []);
+function fakeBtn() {
+  const cls = new Set(['hidden']);
   return {
-    classList: {
-      add: (c) => cls.add(c),
-      remove: (c) => cls.delete(c),
-      contains: (c) => cls.has(c),
-    },
+    innerHTML: '', _label: '',
+    classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c) },
+    setAttribute(k, v) { if (k === 'aria-label') this._label = v; },
   };
 }
 
@@ -32,129 +30,110 @@ function fakeFrame() {
 }
 
 function build(over = {}) {
-  const video = fakeVideo();
-  const root = fakeEl();
-  const choices = fakeEl();
-  const hint = fakeEl(false);
+  const audio = fakeAudio();
+  const button = fakeBtn();
   const frame = fakeFrame();
   const inv = new Invitation({
-    video, root, choices, hint, frame,
+    audio, button, frame,
     origin: 'https://illtowell.com',
-    clip: '/a.mp4',
-    restingClip: '/rest-1.mp4',
+    src: '/a.mp3',
     ...over,
   });
-  return { inv, video, root, choices, hint, frame };
+  return { inv, audio, button, frame };
 }
 
-// ── pickWelcomeClip ─────────────────────────────────────────────────────────
-test('picks from intro_welcomes', () => {
-  assert.equal(pickWelcomeClip(M, () => 0), '/a.mp4');
-  assert.equal(pickWelcomeClip(M, () => 0.99), '/c.mp4');
+// ── pickInvitationAudio ─────────────────────────────────────────────────────
+test('picks from intro_welcome_audios', () => {
+  assert.equal(pickInvitationAudio(M, () => 0), '/a.mp3');
+  assert.equal(pickInvitationAudio(M, () => 0.99), '/c.mp3');
 });
 
-test('falls back to intro_welcome when the list is empty', () => {
-  assert.equal(pickWelcomeClip({ intro_welcomes: [], intro_welcome: '/w.mp4' }), '/w.mp4');
-});
-
-test('falls back to intro_video when neither list nor intro_welcome', () => {
-  assert.equal(pickWelcomeClip({ intro_video: '/v.mp4' }), '/v.mp4');
+test('falls back to intro_welcome_audio when the list is empty', () => {
+  assert.equal(pickInvitationAudio({ intro_welcome_audios: [], intro_welcome_audio: '/w.mp3' }), '/w.mp3');
 });
 
 test('returns null on an empty or missing manifest', () => {
-  assert.equal(pickWelcomeClip({}), null);
-  assert.equal(pickWelcomeClip(null), null);
+  assert.equal(pickInvitationAudio({}), null);
+  assert.equal(pickInvitationAudio(null), null);
 });
 
-// ── start ───────────────────────────────────────────────────────────────────
-test('start plays muted and looping, and reveals the tile', () => {
-  const { inv, video, root } = build();
-  assert.equal(inv.start(), true);
-  assert.equal(video.src, '/a.mp4');
-  assert.equal(video.muted, true);
-  assert.equal(video.loop, true);
-  assert.equal(video._played, 1);
-  assert.equal(root.classList.contains('hidden'), false);
+// ── mount ───────────────────────────────────────────────────────────────────
+test('mount reveals the button when there is a source', () => {
+  const { inv, button } = build();
+  assert.equal(inv.mount(), true);
+  assert.equal(button.classList.contains('hidden'), false);
 });
 
-test('start is a no-op with no clip and leaves the tile hidden', () => {
-  const { inv, video, root } = build({ clip: null });
-  assert.equal(inv.start(), false);
-  assert.equal(video._played, 0);
-  assert.equal(root.classList.contains('hidden'), true);
+test('mount is a no-op with no source and leaves the button hidden', () => {
+  const { inv, button } = build({ src: null });
+  assert.equal(inv.mount(), false);
+  assert.equal(button.classList.contains('hidden'), true);
 });
 
-// ── tap ─────────────────────────────────────────────────────────────────────
-test('tap unmutes, restarts, stops looping, and hides the hint', () => {
-  const { inv, video, hint } = build();
-  inv.start();
-  assert.equal(inv.tap(), true);
-  assert.equal(video.muted, false);
-  assert.equal(video.loop, false);
-  assert.equal(video.currentTime, 0);
-  assert.equal(hint.classList.contains('hidden'), true);
+// ── play ────────────────────────────────────────────────────────────────────
+test('play sets the source, restarts, and plays', () => {
+  const { inv, audio } = build();
+  assert.equal(inv.play(), true);
+  assert.equal(audio.src, '/a.mp3');
+  assert.equal(audio.currentTime, 0);
+  assert.equal(audio._played, 1);
 });
 
-test('tap is a no-op with no clip', () => {
-  const { inv, video } = build({ clip: null });
-  assert.equal(inv.tap(), false);
-  assert.equal(video._played, 0);
+test('play is a no-op with no source', () => {
+  const { inv, audio } = build({ src: null });
+  assert.equal(inv.play(), false);
+  assert.equal(audio._played, 0);
 });
 
-test('tap posts the unlock message once, to the given origin', () => {
+test('play posts the unlock message once, to the given origin', () => {
   const { inv, frame } = build();
-  inv.start();
-  inv.tap();
+  inv.play();
   assert.equal(frame.sent.length, 1);
   assert.deepEqual(frame.sent[0].msg, { type: UNLOCK_MSG });
   assert.equal(frame.sent[0].origin, 'https://illtowell.com');
 });
 
-test('tapping twice still posts only one unlock message', () => {
+test('playing twice still posts only one unlock message', () => {
   const { inv, frame } = build();
-  inv.start();
-  inv.tap();
-  inv.tap();
+  inv.play();
+  inv.stop();
+  inv.play();
   assert.equal(frame.sent.length, 1);
 });
 
-test('tap with no frame does not throw and still marks unlocked', () => {
+test('play with no frame does not throw and still marks unlocked', () => {
   const { inv } = build({ frame: null });
-  inv.start();
-  assert.doesNotThrow(() => inv.tap());
+  assert.doesNotThrow(() => inv.play());
   assert.equal(inv.unlocked, true);
 });
 
-// ── end of clip ─────────────────────────────────────────────────────────────
-test('onEnded reveals the choices and returns to a muted resting loop', () => {
-  const { inv, video, choices } = build();
-  inv.start();
-  inv.tap();
-  video.onended();
-  assert.equal(choices.classList.contains('hidden'), false);
-  assert.equal(video.src, '/rest-1.mp4');
-  assert.equal(video.loop, true);
-  assert.equal(video.muted, true);
+// ── stop and toggle ─────────────────────────────────────────────────────────
+test('stop pauses the audio', () => {
+  const { inv, audio } = build();
+  inv.play();
+  inv.stop();
+  assert.equal(audio._paused, 1);
 });
 
-test('onEnded with no resting clip still reveals the choices', () => {
-  const { inv, choices } = build({ restingClip: null });
-  inv.start();
-  inv.tap();
-  assert.doesNotThrow(() => inv.onEnded());
-  assert.equal(choices.classList.contains('hidden'), false);
+test('toggle plays when idle and stops when playing', () => {
+  const { inv, audio } = build();
+  assert.equal(inv.toggle(), true);
+  assert.equal(audio._played, 1);
+  assert.equal(inv.toggle(), false);
+  assert.equal(audio._paused, 1);
 });
 
-// ── dismiss ─────────────────────────────────────────────────────────────────
-test('dismiss hides the whole tile', () => {
-  const { inv, root } = build();
-  inv.start();
-  inv.dismiss();
-  assert.equal(root.classList.contains('hidden'), true);
+test('the audio ending returns the button to its idle label', () => {
+  const { inv, audio, button } = build();
+  inv.play();
+  const playingLabel = button._label;
+  audio.onended();
+  assert.notEqual(button._label, playingLabel);
+  assert.equal(inv.playing, false);
 });
 
 // ── graceful degradation ────────────────────────────────────────────────────
 test('every method is safe with an entirely empty construction', () => {
   const inv = new Invitation({});
-  assert.doesNotThrow(() => { inv.start(); inv.tap(); inv.notifyUnlock(); inv.onEnded(); inv.dismiss(); });
+  assert.doesNotThrow(() => { inv.mount(); inv.play(); inv.stop(); inv.toggle(); inv.notifyUnlock(); });
 });
