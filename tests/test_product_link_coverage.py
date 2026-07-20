@@ -264,3 +264,27 @@ def test_gap_tolerance_stays_tight():
 def test_prompt_forbids_borrowing_another_products_url():
     prompt = app.get_system_prompt("self-healing")
     assert "A TABLE URL BELONGS TO ITS OWN PRODUCT ONLY" in prompt
+
+
+def test_membership_routes_to_in_app_not_a_competing_sku():
+    """Glen 2026-07-20: the GrooveKart $497 membership must NOT become a catalog
+    SKU competing with the in-app $99/mo membership. The bot routes to the
+    in-app page; with no table price it says the page shows pricing rather than
+    quoting a stale figure."""
+    d = app.build_product_directive(query_text="how much is a monthly membership")
+    row = [l for l in d.splitlines() if l.strip().startswith("• Monthly Membership ")]
+    assert row and "/membership" in row[0], row
+    assert "$" not in row[0], "membership row must carry no price"
+
+
+def test_consult_only_high_ticket_never_offers_a_price_or_buy_link():
+    """$28k-$100k Healing Oasis tiers + ASH Training: consult-only. The bot must
+    route to a conversation, never quote a price or a buy link (the fabrication
+    risk on a six-figure item is the worst case)."""
+    d = app.build_product_directive(query_text="tell me about the Consultant Healing Oasis")
+    for name in ("Consultant Healing Oasis", "Home Healing Oasis",
+                 "Enterprise Healing Oasis", "Travel Healing Oasis"):
+        row = [l for l in d.splitlines() if l.strip().startswith(f"• {name} ")]
+        assert row, name
+        assert "DESCRIBE-ONLY" in row[0] and "CONSULT ONLY" in row[0], row[0]
+        assert "http" not in row[0].split("CONSULT ONLY")[0], f"{name} carries a link"
