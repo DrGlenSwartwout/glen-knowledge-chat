@@ -2424,7 +2424,9 @@
       "price_cents": 3997,
       "pinecone_title": "Molecular Hydrogen Tablets",
       "url": "https://remedymatch.com/remedies/378-molecular-hydrogen-tablets",
-      "fmp_id": "453"
+      "fmp_id": "453",
+      "inactive": true,
+      "_note": "DISCONTINUED (Glen 2026-07-20). Molecular hydrogen now comes from the Water Ionizers, which produce molecular-hydrogen water, or the portable Molecular Hydrogen bottle."
     },
     "vitamin-a-syntropy": {
       "name": "Vitamin A Synergy",
@@ -5968,21 +5970,27 @@
       "regular_cents": 479000,
       "bottle_type": "own-box",
       "description": "NES miHealth handheld PEMF + microcurrent bioenergetic device (ordered from E4L, formerly NES). Drop-shipped by the vendor.",
-      "source": "manual-add-2026-07-10"
+      "source": "manual-add-2026-07-10",
+      "vendor_shipped": true,
+      "_note": "Ships direct from NES (E4L) — we never pack it, so it must not enter the box packer."
     },
     "kloud-pemf-mini": {
       "name": "Kloud PEMF Mat (Mini)",
       "price_cents": 289000,
       "bottle_type": "own-box",
       "description": "Kloud Mini PEMF mat (ordered from our Centropix store page). Drop-shipped by Centropix.",
-      "source": "manual-add-2026-07-10"
+      "source": "manual-add-2026-07-10",
+      "vendor_shipped": true,
+      "_note": "Ships direct from Centropix — we never pack it, so it must not enter the box packer."
     },
     "kloud-pemf-maxi": {
       "name": "Kloud PEMF Mat (Maxi)",
       "price_cents": 359000,
       "bottle_type": "own-box",
       "description": "Kloud Maxi PEMF mat (ordered from our Centropix store page). Drop-shipped by Centropix.",
-      "source": "manual-add-2026-07-10"
+      "source": "manual-add-2026-07-10",
+      "vendor_shipped": true,
+      "_note": "Ships direct from Centropix — we never pack it, so it must not enter the box packer."
     },
     "denas-scenar": {
       "name": "DENAS PCM Pro (SCENAR Microcurrent)",
