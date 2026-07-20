@@ -88,3 +88,64 @@ def test_hydrogen_bottle_ships_large_box_not_ionizer_rate():
     assert shipping.is_shippable(p) is True
     # the ionizers keep their own, higher rate
     assert app._get_product("water-ionizer-5plate")["flat_shipping_cents"] == 10000
+
+
+# ── GrooveKart device import (Glen's shipping answers, 2026-07-20) ───────────
+
+IMPORT_TAG = "gk-device-import-2026-07-20"
+
+
+def _imported():
+    return {s: p for s, p in app._PRODUCTS["products"].items()
+            if p.get("source") == IMPORT_TAG}
+
+
+def test_every_imported_device_charges_real_shipping():
+    """The money guard. An own-box device with no flat rate cannot be packed by
+    quote(), so the cart drops to the coarse qty rule and ships a heavy device
+    at a small-box rate — the bug fixed in #1050/#1053. Every imported device
+    must resolve to a NON-ZERO shipping charge through the real pricing path.
+    """
+    ship = {"state": "CA", "country": "US"}
+    assert len(_imported()) >= 20
+    for slug in _imported():
+        out = app._price_cart([{"slug": slug, "qty": 1}], ship=ship)
+        assert out.get("shipping_cents", 0) > 0, f"{slug} ships for free"
+
+
+def test_imported_flat_rates_match_glens_answers():
+    exp = {
+        "nir-brain-frequency-helmet": 3200,      # "Helmets: we ship - $32 (Large) each"
+        "hair-growth-helmet": 3200,
+        "photobiomodulation-package": 5500,      # "Large + Medium" = 32 + 23
+        "miracule-water-system": 10000,          # "Miracule: $100"
+        "air-surface-pro-plus": 3200,            # "Air & Surface PRO+ Large"
+        "denas-microcurrent-eye-system": 3200,   # "Denas Large (we ship)"
+        "tibetan-singing-bowl-172hz": 10000,     # "Tibetan bowl $100"
+        "vagus-nerve-stimulation-kit": 1300,     # "Vegus Nerve kit small"
+        "neutralizer-3-pack": 1300,              # "Neutralizer small"
+    }
+    for slug, cents in exp.items():
+        p = app._get_product(slug)
+        assert p, slug
+        assert p["flat_shipping_cents"] == cents, slug
+        assert not p.get("vendor_shipped"), f"{slug}: Glen said WE ship it"
+
+
+def test_packer_devices_use_bottle_types_prod_actually_has():
+    """A bottle_type prod does not recognise silently drops the WHOLE cart to
+    the coarse qty rule (see shipping.PROD_BOTTLE_NAMES)."""
+    for slug, p in _imported().items():
+        bt = p.get("bottle_type")
+        assert bt, slug
+        if bt != "own-box":
+            assert bt in shipping.PROD_BOTTLE_NAMES, f"{slug}: {bt!r} missing in prod"
+
+
+def test_held_devices_were_not_imported():
+    """Held pending Glen: unresolved price or shipping. Importing them blind
+    would guess a rate, which undercharges every sale."""
+    for slug in ("whole-house-neutralizer", "healing-tools-package",
+                 "blue-blocking-photochromic-sunglasses",
+                 "breath-tuning-fork-1283hz", "living-water-bottle-filter-refill"):
+        assert app._get_product(slug) is None, f"{slug} imported before it was resolved"
