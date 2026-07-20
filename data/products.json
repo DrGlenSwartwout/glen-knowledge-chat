@@ -638,11 +638,13 @@
     },
     "evox-session": {
       "name": "EVOX Session (prepaid)",
-      "price_cents": 19700,
+      "price_cents": 15000,
       "info_only": true,
       "service": true,
       "service_value_cents": 19700,
-      "source": "evox-service-2026-07-04"
+      "source": "evox-service-2026-07-04",
+      "regular_cents": 19700,
+      "_note": "Price reconciled 2026-07-20 (Glen): $150 actual (= the in-app EVOX booking rate), $197 as SRP/compare-at value."
     },
     "free-and-easy": {
       "name": "Free & Easy",
