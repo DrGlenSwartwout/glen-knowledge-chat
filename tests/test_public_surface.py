@@ -222,3 +222,29 @@ def test_share_header_missing_table_fails_closed():
     cx = _cx_with_affiliate()
     # Deliberately do NOT call sh.init_share_headers_table(cx).
     assert ps.build_share_header(cx, "prof-jane-doe") is None
+
+
+def test_storefront_merges_self_authored_profile(monkeypatch):
+    """A self-authored profile fills the empty storefront fields."""
+    from dashboard import public_surface as ps
+    monkeypatch.setattr(
+        ps, "_profile_for_slug",
+        lambda cx, slug: {"bio": "I heal", "services": ["Acupuncture"],
+                          "location": "Hilo, HI", "photo_url": "https://x/p.jpg",
+                          "logo_url": "", "accepting_clients": False})
+    cx = _cx_with_affiliate()  # existing helper in this file
+    view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
+    assert view["bio"] == "I heal"
+    assert view["services"] == ["Acupuncture"]
+    assert view["location"] == "Hilo, HI"
+    assert view["accepting_clients"] is False
+    assert set(view) <= ps.PRACTITIONER_PUBLIC_FIELDS  # guard still holds
+
+
+def test_storefront_empty_profile_leaves_base(monkeypatch):
+    from dashboard import public_surface as ps
+    monkeypatch.setattr(ps, "_profile_for_slug", lambda cx, slug: {})
+    cx = _cx_with_affiliate()
+    view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
+    assert view["bio"] == ""
+    assert view["services"] == []

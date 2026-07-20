@@ -145,6 +145,41 @@
       <div class="muted" style="margin-top:4px">Color preview</div>
     </div>
 
+    <!-- ── Public storefront ──────────────────────────────────────── -->
+    <div class="panel">
+      <h2>Your public storefront</h2>
+      <div class="muted" style="margin-top:6px">This appears on your public page at
+        illtowell.com/p/your-slug. Only what you save here is published — nothing is
+        shown until you do.</div>
+      <div class="muted" id="sf-scraped-note" style="display:none;margin-top:6px">
+        We may have directory info on file for you. Start from it or write fresh —
+        nothing publishes until you save this section.
+        <div><button type="button" id="sf-load-scraped" class="ghost"
+             style="margin-top:8px;display:none">Use my directory info as a starting point</button></div>
+      </div>
+
+      <label class="field-label">Bio (max 600 characters)</label>
+      <textarea id="sf-bio" maxlength="600" rows="5"
+                placeholder="Introduce yourself to prospective clients."></textarea>
+      <div class="muted"><span id="sf-bio-count">0</span>/600</div>
+
+      <label class="field-label">Photo URL (paste a public image URL)</label>
+      <input type="url" id="sf-photo" placeholder="https://yoursite.com/photo.jpg">
+
+      <label class="field-label">Services (comma-separated, up to 12)</label>
+      <input type="text" id="sf-services" placeholder="Acupuncture, Nutrition, Biofield Analysis">
+
+      <label class="field-label">City</label>
+      <input type="text" id="sf-city" placeholder="Hilo">
+      <label class="field-label">State</label>
+      <input type="text" id="sf-state" placeholder="HI">
+
+      <label class="toggle-row" style="margin-top:14px">
+        <input type="checkbox" id="sf-accepting" checked>
+        <span>Accepting new clients</span>
+      </label>
+    </div>
+
     <!-- ── Patient support chat ─────────────────────────────────── -->
     <div class="panel">
       <h2>Patient support chat</h2>
@@ -201,6 +236,14 @@
   var TOKEN = new URLSearchParams(location.search).get('token') || '';
   var MAP_CENTS = 6700;  // $67 minimum
   var RETAIL_CENTS = 7000; // approximate retail for companion calc (~$70)
+
+  // Storefront-card dirty flag. Only send `profile` in the save payload when
+  // the practitioner actually touched one of these fields — otherwise saving
+  // an unrelated setting (e.g. pricing) would silently publish whatever the
+  // GET handler pre-filled (which may be scraped directory data) and stamp
+  // provenance on data the practitioner never reviewed.
+  var sfDirty = false;
+  var sfScraped = null;  // directory data offered as an opt-in starting point
 
   // ── Theme toggle ─────────────────────────────────────────────────────────────
   function toggleTheme() {
@@ -355,6 +398,42 @@
     setShowContact(this.checked);
   });
 
+  // ── Storefront bio counter ──────────────────────────────────────────────────────
+  document.getElementById('sf-bio').addEventListener('input', function () {
+    document.getElementById('sf-bio-count').textContent = this.value.length;
+  });
+
+  // ── Storefront dirty-flag wiring ─────────────────────────────────────────────
+  // Any edit to the storefront card marks it dirty, so saveSettings() knows to
+  // include `profile` in the payload. Untouched, the card is never sent, so an
+  // unrelated save (pricing/branding/toggles) can never publish or re-stamp it.
+  (function () {
+    var markDirty = function () { sfDirty = true; };
+    ['sf-bio', 'sf-photo', 'sf-services', 'sf-city', 'sf-state'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', markDirty);
+      document.getElementById(id).addEventListener('change', markDirty);
+    });
+    document.getElementById('sf-accepting').addEventListener('change', markDirty);
+
+    // Opt-in: load the scraped directory data into the editable inputs as a
+    // starting point. This is a DELIBERATE act (a click), and it marks the card
+    // dirty — so a later save publishes only because the practitioner chose to
+    // load this data and then save it. Scraped data is never pre-loaded without
+    // this click, so an unrelated save still can't publish it.
+    document.getElementById('sf-load-scraped').addEventListener('click', function () {
+      if (!sfScraped) return;
+      document.getElementById('sf-bio').value = sfScraped.bio || '';
+      document.getElementById('sf-bio-count').textContent = (sfScraped.bio || '').length;
+      document.getElementById('sf-photo').value = sfScraped.photo_url || '';
+      document.getElementById('sf-services').value = (sfScraped.services || []).join(', ');
+      document.getElementById('sf-city').value = sfScraped.city || '';
+      document.getElementById('sf-state').value = sfScraped.state || '';
+      document.getElementById('sf-accepting').checked = sfScraped.accepting_clients !== false;
+      sfDirty = true;
+      document.getElementById('sf-scraped-note').style.display = 'none';
+    });
+  })();
+
   // ── Load settings ─────────────────────────────────────────────────────────────
   fetch('/api/practitioner/settings', { credentials: 'same-origin', headers: authHeaders() })
     .then(function (r) { return r.json(); })
@@ -380,6 +459,41 @@
       document.getElementById('logo-url').value = b.logo_url || '';
       document.getElementById('photo-url').value = b.photo_url || '';
       setColorPair(b.brand_color_1, b.brand_color_2);
+
+      // Public storefront. Only pre-fill from `pf` when it's the practitioner's
+      // own self-authored data (data.profile.self_authored). Scraped/unconfirmed
+      // directory data must NEVER be pre-filled into these editable inputs —
+      // otherwise editing one field (e.g. bio) and saving could drag the other,
+      // untouched scraped fields (photo/services/city/state) into publication.
+      var pf = data.profile || {};
+      var scrapedNote = document.getElementById('sf-scraped-note');
+      if (pf.self_authored) {
+        document.getElementById('sf-bio').value = pf.bio || '';
+        document.getElementById('sf-bio-count').textContent = (pf.bio || '').length;
+        document.getElementById('sf-photo').value = pf.photo_url || '';
+        document.getElementById('sf-services').value = (pf.services || []).join(', ');
+        document.getElementById('sf-city').value = pf.city || '';
+        document.getElementById('sf-state').value = pf.state || '';
+        document.getElementById('sf-accepting').checked = pf.accepting_clients !== false;
+        if (scrapedNote) scrapedNote.style.display = 'none';
+      } else {
+        document.getElementById('sf-bio').value = '';
+        document.getElementById('sf-bio-count').textContent = '0';
+        document.getElementById('sf-photo').value = '';
+        document.getElementById('sf-services').value = '';
+        document.getElementById('sf-city').value = '';
+        document.getElementById('sf-state').value = '';
+        document.getElementById('sf-accepting').checked = true;
+        if (scrapedNote) scrapedNote.style.display = 'block';
+        // Stash the scraped values so the opt-in "use my directory info" button
+        // can load them on a deliberate click. Show the button only if there is
+        // actually something on file.
+        var hasScraped = !!(pf.bio || pf.photo_url || pf.city || pf.state ||
+                            (pf.services && pf.services.length));
+        sfScraped = hasScraped ? pf : null;
+        document.getElementById('sf-load-scraped').style.display =
+          hasScraped ? 'inline-block' : 'none';
+      }
 
       // Chat enabled toggle
       setChatToggle(!!data.chat_enabled);
@@ -422,6 +536,22 @@
       show_contact: document.getElementById('show-contact').checked,
     };
 
+    // Only send `profile` when the storefront card was actually edited this
+    // session. The POST handler only writes/stamps provenance when `profile`
+    // is present in the body — omitting it means saving pricing/branding/
+    // toggles alone can never publish or re-stamp the storefront card.
+    if (sfDirty) {
+      payload.profile = {
+        bio: document.getElementById('sf-bio').value,
+        photo_url: document.getElementById('sf-photo').value.trim(),
+        services: document.getElementById('sf-services').value.split(',')
+                    .map(function (s) { return s.trim(); }).filter(Boolean),
+        city: document.getElementById('sf-city').value.trim(),
+        state: document.getElementById('sf-state').value.trim(),
+        accepting_clients: document.getElementById('sf-accepting').checked,
+      };
+    }
+
     fetch('/api/practitioner/settings', {
       method: 'POST',
       credentials: 'same-origin',
@@ -448,6 +578,15 @@
         // Refresh toggle from server response
         setChatToggle(!!data.chat_enabled);
         if ('show_contact' in data) { setShowContact(!!data.show_contact); }
+
+        // The storefront card was just persisted (and provenance stamped) —
+        // clear the dirty flag and hide the scraped-data note so a later,
+        // unrelated save doesn't resend it.
+        if (data.profile) {
+          sfDirty = false;
+          var note = document.getElementById('sf-scraped-note');
+          if (note) note.style.display = 'none';
+        }
 
         // Show clamped notification
         var clamped = data.clamped || [];

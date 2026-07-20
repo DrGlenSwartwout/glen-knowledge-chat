@@ -16618,9 +16618,35 @@ def api_practitioner_settings_get():
     except Exception as e:
         print(f"[practitioner-settings] show_contact read failed: {e!r}", flush=True)
 
-    return jsonify({"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
-                    "chat_enabled": settings.get("chat_enabled", False),
-                    "show_contact": show_contact})
+    # profile lives on the Supabase practitioners row too; read it the same
+    # way as show_contact and never let a failure 500 the page.
+    profile = None
+    try:
+        from db_supabase import supabase_cursor
+        with supabase_cursor() as cur:
+            cur.execute("SELECT bio, photo_url, specialties, city, state, "
+                        "accepting_new_patients, profile_self_authored_at "
+                        "FROM practitioners WHERE id=%s", (pid,))
+            p = cur.fetchone()
+        if p:
+            profile = {
+                "bio": p.get("bio") or "",
+                "photo_url": p.get("photo_url") or "",
+                "services": list(p.get("specialties") or []),
+                "city": p.get("city") or "",
+                "state": p.get("state") or "",
+                "accepting_clients": bool(p.get("accepting_new_patients")),
+                "self_authored": bool(p.get("profile_self_authored_at")),
+            }
+    except Exception as e:
+        print(f"[practitioner-settings] profile read failed: {e!r}", flush=True)
+
+    resp = {"ok": True, "branding": settings["branding"], "pricing": settings["pricing"],
+            "chat_enabled": settings.get("chat_enabled", False),
+            "show_contact": show_contact}
+    if profile is not None:
+        resp["profile"] = profile
+    return jsonify(resp)
 
 
 @app.route("/api/practitioner/settings", methods=["POST"])
@@ -16631,6 +16657,16 @@ def api_practitioner_settings_post():
     from dashboard import practitioner_settings as _ps
     from dashboard import practitioner_pricing as _ppr
     body = request.get_json(silent=True) or {}
+
+    # Validate the bio before any write, so a too-long bio can't 400 the
+    # request AFTER branding/pricing/show_contact have already been persisted.
+    if isinstance(body.get("profile"), dict):
+        from dashboard import practitioner_profile as _pp
+        try:
+            _pp.sanitize_bio((body["profile"] or {}).get("bio", ""))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
     branding_in = body.get("branding") or {}
     pricing_in = body.get("pricing") or {}
 
@@ -16693,12 +16729,25 @@ def api_practitioner_settings_post():
         except Exception as e:
             print(f"[practitioner-settings] show_contact write failed: {e!r}", flush=True)
 
+    # profile lives on the Supabase practitioners row too; only touch it when
+    # the key is present, so saving branding/pricing alone never resets it.
+    # A bad bio (ValueError) is a 400, not a 500.
+    profile_out = None
+    if "profile" in body and isinstance(body.get("profile"), dict):
+        from dashboard import practitioner_profile as _pp
+        try:
+            profile_out = _pp.save_profile(pid, body["profile"])
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
     resp = {"ok": True, "branding": settings["branding"],
             "pricing": settings["pricing"],
             "chat_enabled": settings.get("chat_enabled", False),
             "clamped": clamped}
     if show_contact_out is not None:
         resp["show_contact"] = show_contact_out
+    if profile_out is not None:
+        resp["profile"] = profile_out
     return jsonify(resp)
 
 

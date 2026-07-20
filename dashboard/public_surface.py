@@ -82,6 +82,13 @@ PROFIT_DISCLOSURE = (
 )
 
 
+def _profile_for_slug(cx, slug):
+    """Indirection over practitioner_profile.profile_for_slug (lazy import;
+    monkeypatch-friendly)."""
+    from dashboard import practitioner_profile as _pp
+    return _pp.profile_for_slug(cx, slug)
+
+
 def _public_only(view, allowed):
     """Final fail-closed guard: drop any key not explicitly allowed."""
     return {k: v for k, v in view.items() if k in allowed}
@@ -114,6 +121,10 @@ def build_practitioner_storefront(cx, slug):
         "catalog_url": "/begin/explore",
         "profit_disclosure": PROFIT_DISCLOSURE,
     }
+    profile = _profile_for_slug(cx, slug)
+    for k, v in (profile or {}).items():
+        if v not in (None, "", []):
+            view[k] = v
     return _public_only(view, PRACTITIONER_PUBLIC_FIELDS)
 
 
