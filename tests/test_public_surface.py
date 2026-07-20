@@ -30,8 +30,12 @@ def test_demo_view_is_a_copy_not_the_fixture():
     assert all(f["name"] != "injected" for f in second["findings"])
 
 
-def test_demo_module_does_not_import_sqlite():
-    """public_surface builds payloads; it never opens a connection itself."""
+def test_public_surface_module_never_opens_its_own_connection():
+    """public_surface builds payloads; it never opens a connection itself --
+    callers pass in `cx`. NOT an "avoids importing sqlite3" check: the module
+    does `import sqlite3` (for the sqlite3.Error/sqlite3.OperationalError
+    types used in its own except clauses). The real invariant is that it
+    never calls sqlite3.connect(...) on its own."""
     src = inspect.getsource(ps)
     assert "sqlite3.connect" not in src
 

@@ -12,6 +12,10 @@ import re
 from datetime import datetime, timezone
 
 MAX_BODY = 280
+# 60 chars comfortably covers a real display name ("Dr. Jane Q. Doe-Smith, RN")
+# while remaining far too short for the HTML/URL/phone/email payloads sanitize()
+# strips -- matching how MAX_BODY bounds `body`.
+MAX_DISPLAY_NAME = 60
 
 # Only strips things that actually look like tags: '<' (or '</'), with NO
 # whitespace before the tag-name letter, then an ASCII letter (real tags and
@@ -88,6 +92,14 @@ def upsert_header(cx, email, display_name, body):
         raise ValueError(f"body exceeds {MAX_BODY} characters after sanitizing")
     if not clean:
         raise ValueError("body is empty after sanitizing")
+    # display_name gets the same treatment as body: sanitize() strips HTML/URLs/
+    # emails/phone numbers, then a length cap. The <input maxlength="40"> in
+    # client-portal.html is client-side only and enforces nothing server-side.
+    clean_name = sanitize(display_name)
+    if len(clean_name) > MAX_DISPLAY_NAME:
+        raise ValueError(f"display_name exceeds {MAX_DISPLAY_NAME} characters after sanitizing")
+    if not clean_name:
+        raise ValueError("display_name is empty after sanitizing")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     cx.execute("""
         INSERT INTO share_headers (email, display_name, body, status, created_at, updated_at)
@@ -97,7 +109,7 @@ def upsert_header(cx, email, display_name, body):
             body=excluded.body,
             status='pending',
             updated_at=excluded.updated_at
-    """, ((email or "").strip().lower(), (display_name or "").strip(), clean, now, now))
+    """, ((email or "").strip().lower(), clean_name, clean, now, now))
     cx.commit()
     return dict(cx.execute("SELECT * FROM share_headers WHERE email=?",
                            ((email or "").strip().lower(),)).fetchone())
@@ -123,3 +135,13 @@ def get_approved(cx, email):
         "SELECT display_name, body FROM share_headers WHERE email=? AND status='approved'",
         ((email or "").strip().lower(),)).fetchone()
     return dict(row) if row else None
+
+
+def list_pending(cx):
+    """All rows still awaiting review, oldest first. Without this the
+    approval queue is invisible -- headers get approved blind (by email,
+    guessed) or never reviewed at all."""
+    rows = cx.execute(
+        "SELECT email, display_name, body, created_at FROM share_headers"
+        " WHERE status='pending' ORDER BY created_at ASC").fetchall()
+    return [dict(r) for r in rows]

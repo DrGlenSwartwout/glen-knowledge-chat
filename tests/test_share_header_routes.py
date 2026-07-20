@@ -62,6 +62,37 @@ def test_console_approve_requires_secret(client, monkeypatch):
     assert r.status_code == 401
 
 
+def test_console_approve_empty_secret_does_not_approve_unauthenticated(client, monkeypatch):
+    """CONSOLE_SECRET empty (not monkeypatched truthy) must fail CLOSED, not open.
+    _portal_console_ok() vacuously returns True when CONSOLE_SECRET isn't configured
+    -- that's correct for the ~35 other console routes it guards, but this route is
+    the only thing between an unreviewed client health claim and publication, so it
+    must use the fail-closed check instead. No X-Console-Key header is sent at all."""
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "victim@x.com", "Victim", "Unreviewed claim.")
+    cx.close()
+
+    r = client.post("/api/console/share-header/victim@x.com/approve")
+    assert r.status_code != 200
+
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    assert sh.get_approved(cx, "victim@x.com") is None
+    cx.close()
+
+
+def test_console_share_header_404s_when_flag_off(monkeypatch, tmp_path):
+    monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "")
+    c = appmod.app.test_client()
+    r = c.post("/api/console/share-header/a@b.com/approve")
+    assert r.status_code == 404
+    assert r.data == b""
+
+
 def test_console_rejects_unknown_action(client, monkeypatch):
     monkeypatch.setattr(appmod, "CONSOLE_SECRET", "test-secret")
     r = client.post("/api/console/share-header/a@b.com/delete-everything",
@@ -111,6 +142,53 @@ def test_portal_write_empty_body_400s(client, monkeypatch):
                     json={"display_name": "Em", "body": ""})
     assert r.status_code == 400
     assert "error" in r.get_json()
+
+
+def test_console_pending_requires_auth(client, monkeypatch):
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "test-secret")
+    r = client.get("/api/console/share-header/pending")
+    assert r.status_code == 401
+
+
+def test_console_pending_empty_secret_denies_unauthenticated(client, monkeypatch):
+    """Same fail-closed requirement as the approve/reject route (finding #1):
+    CONSOLE_SECRET empty must not open the queue to an unauthenticated caller."""
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "")
+    r = client.get("/api/console/share-header/pending")
+    assert r.status_code == 401
+
+
+def test_console_pending_404s_when_flag_off(monkeypatch, tmp_path):
+    monkeypatch.setattr(appmod, "LOG_DB", str(tmp_path / "chat_log.db"))
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "")
+    c = appmod.app.test_client()
+    r = c.get("/api/console/share-header/pending")
+    assert r.status_code == 404
+    assert r.data == b""
+
+
+def test_console_pending_returns_only_pending_rows(client, monkeypatch):
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    sh.init_share_headers_table(cx)
+    sh.upsert_header(cx, "pending1@b.com", "Pending One", "Still waiting.")
+    sh.upsert_header(cx, "approved1@b.com", "Approved One", "Already reviewed.")
+    sh.approve(cx, "approved1@b.com")
+    sh.upsert_header(cx, "rejected1@b.com", "Rejected One", "Turned down.")
+    sh.reject(cx, "rejected1@b.com")
+    cx.close()
+
+    monkeypatch.setattr(appmod, "CONSOLE_SECRET", "test-secret")
+    r = client.get("/api/console/share-header/pending",
+                   headers={"X-Console-Key": "test-secret"})
+    assert r.status_code == 200
+    body = r.get_json()
+    emails = {row["email"] for row in body["pending"]}
+    assert emails == {"pending1@b.com"}
+    row = body["pending"][0]
+    assert row["display_name"] == "Pending One"
+    assert row["body"] == "Still waiting."
+    assert "created_at" in row
 
 
 def test_portal_write_404s_when_flag_off(monkeypatch, tmp_path):

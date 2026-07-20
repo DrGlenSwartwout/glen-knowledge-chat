@@ -120,3 +120,56 @@ def test_api_sample_slug_survives_missing_affiliate_table(client_no_affiliate_ta
     table must not 500 the JSON endpoint either."""
     resp = client_no_affiliate_table.get("/api/sample/prof-jane-doe")
     assert resp.status_code == 200
+
+
+@pytest.fixture
+def client_corrupt_db(monkeypatch, tmp_path):
+    """A LOG_DB that is not a valid sqlite file at all (garbage bytes), not
+    merely missing a table. sqlite3.connect() succeeds lazily either way, but
+    the first real query raises sqlite3.DatabaseError ('file is not a
+    database'), NOT sqlite3.OperationalError -- a distinct exception class
+    that build_share_header's narrower except clause did not catch. This is
+    the distinction a missing-table fixture cannot exercise."""
+    db = tmp_path / "chat_log_corrupt.db"
+    db.write_bytes(b"not a real sqlite file" * 50)
+    monkeypatch.setattr(appmod, "LOG_DB", str(db))
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "1")
+    appmod.app.config["TESTING"] = True
+    return appmod.app.test_client()
+
+
+def test_api_sample_slug_survives_corrupt_database(client_corrupt_db):
+    """Verified against a corrupt LOG_DB in review: /api/sample/<slug> 500'd
+    while /sample, /sample/<slug>, /api/sample stayed 200. Must degrade to
+    header: None with a 200, same as the missing-table case."""
+    resp = client_corrupt_db.get("/api/sample/prof-jane-doe")
+    assert resp.status_code == 200
+    assert resp.get_json()["header"] is None
+
+
+def test_sample_slug_survives_corrupt_database(client_corrupt_db):
+    resp = client_corrupt_db.get("/sample/prof-jane-doe")
+    assert resp.status_code == 200
+
+
+def test_api_sample_survives_corrupt_database(client_corrupt_db):
+    resp = client_corrupt_db.get("/api/sample")
+    assert resp.status_code == 200
+
+
+def test_sample_page_survives_corrupt_database(client_corrupt_db):
+    resp = client_corrupt_db.get("/sample")
+    assert resp.status_code == 200
+
+
+def test_storefront_deliberately_500s_on_corrupt_database(client_corrupt_db):
+    """Deliberate, not a bug: /p/<slug> and /api/p/<slug> must keep 500ing on
+    a DB fault. With the DB down the app cannot know whether a slug is valid,
+    and a 404 would falsely tell a crawler the practitioner does not exist.
+    Flask's test client re-raises the exception by default unless propagate
+    is disabled, so this uses TESTING=True + assert-raises to observe it."""
+    import app as _appmod
+    with pytest.raises(Exception):
+        client_corrupt_db.get("/p/prof-jane-doe")
+    with pytest.raises(Exception):
+        client_corrupt_db.get("/api/p/prof-jane-doe")

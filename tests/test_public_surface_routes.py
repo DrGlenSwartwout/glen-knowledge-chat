@@ -128,7 +128,8 @@ def test_sample_page_has_no_intake_elements(client):
     _check_no_intake_elements(html, page_name="/sample")
 
 
-def _seed_affiliate(db_path, slug="prof-jane-doe"):
+def _seed_affiliate(db_path, slug="prof-jane-doe", email="jane@example.com",
+                    organization="Doe Wellness", notes=""):
     cx = sqlite3.connect(db_path)
     cx.executescript("""
       CREATE TABLE IF NOT EXISTS affiliate_signups (
@@ -139,9 +140,9 @@ def _seed_affiliate(db_path, slug="prof-jane-doe"):
         referred_by TEXT DEFAULT '', short_url TEXT DEFAULT '');
     """)
     cx.execute(
-        "INSERT INTO affiliate_signups (created_at,name,email,organization,slug,token,status)"
-        " VALUES ('2026-01-01','Jane Doe','jane@example.com','Doe Wellness',?,'tok','approved')",
-        (slug,))
+        "INSERT INTO affiliate_signups (created_at,name,email,organization,slug,token,status,notes)"
+        " VALUES ('2026-01-01','Jane Doe',?,?,?,'tok','approved',?)",
+        (email, organization, slug, notes))
     cx.commit()
     cx.close()
 
@@ -150,6 +151,24 @@ def _seed_affiliate(db_path, slug="prof-jane-doe"):
 def client_with_affiliate(monkeypatch, tmp_path):
     db = str(tmp_path / "chat_log.db")
     _seed_affiliate(db)
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "1")
+    appmod.app.config["TESTING"] = True
+    return appmod.app.test_client()
+
+
+@pytest.fixture
+def client_with_leaky_affiliate(monkeypatch, tmp_path):
+    """Seeded with values that trip the leak-detector needles by CONTENT, not
+    just by field/key name -- see test_storefront_api_leaks_no_commercial_terms.
+    The prior fixture's email was 'jane@example.com', which never contains the
+    literal substring 'email', so a real email leak slipped past a needle list
+    that only checked for the word 'email'. 'wholesale@example.com' trips the
+    'wholesale' needle directly; 'margin 40% revenue' in notes trips 'margin'
+    and 'revenue' directly."""
+    db = str(tmp_path / "chat_log.db")
+    _seed_affiliate(db, email="wholesale@example.com", organization="Doe Wellness",
+                    notes="margin 40% revenue")
     monkeypatch.setattr(appmod, "LOG_DB", db)
     monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "1")
     appmod.app.config["TESTING"] = True
@@ -177,7 +196,7 @@ def test_storefront_api_returns_whitelisted_payload(client_with_affiliate):
     assert "profit_disclosure" in body
 
 
-def test_storefront_api_leaks_no_commercial_terms(client_with_affiliate):
+def test_storefront_api_leaks_no_commercial_terms(client_with_leaky_affiliate):
     """The Thorne lesson: Thorne shipped wholesalePrice beside retailPrice in
     plain page source, letting patients compute their practitioner's margin.
 
@@ -191,8 +210,13 @@ def test_storefront_api_leaks_no_commercial_terms(client_with_affiliate):
     that vacuous check previously induced a real regression: to dodge the literal
     string "margin", every CSS `margin:` rule in the template was rewritten to
     `padding:` plus flexbox centering, which broke vertical rhythm for no
-    security benefit. So: check the data channel (API), not the static shell."""
-    api = client_with_affiliate.get("/api/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
+    security benefit. So: check the data channel (API), not the static shell.
+
+    Fixture values are chosen to trip the needles by CONTENT: a value-level
+    leak test cannot rely on a needle matching a key/field NAME, because the
+    leaked value's own text may never contain that name (jane@example.com
+    never contains the substring "email"). See client_with_leaky_affiliate."""
+    api = client_with_leaky_affiliate.get("/api/p/prof-jane-doe").data.decode("utf-8", "replace").lower()
     needles = (
         "wholesale", "margin", "markup", "msrp", "revenue", "commission",
         "earnings", "wallet", "patient", "order_volume", "email", "token",
@@ -256,6 +280,31 @@ def test_sample_slug_sets_attribution_cookie(client_with_affiliate):
 
 def test_sample_slug_is_noindex(client_with_affiliate):
     assert client_with_affiliate.get("/sample/prof-jane-doe").headers.get("X-Robots-Tag") == "noindex"
+
+
+def test_sample_unknown_slug_sets_no_attribution_cookie(client_with_affiliate):
+    """A circulated garbage/unapproved link must never overwrite a real
+    affiliate's 90-day rm_ref cookie. Still 200 with the bare demo -- a 404
+    would disclose which slugs exist -- but no Set-Cookie at all."""
+    r = client_with_affiliate.get("/sample/totally-bogus-slug")
+    assert r.status_code == 200
+    assert "rm_ref" not in r.headers.get("Set-Cookie", "")
+
+
+def test_sample_unapproved_slug_sets_no_attribution_cookie(client_with_affiliate, tmp_path):
+    """A slug that exists but is not (or no longer) approved must not set
+    the cookie either -- the cookie must follow the same approval gate as
+    view recording, not just pattern-validity."""
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.execute(
+        "INSERT INTO affiliate_signups (created_at,name,email,organization,slug,token,status)"
+        " VALUES ('2026-01-01','Pending Guy','pending@example.com','',?, 'tok2','pending')",
+        ("pending-slug",))
+    cx.commit()
+    cx.close()
+    r = client_with_affiliate.get("/sample/pending-slug")
+    assert r.status_code == 200
+    assert "rm_ref" not in r.headers.get("Set-Cookie", "")
 
 
 def test_public_routes_never_call_get_portal_view(client_with_affiliate, monkeypatch):

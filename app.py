@@ -3777,9 +3777,18 @@ def api_sample_for_slug(slug):
     view = _ps.build_demo_view()
     view["header"] = None
     if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
-        with sqlite3.connect(LOG_DB) as cx:
-            cx.row_factory = sqlite3.Row
-            view["header"] = _ps.build_share_header(cx, slug)
+        # Header resolution must degrade to header: None on ANY database
+        # fault -- a corrupt LOG_DB, a missing table (build_share_header's own
+        # concern), or a failed connect -- never a 500. This is a public,
+        # unauthenticated JSON endpoint; build_share_header already fails
+        # closed internally, but the connect() itself sits outside that
+        # function, so it needs its own guard here.
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                view["header"] = _ps.build_share_header(cx, slug)
+        except Exception:
+            view["header"] = None
         # Record the view only if this is an approved affiliate. Resolution
         # and recording share one guard: instrumentation must never break
         # this page, whether the DB lacks affiliate_signups, the lock, the
@@ -3806,18 +3815,23 @@ def sample_portal_for_slug(slug):
     resp.headers["X-Robots-Tag"] = "noindex"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
-        resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
-                        samesite="Lax", secure=request.is_secure)
-        # Record the view only if this is an approved affiliate. Resolution
-        # and recording share one guard: instrumentation must never break
-        # this page, whether the DB lacks affiliate_signups, the lock, the
-        # connection, or the insert itself fails.
+        # The rm_ref cookie is read at ~15 conversion sites, so it must only be
+        # set for a real, approved affiliate slug -- never for an unvalidated
+        # one, which would let a circulated garbage link overwrite a real
+        # affiliate's 90-day attribution. Cookie-setting and view-recording
+        # therefore share the SAME approved-affiliate check and the same
+        # failure guard: instrumentation must never break this page, whether
+        # the DB lacks affiliate_signups, the lock, the connection, or the
+        # insert itself fails -- and on any of those failures we also must not
+        # set the cookie, since we could not confirm the slug is approved.
         from dashboard import public_surface as _ps
         try:
             with _db_lock, sqlite3.connect(LOG_DB) as _cx:
                 if _cx.execute(
                     "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
                     (slug,)).fetchone():
+                    resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
+                                    samesite="Lax", secure=request.is_secure)
                     _ps.record_view(_cx, slug, "sample")
         except Exception:
             pass  # instrumentation must never break the page
@@ -3827,8 +3841,17 @@ def sample_portal_for_slug(slug):
 @app.route("/api/console/share-header/<email>/<action>", methods=["POST"])
 def api_console_share_header(email, action):
     """Approve or reject a client-authored share header.
-    Publishing one is publishing a testimonial — hence the gate."""
-    if not _portal_console_ok():
+    Publishing one is publishing a testimonial — hence the gate.
+
+    Deliberately uses _portal_open_is_owner() rather than _portal_console_ok():
+    the latter vacuously returns True whenever CONSOLE_SECRET isn't configured
+    (correct for the ~35 other console routes it guards, where "no secret
+    configured" should not lock anyone out). This route is the only thing
+    between an unreviewed client health claim and publication, so it must fail
+    CLOSED instead — no valid key presented means no."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not _portal_open_is_owner():
         return jsonify({"error": "unauthorized"}), 401
     if action not in ("approve", "reject"):
         return jsonify({"error": "unknown action"}), 400
@@ -3838,6 +3861,25 @@ def api_console_share_header(email, action):
         _sh.init_share_headers_table(cx)
         (_sh.approve if action == "approve" else _sh.reject)(cx, email)
     return jsonify({"ok": True, "email": email, "status": action + "d"})
+
+
+@app.route("/api/console/share-header/pending", methods=["GET"])
+def api_console_share_header_pending():
+    """List headers awaiting review. Without this the approval queue is
+    invisible -- headers get approved blind (by email, guessed) or never
+    reviewed at all. Same flag check and fail-closed auth as approve/reject
+    (finding #1) -- this is a read of unreviewed client-authored text, not a
+    routine console listing."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not _portal_open_is_owner():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import share_header as _sh
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _sh.init_share_headers_table(cx)
+        pending = _sh.list_pending(cx)
+    return jsonify({"pending": pending})
 
 
 @app.route("/api/portal/<token>/share-header", methods=["POST"])

@@ -136,13 +136,13 @@ def build_share_header(cx, slug):
         row = cx.execute(
             "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
             (slug,)).fetchone()
-    except sqlite3.OperationalError:
+    except sqlite3.Error:
         return None
     if not row:
         return None
     try:
         hdr = _sh.get_approved(cx, row["email"])
-    except sqlite3.OperationalError:
+    except sqlite3.Error:
         return None
     if not hdr:
         return None

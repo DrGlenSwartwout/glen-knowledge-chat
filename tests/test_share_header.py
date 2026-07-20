@@ -104,3 +104,37 @@ def test_body_over_280_chars_is_rejected():
     cx = _cx()
     with pytest.raises(ValueError):
         sh.upsert_header(cx, "a@b.com", "Ann", "x" * 281)
+
+
+def test_display_name_is_sanitized():
+    """The maxlength=40 in client-portal.html is client-side only. display_name
+    must go through the same sanitize() as body -- HTML, URLs, emails, phone
+    numbers stripped -- not stored as a raw .strip()."""
+    cx = _cx()
+    row = sh.upsert_header(cx, "a@b.com", "<b>Ann</b> call 808-555-1212 a@evil.com https://evil.com", "Hello there.")
+    assert "<b>" not in row["display_name"]
+    assert "555" not in row["display_name"]
+    assert "@evil.com" not in row["display_name"]
+    assert "https://" not in row["display_name"]
+
+
+def test_display_name_over_max_is_rejected():
+    cx = _cx()
+    with pytest.raises(ValueError):
+        sh.upsert_header(cx, "a@b.com", "x" * 61, "Hello there.")
+
+
+def test_display_name_empty_after_sanitizing_is_rejected():
+    cx = _cx()
+    with pytest.raises(ValueError):
+        sh.upsert_header(cx, "a@b.com", "  <b>   </b>  ", "Hello there.")
+
+
+def test_display_name_massive_payload_is_rejected():
+    """Verified case from review: a 5061-char display_name containing <b>, a
+    phone number, an email, and a URL was previously stored verbatim."""
+    cx = _cx()
+    payload = ("<b>" + ("x" * 5000) + "</b> call 808-555-1212 "
+               "a@evil.com https://evil.com/spam")
+    with pytest.raises(ValueError):
+        sh.upsert_header(cx, "a@b.com", payload, "Hello there.")
