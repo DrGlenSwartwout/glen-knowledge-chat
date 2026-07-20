@@ -176,3 +176,35 @@ def test_healing_tools_excludes_the_centropix_fee():
 def test_discontinued_consumable_still_not_imported():
     """The Living Water filter refill serves a DISCONTINUED product."""
     assert app._get_product("living-water-bottle-filter-refill") is None
+
+
+
+
+def test_apparel_batch_shipping():
+    """The last 8 /resources items (Glen 2026-07-20): machines Medium ($23),
+    blankets + canopies Large ($32), vegicaps small ($13). Every one must
+    charge its rate through the real cart, never fall through to $0."""
+    from dashboard import shipping as _sh
+    exp = {
+        "capsule-filling-machine": 2300,
+        "capsule-filling-machine-with-tamping": 2300,
+        "empty-vegicaps-size-00": 1300,
+        "empty-vegicaps-size-4": 1300,
+        "large-mithreal-silver-lined-blanket": 3200,
+        "small-mithreal-silver-lined-blanket": 3200,
+        "circular-mithreal-silver-sleep-canopy": 3200,
+        "square-mithreal-silver-sleep-canopy": 3200,
+    }
+    for slug, flat in exp.items():
+        p = app._get_product(slug)
+        assert p, slug
+        assert p["flat_shipping_cents"] == flat, slug
+        assert _sh.is_shippable(p), slug
+
+
+def test_source_mistitled_items_named_from_slug():
+    """Two GrooveKart pages are mis-titled at the source (size-4 reads 'Size 00';
+    square canopy reads 'Circular'). Names must come from the slug, not the page."""
+    assert app._get_product("empty-vegicaps-size-4")["name"] == "Empty Vegicaps Size 4"
+    assert app._get_product("square-mithreal-silver-sleep-canopy")["name"] \
+        == "Square Mithreal Silver Sleep Canopy"
