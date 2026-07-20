@@ -179,3 +179,15 @@ def test_ultrawide_screens_do_not_crop_glendalfs_head(monkeypatch, tmp_path):
     assert "object-fit: contain" in body
     # inline styles beat the stylesheet, so the media query is dead if these remain
     assert "object-fit:cover" not in body, "inline object-fit would override the media query"
+
+
+def test_fireside_typing_is_not_a_one_way_door(monkeypatch, tmp_path):
+    """'or type instead' hid the mic with nothing to restore it, and the typing
+    interface had no microphone of its own."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    assert 'id="voice-toggle"' in body, "no way back to voice"
+    assert "toVoiceMode" in body
+    assert "/static/mic-input.js" in body, "typing interface needs its own mic"
+    i = body.index('id="say"')
+    assert "data-mic" in body[i : i + 300], "the fireside text input must be mic-wired"
