@@ -20697,6 +20697,12 @@
       "bottle_type": "book",
       "source": "gk-print-books-import-2026-07-20",
       "intro": "Eliminate distractions, SMASH procrastination, and crank your productivity up to a high level you&#039;ve never seen before!\r\n&amp;nbsp;\r\nThis book is going to help you break through the walls that ha"
+    },
+    "book-achievement-of-excellence-audiobook": {
+      "name": "Achievement of Excellence — A Transformational Solution (audiobook)",
+      "price_cents": 1497,
+      "digital": true,
+      "source": "gk-audiobook-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
