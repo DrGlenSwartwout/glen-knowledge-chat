@@ -20486,6 +20486,134 @@
       "intro": "For 40 years I&rsquo;ve been collecting healing tools and therapies in what we call our Healing Oasis. Prior to COVID, we were already working with 85",
       "_note": "Our shipping covers the Large box ($32) plus the Water Ionizer's own parcel ($100). The Kloud PEMF mat ships from Centropix, who determine and charge their own freight fee directly — it is NOT included here and NOT billed by us.",
       "source": "gk-device-import-2026-07-20"
+    },
+    "bamboo-sanctuary-cloth-with-40-silver": {
+      "name": "Bamboo Sanctuary Cloth with 40% Silver",
+      "price_cents": 9997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "Our select blend of half Bamboo fiber with 40% Silver and the remainder Spandex creates the perfect cloth to make your next garment."
+    },
+    "boxers-with-mithreal-silver": {
+      "name": "Boxers with Mithreal™ Silver",
+      "price_cents": 9997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "Boxers are made of 42% Silver and 53% Cotton for comfort, durability, and excellent protection against EMF, as well as providing protection against fungal and bacterial growth responsible for body odo"
+    },
+    "hypoxia-free-face-shield": {
+      "name": "Hypoxia-Free Face Shield",
+      "price_cents": 997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "Our face shield allows easy breathing of fresh air."
+    },
+    "infrared-bamboo-bath-towel": {
+      "name": "Infrared Bamboo Bath Towel",
+      "price_cents": 4000,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "Bamboo fiber promotes health and wellness..."
+    },
+    "mithreal-knit-beanie-with-44-silver": {
+      "name": "Mithreal™ Knit Beanie with 44% Silver",
+      "price_cents": 5997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF."
+    },
+    "mithreal-silver-head-face-shield": {
+      "name": "Mithreal™ Silver Head/Face Shield",
+      "price_cents": 9997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF.\r\n\r\nIn the 1918 pandemic, most deaths were caused by bacterial pneumonia, due to"
+    },
+    "mithreal-silver-hoodie-hat-with-42-silver": {
+      "name": "Mithreal™ Silver Hoodie Hat with 42% Silver",
+      "price_cents": 5997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF.\r\n\r\nIn the 1918 pandemic, most deaths were caused by bacterial pneumonia, due to"
+    },
+    "mithreal-silver-long-sleeve-shirt": {
+      "name": "Mithreal™ Silver Long Sleeve Shirt",
+      "price_cents": 24997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF. The Mithreal&trade; Silver shirt protects other important internal organs in th"
+    },
+    "mithreal-silver-socks": {
+      "name": "Mithreal™ Silver Socks",
+      "price_cents": 2997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF. \r\nMithreal&trade; Silver Socks protect the feet which act as an important part "
+    },
+    "mithreal-silver-t-shirt": {
+      "name": "Mithreal™ Silver T-shirt",
+      "price_cents": 19997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF. The Mithreal&trade; Silver Long Sleeve Shirt protects the important organs of t"
+    },
+    "mithreal-t-shirt-with-70-silver": {
+      "name": "Mithreal™ T-shirt with 70% Silver",
+      "price_cents": 11997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A recent study found that 80% of autoimmune issues cleared with 8 hours a day shielding the head from environmental EMF. The Mithreal&trade; Silver T-shirt protects the important organs of the Thorax "
+    },
+    "tank-top-with-42-silver": {
+      "name": "Tank Top with 42% Silver",
+      "price_cents": 9997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "The T-shirt is made of 42% Silver and 53% Cotton for comfort, durability, and excellent protection against EMF, as well as providing protection against fungal and bacterial growth responsible for body"
+    },
+    "aulterra-energy-pendant-silver-gold": {
+      "name": "Aulterra Energy Pendant Silver & Gold",
+      "price_cents": 69700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "The Aulterra Energy Pendant not just a beautiful piece of fine jewelry.&nbsp; With over 16 years of research (soon to be available on our website), Aulterra has produced a revolutionary solution based"
+    },
+    "emf-free-headset": {
+      "name": "EMF Free Headset",
+      "price_cents": 997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "Our EMF Free 'Air-Buds' Headset uses air tubes to conduct the sound to your ears, so there is no conductive wire that would connect to your head as an antenna."
+    },
+    "emf-shielding-pouch-7-x-4-cell-phone": {
+      "name": "EMF Shielding Pouch 7” x 4” Cell Phone",
+      "price_cents": 1997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A Faraday cage for your cell phone..."
+    },
+    "emf-shielding-pouch-7-x-9-tablet": {
+      "name": "EMF Shielding Pouch 7” x 9” Tablet",
+      "price_cents": 3997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20",
+      "intro": "A Faraday cage for your cell phone..."
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
