@@ -20,7 +20,7 @@ MAX_SERVICES = 12
 MAX_SERVICE_LEN = 60
 MAX_LOC_LEN = 80
 
-_TAG_RE = re.compile(r"<[^>]+>")
+_TAG_RE = re.compile(r"<\s*/?\s*[a-zA-Z][^>]*>")
 
 PROFILE_PUBLIC_FIELDS = frozenset({
     "bio", "photo_url", "logo_url", "services", "location", "accepting_clients",
