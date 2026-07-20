@@ -167,3 +167,15 @@ def test_fullscreen_button_sits_above_the_entry_overlay(monkeypatch, tmp_path):
     style = body[i : i + 400]
     z = int(style.split("z-index:")[1].split(";")[0].split('"')[0])
     assert z > 5, f"fsBtn z-index {z} is under the entry overlay (5)"
+
+
+def test_ultrawide_screens_do_not_crop_glendalfs_head(monkeypatch, tmp_path):
+    """The clips are 16:9. object-fit:cover on a viewport WIDER than 16:9 scales
+    to the width and crops vertically — on a double-wide monitor that removes
+    most of his head. Past 16:9 we must switch to contain."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin/fireside").get_data(as_text=True)
+    assert "min-aspect-ratio: 16/9" in body
+    assert "object-fit: contain" in body
+    # inline styles beat the stylesheet, so the media query is dead if these remain
+    assert "object-fit:cover" not in body, "inline object-fit would override the media query"

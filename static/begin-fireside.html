@@ -12,7 +12,18 @@
     font-family: Georgia, 'Times New Roman', serif; overflow:hidden; }
   #fireside { position:fixed; left:0; right:0; top:0; height:100dvh; display:flex; flex-direction:column;
     align-items:center; justify-content:flex-end; }
-  #stage-wrap { position:absolute; inset:0; }
+  #stage-wrap { position:absolute; inset:0; background:#0c0703; }
+  /* The clips are 16:9. `cover` fills the stage, which is right on 16:9 and on
+     anything TALLER (phones) where it crops the sides harmlessly. But on a
+     viewport WIDER than 16:9 — ultrawide and double-wide monitors — cover
+     scales to the width and crops vertically, taking Glendalf's head off. Past
+     16:9 we switch to `contain` so the whole frame stays visible, letterboxed
+     against the stage background. At exactly 16:9 the two are identical, so
+     there is no jump at the boundary. */
+  #stageA, #stageB { object-fit: cover; }
+  @media (min-aspect-ratio: 16/9) {
+    #stageA, #stageB { object-fit: contain; }
+  }
   #vignette { position:absolute; inset:0; pointer-events:none;
     background:radial-gradient(ellipse at 50% 40%, transparent 30%, rgba(0,0,0,.78) 100%); }
   #subtitle { position:relative; z-index:2; max-width:760px; width:92%;
@@ -65,9 +76,9 @@
 <main id="fireside">
   <div id="stage-wrap">
     <video id="stageA" playsinline muted loop preload="auto"
-      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#0c0703;opacity:1;"></video>
+      style="position:absolute;inset:0;width:100%;height:100%;background:#0c0703;opacity:1;"></video>
     <video id="stageB" playsinline muted loop
-      style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;"></video>
+      style="position:absolute;inset:0;width:100%;height:100%;opacity:0;"></video>
     <canvas id="sparks"
       style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;"></canvas>
     <button id="muteBtn" aria-label="Toggle ambient sound"
