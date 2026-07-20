@@ -978,6 +978,39 @@
     },
     "Accelerated Self Healing Training": {
       "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "EVOX": {
+      "url": "https://illtowell.com/evox"
+    },
+    "EVOX Session": {
+      "url": "https://illtowell.com/evox"
+    },
+    "EVOX Perception Reframing": {
+      "url": "https://illtowell.com/evox"
+    },
+    "EVOX Perception Reframing Session": {
+      "url": "https://illtowell.com/evox"
+    },
+    "Transgenerational Perception Reframing": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Intensive Biofield Balancing Program": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Intensive Biofield Balancing": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "Infoceutical Sequence & Support": {
+      "note": "DISCONTINUED — no longer offered. Do NOT quote a price or offer a buy link; do not improvise one from older material."
+    },
+    "Infoceutical Sequence": {
+      "note": "DISCONTINUED — no longer offered. Do NOT quote a price or offer a buy link; do not improvise one from older material."
+    },
+    "Remedy Match": {
+      "url": "https://illtowell.com/membership"
+    },
+    "Formulation": {
+      "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
     }
   },
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",

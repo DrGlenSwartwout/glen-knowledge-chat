@@ -288,3 +288,31 @@ def test_consult_only_high_ticket_never_offers_a_price_or_buy_link():
         assert row, name
         assert "DESCRIBE-ONLY" in row[0] and "CONSULT ONLY" in row[0], row[0]
         assert "http" not in row[0].split("CONSULT ONLY")[0], f"{name} carries a link"
+
+
+# ── services migration groups 2/3/7 (Glen 2026-07-20) ───────────────────────
+# EVOX routes to the in-app booking; Remedy Match is redundant with membership;
+# the high-ticket programs are consult-only; Infoceutical Sequence is retired.
+def _directive(q):
+    return app.build_product_directive(snippets_text="", query_text=q)
+
+def test_evox_routes_to_the_in_app_booking():
+    assert "https://illtowell.com/evox" in _directive("how do I book EVOX?")
+
+def test_remedy_match_routes_to_membership_not_a_gk_subscription():
+    d = _directive("what is the link for Remedy Match?")
+    assert "https://illtowell.com/membership" in d
+    assert "remedymatch.com/resources" not in d
+
+def test_consult_only_services_offer_no_price_or_buy_link():
+    for q in ("Formulation service",
+              "Intensive Biofield Balancing Program",
+              "Transgenerational Perception Reframing"):
+        d = _directive(q)
+        assert "CONSULT ONLY" in d, q
+        assert "/begin/product/" not in d.split(q.split()[0])[-1][:120] or "CONSULT" in d
+
+def test_infoceutical_sequence_is_retired_not_linkable():
+    d = _directive("Infoceutical Sequence & Support")
+    assert "DISCONTINUED" in d
+    assert "resources/442" not in d
