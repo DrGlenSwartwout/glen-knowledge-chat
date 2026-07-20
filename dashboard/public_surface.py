@@ -16,6 +16,7 @@ functions as an implied health claim.
 
 import copy
 import sqlite3
+from datetime import datetime, timezone
 
 from dashboard import share_header as _sh
 
@@ -142,3 +143,29 @@ def build_share_header(cx, slug):
     if not hdr:
         return None
     return _public_only(hdr, SHARE_HEADER_PUBLIC_FIELDS)
+
+
+def init_public_surface_views_table(cx):
+    """Anonymous page-view counts per slug. Deliberately NOT referral_events —
+    that table is lead-shaped (email, lead_id, utm_*) and these views have no
+    lead attached."""
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS public_surface_views (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug      TEXT NOT NULL,
+            surface   TEXT NOT NULL,
+            viewed_at TEXT NOT NULL
+        )
+    """)
+    cx.execute("CREATE INDEX IF NOT EXISTS ix_psv_slug ON public_surface_views(slug)")
+    cx.commit()
+
+
+def record_view(cx, slug, surface):
+    """Record one public-surface visit. Not deduped — per-slug view counts are
+    the instrumentation this feature is being measured by."""
+    init_public_surface_views_table(cx)
+    cx.execute(
+        "INSERT INTO public_surface_views (slug, surface, viewed_at) VALUES (?,?,?)",
+        (slug, surface, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+    cx.commit()

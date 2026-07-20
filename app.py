@@ -3780,6 +3780,15 @@ def api_sample_for_slug(slug):
         with sqlite3.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             view["header"] = _ps.build_share_header(cx, slug)
+            # Record the view only if this is an approved affiliate
+            if view["header"] is not None or cx.execute(
+                "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
+                (slug,)).fetchone():
+                try:
+                    with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                        _ps.record_view(_cx, slug, "sample")
+                except Exception:
+                    pass  # instrumentation must never break the page
     resp = jsonify(view)
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
@@ -3796,6 +3805,18 @@ def sample_portal_for_slug(slug):
     if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
         resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
                         samesite="Lax", secure=request.is_secure)
+        # Record the view only if this is an approved affiliate
+        from dashboard import public_surface as _ps
+        with sqlite3.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            if cx.execute(
+                "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
+                (slug,)).fetchone():
+                try:
+                    with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                        _ps.record_view(_cx, slug, "sample")
+                except Exception:
+                    pass  # instrumentation must never break the page
     return resp
 
 
@@ -16770,6 +16791,12 @@ def practitioner_storefront(slug):
         cx.row_factory = sqlite3.Row
         if not _ps.build_practitioner_storefront(cx, slug):
             return ("", 404)
+    # Record the view for this approved affiliate
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            _ps.record_view(_cx, slug, "storefront")
+    except Exception:
+        pass  # instrumentation must never break the page
     resp = send_from_directory(STATIC, "practitioner-storefront.html")
     resp.headers["X-Robots-Tag"] = "noindex"
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
