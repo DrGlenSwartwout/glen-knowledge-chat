@@ -67,8 +67,13 @@
   @keyframes micpulse { 0%,100%{box-shadow:0 0 26px 6px rgba(220,180,90,.5);}
     50%{box-shadow:0 0 46px 16px rgba(240,200,110,.95);} }
   #mic-hint { font-size:15px; color:var(--dim); min-height:1.2em; letter-spacing:.02em; }
-  #type-toggle { background:none; border:none; color:#7d6647; font-family:inherit;
+  #type-toggle, #voice-toggle { background:none; border:none; color:#7d6647; font-family:inherit;
     font-size:14px; text-decoration:underline; cursor:pointer; }
+  /* The way back. Typing was a one-way door: #type-toggle hid the mic and there
+     was nothing to return with. Sits under the composer, mirroring how
+     #type-toggle sits under the mic. */
+  #voice-toggle { position:relative; z-index:2; margin-top:-14px;
+    margin-bottom:max(18px, env(safe-area-inset-bottom)); }
   .hidden { display:none !important; }
 </style>
 </head>
@@ -96,9 +101,10 @@
   </div>
   <form id="composer" autocomplete="off">
     <input id="say" name="say" type="text" placeholder="Tell me what's on your heart…"
-           aria-label="Speak to Glendalf" />
+           aria-label="Speak to Glendalf" data-mic />
     <button id="send" type="submit" aria-label="Send">➤</button>
   </form>
+  <button id="voice-toggle" class="hidden" type="button">or speak instead</button>
   <form id="optin" class="hidden" autocomplete="on"
     style="position:relative;z-index:2;width:92%;max-width:520px;display:flex;flex-direction:column;gap:12px;align-items:center;margin-bottom:26px;">
     <input id="optin-email" name="email" type="email" placeholder="Where shall I send the way?"
@@ -113,6 +119,10 @@
   <div id="begin-overlay"><button id="begin-btn" type="button">Sit by the fire</button></div>
 </main>
 
+<!-- Dictation for the typing fallback: wires [data-mic] on #say to /transcribe.
+     The voice mode above uses webkitSpeechRecognition; this gives the TYPING
+     interface its own microphone so switching to type is not a dead end. -->
+<script src="/static/mic-input.js"></script>
 <script src="/static/tts-output.js"></script>
 <script>
 (function(){
@@ -148,6 +158,7 @@
   var mic = document.getElementById('mic');
   var micHint = document.getElementById('mic-hint');
   var typeToggle = document.getElementById('type-toggle');
+  var voiceToggle = document.getElementById('voice-toggle');
 
   // ── fullscreen ────────────────────────────────────────────────────────────
   // The page already fakes immersion with position:fixed + 100dvh + a
@@ -498,7 +509,18 @@
     if (autoListenTimer) clearTimeout(autoListenTimer);
     voice.classList.add('hidden');
     composer.classList.remove('hidden');
+    if (SR && voiceToggle) voiceToggle.classList.remove('hidden');  // offer the way back
     say.focus();
+  }
+  // The way back out of typing. Without this, "or type instead" was a one-way
+  // door: the mic was hidden with nothing to restore it.
+  function toVoiceMode() {
+    if (!SR) return;
+    voiceMode = true;
+    composer.classList.add('hidden');
+    if (voiceToggle) voiceToggle.classList.add('hidden');
+    voice.classList.remove('hidden');
+    micReady();
   }
   function clearSilence() { if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; } }
   function armSilence() { clearSilence(); silenceTimer = setTimeout(endpoint, PAUSE_MS); }  // reset on every speech
@@ -555,6 +577,7 @@
     if (state === 'listening') { voiceAuto = true; startRec(); }         // opting into voice keeps it hands-free for later turns
   });
   typeToggle.addEventListener('click', toTypeMode);
+  if (voiceToggle) voiceToggle.addEventListener('click', toVoiceMode);
   composer.addEventListener('submit', function (e) {
     e.preventDefault();
     var m = say.value.trim();
