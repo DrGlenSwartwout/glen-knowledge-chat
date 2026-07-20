@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Put a small muted welcome video on the landing page whose tap plays Dr. Glen's invitation, unlocks browser audio so chat replies speak themselves, and offers a door to `/begin/fireside` — plus real fullscreen on the fireside stage.
+**Goal:** Add a speaker button to the landing page's existing hero avatar whose tap plays Dr. Glen's spoken invitation and unlocks browser audio so chat replies speak themselves, plus real fullscreen on the fireside stage.
 
-**Architecture:** All logic lives in one new ES module, `static/begin/invitation.js`, which is pure enough to unit-test in Node against fake DOM objects. A thin, untested mount script fetches the fireside manifest and wires that module to real elements. The tap posts a same-origin `postMessage` into the existing `#begin-chat` iframe; `embed.html` listens and switches from `window.TTS.attach` to `window.TTS.attachAndSpeak`. Fullscreen is a self-contained block appended to the existing fireside IIFE.
+**Architecture:** All logic lives in one ES module, `static/begin/invitation.js`, pure enough to unit-test in Node against fake DOM objects. A thin, untested mount script fetches the fireside manifest and wires it to a speaker button added inside the page's existing hero-avatar anchor. The tap plays a voice-over mp3 (the avatar's own video has no audio track) and posts a same-origin `postMessage` into the `#begin-chat` iframe; `embed.html` listens and switches from `window.TTS.attach` to `window.TTS.attachAndSpeak`. Fullscreen is a self-contained block appended to the existing fireside IIFE.
 
 **Tech Stack:** Vanilla ES modules (no build step, no bundler), Node's built-in `node:test` runner with zero dependencies, Flask test client for served-HTML wiring assertions.
 
@@ -12,12 +12,14 @@
 
 - **No new server routes, and no changes to `/chat`, `/chat/tts`, `/transcribe`, or `/begin/fireside/agent`.** This work is frontend-only.
 - **No new video or audio assets.** Every clip referenced already exists in `static/fireside/fireside-manifest.json` and serves 200 in production.
-- **Graceful degradation is mandatory, following the Director precedent:** if the manifest fetch fails or yields no clip, the tile never appears and the page behaves exactly as it does today. No method may throw on an empty manifest.
+- **Graceful degradation is mandatory, following the Director precedent:** if the manifest fetch fails or yields no audio source, the speaker button never appears and the page behaves exactly as it does today. No method may throw on an empty manifest.
 - **The "🔊 Listen" button stays rendered in both locked and unlocked states.** Unlocking adds automatic playback; it never removes the manual control.
 - **Never run the bare full pytest suite.** It sends real email. Run only the specific test files named in each task.
 - **Run pytest through Doppler.** Under bare `pytest`, app-importing tests silently skip rather than fail, so a green bare run proves nothing. Use the exact commands given.
 - **ES module style matches `static/fireside/director.js`:** named `export`, imported in tests by relative path from `tests/`, no transpilation.
-- **Copy is fixed and exact.** The two CTAs read `Come sit by the fire` and `Ask here instead`. The hint reads `tap to hear`. Do not reword.
+- **Do not add a second fireside entry.** Commit `ec233b56` consolidated the landing page to one door, the hero avatar at `static/begin.html:761`. The speaker rides on that avatar; the page must still contain exactly one `href="/begin/fireside"`.
+- **The speaker must not navigate.** It sits inside an anchor, so its handler must call BOTH `preventDefault()` and `stopPropagation()`.
+- **Run pytest as `doppler run --config dev`.** Never `prd` — that config holds live payment credentials.
 
 ---
 
@@ -25,9 +27,9 @@
 
 | File | Responsibility |
 |---|---|
-| `static/begin/invitation.js` | **Create.** All invitation logic: clip selection, muted start, tap-to-unmute, unlock postMessage, end-of-clip choices. Exported and unit-tested. |
+| `static/begin/invitation.js` | **Create.** All invitation logic: voice-over selection, play/stop, unlock postMessage, button labelling. Exported and unit-tested. |
 | `static/begin/invitation-mount.js` | **Create.** Thin DOM wiring: fetch manifest, resolve elements, construct `Invitation`, bind listeners. Deliberately untested — it contains no branching logic. |
-| `static/begin.html` | **Modify.** Tile markup, scoped styles, module script tag. |
+| `static/begin.html` | **Modify.** Speaker button inside the existing hero-avatar anchor, its styles, the module script tag, and deletion of the orphaned `#fireside-invite` CSS left by ec233b56. |
 | `static/embed.html` | **Modify.** Unlock listener + auto-speak branch. |
 | `static/begin-fireside.html` | **Modify.** Fullscreen button + handler. |
 | `tests/begin_js/invitation.test.mjs` | **Create.** Node unit tests for `invitation.js`. |
@@ -36,49 +38,58 @@
 
 ---
 
-### Task 1: Invitation module
+### Task 1: Invitation module (audio) and speaker button
 
 **Files:**
-- Create: `static/begin/invitation.js`
-- Test: `tests/begin_js/invitation.test.mjs`
+- Rewrite: `static/begin/invitation.js` (exists from a superseded design — replace its contents)
+- Rewrite: `tests/begin_js/invitation.test.mjs`
+- Create: `static/begin/invitation-mount.js`
+- Modify: `static/begin.html` — speaker button inside the existing `<a class="avatar">` (around line 761), styles near the existing `.avatar` rules (around line 586), module script before `</body>`, and deletion of the orphaned `#fireside-invite` / `.fi-*` / `fiGlow` CSS block
+- Test: `tests/test_begin_invitation_wiring.py`
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
 - Produces:
-  - `UNLOCK_MSG: string` — the literal `'begin:audio-unlocked'`, used as `{type: UNLOCK_MSG}` by Task 3's listener.
-  - `pickWelcomeClip(manifest: object|null, rand?: () => number) => string|null`
-  - `class Invitation` with constructor `Invitation({video, root, choices, hint, frame, origin, clip, restingClip})` and methods `start() => boolean`, `tap() => boolean`, `notifyUnlock() => boolean`, `onEnded() => void`, `dismiss() => void`.
+  - `UNLOCK_MSG: string` — the literal `'begin:audio-unlocked'`, consumed by Task 3's listener in `embed.html`.
+  - `pickInvitationAudio(manifest: object|null, rand?: () => number) => string|null`
+  - `class Invitation` with constructor `Invitation({audio, button, frame, origin, src})` and methods `play() => boolean`, `stop() => void`, `toggle() => boolean`, `notifyUnlock() => boolean`, `mount() => boolean`.
+
+**Why this replaces the previous Task 1 and Task 2:** an earlier design added a standalone
+welcome tile. That was wrong — `static/begin.html:761` already carries a hero avatar (a
+muted autoplaying `/static/media/glendalf-welcome.mp4` linking to `/begin/fireside`), and
+commit `ec233b56` deliberately consolidated the page to that single fireside door. The
+previous Task 2 commit has been reverted. This task hangs the invitation off the existing
+avatar instead. `glendalf-welcome.mp4` has no audio track, so the voice-over is a separate
+mp3.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/begin_js/invitation.test.mjs`:
+Create `tests/begin_js/invitation.test.mjs` (replacing its current contents entirely):
 
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickWelcomeClip, Invitation, UNLOCK_MSG } from '../../static/begin/invitation.js';
+import { pickInvitationAudio, Invitation, UNLOCK_MSG } from '../../static/begin/invitation.js';
 
 const M = {
-  intro_welcomes: ['/a.mp4', '/b.mp4', '/c.mp4'],
-  intro_welcome: '/w.mp4',
-  intro_video: '/v.mp4',
+  intro_welcome_audios: ['/a.mp3', '/b.mp3', '/c.mp3'],
+  intro_welcome_audio: '/w.mp3',
 };
 
-function fakeVideo() {
+function fakeAudio() {
   return {
-    src: '', muted: true, loop: false, currentTime: 0, onended: null, _played: 0,
-    play() { this._played++; return { catch() {} }; },
+    src: '', currentTime: 0, paused: true, onended: null, _played: 0, _paused: 0,
+    play() { this._played++; this.paused = false; return { catch() {} }; },
+    pause() { this._paused++; this.paused = true; },
   };
 }
 
-function fakeEl(initiallyHidden = true) {
-  const cls = new Set(initiallyHidden ? ['hidden'] : []);
+function fakeBtn() {
+  const cls = new Set(['hidden']);
   return {
-    classList: {
-      add: (c) => cls.add(c),
-      remove: (c) => cls.delete(c),
-      contains: (c) => cls.has(c),
-    },
+    innerHTML: '', _label: '',
+    classList: { add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c) },
+    setAttribute(k, v) { if (k === 'aria-label') this._label = v; },
   };
 }
 
@@ -88,125 +99,112 @@ function fakeFrame() {
 }
 
 function build(over = {}) {
-  const video = fakeVideo();
-  const root = fakeEl();
-  const choices = fakeEl();
-  const hint = fakeEl(false);
+  const audio = fakeAudio();
+  const button = fakeBtn();
   const frame = fakeFrame();
   const inv = new Invitation({
-    video, root, choices, hint, frame,
+    audio, button, frame,
     origin: 'https://illtowell.com',
-    clip: '/a.mp4',
-    restingClip: '/rest-1.mp4',
+    src: '/a.mp3',
     ...over,
   });
-  return { inv, video, root, choices, hint, frame };
+  return { inv, audio, button, frame };
 }
 
-// ── pickWelcomeClip ─────────────────────────────────────────────────────────
-test('picks from intro_welcomes', () => {
-  assert.equal(pickWelcomeClip(M, () => 0), '/a.mp4');
-  assert.equal(pickWelcomeClip(M, () => 0.99), '/c.mp4');
+// ── pickInvitationAudio ─────────────────────────────────────────────────────
+test('picks from intro_welcome_audios', () => {
+  assert.equal(pickInvitationAudio(M, () => 0), '/a.mp3');
+  assert.equal(pickInvitationAudio(M, () => 0.99), '/c.mp3');
 });
 
-test('falls back to intro_welcome when the list is empty', () => {
-  assert.equal(pickWelcomeClip({ intro_welcomes: [], intro_welcome: '/w.mp4' }), '/w.mp4');
-});
-
-test('falls back to intro_video when neither list nor intro_welcome', () => {
-  assert.equal(pickWelcomeClip({ intro_video: '/v.mp4' }), '/v.mp4');
+test('falls back to intro_welcome_audio when the list is empty', () => {
+  assert.equal(pickInvitationAudio({ intro_welcome_audios: [], intro_welcome_audio: '/w.mp3' }), '/w.mp3');
 });
 
 test('returns null on an empty or missing manifest', () => {
-  assert.equal(pickWelcomeClip({}), null);
-  assert.equal(pickWelcomeClip(null), null);
+  assert.equal(pickInvitationAudio({}), null);
+  assert.equal(pickInvitationAudio(null), null);
 });
 
-// ── start ───────────────────────────────────────────────────────────────────
-test('start plays muted and looping, and reveals the tile', () => {
-  const { inv, video, root } = build();
-  assert.equal(inv.start(), true);
-  assert.equal(video.src, '/a.mp4');
-  assert.equal(video.muted, true);
-  assert.equal(video.loop, true);
-  assert.equal(video._played, 1);
-  assert.equal(root.classList.contains('hidden'), false);
+// ── mount ───────────────────────────────────────────────────────────────────
+test('mount reveals the button when there is a source', () => {
+  const { inv, button } = build();
+  assert.equal(inv.mount(), true);
+  assert.equal(button.classList.contains('hidden'), false);
 });
 
-test('start is a no-op with no clip and leaves the tile hidden', () => {
-  const { inv, video, root } = build({ clip: null });
-  assert.equal(inv.start(), false);
-  assert.equal(video._played, 0);
-  assert.equal(root.classList.contains('hidden'), true);
+test('mount is a no-op with no source and leaves the button hidden', () => {
+  const { inv, button } = build({ src: null });
+  assert.equal(inv.mount(), false);
+  assert.equal(button.classList.contains('hidden'), true);
 });
 
-// ── tap ─────────────────────────────────────────────────────────────────────
-test('tap unmutes, restarts, stops looping, and hides the hint', () => {
-  const { inv, video, hint } = build();
-  inv.start();
-  assert.equal(inv.tap(), true);
-  assert.equal(video.muted, false);
-  assert.equal(video.loop, false);
-  assert.equal(video.currentTime, 0);
-  assert.equal(hint.classList.contains('hidden'), true);
+// ── play ────────────────────────────────────────────────────────────────────
+test('play sets the source, restarts, and plays', () => {
+  const { inv, audio } = build();
+  assert.equal(inv.play(), true);
+  assert.equal(audio.src, '/a.mp3');
+  assert.equal(audio.currentTime, 0);
+  assert.equal(audio._played, 1);
 });
 
-test('tap posts the unlock message once, to the given origin', () => {
+test('play is a no-op with no source', () => {
+  const { inv, audio } = build({ src: null });
+  assert.equal(inv.play(), false);
+  assert.equal(audio._played, 0);
+});
+
+test('play posts the unlock message once, to the given origin', () => {
   const { inv, frame } = build();
-  inv.start();
-  inv.tap();
+  inv.play();
   assert.equal(frame.sent.length, 1);
   assert.deepEqual(frame.sent[0].msg, { type: UNLOCK_MSG });
   assert.equal(frame.sent[0].origin, 'https://illtowell.com');
 });
 
-test('tapping twice still posts only one unlock message', () => {
+test('playing twice still posts only one unlock message', () => {
   const { inv, frame } = build();
-  inv.start();
-  inv.tap();
-  inv.tap();
+  inv.play();
+  inv.stop();
+  inv.play();
   assert.equal(frame.sent.length, 1);
 });
 
-test('tap with no frame does not throw and still marks unlocked', () => {
+test('play with no frame does not throw and still marks unlocked', () => {
   const { inv } = build({ frame: null });
-  inv.start();
-  assert.doesNotThrow(() => inv.tap());
+  assert.doesNotThrow(() => inv.play());
   assert.equal(inv.unlocked, true);
 });
 
-// ── end of clip ─────────────────────────────────────────────────────────────
-test('onEnded reveals the choices and returns to a muted resting loop', () => {
-  const { inv, video, choices } = build();
-  inv.start();
-  inv.tap();
-  video.onended();
-  assert.equal(choices.classList.contains('hidden'), false);
-  assert.equal(video.src, '/rest-1.mp4');
-  assert.equal(video.loop, true);
-  assert.equal(video.muted, true);
+// ── stop and toggle ─────────────────────────────────────────────────────────
+test('stop pauses the audio', () => {
+  const { inv, audio } = build();
+  inv.play();
+  inv.stop();
+  assert.equal(audio._paused, 1);
 });
 
-test('onEnded with no resting clip still reveals the choices', () => {
-  const { inv, choices } = build({ restingClip: null });
-  inv.start();
-  inv.tap();
-  assert.doesNotThrow(() => inv.onEnded());
-  assert.equal(choices.classList.contains('hidden'), false);
+test('toggle plays when idle and stops when playing', () => {
+  const { inv, audio } = build();
+  assert.equal(inv.toggle(), true);
+  assert.equal(audio._played, 1);
+  assert.equal(inv.toggle(), false);
+  assert.equal(audio._paused, 1);
 });
 
-// ── dismiss ─────────────────────────────────────────────────────────────────
-test('dismiss hides the whole tile', () => {
-  const { inv, root } = build();
-  inv.start();
-  inv.dismiss();
-  assert.equal(root.classList.contains('hidden'), true);
+test('the audio ending returns the button to its idle label', () => {
+  const { inv, audio, button } = build();
+  inv.play();
+  const playingLabel = button._label;
+  audio.onended();
+  assert.notEqual(button._label, playingLabel);
+  assert.equal(inv.playing, false);
 });
 
 // ── graceful degradation ────────────────────────────────────────────────────
 test('every method is safe with an entirely empty construction', () => {
   const inv = new Invitation({});
-  assert.doesNotThrow(() => { inv.start(); inv.tap(); inv.notifyUnlock(); inv.onEnded(); inv.dismiss(); });
+  assert.doesNotThrow(() => { inv.mount(); inv.play(); inv.stop(); inv.toggle(); inv.notifyUnlock(); });
 });
 ```
 
@@ -216,67 +214,88 @@ test('every method is safe with an entirely empty construction', () => {
 cd /tmp/wt-deploy-chat-b9535446 && node --test tests/begin_js/*.test.mjs
 ```
 
-Expected: FAIL — `Cannot find module .../static/begin/invitation.js`.
+Expected: FAIL — `pickInvitationAudio` is not exported (the file currently exports the superseded video-tile interface).
 
 - [ ] **Step 3: Write the implementation**
 
-Create `static/begin/invitation.js`:
+Replace the entire contents of `static/begin/invitation.js`:
 
 ```js
-/* invitation.js — the fireside welcome tile on the landing page.
+/* invitation.js — the spoken invitation behind the hero avatar's speaker button.
  *
- * A small muted clip autoplays beside the chat panel. Tapping it unmutes and
- * plays Glendalf's invitation; that tap is also the browser gesture that
- * unlocks audio, so it is forwarded to the chat iframe, which from then on
- * speaks its replies aloud instead of waiting for a Listen click.
+ * The landing page already shows a muted, looping Glendalf video that links to
+ * /begin/fireside. That clip carries no audio track, so this module plays a
+ * separate voice-over on demand. The tap that starts it is also the browser
+ * gesture that permits audio, so it is forwarded to the chat iframe, which from
+ * then on speaks its replies instead of waiting for a Listen click.
  *
- * Every method is a safe no-op when its dependencies are missing, mirroring
- * the Director's degradation contract: a failed manifest fetch must leave the
- * page exactly as it was.
+ * Every method is a safe no-op when its dependencies are missing, mirroring the
+ * Director's degradation contract: a failed manifest fetch must leave the page
+ * exactly as it was.
  */
 
 export const UNLOCK_MSG = 'begin:audio-unlocked';
 
-export function pickWelcomeClip(m, rand = Math.random) {
+const ICON_IDLE = '🔈';
+const ICON_PLAYING = '⏹';
+const LABEL_IDLE = "Hear Dr. Glen's invitation";
+const LABEL_PLAYING = 'Stop the invitation';
+
+export function pickInvitationAudio(m, rand = Math.random) {
   if (!m) return null;
-  const list = Array.isArray(m.intro_welcomes) && m.intro_welcomes.length ? m.intro_welcomes : [];
+  const list = Array.isArray(m.intro_welcome_audios) && m.intro_welcome_audios.length
+    ? m.intro_welcome_audios : [];
   if (list.length) return list[Math.floor(rand() * list.length)] || list[0];
-  return m.intro_welcome || m.intro_video || null;
+  return m.intro_welcome_audio || null;
 }
 
 export class Invitation {
   constructor(opts = {}) {
-    this.video       = opts.video || null;
-    this.root        = opts.root || null;
-    this.choices     = opts.choices || null;
-    this.hint        = opts.hint || null;
-    this.frame       = opts.frame || null;
-    this.origin      = opts.origin || '*';
-    this.clip        = opts.clip || null;
-    this.restingClip = opts.restingClip || null;
-    this.unlocked    = false;
+    this.audio    = opts.audio || null;
+    this.button   = opts.button || null;
+    this.frame    = opts.frame || null;
+    this.origin   = opts.origin || '*';
+    this.src      = opts.src || null;
+    this.unlocked = false;
+    this.playing  = false;
   }
 
-  start() {
-    if (!this.clip || !this.video) return false;
-    this.video.src = this.clip;
-    this.video.muted = true;
-    this.video.loop = true;
-    this.video.play();
-    if (this.root) this.root.classList.remove('hidden');
+  _label(state) {
+    if (!this.button) return;
+    const on = state === 'playing';
+    this.button.innerHTML = on ? ICON_PLAYING : ICON_IDLE;
+    this.button.setAttribute('aria-label', on ? LABEL_PLAYING : LABEL_IDLE);
+  }
+
+  mount() {
+    if (!this.src || !this.button) return false;
+    this._label('idle');
+    this.button.classList.remove('hidden');
     return true;
   }
 
-  tap() {
-    if (!this.clip || !this.video) return false;
-    this.video.muted = false;
-    this.video.loop = false;
-    this.video.currentTime = 0;
-    this.video.onended = () => this.onEnded();
-    this.video.play();
-    if (this.hint) this.hint.classList.add('hidden');
+  play() {
+    if (!this.src || !this.audio) return false;
+    this.audio.src = this.src;
+    this.audio.currentTime = 0;
+    this.audio.onended = () => { this.playing = false; this._label('idle'); };
+    this.audio.play();
+    this.playing = true;
+    this._label('playing');
     this.notifyUnlock();
     return true;
+  }
+
+  stop() {
+    if (!this.audio) return;
+    this.audio.pause();
+    this.playing = false;
+    this._label('idle');
+  }
+
+  toggle() {
+    if (this.playing) { this.stop(); return false; }
+    return this.play();
   }
 
   notifyUnlock() {
@@ -287,21 +306,6 @@ export class Invitation {
     }
     return true;
   }
-
-  onEnded() {
-    if (this.choices) this.choices.classList.remove('hidden');
-    if (this.restingClip && this.video) {
-      this.video.src = this.restingClip;
-      this.video.muted = true;
-      this.video.loop = true;
-      this.video.currentTime = 0;
-      this.video.play();
-    }
-  }
-
-  dismiss() {
-    if (this.root) this.root.classList.add('hidden');
-  }
 }
 ```
 
@@ -311,39 +315,27 @@ export class Invitation {
 cd /tmp/wt-deploy-chat-b9535446 && node --test tests/begin_js/*.test.mjs
 ```
 
-Expected: PASS, 15 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 cd /tmp/wt-deploy-chat-b9535446
 git add static/begin/invitation.js tests/begin_js/invitation.test.mjs
-git commit -m "feat: fireside invitation module with unlock postMessage"
+git commit -m "feat: spoken invitation module for the hero avatar speaker"
 ```
 
----
-
-### Task 2: Mount the tile on the landing page
-
-**Files:**
-- Create: `static/begin/invitation-mount.js`
-- Modify: `static/begin.html` (inside `<section class="shell ask reveal">`, around line 832)
-- Test: `tests/test_begin_invitation_wiring.py`
-
-**Interfaces:**
-- Consumes: `pickWelcomeClip`, `Invitation` from `static/begin/invitation.js` (Task 1).
-- Produces: DOM contract relied on by nothing else, but Task 3's listener depends on the `postMessage` this mount causes. Element ids: `#fireside-invite`, `#fs-invite-video`, `#fs-invite-hint`, `#fs-invite-choices`, `#fs-invite-tap`, `.fs-invite-stay`.
-
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 6: Write the failing wiring test**
 
 Create `tests/test_begin_invitation_wiring.py`:
 
 ```python
-"""The served landing page must actually carry the invitation wiring.
+"""The served landing page must actually carry the speaker wiring.
 
 These are deliberately shallow assertions on served HTML: the browser
-behaviour (autoplay policy, audio unlock, fullscreen) cannot be asserted
-headlessly and is covered by the manual verification record instead.
+behaviour (audio playback, click-through suppression, the audio unlock)
+cannot be asserted headlessly and is covered by the manual verification
+record instead.
 """
 import importlib
 
@@ -356,158 +348,149 @@ def _reload_app(monkeypatch, tmp_path):
     return appmod
 
 
-def test_landing_page_carries_invitation_tile(monkeypatch, tmp_path):
+def test_landing_page_carries_the_speaker_button(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     body = appmod.app.test_client().get("/begin").get_data(as_text=True)
-    assert 'id="fireside-invite"' in body
-    assert 'id="fs-invite-video"' in body
-    assert 'id="fs-invite-choices"' in body
+    assert 'id="avatar-speaker"' in body
     assert "/static/begin/invitation-mount.js" in body
 
 
-def test_invitation_tile_starts_hidden(monkeypatch, tmp_path):
-    """It must not occupy layout until a clip actually resolves."""
+def test_speaker_starts_hidden(monkeypatch, tmp_path):
+    """It must not appear until a manifest audio source actually resolves."""
     appmod = _reload_app(monkeypatch, tmp_path)
     body = appmod.app.test_client().get("/begin").get_data(as_text=True)
-    idx = body.index('id="fireside-invite"')
-    tag = body[idx - 200 : idx + 200]
-    assert "hidden" in tag
+    idx = body.index('id="avatar-speaker"')
+    assert "hidden" in body[idx - 200 : idx + 200]
 
 
-def test_invitation_ctas_use_exact_copy(monkeypatch, tmp_path):
+def test_speaker_lives_inside_the_existing_avatar_anchor(monkeypatch, tmp_path):
+    """The single fireside door is the avatar; the speaker rides on it rather
+    than becoming a second entry (see commit ec233b56)."""
     appmod = _reload_app(monkeypatch, tmp_path)
     body = appmod.app.test_client().get("/begin").get_data(as_text=True)
-    assert "Come sit by the fire" in body
-    assert "Ask here instead" in body
-    assert 'href="/begin/fireside"' in body
+    anchor = body.index('<a class="avatar"')
+    speaker = body.index('id="avatar-speaker"')
+    closing = body.index("</a>", anchor)
+    assert anchor < speaker < closing
 
 
-def test_invitation_module_is_served(monkeypatch, tmp_path):
+def test_no_second_fireside_cta_was_added(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin").get_data(as_text=True)
+    assert body.count('href="/begin/fireside"') == 1
+
+
+def test_orphaned_fireside_invite_css_is_gone(monkeypatch, tmp_path):
+    """ec233b56 removed the standalone section but left its CSS behind."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin").get_data(as_text=True)
+    assert "fiGlow" not in body
+    assert ".fi-inner" not in body
+
+
+def test_invitation_modules_are_served(monkeypatch, tmp_path):
     appmod = _reload_app(monkeypatch, tmp_path)
     c = appmod.app.test_client()
     assert c.get("/static/begin/invitation.js").status_code == 200
     assert c.get("/static/begin/invitation-mount.js").status_code == 200
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 7: Run it to verify it fails**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
-Expected: FAIL — `assert 'id="fireside-invite"' in body`.
+Expected: FAIL — `assert 'id="avatar-speaker"' in body`.
 
-- [ ] **Step 3a: Add the tile markup to `static/begin.html`**
+- [ ] **Step 8a: Add the speaker button inside the existing avatar anchor**
 
-Find this exact block (around line 831):
+In `static/begin.html`, find this exact block (around line 761):
 
 ```html
-    <!-- ASK A QUESTION — multi-turn funnel-mode chat (piece 3) -->
-    <section class="shell ask reveal">
-      <iframe id="begin-chat" src="/embed?mode=funnel" title="Ask Dr. Glen" loading="eager"
+        <a class="avatar" href="/begin/fireside" aria-label="Sit by the fire with Dr. Glen">
+          <span class="ember" aria-hidden="true"></span>
+          <video class="avatar-video" autoplay muted loop playsinline preload="auto" poster="/static/media/glendalf-poster.jpg" aria-hidden="true">
+            <source src="/static/media/glendalf-welcome.mp4" type="video/mp4">
+          </video>
+          <span class="avcap">Sit by the fire with Dr. Glen &rarr;</span>
+        </a>
 ```
 
-Insert the tile between the `<section>` and the `<iframe>` so it reads as part of the same surface:
+Add the speaker button as the last child of the anchor, immediately before `</a>`:
 
 ```html
-    <!-- ASK A QUESTION — multi-turn funnel-mode chat (piece 3) -->
-    <section class="shell ask reveal">
-      <!-- Fireside invitation — muted autoplay; the tap is also the audio-unlock gesture -->
-      <div id="fireside-invite" class="fs-invite hidden">
-        <button id="fs-invite-tap" class="fs-invite-tap" type="button"
-                aria-label="Hear Dr. Glen's invitation">
-          <video id="fs-invite-video" class="fs-invite-video"
-                 playsinline muted loop preload="metadata"
-                 poster="/static/fireside/video/intro-poster.jpg"></video>
-          <span id="fs-invite-hint" class="fs-invite-hint">tap to hear</span>
-        </button>
-        <div id="fs-invite-choices" class="fs-invite-choices hidden">
-          <a class="fs-invite-go" href="/begin/fireside">Come sit by the fire</a>
-          <button class="fs-invite-stay" type="button">Ask here instead</button>
-        </div>
-      </div>
-      <iframe id="begin-chat" src="/embed?mode=funnel" title="Ask Dr. Glen" loading="eager"
+          <button id="avatar-speaker" class="avatar-speaker hidden" type="button"
+                  aria-label="Hear Dr. Glen&rsquo;s invitation">&#128264;</button>
+        </a>
 ```
 
-- [ ] **Step 3b: Add the scoped styles**
+- [ ] **Step 8b: Add the styles and delete the orphaned block**
 
-Immediately before the closing `</head>` of `static/begin.html`, add:
+In `static/begin.html`, immediately after the existing `.avatar .avcap` rule (around line 589), add:
 
-```html
-<style>
-  /* Fireside invitation tile — deliberately small so it never pushes the chat
-     input below the fold on a phone. 160px, not a hero video. */
-  .fs-invite { display:flex; align-items:center; gap:14px; margin:0 0 14px;
-    flex-wrap:wrap; }
-  .fs-invite.hidden { display:none !important; }
-  .fs-invite-tap { position:relative; width:160px; height:160px; padding:0;
-    border:1px solid var(--border); border-radius:var(--radius);
-    background:var(--surface); overflow:hidden; cursor:pointer; flex:0 0 auto; }
-  .fs-invite-video { width:100%; height:100%; object-fit:cover; display:block; }
-  .fs-invite-hint { position:absolute; left:0; right:0; bottom:0;
-    padding:6px 8px; font-size:12px; letter-spacing:.02em; color:#f3e6cf;
-    background:linear-gradient(transparent, rgba(20,12,6,.82)); }
-  .fs-invite-hint.hidden { display:none !important; }
-  .fs-invite-choices { display:flex; flex-direction:column; gap:8px;
-    align-items:flex-start; }
-  .fs-invite-choices.hidden { display:none !important; }
-  .fs-invite-go { display:inline-block; padding:10px 18px; border-radius:24px;
-    background:linear-gradient(#caa86a,#8a6a38); color:#1a0f06;
-    text-decoration:none; font-size:15px; }
-  .fs-invite-stay { background:none; border:none; color:var(--muted);
-    font:inherit; font-size:14px; text-decoration:underline; cursor:pointer;
-    padding:0; }
-  @media (prefers-reduced-motion: reduce) { .fs-invite-video { display:none; } }
-</style>
+```css
+  /* Speaker rides on the avatar. 44px minimum tap target, cornered clear of
+     the caption, so a mis-tap opens fireside rather than doing nothing. */
+  .avatar .avatar-speaker { position: absolute; top: 8px; right: 8px; z-index: 3;
+    width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+    background: rgba(20,12,6,0.72); border: 1px solid #6b5436; color: var(--cream);
+    font-size: 17px; line-height: 1; display: flex; align-items: center;
+    justify-content: center; }
+  .avatar .avatar-speaker:hover { background: rgba(20,12,6,0.9); }
+  .avatar .avatar-speaker.hidden { display: none !important; }
 ```
 
-- [ ] **Step 3c: Create the mount script**
+Then delete the orphaned block left by `ec233b56` — every rule for `#fireside-invite`,
+`.fi-inner`, `.fi-title`, `.fi-sub`, `.fi-cta`, the `@keyframes fiGlow` block, and the
+`@media (max-width: 760px)` rule that targets `#fireside-invite .fi-title`. The section
+they styled no longer exists. Delete only those rules; leave everything around them
+untouched.
+
+- [ ] **Step 8c: Create the mount script**
 
 Create `static/begin/invitation-mount.js`:
 
 ```js
-/* invitation-mount.js — wires invitation.js to the real landing-page DOM.
+/* invitation-mount.js — wires invitation.js to the hero avatar's speaker button.
  * Intentionally thin and untested: all branching logic lives in invitation.js.
  */
-import { pickWelcomeClip, Invitation } from './invitation.js';
+import { pickInvitationAudio, Invitation } from './invitation.js';
 
 (function () {
-  var root = document.getElementById('fireside-invite');
-  if (!root) return;
+  var button = document.getElementById('avatar-speaker');
+  if (!button) return;
 
   fetch('/static/fireside/fireside-manifest.json')
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (m) {
-      var clip = pickWelcomeClip(m);
-      if (!clip) return;                       // no clip: tile stays hidden
-
-      var resting = (m && Array.isArray(m.resting_loops) && m.resting_loops.length)
-        ? m.resting_loops[0] : null;
+      var src = pickInvitationAudio(m);
+      if (!src) return;                        // no voice-over: button stays hidden
 
       var inv = new Invitation({
-        video:       document.getElementById('fs-invite-video'),
-        root:        root,
-        choices:     document.getElementById('fs-invite-choices'),
-        hint:        document.getElementById('fs-invite-hint'),
-        frame:       document.getElementById('begin-chat'),
-        origin:      window.location.origin,
-        clip:        clip,
-        restingClip: resting,
+        audio:  new Audio(),
+        button: button,
+        frame:  document.getElementById('begin-chat'),
+        origin: window.location.origin,
+        src:    src,
       });
 
-      document.getElementById('fs-invite-tap')
-        .addEventListener('click', function () { inv.tap(); });
+      // The speaker lives inside the fireside anchor. Both calls are required:
+      // preventDefault stops the navigation, stopPropagation keeps the click
+      // away from the anchor's engagement handler.
+      button.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        inv.toggle();
+      });
 
-      var stay = root.querySelector('.fs-invite-stay');
-      if (stay) stay.addEventListener('click', function () { inv.dismiss(); });
-
-      inv.start();
+      inv.mount();
     })
     .catch(function () { /* manifest unavailable: leave the page as it was */ });
 })();
 ```
 
-- [ ] **Step 3d: Load the module**
+- [ ] **Step 8d: Load the module**
 
 Immediately before the closing `</body>` of `static/begin.html`, add:
 
@@ -515,20 +498,20 @@ Immediately before the closing `</body>` of `static/begin.html`, add:
 <script type="module" src="/static/begin/invitation-mount.js"></script>
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 9: Run the wiring test to verify it passes**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
-Expected: PASS, 4 tests.
+Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 cd /tmp/wt-deploy-chat-b9535446
 git add static/begin.html static/begin/invitation-mount.js tests/test_begin_invitation_wiring.py
-git commit -m "feat: mount fireside invitation tile on the landing page"
+git commit -m "feat: speaker button on the hero avatar plays the invitation and unlocks audio"
 ```
 
 ---
@@ -574,7 +557,7 @@ def test_embed_unlock_listener_checks_origin(monkeypatch, tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
 Expected: FAIL on `test_embed_listens_for_the_unlock_message` — `assert "begin:audio-unlocked" in body`.
@@ -624,7 +607,7 @@ with:
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
 Expected: PASS, 7 tests.
@@ -676,7 +659,7 @@ def test_fireside_fullscreen_is_feature_detected(monkeypatch, tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
 Expected: FAIL — `assert 'id="fsBtn"' in body`.
@@ -736,7 +719,7 @@ Inside the main IIFE of `static/begin-fireside.html`, after the other `getElemen
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-cd /tmp/wt-deploy-chat-b9535446 && doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
+cd /tmp/wt-deploy-chat-b9535446 && doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py -v
 ```
 
 Expected: PASS, 9 tests.
@@ -767,7 +750,7 @@ This task exists because the three behaviors that matter most — muted autoplay
 ```bash
 cd /tmp/wt-deploy-chat-b9535446
 node --test tests/begin_js/*.test.mjs
-doppler run -- python3 -m pytest tests/test_begin_invitation_wiring.py tests/test_fireside_routes.py tests/test_begin_routes.py tests/test_chat_tts.py -v
+doppler run --config dev -- python3 -m pytest tests/test_begin_invitation_wiring.py tests/test_fireside_routes.py tests/test_begin_routes.py tests/test_chat_tts.py -v
 ```
 
 Expected: all green. Record the counts.

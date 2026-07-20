@@ -25,6 +25,20 @@ Nothing in this spec requires new video, new audio assets, or new server endpoin
 | Fireside conversation | `static/begin-fireside.html`, `static/fireside/director.js` | live, `/begin/fireside` returns 200 |
 | Welcome clips | `fireside-manifest.json` → `intro_welcomes` (3), `intro_poster` | present, served 200 |
 | Invitation reaction clip | `fireside-manifest.json` → `reactions[id=invitation]`, open-palm, silent | present |
+| **Hero avatar (the existing fireside door)** | `static/begin.html:761` — `<a class="avatar" href="/begin/fireside">` wrapping an autoplaying muted looping `/static/media/glendalf-welcome.mp4`, caption "Sit by the fire with Dr. Glen →", click handler at `:1429` records engagement | live |
+| Invitation voice-over | `static/fireside/audio/intro-welcome-3.mp3` (4.3s), also `intro-welcome.mp3`, `intro-welcome-2.mp3` | present, `intro_welcome_audio` in manifest |
+
+**Correction, 2026-07-19.** An earlier draft of this spec claimed the landing page had
+no video and proposed adding a standalone welcome tile. That was wrong on both counts.
+The hero avatar above is already a muted autoplaying Glendalf video linking to fireside,
+and commit `ec233b56` ("remove standalone fireside section — hero avatar is the single
+fireside entry") deliberately consolidated the page to exactly one fireside door. A
+second tile would undo that decision. The design below therefore hangs the invitation
+off the existing avatar instead of adding a sibling to it.
+
+`/static/media/glendalf-welcome.mp4` carries **no audio track** (verified with ffprobe:
+one h264 video stream, nothing else). Unmuting it would play silence, so the spoken
+invitation must come from a separate audio file.
 
 `/chat/tts` already falls back to browser `speechSynthesis` on any non-200, and
 `embed.html` already hides the mic when `MediaRecorder`/`getUserMedia` are absent.
@@ -32,28 +46,35 @@ Both degradation paths are inherited, not rebuilt.
 
 ## Design
 
-### 1. Welcome tile
+### 1. Speaker button on the existing hero avatar
 
-A new element in `static/begin.html`, directly above the `#begin-chat` iframe so it
-reads as part of the same conversation surface.
+No new tile. A small speaker button is added **inside** the existing
+`<a class="avatar">` at `static/begin.html:761`, positioned in a corner over the
+looping video.
 
-- Poster: `intro-poster.jpg`. Clip: one of `intro_welcomes`, chosen at load.
-- Autoplays **muted**, looping, with a visible "tap to hear" affordance.
-- Deliberately small — roughly a 160px rounded tile, not a hero video. It must not
-  push the chat input below the fold on a phone.
-- On tap: unmute, restart, play the invitation with audio. On end, settle into a
-  resting loop and reveal two buttons: **"Come sit by the fire"** and
-  **"Ask here instead"**.
-- If the visitor never taps, the page behaves exactly as it does today.
+- Tapping the speaker plays the invitation voice-over (`intro_welcome_audio` from
+  the manifest) while the avatar video keeps looping muted underneath. The button
+  swaps to a stop state while playing and back when it ends.
+- The speaker must **not** navigate. Its handler calls `preventDefault()` and
+  `stopPropagation()` so the click never reaches the wrapping anchor.
+- Tapping anywhere else on the avatar still goes to `/begin/fireside` exactly as it
+  does today, including the existing engagement handler at `:1429`.
+- No second CTA is added. The avatar's own caption already reads
+  "Sit by the fire with Dr. Glen →".
+- If the manifest fetch fails or yields no audio, the button is never shown and the
+  page behaves exactly as it does today.
+
+While editing this file, also delete the orphaned CSS left behind by `ec233b56`
+(`#fireside-invite`, `.fi-inner`, `.fi-title`, `.fi-sub`, `.fi-cta`, and
+`@keyframes fiGlow`). It styles a section that no longer exists.
 
 ### 2. Audio unlock
 
-Browsers block sound without a user gesture but permit muted autoplay. The tap on the
-welcome tile is that gesture, and it is reused to unlock spoken replies for the rest of
-the session.
+Browsers block sound without a user gesture. The tap on the speaker button is that
+gesture, and it is reused to unlock spoken replies for the rest of the session.
 
-- The tap sets a session-scoped flag in `begin.html` and `postMessage`s it into the
-  `#begin-chat` iframe (same origin, so no cross-origin handling is needed).
+- The tap `postMessage`s an unlock into the `#begin-chat` iframe (same origin, so no
+  cross-origin handling is needed).
 - `embed.html` listens for that message and records that audio is unlocked.
 - Once unlocked, each completed reply calls `window.TTS.attachAndSpeak` instead of
   `window.TTS.attach`.
@@ -62,7 +83,8 @@ the session.
 
 ### 3. Handoff to fireside
 
-"Come sit by the fire" is a plain navigation to `/begin/fireside`.
+Unchanged from today: the existing hero avatar anchor navigates to `/begin/fireside`.
+This design adds no new door and removes none.
 
 Version one deliberately does **not** carry the landing-page conversation across. The
 fireside agent has its own session store (`dashboard/fireside_store.py`) and its own
@@ -97,26 +119,27 @@ continues to cover the TTS endpoint unchanged.
 
 Verification is therefore behavioral:
 
-1. Headless render of `/begin` confirming the tile appears, autoplays muted, and does
-   not push the chat input below the fold at 390x844.
-2. Headless render confirming the tap reveals both CTAs.
-3. Manual pass on desktop Chrome: tap unlocks audio, the next reply speaks without a
-   click, the "🔊 Listen" button still works.
-4. Manual pass on iOS Safari: muted autoplay works, the tap unlocks audio, and the
-   fullscreen button is absent rather than present-and-broken.
-5. Manual pass with audio never unlocked, confirming today's behavior is unchanged.
+1. Headless render of `/begin` at 390x844 confirming the speaker button appears over
+   the avatar and does not obscure its caption.
+2. Manual pass on desktop Chrome: tapping the speaker plays the voice-over and does
+   **not** navigate; tapping elsewhere on the avatar still opens `/begin/fireside`.
+3. Manual pass on desktop Chrome: after the speaker tap, the next reply speaks without
+   a click, and the "🔊 Listen" button still works.
+4. Manual pass on iOS Safari: the speaker plays, the tap unlocks audio, and the
+   fireside fullscreen button is absent rather than present-and-broken.
+5. Manual pass with the speaker never tapped, confirming today's behavior is unchanged.
 
-Steps 3 and 4 are manual because autoplay policy differs per browser and per
-engagement history, which is precisely what a unit test cannot reproduce.
+Steps 2 through 4 are manual because autoplay policy and click-through behavior on a
+nested control inside an anchor differ per browser and per engagement history, which is
+precisely what a unit test cannot reproduce.
 
 ## Risks
 
-- **Attention competition.** The tile sits next to the chat panel's opening prompts.
-  Keeping it small is the mitigation; if it measurably suppresses typed questions, it
-  moves or shrinks.
-- **Autoplay policy drift.** Muted autoplay is widely permitted but not guaranteed. If
-  it is blocked, the tile shows the poster frame and the tap still works, so the
-  failure mode is a still image rather than a broken element.
+- **Swallowed navigation.** The speaker sits inside an anchor. If `preventDefault` and
+  `stopPropagation` are not both applied, tapping it navigates away mid-sentence. This
+  is the single most likely defect and is covered by verification step 2.
+- **Tap-target crowding.** A control inside a link risks mis-taps on a phone. The
+  mitigation is a minimum 44x44px target placed in a corner, clear of the caption.
 - **Unexpected speech.** A visitor who taps for the invitation then gets every
   subsequent reply spoken aloud. This is the approved behavior — silence after an
   explicit request for voice reads as broken — but the manual Listen control and normal
