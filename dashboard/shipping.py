@@ -102,6 +102,18 @@ PROD_BOTTLE_NAMES = frozenset({
 # it in prod (POST /api/shipping/bottles) before shipping the baseline.
 PENDING_BOTTLE_NAMES = frozenset()
 
+# The cello-refill packing unit (see `packing_bottle_type` below). Deliberately NOT
+# added to PROD_BOTTLE_NAMES/PENDING_BOTTLE_NAMES: those two sets track names that
+# appear as a *product's* `bottle_type` in the catalog (verified against prod's live
+# library / staged for creation there). `cello-refill` is never a product's stored
+# bottle_type — it's computed per cart line from the `format` field — so it doesn't
+# belong to that vocabulary. Prod's `bottle_types` table is hand-built and
+# authoritative at runtime; Rae must add this row (dims or capacity) via
+# /admin/shipping before prod can rate it. The `_STANDARD_BOTTLES` seed below makes
+# it testable and keeps a fresh/dev catalog resolvable; if the row is absent in prod,
+# `pick_boxes` raises UnknownBottleType for it exactly like any other missing type.
+CELLO_BOTTLE_TYPE = "cello-refill"
+
 # Old repo-private names -> prod's. Applied by init_shipping_schema to any pre-existing
 # catalog so a dev DB stops speaking a vocabulary prod never had. `100cos` predates both.
 _LEGACY_BOTTLE_RENAMES = {
@@ -155,6 +167,11 @@ _STANDARD_BOTTLES = [
     # (50 - 5 margin = 45 mm), so a single unit bounds to USPS Medium; 2-3 still fit one
     # Medium. Created in prod 2026-07-11 (id 24). Shared by both nightlight SKUs.
     ("nightlight", "Therapeutic / Biocompatible nightlight — 5 x 5 x 6 cm → USPS Medium", 50, 60),
+    # Cello refill pack: a 30-cap cellophane pouch (no rigid bottle), approximated as a
+    # tight bounding cylinder — packs smaller than the "30 Caps" rigid bottle (Ø51x90) it
+    # replaces for refill-format lines. NOT YET created in prod; Rae must add this row
+    # via /admin/shipping before prod can rate it (see CELLO_BOTTLE_TYPE note above).
+    (CELLO_BOTTLE_TYPE, "Cellophane refill pack (30 caps, no bottle)", 35, 60),
 ]
 # Live prod values (GET /api/shipping/packing-settings). wrap_mm set to 5 on
 # 2026-07-16: at wrap 6 the Ø40 glass droppers (30ml infoceutical, 30roll) came to
@@ -755,6 +772,19 @@ def resolve_bottle_type(slug, product, db_path=None):
     if row:
         return row["bottle_type"]
     return (product or {}).get("bottle_type") or "default"
+
+
+# Cart-line formats that ship as a cello (cellophane) refill pack instead of a rigid
+# bottle. Matches the `format` id used by `_FORMATS` in app.py (id "refill").
+CELLO_FORMATS = frozenset({"refill"})
+
+
+def packing_bottle_type(product, fmt):
+    """Packing key for a cart line. Cello/refill lines resolve to the tighter
+    cello unit; everything else keeps its product bottle_type."""
+    if (fmt or "").strip().lower() in CELLO_FORMATS:
+        return CELLO_BOTTLE_TYPE
+    return resolve_bottle_type((product or {}).get("slug"), product)
 
 
 def get_packing_settings(db_path: Optional[str] = None) -> Dict[str, int]:
