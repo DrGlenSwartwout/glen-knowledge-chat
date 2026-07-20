@@ -148,6 +148,16 @@ def test_manifest_served(monkeypatch, tmp_path):
     r = appmod.app.test_client().get("/static/fireside/fireside-manifest.json")
     assert r.status_code == 200
     data = r.get_json()
-    assert data["intro_video"].endswith("intro.mp4")
+    # Assert the contract, not which clip. This previously pinned the literal
+    # "intro.mp4" and broke the moment the opening clip changed — twice: #453
+    # repointed it at rest-1.mp4 to de-black the intro, then #456 at
+    # intro-read.mp4 for the book intro. Which clip opens the fireside is a
+    # creative decision; that it names a real, servable video is the invariant.
+    intro = data["intro_video"]
+    assert intro.startswith("/static/fireside/video/")
+    assert intro.endswith(".mp4")
+    assert appmod.app.test_client().get(intro).status_code == 200, (
+        f"manifest declares {intro} but it is not served"
+    )
     assert len(data["fillers"]) >= 5
     assert len(data["interjections"]) >= 3
