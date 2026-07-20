@@ -56,9 +56,32 @@ def test_rejected_header_never_renders():
     ("visit https://evil.example.com now", "https://"),
     ("mail me at a@b.com", "@"),
     ("call 808-555-1212", "555"),
+    ("call 5551212 now", "5551212"),
+    ("call 555 1212 now", "1212"),
+    ("+1 (808) 555-1212", "555"),
+    ("evil.com/path", "evil.com"),
+    ("evil.com", "evil.com"),
+    ("HTTPS://EVIL.COM", "EVIL.COM"),
+    ("javascript:alert(1)", "javascript:"),
+    ("data:text/html,x", "data:"),
+    ("a+tag@sub.example.co.uk", "@"),
+    ("</script>bye", "</script>"),
+    ("<img src=x>hi", "<img"),
+    ("<<script>>alert(1)", "<script>"),
+    ("<scr<x>ipt>alert(1)</scr<x>ipt>", "<scr"),
 ])
 def test_sanitize_strips_dangerous_content(raw, gone):
     assert gone not in sh.sanitize(raw)
+
+
+@pytest.mark.parametrize("raw", [
+    "I have felt better for 6 months",
+    "5 < 10 and it cost 42",
+    "5 < 10 > 3",
+    "Started in 2026",
+])
+def test_sanitize_preserves_legitimate_prose(raw):
+    assert sh.sanitize(raw) == raw
 
 
 def test_body_over_280_chars_is_rejected():
