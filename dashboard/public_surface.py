@@ -78,6 +78,11 @@ PROFIT_DISCLOSURE = (
 )
 
 
+def _public_only(view, allowed):
+    """Final fail-closed guard: drop any key not explicitly allowed."""
+    return {k: v for k, v in view.items() if k in allowed}
+
+
 def build_practitioner_storefront(cx, slug):
     """Build the public storefront payload for `slug`, or None if unknown.
 
@@ -105,4 +110,4 @@ def build_practitioner_storefront(cx, slug):
         "catalog_url": "/begin/explore",
         "profit_disclosure": PROFIT_DISCLOSURE,
     }
-    return {k: v for k, v in view.items() if k in PRACTITIONER_PUBLIC_FIELDS}
+    return _public_only(view, PRACTITIONER_PUBLIC_FIELDS)

@@ -86,16 +86,35 @@ def test_storefront_whitelist_excludes_commercial_fields():
     assert not (ps.PRACTITIONER_PUBLIC_FIELDS & forbidden)
 
 
-def test_storefront_drops_an_injected_forbidden_field():
-    """MUTATION TEST: prove the whitelist actually filters, not just that the
-    happy path happens to omit the field. Inject a commercial column into the
-    source table and assert it does not reach the output."""
-    cx = _cx_with_affiliate()
-    cx.execute("ALTER TABLE affiliate_signups ADD COLUMN wallet_balance_cents INTEGER DEFAULT 99999")
-    cx.commit()
-    view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
-    assert "wallet_balance_cents" not in view
-    assert 99999 not in view.values()
+def test_public_only_drops_forbidden_keys():
+    """MUTATION TEST: prove _public_only actually filters, not just that the
+    happy-path view happens to omit forbidden keys. Feed it a dict containing
+    both allowed and forbidden keys directly and assert the forbidden ones
+    are dropped while the allowed ones survive."""
+    view = {
+        "slug": "prof-jane-doe",
+        "practitioner_name": "Jane Doe",
+        "wallet_balance_cents": 99999,
+        "margin": 0.4,
+        "email": "jane@example.com",
+    }
+    result = ps._public_only(view, ps.PRACTITIONER_PUBLIC_FIELDS)
+    assert "wallet_balance_cents" not in result
+    assert "margin" not in result
+    assert "email" not in result
+    assert result["slug"] == "prof-jane-doe"
+    assert result["practitioner_name"] == "Jane Doe"
+
+
+def test_public_only_is_the_guard_build_practitioner_storefront_relies_on():
+    """Directly show _public_only is a real, general-purpose filter (drops a
+    key that isn't in the whitelist for an arbitrary allowed-set), tying it
+    to the guarantee build_practitioner_storefront's docstring claims."""
+    result = ps._public_only(
+        {"slug": "x", "not_whitelisted": "should be dropped"},
+        ps.PRACTITIONER_PUBLIC_FIELDS,
+    )
+    assert result == {"slug": "x"}
 
 
 def test_storefront_includes_profit_disclosure():
@@ -105,3 +124,30 @@ def test_storefront_includes_profit_disclosure():
     view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
     assert view["profit_disclosure"]
     assert "%" not in view["profit_disclosure"], "disclose the fact, never a rate"
+
+
+def test_storefront_honors_a_narrowed_whitelist():
+    """Wiring test: build_practitioner_storefront must apply
+    PRACTITIONER_PUBLIC_FIELDS at call time via _public_only, not just
+    happen to return an already-whitelist-shaped dict. Since `view` is
+    hand-built from literal keys equal to the full whitelist, no fixture
+    can inject a forbidden key through the DB row (that's the whole reason
+    the original mutation test was vacuous). Instead, shrink the whitelist
+    itself: if the guard is wired up, the output shrinks with it. If the
+    guard were bypassed (bare `return view`), the output would ignore the
+    narrowed whitelist entirely and still include the dropped key."""
+    cx = _cx_with_affiliate()
+    original = ps.PRACTITIONER_PUBLIC_FIELDS
+    try:
+        ps.PRACTITIONER_PUBLIC_FIELDS = frozenset(original - {"practitioner_name"})
+        view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
+        assert "practitioner_name" not in view
+    finally:
+        ps.PRACTITIONER_PUBLIC_FIELDS = original
+
+
+def test_storefront_returns_none_for_non_approved_affiliate():
+    """A pending (not yet approved) affiliate must be treated as unknown —
+    same as a slug that doesn't exist at all."""
+    cx = _cx_with_affiliate(status="pending")
+    assert ps.build_practitioner_storefront(cx, "prof-jane-doe") is None
