@@ -103,3 +103,43 @@ def test_fireside_fullscreen_is_feature_detected(monkeypatch, tmp_path):
     assert "webkitRequestFullscreen" in body
     idx = body.index("webkitRequestFullscreen")
     assert "hidden" in body[idx : idx + 600]
+
+
+# ── both chat surfaces ──────────────────────────────────────────────────────
+# The landing page has TWO chats: #hero-chat, rendered by begin.html itself
+# beside the avatar, and the #begin-chat iframe (/embed?mode=funnel) further
+# down. The first release wired only the iframe, so tapping the speaker did
+# nothing for the conversation the visitor was actually having. These assert
+# both, because a text-presence check on one file is what let that through.
+
+def test_hero_chat_can_speak_its_replies(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin").get_data(as_text=True)
+    assert "/static/tts-output.js" in body, "hero chat needs window.TTS on this page"
+    assert "heroSpeak" in body
+    assert "heroSpeak(box, acc)" in body, "must speak the FINALIZED streamed reply"
+
+
+def test_hero_chat_has_a_microphone(monkeypatch, tmp_path):
+    appmod = _reload_app(monkeypatch, tmp_path)
+    body = appmod.app.test_client().get("/begin").get_data(as_text=True)
+    assert "/static/mic-input.js" in body
+    idx = body.index('id="hero-input"')
+    assert "data-mic" in body[idx : idx + 200], "the hero input itself must be mic-wired"
+
+
+def test_unlock_flag_is_set_on_the_parent_page_too(monkeypatch, tmp_path):
+    """postMessage only reaches the iframe; the hero chat reads the flag locally."""
+    appmod = _reload_app(monkeypatch, tmp_path)
+    js = appmod.app.test_client().get("/static/begin/invitation-mount.js").get_data(as_text=True)
+    assert "window.__audioUnlocked = true" in js
+
+
+def test_both_chat_surfaces_are_voice_wired(monkeypatch, tmp_path):
+    """Neither surface may be left behind when voice changes are made."""
+    c = _reload_app(monkeypatch, tmp_path).app.test_client()
+    hero = c.get("/begin").get_data(as_text=True)
+    embed = c.get("/embed?mode=funnel").get_data(as_text=True)
+    for name, doc in (("hero chat (begin.html)", hero), ("iframe chat (embed.html)", embed)):
+        assert "attachAndSpeak" in doc, f"{name} cannot speak replies"
+        assert "/transcribe" in doc or "mic-input.js" in doc, f"{name} has no microphone"

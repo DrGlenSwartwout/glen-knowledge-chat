@@ -27,6 +27,10 @@ import { pickInvitationAudio, Invitation } from './invitation.js';
       button.addEventListener('click', function (e) {
         e.preventDefault();
         inv.toggle();
+        // The hero chat renders on THIS page, so it reads the flag locally. The
+        // postMessage inside notifyUnlock only reaches the #begin-chat iframe,
+        // which is a different, further-down conversation.
+        if (inv.unlocked) window.__audioUnlocked = true;
       });
 
       var chat = document.getElementById('begin-chat');
