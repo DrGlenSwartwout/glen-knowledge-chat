@@ -152,8 +152,10 @@
         illtowell.com/p/your-slug. Only what you save here is published — nothing is
         shown until you do.</div>
       <div class="muted" id="sf-scraped-note" style="display:none;margin-top:6px">
-        We may have directory info for you. Add your public bio and details here —
+        We may have directory info on file for you. Start from it or write fresh —
         nothing publishes until you save this section.
+        <div><button type="button" id="sf-load-scraped" class="ghost"
+             style="margin-top:8px;display:none">Use my directory info as a starting point</button></div>
       </div>
 
       <label class="field-label">Bio (max 600 characters)</label>
@@ -241,6 +243,7 @@
   // GET handler pre-filled (which may be scraped directory data) and stamp
   // provenance on data the practitioner never reviewed.
   var sfDirty = false;
+  var sfScraped = null;  // directory data offered as an opt-in starting point
 
   // ── Theme toggle ─────────────────────────────────────────────────────────────
   function toggleTheme() {
@@ -411,6 +414,24 @@
       document.getElementById(id).addEventListener('change', markDirty);
     });
     document.getElementById('sf-accepting').addEventListener('change', markDirty);
+
+    // Opt-in: load the scraped directory data into the editable inputs as a
+    // starting point. This is a DELIBERATE act (a click), and it marks the card
+    // dirty — so a later save publishes only because the practitioner chose to
+    // load this data and then save it. Scraped data is never pre-loaded without
+    // this click, so an unrelated save still can't publish it.
+    document.getElementById('sf-load-scraped').addEventListener('click', function () {
+      if (!sfScraped) return;
+      document.getElementById('sf-bio').value = sfScraped.bio || '';
+      document.getElementById('sf-bio-count').textContent = (sfScraped.bio || '').length;
+      document.getElementById('sf-photo').value = sfScraped.photo_url || '';
+      document.getElementById('sf-services').value = (sfScraped.services || []).join(', ');
+      document.getElementById('sf-city').value = sfScraped.city || '';
+      document.getElementById('sf-state').value = sfScraped.state || '';
+      document.getElementById('sf-accepting').checked = sfScraped.accepting_clients !== false;
+      sfDirty = true;
+      document.getElementById('sf-scraped-note').style.display = 'none';
+    });
   })();
 
   // ── Load settings ─────────────────────────────────────────────────────────────
@@ -464,6 +485,14 @@
         document.getElementById('sf-state').value = '';
         document.getElementById('sf-accepting').checked = true;
         if (scrapedNote) scrapedNote.style.display = 'block';
+        // Stash the scraped values so the opt-in "use my directory info" button
+        // can load them on a deliberate click. Show the button only if there is
+        // actually something on file.
+        var hasScraped = !!(pf.bio || pf.photo_url || pf.city || pf.state ||
+                            (pf.services && pf.services.length));
+        sfScraped = hasScraped ? pf : null;
+        document.getElementById('sf-load-scraped').style.display =
+          hasScraped ? 'inline-block' : 'none';
       }
 
       // Chat enabled toggle
