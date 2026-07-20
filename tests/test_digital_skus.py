@@ -142,10 +142,37 @@ def test_packer_devices_use_bottle_types_prod_actually_has():
             assert bt in shipping.PROD_BOTTLE_NAMES, f"{slug}: {bt!r} missing in prod"
 
 
-def test_held_devices_were_not_imported():
-    """Held pending Glen: unresolved price or shipping. Importing them blind
-    would guess a rate, which undercharges every sale."""
-    for slug in ("whole-house-neutralizer", "healing-tools-package",
-                 "blue-blocking-photochromic-sunglasses",
-                 "breath-tuning-fork-1283hz", "living-water-bottle-filter-refill"):
-        assert app._get_product(slug) is None, f"{slug} imported before it was resolved"
+def test_previously_held_devices_now_imported_with_glens_answers():
+    """Glen 2026-07-20 resolved the last four questions:
+    "Whole House Neutralizer price $85; shipping small. Centropix fee not fixed
+    - determined and charged by them. Tuning forks: small. Glasses: small."
+
+    "small" = USPS Small flat rate ($12.65 retail -> $13 charged), which also
+    removed the need for a new prod bottle_type for the forks.
+    """
+    exp = {"whole-house-neutralizer": (8500, 1300),
+           "breath-tuning-fork-1283hz": (2997, 1300),
+           "mind-tuning-fork-5000hz": (4997, 1300),
+           "spirit-tuning-fork-172hz": (4997, 1300),
+           "frosted-quartz-tuning-fork-172hz": (29700, 1300),
+           "blue-blocking-photochromic-sunglasses": (12997, 1300),
+           "healing-tools-package": (799700, 13200)}
+    for slug, (price, flat) in exp.items():
+        p = app._get_product(slug)
+        assert p, slug
+        assert p["price_cents"] == price, slug
+        assert p["flat_shipping_cents"] == flat, slug
+
+
+def test_healing_tools_excludes_the_centropix_fee():
+    """Glen: the Centropix fee is "not fixed - determined and charged by them",
+    so our $132 covers only the Large box + the ionizer's own parcel. The note
+    must say so, or someone later reads $132 as total freight."""
+    p = app._get_product("healing-tools-package")
+    assert p["flat_shipping_cents"] == 3200 + 10000
+    assert "Centropix" in p.get("_note", "")
+
+
+def test_discontinued_consumable_still_not_imported():
+    """The Living Water filter refill serves a DISCONTINUED product."""
+    assert app._get_product("living-water-bottle-filter-refill") is None
