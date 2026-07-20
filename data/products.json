@@ -20703,6 +20703,64 @@
       "price_cents": 1497,
       "digital": true,
       "source": "gk-audiobook-import-2026-07-20"
+    },
+    "capsule-filling-machine": {
+      "name": "Capsule Filling Machine",
+      "price_cents": 19700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 2300,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "capsule-filling-machine-with-tamping": {
+      "name": "Capsule Filling Machine with Tamping",
+      "price_cents": 39700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 2300,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "empty-vegicaps-size-00": {
+      "name": "Empty Vegicaps Size 00",
+      "price_cents": 797,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "empty-vegicaps-size-4": {
+      "name": "Empty Vegicaps Size 4",
+      "price_cents": 797,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "_note": "Name taken from the slug: the GrooveKart source page is mis-titled (size-4 page reads 'Size 00'; square canopy page reads 'Circular'). Storefront copy needs fixing separately.",
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "large-mithreal-silver-lined-blanket": {
+      "name": "Large Mithreal Silver-Lined Blanket",
+      "price_cents": 24997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "small-mithreal-silver-lined-blanket": {
+      "name": "Small Mithreal Silver-Lined Blanket",
+      "price_cents": 14997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "circular-mithreal-silver-sleep-canopy": {
+      "name": "Circular Mithreal Silver Sleep Canopy",
+      "price_cents": 79700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "source": "gk-apparel-import-2026-07-20"
+    },
+    "square-mithreal-silver-sleep-canopy": {
+      "name": "Square Mithreal Silver Sleep Canopy",
+      "price_cents": 99700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "_note": "Name taken from the slug: the GrooveKart source page is mis-titled (size-4 page reads 'Size 00'; square canopy page reads 'Circular'). Storefront copy needs fixing separately.",
+      "source": "gk-apparel-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
