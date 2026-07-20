@@ -89,3 +89,34 @@ def test_recording_failure_never_breaks_the_page(client, monkeypatch):
     monkeypatch.setattr(ps, "record_view", _boom)
     assert client.get("/p/prof-jane-doe").status_code == 200
     assert client.get("/sample/prof-jane-doe").status_code == 200
+
+
+@pytest.fixture
+def client_no_affiliate_table(monkeypatch, tmp_path):
+    """A LOG_DB that has no affiliate_signups table at all — e.g. a fresh
+    or otherwise-divergent database. Unlike test_recording_failure_never_
+    breaks_the_page above (which only monkeypatches record_view), this
+    exercises the real sqlite3 OperationalError path: the slug-resolution
+    query itself must be inside the guard, not just the record_view call."""
+    db = str(tmp_path / "chat_log_no_affiliate.db")
+    sqlite3.connect(db).close()  # create an empty db file, no tables at all
+    monkeypatch.setattr(appmod, "LOG_DB", db)
+    monkeypatch.setenv("PUBLIC_SURFACE_ENABLED", "1")
+    appmod.app.config["TESTING"] = True
+    return appmod.app.test_client()
+
+
+def test_sample_slug_survives_missing_affiliate_table(client_no_affiliate_table):
+    """Regression: /sample/<slug> made zero DB calls before Task 10 added
+    view recording, and could not fail. A LOG_DB missing affiliate_signups
+    (the slug-resolution query record_view's gate depends on) must degrade
+    to "don't record a view", never to a 500 on this static demo page."""
+    resp = client_no_affiliate_table.get("/sample/prof-jane-doe")
+    assert resp.status_code == 200
+
+
+def test_api_sample_slug_survives_missing_affiliate_table(client_no_affiliate_table):
+    """Same guarantee for /api/sample/<slug>: a missing affiliate_signups
+    table must not 500 the JSON endpoint either."""
+    resp = client_no_affiliate_table.get("/api/sample/prof-jane-doe")
+    assert resp.status_code == 200

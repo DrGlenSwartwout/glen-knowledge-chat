@@ -126,14 +126,18 @@ def build_share_header(cx, slug):
     Only two fields ever reach the public page. Nothing from get_portal_view
     touches this path.
 
-    Fails closed: a missing share_headers table (e.g. a fresh deployment
-    that has never called init_share_headers_table) means "no header",
-    not a 500. This function is a read path on a public surface and must
-    not perform a schema write, so it does not create the table itself.
+    Fails closed: a missing affiliate_signups or share_headers table (e.g. a
+    fresh deployment, or a LOG_DB that predates one of these tables) means
+    "no header", not a 500. This function is a read path on a public surface
+    and must not perform a schema write, so it does not create either table
+    itself.
     """
-    row = cx.execute(
-        "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
-        (slug,)).fetchone()
+    try:
+        row = cx.execute(
+            "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
+            (slug,)).fetchone()
+    except sqlite3.OperationalError:
+        return None
     if not row:
         return None
     try:
@@ -145,10 +149,14 @@ def build_share_header(cx, slug):
     return _public_only(hdr, SHARE_HEADER_PUBLIC_FIELDS)
 
 
-def init_public_surface_views_table(cx):
-    """Anonymous page-view counts per slug. Deliberately NOT referral_events —
-    that table is lead-shaped (email, lead_id, utm_*) and these views have no
-    lead attached."""
+def _ensure_views_table(cx):
+    """Issue the public_surface_views DDL. Does NOT commit — callers that
+    only need the schema (record_view, which commits once at the end
+    alongside its INSERT) and callers that need it committed immediately
+    (init_public_surface_views_table) share this so the DDL is never
+    duplicated. Deliberately no module-level "already created" flag: tests
+    construct a fresh database per test, and a cached flag would skip
+    creation on a new DB."""
     cx.execute("""
         CREATE TABLE IF NOT EXISTS public_surface_views (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,13 +166,26 @@ def init_public_surface_views_table(cx):
         )
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_psv_slug ON public_surface_views(slug)")
+
+
+def init_public_surface_views_table(cx):
+    """Anonymous page-view counts per slug. Deliberately NOT referral_events —
+    that table is lead-shaped (email, lead_id, utm_*) and these views have no
+    lead attached."""
+    _ensure_views_table(cx)
     cx.commit()
 
 
 def record_view(cx, slug, surface):
     """Record one public-surface visit. Not deduped — per-slug view counts are
-    the instrumentation this feature is being measured by."""
-    init_public_surface_views_table(cx)
+    the instrumentation this feature is being measured by.
+
+    Issues the DDL (IF NOT EXISTS, so a no-op once the table exists) and the
+    INSERT under a single commit, rather than committing the schema and the
+    row separately — this runs under the app's global write lock on the
+    hottest public routes, so it should touch the WAL/journal once per call,
+    not twice."""
+    _ensure_views_table(cx)
     cx.execute(
         "INSERT INTO public_surface_views (slug, surface, viewed_at) VALUES (?,?,?)",
         (slug, surface, datetime.now(timezone.utc).isoformat(timespec="seconds")))
