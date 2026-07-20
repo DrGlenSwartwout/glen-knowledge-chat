@@ -3799,6 +3799,46 @@ def sample_portal_for_slug(slug):
     return resp
 
 
+@app.route("/api/console/share-header/<email>/<action>", methods=["POST"])
+def api_console_share_header(email, action):
+    """Approve or reject a client-authored share header.
+    Publishing one is publishing a testimonial — hence the gate."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    if action not in ("approve", "reject"):
+        return jsonify({"error": "unknown action"}), 400
+    from dashboard import share_header as _sh
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _sh.init_share_headers_table(cx)
+        (_sh.approve if action == "approve" else _sh.reject)(cx, email)
+    return jsonify({"ok": True, "email": email, "status": action + "d"})
+
+
+@app.route("/api/portal/<token>/share-header", methods=["POST"])
+def api_portal_share_header(token):
+    """Client writes their own share header. Always lands as pending."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    body = (request.get_json(silent=True) or {})
+    from dashboard import client_portal as _cp
+    from dashboard import share_header as _sh
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _sh.init_share_headers_table(cx)
+        try:
+            row = _sh.upsert_header(cx, portal["email"],
+                                    body.get("display_name", ""),
+                                    body.get("body", ""))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "status": row["status"]})
+
+
 @app.route("/api/prepay/tiers")
 def prepay_tiers():
     """Public tier descriptors for the picker (price, per-month, savings %, badge)."""

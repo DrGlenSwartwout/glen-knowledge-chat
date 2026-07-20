@@ -1810,6 +1810,25 @@ function render(d, v){
     }
   }
 
+  // Task 9: client-authored share header, shown above the public sample portal
+  // once approved. Rendered unconditionally (like the other client-editable
+  // cards below) — the write route itself gates on PUBLIC_SURFACE_ENABLED,
+  // returning a bare 404 when the feature is off, same as every other
+  // public-surface route.
+  html += `<div class="card" id="share-header-card">
+    <h2>Your share page</h2>
+    <p class="muted">Add your first name and a line in your own words. It appears
+      above the sample portal when someone opens your link.
+      We review these before they go live.</p>
+    <input id="sh-name" type="text" maxlength="40" placeholder="First name"
+      style="width:100%;margin-bottom:.5rem;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit">
+    <textarea id="sh-body" maxlength="280" rows="3"
+      placeholder="A line in your own words"
+      style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;font-family:inherit;resize:vertical"></textarea>
+    <button class="btn full" type="button" id="sh-save" style="margin-top:.5rem">Save</button>
+    <p class="small muted" id="sh-status" style="margin-top:.4rem"></p>
+  </div>`;
+
   // Notification preference: lets a client see and change their opt status,
   // so anyone who unsubscribed via the email link can re-subscribe here.
   if(typeof d.notify_on !== "undefined"){
@@ -2064,6 +2083,23 @@ function render(d, v){
 
   const sabtn = document.getElementById("socialAddBtn");
   if(sabtn) sabtn.addEventListener("click", addSocial);
+
+  // Task 9: save the client-authored share header. Always lands as pending —
+  // even editing an already-approved header sends it back for re-review.
+  const shbtn = document.getElementById("sh-save");
+  if(shbtn) shbtn.addEventListener("click", ()=>{
+    const status = document.getElementById("sh-status");
+    fetch(`/api/portal/${encodeURIComponent(token)}/share-header`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        display_name: document.getElementById("sh-name").value,
+        body: document.getElementById("sh-body").value
+      })
+    }).then(r => r.json()).then(j => {
+      if(status) status.textContent = j.ok ? "Saved — we'll review it shortly." : (j.error || "Could not save.");
+    }).catch(() => { if(status) status.textContent = "Could not save."; });
+  });
 
   // Household sharing: member share consent + caregiver cc preferences
   app.querySelectorAll(".hh-share").forEach(el => el.addEventListener("change", () =>
