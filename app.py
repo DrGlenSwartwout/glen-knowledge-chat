@@ -3742,6 +3742,18 @@ def prepay_page():
     return resp
 
 
+@app.route("/api/sample")
+def api_sample():
+    """Synthetic sample-portal payload. No auth, no token, no database.
+    See dashboard/public_surface.py for why this cannot leak real data."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    resp = jsonify(_ps.build_demo_view())
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
 @app.route("/api/prepay/tiers")
 def prepay_tiers():
     """Public tier descriptors for the picker (price, per-month, savings %, badge)."""
@@ -17383,6 +17395,14 @@ def _support_programs_enabled():
     `support_program` key, so responses stay byte-identical to pre-support-program
     behavior."""
     return (os.environ.get("SUPPORT_PROGRAMS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _public_surface_enabled():
+    """Public recruiting surfaces: /sample, /sample/<slug>, /p/<slug> (Phase 1-3).
+    Default OFF — when off every public-surface route returns a bare 404, so the
+    app's externally visible behavior is byte-identical to pre-feature."""
+    return (os.environ.get("PUBLIC_SURFACE_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes", "on")
 
 
