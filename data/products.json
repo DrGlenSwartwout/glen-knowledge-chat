@@ -20253,6 +20253,182 @@
       "description": "Digital edition of Macular Degeneration → Macular Regeneration. Delivered as a file — no shipping. The print edition is sold separately and ships as a book.",
       "source": "gk-migration-2026-07-19",
       "_note": "Digital edition of book-macular-regeneration (print $19.97, ships). Digital is $9.97 and must never be packed or charged postage. Delivery is MANUAL today — the app has no automated file delivery."
+    },
+    "nir-brain-frequency-helmet": {
+      "name": "NIR Brain Frequency Helmet",
+      "price_cents": 499700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "The Brain Helmet delivers Near Infrared (NIR) light to the brain to energize and cleanse the tissue, helping to improve symptoms and restore lost func",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "hair-growth-helmet": {
+      "name": "Hair Growth Helmet",
+      "price_cents": 99700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "Our hair regrowth helmet uses 660 nm light to activate the mitochondria in the skin and hair follicles of the head.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "photobiomodulation-package": {
+      "name": "Photobiomodulation Package",
+      "price_cents": 599700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 5500,
+      "intro": "We just love our new research grade Photobiomodulation Helmets, and I know your brain will love one, too.\r\nCompared to the commercially available unit",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "miracule-water-system": {
+      "name": "Miracule Water System with Molecular Hydrogen",
+      "price_cents": 149700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 10000,
+      "intro": "The Miracule Water System was developed by a close associate of the original discoverer of ORMEs (ORMUS, M-state minerals, mono-atomic minerals, monat",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "air-surface-pro-plus": {
+      "name": "Air & Surface PRO+",
+      "price_cents": 139700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "This is the perfect ionizer, and air purifier for your home and office.\r\nIf you are outside of California, it comes with the option to do a deep Ozone",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "denas-microcurrent-eye-system": {
+      "name": "DENAS Microcurrent System for Eye Healing",
+      "price_cents": 69700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "DENAS stands for Dynamic Electro Neuro Adaptive Stimulator. This package uses advanced biofeedback technology based on the SCENAR system developed for",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "tibetan-singing-bowl-172hz": {
+      "name": "Tibetan Glass Singing Bowl 172 Hz",
+      "price_cents": 69700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 10000,
+      "intro": "Tibetan Singing Bowl tuned to the Dominant Harmonic Frequency of Nature 172 Hz.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "vagus-nerve-stimulation-kit": {
+      "name": "Vagus Nerve Stimulation Kit for miHealth",
+      "price_cents": 3000,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Cranial Nerve XII is the wandering nerve.\r\nIn addition to serving most of the internal organs, the 12th Cranial Nerve peaks out at the ears, where we",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "neutralizer-3-pack": {
+      "name": "The Neutralizer™ 3 Pack",
+      "price_cents": 4000,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Help create a bio-safe world with these Neutralizers&trade; enhanced with nanotechnology...",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "car-ionizer": {
+      "name": "Car Ionizer",
+      "price_cents": 2997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Clean the air in your car automatically every time you drive or ride.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "car-neutralizer-usb": {
+      "name": "Car Neutralizer USB",
+      "price_cents": 8500,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "The Aulterra&trade; Whole Car USB neutralizes EMF radiation inside your car providing full automobile EMF protection and creates a healthier driving e",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "wearable-ionizer": {
+      "name": "Ionizer - Wearable",
+      "price_cents": 4997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "This stylish, wearable, lightweight personal air ionizer is rechargeable from any USB port.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "shungite-stick-plate": {
+      "name": "Shungite Stick Plate",
+      "price_cents": 3000,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "This is a polished 10 cm square piece of Shungite, a powerful healing mineral from Russia that contains C60 (Buckminster Fullerenes)&hellip;",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "smokey-quartz-healing-tool": {
+      "name": "Smokey Quartz Healing Tool",
+      "price_cents": 997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "intro": "Natural smokey quartz crystals are formed by absorbing radiation in the earth.\r\nThey are used as a healing wand to cleanse and absorb the after-effect",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "freshair-mobile-purifier": {
+      "name": "FreshAir Mobile Portable Air Purifier",
+      "price_cents": 19700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "Perfect air ionizer and cleaner for your car or your cubicle.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "microgen-microcurrent-generator": {
+      "name": "Microgen Wearable Microcurrent Generator",
+      "price_cents": 49700,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "This is a programmable and wearable microcurrent frequency device.",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "shower-filter": {
+      "name": "Shower Filter",
+      "price_cents": 8997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 3200,
+      "intro": "Remove over 95% of the Chlorine from your shower water...",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "acupuncture-point-cold-laser": {
+      "name": "Acupuncture Point Cold Laser",
+      "price_cents": 19700,
+      "bottle_type": "harmony-laser",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "infrared-therapy-flashlight": {
+      "name": "Infrared Therapy Flashlight",
+      "price_cents": 9700,
+      "bottle_type": "harmony-laser",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "red-mitochondrial-therapy-630nm": {
+      "name": "Red Mitochondrial Therapy 630 nm",
+      "price_cents": 9997,
+      "bottle_type": "harmony-laser",
+      "intro": "This therapy flashlight performs double duty for Red Light Therapy and as a Pineal-sparing and night vision sparing flashlight for night-time mobility",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "denas-eyeglasses-electrode": {
+      "name": "DENAS Eyeglasses Electrode",
+      "price_cents": 19700,
+      "bottle_type": "denas",
+      "intro": "Conductive",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "nes-scanner": {
+      "name": "NES Scanner",
+      "price_cents": 19700,
+      "bottle_type": "handcradle",
+      "intro": "Together with free software for your Mac or PC desktop, this Remote Scanner will automatically scan for over 150 Biofield energy patterns in just 20 s",
+      "source": "gk-device-import-2026-07-20"
+    },
+    "bioenergetic-wellness-scanner": {
+      "name": "Bioenergetic Wellness Scanner",
+      "price_cents": 9997,
+      "bottle_type": "handcradle",
+      "intro": "The",
+      "source": "gk-device-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
