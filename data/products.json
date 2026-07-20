@@ -20761,6 +20761,13 @@
       "flat_shipping_cents": 3200,
       "_note": "Name taken from the slug: the GrooveKart source page is mis-titled (size-4 page reads 'Size 00'; square canopy page reads 'Circular'). Storefront copy needs fixing separately.",
       "source": "gk-apparel-import-2026-07-20"
+    },
+    "course-peripheral-awareness-vision": {
+      "name": "Improve Your Eye Health by Enhancing Peripheral Awareness (video course)",
+      "price_cents": 4997,
+      "digital": true,
+      "source": "gk-video-course-import-2026-07-20",
+      "intro": "Vision is our dominant sense as human beings... We can learn to use it wisely, or we can lose it."
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
