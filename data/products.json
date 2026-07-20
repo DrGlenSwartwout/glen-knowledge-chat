@@ -20662,6 +20662,13 @@
       "price_cents": 997,
       "digital": true,
       "source": "gk-ebook-import-2026-07-20"
+    },
+    "emf-shielding-pouch-13-x-14-notebook": {
+      "name": "EMF Shielding Pouch 13\" x 14\" Notebook",
+      "price_cents": 5997,
+      "bottle_type": "own-box",
+      "flat_shipping_cents": 1300,
+      "source": "gk-physical-goods-import-2026-07-20"
     }
   },
   "_enriched": "ingredients (FMP/Formulations/GK) + descriptions applied 2026-06-05; see products-stale-gk-clean.md"
