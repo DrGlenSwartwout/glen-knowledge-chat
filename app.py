@@ -16719,12 +16719,25 @@ def api_practitioner_settings_post():
         except Exception as e:
             print(f"[practitioner-settings] show_contact write failed: {e!r}", flush=True)
 
+    # profile lives on the Supabase practitioners row too; only touch it when
+    # the key is present, so saving branding/pricing alone never resets it.
+    # A bad bio (ValueError) is a 400, not a 500.
+    profile_out = None
+    if "profile" in body and isinstance(body.get("profile"), dict):
+        from dashboard import practitioner_profile as _pp
+        try:
+            profile_out = _pp.save_profile(pid, body["profile"])
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
     resp = {"ok": True, "branding": settings["branding"],
             "pricing": settings["pricing"],
             "chat_enabled": settings.get("chat_enabled", False),
             "clamped": clamped}
     if show_contact_out is not None:
         resp["show_contact"] = show_contact_out
+    if profile_out is not None:
+        resp["profile"] = profile_out
     return jsonify(resp)
 
 
