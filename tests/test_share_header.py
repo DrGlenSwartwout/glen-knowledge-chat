@@ -56,11 +56,10 @@ def test_rejected_header_never_renders():
     ("visit https://evil.example.com now", "https://"),
     ("mail me at a@b.com", "@"),
     ("call 808-555-1212", "555"),
-    ("call 5551212 now", "5551212"),
     ("call 555 1212 now", "1212"),
     ("+1 (808) 555-1212", "555"),
-    ("evil.com/path", "evil.com"),
-    ("evil.com", "evil.com"),
+    ("https://evil.com/x", "evil.com"),
+    ("www.evil.com", "evil.com"),
     ("HTTPS://EVIL.COM", "EVIL.COM"),
     ("javascript:alert(1)", "javascript:"),
     ("data:text/html,x", "data:"),
@@ -81,6 +80,23 @@ def test_sanitize_strips_dangerous_content(raw, gone):
     "Started in 2026",
 ])
 def test_sanitize_preserves_legitimate_prose(raw):
+    assert sh.sanitize(raw) == raw
+
+
+@pytest.mark.parametrize("raw", [
+    "I struggled for years.Health has become my priority now",
+    "Costs added up.Co pay was the hardest part",
+    "my order 1234567 arrived today",
+    "tracking number 1234567890 shipped",
+    "batch made on 20260315 works great",
+    "score went from A < B > C after treatment",
+    "5 < 10 and it cost 42",
+    "I have felt better for 6 months",
+    "Started in 2026",
+    "I take 2000 IU daily and 5000mg of the other",
+    "started 3/15/2026 and felt better",
+])
+def test_sanitize_survives_intact_regression_guards(raw):
     assert sh.sanitize(raw) == raw
 
 
