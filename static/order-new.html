@@ -702,6 +702,7 @@ function showInvoice(j){
   const lines=(j.lines||[]).map(l=>`  ${l.qty} × ${l.name}  @ ${dollars(l.unit_cents)} = ${dollars(l.line_cents)}`).join("\n");
   const summary=`PROPOSED INVOICE  ${j.external_ref}\nCustomer: ${$("c-name").value} <${$("c-email").value}>\n\n${lines}\n\n`
     +`Subtotal: ${dollars(t.subtotal_cents)}\nDiscount: ${t.discount_cents?'-'+dollars(t.discount_cents):'$0.00'}\n`
+    +(t.adjustment_cents?`Adjustment: ${t.adjustment_cents<0?'−':'+'}${dollars(Math.abs(t.adjustment_cents))}\n`:'')
     +`Shipping: ${dollars(t.shipping_cents)}\nGET (absorbed): ${dollars(t.get_cents)}\n`
     +(t.points_redeemed_cents?`Points: -${dollars(t.points_redeemed_cents)}\n`:'')
     +`TOTAL: ${dollars(t.total_cents)}\n`
