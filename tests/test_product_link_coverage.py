@@ -316,3 +316,15 @@ def test_infoceutical_sequence_is_retired_not_linkable():
     d = _directive("Infoceutical Sequence & Support")
     assert "DISCONTINUED" in d
     assert "resources/442" not in d
+
+
+def test_core_concierge_is_not_yet_available_no_price_no_link():
+    """Glen 2026-07-20: CoRe Concierge is coming but not available yet — not
+    discontinued, not consult-arrangeable now. Bot must not quote a price or
+    offer a buy link ($997/$9,997 tiers must never surface)."""
+    d = app.build_product_directive(query_text="what is CoRe Concierge and how much")
+    row = [l for l in d.splitlines() if l.strip().startswith("• CoRe Concierge ")]
+    assert row, "CoRe Concierge missing from table"
+    assert "NOT YET AVAILABLE" in row[0]
+    assert "http" not in row[0].split("NOT YET AVAILABLE")[0], "carries a link"
+    assert "997" not in row[0], "must not surface a price"

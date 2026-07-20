@@ -1011,6 +1011,15 @@
     },
     "Formulation": {
       "note": "CONSULT ONLY — not self-serve. Do NOT quote a price or offer a buy link; this is arranged through Glen directly. Point the client to https://truly.vip/help to start the conversation."
+    },
+    "CoRe Concierge": {
+      "note": "NOT YET AVAILABLE — CoRe Concierge (ongoing done-for-you remote CoRe Inergetix healing) is coming but not offered yet. Do NOT quote a price or offer a buy link, and do not improvise one from older material. If asked, say it is not available yet and offer to note their interest via https://truly.vip/help."
+    },
+    "Core Concierge": {
+      "note": "NOT YET AVAILABLE — CoRe Concierge (ongoing done-for-you remote CoRe Inergetix healing) is coming but not offered yet. Do NOT quote a price or offer a buy link, and do not improvise one from older material. If asked, say it is not available yet and offer to note their interest via https://truly.vip/help."
+    },
+    "CoRe Inergetix": {
+      "note": "NOT YET AVAILABLE — CoRe Concierge (ongoing done-for-you remote CoRe Inergetix healing) is coming but not offered yet. Do NOT quote a price or offer a buy link, and do not improvise one from older material. If asked, say it is not available yet and offer to note their interest via https://truly.vip/help."
     }
   },
   "search_url_pattern": "https://remedymatch.com/search?controller=search&search_query={query}",
