@@ -124,10 +124,12 @@ def test_checkout_return_creates_one_stripe_row(tmp_path, monkeypatch):
             if r["kind"] == "payment" and r["source"] == "stripe"]
     cx.close()
     assert len(rows) == 1 and rows[0]["amount_cents"] == 22291
-    # The ledger (add_payment) owns the single QBO push for in-house orders;
-    # the direct record_payment call below it in begin_checkout_return must
-    # be gated off for kind="in-house" so it does not fire a second push.
-    assert len(calls) == 1
+    # Used to assert exactly ONE push (the ledger's), guarding against a second from the
+    # direct record_payment call in begin_checkout_return. The ledger now pushes NOTHING
+    # — every payment reaches QBO as a bank deposit, so any push double-counts — so the
+    # correct count is zero. This still guards that direct call being gated off for
+    # kind="in-house": if that gate broke, this would see 1.
+    assert calls == []
 
 
 def test_boot_creates_order_payments_table(tmp_path, monkeypatch):

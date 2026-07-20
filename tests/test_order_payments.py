@@ -236,6 +236,12 @@ def test_void_refund_reapplies_paid(cx, monkeypatch):
     oid = _oid(cx)
     pay = op.add_payment(cx, oid, 13100, "Zelle")
     ref = op.add_refund(cx, oid, 5000, "Zelle", refunds_payment_id=pay["id"])
+    # The ledger no longer pushes a RefundReceipt (the bank feed already carries the
+    # money), so a refund row only has a txn id if one was linked. Set it directly —
+    # add_refund has no qbo_txn_id parameter — so the dispatch assertion below still
+    # has something to act on. The subject here is void ROUTING, which is unchanged.
+    cx.execute("UPDATE order_payments SET qbo_txn_id='R1' WHERE id=?", (ref["id"],))
+    cx.commit()
     op.void(cx, ref["id"], "issued in error")
     assert op.balance(cx, oid)["refunded_cents"] == 0
     # a refund row's qbo_txn_id is a RefundReceipt — must dispatch to void_refund,

@@ -1,4 +1,4 @@
-"""The ledger must never CREATE a QBO Payment.
+"""The ledger must never CREATE a QBO Payment or RefundReceipt.
 
 Every payment reaches QuickBooks on its own as a bank deposit (cards via
 eProcessing/PayPal/Authorize.net, Zelle via the BofA feed), so a payment pushed from
@@ -96,3 +96,56 @@ def test_no_qbo_invoice_is_no_longer_an_error_state(no_qbo):
     row = OP.add_payment(cx, oid, 2500, "Check")
     assert no_qbo == []
     assert row["qbo_sync"] == "synced"
+
+
+# ── refunds ───────────────────────────────────────────────────────────────────
+# Same rule, same reason. A refund settles either as a separate bank debit (the feed
+# downloads it) or netted into the next batch deposit (the deposit arrives already
+# reduced). Both mean a pushed RefundReceipt double-counts. QBO held zero
+# RefundReceipts and zero CreditMemos for all of 2026 when this was disabled, so
+# nothing had to be unwound.
+
+
+@pytest.fixture
+def no_qbo_refund(monkeypatch):
+    calls = []
+
+    def _boom(*a, **kw):
+        calls.append((a, kw))
+        raise AssertionError("qbo_billing.record_refund must never be called from the ledger")
+
+    monkeypatch.setattr(OP.qbo_billing, "record_refund", _boom)
+    return calls
+
+
+def test_add_refund_does_not_create_a_qbo_refund(no_qbo, no_qbo_refund):
+    cx = _cx()
+    oid = _order(cx)
+    pay = OP.add_payment(cx, oid, 10000, "Zelle")
+    row = OP.add_refund(cx, oid, 4000, "Zelle", refunds_payment_id=pay["id"])
+    assert no_qbo_refund == []            # never reached QBO
+    assert row["qbo_txn_id"] is None      # nothing to mirror
+    assert row["qbo_sync"] == "synced"    # terminal, so it cannot re-push later
+    b = OP.balance(cx, oid)
+    assert b["refunded_cents"] == 4000    # ledger still records the refund
+    assert b["paid_cents"] == 10000
+
+
+def test_standalone_refund_also_does_not_push(no_qbo, no_qbo_refund):
+    cx = _cx()
+    oid = _order(cx)
+    OP.add_payment(cx, oid, 10000, "Zelle")
+    row = OP.add_refund(cx, oid, 2500, "Zelle")   # no refunds_payment_id
+    assert no_qbo_refund == []
+    assert row["qbo_sync"] == "synced"
+    assert OP.balance(cx, oid)["refunded_cents"] == 2500
+
+
+def test_refund_guardrails_still_apply(no_qbo, no_qbo_refund):
+    # Disabling the push must not weaken the over-refund guard.
+    cx = _cx()
+    oid = _order(cx)
+    pay = OP.add_payment(cx, oid, 5000, "Zelle")
+    with pytest.raises(ValueError):
+        OP.add_refund(cx, oid, 9000, "Zelle", refunds_payment_id=pay["id"])
+    assert no_qbo_refund == []

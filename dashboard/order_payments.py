@@ -175,9 +175,9 @@ def _push_payment(cx, pid):
     re-pushes later. Linking an EXISTING QBO txn via qbo_txn_id still works and is
     still the preferred move — it short-circuits on the guard before reaching here.
 
-    Refunds are deliberately NOT changed: _push_refund still pushes, because
-    whether an outbound refund also arrives via the bank feed has not been
-    confirmed. Do not "make it consistent" without checking that first.
+    _push_refund is now disabled for the same reason — see its docstring for why the
+    settlement shape (separate debit vs netted into a batch deposit) does not change
+    the answer.
     """
     row = _row(cx, pid)
     if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
@@ -244,18 +244,29 @@ def refundable_cents(cx, order_id, refunds_payment_id=None):
 
 
 def _push_refund(cx, pid):
+    """Mark a refund row synced. Creating a QBO RefundReceipt here is DISABLED, for the
+    same reason as _push_payment: the bank feed already carries the money movement.
+
+    A refund settles in one of two shapes, and BOTH make pushing wrong:
+      - a separate bank DEBIT (Zelle/Wise, sometimes card): the feed downloads it, so a
+        pushed RefundReceipt is a second copy;
+      - NETTED into the next processor batch deposit (typical for cards): the deposit
+        simply arrives smaller, so the refund is ALREADY reflected, and pushing subtracts
+        it a second time.
+    The only case where pushing would be right is refund money that never touches the
+    connected bank account, which cannot happen for a real refund. So the channel detail
+    does not change the answer.
+
+    Timing note: QBO held ZERO RefundReceipts and ZERO CreditMemos for all of 2026 when
+    this was disabled, so nothing had to be migrated or unwound — unlike payments, where
+    six duplicates had already been created and had to be deleted by hand (#1037/#1039).
+
+    Refunds are the worse direction to get wrong: an over-stated refund UNDERSTATES income.
+    """
     row = _row(cx, pid)
     if row.get("qbo_txn_id") or row.get("qbo_sync") == "synced":
         return  # already synced (incl. legacy backfill: synced, NULL txn_id) — never re-push
-    try:
-        cid, inv_id = _qbo_ctx(cx, row["order_id"])
-        if not cid or not inv_id:
-            raise RuntimeError("no QBO invoice/customer for order")
-        res = qbo_billing.record_refund(cid, row["amount_cents"], inv_id,
-                                        method=row["method"])
-        _mark_sync(cx, pid, qbo_txn_id=(res or {}).get("Id"), state="synced")
-    except Exception:
-        _mark_sync(cx, pid, state="error")
+    _mark_sync(cx, pid, state="synced")
 
 
 def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
