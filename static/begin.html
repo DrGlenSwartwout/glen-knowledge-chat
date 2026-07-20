@@ -1045,8 +1045,14 @@
       var bar = document.createElement('div');
       bar.className = 'hero-msg-actions';
       box.appendChild(bar);
-      if (window.__audioUnlocked) window.TTS.attachAndSpeak(bar, t);
-      else                       window.TTS.attach(bar, t);
+      if (window.__audioUnlocked) {
+        // One voice at a time: the invitation is ambient, a reply answers
+        // something the visitor just did, so the reply takes the channel.
+        if (window.__invitation && window.__invitation.playing) window.__invitation.stop();
+        window.TTS.attachAndSpeak(bar, t);
+      } else {
+        window.TTS.attach(bar, t);
+      }
     };
 
     // Persist the conversation so a reload / device-sleep doesn't lose it (or the AI's links).

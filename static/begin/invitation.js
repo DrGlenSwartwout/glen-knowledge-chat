@@ -53,6 +53,10 @@ export class Invitation {
 
   play() {
     if (!this.src || !this.audio) return false;
+    // One voice at a time. tts-output.js arbitrates its OWN players through a
+    // single `active` slot, but this Audio object is outside that system, so
+    // without this the invitation and a spoken reply talk over each other.
+    if (typeof window !== 'undefined' && window.TTS && window.TTS.stop) window.TTS.stop();
     this.audio.src = this.src;
     this.audio.currentTime = 0;
     this.audio.onended = () => { this.playing = false; this._label('idle'); };

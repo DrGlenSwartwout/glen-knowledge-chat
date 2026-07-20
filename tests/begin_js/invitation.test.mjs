@@ -145,3 +145,20 @@ test('every method is safe with an entirely empty construction', () => {
   const inv = new Invitation({});
   assert.doesNotThrow(() => { inv.mount(); inv.play(); inv.stop(); inv.toggle(); inv.notifyUnlock(); });
 });
+
+// ── one voice at a time ─────────────────────────────────────────────────────
+test('play() silences a chat reply that is already speaking', () => {
+  let stopped = 0;
+  globalThis.window = { TTS: { stop: () => { stopped++; } } };
+  try {
+    const { inv } = build();
+    inv.play();
+    assert.equal(stopped, 1, 'the invitation must take the audio channel');
+  } finally { delete globalThis.window; }
+});
+
+test('play() still works when TTS is absent', () => {
+  const { inv, audio } = build();
+  assert.doesNotThrow(() => inv.play());
+  assert.equal(audio._played, 1);
+});
