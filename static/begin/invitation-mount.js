@@ -24,6 +24,10 @@ import { pickInvitationAudio, Invitation } from './invitation.js';
       // The speaker is a sibling of the fireside anchor, not nested inside it,
       // so the click cannot reach the anchor's engagement handler. preventDefault
       // is kept only as a harmless guard against future re-nesting.
+      // Exposed so the hero chat can silence the invitation before speaking a
+      // reply — the two use different audio players and would otherwise overlap.
+      window.__invitation = inv;
+
       button.addEventListener('click', function (e) {
         e.preventDefault();
         inv.toggle();

@@ -143,3 +143,14 @@ def test_both_chat_surfaces_are_voice_wired(monkeypatch, tmp_path):
     for name, doc in (("hero chat (begin.html)", hero), ("iframe chat (embed.html)", embed)):
         assert "attachAndSpeak" in doc, f"{name} cannot speak replies"
         assert "/transcribe" in doc or "mic-input.js" in doc, f"{name} has no microphone"
+
+
+def test_invitation_and_replies_do_not_overlap(monkeypatch, tmp_path):
+    """Two separate audio players; without arbitration they speak at once."""
+    c = _reload_app(monkeypatch, tmp_path).app.test_client()
+    page = c.get("/begin").get_data(as_text=True)
+    inv = c.get("/static/begin/invitation.js").get_data(as_text=True)
+    mount = c.get("/static/begin/invitation-mount.js").get_data(as_text=True)
+    assert "window.__invitation" in mount, "the invitation must be reachable to stop it"
+    assert "window.__invitation.stop()" in page, "a reply must silence the invitation"
+    assert "window.TTS.stop()" in inv, "the invitation must silence a speaking reply"
