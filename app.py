@@ -6599,7 +6599,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               tax_fn=_tax.compute_get_cents,
                               program_member=bool(program_member),
                               repertoire_slugs=rep_slugs)
-    shipping_cents = flat_ship_cents + _shipping_for_cart(box_counts, total_bottles)
+    shipping_cents = flat_ship_cents + _shipping_for_cart(box_counts, total_bottles + total_cello)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
         "subtotal_list_cents": subtotal_list,
