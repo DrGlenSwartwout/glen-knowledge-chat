@@ -196,7 +196,7 @@ async function load() {
   if (ORDER.name){ $('billto-nm').textContent = ORDER.name; $('billto').style.display = ''; }
   $('ref').textContent = 'Invoice ' + (ORDER.external_ref||'');
   LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
-    kind:l.kind, tier:l.tier,
+    kind:l.kind, tier:l.tier, note:l.note,
     service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
     $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
@@ -289,12 +289,15 @@ function buildInvoicePrintHtml(o){
   const anc = (v,price)=> (v && v>price) ? '<s>'+money(v)+'</s>' : '';
   const rows = svcFirst(lines).map(([l])=>{
     const price = l.unit_cents||0, qty = l.qty||0;
+    const noteRow = (l.note||'').trim()
+      ? `<tr class="ln-note"><td colspan="6" style="padding-top:0;font-size:11px;color:#5b5670;white-space:pre-wrap">${esc(l.note)}</td></tr>`
+      : '';
     return `<tr${l.service?' class="svc"':''}>`
       + `<td>${esc(l.name||l.slug||'')}</td>`
       + `<td class="num anc">${anc(l.srp_cents, price)}</td>`
       + `<td class="num anc">${anc(l.regular_cents, price)}</td>`
       + `<td class="num">${money(price)}</td><td class="num">${esc(qty)}</td>`
-      + `<td class="num">${money(price*qty)}</td></tr>`;
+      + `<td class="num">${money(price*qty)}</td></tr>` + noteRow;
   }).join('');
   const r = (lbl,v,neg,cls)=>`<div class="r${cls?' '+cls:''}"><span>${esc(lbl)}</span><span>${neg?'−':''}${money(v)}</span></div>`;
   let tot = r('Subtotal', o.subtotal_cents);
@@ -344,8 +347,11 @@ function renderLines() {
       : (ORDER.editable ? '<span class="qty"><button onclick="bump('+i+',-1)">−</button>'
           + '<input type="number" min="0" value="'+l.qty+'" onchange="setQty('+i+',this.value)">'
           + '<button onclick="bump('+i+',1)">+</button></span>' : '<span class="muted">×'+l.qty+'</span>');
+    const noteHtml = (l.note||'').trim()
+      ? '<div class="line-note" style="font-size:12px;color:#5b5670;padding:1px 0 6px;white-space:pre-wrap">'+esc(l.note)+'</div>'
+      : '';
     return '<div class="line'+(l.service?' svc':'')+'"><span class="nm">'+esc(l.name)+svcAnchor(l,true)+'</span>'
-      + qty + '<span class="pr">'+money(l.unit_cents*l.qty)+'</span></div>';
+      + qty + '<span class="pr">'+money(l.unit_cents*l.qty)+'</span></div>' + noteHtml;
   }).join('') || '<div class="muted">No items.</div>';
   $('add-row').style.display = ORDER.editable ? 'flex' : 'none';
 }
@@ -427,7 +433,7 @@ async function applyPlan(forever, btn){
     const j=await r.json();
     if(!j.ok){ $('savings-msg').textContent=j.error||'Could not apply — please reach out.'; if(btn) btn.disabled=false; return; }
     ORDER=j.order;
-    LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,
+    LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,note:l.note,
       service:l.service,srp_cents:l.srp_cents,regular_cents:l.regular_cents}));
     renderLines(); renderTotals(); renderSavings();   // offer now absent -> banner hides
   }catch(e){ $('savings-msg').textContent='Network error — please try again.'; if(btn) btn.disabled=false; }
@@ -476,7 +482,7 @@ async function toggleInvoiceMembership(action){
     const j=await r.json();
     if(!j.ok){ const m=$('mem-msg'); if(m) m.textContent=j.error||'Could not update, please reach out.'; if(btn) btn.disabled=false; return; }
     ORDER=j.order;
-    LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,kind:l.kind,tier:l.tier,
+    LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,kind:l.kind,tier:l.tier,note:l.note,
       service:l.service,srp_cents:l.srp_cents,regular_cents:l.regular_cents}));
     renderLines(); renderTotals(); renderPayments(); setupPay(); renderMembershipOffer();
   }catch(e){ const m=$('mem-msg'); if(m) m.textContent='Network error, please try again.'; if(btn) btn.disabled=false; }
@@ -495,7 +501,7 @@ async function pushUpdate(){
   const lines = LINES.filter(l=>l.qty>0).map(l=>({slug:l.slug, qty:l.qty}));
   const r = await fetch(API+'/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lines})});
   const j = await r.json(); if(!j.ok){ alert(j.error||'update failed'); return; }
-  ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,
+  ORDER=j.order; LINES=ORDER.lines.map(l=>({slug:l.slug,name:l.name,qty:l.qty,unit_cents:l.unit_cents,note:l.note,
     service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
   renderLines(); renderTotals();
 }

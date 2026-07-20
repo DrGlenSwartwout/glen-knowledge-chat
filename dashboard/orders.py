@@ -608,6 +608,11 @@ def physical_units(items, catalog):
             qty = 0
         if qty <= 0:
             continue
+        # A membership line grants access, not a bottle — it ships nothing. Its slug is
+        # deliberately not a catalog product, so it would otherwise fall through the
+        # unknown-slug fail-loud rule below and over-count as a phantom shipping unit.
+        if it.get("kind") == "membership" or str(it.get("slug") or "").startswith("membership:"):
+            continue
         p = catalog.get(it.get("slug") or "") or {}
         if not _sh.is_shippable(p):
             continue  # service / info-only -> 0

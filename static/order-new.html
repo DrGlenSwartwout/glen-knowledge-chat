@@ -91,7 +91,18 @@
 
   <div class="section">
     <h2>Line items</h2>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Vol price</th><th>Line</th><th></th></tr></thead>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span id="units-to-ship" style="font-size:13px;color:var(--muted)">Total units to ship: 0</span>
+      <button class="mini" type="button" onclick="openSnippetManager()">Manage saved messages</button>
+    </div>
+    <div id="snippet-mgr" style="display:none;border:1px solid var(--border);padding:10px;margin-bottom:8px;border-radius:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:13px">Saved messages (shared across all line items)</strong>
+        <button class="mini" type="button" onclick="document.getElementById('snippet-mgr').style.display='none'">Close</button>
+      </div>
+      <div id="snippet-mgr-list"></div>
+    </div>
+    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Note (shown to customer)</th><th></th></tr></thead>
       <tbody id="lines"></tbody></table>
     <div class="addline">
       <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
@@ -170,7 +181,8 @@ if (_urlKey) localStorage.setItem("console_key", _urlKey);
 const KEY = _urlKey || localStorage.getItem("console_key") || "";
 const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
 let CATALOG = [];          // [{slug,name,price_cents}]
-let LINES = [];            // [{slug,name,qty,unit_cents,edited}]
+let LINES = [];            // [{slug,name,qty,unit_cents,edited,note}]
+let SNIPPETS = [];         // shared saved-message library [{id,text}] for the per-line note dropdown
 let LAST_ORDER = null;     // {order_id, external_ref, totals}
 const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edit mode if set
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
@@ -239,7 +251,7 @@ function addLine(){
   const ovRaw=$("prod-unit").value.trim();
   const edited = ovRaw!=="";
   const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
-  LINES.push({slug, name:p.name, qty, unit_cents, edited});
+  LINES.push({slug, name:p.name, qty, unit_cents, edited, note:""});
   $("prod-qty").value=1; $("prod-unit").value="";
   renderLines();
 }
@@ -314,6 +326,10 @@ function renderLines(){
     <td><input id="u-${i}" type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
     <td id="vp-${i}" style="font-size:12px;color:var(--muted)">…</td>
     <td id="ln-${i}">${dollars(l.qty*l.unit_cents)}</td>
+    <td style="white-space:nowrap">
+      <input type="text" id="note-${i}" value="${esc(l.note||'')}" oninput="setNote(${i},this.value)" placeholder="note (optional)" style="width:150px">
+      <select onchange="applySnippet(${i},this.value); this.selectedIndex=0" title="Insert a saved message" style="max-width:130px">${snippetOptions()}</select>
+    </td>
     <td><button class="mini" onclick="rmLine(${i})">✕</button></td></tr>`).join("");
   refreshPreview();
   recalc();
@@ -323,15 +339,42 @@ function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||
 function rmLine(i){ LINES.splice(i,1); renderLines(); }
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
-function linesPayload(){ return LINES.map(l=> l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}); }
+function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; return b; }); }
+// Per-line note helpers. setNote updates the model without a re-render (re-rendering
+// on each keystroke would drop focus mid-typing); the note doesn't affect pricing.
+function setNote(i,v){ if(LINES[i]) LINES[i].note=v; }
+function applySnippet(i,text){ if(!text||!LINES[i]) return; LINES[i].note=text; const inp=$("note-"+i); if(inp) inp.value=text; }
+function snippetOptions(){ return '<option value="">＋ saved…</option>' + SNIPPETS.map(s=>`<option value="${esc(s.text)}">${esc(s.text)}</option>`).join(''); }
+// Shared saved-message library: load once, offer in every per-line dropdown, prune here.
+async function loadSnippets(){
+  try{ const r=await fetch("/api/invoice-snippets",{headers:HEADERS}); const j=await r.json(); if(j.ok) SNIPPETS=j.snippets||[]; }catch(e){ /* dropdown just stays empty */ }
+  renderLines();
+}
+function openSnippetManager(){
+  const box=$("snippet-mgr"), list=$("snippet-mgr-list");
+  list.innerHTML = SNIPPETS.length
+    ? SNIPPETS.map(s=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:3px 0"><span style="font-size:13px">${esc(s.text)}</span><button class="mini" type="button" onclick="deleteSnippet(${s.id})">✕</button></div>`).join('')
+    : '<em style="font-size:13px;color:var(--muted)">No saved messages yet. They appear here after you save an invoice with a line note.</em>';
+  box.style.display='block';
+}
+async function deleteSnippet(id){
+  try{
+    const r=await fetch("/api/invoice-snippets/"+id,{method:"DELETE",headers:HEADERS});
+    const j=await r.json(); if(!j.ok){ toast(j.error||"failed","error"); return; }
+    SNIPPETS=SNIPPETS.filter(s=>s.id!==id);
+    openSnippetManager(); renderLines(); toast("Message removed");
+  }catch(e){ toast(e.message,"error"); }
+}
+function updateUnitsToShip(n){ const el=$("units-to-ship"); if(el) el.textContent="Total units to ship: "+(Number(n)||0); }
 function refreshPreview(){
   clearTimeout(previewTimer);
-  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; recalc(); refreshMembershipOffer(); return; }
+  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; updateUnitsToShip(0); recalc(); refreshMembershipOffer(); return; }
   previewTimer = setTimeout(async ()=>{
     try{
       const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload(), email:$("c-email").value.trim()})});
       const j = await r.json(); if (!j.ok) return;
-      PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines};
+      PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines, physical_units:j.physical_units};
+      updateUnitsToShip(j.physical_units);
       (j.lines||[]).forEach((pl,i)=>{
         if (!LINES[i]) return;
         if (!LINES[i].edited){ LINES[i].unit_cents = pl.effective_unit_cents; const ui=$("u-"+i); if (ui) ui.value=(pl.effective_unit_cents/100).toFixed(2); }
@@ -360,7 +403,7 @@ function toggleMembership(){
     LINES = LINES.filter(l => !(l.slug||'').startsWith('membership:'));
   } else {
     LINES.push({slug:'membership:'+MEMBERSHIP_TIER, name:'Membership', qty:1, unit_cents:0,
-                edited:false, kind:'membership', tier:MEMBERSHIP_TIER});
+                edited:false, kind:'membership', tier:MEMBERSHIP_TIER, note:""});
   }
   renderLines(); refreshPreview(); refreshMembershipOffer();
 }
@@ -476,7 +519,8 @@ async function loadOrderForEdit(oid){
   // (rec.override) are frozen (edited:true); the rest are re-priced on load/save so
   // the client's current specials — including the all-FFs flat rate — re-apply.
   LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
-            qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:l.override===true}));
+            qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:l.override===true,
+            note:l.note||""}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;
@@ -748,6 +792,7 @@ function copyInv(){ const txt=$("invoice").querySelector("pre").textContent;
 async function init(){
   if (!KEY){ $("auth-warn").style.display="block"; return; }
   try{ await loadCatalog(); }catch(e){ if(e.message!=="unauthorized") toast(e.message,"error"); return; }
+  loadSnippets();   // populate the shared per-line note dropdown (non-blocking)
   if (EDIT_OID){ try{ await loadOrderForEdit(EDIT_OID); }catch(e){ toast(e.message,"error"); } }
   syncShippingUI();
 }

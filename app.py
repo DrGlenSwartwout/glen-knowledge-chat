@@ -39832,6 +39832,9 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
             _mrec = {"slug": _mp.line_slug(_mtier), "name": t["label"], "qty": 1,
                      "unit_cents": t["price_cents"], "line_cents": t["price_cents"],
                      "kind": "membership", "tier": _mtier}
+            _mnote = (ln.get("note") or "").strip()
+            if _mnote:
+                _mrec["note"] = _mnote   # customer-facing per-line note (rides in items_json)
             items_rec.append(_mrec)
             subtotal_list += t["price_cents"]
             continue
@@ -39869,6 +39872,11 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         cart.append({"slug": slug, "qty": qty})
         rec = {"slug": slug, "name": p["name"], "qty": qty,
                "unit_cents": unit_cents, "line_cents": line_cents}
+        # Customer-facing per-line note (free text; picked from / auto-saved to the
+        # shared snippet library). Rides inside items_json — no schema change.
+        _note = (ln.get("note") or "").strip()
+        if _note:
+            rec["note"] = _note
         # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
         # apart from an auto-applied client special (per-SKU or all-FF flat). On
         # edit, un-flagged lines are re-priced — letting a client's FF-flat special
@@ -39957,6 +39965,22 @@ def _push_invoice_edit_to_qbo(external_ref, priced):
         return {"pushed": False, "warning": f"QBO sync failed: {type(e).__name__}: {e}"}
 
 
+def _harvest_line_note_snippets(cx, items):
+    """Auto-save every non-empty per-line note to the shared snippet library so it
+    reappears in the order-entry dropdown (Glen 2026-07: auto-save on invoice save,
+    not an explicit action). Best-effort — a snippet write must never block saving an
+    invoice. Called from both the create and edit persist paths."""
+    try:
+        from dashboard import invoice_snippets as _snip
+        _snip.init_table(cx)
+        for it in (items or []):
+            note = (it.get("note") or "").strip()
+            if note:
+                _snip.add(cx, note)
+    except Exception as _e:  # noqa: BLE001 — snippet capture never blocks the invoice
+        print(f"[invoice-snippets] harvest skipped: {_e!r}", flush=True)
+
+
 def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_in=None,
                                  adjustment_cents_in=None, invoice_note=None):
     """Reprice an order's line items at the current pricing (membership-aware) and
@@ -40010,6 +40034,7 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
         shipping_cents=priced["shipping_cents"],
         ship_credit_applied_cents=existing_ship_credit,
         invoice_note=(invoice_note.strip() if isinstance(invoice_note, str) else None))
+    _harvest_line_note_snippets(cx, priced["items_rec"])
     return priced, (order.get("pay_status") == "paid")
 
 
@@ -40280,6 +40305,7 @@ def api_orders_manual():
             points_redeemed_cents=points_redeemed_cents,
             ship_credit_applied_cents=_sc_apply,
             invoice_note=((body.get("invoice_note") or "").strip() or None))
+        _harvest_line_note_snippets(cx, items_rec)
         try:
             _hold_new_order_and_invite(cx, oid)
         except Exception as _e:
@@ -40393,8 +40419,43 @@ def api_orders_price_preview():
             "effective_unit_cents": unit, "line_cents": line_cents,
             "vol_pct": (_line_vol_pct if (is_ff and not overridden) else 0),
             "savings_cents": max(0, list_cents - unit)})
+    # Total units to ship (shippable goods only — services count 0, bundles expand)
+    # via the canonical physical_units logic, so the order-entry form's live count
+    # matches the portal + console-orders exactly rather than re-summing qty in JS.
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
-                    "subtotal_cents": subtotal, "lines": out_lines})
+                    "subtotal_cents": subtotal, "lines": out_lines,
+                    "physical_units": _order_physical_units({"items": lines_in})})
+
+
+@app.route("/api/invoice-snippets", methods=["GET"])
+def api_invoice_snippets_list():
+    """OWNER: the shared library of saved customer-facing line-item notes, for the
+    order-entry per-line dropdown."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import invoice_snippets as _snip
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _snip.init_table(cx)
+        return jsonify({"ok": True, "snippets": _snip.list_all(cx)})
+    finally:
+        cx.close()
+
+
+@app.route("/api/invoice-snippets/<int:sid>", methods=["DELETE"])
+def api_invoice_snippets_delete(sid):
+    """OWNER: prune one saved line-item note from the shared library."""
+    actor = _bos_actor()
+    if actor is None or actor.role != _bos_rbac.OWNER:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import invoice_snippets as _snip
+    cx = _sqlite3.connect(LOG_DB)
+    try:
+        _snip.init_table(cx)
+        return jsonify({"ok": True, "removed": _snip.remove(cx, sid)})
+    finally:
+        cx.close()
 
 
 def _membership_offer_math(email, product_lines, tier_key):
@@ -41007,6 +41068,11 @@ def _invoice_line_view(l):
     (unit_cents). Public page can't reach the console catalog API, so resolve here."""
     out = {"slug": l.get("slug"), "name": l.get("name"), "qty": int(l.get("qty") or 0),
            "unit_cents": int(l.get("unit_cents") or 0), "line_cents": int(l.get("line_cents") or 0)}
+    # Customer-facing per-line note. The whitelist here would otherwise DROP it —
+    # only keys copied into `out` reach the customer invoice page.
+    _lnote = (l.get("note") or "").strip()
+    if _lnote:
+        out["note"] = _lnote
     # A membership line isn't a catalog product — carry its marker through so the page
     # renders a labelled membership row instead of hunting for a product that isn't there.
     if l.get("kind") == "membership":
