@@ -180,3 +180,45 @@ def test_profile_for_slug_supabase_down_returns_empty(monkeypatch):
         raise RuntimeError("supabase down")
     monkeypatch.setattr(db_supabase, "supabase_cursor", _boom)
     assert pp.profile_for_slug(_cx_with_slug(), "prof-jane-doe") == {}
+
+
+# --- Task 5: save_profile — the write path ---
+
+class _RecordingCur:
+    """Records the UPDATE sql + params."""
+    def __init__(self): self.calls = []
+    def execute(self, sql, params=()):
+        self.calls.append((" ".join(sql.split()), list(params)))
+    def fetchone(self): return None
+    def close(self): pass
+
+
+def _patch_recording(monkeypatch):
+    cur = _RecordingCur()
+    import db_supabase
+    monkeypatch.setattr(db_supabase, "supabase_cursor", lambda: _FakeCtx(cur))
+    return cur
+
+
+def test_save_profile_stamps_provenance_and_sanitizes(monkeypatch):
+    cur = _patch_recording(monkeypatch)
+    out = pp.save_profile("pid-1", {
+        "bio": "<b>I heal</b> reach dr@x.com",
+        "photo_url": " https://x/p.jpg ",
+        "services": ["<i>Acupuncture</i>", ""],
+        "city": "Hilo", "state": "HI", "accepting_clients": False})
+    assert out["bio"] == "I heal reach dr@x.com"       # HTML stripped, email kept
+    assert out["services"] == ["Acupuncture"]
+    assert out["photo_url"] == "https://x/p.jpg"
+    assert out["accepting_clients"] is False
+    sql, params = cur.calls[-1]
+    assert "UPDATE practitioners SET" in sql
+    assert "profile_self_authored_at=now()" in sql.replace(" ", "").lower() \
+        or "profile_self_authored_at = now()" in sql
+    assert "pid-1" in params
+
+
+def test_save_profile_rejects_long_bio(monkeypatch):
+    _patch_recording(monkeypatch)
+    with pytest.raises(ValueError):
+        pp.save_profile("pid-1", {"bio": "x" * 601})

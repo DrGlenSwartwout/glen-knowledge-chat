@@ -96,3 +96,23 @@ def profile_for_slug(cx, slug):
         return {k: v for k, v in view.items() if k in PROFILE_PUBLIC_FIELDS}
     except Exception:
         return {}
+
+
+def save_profile(pid, profile):
+    """Write self-authored profile fields to practitioners (Postgres) and stamp
+    provenance. Returns the saved dict. Raises ValueError on a too-long bio."""
+    bio = sanitize_bio(profile.get("bio", ""))
+    services = clean_services(profile.get("services"))
+    city = _norm(profile.get("city"))[:MAX_LOC_LEN]
+    state = _norm(profile.get("state"))[:MAX_LOC_LEN]
+    photo_url = (profile.get("photo_url") or "").strip()
+    accepting = bool(profile.get("accepting_clients", True))
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute(
+            "UPDATE practitioners SET bio=%s, photo_url=%s, specialties=%s, "
+            "city=%s, state=%s, accepting_new_patients=%s, "
+            "profile_self_authored_at=now(), updated_at=now() WHERE id=%s",
+            (bio, photo_url, services, city, state, accepting, str(pid)))
+    return {"bio": bio, "photo_url": photo_url, "services": services,
+            "city": city, "state": state, "accepting_clients": accepting}
