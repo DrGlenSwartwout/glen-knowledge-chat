@@ -866,8 +866,9 @@
       "url": "https://remedymatch.com/remedies/syntropy/348-cistus-syntropy-immunitea"
     },
     "AllerFree": {
-      "catalog_name": "AllerFree",
-      "note": "DEPRECATED — do not offer a purchase link. Recommend Immune Modulation instead."
+      "catalog_name": "AllerFree HomeoEnergetic Drops",
+      "slug": "allerfree-homeoenergetic-drops",
+      "note": "SELLABLE but NOT recommended: never volunteer it. If the client asks for AllerFree by name, give this link so they can buy it, and mention Immune Modulation is Glen's current preference. It is NOT discontinued."
     },
     "Relax": {
       "catalog_name": "Relax",
