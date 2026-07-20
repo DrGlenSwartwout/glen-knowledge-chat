@@ -1046,10 +1046,16 @@
       bar.className = 'hero-msg-actions';
       box.appendChild(bar);
       if (window.__audioUnlocked) {
-        // One voice at a time: the invitation is ambient, a reply answers
-        // something the visitor just did, so the reply takes the channel.
-        if (window.__invitation && window.__invitation.playing) window.__invitation.stop();
-        window.TTS.attachAndSpeak(bar, t);
+        // One voice at a time, and the invitation is never cut off: a reply
+        // arriving mid-welcome waits for it to finish, then speaks. Note we do
+        // NOT attach a Listen button first — attach() marks the container, so a
+        // later attachAndSpeak on it would return early and never speak.
+        var inv = window.__invitation;
+        if (inv && inv.playing && typeof inv.whenFree === 'function') {
+          inv.whenFree(function(){ window.TTS.attachAndSpeak(bar, t); });
+        } else {
+          window.TTS.attachAndSpeak(bar, t);
+        }
       } else {
         window.TTS.attach(bar, t);
       }
