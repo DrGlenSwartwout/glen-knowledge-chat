@@ -39918,6 +39918,9 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _note = (ln.get("note") or "").strip()
         if _note:
             rec["note"] = _note
+        _fmt = (ln.get("format") or "").strip().lower()
+        if _fmt and _fmt != "bottle":
+            rec["format"] = _fmt
         # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
         # apart from an auto-applied client special (per-SKU or all-FF flat). On
         # edit, un-flagged lines are re-priced — letting a client's FF-flat special
