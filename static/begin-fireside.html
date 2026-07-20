@@ -166,7 +166,10 @@
       fsBtn.addEventListener('click', function () {
         try {
           if (fsCurrent()) { if (fsExit) fsExit.call(document); }
-          else             { fsEnter.call(fsTarget); }
+          else {
+            var p = fsEnter.call(fsTarget);
+            if (p && p.catch) p.catch(function (e) { console.warn('fullscreen denied', e); });
+          }
         } catch (e) { /* denied by the browser: stay windowed */ }
       });
       document.addEventListener('fullscreenchange', fsSync);

@@ -987,9 +987,6 @@
     if(!isLikelyName(name)) return;
     document.querySelectorAll('[data-name]').forEach(function(el){ el.textContent = name; });
     document.querySelectorAll('[data-name-prefix]').forEach(function(el){ el.style.display = 'inline'; });
-    // Returning traveler: warm the fireside invitation with their name.
-    var fiSub = document.querySelector('[data-fi-sub]');
-    if (fiSub) fiSub.textContent = 'Welcome back, ' + name + '. The fire is still warm — come sit a while.';
   }
   function unlock(trigger, extra){
     var body = Object.assign({ trigger: trigger, ref: getRef() }, extra||{});

@@ -18,7 +18,7 @@
 - **Run pytest through Doppler.** Under bare `pytest`, app-importing tests silently skip rather than fail, so a green bare run proves nothing. Use the exact commands given.
 - **ES module style matches `static/fireside/director.js`:** named `export`, imported in tests by relative path from `tests/`, no transpilation.
 - **Do not add a second fireside entry.** Commit `ec233b56` consolidated the landing page to one door, the hero avatar at `static/begin.html:761`. The speaker rides on that avatar; the page must still contain exactly one `href="/begin/fireside"`.
-- **The speaker must not navigate.** It sits inside an anchor, so its handler must call BOTH `preventDefault()` and `stopPropagation()`.
+- **The speaker must not navigate.** It is a sibling of the anchor inside `.avatar-wrap`, not a descendant, so the click cannot reach the anchor's handler; `stopPropagation()` is unnecessary. `preventDefault()` is kept only as a guard against future re-nesting.
 - **Run pytest as `doppler run --config dev`.** Never `prd` — that config holds live payment credentials.
 
 ---
@@ -794,18 +794,17 @@ git commit -m "docs: verification record for the landing fireside invitation"
 
 | Spec section | Task |
 |---|---|
-| 1. Welcome tile (poster, muted autoplay, 160px, tap, two CTAs) | 1, 2 |
+| 1. Speaker button on the existing hero avatar (sibling in `.avatar-wrap`, mute-video passthrough, idle/playing states) | 1 |
 | 2. Audio unlock (session flag, postMessage, attachAndSpeak, Listen retained) | 1, 3 |
-| 3. Handoff (plain navigation, no context carried) | 2 (`href="/begin/fireside"`) |
+| 3. Handoff (plain navigation, no context carried) | 1 (`href="/begin/fireside"` unchanged on the existing anchor) |
 | 4. Fullscreen (requestFullscreen, webkit prefix, fullscreenchange, iOS hidden) | 4 |
 | Testing 1-2 (headless renders) | 5 steps 2 |
 | Testing 3-5 (manual passes) | 5 step 3 |
-| Risk: attention competition | 2 step 3b (160px cap, reduced-motion) |
-| Risk: autoplay drift | 2 step 3a (`poster` attribute) + 5 step 3.5 |
-| Risk: unexpected speech | 3 step 3b (Listen button retained) + 5 step 3.4 |
+| Risk: swallowed navigation | Not applicable as shipped — the button is a sibling inside `.avatar-wrap`, not a descendant of the anchor, so the click cannot reach the anchor's handler regardless of `preventDefault`/`stopPropagation` |
+| Risk: unexpected speech | 1 (Listen button retained) + 5 step 3.4 |
 
 No gaps.
 
 **Placeholder scan:** none. Every code step carries complete code; every command is exact.
 
-**Type consistency:** `UNLOCK_MSG` is `'begin:audio-unlocked'` in Task 1 and the same literal appears in Task 3's listener and its test. `Invitation` constructor keys (`video, root, choices, hint, frame, origin, clip, restingClip`) match exactly between Task 1's class, Task 1's test helper, and Task 2's mount. Element ids `#fireside-invite`, `#fs-invite-video`, `#fs-invite-hint`, `#fs-invite-choices`, `#fs-invite-tap`, `.fs-invite-stay` are identical across Task 2's markup, styles, mount, and tests. `#fsBtn` and `#fireside` match between Task 4's markup, handler, and tests.
+**Type consistency:** `UNLOCK_MSG` is `'begin:audio-unlocked'` in Task 1 and the same literal appears in Task 3's listener and its test. `Invitation` constructor keys (`audio, button, frame, origin, src`) match exactly between Task 1's class, Task 1's test helper, and `invitation-mount.js`. The element id `#avatar-speaker` and the `.avatar-wrap` sibling structure are identical across `static/begin.html`'s markup, styles, and `invitation-mount.js`'s `getElementById` lookup. `#fsBtn` and `#fireside` match between Task 4's markup, handler, and tests.

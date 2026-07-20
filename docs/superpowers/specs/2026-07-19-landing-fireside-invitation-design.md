@@ -48,15 +48,17 @@ Both degradation paths are inherited, not rebuilt.
 
 ### 1. Speaker button on the existing hero avatar
 
-No new tile. A small speaker button is added **inside** the existing
-`<a class="avatar">` at `static/begin.html:761`, positioned in a corner over the
-looping video.
+No new tile. A small speaker button is added as a **sibling** of the existing
+`<a class="avatar">` at `static/begin.html:761`, inside a wrapping `.avatar-wrap`
+element, positioned in a corner over the looping video.
 
 - Tapping the speaker plays the invitation voice-over (`intro_welcome_audio` from
   the manifest) while the avatar video keeps looping muted underneath. The button
   swaps to a stop state while playing and back when it ends.
-- The speaker must **not** navigate. Its handler calls `preventDefault()` and
-  `stopPropagation()` so the click never reaches the wrapping anchor.
+- The speaker must **not** navigate. Its handler calls `preventDefault()` as a
+  guard against any future re-nesting; `stopPropagation()` is unnecessary because
+  the button is a sibling inside `.avatar-wrap`, not a descendant of the anchor,
+  so the click cannot reach the anchor's handler in the first place.
 - Tapping anywhere else on the avatar still goes to `/begin/fireside` exactly as it
   does today, including the existing engagement handler at `:1429`.
 - No second CTA is added. The avatar's own caption already reads

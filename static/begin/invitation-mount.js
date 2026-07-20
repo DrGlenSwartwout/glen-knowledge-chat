@@ -29,6 +29,11 @@ import { pickInvitationAudio, Invitation } from './invitation.js';
         inv.toggle();
       });
 
+      var chat = document.getElementById('begin-chat');
+      if (chat) chat.addEventListener('load', function () {
+        if (inv.unlocked) inv.notifyUnlock();   // re-arm: an early tap may have been discarded
+      });
+
       inv.mount();
     })
     .catch(function () { /* manifest unavailable: leave the page as it was */ });

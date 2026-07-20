@@ -93,12 +93,20 @@ test('play posts the unlock message once, to the given origin', () => {
   assert.equal(frame.sent[0].origin, 'https://illtowell.com');
 });
 
-test('playing twice still posts only one unlock message', () => {
+test('replaying re-posts the unlock (the receiver is idempotent)', () => {
   const { inv, frame } = build();
   inv.play();
   inv.stop();
   inv.play();
-  assert.equal(frame.sent.length, 1);
+  assert.equal(frame.sent.length, 2, 'a lost first post must be recoverable by replaying');
+  assert.deepEqual(frame.sent[1].msg, { type: UNLOCK_MSG });
+});
+
+test('notifyUnlock reports the state change only once', () => {
+  const { inv } = build();
+  assert.equal(inv.notifyUnlock(), true);
+  assert.equal(inv.notifyUnlock(), false);
+  assert.equal(inv.unlocked, true);
 });
 
 test('play with no frame does not throw and still marks unlocked', () => {

@@ -31,7 +31,7 @@ export class Invitation {
     this.audio    = opts.audio || null;
     this.button   = opts.button || null;
     this.frame    = opts.frame || null;
-    this.origin   = opts.origin || '*';
+    this.origin   = opts.origin || (typeof window !== 'undefined' && window.location ? window.location.origin : '*');
     this.src      = opts.src || null;
     this.unlocked = false;
     this.playing  = false;
@@ -76,11 +76,17 @@ export class Invitation {
   }
 
   notifyUnlock() {
-    if (this.unlocked) return false;
+    // Always post when a frame is available: the #begin-chat iframe may still
+    // be loading in parallel with the manifest fetch, so an early tap's post
+    // can be silently discarded before the iframe's listener is registered.
+    // The receiver is idempotent (it just sets a boolean true), so re-sending
+    // is harmless — but `unlocked` still records state so callers can observe
+    // the first-time state change.
+    const first = !this.unlocked;
     this.unlocked = true;
     if (this.frame && this.frame.contentWindow) {
       this.frame.contentWindow.postMessage({ type: UNLOCK_MSG }, this.origin);
     }
-    return true;
+    return first;
   }
 }
