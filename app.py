@@ -3768,6 +3768,170 @@ def prepay_page():
     return resp
 
 
+@app.route("/api/sample")
+def api_sample():
+    """Synthetic sample-portal payload. No auth, no token, no database.
+    See dashboard/public_surface.py for why this cannot leak real data."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    resp = jsonify(_ps.build_demo_view())
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/sample")
+def sample_portal():
+    """Public sample portal. Synthetic data only — see dashboard/public_surface.py."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    resp = send_from_directory(STATIC, "sample-portal.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/api/sample/<slug>")
+def api_sample_for_slug(slug):
+    """Sample payload plus the sharer's APPROVED self-authored header, if any.
+    Unknown slug returns the bare demo — never 404, which would disclose
+    which slugs exist."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    view = _ps.build_demo_view()
+    view["header"] = None
+    if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        # Header resolution must degrade to header: None on ANY database
+        # fault -- a corrupt LOG_DB, a missing table (build_share_header's own
+        # concern), or a failed connect -- never a 500. This is a public,
+        # unauthenticated JSON endpoint; build_share_header already fails
+        # closed internally, but the connect() itself sits outside that
+        # function, so it needs its own guard here.
+        try:
+            with sqlite3.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                view["header"] = _ps.build_share_header(cx, slug)
+        except Exception:
+            view["header"] = None
+        # Record the view only if this is an approved affiliate. Resolution
+        # and recording share one guard: instrumentation must never break
+        # this page, whether the DB lacks affiliate_signups, the lock, the
+        # connection, or the insert itself fails.
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                if _cx.execute(
+                    "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
+                    (slug,)).fetchone():
+                    _ps.record_view(_cx, slug, "sample")
+        except Exception:
+            pass  # instrumentation must never break the page
+    resp = jsonify(view)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/sample/<slug>")
+def sample_portal_for_slug(slug):
+    """Public sample portal attributed to `slug`. Always 200."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    resp = send_from_directory(STATIC, "sample-portal.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    if re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        # The rm_ref cookie is read at ~15 conversion sites, so it must only be
+        # set for a real, approved affiliate slug -- never for an unvalidated
+        # one, which would let a circulated garbage link overwrite a real
+        # affiliate's 90-day attribution. Cookie-setting and view-recording
+        # therefore share the SAME approved-affiliate check and the same
+        # failure guard: instrumentation must never break this page, whether
+        # the DB lacks affiliate_signups, the lock, the connection, or the
+        # insert itself fails -- and on any of those failures we also must not
+        # set the cookie, since we could not confirm the slug is approved.
+        from dashboard import public_surface as _ps
+        try:
+            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                if _cx.execute(
+                    "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
+                    (slug,)).fetchone():
+                    resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
+                                    samesite="Lax", secure=request.is_secure)
+                    _ps.record_view(_cx, slug, "sample")
+        except Exception:
+            pass  # instrumentation must never break the page
+    return resp
+
+
+@app.route("/api/console/share-header/<email>/<action>", methods=["POST"])
+def api_console_share_header(email, action):
+    """Approve or reject a client-authored share header.
+    Publishing one is publishing a testimonial — hence the gate.
+
+    Deliberately uses _portal_open_is_owner() rather than _portal_console_ok():
+    the latter vacuously returns True whenever CONSOLE_SECRET isn't configured
+    (correct for the ~35 other console routes it guards, where "no secret
+    configured" should not lock anyone out). This route is the only thing
+    between an unreviewed client health claim and publication, so it must fail
+    CLOSED instead — no valid key presented means no."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not _portal_open_is_owner():
+        return jsonify({"error": "unauthorized"}), 401
+    if action not in ("approve", "reject"):
+        return jsonify({"error": "unknown action"}), 400
+    from dashboard import share_header as _sh
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _sh.init_share_headers_table(cx)
+        (_sh.approve if action == "approve" else _sh.reject)(cx, email)
+    return jsonify({"ok": True, "email": email, "status": action + "d"})
+
+
+@app.route("/api/console/share-header/pending", methods=["GET"])
+def api_console_share_header_pending():
+    """List headers awaiting review. Without this the approval queue is
+    invisible -- headers get approved blind (by email, guessed) or never
+    reviewed at all. Same flag check and fail-closed auth as approve/reject
+    (finding #1) -- this is a read of unreviewed client-authored text, not a
+    routine console listing."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not _portal_open_is_owner():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import share_header as _sh
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _sh.init_share_headers_table(cx)
+        pending = _sh.list_pending(cx)
+    return jsonify({"pending": pending})
+
+
+@app.route("/api/portal/<token>/share-header", methods=["POST"])
+def api_portal_share_header(token):
+    """Client writes their own share header. Always lands as pending."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    body = (request.get_json(silent=True) or {})
+    from dashboard import client_portal as _cp
+    from dashboard import share_header as _sh
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _sh.init_share_headers_table(cx)
+        try:
+            row = _sh.upsert_header(cx, portal["email"],
+                                    body.get("display_name", ""),
+                                    body.get("body", ""))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "status": row["status"]})
+
+
 @app.route("/api/prepay/tiers")
 def prepay_tiers():
     """Public tier descriptors for the picker (price, per-month, savings %, badge)."""
@@ -16668,6 +16832,51 @@ def dispensary_continuous_care(code):
         return jsonify({"ok": False, "error": "checkout_failed"}), 200
 
 
+@app.route("/api/p/<slug>")
+def api_practitioner_storefront(slug):
+    """Public storefront payload. Whitelisted — see dashboard/public_surface.py."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        view = _ps.build_practitioner_storefront(cx, slug)
+    if not view:
+        return ("", 404)
+    resp = jsonify(view)
+    resp.headers["X-Robots-Tag"] = "noindex"
+    return resp
+
+
+@app.route("/p/<slug>")
+def practitioner_storefront(slug):
+    """Public practitioner storefront. Sets the referral attribution cookie.
+    /dispensary/<code> is untouched and keeps working — old links never break."""
+    if not _public_surface_enabled():
+        return ("", 404)
+    if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
+        return ("", 404)
+    from dashboard import public_surface as _ps
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        if not _ps.build_practitioner_storefront(cx, slug):
+            return ("", 404)
+    # Record the view for this approved affiliate
+    try:
+        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            _ps.record_view(_cx, slug, "storefront")
+    except Exception:
+        pass  # instrumentation must never break the page
+    resp = send_from_directory(STATIC, "practitioner-storefront.html")
+    resp.headers["X-Robots-Tag"] = "noindex"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.set_cookie("rm_ref", slug, max_age=90 * 24 * 3600,
+                    samesite="Lax", secure=request.is_secure)
+    return resp
+
+
 @app.route("/api/client/<code>/catalog")
 def api_client_catalog(code):
     """Return sellable Functional Formulations at the practitioner's price (>= MAP).
@@ -17409,6 +17618,14 @@ def _support_programs_enabled():
     `support_program` key, so responses stay byte-identical to pre-support-program
     behavior."""
     return (os.environ.get("SUPPORT_PROGRAMS_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _public_surface_enabled():
+    """Public recruiting surfaces: /sample, /sample/<slug>, /p/<slug> (Phase 1-3).
+    Default OFF — when off every public-surface route returns a bare 404, so the
+    app's externally visible behavior is byte-identical to pre-feature."""
+    return (os.environ.get("PUBLIC_SURFACE_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes", "on")
 
 

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Practitioner</title>
+<style>
+  :root { --ink:#1F5A4D; --line:#e6e6e6; }
+  body { font:16px/1.5 system-ui, sans-serif; color:#222; margin:0; }
+  .wrap { max-width:860px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { color:var(--ink); margin:0 0 4px; }
+  .practice { color:#666; margin:0 0 24px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
+  .card p { margin:0; }
+  .disclosure { font-size:.9rem; color:#555; border-left:3px solid var(--ink);
+                padding:8px 12px; margin:16px 0; }
+  @media (prefers-color-scheme: dark) {
+    body { background:#121212; color:#eee; }
+    .card { border-color:#333; } .practice, .disclosure { color:#aaa; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="name"></h1>
+  <p class="practice" id="practice"></p>
+  <div class="card"><h2>About</h2><p id="bio"></p></div>
+  <p class="disclosure" id="disclosure"></p>
+  <p><a id="catalog" href="/begin/explore">Browse the full catalog</a></p>
+</div>
+<script>
+(function () {
+  var slug = location.pathname.split("/").pop();
+  fetch("/api/p/" + encodeURIComponent(slug))
+    .then(function (r) { return r.json(); })
+    .then(function (v) {
+      document.getElementById("name").textContent = v.practitioner_name || "";
+      document.getElementById("practice").textContent = v.practice_name || "";
+      document.getElementById("bio").textContent = v.bio || "";
+      document.getElementById("disclosure").textContent = v.profit_disclosure || "";
+      document.title = v.practitioner_name || "Practitioner";
+      if (v.catalog_url) document.getElementById("catalog").href = v.catalog_url;
+    });
+})();
+</script>
+</body>
+</html>

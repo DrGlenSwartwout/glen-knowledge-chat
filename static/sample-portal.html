@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sample portal</title>
+<meta property="og:title" content="A look inside the portal">
+<meta property="og:description" content="A sample of what your portal looks like.">
+<style>
+  :root { --ink:#1F5A4D; --gold:#d4a843; --line:#e6e6e6; }
+  body { margin:0; font:16px/1.5 system-ui, sans-serif; color:#222; }
+  .wrap { max-width:860px; margin:0 auto; padding:24px 16px 64px; }
+  .banner { background:var(--gold); color:#241c00; padding:10px 16px;
+            font-weight:600; text-align:center; }
+  h1 { font-size:1.5rem; margin:24px 0 4px; color:var(--ink); }
+  .card { border:1px solid var(--line); border-radius:10px; padding:16px;
+          margin:16px 0; }
+  .card h2 { font-size:1rem; margin:0 0 10px; color:var(--ink);
+             text-transform:uppercase; letter-spacing:.04em; }
+  .row { display:flex; justify-content:space-between; padding:6px 0;
+         border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .muted { color:#666; font-size:.9rem; }
+  @media (prefers-color-scheme: dark) {
+    body { background:#121212; color:#eee; }
+    .card { border-color:#333; }
+    .row { border-color:#2a2a2a; }
+    .muted { color:#aaa; }
+  }
+</style>
+</head>
+<body>
+<div class="banner" id="sample-banner">Sample portal — illustrative data, not a real person</div>
+<div class="wrap">
+  <h1 id="greeting"></h1>
+  <p class="muted" id="phase"></p>
+
+  <div class="card"><h2>Your scan analysis</h2><div id="layers"></div></div>
+  <div class="card"><h2>What your scan matched</h2><div id="findings"></div></div>
+  <div class="card"><h2>Your options &amp; pricing</h2><div id="pricing"></div></div>
+  <div class="card"><h2>Your orders</h2><div id="orders"></div></div>
+  <div class="card"><h2>Your body map</h2><p class="muted" id="bodymap"></p></div>
+</div>
+<script>
+(function () {
+  function rows(el, items, left, right) {
+    el.innerHTML = items.map(function (it) {
+      return '<div class="row"><span></span><span class="muted"></span></div>';
+    }).join("");
+    Array.prototype.forEach.call(el.querySelectorAll(".row"), function (row, i) {
+      row.children[0].textContent = left(items[i]);
+      row.children[1].textContent = right(items[i]);
+    });
+  }
+  var parts = location.pathname.split("/").filter(Boolean);
+  var slug = (parts.length > 1) ? parts[1] : "";
+  var url = slug ? ("/api/sample/" + encodeURIComponent(slug)) : "/api/sample";
+  fetch(url).then(function (r) { return r.json(); }).then(function (v) {
+    if (v.header) {
+      var h = document.createElement("div");
+      h.className = "card";
+      var who = document.createElement("strong");
+      who.textContent = v.header.display_name;
+      var said = document.createElement("p");
+      said.textContent = v.header.body;
+      h.appendChild(who); h.appendChild(said);
+      document.querySelector(".wrap").insertBefore(h, document.getElementById("greeting"));
+    }
+    document.getElementById("greeting").textContent = v.greeting;
+    document.getElementById("phase").textContent = "Phase: " + v.phase;
+    rows(document.getElementById("layers"), v.layers,
+         function (l) { return l.n + ". " + l.title; },
+         function (l) { return l.meaning; });
+    rows(document.getElementById("findings"), v.findings,
+         function (f) { return f.name; }, function (f) { return f.note; });
+    rows(document.getElementById("pricing"), v.pricing,
+         function (p) { return p.label; }, function (p) { return p.price; });
+    rows(document.getElementById("orders"), v.orders,
+         function (o) { return o.date + " — " + o.label; },
+         function (o) { return o.total; });
+    document.getElementById("bodymap").textContent =
+      v.body_map.available ? "Included with your portal." : "";
+  });
+})();
+</script>
+</body>
+</html>
