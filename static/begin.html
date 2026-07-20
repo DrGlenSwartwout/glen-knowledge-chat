@@ -762,7 +762,7 @@
         <div class="hero-messages" id="hero-messages"></div>
         <div id="hero-activate"></div>
         <div class="hero-inputbar">
-          <textarea id="hero-input" rows="1" placeholder="Type your reply&hellip;"></textarea>
+          <textarea id="hero-input" rows="1" placeholder="Type your reply&hellip;" data-mic></textarea>
           <button class="send-btn hero-send" id="hero-send" type="button">Send</button>
         </div>
       </div>
@@ -1032,6 +1032,23 @@
       return d;
     };
 
+    // Give a FINISHED assistant message a Listen button, and speak it outright once
+    // the visitor has tapped the avatar's speaker. The hero chat lives on this page,
+    // not inside the #begin-chat iframe, so it needs its own wiring — the iframe's
+    // copy in embed.html does nothing for the conversation happening up here.
+    // Deliberately NOT called for restored history or the scripted opening line:
+    // neither follows a visitor's turn, and replaying them on load reads as broken.
+    window.heroSpeak = function(box, text){
+      if (!box || !window.TTS) return;
+      var t = (text || '').trim();
+      if (!t) return;
+      var bar = document.createElement('div');
+      bar.className = 'hero-msg-actions';
+      box.appendChild(bar);
+      if (window.__audioUnlocked) window.TTS.attachAndSpeak(bar, t);
+      else                       window.TTS.attach(bar, t);
+    };
+
     // Persist the conversation so a reload / device-sleep doesn't lose it (or the AI's links).
     var HERO_KEY = 'begin_hero_chat';
     var HERO_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1108,7 +1125,7 @@
         var buf = '';
         function pump(){
           return reader.read().then(function(chunk){
-            if (chunk.done) { box.innerHTML = heroLinkify(acc); heroHistory.push({ role: 'assistant', content: acc }); heroSave(); return; }
+            if (chunk.done) { box.innerHTML = heroLinkify(acc); heroSpeak(box, acc); heroHistory.push({ role: 'assistant', content: acc }); heroSave(); return; }
             buf += decoder.decode(chunk.value, { stream: true });
             var lines = buf.split('\n'); buf = lines.pop();
             lines.forEach(function(line){
@@ -1144,7 +1161,8 @@
         nameCaptured = true;
         var nm = cleanName(q);
         var afterName = function(){
-          heroAppend('assistant', 'Lovely to meet you' + (nm ? ', ' + nm : '') + '. Would you like to share your email, so I can remember you next time and we can stay connected? It is completely optional. You can skip it and just tell me what is on your mind.');
+          var _nameMsg = 'Lovely to meet you' + (nm ? ', ' + nm : '') + '. Would you like to share your email, so I can remember you next time and we can stay connected? It is completely optional. You can skip it and just tell me what is on your mind.';
+          heroSpeak(heroAppend('assistant', _nameMsg), _nameMsg);
           heroHistory.push({ role: 'assistant', content: 'Would you like to share your email, so I can remember you and we can stay connected? It is optional.' });
           heroSave();
           loading = false; sendEl.disabled = false;
@@ -1619,6 +1637,12 @@
     });
   })();
   </script>
+<!-- The hero chat lives on this page, not in the #begin-chat iframe, so it needs its
+     own voice in (mic-input wires any [data-mic] field to /transcribe) and voice out
+     (tts-output supplies window.TTS, used by heroSpeak). The iframe's copies of both
+     do nothing for the conversation up here. -->
+<script src="/static/mic-input.js"></script>
+<script src="/static/tts-output.js"></script>
 <script type="module" src="/static/begin/invitation-mount.js"></script>
 </body>
 </html>
