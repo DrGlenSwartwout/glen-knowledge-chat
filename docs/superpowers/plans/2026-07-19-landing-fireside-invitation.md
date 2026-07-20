@@ -29,7 +29,7 @@
 |---|---|
 | `static/begin/invitation.js` | **Create.** All invitation logic: voice-over selection, play/stop, unlock postMessage, button labelling. Exported and unit-tested. |
 | `static/begin/invitation-mount.js` | **Create.** Thin DOM wiring: fetch manifest, resolve elements, construct `Invitation`, bind listeners. Deliberately untested — it contains no branching logic. |
-| `static/begin.html` | **Modify.** Speaker button inside the existing hero-avatar anchor, its styles, the module script tag, and deletion of the orphaned `#fireside-invite` CSS left by ec233b56. |
+| `static/begin.html` | **Modify.** Speaker button as a sibling of the existing hero-avatar anchor inside a `.avatar-wrap` wrapper, its styles, the module script tag, and deletion of the orphaned `#fireside-invite` CSS left by ec233b56. |
 | `static/embed.html` | **Modify.** Unlock listener + auto-speak branch. |
 | `static/begin-fireside.html` | **Modify.** Fullscreen button + handler. |
 | `tests/begin_js/invitation.test.mjs` | **Create.** Node unit tests for `invitation.js`. |
@@ -44,7 +44,7 @@
 - Rewrite: `static/begin/invitation.js` (exists from a superseded design — replace its contents)
 - Rewrite: `tests/begin_js/invitation.test.mjs`
 - Create: `static/begin/invitation-mount.js`
-- Modify: `static/begin.html` — speaker button inside the existing `<a class="avatar">` (around line 761), styles near the existing `.avatar` rules (around line 586), module script before `</body>`, and deletion of the orphaned `#fireside-invite` / `.fi-*` / `fiGlow` CSS block
+- Modify: `static/begin.html` — speaker button as a sibling of the existing `<a class="avatar">` (around line 761) inside a `.avatar-wrap` wrapper, styles near the existing `.avatar` rules (around line 586), module script before `</body>`, and deletion of the orphaned `#fireside-invite` / `.fi-*` / `fiGlow` CSS block
 - Test: `tests/test_begin_invitation_wiring.py`
 
 **Interfaces:**

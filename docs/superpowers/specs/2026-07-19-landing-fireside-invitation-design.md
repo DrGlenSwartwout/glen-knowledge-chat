@@ -131,16 +131,18 @@ Verification is therefore behavioral:
    fireside fullscreen button is absent rather than present-and-broken.
 5. Manual pass with the speaker never tapped, confirming today's behavior is unchanged.
 
-Steps 2 through 4 are manual because autoplay policy and click-through behavior on a
-nested control inside an anchor differ per browser and per engagement history, which is
-precisely what a unit test cannot reproduce.
+Steps 2 through 4 are manual because autoplay policy and audio-unlock behavior differ per
+browser and per engagement history, which is precisely what a unit test cannot reproduce.
 
 ## Risks
 
-- **Swallowed navigation.** The speaker sits inside an anchor. If `preventDefault` and
-  `stopPropagation` are not both applied, tapping it navigates away mid-sentence. This
-  is the single most likely defect and is covered by verification step 2.
-- **Tap-target crowding.** A control inside a link risks mis-taps on a phone. The
+- **A lost unlock is silent.** The unlock is posted into the `#begin-chat` iframe, a large
+  document that loads in parallel with the small manifest fetch. An early tap can land
+  before that iframe registers its listener, and `postMessage` discards it with no error.
+  The mitigation is to re-post on every play and again on the iframe's `load` event,
+  keeping the receiver idempotent. Without that, auto-speak dies for the whole session
+  with no signal anywhere.
+- **Tap-target crowding.** A control overlaying a link risks mis-taps on a phone. The
   mitigation is a minimum 44x44px target placed in a corner, clear of the caption.
 - **Unexpected speech.** A visitor who taps for the invitation then gets every
   subsequent reply spoken aloud. This is the approved behavior — silence after an
