@@ -26,5 +26,9 @@ def test_hand_cradle_packs_into_medium_flat_rate_box():
 
 def test_evox_session_sku_present():
     p = _products()["evox-session"]
-    assert p["price_cents"] == 19700          # public list; member $100 applied by Rae at invoice
+    # Reconciled 2026-07-20 (Glen): $150 public (= the in-app EVOX booking rate),
+    # $197 as SRP/compare-at. Was a bare $197 SKU conflicting with the $150
+    # booking. Member $100 still applied by Rae at invoice — a separate lane.
+    assert p["price_cents"] == 15000
+    assert p["regular_cents"] == 19700        # $197 SRP, struck through
     assert p["info_only"] is True and p["service"] is True   # prepay service, no shipping
