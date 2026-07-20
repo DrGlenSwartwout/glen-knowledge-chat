@@ -145,6 +145,35 @@
       <div class="muted" style="margin-top:4px">Color preview</div>
     </div>
 
+    <!-- ── Public storefront ──────────────────────────────────────── -->
+    <div class="panel">
+      <h2>Your public storefront</h2>
+      <div class="muted" style="margin-top:6px">This appears on your public page at
+        illtowell.com/p/your-slug. Only what you save here is published — nothing is
+        shown until you do.</div>
+
+      <label class="field-label">Bio (max 600 characters)</label>
+      <textarea id="sf-bio" maxlength="600" rows="5"
+                placeholder="Introduce yourself to prospective clients."></textarea>
+      <div class="muted"><span id="sf-bio-count">0</span>/600</div>
+
+      <label class="field-label">Photo URL (paste a public image URL)</label>
+      <input type="url" id="sf-photo" placeholder="https://yoursite.com/photo.jpg">
+
+      <label class="field-label">Services (comma-separated, up to 12)</label>
+      <input type="text" id="sf-services" placeholder="Acupuncture, Nutrition, Biofield Analysis">
+
+      <label class="field-label">City</label>
+      <input type="text" id="sf-city" placeholder="Hilo">
+      <label class="field-label">State</label>
+      <input type="text" id="sf-state" placeholder="HI">
+
+      <label class="toggle-row" style="margin-top:14px">
+        <input type="checkbox" id="sf-accepting" checked>
+        <span>Accepting new clients</span>
+      </label>
+    </div>
+
     <!-- ── Patient support chat ─────────────────────────────────── -->
     <div class="panel">
       <h2>Patient support chat</h2>
@@ -355,6 +384,11 @@
     setShowContact(this.checked);
   });
 
+  // ── Storefront bio counter ──────────────────────────────────────────────────────
+  document.getElementById('sf-bio').addEventListener('input', function () {
+    document.getElementById('sf-bio-count').textContent = this.value.length;
+  });
+
   // ── Load settings ─────────────────────────────────────────────────────────────
   fetch('/api/practitioner/settings', { credentials: 'same-origin', headers: authHeaders() })
     .then(function (r) { return r.json(); })
@@ -380,6 +414,16 @@
       document.getElementById('logo-url').value = b.logo_url || '';
       document.getElementById('photo-url').value = b.photo_url || '';
       setColorPair(b.brand_color_1, b.brand_color_2);
+
+      // Public storefront
+      var pf = data.profile || {};
+      document.getElementById('sf-bio').value = pf.bio || '';
+      document.getElementById('sf-bio-count').textContent = (pf.bio || '').length;
+      document.getElementById('sf-photo').value = pf.photo_url || '';
+      document.getElementById('sf-services').value = (pf.services || []).join(', ');
+      document.getElementById('sf-city').value = pf.city || '';
+      document.getElementById('sf-state').value = pf.state || '';
+      document.getElementById('sf-accepting').checked = pf.accepting_clients !== false;
 
       // Chat enabled toggle
       setChatToggle(!!data.chat_enabled);
@@ -417,6 +461,15 @@
       pricing: {
         default_markup_pct: markupPct,
         overrides: skuOverrides,
+      },
+      profile: {
+        bio: document.getElementById('sf-bio').value,
+        photo_url: document.getElementById('sf-photo').value.trim(),
+        services: document.getElementById('sf-services').value.split(',')
+                    .map(function (s) { return s.trim(); }).filter(Boolean),
+        city: document.getElementById('sf-city').value.trim(),
+        state: document.getElementById('sf-state').value.trim(),
+        accepting_clients: document.getElementById('sf-accepting').checked,
       },
       chat_enabled: document.getElementById('chat-enabled').checked,
       show_contact: document.getElementById('show-contact').checked,
