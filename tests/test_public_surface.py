@@ -122,8 +122,10 @@ def test_public_only_is_the_guard_build_practitioner_storefront_relies_on():
 
 
 def test_storefront_includes_profit_disclosure():
-    """16 CFR 255.5(b) Ex.4 — disclosure duty is stronger on surfaces that do
-    not look like ads. Default ON and inline, unlike the industry norm."""
+    """16 CFR 255.5, Example 4 — consumers don't expect a physician endorser to
+    receive a percentage of gross product sales. (Verified against the CFR text;
+    Sec. 255.5 has no lettered subsections, so the earlier "255.5(b)" was wrong.)
+    Default ON and inline, unlike the industry norm."""
     cx = _cx_with_affiliate()
     view = ps.build_practitioner_storefront(cx, "prof-jane-doe")
     assert view["profit_disclosure"]
