@@ -102,7 +102,7 @@
       </div>
       <div id="snippet-mgr-list"></div>
     </div>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Note (shown to customer)</th><th></th></tr></thead>
+    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Note (shown to customer)</th><th></th></tr></thead>
       <tbody id="lines"></tbody></table>
     <div class="addline">
       <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
@@ -252,7 +252,7 @@ function addLine(){
   const ovRaw=$("prod-unit").value.trim();
   const edited = ovRaw!=="";
   const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
-  LINES.push({slug, name:p.name, qty, unit_cents, edited, note:""});
+  LINES.push({slug, name:p.name, qty, unit_cents, edited, note:"", format:'bottle'});
   $("prod-qty").value=1; $("prod-unit").value="";
   SHIP_CENTS=null;   // new line changes packing -> require a reprice
   renderLines();
@@ -325,6 +325,10 @@ function renderLines(){
   tb.innerHTML = LINES.map((l,i)=>`<tr>
     <td>${esc(l.name)}</td>
     <td><input type="number" min="1" value="${l.qty}" onchange="editLine(${i},'qty',this.value)" style="width:70px"></td>
+    <td><select onchange="editLine(${i},'format',this.value)">
+      <option value="bottle"${(l.format||'bottle')==='bottle'?' selected':''}>Bottle</option>
+      <option value="refill"${l.format==='refill'?' selected':''}>Cello refill</option>
+    </select></td>
     <td><input id="u-${i}" type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
     <td id="vp-${i}" style="font-size:12px;color:var(--muted)">…</td>
     <td id="ln-${i}">${dollars(l.qty*l.unit_cents)}</td>
@@ -337,11 +341,11 @@ function renderLines(){
   recalc();
   syncShippingUI();
 }
-function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } SHIP_CENTS=null; renderLines(); }
+function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else if(f==='format') LINES[i].format=v; else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } SHIP_CENTS=null; renderLines(); }
 function rmLine(i){ LINES.splice(i,1); SHIP_CENTS=null; renderLines(); }
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
-function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; return b; }); }
+function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; if((l.format||'bottle')!=='bottle') b.format=l.format; return b; }); }
 // Per-line note helpers. setNote updates the model without a re-render (re-rendering
 // on each keystroke would drop focus mid-typing); the note doesn't affect pricing.
 function setNote(i,v){ if(LINES[i]) LINES[i].note=v; }
@@ -367,16 +371,21 @@ async function deleteSnippet(id){
     openSnippetManager(); renderLines(); toast("Message removed");
   }catch(e){ toast(e.message,"error"); }
 }
-function updateUnitsToShip(n){ const el=$("units-to-ship"); if(el) el.textContent="Total units to ship: "+(Number(n)||0); }
+function updateUnitsToShip(pb){
+  const el=$("units-to-ship"); if(!el) return;
+  const b=(pb&&pb.bottle_units)||0, c=(pb&&pb.cello_pack_units)||0;
+  el.textContent = "Total units to ship: " + b + " bottle" + (b===1?'':'s')
+    + (c ? " + " + c + " cello pack" + (c===1?'':'s') : "");
+}
 function refreshPreview(){
   clearTimeout(previewTimer);
-  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; updateUnitsToShip(0); recalc(); refreshMembershipOffer(); return; }
+  if (!LINES.length){ PREVIEW={subtotal_cents:0, lines:[]}; updateUnitsToShip({bottle_units:0,cello_pack_units:0}); recalc(); refreshMembershipOffer(); return; }
   previewTimer = setTimeout(async ()=>{
     try{
       const r = await fetch("/api/orders/price-preview", {method:"POST", headers:HEADERS, body:JSON.stringify({lines:linesPayload(), email:$("c-email").value.trim()})});
       const j = await r.json(); if (!j.ok) return;
-      PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines, physical_units:j.physical_units};
-      updateUnitsToShip(j.physical_units);
+      PREVIEW = {subtotal_cents:j.subtotal_cents, lines:j.lines, physical_units:j.physical_units, pack_breakdown:j.pack_breakdown};
+      updateUnitsToShip(j.pack_breakdown);
       (j.lines||[]).forEach((pl,i)=>{
         if (!LINES[i]) return;
         if (!LINES[i].edited){ LINES[i].unit_cents = pl.effective_unit_cents; const ui=$("u-"+i); if (ui) ui.value=(pl.effective_unit_cents/100).toFixed(2); }
@@ -557,7 +566,7 @@ async function loadOrderForEdit(oid){
   // the client's current specials — including the all-FFs flat rate — re-apply.
   LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
             qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:l.override===true,
-            note:l.note||""}));
+            note:l.note||"", format:(l.format||'bottle')}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;

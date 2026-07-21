@@ -6308,6 +6308,27 @@ def _order_physical_units(order):
         return 0
 
 
+def _order_pack_breakdown(order):
+    """Shippable units split by packaging (bottle_units vs cello_pack_units) for a
+    stored order dict. Same order-shape handling as _order_physical_units (parsed
+    `items` list or raw `items_json` string column). bottle_units + cello_pack_units
+    always equals _order_physical_units(order) for the same order. Read-only display
+    field -- never raises."""
+    order = order or {}
+    items = order.get("items")
+    if items is None:
+        import json as _json
+        try:
+            items = _json.loads(order.get("items_json") or "[]")
+        except Exception:
+            items = []
+    try:
+        catalog = {p.get("slug"): p for p in _catalog_products()}
+        return _bos_orders.pack_breakdown(items, catalog)
+    except Exception:
+        return {"bottle_units": 0, "cello_pack_units": 0}
+
+
 def _get_product(slug):
     """The sellable product for a slug, following a retired duplicate to its live twin.
 
@@ -6519,6 +6540,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     country = (ship.get("country") or "US").strip().upper()
     settings = _pricing.load_settings(_pricing_settings())
     items, qbo_lines, items_rec, box_counts, subtotal_list, total_bottles = [], [], [], {}, 0, 0
+    total_cello = 0
     flat_ship_cents = 0   # sum of per-product fixed shipping overrides (own-parcel items)
     for c in (cart or []):
         p = _get_product((c.get("slug") or "").strip())
@@ -6532,7 +6554,8 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         # fulfillment note folded into the display name (kanban) and QBO line description
         # (invoice). "bottle"/unset -> plain product name. Keeps the QBO line NAME clean
         # for item mapping; only the description is decorated.
-        _fmt_label = _FORMAT_LABELS.get((c.get("format") or "").strip().lower(), "")
+        _fmt = (c.get("format") or "").strip().lower()
+        _fmt_label = _FORMAT_LABELS.get(_fmt, "")
         _disp_name = f'{p["name"]} ({_fmt_label})' if _fmt_label else p["name"]
         qbo_lines.append({"name": p["name"], "amount": round(it["unit_cents"] / 100.0, 2),
                           "qty": qty, "item_id": p.get("qbo_item_id"), "description": _disp_name})
@@ -6546,8 +6569,10 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         items_rec.append({"name": _disp_name, "qty": qty, "desc": _disp_name,
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
         # Services / digital goods carry no bottle: counting them would push the
-        # "default" placeholder into quote(), which raises UnknownBottleType and
-        # drops the whole cart to the coarse qty rule — charging a phantom bottle.
+        # "default" placeholder into quote(), which internally catches the
+        # UnknownBottleType pick_boxes raises and returns shipping_cents: None —
+        # _shipping_for_cart then falls to the coarse qty rule via the `cents > 0`
+        # False branch (not via its own except), charging a phantom bottle.
         if _shipping.is_shippable(p):
             _flat = int(p.get("flat_shipping_cents") or 0)
             if _flat > 0 and not p.get("bundle"):
@@ -6570,13 +6595,19 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                     # undercharge. CheckoutError surfaces as a 400, not a 500.
                     raise CheckoutError(str(e))
                 for _comp in _comps:
-                    _bt = _shipping.resolve_bottle_type(_comp["slug"], _comp)
+                    _bt = _shipping.packing_bottle_type(_comp, _fmt)
                     box_counts[_bt] = box_counts.get(_bt, 0) + qty
-                    total_bottles += qty
+                    if _bt == _shipping.CELLO_BOTTLE_TYPE:
+                        total_cello += qty
+                    else:
+                        total_bottles += qty
             else:
-                bt = _shipping.resolve_bottle_type(slug, p)
+                bt = _shipping.packing_bottle_type(p, _fmt)
                 box_counts[bt] = box_counts.get(bt, 0) + qty
-                total_bottles += qty
+                if bt == _shipping.CELLO_BOTTLE_TYPE:
+                    total_cello += qty
+                else:
+                    total_bottles += qty
     # US-only shipping — but only a cart with something to ship has an opinion
     # about the address. An overseas client buying a service prices fine.
     if (box_counts or flat_ship_cents) and country not in ("US", "USA", ""):
@@ -6591,13 +6622,15 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
                               tax_fn=_tax.compute_get_cents,
                               program_member=bool(program_member),
                               repertoire_slugs=rep_slugs)
-    shipping_cents = flat_ship_cents + _shipping_for_cart(box_counts, total_bottles)
+    shipping_cents = flat_ship_cents + _shipping_for_cart(box_counts, total_bottles + total_cello)
     return {
         "priced": priced, "qbo_lines": qbo_lines, "items_rec": items_rec,
         "subtotal_list_cents": subtotal_list,
         "discount_cents": priced["discount_cents"],
         "points_redeemed_cents": priced["points_redeemed_cents"],
         "shipping_cents": shipping_cents,
+        "bottle_units": total_bottles,
+        "cello_pack_units": total_cello,
     }
 
 
@@ -39900,7 +39933,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                     unit_cents = min(unit_cents, _cand)   # lowest wins among automatics
         line_cents = unit_cents * qty
         subtotal_list += line_cents
-        cart.append({"slug": slug, "qty": qty})
+        _fmt = (ln.get("format") or "").strip().lower()
+        cart.append({"slug": slug, "qty": qty, "format": _fmt})
         rec = {"slug": slug, "name": p["name"], "qty": qty,
                "unit_cents": unit_cents, "line_cents": line_cents}
         # Customer-facing per-line note (free text; picked from / auto-saved to the
@@ -39908,6 +39942,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _note = (ln.get("note") or "").strip()
         if _note:
             rec["note"] = _note
+        if _fmt and _fmt != "bottle":
+            rec["format"] = _fmt
         # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
         # apart from an auto-applied client special (per-SKU or all-FF flat). On
         # edit, un-flagged lines are re-priced — letting a client's FF-flat special
@@ -40469,7 +40505,8 @@ def api_orders_price_preview():
     # matches the portal + console-orders exactly rather than re-summing qty in JS.
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines,
-                    "physical_units": _order_physical_units({"items": lines_in})})
+                    "physical_units": _order_physical_units({"items": lines_in}),
+                    "pack_breakdown": _order_pack_breakdown({"items": lines_in})})
 
 
 @app.route("/api/orders/shipping-preview", methods=["POST"])
@@ -40493,7 +40530,8 @@ def api_orders_shipping_preview():
             "country": (a.get("country") or "US").upper()}
     # Only real catalog products carry a bottle; membership/unknown slugs are skipped by
     # _price_cart, matching how shipping is computed at create/edit.
-    cart = [{"slug": (l.get("slug") or "").strip(), "qty": l.get("qty")}
+    cart = [{"slug": (l.get("slug") or "").strip(), "qty": l.get("qty"),
+             "format": (l.get("format") or "")}
             for l in lines_in if (l.get("slug") or "").strip()]
     if pickup:
         return jsonify({"ok": True, "shipping_cents": 0, "get_cents": 0, "pickup": True})
@@ -41251,6 +41289,7 @@ def _invoice_summary(order):
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
         "physical_units": _order_physical_units(order),
+        "pack_breakdown": _order_pack_breakdown(order),
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "adjustment_cents": int(order.get("adjustment_cents") or 0),
@@ -41526,7 +41565,8 @@ def api_invoice_update(token):
         unit_cents = int(p.get("price_cents") or 0)  # SERVER price only — ignore client
         line_cents = unit_cents * qty
         subtotal_list += line_cents
-        cart.append({"slug": slug, "qty": qty})
+        _fmt = (ln.get("format") or "").strip().lower()
+        cart.append({"slug": slug, "qty": qty, "format": _fmt})
         items_rec.append({"slug": slug, "name": p["name"], "qty": qty,
                           "unit_cents": unit_cents, "line_cents": line_cents})
     if not cart:
@@ -42270,6 +42310,7 @@ def bos_orders_create():
                 _phys_catalog = {p.get("slug"): p for p in _catalog_products()}
                 for o in rows:
                     o["physical_units"] = _bos_orders.physical_units(o.get("items") or [], _phys_catalog)
+                    o["pack_breakdown"] = _order_pack_breakdown(o)
             except Exception as _e:
                 print(f"[orders] physical_units annotate skipped: {_e!r}", flush=True)
             # Display-name fallback: many orders carry only a shipping name, which is

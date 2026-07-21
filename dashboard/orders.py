@@ -631,6 +631,49 @@ def physical_units(items, catalog):
     return total
 
 
+def pack_breakdown(items, catalog):
+    """Shippable units split by packaging: {bottle_units, cello_pack_units}. Mirrors
+    physical_units' shippable/membership/bundle-expansion rules exactly line-for-line
+    (bundles expand to component bottle counts, not 1) -- it only partitions the same
+    total by whether a line's `format` is a cello format. Invariant:
+    bottle_units + cello_pack_units == physical_units(items, catalog) for the same
+    input. `items` is the parsed items_json list ({slug, qty, format, ...}); `catalog`
+    is {slug: product}."""
+    from dashboard import shipping as _sh
+    catalog = catalog or {}
+    catalog_list = None
+    bottles = 0
+    cello = 0
+    for it in (items or []):
+        try:
+            qty = int(it.get("qty") or 0)
+        except (TypeError, ValueError):
+            qty = 0
+        if qty <= 0:
+            continue
+        # See physical_units: a membership line grants access, not a bottle.
+        if it.get("kind") == "membership" or str(it.get("slug") or "").startswith("membership:"):
+            continue
+        p = catalog.get(it.get("slug") or "") or {}
+        if not _sh.is_shippable(p):
+            continue  # service / info-only -> 0
+        if p.get("bundle"):
+            if catalog_list is None:
+                catalog_list = list(catalog.values())
+            try:
+                n = len(_sh.bundle_component_products(p, catalog_list)) * qty
+            except _sh.UnknownBundleComponent:
+                comps = p.get("bundle_component_slugs") or []
+                n = (sum(int(c.get("qty") or 1) for c in comps) if comps else 1) * qty
+        else:
+            n = qty
+        if (it.get("format") or "").strip().lower() in _sh.CELLO_FORMATS:
+            cello += n
+        else:
+            bottles += n
+    return {"bottle_units": bottles, "cello_pack_units": cello}
+
+
 # Pre-payment invoices (proposed/confirmed) are not committed demand, so they are
 # excluded from the reorder rollup along with done/cancelled.
 _NOT_BACKORDERABLE = ("done", "cancelled", "proposed", "confirmed")
