@@ -6070,6 +6070,16 @@ PROGRAM_DEPOSIT_CREDIT_CENTS = 100
 # The $1 buys LIFETIME access to the free-level membership (un-blur), not a ~90-day
 # preview (#497). ~100 years = effectively forever; still tunable via env if ever needed.
 BIOFIELD_UNLOCK_DAYS = int(os.environ.get("BIOFIELD_UNLOCK_DAYS", "36500") or "36500")
+# Gated auto-confirm of AI biofield-analysis drafts: when a fresh ai_draft passes a
+# quality gate + red-flag screen, it's sampled at SAMPLE_PCT and auto-confirmed
+# (dashboard/analysis_autoconfirm.py) instead of waiting on operator review.
+# Default OFF — when off, maybe_auto_confirm always returns "disabled", no behavior
+# change vs. before this flag existed.
+ANALYSIS_AUTOCONFIRM_ENABLED = os.environ.get(
+    "ANALYSIS_AUTOCONFIRM_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+ANALYSIS_AUTOCONFIRM_SAMPLE_PCT = os.environ.get("ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "10")
+_AUTOCONFIRM_RED_FLAGS = {"cancer", "tumor", "pregnan", "suicid", "chest pain",
+                          "stroke", "seizure"}
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -22261,6 +22271,36 @@ def api_console_biofield_publish():
             print(f"[biofield-publish] send failed: {e!r}", flush=True)
     return jsonify({"ok": True, "token": token, "url": url, "portal_id": pid,
                     "updated": token is None, "emailed": emailed, "email_status": email_status})
+
+
+def _autoconfirm_confirm_fn(cx, email, scan_date, content):
+    """Prod confirm action for a gated auto-confirm. Silent — no client email; the
+    existing scan-notify drip handles notification separately."""
+    from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
+    _cp.set_biofield_status(cx, email, "confirmed")
+    if scan_date:
+        _pbr.upsert_report(cx, email, scan_date, "", content, "confirmed")
+
+
+def _run_autoconfirm(cx, email, scan_date, content):
+    """Gated auto-confirm for a freshly-written ai_draft. Never raises."""
+    try:
+        from dashboard import analysis_autoconfirm as _ac
+        from dashboard.biofield_portal_publish import load_catalog, resolve_remedy_slug
+        _ac.init_autoconfirm_log(cx)
+        catalog = load_catalog()
+        return _ac.maybe_auto_confirm(
+            cx, email, scan_date, content,
+            enabled=ANALYSIS_AUTOCONFIRM_ENABLED,
+            sample_pct=ANALYSIS_AUTOCONFIRM_SAMPLE_PCT,
+            resolve_slug=lambda n: resolve_remedy_slug(n, catalog),
+            red_flag_terms=_AUTOCONFIRM_RED_FLAGS,
+            confirm_fn=_autoconfirm_confirm_fn,
+            now=_now_iso() if "_now_iso" in globals() else "")
+    except Exception as e:
+        print(f"[autoconfirm] skipped {email}/{scan_date}: {e!r}", flush=True)
+        return "error"
 
 
 @app.route("/api/console/portal/set-current", methods=["POST"])
