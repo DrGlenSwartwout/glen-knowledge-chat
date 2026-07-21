@@ -156,3 +156,64 @@ def test_pg_cursor_is_iterable(monkeypatch):
     assert rows[0][0] == 1 and rows[0]["v"] == "a"
     assert [r[0] for r in cx.execute("SELECT id FROM iter_t ORDER BY id")] == [1, 2]
     cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_executescript_multi_statement(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS es_a"); cx.execute("DROP TABLE IF EXISTS es_b")
+    cx.commit()
+    # A ';'-separated DDL script (as sqlite3.executescript takes) with an
+    # AUTOINCREMENT idiom and a DEFAULT to prove per-statement translation.
+    cx.executescript("""
+        CREATE TABLE es_a (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT DEFAULT '');
+        CREATE TABLE es_b (id BIGINT PRIMARY KEY);
+        CREATE INDEX IF NOT EXISTS idx_es_b ON es_b(id);
+    """)
+    cx.commit()
+    for t in ("es_a", "es_b"):
+        assert cx.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema=current_schema() AND table_name=?", (t,)).fetchone() is not None
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_rowcount_and_executemany(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS rc_t")
+    cx.execute("CREATE TABLE rc_t (id BIGINT PRIMARY KEY, v TEXT)")
+    cx.executemany("INSERT INTO rc_t (id, v) VALUES (?, ?)", [(1, "a"), (2, "b"), (3, "c")])
+    cx.commit()
+    cur = cx.execute("UPDATE rc_t SET v='x' WHERE id<=?", (2,))
+    assert cur.rowcount == 2
+    assert cx.execute("SELECT COUNT(*) FROM rc_t").fetchone()[0] == 3
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_add_column_idempotent_and_missing_table_noop(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS ac_t")
+    cx.execute("CREATE TABLE ac_t (id BIGINT)")
+    cx.commit()
+    # 1) ADD COLUMN twice -> IF NOT EXISTS makes the 2nd a no-op (no DuplicateColumn)
+    cx.execute("ALTER TABLE ac_t ADD COLUMN extra TEXT")
+    cx.execute("ALTER TABLE ac_t ADD COLUMN extra TEXT")
+    cx.commit()
+    # 2) ADD COLUMN on a table that doesn't exist -> IF EXISTS makes it a silent
+    #    no-op (mirrors SQLite's swallowed 'no such table' in the migration try-blocks)
+    cx.execute("ALTER TABLE ac_missing_table ADD COLUMN whatever TEXT")
+    cx.commit()
+    assert db.column_exists(cx, "ac_t", "extra") is True
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_lastrowid_raises_clear_error(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cur = cx.execute("SELECT 1")
+    with pytest.raises(AttributeError, match="RETURNING"):
+        _ = cur.lastrowid
+    cx.close()

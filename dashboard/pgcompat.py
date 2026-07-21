@@ -25,6 +25,25 @@ _RE_RETURNING_WORD = re.compile(r"(?i)\bRETURNING\b")
 #    matches only the standalone foreign_keys PRAGMA -- NOT `PRAGMA table_info(...)`
 #    or any other PRAGMA, which must keep passing through unchanged.
 _RE_PRAGMA_FOREIGN_KEYS = re.compile(r"(?i)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+\s*;?\s*$")
+# 5) `ALTER TABLE <t> ADD COLUMN <col> ...`
+#    -> `ALTER TABLE IF EXISTS <t> ADD COLUMN IF NOT EXISTS <col> ...`.
+#    The app's additive migrations are written to be idempotent: they run the ALTER
+#    unconditionally inside a `try/except sqlite3.OperationalError: pass`, relying on
+#    SQLite raising that error (caught + ignored) in BOTH tolerated cases -- the column
+#    already exists, AND the table doesn't exist yet (the migration runs before its
+#    CREATE TABLE in the init order; on a fresh DB the column is instead supplied by the
+#    CREATE TABLE, so the migration is a legacy-upgrade no-op). Postgres raises
+#    `DuplicateColumn` / `UndefinedTable` respectively -- different classes that those
+#    handlers don't catch, so a fresh import/restart aborts. Postgres supports both
+#    `ALTER TABLE IF EXISTS` (skip when the table is absent) and `ADD COLUMN IF NOT
+#    EXISTS` (skip when the column is present); together they make the ALTER a silent
+#    no-op in exactly the two tolerated cases, so no `_migrate_*` handler needs to
+#    change. Verified across the tree: no migration relies on the ALTER *raising* to
+#    skip a following non-idempotent write in the same try block. Captures an existing
+#    `IF EXISTS` / `IF NOT EXISTS` so re-translation is idempotent.
+_RE_ADD_COLUMN = re.compile(
+    r"(?i)\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\S+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+)
 
 
 def _scan_sql_spans(sql: str):
@@ -111,6 +130,7 @@ def _translate_ddl_idioms(sql: str) -> str:
         return "SELECT 1"
     sql = _RE_AUTOINCREMENT.sub("BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", sql)
     sql = _RE_DATETIME_NOW.sub("now()::text", sql)
+    sql = _RE_ADD_COLUMN.sub(r"ALTER TABLE IF EXISTS \1 ADD COLUMN IF NOT EXISTS ", sql)
     sql = _translate_insert_or_ignore(sql)
     return sql
 
@@ -159,6 +179,30 @@ def _translate_insert_or_ignore(sql: str) -> str:
         if trailing:
             sql = sql + " " + trailing
     return sql
+
+def split_statements(script: str):
+    """Split a multi-statement SQL script at top-level ';' (semicolons in a
+    'code' span -- i.e. NOT inside a single-quoted string literal or a comment),
+    returning the non-empty, stripped statements. Backs `_PgConn.executescript`,
+    whose SQLite counterpart runs a whole `;`-separated DDL script in one call;
+    Postgres' extended protocol executes one command per `execute`, so we split
+    and run each statement (through the normal translate path). Reuses the same
+    quote/comment scanner as the placeholder pass, so a ';' inside a string
+    literal (or a `-- ;` / `/* ; */` comment) does not split a statement."""
+    stmts = []
+    prev = 0
+    for kind, start, end in _scan_sql_spans(script):
+        if kind != "code":
+            continue
+        i = start
+        while i < end:
+            if script[i] == ";":
+                stmts.append(script[prev:i])
+                prev = i + 1
+            i += 1
+    stmts.append(script[prev:])
+    return [s.strip() for s in stmts if s.strip()]
+
 
 def translate_sql(sql: str) -> str:
     """SQLite '?' params -> psycopg '%s'. Leaves '?' inside single-quoted string

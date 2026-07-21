@@ -16258,7 +16258,7 @@ def api_console_masterclass_create():
         try:
             cx.execute(
                 "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
-                "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+                'calendar_name,summary,start,"end",location,owner,status,cal_alert) '
                 "VALUES (?, 'delegated', ?, 'MasterClass', ?, ?, ?, 'Zoom', 'glen', 'visible', 0)",
                 (now, f"masterclass-{eid}", f"MasterClass: {topic}", start_ts, end_ts))
         except Exception:
@@ -29374,7 +29374,7 @@ def _init_calendar_table():
                 calendar_name   TEXT DEFAULT '',
                 summary         TEXT NOT NULL,
                 start           TEXT NOT NULL,
-                end             TEXT DEFAULT '',
+                "end"           TEXT DEFAULT '',
                 location        TEXT DEFAULT '',
                 owner           TEXT DEFAULT 'glen',
                 status          TEXT DEFAULT 'visible',
@@ -29567,7 +29567,7 @@ def get_calendar():
 
         rows = cx.execute(f"""
             SELECT id, google_cal_id, google_event_id, calendar_name,
-                   summary, start, end, location, owner, status, cal_alert
+                   summary, start, "end", location, owner, status, cal_alert
             FROM calendar_events
             WHERE owner IN ({placeholders}) AND status=?
               {date_clause.format(col='start')}
@@ -29625,14 +29625,14 @@ def post_calendar():
                 cx.execute("""
                     INSERT INTO calendar_events
                       (pushed_at, google_cal_id, google_event_id, calendar_name,
-                       summary, start, end, location, owner)
+                       summary, start, "end", location, owner)
                     VALUES (?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(google_cal_id, google_event_id) DO UPDATE SET
                       pushed_at=excluded.pushed_at,
                       calendar_name=excluded.calendar_name,
                       summary=excluded.summary,
                       start=excluded.start,
-                      end=excluded.end,
+                      "end"=excluded."end",
                       location=excluded.location,
                       owner=excluded.owner
                     WHERE status='visible'
@@ -29700,7 +29700,7 @@ def patch_calendar(event_id):
             return jsonify({"error": "Invalid delegate target"}), 400
         with _db_lock, db.connect(LOG_DB) as cx:
             row = cx.execute(
-                "SELECT summary, start, end, location, owner FROM calendar_events WHERE id=?",
+                'SELECT summary, start, "end", location, owner FROM calendar_events WHERE id=?',
                 (event_id,)).fetchone()
             if not row:
                 return jsonify({"error": "not found"}), 404
@@ -29708,11 +29708,11 @@ def patch_calendar(event_id):
             cx.execute("""
                 INSERT INTO calendar_events
                   (pushed_at, google_cal_id, google_event_id, calendar_name,
-                   summary, start, end, location, owner, status, cal_alert)
+                   summary, start, "end", location, owner, status, cal_alert)
                 VALUES (?, 'delegated', ?, ?, ?, ?, ?, ?, ?, 'visible', 0)
                 ON CONFLICT(google_cal_id, google_event_id) DO UPDATE SET
                   status='visible', summary=excluded.summary, start=excluded.start,
-                  end=excluded.end, location=excluded.location,
+                  "end"=excluded."end", location=excluded.location,
                   calendar_name=excluded.calendar_name, pushed_at=excluded.pushed_at
             """, (datetime.now(timezone.utc).isoformat(), f"deleg-{event_id}-{to}",
                   f"Delegated by {(from_owner or 'glen').title()}",

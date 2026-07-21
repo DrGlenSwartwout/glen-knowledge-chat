@@ -1,4 +1,25 @@
-from dashboard.pgcompat import translate_sql, HybridRow
+from dashboard.pgcompat import translate_sql, HybridRow, split_statements
+
+
+def test_split_statements_basic():
+    assert split_statements("CREATE TABLE a (x); CREATE TABLE b (y);") == [
+        "CREATE TABLE a (x)", "CREATE TABLE b (y)"]
+
+def test_split_statements_trailing_and_blank_dropped():
+    assert split_statements("SELECT 1;  ;\n") == ["SELECT 1"]
+
+def test_split_statements_semicolon_in_string_literal_not_split():
+    assert split_statements("INSERT INTO t VALUES ('a;b'); SELECT 2;") == [
+        "INSERT INTO t VALUES ('a;b')", "SELECT 2"]
+
+def test_split_statements_semicolon_in_comment_not_split():
+    script = "CREATE TABLE a (x); -- drop; me\nCREATE TABLE b (y);"
+    assert split_statements(script) == [
+        "CREATE TABLE a (x)", "-- drop; me\nCREATE TABLE b (y)"]
+
+def test_split_statements_no_trailing_semicolon():
+    assert split_statements("SELECT 1") == ["SELECT 1"]
+
 
 def test_basic_placeholder():
     assert translate_sql("SELECT * FROM t WHERE id=?") == "SELECT * FROM t WHERE id=%s"
@@ -229,4 +250,52 @@ def test_pragma_table_info_unchanged():
     # Only PRAGMA foreign_keys is no-op'd -- PRAGMA table_info must pass through
     # untouched (column_exists handles that one via a real backend-aware query).
     sql = "PRAGMA table_info(x)"
+    assert translate_sql(sql) == sql
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v4: ALTER TABLE ADD COLUMN ->
+#   ALTER TABLE IF EXISTS <t> ADD COLUMN IF NOT EXISTS <col>
+# Makes the app's idempotent additive migrations a silent no-op on Postgres in
+# BOTH tolerated cases that SQLite's sqlite3.OperationalError handlers swallow:
+# the column already exists (DuplicateColumn) and the table doesn't exist yet
+# (UndefinedTable -- the migration runs before its CREATE TABLE in the init order).
+# ---------------------------------------------------------------------------
+
+def test_add_column_gets_both_guards():
+    sql = "ALTER TABLE auth_tokens ADD COLUMN extra TEXT"
+    assert translate_sql(sql) == (
+        "ALTER TABLE IF EXISTS auth_tokens ADD COLUMN IF NOT EXISTS extra TEXT")
+
+def test_add_column_lowercase_and_whitespace_normalized():
+    sql = "alter table  orders   add column   portal_published INTEGER NOT NULL DEFAULT 0"
+    expected = (
+        "ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS "
+        "portal_published INTEGER NOT NULL DEFAULT 0")
+    assert translate_sql(sql) == expected
+
+def test_add_column_idempotent_when_already_guarded():
+    # Already fully guarded -> re-translation is a no-op.
+    sql = "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS c TEXT"
+    assert translate_sql(sql) == sql
+
+def test_add_column_idempotent_when_translated_twice():
+    once = translate_sql("ALTER TABLE t ADD COLUMN c TEXT")
+    assert translate_sql(once) == once
+
+def test_add_column_partially_guarded_is_normalized():
+    # Only one of the two guards present -> filled in to the full form, once.
+    sql = "ALTER TABLE t ADD COLUMN IF NOT EXISTS c TEXT"
+    assert translate_sql(sql) == "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS c TEXT"
+
+def test_add_column_with_default_datetime_now_both_translated():
+    # The DDL passes compose: datetime('now') still becomes now()::text.
+    sql = "ALTER TABLE t ADD COLUMN created_at TEXT DEFAULT (datetime('now'))"
+    out = translate_sql(sql)
+    assert "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS created_at" in out
+    assert "now()::text" in out
+
+def test_plain_alter_without_add_column_unaffected():
+    # Not an ADD COLUMN -> untouched (only '?' pass would apply, none here).
+    sql = "ALTER TABLE t RENAME TO t2"
     assert translate_sql(sql) == sql

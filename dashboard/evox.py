@@ -154,7 +154,7 @@ def booked_starts(cx, practitioner: str = "rae") -> set:
 
 def rae_busy_intervals(cx, lo_date: str, hi_date: str, practitioner: str = "rae"):
     rows = cx.execute(
-        "SELECT start, end FROM calendar_events WHERE owner=? AND status='visible' "
+        "SELECT start, \"end\" FROM calendar_events WHERE owner=? AND status='visible' "
         "AND substr(start,1,10) BETWEEN ? AND ?", (practitioner, lo_date, hi_date)).fetchall()
     return [(r[0], r[1] or "") for r in rows]
 
@@ -187,7 +187,7 @@ def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
              "onboarding": "Welcome Call"}.get(session_type, "EVOX")
     cx.execute(
         "INSERT INTO calendar_events (pushed_at,google_cal_id,google_event_id,"
-        "calendar_name,summary,start,end,location,owner,status,cal_alert) "
+        'calendar_name,summary,start,"end",location,owner,status,cal_alert) '
         "VALUES (?, 'delegated', ?, ?, ?, ?, ?, ?, ?, 'visible', 0)",
         (now, ev_id, f"{label} booking", f"{label} — {email}", start_ts, end_ts,
          location, practitioner))
