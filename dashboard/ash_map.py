@@ -168,12 +168,12 @@ def _upsert(cx, email: str, summary: str, dimensions: dict) -> None:
         "SELECT created_at FROM ash_ally_memory WHERE email = ?", (em,)
     ).fetchone()
     created_at = existing[0] if existing else now
-    cx.execute(
-        "INSERT OR REPLACE INTO ash_ally_memory "
-        "(email, summary, dimensions_json, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?)",
+    from dashboard import dbwrite
+    dbwrite.insert_or_replace(
+        cx, "ash_ally_memory",
+        ("email", "summary", "dimensions_json", "created_at", "updated_at"),
         (em, summary or "", json.dumps(dimensions or {}), created_at, now),
-    )
+        conflict_cols=("email",))
     cx.commit()
 
 

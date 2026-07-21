@@ -88,14 +88,19 @@ def init_dimension_tables(cx):
 
 
 def seed_dimensions(cx):
+    from dashboard import dbwrite
     init_dimension_tables(cx)
     for seq, (key, name, ordered, applies, mc, vals) in enumerate(DIMENSIONS):
-        cx.execute("INSERT OR REPLACE INTO biofield_dimensions"
-                   "(key,name,ordered,applies_to,has_match_check,sort_seq) VALUES(?,?,?,?,?,?)",
-                   (key, name, ordered, json.dumps(applies), mc, seq))
+        dbwrite.insert_or_replace(
+            cx, "biofield_dimensions",
+            ("key", "name", "ordered", "applies_to", "has_match_check", "sort_seq"),
+            (key, name, ordered, json.dumps(applies), mc, seq),
+            conflict_cols=("key",))
         for rank, value, code in vals:
-            cx.execute("INSERT OR REPLACE INTO biofield_dimension_values"
-                       "(dim_key,rank,value,code) VALUES(?,?,?,?)", (key, rank, value, code))
+            dbwrite.insert_or_replace(
+                cx, "biofield_dimension_values",
+                ("dim_key", "rank", "value", "code"), (key, rank, value, code),
+                conflict_cols=("dim_key", "rank"))
     cx.commit()
 
 
@@ -122,9 +127,12 @@ def tag(cx, target_type, target_id, dim_key, rank):
         cx.execute("DELETE FROM biofield_dimension_tags WHERE target_type=? AND target_id=? AND dim_key=?",
                    (target_type, str(target_id), dim_key))
     else:
-        cx.execute("INSERT OR REPLACE INTO biofield_dimension_tags"
-                   "(target_type,target_id,dim_key,value_rank) VALUES(?,?,?,?)",
-                   (target_type, str(target_id), dim_key, int(rank)))
+        from dashboard import dbwrite
+        dbwrite.insert_or_replace(
+            cx, "biofield_dimension_tags",
+            ("target_type", "target_id", "dim_key", "value_rank"),
+            (target_type, str(target_id), dim_key, int(rank)),
+            conflict_cols=("target_type", "target_id", "dim_key"))
     cx.commit()
 
 

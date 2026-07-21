@@ -24,13 +24,16 @@ def sync_from_seed(cx, seed):
     cx.execute("DELETE FROM prl_products")
     cx.execute("DELETE FROM prl_focus_area_products")
     cx.execute("DELETE FROM prl_focus_area_items")
+    from dashboard import dbwrite
     for p in seed.get("products", []):
-        cx.execute("""INSERT OR REPLACE INTO prl_products
-            (name, external_id, url, focus_tags, product_type, best_ff, relation, ff_alts)
-            VALUES (?,?,?,?,?,?,?,?)""",
+        dbwrite.insert_or_replace(
+            cx, "prl_products",
+            ("name", "external_id", "url", "focus_tags", "product_type", "best_ff",
+             "relation", "ff_alts"),
             (p["name"], p.get("external_id"), p.get("url"),
              json.dumps(p.get("focus_tags") or []), p.get("product_type"),
-             p.get("best_ff"), p.get("relation"), json.dumps(p.get("ff_alts") or [])))
+             p.get("best_ff"), p.get("relation"), json.dumps(p.get("ff_alts") or [])),
+            conflict_cols=("name",))
     for fp in seed.get("focus_area_products", []):
         cx.execute("""INSERT INTO prl_focus_area_products
             (focus_area_id, focus_area_name, prl_product_name, rank) VALUES (?,?,?,?)""",

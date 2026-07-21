@@ -159,12 +159,19 @@ def _json_get(extras, key):
 
 
 def seed_baselines(cx) -> int:
+    from dashboard import db
     cx.row_factory = sqlite3.Row
-    rows = cx.execute("""
-        SELECT id, json_extract(extras,'$.inventory_starting') AS start,
+    # json_extract is SQLite-only; Postgres reads the JSON via ->> (same pattern as
+    # ingredient_catalog's extras backfill). Real-data safety for non-JSON/NULL extras
+    # is tracked as pre-cutover checklist item 7 (shared with that backfill).
+    starting = ("extras::jsonb ->> 'inventory_starting'"
+                if db.backend_of(cx) == "postgres"
+                else "json_extract(extras,'$.inventory_starting')")
+    rows = cx.execute(f"""
+        SELECT id, {starting} AS start,
                    par_level_unit AS unit
         FROM ingredients
-        WHERE json_extract(extras,'$.inventory_starting') IS NOT NULL
+        WHERE {starting} IS NOT NULL
     """).fetchall()
     n = 0
     for r in rows:

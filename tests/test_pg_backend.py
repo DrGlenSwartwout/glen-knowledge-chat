@@ -156,3 +156,137 @@ def test_pg_cursor_is_iterable(monkeypatch):
     assert rows[0][0] == 1 and rows[0]["v"] == "a"
     assert [r[0] for r in cx.execute("SELECT id FROM iter_t ORDER BY id")] == [1, 2]
     cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_executescript_multi_statement(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS es_a"); cx.execute("DROP TABLE IF EXISTS es_b")
+    cx.commit()
+    # A ';'-separated DDL script (as sqlite3.executescript takes) with an
+    # AUTOINCREMENT idiom and a DEFAULT to prove per-statement translation.
+    cx.executescript("""
+        CREATE TABLE es_a (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT DEFAULT '');
+        CREATE TABLE es_b (id BIGINT PRIMARY KEY);
+        CREATE INDEX IF NOT EXISTS idx_es_b ON es_b(id);
+    """)
+    cx.commit()
+    for t in ("es_a", "es_b"):
+        assert cx.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema=current_schema() AND table_name=?", (t,)).fetchone() is not None
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_rowcount_and_executemany(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS rc_t")
+    cx.execute("CREATE TABLE rc_t (id BIGINT PRIMARY KEY, v TEXT)")
+    cx.executemany("INSERT INTO rc_t (id, v) VALUES (?, ?)", [(1, "a"), (2, "b"), (3, "c")])
+    cx.commit()
+    cur = cx.execute("UPDATE rc_t SET v='x' WHERE id<=?", (2,))
+    assert cur.rowcount == 2
+    assert cx.execute("SELECT COUNT(*) FROM rc_t").fetchone()[0] == 3
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_add_column_idempotent_and_missing_table_noop(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS ac_t")
+    cx.execute("CREATE TABLE ac_t (id BIGINT)")
+    cx.commit()
+    # 1) ADD COLUMN twice -> IF NOT EXISTS makes the 2nd a no-op (no DuplicateColumn)
+    cx.execute("ALTER TABLE ac_t ADD COLUMN extra TEXT")
+    cx.execute("ALTER TABLE ac_t ADD COLUMN extra TEXT")
+    cx.commit()
+    # 2) ADD COLUMN on a table that doesn't exist -> IF EXISTS makes it a silent
+    #    no-op (mirrors SQLite's swallowed 'no such table' in the migration try-blocks)
+    cx.execute("ALTER TABLE ac_missing_table ADD COLUMN whatever TEXT")
+    cx.commit()
+    assert db.column_exists(cx, "ac_t", "extra") is True
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_lastrowid_raises_clear_error(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cur = cx.execute("SELECT 1")
+    with pytest.raises(AttributeError, match="RETURNING"):
+        _ = cur.lastrowid
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_seed_baselines_json_extract(monkeypatch):
+    # Exercises inventory.seed_baselines on Postgres: json_extract -> extras::jsonb ->>,
+    # INSERT OR IGNORE -> ON CONFLICT DO NOTHING, and cur.rowcount, all composed.
+    import json
+    from dashboard import inventory as inv
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    for t in ("inventory_txns", "ingredients"):
+        cx.execute(f"DROP TABLE IF EXISTS {t}")
+    cx.execute("CREATE TABLE ingredients (id BIGINT PRIMARY KEY, fmp_id TEXT, name TEXT, "
+               "extras TEXT, par_level REAL, par_level_unit TEXT)")
+    inv.init_inventory_schema(cx)
+    cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras,par_level_unit) VALUES (?,?,?,?,?)",
+               (1, "f1", "Mag", json.dumps({"inventory_starting": "1.0"}), "kg"))
+    cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras) VALUES (?,?,?,?)",
+               (2, "f2", "Lipoic", json.dumps({})))  # no baseline
+    cx.commit()
+    n1 = inv.seed_baselines(cx); cx.commit()
+    assert n1 == 1                       # only ingredient 1 has inventory_starting
+    n2 = inv.seed_baselines(cx); cx.commit()
+    assert n2 == 0                       # idempotent (ON CONFLICT DO NOTHING)
+    got = cx.execute("SELECT qty FROM inventory_txns WHERE ingredient_id=?", (1,)).fetchone()
+    assert float(got[0]) == 1.0
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_membership_expiry_window_timestamptz(monkeypatch):
+    # Ports app.py cron_membership_renewals: datetime(expires_at) window -> ::timestamptz.
+    from datetime import datetime, timezone, timedelta
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS memberships")
+    cx.execute("CREATE TABLE memberships (id TEXT PRIMARY KEY, email TEXT, expires_at TEXT, "
+               "last_reminder_at TEXT, source TEXT)")
+    now = datetime.now(timezone.utc)
+    # app writes naive datetime.utcnow().isoformat()+"Z" (no offset, single Z)
+    def iso(d): return d.replace(tzinfo=None).isoformat() + "Z"
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("a","a@x.com", iso(now+timedelta(days=1)), None, "s"))   # in window
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("b","b@x.com", iso(now-timedelta(days=1)), None, "s"))   # expired (excluded)
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("c","c@x.com", iso(now+timedelta(days=10)), None, "s"))  # too far (excluded)
+    cx.commit()
+    rows = cx.execute(
+        "SELECT id FROM memberships WHERE expires_at::timestamptz > now() "
+        "AND expires_at::timestamptz < now() + interval '3 days' LIMIT 500").fetchall()
+    assert [r[0] for r in rows] == ["a"]
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_pif_pending_invites_window(monkeypatch):
+    # Ports dashboard/pif_gift_notes.pending_invites: datetime(created_at) window on PG.
+    from datetime import datetime, timezone, timedelta
+    from dashboard import referrals, pif_gift_notes
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS referral_redemptions")
+    referrals.init_tables(cx)
+    pif_gift_notes.ensure_columns(cx)
+    now = datetime.now(timezone.utc)
+    def ins(email, age_days):
+        cx.execute("INSERT INTO referral_redemptions (referee_email, code, owner_email, order_ref, created_at, kind) "
+                   "VALUES (?,?,?,?,?,?)",
+                   (email, "C1", "own@x.com", "o1", (now - timedelta(days=age_days)).isoformat(), "referral"))
+    ins("fresh@x.com", 2)     # too recent (< 7d) -> excluded
+    ins("due@x.com", 20)      # 7d..60d window -> included
+    ins("old@x.com", 90)      # older than max_age 60d -> excluded
+    cx.commit()
+    got = pif_gift_notes.pending_invites(cx, days=7, max_age_days=60, limit=50)
+    assert [r["referee_email"] for r in got] == ["due@x.com"]
+    cx.close()

@@ -25,6 +25,53 @@ _RE_RETURNING_WORD = re.compile(r"(?i)\bRETURNING\b")
 #    matches only the standalone foreign_keys PRAGMA -- NOT `PRAGMA table_info(...)`
 #    or any other PRAGMA, which must keep passing through unchanged.
 _RE_PRAGMA_FOREIGN_KEYS = re.compile(r"(?i)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+\s*;?\s*$")
+# 5) `ALTER TABLE <t> ADD COLUMN <col> ...`
+#    -> `ALTER TABLE IF EXISTS <t> ADD COLUMN IF NOT EXISTS <col> ...`.
+#    The app's additive migrations are written to be idempotent: they run the ALTER
+#    unconditionally inside a `try/except sqlite3.OperationalError: pass`, relying on
+#    SQLite raising that error (caught + ignored) in BOTH tolerated cases -- the column
+#    already exists, AND the table doesn't exist yet (the migration runs before its
+#    CREATE TABLE in the init order; on a fresh DB the column is instead supplied by the
+#    CREATE TABLE, so the migration is a legacy-upgrade no-op). Postgres raises
+#    `DuplicateColumn` / `UndefinedTable` respectively -- different classes that those
+#    handlers don't catch, so a fresh import/restart aborts. Postgres supports both
+#    `ALTER TABLE IF EXISTS` (skip when the table is absent) and `ADD COLUMN IF NOT
+#    EXISTS` (skip when the column is present); together they make the ALTER a silent
+#    no-op in exactly the two tolerated cases, so no `_migrate_*` handler needs to
+#    change. Verified across the tree: no migration relies on the ALTER *raising* to
+#    skip a following non-idempotent write in the same try block. Captures an existing
+#    `IF EXISTS` / `IF NOT EXISTS` so re-translation is idempotent.
+_RE_ADD_COLUMN = re.compile(
+    r"(?i)\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\S+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+)
+# 6) `strftime('<fmt>','now')` -> Postgres `to_char(now() AT TIME ZONE 'UTC', '<fmt>')`.
+#    Every strftime-in-SQL site is a current-UTC-timestamp expression (in a DDL DEFAULT
+#    or a VALUES clause), in exactly two ISO-8601 formats. SQLite's `%f` = "SS.SSS"
+#    (seconds with 3-digit millis) maps to Postgres `SS.MS`; the literal `T`/`Z` become
+#    quoted text in to_char. The output text is byte-for-byte what SQLite produced, so
+#    string comparisons against the stored timestamp columns stay correct. These DEFAULT
+#    clauses fail at CREATE TABLE on Postgres (no strftime fn) -- their tables were
+#    silently not-created before this translation. Runs before the '%'->'%%' escape pass,
+#    and the replacement contains no '%'/'?', so it composes cleanly and is idempotent
+#    (no strftime remains after substitution).
+_RE_STRFTIME_MS = re.compile(
+    r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%fZ'\s*,\s*'now'\s*\)")
+_RE_STRFTIME_S = re.compile(
+    r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)")
+# 7) Multi-arg `datetime('now', <mod>)` -> Postgres current-UTC + interval, formatted
+#    to the SAME 'YYYY-MM-DD HH24:MI:SS' text SQLite's datetime() emits. <mod> is either
+#    a bound `?` (value like '-7 days') or a quoted literal ('-24 hour'); SQLite interval
+#    modifiers ('-N days', '-N hour', '+N days') are valid Postgres interval literals, so
+#    `(<mod>)::interval` casts either form. Reproducing SQLite's exact space-format output
+#    means the string comparison `col <op> datetime('now', mod)` behaves BYTE-IDENTICALLY
+#    on both backends regardless of how `col` is stored (these are coarse date-window
+#    filters where the date prefix dominates -- see app.py _recent_active_emails). The bare
+#    zero-arg `datetime('now')` is handled separately (rule 2) and is NOT matched here (this
+#    requires a second argument). Runs before the '%'->'%%' / '?'->'%s' passes; the emitted
+#    `?` (when <mod> is a placeholder) is converted by the later placeholder pass. Idempotent
+#    (no `datetime('now',` remains after substitution).
+_RE_DATETIME_NOW_MOD = re.compile(
+    r"(?i)datetime\(\s*'now'\s*,\s*('[^']*'|\?)\s*\)")
 
 
 def _scan_sql_spans(sql: str):
@@ -111,6 +158,13 @@ def _translate_ddl_idioms(sql: str) -> str:
         return "SELECT 1"
     sql = _RE_AUTOINCREMENT.sub("BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", sql)
     sql = _RE_DATETIME_NOW.sub("now()::text", sql)
+    sql = _RE_ADD_COLUMN.sub(r"ALTER TABLE IF EXISTS \1 ADD COLUMN IF NOT EXISTS ", sql)
+    sql = _RE_STRFTIME_MS.sub(
+        "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')", sql)
+    sql = _RE_STRFTIME_S.sub(
+        "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')", sql)
+    sql = _RE_DATETIME_NOW_MOD.sub(
+        r"to_char((now() AT TIME ZONE 'UTC') + (\1)::interval, 'YYYY-MM-DD HH24:MI:SS')", sql)
     sql = _translate_insert_or_ignore(sql)
     return sql
 
@@ -159,6 +213,30 @@ def _translate_insert_or_ignore(sql: str) -> str:
         if trailing:
             sql = sql + " " + trailing
     return sql
+
+def split_statements(script: str):
+    """Split a multi-statement SQL script at top-level ';' (semicolons in a
+    'code' span -- i.e. NOT inside a single-quoted string literal or a comment),
+    returning the non-empty, stripped statements. Backs `_PgConn.executescript`,
+    whose SQLite counterpart runs a whole `;`-separated DDL script in one call;
+    Postgres' extended protocol executes one command per `execute`, so we split
+    and run each statement (through the normal translate path). Reuses the same
+    quote/comment scanner as the placeholder pass, so a ';' inside a string
+    literal (or a `-- ;` / `/* ; */` comment) does not split a statement."""
+    stmts = []
+    prev = 0
+    for kind, start, end in _scan_sql_spans(script):
+        if kind != "code":
+            continue
+        i = start
+        while i < end:
+            if script[i] == ";":
+                stmts.append(script[prev:i])
+                prev = i + 1
+            i += 1
+    stmts.append(script[prev:])
+    return [s.strip() for s in stmts if s.strip()]
+
 
 def translate_sql(sql: str) -> str:
     """SQLite '?' params -> psycopg '%s'. Leaves '?' inside single-quoted string

@@ -39,6 +39,19 @@ class _PgCursor:
     def execute(self, sql, params=()):
         self._cur.execute(translate_sql(sql), tuple(params))
         return self
+    @property
+    def rowcount(self):
+        # sqlite3.Cursor.rowcount parity: rows affected by the last DML.
+        return self._cur.rowcount
+    @property
+    def lastrowid(self):
+        # psycopg has no lastrowid; an INSERT that needs its new id must use
+        # `INSERT ... RETURNING id` on Postgres. Fail loud (per-site fix during
+        # runtime porting) rather than silently returning None, which callers
+        # would mistake for a valid row id.
+        raise AttributeError(
+            "lastrowid is unavailable on the Postgres backend; "
+            "use 'INSERT ... RETURNING id' and read fetchone()[0]")
     def fetchone(self):
         row = self._cur.fetchone()
         if row is None:
@@ -67,6 +80,20 @@ class _PgConn:
     def execute(self, sql, params=()):
         cur = self._conn.cursor()
         return _PgCursor(cur).execute(sql, params)
+    def executescript(self, script):
+        # sqlite3.Connection.executescript runs a whole ';'-separated DDL script
+        # in one call; Postgres' extended protocol is one-command-per-execute, so
+        # split (quote/comment-aware) and run each statement through the normal
+        # translate path. Callers are all idempotent CREATE TABLE/INDEX init DDL.
+        from dashboard.pgcompat import split_statements
+        cur = self._conn.cursor()
+        for stmt in split_statements(script):
+            _PgCursor(cur).execute(stmt)
+        return self
+    def executemany(self, sql, seq_of_params):
+        cur = self._conn.cursor()
+        cur.executemany(translate_sql(sql), [tuple(p) for p in seq_of_params])
+        return _PgCursor(cur)
     def commit(self):
         self._conn.commit()
     def rollback(self):

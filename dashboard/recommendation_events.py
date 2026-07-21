@@ -96,8 +96,11 @@ def set_hidden(cx, email, product_key, hidden=True):
     if not e or not pk:
         return
     if hidden:
-        cx.execute("INSERT OR REPLACE INTO recommendation_hidden "
-                   "(client_email, product_key, hidden_at) VALUES (?,?,?)", (e, pk, _now()))
+        from dashboard import dbwrite
+        dbwrite.insert_or_replace(
+            cx, "recommendation_hidden",
+            ("client_email", "product_key", "hidden_at"), (e, pk, _now()),
+            conflict_cols=("client_email", "product_key"))
     else:
         cx.execute("DELETE FROM recommendation_hidden WHERE client_email=? AND product_key=?", (e, pk))
     cx.commit()

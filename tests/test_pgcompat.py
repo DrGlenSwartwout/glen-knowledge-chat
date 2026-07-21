@@ -1,4 +1,25 @@
-from dashboard.pgcompat import translate_sql, HybridRow
+from dashboard.pgcompat import translate_sql, HybridRow, split_statements
+
+
+def test_split_statements_basic():
+    assert split_statements("CREATE TABLE a (x); CREATE TABLE b (y);") == [
+        "CREATE TABLE a (x)", "CREATE TABLE b (y)"]
+
+def test_split_statements_trailing_and_blank_dropped():
+    assert split_statements("SELECT 1;  ;\n") == ["SELECT 1"]
+
+def test_split_statements_semicolon_in_string_literal_not_split():
+    assert split_statements("INSERT INTO t VALUES ('a;b'); SELECT 2;") == [
+        "INSERT INTO t VALUES ('a;b')", "SELECT 2"]
+
+def test_split_statements_semicolon_in_comment_not_split():
+    script = "CREATE TABLE a (x); -- drop; me\nCREATE TABLE b (y);"
+    assert split_statements(script) == [
+        "CREATE TABLE a (x)", "-- drop; me\nCREATE TABLE b (y)"]
+
+def test_split_statements_no_trailing_semicolon():
+    assert split_statements("SELECT 1") == ["SELECT 1"]
+
 
 def test_basic_placeholder():
     assert translate_sql("SELECT * FROM t WHERE id=?") == "SELECT * FROM t WHERE id=%s"
@@ -230,3 +251,109 @@ def test_pragma_table_info_unchanged():
     # untouched (column_exists handles that one via a real backend-aware query).
     sql = "PRAGMA table_info(x)"
     assert translate_sql(sql) == sql
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v4: ALTER TABLE ADD COLUMN ->
+#   ALTER TABLE IF EXISTS <t> ADD COLUMN IF NOT EXISTS <col>
+# Makes the app's idempotent additive migrations a silent no-op on Postgres in
+# BOTH tolerated cases that SQLite's sqlite3.OperationalError handlers swallow:
+# the column already exists (DuplicateColumn) and the table doesn't exist yet
+# (UndefinedTable -- the migration runs before its CREATE TABLE in the init order).
+# ---------------------------------------------------------------------------
+
+def test_add_column_gets_both_guards():
+    sql = "ALTER TABLE auth_tokens ADD COLUMN extra TEXT"
+    assert translate_sql(sql) == (
+        "ALTER TABLE IF EXISTS auth_tokens ADD COLUMN IF NOT EXISTS extra TEXT")
+
+def test_add_column_lowercase_and_whitespace_normalized():
+    sql = "alter table  orders   add column   portal_published INTEGER NOT NULL DEFAULT 0"
+    expected = (
+        "ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS "
+        "portal_published INTEGER NOT NULL DEFAULT 0")
+    assert translate_sql(sql) == expected
+
+def test_add_column_idempotent_when_already_guarded():
+    # Already fully guarded -> re-translation is a no-op.
+    sql = "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS c TEXT"
+    assert translate_sql(sql) == sql
+
+def test_add_column_idempotent_when_translated_twice():
+    once = translate_sql("ALTER TABLE t ADD COLUMN c TEXT")
+    assert translate_sql(once) == once
+
+def test_add_column_partially_guarded_is_normalized():
+    # Only one of the two guards present -> filled in to the full form, once.
+    sql = "ALTER TABLE t ADD COLUMN IF NOT EXISTS c TEXT"
+    assert translate_sql(sql) == "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS c TEXT"
+
+def test_add_column_with_default_datetime_now_both_translated():
+    # The DDL passes compose: datetime('now') still becomes now()::text.
+    sql = "ALTER TABLE t ADD COLUMN created_at TEXT DEFAULT (datetime('now'))"
+    out = translate_sql(sql)
+    assert "ALTER TABLE IF EXISTS t ADD COLUMN IF NOT EXISTS created_at" in out
+    assert "now()::text" in out
+
+def test_plain_alter_without_add_column_unaffected():
+    # Not an ADD COLUMN -> untouched (only '?' pass would apply, none here).
+    sql = "ALTER TABLE t RENAME TO t2"
+    assert translate_sql(sql) == sql
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v5: strftime('<iso>','now') -> to_char(now() AT TIME ZONE 'UTC', ...)
+# ---------------------------------------------------------------------------
+
+def test_strftime_millis_translated_in_default():
+    sql = "created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+    out = translate_sql(sql)
+    assert "strftime" not in out
+    assert "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')" in out
+
+def test_strftime_seconds_translated_in_values():
+    sql = "VALUES (?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+    out = translate_sql(sql)
+    assert "strftime" not in out
+    assert "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')" in out
+    assert "%s" in out  # the ? still becomes a placeholder
+
+def test_strftime_translation_idempotent():
+    once = translate_sql("x DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))")
+    assert translate_sql(once) == once
+
+def test_strftime_with_whitespace_variants():
+    sql = "strftime(  '%Y-%m-%dT%H:%M:%SZ' ,  'now' )"
+    assert "to_char" in translate_sql(sql) and "strftime" not in translate_sql(sql)
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v6: multi-arg datetime('now', <mod>) -> to_char(now()+interval)
+# ---------------------------------------------------------------------------
+
+def test_datetime_now_mod_placeholder():
+    out = translate_sql("WHERE ts > datetime('now', ?)")
+    assert "datetime('now'" not in out
+    assert "(%s)::interval" in out
+    assert "to_char((now() AT TIME ZONE 'UTC') + (%s)::interval, 'YYYY-MM-DD HH24:MI:SS')" in out
+
+def test_datetime_now_mod_literal():
+    out = translate_sql("WHERE created_at > datetime('now','-24 hour')")
+    assert "datetime('now'" not in out
+    assert "('-24 hour')::interval" in out
+
+def test_bare_datetime_now_still_uses_existing_rule():
+    # The zero-arg form is NOT matched by the multi-arg rule; existing rule -> now()::text.
+    assert translate_sql("SELECT datetime('now')") == "SELECT now()::text"
+
+def test_datetime_now_mod_idempotent():
+    # DDL-idiom idempotency is tested on the placeholder-free literal form: translate_sql's
+    # separate '?'->'%s' / '%'->'%%' passes are not themselves double-runnable (by design),
+    # so a '?' variant would fail on the escape pass, not on this rule.
+    once = translate_sql("x > datetime('now', '-7 days')")
+    assert translate_sql(once) == once
+
+def test_datetime_now_mod_and_bare_together():
+    out = translate_sql("WHERE datetime(x) > datetime('now') AND datetime(x) < datetime('now', '+3 days')")
+    assert "now()::text" in out                          # bare -> now()::text
+    assert "('+3 days')::interval" in out                # multi-arg -> interval
