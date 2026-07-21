@@ -41384,8 +41384,9 @@ def _invoice_line_view(l):
     if _lnote:
         out["note"] = _lnote
     # Per-line recommendation source (biofield/scan/self/…). Whitelist-carried like note.
-    if l.get("source"):
-        out["source"] = l.get("source")
+    _lsrc = (l.get("source") or "").strip()
+    if _lsrc:
+        out["source"] = _lsrc
     # A membership line isn't a catalog product — carry its marker through so the page
     # renders a labelled membership row instead of hunting for a product that isn't there.
     if l.get("kind") == "membership":
