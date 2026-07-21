@@ -73,6 +73,25 @@ def test_intake_wrong_host_is_404(client):
     assert r.status_code == 404
 
 
+def test_mentorship_host_learn_serves_course_catalog(client):
+    # Forward-delegation coverage: on the MENTORSHIP host, app.py's learn_index
+    # delegates to the blueprint's learn_home() rather than serving topic pages.
+    c, _ = client
+    r = c.get("/learn", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b"MentorshipU" in r.data  # course catalog h1, via app.py -> learn_home()
+
+
+def test_mentorship_host_course_home_serves_course(client):
+    # Forward-delegation coverage: on the MENTORSHIP host, app.py's
+    # learn_topic_page delegates to the blueprint's course_home() rather than
+    # serving a topic page.
+    c, _ = client
+    r = c.get("/learn/ash-intro", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b"ASH Intro" in r.data  # course title, via app.py -> course_home()
+
+
 def test_learn_reaches_topic_pages_on_illtowell(client, monkeypatch):
     # Regression for the /learn route collision: with topic pages enabled and a
     # NON-mentorship host, /learn and /learn/<slug> must reach app.py's topic

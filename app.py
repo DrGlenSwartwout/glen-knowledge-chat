@@ -75,7 +75,7 @@ except Exception as _je:
 try:
     from courses_blueprint import courses_bp
     app.register_blueprint(courses_bp)
-    print("[courses] blueprint registered: /learn, /api/mentorship/intake/start", flush=True)
+    print("[courses] blueprint registered: /learn/<course>/<module>/<lesson>, /api/mentorship/intake/start", flush=True)
 except Exception as _ce:
     print(f"[courses] blueprint NOT registered: {_ce}", flush=True)
 
