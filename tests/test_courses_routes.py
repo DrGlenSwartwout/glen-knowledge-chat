@@ -32,26 +32,26 @@ def test_member_lesson_blocked_for_anon(client):
 
 def test_member_lesson_open_with_token(client):
     c, appmod = client
-    from dashboard import client_portal
+    from dashboard import course_tokens
     with sqlite3.connect(appmod.LOG_DB) as cx:
-        client_portal.init_client_portal_table(cx)
-        token = client_portal.ensure_token(cx, "m@example.com", "M")
+        course_tokens.init_course_tokens_table(cx)
+        token = course_tokens.mint_course_token(cx, "m@example.com", "M")
     r = c.get(f"/learn/ash-intro/01-intro/02-welcome?token={token}")
     assert r.status_code == 200
     assert b"rumble.com/embed/v2efgh" in r.data
 
 
-def test_intake_start_returns_scoped_token(client):
+def test_intake_start_ok(client):
     c, _ = client
     r = c.post("/api/mentorship/intake/start",
                json={"email": "new@example.com", "name": "New", "tos_agreed": True})
     assert r.status_code == 200
-    body = r.get_json()
-    assert body["ok"] is True and body["token"]
+    assert r.get_json() == {"ok": True}
 
 
 def test_intake_honeypot_silently_ok(client):
     c, _ = client
     r = c.post("/api/mentorship/intake/start",
                json={"email": "bot@example.com", "tos_agreed": True, "company": "x"})
-    assert r.status_code == 200 and r.get_json()["token"] == ""
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True}

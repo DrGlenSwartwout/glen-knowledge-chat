@@ -9,8 +9,7 @@ from flask import Blueprint, request, jsonify, redirect, make_response, render_t
 from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
-from dashboard import mentorship_intake as mi
-from dashboard import client_portal
+from dashboard import course_tokens
 
 courses_bp = Blueprint("courses", __name__)
 _write_lock = threading.Lock()
@@ -120,7 +119,7 @@ def mentorship_intake_start():
     import app as appmod  # late import: only for the sender + base, never at module top
     data = request.get_json(silent=True) or {}
     if (data.get("company") or "").strip():  # honeypot
-        return jsonify({"ok": True, "token": ""})
+        return jsonify({"ok": True})
     email = (data.get("email") or "").strip().lower()
     name = (data.get("name") or "").strip()
     if "@" not in email or "." not in email or not data.get("tos_agreed"):
@@ -128,15 +127,17 @@ def mentorship_intake_start():
     with _write_lock:
         cx = _connect()
         try:
-            mi.init_mentorship_sessions_table(cx)
-            client_portal.init_client_portal_table(cx)
-            portal_token = client_portal.ensure_token(cx, email, name)
-            scoped = mi.create_session(cx, email, name)
+            try:
+                from dashboard import customers
+                customers.find_or_create_by_email(cx, email=email, name=name)  # lead capture
+            except Exception:
+                appmod.app.logger.exception("mentorship lead capture failed")
+            token = course_tokens.mint_course_token(cx, email, name)
         finally:
             cx.close()
-    setup_url = f"{appmod.mentorship_base()}/learn?token={portal_token}"
+    setup_url = f"{appmod.mentorship_base()}/learn?token={token}"
     try:
         appmod.send_mentorship_setup_link(email, name, setup_url)
     except Exception:
         appmod.app.logger.exception("mentorship setup link email failed")
-    return jsonify({"ok": True, "token": scoped})
+    return jsonify({"ok": True})
