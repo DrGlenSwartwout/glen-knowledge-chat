@@ -75,3 +75,36 @@ def test_backfill_dryrun_counts_without_confirming(monkeypatch, tmp_path):
     st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='b@x.com'")
           .fetchone()[0]) or {}).get("biofield_status")
     assert st == "ai_draft"   # dry run did NOT change anything
+
+def test_backfill_commit_confirms_only_clean(monkeypatch, tmp_path):
+    from dashboard import biofield_portal_publish as bpp
+    # Monkeypatch resolver: "Vitality" resolves, "Bogus" does not
+    monkeypatch.setattr(bpp, "resolve_remedy_slug",
+                        lambda n, c: "slug-x" if n == "Vitality" else None)
+    monkeypatch.setattr(app, "ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "0", raising=False)
+    db = _auth(monkeypatch, tmp_path)
+    # Seed TWO ai_draft portals directly
+    cx = sqlite3.connect(db)
+    _cp.upsert_portal(cx, "clean@x.com", "Clean", {"biofield_status": "ai_draft",
+        "greeting": "hi", "layers": [{"title": "C", "remedy": "Vitality", "dosage": "1 cap"}]})
+    _cp.upsert_portal(cx, "held@x.com", "Held", {"biofield_status": "ai_draft",
+        "greeting": "hi", "layers": [{"title": "C", "remedy": "Bogus", "dosage": "1 cap"}]})
+    cx.close()
+    # POST with commit=true to actually confirm
+    r = app.app.test_client().post("/api/console/autoconfirm/backfill",
+        headers={"X-Console-Key": "sek", "Content-Type": "application/json"},
+        data=json.dumps({"commit": True}))
+    j = r.get_json()
+    assert j["ok"] and j["would_confirm"] == 1
+    # Re-open db and verify only clean was confirmed
+    cx = sqlite3.connect(db)
+    clean_st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='clean@x.com'")
+          .fetchone()[0]) or {}).get("biofield_status")
+    held_st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='held@x.com'")
+          .fetchone()[0]) or {}).get("biofield_status")
+    assert clean_st == "confirmed"  # was confirmed by backfill
+    assert held_st == "ai_draft"    # held because remedy unresolvable
+    # Verify audit log recorded the confirm
+    log_rec = cx.execute("SELECT decision FROM analysis_autoconfirm_log WHERE email='clean@x.com'").fetchone()
+    assert log_rec and log_rec[0] == "confirmed"
+    cx.close()
