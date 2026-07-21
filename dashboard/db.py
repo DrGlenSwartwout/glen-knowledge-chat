@@ -13,6 +13,18 @@ def backend_of(cx) -> str:
     a plain sqlite3.Connection (or anything without a .backend tag) is 'sqlite'."""
     return getattr(cx, "backend", "sqlite")
 
+def column_exists(cx, table: str, column: str) -> bool:
+    """True if `table` has a column named `column`, on either backend.
+    `table`/`column` come from code literals (schema-migration checks), not user input."""
+    if backend_of(cx) == "postgres":
+        row = cx.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema=current_schema() AND table_name=? AND column_name=? LIMIT 1",
+            (table, column)).fetchone()
+        return row is not None
+    cols = [r[1] for r in cx.execute("PRAGMA table_info(%s)" % table).fetchall()]
+    return column in cols
+
 def connect(db_path: str, *, timeout: float = 5.0):
     b = backend()
     if b == "sqlite":
