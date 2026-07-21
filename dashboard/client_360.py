@@ -67,3 +67,25 @@ def process_strip(cx, email):
          "action": {"kind": "link", "target": "/console/orders"} if order else {"kind": "none"}},
     ]
     return {"source": source, "order_id": oid, "stages": stages}
+
+
+def client_tags_for_email(email, *, e4l_path=None):
+    """Clinical tags for a client from the synced e4l.db. Degrades to empty
+    lists when the db/table/row is unavailable — never raises."""
+    from dashboard import biofield_e4l, clinical_tags_console
+    empty = {"active": [], "suggested": []}
+    path = biofield_e4l._db_path(e4l_path)
+    cx = biofield_e4l._connect_ro(path)
+    if cx is None:
+        return empty
+    try:
+        row = cx.execute("SELECT client_id FROM e4l_clients WHERE lower(email)=lower(?)",
+                         ((email or "").strip(),)).fetchone()
+        if not row:
+            return empty
+        data = clinical_tags_console.client_tags(cx, row["client_id"])
+        return {"active": data.get("active", []), "suggested": data.get("suggested", [])}
+    except sqlite3.Error:
+        return empty
+    finally:
+        cx.close()
