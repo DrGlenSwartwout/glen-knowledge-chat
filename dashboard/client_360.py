@@ -187,9 +187,16 @@ def _comms(cx, email):
 
 
 def _recommendations(cx, email):
-    from dashboard import recommendation_events
+    from dashboard import recommendation_events, recommendation_prefs
     try:
-        return recommendation_events.product_sources(cx, email)
+        prods = recommendation_events.product_sources(cx, email)
+        recommendation_prefs.init_recommendation_prefs(cx)
+        notes = recommendation_prefs.get_notes(cx, email)
+        for p in prods:
+            n = notes.get(p["product_key"], {})
+            p["operator_note"] = n.get("operator_note", "")
+            p["client_note"] = n.get("client_note", "")
+        return prods
     except Exception:
         return []
 

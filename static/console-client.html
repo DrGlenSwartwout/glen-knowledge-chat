@@ -143,8 +143,30 @@ function renderRecommendations(recs){
     var icons = p.sources.map(function(s){
       return "<span title='"+esc(s.source)+" ×"+s.count+" (first "+esc(s.first_touch)+")'>"+
              (SRC_ICON[s.source]||"•")+esc(String(s.count))+"</span>";}).join(" ");
-    return "<tr><td>"+esc(p.product_key)+"</td><td>"+icons+"</td></tr>";}).join("")+"</table>"
+    var noteUi = "<input class='op-note' data-pk='"+esc(p.product_key)+"' value='"+esc(p.operator_note||"")+"' "+
+      "placeholder='operator note' style='width:140px'> "+
+      "<button class='op-note-save' data-pk='"+esc(p.product_key)+"'>save</button> "+
+      "<span class='pill' title='client note'>"+esc(p.client_note||"")+"</span>";
+    return "<tr><td>"+esc(p.product_key)+"</td><td>"+icons+"</td><td>"+noteUi+"</td></tr>";}).join("")+"</table>"
     + (recs.length>5 ? "<p class=empty>+"+(recs.length-5)+" more</p>" : "");
+  if(!host.dataset.wired){
+    host.dataset.wired="1";
+    host.addEventListener("click",function(ev){
+      if(!ev.target.classList.contains("op-note-save")) return;
+      var pk=ev.target.getAttribute("data-pk");
+      var input=host.querySelector("input.op-note[data-pk='"+pk.replace(/'/g,"\\'")+"']");
+      var note=input?input.value:"";
+      var btn=ev.target;
+      fetch("/api/console/client/recommendation/operator-note",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({email:qsEmail(),product_key:pk,note:note})
+      }).then(function(r){return r.json();}).then(function(d){
+        btn.textContent = d.ok ? "saved" : "error";
+        setTimeout(function(){ btn.textContent="save"; },1200);
+      }).catch(function(){ btn.textContent="error"; setTimeout(function(){ btn.textContent="save"; },1200); });
+    });
+  }
 }
 
 function showGate(){

@@ -39618,6 +39618,24 @@ def console_client_360():
     return jsonify({"ok": True, **data})
 
 
+@app.route("/api/console/client/recommendation/operator-note", methods=["POST"])
+def console_rec_operator_note():
+    """Console-gated write of the OPERATOR's note on one client/product
+    recommendation. Does not touch the client's own note."""
+    if _bos_actor() is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    from dashboard import recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    pk = (data.get("product_key") or "").strip()
+    if not email or not pk:
+        return jsonify({"ok": False, "error": "email and product_key required"}), 400
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _rp.init_recommendation_prefs(cx)
+        _rp.set_operator_note(cx, email, pk, data.get("note") or "")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/console/membership/enroll", methods=["POST"])
 def console_membership_enroll():
     """Owner-only manual enroll: grants the membership entitlement (member
