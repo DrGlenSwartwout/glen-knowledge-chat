@@ -49,6 +49,8 @@
       <div class="sec-body" id="b-invoices"></div></details>
     <details id="sec-comms"><summary>Comms <span class="head-note" id="h-comms"></span></summary>
       <div class="sec-body" id="b-comms"></div></details>
+    <details id="sec-recs"><summary>Recommendations <span class="head-note" id="h-recs"></span></summary>
+      <div class="sec-body" id="b-recs"></div></details>
   </div>
 </div>
 <script>
@@ -60,6 +62,8 @@ function money(c){ return "$"+((c||0)/100).toFixed(2); }
 function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":s); return d.innerHTML; }
 
 var SRC_ACTION_LABEL={biofield:"Open composer",scan:"Open FF draft",intake:"Open CRM",chat:"Open CRM"};
+var SRC_ICON = {biofield:"📡", intake:"📝", scan:"🔬", chat:"💬", self:"🛒",
+                email:"✉️", newsletter:"📰", ads:"📣", social:"📱", purchased:"✅"};
 
 function renderStrip(p){
   var el=document.getElementById("strip"); el.innerHTML="";
@@ -74,7 +78,13 @@ function renderStrip(p){
     } else if(s.action && s.action.kind==="dispatch"){
       btn="<a href='/console/orders?key="+encodeURIComponent(key())+"'>Go</a>";
     }
-    d.innerHTML="<div class=dot>"+(s.done?"✓":"○")+"</div><div>"+esc(s.label)+"</div>"+btn;
+    var label;
+    if(s.key==="recommendation" && s.sources && s.sources.length){
+      label = s.sources.map(function(src){return (SRC_ICON[src]||"")+" "+esc(src);}).join(" ");
+    } else {
+      label = esc(s.label);
+    }
+    d.innerHTML="<div class=dot>"+(s.done?"✓":"○")+"</div><div>"+label+"</div>"+btn;
     el.appendChild(d);
   });
 }
@@ -118,6 +128,25 @@ function renderComms(cs){
     : "<p class=empty>No comms.</p>";
 }
 
+function renderRecommendations(recs){
+  var host = document.getElementById("b-recs");
+  if(!recs || !recs.length){ document.getElementById("h-recs").textContent="none";
+    host.innerHTML="<p class=empty>No recommendations yet.</p>"; return; }
+  // rank products by top source count, then recency
+  recs.forEach(function(p){
+    p._max = Math.max.apply(null, p.sources.map(function(s){return s.count;}));
+    p._recent = p.sources.map(function(s){return s.last_touch;}).sort().slice(-1)[0]||"";
+  });
+  recs.sort(function(a,b){ return b._max-a._max || (a._recent<b._recent?1:-1); });
+  document.getElementById("h-recs").textContent = recs.length+" products";
+  host.innerHTML = "<table>"+recs.slice(0,5).map(function(p){
+    var icons = p.sources.map(function(s){
+      return "<span title='"+esc(s.source)+" ×"+s.count+" (first "+esc(s.first_touch)+")'>"+
+             (SRC_ICON[s.source]||"•")+esc(String(s.count))+"</span>";}).join(" ");
+    return "<tr><td>"+esc(p.product_key)+"</td><td>"+icons+"</td></tr>";}).join("")+"</table>"
+    + (recs.length>5 ? "<p class=empty>+"+(recs.length-5)+" more</p>" : "");
+}
+
 function showGate(){
   document.getElementById("gate").innerHTML =
     "<p class=empty>Enter a console key to view.</p>"+
@@ -141,7 +170,7 @@ function load(email){
       document.getElementById("c-meta").textContent =
         [email, d.person.phone, d.person.location, d.person.profession].filter(Boolean).join(" · ");
       renderStrip(d.process); renderClinical(d.clinical); renderTests(d.tests);
-      renderInvoices(d.invoices); renderComms(d.comms);
+      renderInvoices(d.invoices); renderComms(d.comms); renderRecommendations(d.recommendations);
     })
     .catch(function(){ showGate(); });
 }
