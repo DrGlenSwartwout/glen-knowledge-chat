@@ -52,9 +52,9 @@ modules:
   - slug: 09-dimensions-of-healing
     title: Dimensions of Healing
     lessons:
-      - 01-spirit-2
-      - 02-body-2
-      - 03-mind-2
+      - 01-body-2
+      - 02-mind-2
+      - 03-spirit-2
       - 04-family-2
   - slug: 10-practitioner-sessions
     title: Practitioner Sessions
