@@ -18,39 +18,76 @@ def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 
 def init_production_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS production_runs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT,
-          formulation_id INTEGER REFERENCES formulations(id),
-          batch_number TEXT,
-          run_date TEXT,
-          quantity_units REAL,
-          status TEXT,
-          source_kind TEXT,
-          extras TEXT,
-          notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS production_runs (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT,
+              formulation_id INTEGER REFERENCES formulations(id),
+              batch_number TEXT,
+              run_date TEXT,
+              quantity_units REAL,
+              status TEXT,
+              source_kind TEXT,
+              extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (now()::text),
+              updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS production_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT,
+              formulation_id INTEGER REFERENCES formulations(id),
+              batch_number TEXT,
+              run_date TEXT,
+              quantity_units REAL,
+              status TEXT,
+              source_kind TEXT,
+              extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')),
+              updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_prodrun_fmp ON production_runs(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_prodrun_form ON production_runs(formulation_id)")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS production_run_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT,
-          production_run_id INTEGER REFERENCES production_runs(id),
-          item_type TEXT,
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          material_id INTEGER REFERENCES materials(id),
-          item_label TEXT,
-          qty_used REAL,
-          unit TEXT,
-          extras TEXT,
-          notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS production_run_items (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT,
+              production_run_id INTEGER REFERENCES production_runs(id),
+              item_type TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              material_id INTEGER REFERENCES materials(id),
+              item_label TEXT,
+              qty_used REAL,
+              unit TEXT,
+              extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (now()::text),
+              updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS production_run_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT,
+              production_run_id INTEGER REFERENCES production_runs(id),
+              item_type TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              material_id INTEGER REFERENCES materials(id),
+              item_label TEXT,
+              qty_used REAL,
+              unit TEXT,
+              extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')),
+              updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_prunitems_fmp ON production_run_items(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_prunitems_run ON production_run_items(production_run_id)")
     cx.commit()

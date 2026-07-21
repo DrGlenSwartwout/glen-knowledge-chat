@@ -9,39 +9,77 @@ from dashboard.ingredient_catalog import _connect
 
 
 def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS purchase_orders (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, supplier_id INTEGER REFERENCES suppliers(id),
-          supplier_name TEXT, vendor_po_no TEXT, po_date TEXT, status TEXT,
-          tax REAL, shipping_amount REAL, shipper TEXT, tracking_number TEXT,
-          due_date TEXT, posted_date TEXT, qb_id TEXT,
-          extras TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_orders (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, supplier_id INTEGER REFERENCES suppliers(id),
+              supplier_name TEXT, vendor_po_no TEXT, po_date TEXT, status TEXT,
+              tax REAL, shipping_amount REAL, shipper TEXT, tracking_number TEXT,
+              due_date TEXT, posted_date TEXT, qb_id TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_orders (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, supplier_id INTEGER REFERENCES suppliers(id),
+              supplier_name TEXT, vendor_po_no TEXT, po_date TEXT, status TEXT,
+              tax REAL, shipping_amount REAL, shipper TEXT, tracking_number TEXT,
+              due_date TEXT, posted_date TEXT, qb_id TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_po_fmp ON purchase_orders(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS po_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
-          item_kind TEXT, item_label TEXT,
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          material_id INTEGER REFERENCES materials(id),
-          fmp_product_id TEXT, sku TEXT,
-          qty REAL, qty_unit TEXT, qty_left REAL, cost REAL,
-          extras TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS po_items (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
+              item_kind TEXT, item_label TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              material_id INTEGER REFERENCES materials(id),
+              fmp_product_id TEXT, sku TEXT,
+              qty REAL, qty_unit TEXT, qty_left REAL, cost REAL,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS po_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
+              item_kind TEXT, item_label TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              material_id INTEGER REFERENCES materials(id),
+              fmp_product_id TEXT, sku TEXT,
+              qty REAL, qty_unit TEXT, qty_left REAL, cost REAL,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_poitems_fmp ON po_items(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_poitems_po ON po_items(po_id)")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS po_receiving (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
-          po_item_id INTEGER REFERENCES po_items(id),
-          qty_received REAL, received_size TEXT, extras TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS po_receiving (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
+              po_item_id INTEGER REFERENCES po_items(id),
+              qty_received REAL, received_size TEXT, extras TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS po_receiving (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
+              po_item_id INTEGER REFERENCES po_items(id),
+              qty_received REAL, received_size TEXT, extras TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_porec_fmp ON po_receiving(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_porec_po ON po_receiving(po_id)")
     cx.commit()

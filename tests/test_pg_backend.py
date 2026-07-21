@@ -117,3 +117,20 @@ def test_backend_of_untagged_is_sqlite():
     raw = sqlite3.connect(":memory:")
     assert db.backend_of(raw) == "sqlite"
     raw.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_cursor_is_iterable(monkeypatch):
+    # Regression: `for row in cx.execute(...)` (121 sites) must work on Postgres.
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("/data/iter_t.db")
+    cx.execute("DROP TABLE IF EXISTS iter_t")
+    cx.execute("CREATE TABLE iter_t (id BIGINT, v TEXT)")
+    cx.execute("INSERT INTO iter_t (id, v) VALUES (?, ?)", (1, "a"))
+    cx.execute("INSERT INTO iter_t (id, v) VALUES (?, ?)", (2, "b"))
+    cx.commit()
+    rows = [r for r in cx.execute("SELECT id, v FROM iter_t ORDER BY id")]
+    assert len(rows) == 2
+    assert rows[0][0] == 1 and rows[0]["v"] == "a"
+    assert [r[0] for r in cx.execute("SELECT id FROM iter_t ORDER BY id")] == [1, 2]
+    cx.close()

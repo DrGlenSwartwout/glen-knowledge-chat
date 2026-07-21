@@ -6,26 +6,48 @@ from dashboard.ingredient_catalog import _connect
 
 
 def init_materials_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS materials (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, name TEXT NOT NULL, type TEXT, status TEXT,
-          extras TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    if db.backend_of(cx) == "postgres":
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS materials (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, name TEXT NOT NULL, type TEXT, status TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS materials (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, name TEXT NOT NULL, type TEXT, status TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_materials_fmp ON materials(fmp_id) WHERE fmp_id IS NOT NULL")
     for tbl, link in (("material_suppliers", "material_id INTEGER REFERENCES materials(id)"),
                       ("product_suppliers", "fmp_product_id TEXT")):
-        cx.execute(f"""
-            CREATE TABLE IF NOT EXISTS {tbl} (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              fmp_id TEXT, {link},
-              supplier_id INTEGER REFERENCES suppliers(id),
-              supplier_name TEXT, sku TEXT, price REAL,
-              purchase_size REAL, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
-              extras TEXT, preferred INTEGER DEFAULT 0, notes TEXT,
-              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-            )""")
+        if db.backend_of(cx) == "postgres":
+            cx.execute(f"""
+                CREATE TABLE IF NOT EXISTS {tbl} (
+                  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                  fmp_id TEXT, {link},
+                  supplier_id INTEGER REFERENCES suppliers(id),
+                  supplier_name TEXT, sku TEXT, price REAL,
+                  purchase_size REAL, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
+                  extras TEXT, preferred INTEGER DEFAULT 0, notes TEXT,
+                  created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+                )""")
+        else:
+            cx.execute(f"""
+                CREATE TABLE IF NOT EXISTS {tbl} (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  fmp_id TEXT, {link},
+                  supplier_id INTEGER REFERENCES suppliers(id),
+                  supplier_name TEXT, sku TEXT, price REAL,
+                  purchase_size REAL, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
+                  extras TEXT, preferred INTEGER DEFAULT 0, notes TEXT,
+                  created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+                )""")
         cx.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{tbl}_fmp ON {tbl}(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_matsup_mat ON material_suppliers(material_id)")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_prodsup_fpid ON product_suppliers(fmp_product_id)")

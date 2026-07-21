@@ -37,6 +37,14 @@ class _PgCursor:
         rows = self._cur.fetchall()
         cols = [d.name for d in self._cur.description]
         return [HybridRow(cols, r) for r in rows]
+    def __iter__(self):
+        # Match sqlite3.Cursor: `for row in cx.execute(...)` yields rows directly.
+        desc = self._cur.description
+        if desc is None:
+            return
+        cols = [d.name for d in desc]
+        for row in self._cur:
+            yield HybridRow(cols, row)
 
 class _PgConn:
     backend = "postgres"

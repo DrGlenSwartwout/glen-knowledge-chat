@@ -250,23 +250,44 @@ def build_tracking_email(tracking: str, recipient_name: Optional[str] = None,
 
 def init_tracking_schema(cx: sqlite3.Connection) -> None:
     """Create the shipments table. Idempotent."""
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS shipments (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            tracking_number TEXT    NOT NULL UNIQUE,
-            order_uuid      TEXT,
-            recipient_name  TEXT,
-            address_block   TEXT,
-            resolved_email  TEXT,
-            match_confidence TEXT,
-            ghl_contact_id  TEXT,
-            draft_id        TEXT,
-            status          TEXT    NOT NULL DEFAULT 'needs_review',
-            source_msg_id   TEXT,
-            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-            updated_at      TEXT
-        )
-    """)
+    from dashboard import db
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS shipments (
+                id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                tracking_number TEXT    NOT NULL UNIQUE,
+                order_uuid      TEXT,
+                recipient_name  TEXT,
+                address_block   TEXT,
+                resolved_email  TEXT,
+                match_confidence TEXT,
+                ghl_contact_id  TEXT,
+                draft_id        TEXT,
+                status          TEXT    NOT NULL DEFAULT 'needs_review',
+                source_msg_id   TEXT,
+                created_at      TEXT    NOT NULL DEFAULT (now()::text),
+                updated_at      TEXT
+            )
+        """)
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS shipments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                tracking_number TEXT    NOT NULL UNIQUE,
+                order_uuid      TEXT,
+                recipient_name  TEXT,
+                address_block   TEXT,
+                resolved_email  TEXT,
+                match_confidence TEXT,
+                ghl_contact_id  TEXT,
+                draft_id        TEXT,
+                status          TEXT    NOT NULL DEFAULT 'needs_review',
+                source_msg_id   TEXT,
+                created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+                updated_at      TEXT
+            )
+        """)
     cx.execute(
         "CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status)"
     )

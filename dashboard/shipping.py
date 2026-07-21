@@ -193,14 +193,27 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
     the usps_rates table is empty) so the order tool works immediately on
     a fresh deploy.
     """
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS bottle_types (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT    NOT NULL UNIQUE,
-            notes       TEXT,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
+    from dashboard import db
+    from dashboard.dbwrite import insert_or_ignore
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS bottle_types (
+                id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                name        TEXT    NOT NULL UNIQUE,
+                notes       TEXT,
+                created_at  TEXT    NOT NULL DEFAULT (now()::text)
+            )
+        """)
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS bottle_types (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL UNIQUE,
+                notes       TEXT,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
     cx.execute("""
         CREATE TABLE IF NOT EXISTS box_capacity (
             bottle_type_id  INTEGER NOT NULL,
@@ -210,26 +223,47 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
             FOREIGN KEY (bottle_type_id) REFERENCES bottle_types(id) ON DELETE CASCADE
         )
     """)
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS usps_rates (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            box_size            TEXT    NOT NULL CHECK (box_size IN ('S','M','L')),
-            usps_retail_cents   INTEGER NOT NULL,
-            charged_cents       INTEGER NOT NULL,
-            effective_date      TEXT    NOT NULL,
-            source_url          TEXT,
-            confirmed_by        TEXT,
-            confirmed_at        TEXT,
-            created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS usps_rates (
+                id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                box_size            TEXT    NOT NULL CHECK (box_size IN ('S','M','L')),
+                usps_retail_cents   INTEGER NOT NULL,
+                charged_cents       INTEGER NOT NULL,
+                effective_date      TEXT    NOT NULL,
+                source_url          TEXT,
+                confirmed_by        TEXT,
+                confirmed_at        TEXT,
+                created_at          TEXT    NOT NULL DEFAULT (now()::text)
+            )
+        """)
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS usps_rates (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                box_size            TEXT    NOT NULL CHECK (box_size IN ('S','M','L')),
+                usps_retail_cents   INTEGER NOT NULL,
+                charged_cents       INTEGER NOT NULL,
+                effective_date      TEXT    NOT NULL,
+                source_url          TEXT,
+                confirmed_by        TEXT,
+                confirmed_at        TEXT,
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
     cx.execute(
         "CREATE INDEX IF NOT EXISTS idx_usps_rates_size_date "
         "ON usps_rates(box_size, effective_date)"
     )
 
     # Add dimension columns to bottle_types if missing (idempotent migration)
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
+    if pg:
+        cols = {r[0] for r in cx.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='bottle_types' AND table_schema=current_schema()"
+        ).fetchall()}
+    else:
+        cols = {r[1] for r in cx.execute("PRAGMA table_info(bottle_types)")}
     if "diameter_mm" not in cols:
         cx.execute("ALTER TABLE bottle_types ADD COLUMN diameter_mm INTEGER")
     if "height_mm" not in cols:
@@ -238,7 +272,7 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
     # Migrate legacy names onto PROD's vocabulary (see PROD_BOTTLE_NAMES). Prod itself is
     # already on these names; this repairs dev/older catalogs so one vocabulary exists
     # everywhere. Never clobber a target that already exists.
-    have = {r[0] for r in cx.execute("SELECT name FROM bottle_types")}
+    have = {r[0] for r in cx.execute("SELECT name FROM bottle_types").fetchall()}
     for _old, _new in _LEGACY_BOTTLE_RENAMES.items():
         if _old in have and _new not in have:
             cx.execute("UPDATE bottle_types SET name=? WHERE name=?", (_new, _old))
@@ -249,13 +283,22 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
         cx.execute("INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
                    "VALUES ('30ml', '30 ml dropper (infoceutical)', 40, 110)")
 
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS product_bottle_types (
-            slug         TEXT PRIMARY KEY,
-            bottle_type  TEXT NOT NULL,
-            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-    """)
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS product_bottle_types (
+                slug         TEXT PRIMARY KEY,
+                bottle_type  TEXT NOT NULL,
+                updated_at   TEXT NOT NULL DEFAULT (now()::text)
+            )
+        """)
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS product_bottle_types (
+                slug         TEXT PRIMARY KEY,
+                bottle_type  TEXT NOT NULL,
+                updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
     cx.execute("""
         CREATE TABLE IF NOT EXISTS packing_settings (
             key   TEXT PRIMARY KEY,
@@ -263,10 +306,8 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
         )
     """)
     for k, v in _PACKING_DEFAULTS.items():
-        cx.execute(
-            "INSERT OR IGNORE INTO packing_settings (key, value) VALUES (?, ?)",
-            (k, v),
-        )
+        insert_or_ignore(cx, "packing_settings", ["key", "value"], [k, v],
+                          conflict_cols=["key"])
 
     # Seed the standard bottle types with dims only on a fresh catalog
     has_bottles = cx.execute("SELECT 1 FROM bottle_types LIMIT 1").fetchone()

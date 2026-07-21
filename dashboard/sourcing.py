@@ -20,19 +20,36 @@ def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 
 def init_sourcing_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS supplier_quotes (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          gmail_msg_id TEXT, received_at TEXT, from_email TEXT, subject TEXT, raw_snippet TEXT,
-          supplier_name TEXT, ingredient_name TEXT,
-          price REAL, price_unit TEXT, currency TEXT,
-          moq REAL, moq_unit TEXT, lead_time_days INTEGER, confidence REAL,
-          supplier_id INTEGER REFERENCES suppliers(id),
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          status TEXT DEFAULT 'pending', applied_source_id INTEGER REFERENCES ingredient_sources(id),
-          has_attachments INTEGER DEFAULT 0, extras TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS supplier_quotes (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              gmail_msg_id TEXT, received_at TEXT, from_email TEXT, subject TEXT, raw_snippet TEXT,
+              supplier_name TEXT, ingredient_name TEXT,
+              price REAL, price_unit TEXT, currency TEXT,
+              moq REAL, moq_unit TEXT, lead_time_days INTEGER, confidence REAL,
+              supplier_id INTEGER REFERENCES suppliers(id),
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              status TEXT DEFAULT 'pending', applied_source_id INTEGER REFERENCES ingredient_sources(id),
+              has_attachments INTEGER DEFAULT 0, extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS supplier_quotes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              gmail_msg_id TEXT, received_at TEXT, from_email TEXT, subject TEXT, raw_snippet TEXT,
+              supplier_name TEXT, ingredient_name TEXT,
+              price REAL, price_unit TEXT, currency TEXT,
+              moq REAL, moq_unit TEXT, lead_time_days INTEGER, confidence REAL,
+              supplier_id INTEGER REFERENCES suppliers(id),
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              status TEXT DEFAULT 'pending', applied_source_id INTEGER REFERENCES ingredient_sources(id),
+              has_attachments INTEGER DEFAULT 0, extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_msg ON supplier_quotes(gmail_msg_id) WHERE gmail_msg_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_quotes_status ON supplier_quotes(status)")
     cx.commit()
