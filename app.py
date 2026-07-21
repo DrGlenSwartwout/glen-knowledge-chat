@@ -3704,7 +3704,7 @@ def begin_biofield_remedy_click(token):
             return jsonify({"ok": False, "reason": "invalid"})
         email = (row.get("email") or "").strip().lower()
         slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
-        if email and slug:
+        if email and slug and slug in set(_biofield_visible_slugs(row, email)):
             from dashboard import recommendation_events as _re
             with _db_lock, db.connect(LOG_DB) as cx:
                 _re.init_recommendation_events(cx)
