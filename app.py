@@ -3798,6 +3798,14 @@ def begin_biofield_order_checkout(token):
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         out, stripe_url = res["out"], res["stripe_url"]
+        try:
+            from dashboard import recommendation_events as _re
+            with _db_lock, db.connect(LOG_DB) as _cx:
+                _re.init_recommendation_events(_cx)
+                for _it in items:
+                    _re.record_click(_cx, email, _it["slug"], "biofield")
+        except Exception:
+            pass
         _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
         return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
     except Exception as e:
