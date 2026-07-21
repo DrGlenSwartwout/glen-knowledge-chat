@@ -65,8 +65,13 @@ def build_openai_client(primary_key=None, fallback_keys=None):
         fallback_keys = [fb] if fb else []
     keys = [k for k in ([primary_key] + list(fallback_keys)) if k]
     if not keys:
-        # No key configured: construct one client with the raw primary value, exactly
-        # as the prior single-client code did (the SDK raises on an empty key — we do
-        # not mask that, so misconfiguration still surfaces loudly at startup).
-        keys = [primary_key]
+        # No key configured. The bare single-client path raised on a missing key;
+        # but some openai SDK versions silently accept OpenAI(api_key="") instead,
+        # which would MASK the misconfiguration (and makes the "surfaces loudly"
+        # contract depend on SDK version + test order). Raise explicitly so it
+        # surfaces loudly at startup regardless of SDK version — as documented.
+        from openai import OpenAIError
+        raise OpenAIError(
+            "No OpenAI API key configured (set OPENAI_API_KEY); refusing to "
+            "build a client with an empty key.")
     return OpenAIWithEmbedFailover([OpenAI(api_key=k) for k in keys])
