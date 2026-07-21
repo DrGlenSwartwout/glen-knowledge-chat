@@ -111,13 +111,37 @@ def _sum(cx, order_id, kind):
     return int(v or 0)
 
 
+def _has_active_rows(cx, order_id):
+    return cx.execute(
+        "SELECT 1 FROM order_payments WHERE order_id=? AND status='active' LIMIT 1",
+        (order_id,)).fetchone() is not None
+
+
 def balance(cx, order_id):
+    """Derived paid / refunded / balance for an order. Ledger rows are authoritative.
+
+    Legacy fallback: a pre-ledger order can carry its payment on the ORDER row
+    (orders.paid_cents, set by mark_order_paid_* before the ledger existed) with NO
+    order_payments rows -- e.g. #49, marked Paid/Zelle by hand. When there are zero
+    active ledger rows and the order is marked paid, surface orders.paid_cents as the
+    paid amount so every balance() consumer (Edit Invoice panel, customer invoice,
+    reconciliation) shows the real paid + balance-due rather than a misleading
+    'balance = full invoice total'. A single active ledger row (payment OR refund)
+    turns the fallback off -- the ledger then wins. `ledger_paid_cents` is ALWAYS the
+    real ledger-sourced paid (never the legacy fallback), for callers (refunds) that
+    must not treat legacy paid_cents as refundable."""
     o = orders.get_order(cx, order_id) or {}
     invoice = int(o.get("total_cents") or 0)
-    paid = _sum(cx, order_id, "payment")
+    ledger_paid = _sum(cx, order_id, "payment")
     refunded = _sum(cx, order_id, "refund")
+    paid, legacy = ledger_paid, False
+    if not _has_active_rows(cx, order_id):
+        lp = int(o.get("paid_cents") or 0)
+        if lp > 0 and o.get("pay_status") == "paid":
+            paid, legacy = lp, True
     return {"invoice_cents": invoice, "paid_cents": paid,
-            "refunded_cents": refunded,
+            "refunded_cents": refunded, "ledger_paid_cents": ledger_paid,
+            "legacy_fallback": legacy,
             "balance_cents": invoice - (paid - refunded)}
 
 
@@ -228,8 +252,9 @@ def refundable_cents(cx, order_id, refunds_payment_id=None):
     that payment's un-refunded remainder and the order's net paid (a standalone
     refund already reduces net paid, so a payment-tied refund must not be able to
     jointly drive it negative). Otherwise (standalone): order net paid."""
-    b = balance(cx, order_id)
-    order_net_paid = max(0, b["paid_cents"] - b["refunded_cents"])
+    # Refunds key off REAL ledger payments only, never balance()'s legacy fallback:
+    # a legacy paid_cents has no payment row to refund against (backfill it first).
+    order_net_paid = max(0, _sum(cx, order_id, "payment") - _sum(cx, order_id, "refund"))
     if refunds_payment_id is not None:
         pay = _row(cx, refunds_payment_id)
         if not pay or pay["kind"] != "payment" or pay["status"] != "active":
