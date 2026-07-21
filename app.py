@@ -89,6 +89,7 @@ from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
 from dashboard import client_360
+from dashboard import db
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -206,7 +207,7 @@ _CTA_RUNG = {"page": "curious", "email": "engaged", "action": "ready", "inline":
 
 
 def _init_shortlink_cache():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS shortlink_cache (
                 product_name  TEXT PRIMARY KEY,
@@ -1714,11 +1715,17 @@ _init_log_db()
 
 
 def _init_abuse_flags():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.execute(
-            "CREATE TABLE IF NOT EXISTS abuse_flags "
-            "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
-        )
+    with _db_lock, db.connect(LOG_DB) as cx:
+        if db.backend_of(cx) == "postgres":
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS abuse_flags "
+                "(id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+            )
+        else:
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS abuse_flags "
+                "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+            )
         cx.execute("CREATE INDEX IF NOT EXISTS idx_abuse_flags_ts ON abuse_flags(ts)")
         cx.commit()
 
@@ -1796,7 +1803,7 @@ _init_production_tables()
 
 def _init_cta_clicks():
     """CTA click log — public endpoint, minimal data, no console key."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS cta_clicks (
                 ts       TEXT NOT NULL,
@@ -1810,7 +1817,7 @@ _init_cta_clicks()
 
 def _init_chip_taps():
     """Chip-tap log — public endpoint, minimal data, no console key."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS chip_taps (
                 ts         TEXT NOT NULL,
