@@ -70,3 +70,50 @@ def test_pg_context_manager_rolls_back_on_exception(monkeypatch):
     cx3 = db.connect("ignored")
     assert cx3.execute("SELECT count(*) FROM cm_r").fetchone()[0] == 0
     cx3.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_schema_isolation(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    a = db.connect("/data/iso_a.db")
+    b = db.connect("/data/iso_b.db")
+    for cx in (a, b):
+        cx.execute("CREATE TABLE IF NOT EXISTS t (id BIGINT)")
+        cx.execute("DELETE FROM t")
+        cx.commit()
+    a.execute("INSERT INTO t (id) VALUES (?)", (1,))
+    a.commit()
+    # same unqualified table name, different schema -> b's t is still empty
+    assert b.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
+    a.close()
+    b.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_pool_reuses_backends(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    seen = set()
+    for _ in range(20):
+        with db.connect("/data/pooltest.db") as cx:
+            seen.add(cx.execute("SELECT pg_backend_pid()").fetchone()[0])
+    assert len(seen) < 20  # pooled: far fewer backends than checkouts
+
+
+def test_backend_of_sqlite(tmp_path, monkeypatch):
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    cx = db.connect(str(tmp_path / "b.db"))
+    assert db.backend_of(cx) == "sqlite"
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_backend_of_postgres(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("/data/backendof.db")
+    assert db.backend_of(cx) == "postgres"
+    cx.close()
+
+
+def test_backend_of_untagged_is_sqlite():
+    import sqlite3
+    raw = sqlite3.connect(":memory:")
+    assert db.backend_of(raw) == "sqlite"
+    raw.close()
