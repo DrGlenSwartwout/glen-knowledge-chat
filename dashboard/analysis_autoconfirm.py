@@ -48,3 +48,39 @@ def should_sample(email, scan_date, pct):
     key = f"{(email or '').strip().lower()}|{(scan_date or '').strip()}"
     bucket = int(hashlib.sha256(key.encode()).hexdigest(), 16) % 100
     return bucket < pct
+
+
+def init_autoconfirm_log(cx):
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS analysis_autoconfirm_log ("
+        "email TEXT, scan_date TEXT, decision TEXT, reasons TEXT, "
+        "sampled INTEGER DEFAULT 0, created_at TEXT DEFAULT '', "
+        "PRIMARY KEY (email, scan_date))")
+    cx.commit()
+
+
+def _log(cx, email, scan_date, decision, reasons, sampled, now):
+    cx.execute(
+        "INSERT OR REPLACE INTO analysis_autoconfirm_log "
+        "(email, scan_date, decision, reasons, sampled, created_at) VALUES (?,?,?,?,?,?)",
+        ((email or "").strip().lower(), (scan_date or "").strip(), decision,
+         json.dumps(reasons or []), 1 if sampled else 0, now or ""))
+    cx.commit()
+
+
+def maybe_auto_confirm(cx, email, scan_date, content, *, enabled, sample_pct,
+                       resolve_slug, red_flag_terms, confirm_fn, now):
+    """Decide confirm-vs-hold for one ai_draft. Returns an outcome string; logs it."""
+    if not enabled:
+        return "disabled"
+    ok, reasons = evaluate_quality(content, resolve_slug=resolve_slug,
+                                   red_flag_terms=red_flag_terms)
+    if not ok:
+        _log(cx, email, scan_date, "held_quality", reasons, False, now)
+        return "held_quality"
+    if should_sample(email, scan_date, sample_pct):
+        _log(cx, email, scan_date, "held_sample", [], True, now)
+        return "held_sample"
+    confirm_fn(cx, email, scan_date, content)
+    _log(cx, email, scan_date, "confirmed", [], False, now)
+    return "confirmed"
