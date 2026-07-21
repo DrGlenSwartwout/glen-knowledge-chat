@@ -19810,6 +19810,30 @@ def api_portal_rec_hide(token):
     return jsonify({"ok": True})
 
 
+@app.route("/api/portal/<token>/recommendation/click", methods=["POST"])
+def api_portal_rec_click(token):
+    """Client clicked a recommended product's buy link on their portal (e.g. the
+    scan/FF-matched products card). Records one engagement event for the given
+    source (failure-isolated). Token-authed: identity comes ONLY from the portal
+    token; unknown source -> no event recorded."""
+    from dashboard import client_portal as _cp, recommendation_events as _re, recommendation_sources as _rs
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    source = (data.get("source") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if email and slug and _rs.known_source(source):
+            try:
+                _re.record_click(cx, email, slug, source)
+            except Exception:
+                pass
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/recommendation/client-note", methods=["POST"])
 def api_portal_rec_client_note(token):
     """Client's own note on a recommended product (distinct from the operator note,
