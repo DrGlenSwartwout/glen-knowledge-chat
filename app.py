@@ -20231,6 +20231,13 @@ def api_portal_wishlist_toggle(token):
                     print(f"[wishlist] household re-point skipped: {_he}", flush=True)
             _wl.init_wishlist_table(_cx)
             _saved = _wl.toggle(_cx, "email:" + _email, slug) if _email else False
+            if _saved and _email:
+                try:
+                    from dashboard import recommendation_events as _re
+                    _re.init_recommendation_events(_cx)
+                    _re.record_self(_cx, _email, slug)
+                except Exception:
+                    pass
         return jsonify({"saved": _saved})
     except Exception as _e:
         print(f"[wishlist] portal toggle failed: {_e}", flush=True)
