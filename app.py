@@ -5565,10 +5565,10 @@ def qbo_query():
     QBO?" without guessing.
 
     Why it must run here and not from a laptop: Intuit ROTATES the refresh token
-    on every use, and the replacement is cached to /data/qb_refresh_token on the
-    Render disk. Refreshing off-prod mints a token prod can never read and
-    silently invalidates the live one — i.e. it breaks accounting sync. Keeping
-    the call on prod keeps rotation where the cache is.
+    on every use, and the replacement is persisted to the oauth_tokens DB row
+    (name="qbo_refresh") on the prod database. Refreshing off-prod mints a token
+    prod can never read and silently invalidates the live one — i.e. it breaks
+    accounting sync. Keeping the call on prod keeps rotation where the store is.
 
     Read-only by construction, belt and braces:
       - QBO's /query API executes SELECT only; it has no write verbs.
@@ -5609,9 +5609,9 @@ def qbo_void_payment(txn_id):
     'Voided'); qbo_billing.void_payment issues operation=delete. The row leaves the
     register and survives only in QBO's Audit Log. Irreversible -- hence confirmed.
 
-    Must run on prod: Intuit rotates the refresh token per use and caches the
-    replacement to /data/qb_refresh_token on the Render disk. Same reasoning as
-    /api/qbo/query.
+    Must run on prod: Intuit rotates the refresh token per use and persists the
+    replacement to the oauth_tokens DB row (name="qbo_refresh") on the prod
+    database. Same reasoning as /api/qbo/query.
     """
     if not _qbo_auth_ok():
         return jsonify({"error": "Unauthorized"}), 401

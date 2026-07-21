@@ -22,6 +22,7 @@ def test_qb_rt_seed_from_env_then_persist_sqlite(tmp_path, monkeypatch):
     monkeypatch.setattr(money, "_qb_default_db_path", lambda: dbp)
     monkeypatch.setattr(money, "QB_REFRESH_TOKEN", "rt0")
     monkeypatch.setattr(money, "QB_CLIENT_ID", "c"); monkeypatch.setattr(money, "QB_CLIENT_SECRET", "s")
+    monkeypatch.setattr(money, "QB_RT_CACHE", str(tmp_path / "nope"))
     counter = {"n": 0, "seen": []}
     _install_fake_intuit(monkeypatch, counter)
     at = money.qb_refresh()
