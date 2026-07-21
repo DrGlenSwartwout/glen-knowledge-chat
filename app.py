@@ -22297,7 +22297,7 @@ def _run_autoconfirm(cx, email, scan_date, content):
             resolve_slug=lambda n: resolve_remedy_slug(n, catalog),
             red_flag_terms=_AUTOCONFIRM_RED_FLAGS,
             confirm_fn=_autoconfirm_confirm_fn,
-            now=_now_iso() if "_now_iso" in globals() else "")
+            now=datetime.now(timezone.utc).isoformat())
     except Exception as e:
         print(f"[autoconfirm] skipped {email}/{scan_date}: {e!r}", flush=True)
         return "error"
