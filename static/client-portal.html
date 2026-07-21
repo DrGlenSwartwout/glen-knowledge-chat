@@ -407,6 +407,7 @@
 const seg = location.pathname.split("/").filter(Boolean).pop();
 const isMe = (seg === "me");
 const token = seg; // reused by reorder()/checkout; "me" resolves via the session
+let _recoPayload = null; // My Recommendations (2b-ii) payload, set in load() before render(); keeps render(d,v) signature
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
@@ -832,12 +833,16 @@ async function load(){
   const sd = selectedScanDate ? `?scan_date=${encodeURIComponent(selectedScanDate)}` : "";
   if (memberParam) q.set("member", memberParam);
   const dq = q.toString() ? `?${q.toString()}` : "";
-  const [data, view] = await Promise.all([
+  const [data, view, reco] = await Promise.all([
     fetchJson(`/api/portal/${encodeURIComponent(seg)}${dq}`),
     fetchJson(`/api/portal/${encodeURIComponent(seg)}/view${sd}`),
+    // My Recommendations (Phase 2b-ii): independent of data/view — a null/absent
+    // payload (flag off, no sections) simply renders no card, never blocks the page.
+    fetchJson(`/api/portal/${encodeURIComponent(seg)}/recommendations`),
   ]);
   const ok = isMe ? !!view : !!data;
   if(!ok){ notFound(); return; }
+  _recoPayload = reco;
   render(data, view);
 }
 
@@ -943,8 +948,189 @@ document.addEventListener("click", async (ev) => {
   }
 });
 
+// "My Recommendations" (Phase 2b-ii Task 1): one collapsible sub-section per
+// recommendation source, shared by the initial payload render — sections come
+// from GET /api/portal/<token>/recommendations, fetched alongside d/v in load().
+// Each section lists up to `shown` products (with a "show all N" affordance
+// when `total > shown`) as: an icon row of source chips, the name (linked when
+// `url` is present and http(s)/relative), the operator's read-only note, and a
+// client-editable note + hide control. Click/save/hide/collapse-toggle wiring
+// is bound by wireRecommendationsCard() below, called once per render().
+function renderRecommendations(sections){
+  let secHtml = "";
+  sections.forEach(sec=>{
+    const src = esc(sec.source || "");
+    const label = esc(sec.label || sec.source || "");
+    const icon = esc(sec.icon || "");
+    const total = Number(sec.total) || 0;
+    const shown = Number(sec.shown) || 0;
+    const collapsed = !!sec.collapsed;
+    const products = Array.isArray(sec.products) ? sec.products : [];
+    let rows = "";
+    let idx = 0;
+    products.forEach(p=>{
+      const pk = esc(p.product_key || "");
+      const safeUrl = /^(https?:\/\/|\/)/.test(String(p.url||"")) ? p.url : "";
+      const nameHtml = safeUrl
+        ? `<a href="${esc(safeUrl)}">${esc(p.name || "")}</a>`
+        : esc(p.name || "");
+      const icons = Array.isArray(p.icons) ? p.icons : [];
+      const chips = icons.map(ic=>{
+        const count = Number(ic.count) || 0;
+        const title = `${esc(ic.source || "")} ×${count} · first ${esc(ic.first_touch || "")}`;
+        return `<span class="pill" title="${title}">${esc(ic.icon || "")}${count}</span>`;
+      }).join(" ");
+      const opNote = p.operator_note
+        ? `<p class="muted small" style="margin:.3rem 0">${esc(p.operator_note)}</p>`
+        : "";
+      // Rows beyond the initial `shown` count start hidden; "Show all N" reveals
+      // them client-side (no re-fetch — build_sections now sends every product).
+      const rowIdx = idx++;
+      const rowHidden = rowIdx >= shown ? " hidden" : "";
+      rows += `<div class="rec-row" data-pk="${pk}" data-row-idx="${rowIdx}"${rowHidden} style="padding:9px 0;border-bottom:1px dashed var(--line)">
+        <div class="rec-row-icons" style="margin-bottom:.25rem">${chips}</div>
+        <div class="rec-row-name">${nameHtml}</div>
+        ${opNote}
+        <div class="rec-row-actions" style="display:flex;gap:8px;align-items:center;margin-top:.35rem">
+          <input type="text" class="rec-cnote" data-pk="${pk}" value="${esc(p.client_note || "")}" placeholder="your note" style="flex:1;min-width:0">
+          <button type="button" class="btn ghost small rec-note-save" data-pk="${pk}">save</button>
+          <button type="button" class="btn ghost small rec-hide" data-pk="${pk}">hide</button>
+          <span class="rec-note-msg muted small" data-pk="${pk}" hidden></span>
+        </div>
+      </div>`;
+    });
+    const moreHtml = total > shown
+      ? `<button type="button" class="btn ghost small rec-showmore" data-section="${src}" style="margin-top:.5rem">Show all ${total}</button>`
+      : "";
+    secHtml += `<div class="rec-section" data-section="${src}" style="margin:.9rem 0">
+      <div class="rec-section-header" data-section-toggle="${src}" data-collapsed="${collapsed ? "1" : "0"}"
+        tabindex="0" role="button" aria-expanded="${collapsed ? "false" : "true"}"
+        style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <span>${icon}</span><strong>${label}</strong>
+        <span class="pill">${total} product${total === 1 ? "" : "s"}</span>
+        <span style="flex:1"></span><span class="muted">${collapsed ? "▸" : "▾"}</span>
+      </div>
+      <div class="rec-section-body" data-section-body="${src}"${collapsed ? " hidden" : ""} style="margin-top:.5rem">
+        ${rows || '<p class="muted small">No products yet.</p>'}
+        ${moreHtml}
+      </div>
+    </div>`;
+  });
+  return `<div class="card" id="recsCard"><h2>My Recommendations</h2>${secHtml || '<p class="muted">No recommendations yet.</p>'}</div>`;
+}
+
+// Phase 2b-ii: wire the "My Recommendations" card's three writes +
+// the client-side "Show all N" reveal. Called once per render() (like the
+// wishlist/ff-matches wiring above it) — app.innerHTML is rebuilt on every
+// load(), so every .rec-* element here is fresh and re-querying + re-binding
+// each time cannot double-fire (the previous elements, and their listeners,
+// were discarded with the old subtree).
+function wireRecommendationsCard(){
+  const card = document.getElementById("recsCard");
+  if(!card) return;
+
+  // Hide: one-shot latch (disable before await, like acceptRecommendation()).
+  // On ok, re-render via load() so the hidden product actually disappears
+  // (server-side hidden filter already drops it from product_sources). On
+  // error, re-enable quietly — no error banner for a low-stakes hide action.
+  card.querySelectorAll(".rec-hide").forEach(hb=>{
+    hb.addEventListener("click", async ()=>{
+      if(hb.disabled) return;
+      hb.disabled = true;
+      const pk = hb.getAttribute("data-pk") || "";
+      try{
+        const r = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/hide`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({product_key: pk, hidden: true}),
+        });
+        const j = await r.json().catch(()=>null);
+        if(j && j.ok){ await load(); }
+        else { hb.disabled = false; }
+      }catch(e){ hb.disabled = false; }
+    });
+  });
+
+  // Client-note save: reads the LIVE input.value at click time (never a
+  // cached pre-render string, since the client may have typed since render()
+  // ran). Brief "Saved." affirmation on ok; quiet inline error text on failure
+  // (mirrors the client-fact toggle's card.querySelector(".cf-msg") pattern).
+  card.querySelectorAll(".rec-note-save").forEach(sb=>{
+    sb.addEventListener("click", async ()=>{
+      if(sb.disabled) return;
+      const pk = sb.getAttribute("data-pk") || "";
+      const row = sb.closest(".rec-row");
+      const input = row ? row.querySelector(".rec-cnote") : null;
+      const msg = row ? row.querySelector(".rec-note-msg") : null;
+      const note = input ? input.value : "";
+      sb.disabled = true;
+      if(msg){ msg.hidden = false; msg.textContent = "Saving…"; }
+      try{
+        const r = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/client-note`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({product_key: pk, note: note}),
+        });
+        const j = await r.json().catch(()=>null);
+        if(j && j.ok){
+          if(msg){ msg.textContent = "Saved."; setTimeout(()=>{ msg.hidden = true; }, 2000); }
+        } else if(msg){
+          msg.hidden = false; msg.textContent = "Couldn't save. Please try again.";
+        }
+      }catch(e){
+        if(msg){ msg.hidden = false; msg.textContent = "Couldn't save. Please try again."; }
+      }finally{
+        sb.disabled = false;
+      }
+    });
+  });
+
+  // Section collapse: optimistic — flip the body's hidden state + the header's
+  // chevron/aria-expanded immediately, then a fire-and-forget POST to persist
+  // it (a display preference; a failed POST just leaves the optimistic state,
+  // matching the brief — the next load() re-establishes from server truth
+  // anyway). Keyboard-accessible: Enter/Space on the focused header toggles
+  // exactly like a click (the header carries tabindex="0" role="button").
+  const toggleSection = (header)=>{
+    const sec = header.closest(".rec-section");
+    const body = sec ? sec.querySelector(".rec-section-body") : null;
+    const src = header.getAttribute("data-section-toggle") || "";
+    if(!body) return;
+    const nowCollapsed = !body.hidden;  // was visible -> collapsing now
+    body.hidden = nowCollapsed;
+    header.setAttribute("data-collapsed", nowCollapsed ? "1" : "0");
+    header.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+    const chev = header.querySelector(".muted");
+    if(chev) chev.textContent = nowCollapsed ? "▸" : "▾";
+    fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/section`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({section_key: src, collapsed: nowCollapsed}),
+    }).catch(()=>{});
+  };
+  card.querySelectorAll(".rec-section-header").forEach(hdr=>{
+    hdr.addEventListener("click", ()=> toggleSection(hdr));
+    hdr.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){
+        e.preventDefault();
+        toggleSection(hdr);
+      }
+    });
+  });
+
+  // "Show all N": build_sections now sends every product in the payload
+  // (`shown` is only the initial-visible hint) — the extra rows already exist
+  // in the DOM with `hidden`, so revealing them is a pure client-side flip,
+  // no re-fetch needed.
+  card.querySelectorAll(".rec-showmore").forEach(mb=>{
+    mb.addEventListener("click", ()=>{
+      const body = mb.closest(".rec-section-body");
+      if(body) body.querySelectorAll(".rec-row[hidden]").forEach(row=>{ row.hidden = false; });
+      mb.remove();
+    });
+  });
+}
+
 function render(d, v){
   d = d || {};
+  const recSections = (_recoPayload && Array.isArray(_recoPayload.sections)) ? _recoPayload.sections : [];
   // Premium element backdrop: key the Glendalf scene off the member's deficient
   // element (null when not a paid member / not yet computed -> plain portal).
   try {
@@ -1690,6 +1876,15 @@ function render(d, v){
       <p class="small err" id="wishErr" hidden></p></div>`;
   }
 
+  // Phase 2b-ii: "My Recommendations" — one collapsible sub-section per
+  // recommendation source (wishlist adds, quiz picks, biofield matches, etc.),
+  // fetched independently in load() so an empty/absent payload never blocks the
+  // rest of the page. Click/save/hide/expand wiring is bound by
+  // wireRecommendationsCard(), called once per render().
+  if (recSections.length) {
+    html += renderRecommendations(recSections);
+  }
+
   if(Array.isArray(d.locked_rows) && d.locked_rows.length){
     let lrows = "";
     d.locked_rows.forEach(it=>{
@@ -1982,6 +2177,8 @@ function render(d, v){
   if(raBtn) raBtn.addEventListener("click", acceptRecommendation);
   const rdBtn = document.getElementById("recoDismissBtn");
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
+
+  wireRecommendationsCard();
 
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));

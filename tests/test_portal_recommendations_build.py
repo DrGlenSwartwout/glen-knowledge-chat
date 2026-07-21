@@ -36,6 +36,6 @@ def test_notes_and_collapse_attached_top_n():
     secs = pr.build_sections(product_sources, notes, {"purchased": True}, lambda s: {"name": s, "url": ""}, top_n=5)
     sec = next(s for s in secs if s["source"] == "purchased")
     assert sec["collapsed"] is True
-    assert sec["total"] == 7 and sec["shown"] == 5 and len(sec["products"]) == 5
+    assert sec["total"] == 7 and sec["shown"] == 5 and len(sec["products"]) == sec["total"]
     assert sec["products"][0]["product_key"] == "p0"
     assert sec["products"][0]["operator_note"] == "take daily" and sec["products"][0]["client_note"] == "works"

@@ -28,10 +28,13 @@ def build_sections(product_sources, notes, section_state, resolve_product, *, to
         if not prods:
             continue
         prods.sort(key=lambda e: (e["_count"], e["_recent"]), reverse=True)   # count desc, recency desc
-        shown = prods[:top_n]
+        total = len(prods)
+        shown = min(top_n, total)
         out.append({
             "source": key, "label": meta["label"], "icon": meta["icon"],
             "collapsed": bool(section_state.get(key, False)),
-            "total": len(prods), "shown": len(shown),
-            "products": [{k: v for k, v in e.items() if not k.startswith("_")} for e in shown]})
+            "total": total, "shown": shown,
+            # ALL products travel to the client — `shown` is only the initial-visible
+            # hint; the "Show all N" affordance reveals the remainder with no re-fetch.
+            "products": [{k: v for k, v in e.items() if not k.startswith("_")} for e in prods]})
     return out
