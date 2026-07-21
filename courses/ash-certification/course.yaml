@@ -1,0 +1,9 @@
+title: ASH Certification
+description: REPLACE_WITH_ONE_WARM_SENTENCE shown on the course card.
+modules:
+  - slug: 01-foundations
+    title: Foundations
+    lessons:
+      - 01-intro
+# Add more modules and lessons here. Each `slug` must match a sub-directory,
+# and each lesson name must match a `<lesson>.md` file inside that sub-directory.
