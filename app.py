@@ -6308,6 +6308,27 @@ def _order_physical_units(order):
         return 0
 
 
+def _order_pack_breakdown(order):
+    """Shippable units split by packaging (bottle_units vs cello_pack_units) for a
+    stored order dict. Same order-shape handling as _order_physical_units (parsed
+    `items` list or raw `items_json` string column). bottle_units + cello_pack_units
+    always equals _order_physical_units(order) for the same order. Read-only display
+    field -- never raises."""
+    order = order or {}
+    items = order.get("items")
+    if items is None:
+        import json as _json
+        try:
+            items = _json.loads(order.get("items_json") or "[]")
+        except Exception:
+            items = []
+    try:
+        catalog = {p.get("slug"): p for p in _catalog_products()}
+        return _bos_orders.pack_breakdown(items, catalog)
+    except Exception:
+        return {"bottle_units": 0, "cello_pack_units": 0}
+
+
 def _get_product(slug):
     """The sellable product for a slug, following a retired duplicate to its live twin.
 
@@ -40482,7 +40503,8 @@ def api_orders_price_preview():
     # matches the portal + console-orders exactly rather than re-summing qty in JS.
     return jsonify({"ok": True, "total_ff_qty": total_ff_qty,
                     "subtotal_cents": subtotal, "lines": out_lines,
-                    "physical_units": _order_physical_units({"items": lines_in})})
+                    "physical_units": _order_physical_units({"items": lines_in}),
+                    "pack_breakdown": _order_pack_breakdown({"items": lines_in})})
 
 
 @app.route("/api/orders/shipping-preview", methods=["POST"])
