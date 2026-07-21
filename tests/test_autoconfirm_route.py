@@ -108,3 +108,14 @@ def test_backfill_commit_confirms_only_clean(monkeypatch, tmp_path):
     log_rec = cx.execute("SELECT decision FROM analysis_autoconfirm_log WHERE email='clean@x.com'").fetchone()
     assert log_rec and log_rec[0] == "confirmed"
     cx.close()
+
+def test_handoffs_show_autoconfirm_reason(monkeypatch, tmp_path):
+    from dashboard import biofield_portal_publish as bpp
+    monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: None)  # forces held_quality
+    monkeypatch.setattr(app, "ANALYSIS_AUTOCONFIRM_ENABLED", True, raising=False)
+    db = _auth(monkeypatch, tmp_path)
+    _publish_draft(_clean_draft_body("hq@x.com"))  # lands ai_draft + logs held_quality
+    r = app.app.test_client().get("/api/console/handoffs", headers={"X-Console-Key": "sek"})
+    row = next(x for x in r.get_json()["handoffs"] if x["email"] == "hq@x.com")
+    assert row["autoconfirm_decision"] == "held_quality"
+    assert row["autoconfirm_reasons"]  # non-empty explanation

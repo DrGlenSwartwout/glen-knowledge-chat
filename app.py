@@ -15618,6 +15618,14 @@ def api_console_handoffs():
                     inv = None
                 out.append({"email": r["email"], "name": r["name"] or "",
                             "handed_off_at": r["updated_at"] or "", "invoice": inv})
+        from dashboard import analysis_autoconfirm as _ac
+        _ac.init_autoconfirm_log(cx)
+        for item in out:
+            lg = cx.execute("SELECT decision, reasons FROM analysis_autoconfirm_log "
+                            "WHERE email=? ORDER BY created_at DESC LIMIT 1",
+                            (item["email"].lower(),)).fetchone()
+            item["autoconfirm_decision"] = lg[0] if lg else None
+            item["autoconfirm_reasons"] = (json.loads(lg[1]) if lg and lg[1] else [])
     return jsonify({"ok": True, "handoffs": out})
 
 
