@@ -100,7 +100,7 @@ function renderInvoices(inv){
   var rows=inv.orders.map(function(o){
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>"+esc(o.status)+"</td><td>"+money(o.total_cents)+
       "</td><td>"+money(o.paid_cents)+"</td><td>"+money(o.balance_cents)+
-      "</td><td><a href='"+o.edit_url+"?key="+encodeURIComponent(key())+"'>edit</a></td></tr>";});
+      "</td><td><a href='"+esc(o.edit_url)+"?key="+encodeURIComponent(key())+"'>edit</a></td></tr>";});
   var fmp=(inv.fmp||[]).map(function(o){
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>FMP</td><td>"+
       (o.total!=null?money(Math.round(o.total*100)):"")+"</td><td></td><td>"+
@@ -118,11 +118,23 @@ function renderComms(cs){
     : "<p class=empty>No comms.</p>";
 }
 
+function showGate(){
+  document.getElementById("gate").innerHTML =
+    "<p class=empty>Enter a console key to view.</p>"+
+    "<input id='gate-key' type='password' placeholder='console key' style='padding:8px;width:220px'> "+
+    "<button id='gate-unlock'>Unlock</button>";
+  document.getElementById("gate-unlock").addEventListener("click",function(){
+    var v=document.getElementById("gate-key").value.trim();
+    if(v) localStorage.setItem("console_key",v);
+    location.reload();
+  });
+}
+
 function load(email){
   fetch("/api/console/client-360?email="+encodeURIComponent(email),{headers:hdr()})
     .then(function(r){return r.json();})
     .then(function(d){
-      if(!d.ok){ document.getElementById("gate").innerHTML="<p class=empty>Enter a console key via ?key= to view.</p>"; return; }
+      if(!d.ok){ showGate(); return; }
       document.getElementById("picker").style.display="none";
       document.getElementById("hub").style.display="block";
       document.getElementById("c-name").textContent = d.person.name || email;
@@ -130,7 +142,8 @@ function load(email){
         [email, d.person.phone, d.person.location, d.person.profession].filter(Boolean).join(" · ");
       renderStrip(d.process); renderClinical(d.clinical); renderTests(d.tests);
       renderInvoices(d.invoices); renderComms(d.comms);
-    });
+    })
+    .catch(function(){ showGate(); });
 }
 
 function initPicker(){
@@ -141,10 +154,12 @@ function initPicker(){
     fetch("/api/people?q="+encodeURIComponent(q.value.trim())+"&limit=8",{headers:hdr()})
       .then(function(r){return r.json();})
       .then(function(d){
-        var people=(d.people||d.results||d||[]);
+        var people=d.people||d.results||d;
+        if(!Array.isArray(people)) people=[];
         out.innerHTML=people.map(function(p){
           return "<li><a href='/console/client?email="+encodeURIComponent(p.email)+"&key="+encodeURIComponent(key())+"'>"+esc(p.name||p.email)+" — "+esc(p.email)+"</a></li>";}).join("");
-      });
+      })
+      .catch(function(){ out.innerHTML=""; });
   });
 }
 
