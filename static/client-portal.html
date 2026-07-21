@@ -965,6 +965,7 @@ function renderRecommendations(sections){
     const collapsed = !!sec.collapsed;
     const products = Array.isArray(sec.products) ? sec.products : [];
     let rows = "";
+    let idx = 0;
     products.forEach(p=>{
       const pk = esc(p.product_key || "");
       const nameHtml = p.url
@@ -979,13 +980,19 @@ function renderRecommendations(sections){
       const opNote = p.operator_note
         ? `<p class="muted small" style="margin:.3rem 0">${esc(p.operator_note)}</p>`
         : "";
-      rows += `<div class="rec-row" data-pk="${pk}" style="padding:9px 0;border-bottom:1px dashed var(--line)">
+      // Rows beyond the initial `shown` count start hidden; "Show all N" reveals
+      // them client-side (no re-fetch — build_sections now sends every product).
+      const rowIdx = idx++;
+      const rowHidden = rowIdx >= shown ? " hidden" : "";
+      rows += `<div class="rec-row" data-pk="${pk}" data-row-idx="${rowIdx}"${rowHidden} style="padding:9px 0;border-bottom:1px dashed var(--line)">
         <div class="rec-row-icons" style="margin-bottom:.25rem">${chips}</div>
         <div class="rec-row-name">${nameHtml}</div>
         ${opNote}
         <div class="rec-row-actions" style="display:flex;gap:8px;align-items:center;margin-top:.35rem">
           <input type="text" class="rec-cnote" data-pk="${pk}" value="${esc(p.client_note || "")}" placeholder="your note" style="flex:1;min-width:0">
+          <button type="button" class="btn ghost small rec-note-save" data-pk="${pk}">save</button>
           <button type="button" class="btn ghost small rec-hide" data-pk="${pk}">hide</button>
+          <span class="rec-note-msg muted small" data-pk="${pk}" hidden></span>
         </div>
       </div>`;
     });
@@ -994,6 +1001,7 @@ function renderRecommendations(sections){
       : "";
     secHtml += `<div class="rec-section" data-section="${src}" style="margin:.9rem 0">
       <div class="rec-section-header" data-section-toggle="${src}" data-collapsed="${collapsed ? "1" : "0"}"
+        tabindex="0" role="button" aria-expanded="${collapsed ? "false" : "true"}"
         style="display:flex;align-items:center;gap:8px;cursor:pointer">
         <span>${icon}</span><strong>${label}</strong>
         <span class="pill">${total} product${total === 1 ? "" : "s"}</span>
@@ -1006,6 +1014,115 @@ function renderRecommendations(sections){
     </div>`;
   });
   return `<div class="card" id="recsCard"><h2>My Recommendations</h2>${secHtml || '<p class="muted">No recommendations yet.</p>'}</div>`;
+}
+
+// Task 2 (Phase 2b-ii): wire the "My Recommendations" card's three writes +
+// the client-side "Show all N" reveal. Called once per render() (like the
+// wishlist/ff-matches wiring above it) — app.innerHTML is rebuilt on every
+// load(), so every .rec-* element here is fresh and re-querying + re-binding
+// each time cannot double-fire (the previous elements, and their listeners,
+// were discarded with the old subtree).
+function wireRecommendationsCard(){
+  const card = document.getElementById("recsCard");
+  if(!card) return;
+
+  // Hide: one-shot latch (disable before await, like acceptRecommendation()).
+  // On ok, re-render via load() so the hidden product actually disappears
+  // (server-side hidden filter already drops it from product_sources). On
+  // error, re-enable quietly — no error banner for a low-stakes hide action.
+  card.querySelectorAll(".rec-hide").forEach(hb=>{
+    hb.addEventListener("click", async ()=>{
+      if(hb.disabled) return;
+      hb.disabled = true;
+      const pk = hb.getAttribute("data-pk") || "";
+      try{
+        const r = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/hide`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({product_key: pk, hidden: true}),
+        });
+        const j = await r.json().catch(()=>null);
+        if(j && j.ok){ await load(); }
+        else { hb.disabled = false; }
+      }catch(e){ hb.disabled = false; }
+    });
+  });
+
+  // Client-note save: reads the LIVE input.value at click time (never a
+  // cached pre-render string, since the client may have typed since render()
+  // ran). Brief "Saved." affirmation on ok; quiet inline error text on failure
+  // (mirrors the client-fact toggle's card.querySelector(".cf-msg") pattern).
+  card.querySelectorAll(".rec-note-save").forEach(sb=>{
+    sb.addEventListener("click", async ()=>{
+      if(sb.disabled) return;
+      const pk = sb.getAttribute("data-pk") || "";
+      const row = sb.closest(".rec-row");
+      const input = row ? row.querySelector(".rec-cnote") : null;
+      const msg = row ? row.querySelector(".rec-note-msg") : null;
+      const note = input ? input.value : "";
+      sb.disabled = true;
+      if(msg){ msg.hidden = false; msg.textContent = "Saving…"; }
+      try{
+        const r = await fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/client-note`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({product_key: pk, note: note}),
+        });
+        const j = await r.json().catch(()=>null);
+        if(j && j.ok){
+          if(msg){ msg.textContent = "Saved."; setTimeout(()=>{ msg.hidden = true; }, 2000); }
+        } else if(msg){
+          msg.hidden = false; msg.textContent = "Couldn't save. Please try again.";
+        }
+      }catch(e){
+        if(msg){ msg.hidden = false; msg.textContent = "Couldn't save. Please try again."; }
+      }finally{
+        sb.disabled = false;
+      }
+    });
+  });
+
+  // Section collapse: optimistic — flip the body's hidden state + the header's
+  // chevron/aria-expanded immediately, then a fire-and-forget POST to persist
+  // it (a display preference; a failed POST just leaves the optimistic state,
+  // matching the brief — the next load() re-establishes from server truth
+  // anyway). Keyboard-accessible: Enter/Space on the focused header toggles
+  // exactly like a click (the header carries tabindex="0" role="button").
+  const toggleSection = (header)=>{
+    const sec = header.closest(".rec-section");
+    const body = sec ? sec.querySelector(".rec-section-body") : null;
+    const src = header.getAttribute("data-section-toggle") || "";
+    if(!body) return;
+    const nowCollapsed = !body.hidden;  // was visible -> collapsing now
+    body.hidden = nowCollapsed;
+    header.setAttribute("data-collapsed", nowCollapsed ? "1" : "0");
+    header.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+    const chev = header.querySelector(".muted");
+    if(chev) chev.textContent = nowCollapsed ? "▸" : "▾";
+    fetch(`/api/portal/${encodeURIComponent(token)}/recommendation/section`, {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({section_key: src, collapsed: nowCollapsed}),
+    }).catch(()=>{});
+  };
+  card.querySelectorAll(".rec-section-header").forEach(hdr=>{
+    hdr.addEventListener("click", ()=> toggleSection(hdr));
+    hdr.addEventListener("keydown", (e)=>{
+      if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){
+        e.preventDefault();
+        toggleSection(hdr);
+      }
+    });
+  });
+
+  // "Show all N": build_sections now sends every product in the payload
+  // (`shown` is only the initial-visible hint) — the extra rows already exist
+  // in the DOM with `hidden`, so revealing them is a pure client-side flip,
+  // no re-fetch needed.
+  card.querySelectorAll(".rec-showmore").forEach(mb=>{
+    mb.addEventListener("click", ()=>{
+      const body = mb.closest(".rec-section-body");
+      if(body) body.querySelectorAll(".rec-row[hidden]").forEach(row=>{ row.hidden = false; });
+      mb.remove();
+    });
+  });
 }
 
 function render(d, v, rec){
@@ -2057,6 +2174,8 @@ function render(d, v, rec){
   if(raBtn) raBtn.addEventListener("click", acceptRecommendation);
   const rdBtn = document.getElementById("recoDismissBtn");
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
+
+  wireRecommendationsCard();
 
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));
