@@ -40127,6 +40127,9 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _note = (ln.get("note") or "").strip()
         if _note:
             rec["note"] = _note
+        _src = (ln.get("source") or "").strip()
+        if _src:
+            rec["source"] = _src
         if _fmt and _fmt != "bottle":
             rec["format"] = _fmt
         # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
@@ -41378,6 +41381,9 @@ def _invoice_line_view(l):
     _lnote = (l.get("note") or "").strip()
     if _lnote:
         out["note"] = _lnote
+    # Per-line recommendation source (biofield/scan/self/…). Whitelist-carried like note.
+    if l.get("source"):
+        out["source"] = l.get("source")
     # A membership line isn't a catalog product — carry its marker through so the page
     # renders a labelled membership row instead of hunting for a product that isn't there.
     if l.get("kind") == "membership":
