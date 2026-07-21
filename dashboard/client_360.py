@@ -22,25 +22,26 @@ def _exists(cx, sql, params):
         return False
 
 
-def _detect_source(cx, email):
-    """Recommendation source for a client, in priority order. None if no
-    concrete recommendation record exists."""
+def _detect_sources(cx, email):
+    """All applicable sources by presence, in priority order (multi-badge)."""
+    out = []
     if _exists(cx, "SELECT 1 FROM biofield_reveals WHERE lower(email)=? LIMIT 1", (email,)):
-        return "biofield"
+        out.append("biofield")
     if _exists(cx, "SELECT 1 FROM ff_match_drafts WHERE lower(email)=? LIMIT 1", (email,)):
-        return "scan"
+        out.append("scan")
     if _exists(cx, "SELECT 1 FROM intake_responses WHERE lower(email)=? AND status='submitted' LIMIT 1", (email,)):
-        return "intake"
+        out.append("intake")
     if _exists(cx, "SELECT 1 FROM inquiries WHERE lower(client_email)=? LIMIT 1", (email,)):
-        return "chat"
-    return None
+        out.append("chat")
+    return out
 
 
 def process_strip(cx, email):
     """The client's CURRENT in-flight cycle as sequence-status stages.
     cx: LOG_DB connection (row_factory=sqlite3.Row). Read-only."""
     e = (email or "").strip().lower()
-    source = _detect_source(cx, e)
+    sources = _detect_sources(cx, e)
+    source = sources[0] if sources else None
     try:
         order = cx.execute(
             "SELECT id, COALESCE(status,'') status, COALESCE(pay_status,'') pay, "
@@ -58,7 +59,7 @@ def process_strip(cx, email):
     stages = [
         {"key": "recommendation",
          "label": _SOURCE_LABEL.get(source, "Recommendation"),
-         "done": source is not None, "source": source, "action": rec_action},
+         "done": bool(sources), "source": source, "sources": sources, "action": rec_action},
         {"key": "invoice", "label": "Invoice", "done": order is not None,
          "action": {"kind": "link", "target": "/console/orders"} if order else {"kind": "none"}},
         {"key": "sent", "label": "Sent", "done": bool(sent),
@@ -69,7 +70,7 @@ def process_strip(cx, email):
         {"key": "fulfilled", "label": "Fulfilled", "done": status in _FULFILLED,
          "action": {"kind": "link", "target": "/console/orders"} if order else {"kind": "none"}},
     ]
-    return {"source": source, "order_id": oid, "stages": stages}
+    return {"source": source, "sources": sources, "order_id": oid, "stages": stages}
 
 
 def client_tags_for_email(email, *, e4l_path=None):
@@ -185,6 +186,14 @@ def _comms(cx, email):
     return out
 
 
+def _recommendations(cx, email):
+    from dashboard import recommendation_events
+    try:
+        return recommendation_events.product_sources(cx, email)
+    except Exception:
+        return []
+
+
 def bundle(cx, email, *, e4l_path=None):
     """Assemble the full client-360 payload. cx: LOG_DB connection
     (row_factory=sqlite3.Row). Read-only; never raises on missing data."""
@@ -196,4 +205,5 @@ def bundle(cx, email, *, e4l_path=None):
         "invoices": _invoices(cx, e),
         "comms": _comms(cx, e),
         "process": process_strip(cx, e),
+        "recommendations": _recommendations(cx, e),
     }

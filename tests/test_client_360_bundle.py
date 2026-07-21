@@ -51,6 +51,10 @@ def test_bundle_shape_and_invoice_math(tmp_path):
     assert any(c["source"] == "inquiry" and c["topic"] for c in b["comms"])
     # process present
     assert b["process"]["source"] == "biofield"
+    # recommendations block present (read-only, degrades to [] when no
+    # recommendation_events table exists in this fixture)
+    assert "recommendations" in b
+    assert isinstance(b["recommendations"], list)
 
 
 def test_bundle_empty_client(tmp_path):
