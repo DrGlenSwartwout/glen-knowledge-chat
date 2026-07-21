@@ -89,3 +89,103 @@ def client_tags_for_email(email, *, e4l_path=None):
         return empty
     finally:
         cx.close()
+
+
+def _person(cx, email):
+    empty = {"name": "", "email": email, "phone": "", "location": "",
+             "profession": "", "order_count": 0, "last_order_date": ""}
+    try:
+        r = cx.execute(
+            "SELECT name, email, COALESCE(phone,'') phone, COALESCE(city,'') city, "
+            "COALESCE(state,'') state, COALESCE(island,'') island, "
+            "COALESCE(profession,'') profession, COALESCE(order_count,0) oc, "
+            "COALESCE(last_order_date,'') lod FROM people WHERE lower(email)=? LIMIT 1",
+            (email,)).fetchone()
+    except sqlite3.OperationalError:
+        return empty
+    if not r:
+        return empty
+    loc = ", ".join(p for p in (r["city"], r["state"]) if p) or (r["island"] or "")
+    return {"name": r["name"] or "", "email": r["email"] or email, "phone": r["phone"],
+            "location": loc, "profession": r["profession"],
+            "order_count": r["oc"], "last_order_date": r["lod"]}
+
+
+def _tests(cx, email):
+    from dashboard import client_scans, biofield_reveals
+    by_date = {}
+    try:
+        for s in client_scans.scans_for(cx, email):
+            by_date[s["scan_date"]] = "scan"
+    except sqlite3.OperationalError:
+        pass
+    try:
+        for rv in biofield_reveals.list_for_email(cx, email):
+            by_date[rv["scan_date"]] = "biofield"   # biofield wins on a shared date
+    except sqlite3.OperationalError:
+        pass
+    return [{"date": d, "type": t}
+            for d, t in sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)]
+
+
+def _invoices(cx, email):
+    from dashboard import order_payments, fmp_orders
+    out = {"total_paid_cents": 0, "open_balance_cents": 0, "orders": [], "fmp": []}
+    try:
+        rows = cx.execute(
+            "SELECT id, COALESCE(status,'') status, COALESCE(created_at,'') created_at, "
+            "COALESCE(total_cents,0) total FROM orders "
+            "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
+            "ORDER BY id DESC", (email,)).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    for r in rows:
+        bal = order_payments.balance(cx, r["id"])
+        out["orders"].append({
+            "id": r["id"], "date": r["created_at"], "status": r["status"],
+            "total_cents": bal["invoice_cents"], "paid_cents": bal["paid_cents"],
+            "balance_cents": bal["balance_cents"],
+            "edit_url": f"/orders/new?edit_order={r['id']}"})
+        out["total_paid_cents"] += bal["paid_cents"]
+        if bal["balance_cents"] > 0:
+            out["open_balance_cents"] += bal["balance_cents"]
+    try:
+        out["fmp"] = fmp_orders.client_order_history(cx, email=email)
+    except Exception:
+        out["fmp"] = []
+    return out
+
+
+def _comms(cx, email):
+    from dashboard import recent_comms
+    try:
+        rc = recent_comms.recent_comms(cx, email, days_window=3650)
+    except Exception:
+        return []
+    out = []
+    for q in rc.get("recent_inquiries", []):
+        topic = q.get("main_challenge") or q.get("main_goal") or "inquiry"
+        out.append({"date": q.get("created_at") or "", "topic": topic, "source": "inquiry"})
+    for q in rc.get("recent_queries", []):
+        out.append({"date": q.get("ts") or "", "topic": q.get("question") or "", "source": "query"})
+    for f in rc.get("recent_feedback", []):
+        topic = ", ".join(f.get("topics") or []) or f.get("summary") or "feedback"
+        out.append({"date": f.get("received_at") or "", "topic": topic, "source": "feedback"})
+    if rc.get("intake_summary"):
+        out.append({"date": "", "topic": "Intake on file", "source": "intake"})
+    out.sort(key=lambda c: c["date"], reverse=True)
+    return out
+
+
+def bundle(cx, email, *, e4l_path=None):
+    """Assemble the full client-360 payload. cx: LOG_DB connection
+    (row_factory=sqlite3.Row). Read-only; never raises on missing data."""
+    e = (email or "").strip().lower()
+    return {
+        "person": _person(cx, e),
+        "clinical": client_tags_for_email(e, e4l_path=e4l_path),
+        "tests": _tests(cx, e),
+        "invoices": _invoices(cx, e),
+        "comms": _comms(cx, e),
+        "process": process_strip(cx, e),
+    }
