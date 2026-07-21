@@ -15645,9 +15645,22 @@ def _biofield_pipeline_clients(cx, include_complete=False):
     """Every client in the Biofield pipeline: anyone with a biofield portal OR a
     non-cancelled biofield-analysis order. Complete ones are hidden unless asked."""
     cand = {}
-    for r in cx.execute("SELECT email, name FROM client_portals "
+    # Every buyer is auto-provisioned a portal at order time with
+    # biofield_status='none' (portal_provision.ensure_portal_for_buyer). Those are NOT
+    # biofield clients, so a bare "has the key" match floods the pipeline with the whole
+    # buyer base (hundreds of handed_off-only + '(unnamed)' cards). Only portals that
+    # entered the biofield flow (requested/pending/ai_draft/confirmed, or a legacy portal
+    # with no explicit status) belong; parse the status and skip 'none'. A 'none' buyer
+    # who ALSO has a real biofield-analysis order is still picked up by the orders pass.
+    for r in cx.execute("SELECT email, name, content_json FROM client_portals "
                         "WHERE content_json LIKE '%biofield_status%' "
                         "AND TRIM(COALESCE(email,''))<>''"):
+        try:
+            st = (json.loads(r[2] or "{}") or {}).get("biofield_status")
+        except Exception:
+            st = None
+        if st == "none":
+            continue
         cand.setdefault(r[0].lower(), r[1] or "")
     for r in cx.execute("SELECT email, name FROM orders "
                         "WHERE COALESCE(items_json,'') LIKE '%biofield-analysis%' "
