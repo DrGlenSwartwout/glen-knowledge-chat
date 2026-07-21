@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from dashboard import dbwrite
+
 
 def _default_db_path() -> str:
     base = os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))
@@ -118,12 +120,12 @@ def add_adjustment(ingredient_id, qty, unit=None, txn_date=None, notes=None, db_
     with _connect(db_path) as cx:
         if not cx.execute("SELECT 1 FROM ingredients WHERE id=?", (ingredient_id,)).fetchone():
             raise ValueError(f"no ingredient {ingredient_id}")
-        cur = cx.execute("""
+        new_id = dbwrite.insert_returning_id(cx, """
             INSERT INTO inventory_txns (ingredient_id, txn_type, qty, unit, txn_date, source_kind, notes)
             VALUES (?, 'adjustment', ?, ?, ?, 'manual', ?)
         """, (ingredient_id, q, unit, txn_date, notes))
         cx.commit()
-        return int(cur.lastrowid)
+        return int(new_id)
 
 
 _TXN_CURATED = {"notes"}

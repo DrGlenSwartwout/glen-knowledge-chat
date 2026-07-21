@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 from dashboard import orders as _orders
 from dashboard import family_plan as _fp
 from dashboard import household as _hh
+from dashboard import dbwrite
 
 _TERMINAL = _orders._TERMINAL_STATUSES  # ("shipped","delivered","done","cancelled")
 _NO_EMAIL_EXACT = {"pet", "child"}
@@ -141,7 +142,7 @@ def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days
         return {"group_id": existing["id"], "opened": False, "joined": True}
     hold_until = _iso(now + timedelta(days=int(hold_days)))
     try:
-        cur = cx.execute(
+        new_gid = dbwrite.insert_returning_id(cx,
             "INSERT INTO household_holds (caregiver_email, household_key, status, "
             "opened_at, hold_until, updated_at) VALUES (?,?,'open',?,?,?)",
             (_lc(caregiver_email), _lc(household_key), _iso(now), hold_until, _iso(now)))
@@ -159,7 +160,7 @@ def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days
                    (_iso(now), winner["id"]))
         cx.commit()
         return {"group_id": winner["id"], "opened": False, "joined": True}
-    gid = int(cur.lastrowid)
+    gid = int(new_gid)
     _orders.set_order_hold_group(cx, order_id, gid)
     cx.commit()
     return {"group_id": gid, "opened": True, "joined": False}

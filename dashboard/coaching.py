@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 
+from dashboard import dbwrite
+
 WINDOW_DAYS = int(os.environ.get("COACHING_WINDOW_DAYS", "30"))
 
 # Remedy-program order sources that earn a coaching month. Excludes the $99
@@ -112,11 +114,12 @@ def open_window(cx, *, email, order_id, days, source, now=None):
     now = now or datetime.utcnow()
     started = now.isoformat() + "Z"
     ends = (now + timedelta(days=int(days))).isoformat() + "Z"
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO coaching_windows (email, order_id, started_at, ends_at, source, created_at) "
         "VALUES (?,?,?,?,?,?)", (email, order_id, started, ends, source, started))
     cx.commit()
-    win = {"id": cur.lastrowid, "email": email, "order_id": order_id,
+    win = {"id": new_id, "email": email, "order_id": order_id,
            "started_at": started, "ends_at": ends, "source": source, "created_at": started}
     return {"created": True, "window": _with_days_remaining(win)}
 

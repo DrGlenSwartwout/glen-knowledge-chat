@@ -7,6 +7,8 @@ the same LOG_DB."""
 import json
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 # Address columns added to `people` (city/state/country/phone already exist).
 _ADDR_COLS = ("address1", "address2", "zip")
 
@@ -115,12 +117,13 @@ def find_or_create_by_email(cx, *, email, name="", phone=""):
     row = cx.execute("SELECT id FROM people WHERE lower(email)=?", (em,)).fetchone()
     if row:
         return row[0]
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO people (email, name, phone, source, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?)",
         (em, (name or "").strip(), (phone or "").strip(), "order-entry", _now(), _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def rename_by_email(cx, email, *, name, first_name=None, last_name=None):

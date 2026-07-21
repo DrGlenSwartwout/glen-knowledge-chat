@@ -13,6 +13,8 @@ import json
 import secrets
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 
 def _hash(token: str) -> str:
     return hashlib.sha256((token or "").strip().encode("utf-8")).hexdigest()
@@ -63,7 +65,8 @@ def upsert_portal(cx, email: str, name: str, content: dict):
         cx.commit()
         return None, pid
     token = secrets.token_urlsafe(32)
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO client_portals (token_hash, email, name, content_json, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?)",
         (_hash(token), email, name, payload, now, now),
@@ -78,7 +81,7 @@ def upsert_portal(cx, email: str, name: str, content: dict):
         _ns.set_token(cx, email, token)
     except Exception:
         pass
-    return token, cur.lastrowid
+    return token, new_id
 
 
 def reissue_token(cx, email):

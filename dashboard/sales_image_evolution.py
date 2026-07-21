@@ -1,5 +1,7 @@
 import datetime, json
 
+from dashboard import dbwrite
+
 def _now(): return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def init_tables(cx):
@@ -136,11 +138,11 @@ def _apply_swap(cx, axis, kind, retire_key, promote_key, actor):
     after = _active_count(cx, axis, kind)
     if after != before:
         raise ValueError(f"swap changed active count {before}->{after}")
-    cur = cx.execute("INSERT INTO sales_image_evolution_log "
+    new_id = dbwrite.insert_returning_id(cx, "INSERT INTO sales_image_evolution_log "
                      "(axis, kind, retired_key, promoted_key, actor, created_at) VALUES (?,?,?,?,?,?)",
                      (axis, kind, str(retire_key), str(promote_key), actor, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 def decide(cx, proposal_id, decision, actor="console"):
     init_tables(cx)

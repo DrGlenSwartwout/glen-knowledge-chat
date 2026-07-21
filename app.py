@@ -1863,7 +1863,8 @@ def log_query(query: str, level: str, answer: str,
     ts = datetime.now(timezone.utc).isoformat()
     wc = word_count or len((answer or "").split())
     with _db_lock, db.connect(LOG_DB) as cx:
-        cur = cx.execute(
+        new_id = dbwrite.insert_returning_id(
+            cx,
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
                 ghl_contact_id, mode, user_agent, referer,
@@ -1876,7 +1877,7 @@ def log_query(query: str, level: str, answer: str,
              cta_type, cta_rung)
         )
         cx.commit()
-        return cur.lastrowid
+        return new_id
 
 
 def _normalize_attachments(images, documents):
@@ -11487,12 +11488,12 @@ def auth_magic_link_verify():
             cx.execute("UPDATE users SET last_login_at = ? WHERE id = ?",
                        (_now_utc().isoformat(), user_id))
         else:
-            cur = cx.execute(
+            user_id = dbwrite.insert_returning_id(
+                cx,
                 """INSERT INTO users (email, auth_method, created_at, last_login_at)
                    VALUES (?,?,?,?)""",
                 (email, "magic_link", _now_utc().isoformat(), _now_utc().isoformat())
             )
-            user_id = cur.lastrowid
 
         # Create session
         sess = secrets.token_urlsafe(32)
@@ -26851,7 +26852,8 @@ def _run_biofield_bonuses(dry_run=False):
                     granted_total += 1
                     continue
                 now = _dt.now(_tz.utc).isoformat()
-                cur = cx.execute(
+                dedup_key = f"cert-bonus-{email}-{kind}-{idx}"
+                cx.execute(
                     """INSERT INTO todos (created_at, owner, category, title, body,
                                           priority, source, dedup_key)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -26862,8 +26864,12 @@ def _run_biofield_bonuses(dry_run=False):
                       f"({kind} {idx}). Schedule and run the Biofield analysis "
                       "for the client as part of their certification benefit."),
                      "normal", "cert-bonus",
-                     f"cert-bonus-{email}-{kind}-{idx}"))
-                todo_id = cur.lastrowid
+                     dedup_key))
+                # ON CONFLICT DO NOTHING returns no row via RETURNING; read the id back by
+                # the UNIQUE dedup_key so we get the right todo id whether just-inserted or
+                # pre-existing (portable + more correct than lastrowid-on-conflict).
+                todo_id = cx.execute(
+                    "SELECT id FROM todos WHERE dedup_key=?", (dedup_key,)).fetchone()[0]
                 cert_bonus.record_grant(cx, email, kind=kind, idx=idx, todo_id=todo_id)
                 granted_total += 1
         cx.commit()
@@ -32790,12 +32796,11 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
             body     = (inp.get("body") or "")
             ts = datetime.now(timezone.utc).isoformat()
             with _db_lock, db.connect(LOG_DB) as cx:
-                cur = cx.execute("""
+                new_id = dbwrite.insert_returning_id(cx, """
                     INSERT INTO todos (created_at, owner, category, title, body, priority, source)
                     VALUES (?,?,?,?,?,?,?)
                 """, (ts, owner, category, title, body, priority, "justus"))
                 cx.commit()
-                new_id = cur.lastrowid
             return f"Added #{new_id} ({owner}, {priority}): {title}"
 
         if name == "split_capture":

@@ -7,6 +7,8 @@ in the route layer, so this module has no app-layer imports."""
 
 import json
 
+from dashboard import dbwrite
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS community_content (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,14 +41,14 @@ def init_community_tables(cx):
 
 def create_content(cx, *, type, title, description, video_ref, tier,
                    interest_tags, parent_id=None, transcript=None):
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO community_content (type,title,description,video_ref,tier,"
         "interest_tags,parent_id,transcript,published,created_at) "
         "VALUES (?,?,?,?,?,?,?,?,0,?)",
         (type, title, description, video_ref, tier,
          json.dumps(list(interest_tags or [])), parent_id, transcript, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def get_content(cx, content_id):
@@ -74,23 +76,23 @@ def upsert_full(cx, *, type, title, description, video_ref, interest_tags, trans
         cx.execute("DELETE FROM community_content WHERE parent_id=?", (cid,))
         cx.commit()
         return cid
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO community_content (type,title,description,video_ref,tier,"
         "interest_tags,transcript,published,created_at) "
         "VALUES (?,?,?,?, 'paid', ?,?,0,?)",
         (type, title, description, video_ref, tags, transcript, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def add_outtake(cx, *, parent_id, title, video_ref, interest_tags):
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO community_content (type,title,description,video_ref,tier,"
         "interest_tags,parent_id,published,created_at) "
         "VALUES ('outtake', ?, '', ?, 'free', ?, ?, 0, ?)",
         (title, video_ref, json.dumps(list(interest_tags or [])), parent_id, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def _row_tags(row):

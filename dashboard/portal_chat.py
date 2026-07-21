@@ -8,6 +8,8 @@ from the console. Pure sqlite; caller passes the connection.
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 # role values
 CLIENT = "client"          # the portal client
 ASSISTANT = "assistant"    # the AI concierge ("Ask Dr. Glen")
@@ -34,11 +36,12 @@ def add_message(cx, email, role, content, author=None):
     c = (content or "").strip()
     if not e or not c:
         return None
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO portal_chat_messages(email,role,author,content,created_at) VALUES(?,?,?,?,?)",
         (e, role, (author or "").strip() or None, c, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def list_messages(cx, email, limit=100):

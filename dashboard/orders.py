@@ -9,6 +9,8 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
+from dashboard import dbwrite
+
 ORDER_STATUSES = ("proposed", "confirmed", "paid",
                   "new", "packed", "shipped", "done", "cancelled", "delivered")
 _OPEN = ("new", "packed")  # unfulfilled
@@ -203,7 +205,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         if items is not None:
             _emit_source_events(cx, row[0], email, items)
         return row[0]
-    cur = cx.execute(
+    oid = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
         "phone, items_json, total_cents, address_json, status, get_cents, person_id, "
         "discount_cents, points_redeemed_cents, shipping_cents, invoice_note, adjustment_cents, "
@@ -221,8 +224,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
          max(0, int(ship_credit_applied_cents or 0))))
     cx.commit()
     if items is not None:
-        _emit_source_events(cx, cur.lastrowid, email, items)
-    return cur.lastrowid
+        _emit_source_events(cx, oid, email, items)
+    return oid
 
 
 def get_tax_report(cx, *, date_from, date_to):

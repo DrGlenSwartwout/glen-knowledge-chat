@@ -3,6 +3,8 @@ operator/agent actions. Functions take a sqlite connection for testability."""
 import json
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -45,7 +47,7 @@ def _row_to_dict(row):
 def append_event(cx, *, actor, source, action_key, module, risk_tier,
                  params, result, status, reversible=False,
                  ref_type=None, ref_id=None):
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         """INSERT INTO events
            (ts, actor, source, action_key, module, risk_tier,
             params_json, result_json, status, reversible, ref_type, ref_id)
@@ -55,7 +57,7 @@ def append_event(cx, *, actor, source, action_key, module, risk_tier,
          json.dumps(result) if result is not None else None,
          status, 1 if reversible else 0, ref_type, ref_id))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def get_event(cx, event_id):

@@ -6,6 +6,8 @@ proposals (Pinecone) live in a separate module so this stays unit-testable.
 """
 import sqlite3
 
+from dashboard import dbwrite
+
 
 def init_tables(cx):
     """Ensure the two tables exist (real e4l.db already has them; this lets tests and a
@@ -30,9 +32,9 @@ def _formulation_id(cx, name):
     row = cx.execute("SELECT id FROM formulations WHERE lower(name)=lower(?)", (name,)).fetchone()
     if row:
         return row[0]
-    cur = cx.execute("INSERT INTO formulations(name) VALUES(?)", (name,))
+    new_id = dbwrite.insert_returning_id(cx, "INSERT INTO formulations(name) VALUES(?)", (name,))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def mappings_for(cx, code):

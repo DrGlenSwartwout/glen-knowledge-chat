@@ -1,6 +1,8 @@
 import json, sqlite3
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 def _now(): return datetime.now(timezone.utc).isoformat()
 
 def init_table(cx):
@@ -13,10 +15,10 @@ def init_table(cx):
 
 def create(cx, *, practitioner_id, patient_email, items, note):
     init_table(cx)
-    cur = cx.execute("INSERT INTO practitioner_recommendations "
+    new_id = dbwrite.insert_returning_id(cx, "INSERT INTO practitioner_recommendations "
         "(practitioner_id, patient_email, items_json, note, status, created_at) VALUES (?,?,?,?,'sent',?)",
         (str(practitioner_id), (patient_email or "").strip().lower(), json.dumps(items or []), note or "", _now()))
-    cx.commit(); return cur.lastrowid
+    cx.commit(); return new_id
 
 def active_for_patient(cx, patient_email):
     init_table(cx)

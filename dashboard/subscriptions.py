@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from dashboard import db
 from dashboard import customers as _customers
+from dashboard import dbwrite
 
 # ---------------------------------------------------------------------------
 # Tier math
@@ -157,7 +158,8 @@ def create(cx, *, email: str, stripe_customer_id: str,
     double-create (redirect vs. webhook, or a redirect refresh).
     """
     now = _now_iso()
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         """INSERT INTO subscriptions
                (email, stripe_customer_id, stripe_payment_method_id,
                 items_json, cadence_months, status, order_count,
@@ -170,7 +172,7 @@ def create(cx, *, email: str, stripe_customer_id: str,
          now, now, order_ref),
     )
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def has_subscription_for_order(cx, order_ref) -> bool:
@@ -422,7 +424,8 @@ def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id
     practitioner_share_consent (0/1) records whether the member has consented to
     the attributed practitioner viewing their continuity data (default 0 = no)."""
     now = _now_iso()
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         """INSERT INTO subscriptions
                (email, stripe_customer_id, stripe_payment_method_id, items_json,
                 cadence_months, status, order_count, next_charge_date, ship_address_json,
@@ -440,7 +443,7 @@ def create_membership(cx, *, email, stripe_customer_id, stripe_payment_method_id
         _customers.find_or_create_by_email(cx, email=email)
     except Exception:
         pass
-    return cur.lastrowid
+    return new_id
 
 
 def active_memberships_by_email(cx, email) -> list:
@@ -657,7 +660,8 @@ def create_founding_reservation(cx, *, email, stripe_customer_id,
     order_count=0 and a far-future next_charge_date keep it out of list_due until
     the founding batch ships (mark_founding_active)."""
     now = _now_iso()
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         """INSERT INTO subscriptions
                (email, stripe_customer_id, stripe_payment_method_id, items_json,
                 cadence_months, status, order_count, next_charge_date, ship_address_json,
@@ -667,7 +671,7 @@ def create_founding_reservation(cx, *, email, stripe_customer_id,
          _FOUNDING_PENDING_DATE, json.dumps(ship_address or {}), now, now, founding_slug),
     )
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def mark_founding_active(cx, sub_id: int, *, next_charge_date: str) -> None:

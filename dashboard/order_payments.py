@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 
 from dashboard import orders, qbo_billing, stripe_pay
+from dashboard import dbwrite
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +149,8 @@ def balance(cx, order_id):
 def _insert(cx, order_id, *, kind, amount_cents, method, source, external_ref,
             refunds_payment_id, paid_at, note, actor):
     now = _now()
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO order_payments (order_id, kind, amount_cents, method, "
         "source, external_ref, refunds_payment_id, paid_at, note, status, "
         "qbo_sync, created_at, updated_at, created_by) "
@@ -156,7 +158,7 @@ def _insert(cx, order_id, *, kind, amount_cents, method, source, external_ref,
         (order_id, kind, int(amount_cents), method, source, external_ref,
          refunds_payment_id, paid_at or now, note, now, now, actor))
     cx.commit()
-    return _row(cx, cur.lastrowid)
+    return _row(cx, new_id)
 
 
 def _qbo_ctx(cx, order_id):
