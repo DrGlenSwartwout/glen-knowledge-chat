@@ -111,16 +111,23 @@ def _ensure_orders_table(db):
     cx.commit(); cx.close()
 
 
-def test_pipeline_excludes_none_status_buyer_portals(monkeypatch, tmp_path):
-    # Every buyer is auto-provisioned a portal with biofield_status='none'. Those are
-    # not biofield clients and must NOT pollute the pipeline (the '(unnamed)' flood).
+def test_pipeline_excludes_non_flow_status_portals(monkeypatch, tmp_path):
+    # Auto-provisioned portals outside the manual-Biofield flow must NOT pollute the
+    # board: 'none' (every buyer, at order time) and 'pending' (every reveal lead, via
+    # portal_backfill). Only affirmative flow states belong.
     db = _auth(monkeypatch, tmp_path)
     _ensure_orders_table(db)
-    _seed_portal(db, "buyer@x.com", "", "none")
+    _seed_portal(db, "buyer@x.com", "", "none")       # order-time buyer portal
+    _seed_portal(db, "lead@x.com", "", "pending")     # reveal-lead backfill portal
     _seed_portal(db, "real@x.com", "Real Client", "requested")
+    _seed_portal(db, "draft@x.com", "Draft", "ai_draft")
+    _seed_portal(db, "done@x.com", "Done", "confirmed")
     shown = _clients(db, all_=True)
-    assert "buyer@x.com" not in shown        # 'none' buyer portal excluded
-    assert "real@x.com" in shown             # a requested biofield client stays
+    assert "buyer@x.com" not in shown        # 'none' excluded
+    assert "lead@x.com" not in shown         # 'pending' excluded
+    assert "real@x.com" in shown             # requested stays
+    assert "draft@x.com" in shown            # ai_draft stays
+    assert "done@x.com" in shown             # confirmed stays
 
 
 def test_pipeline_none_portal_with_biofield_order_still_shown(monkeypatch, tmp_path):
