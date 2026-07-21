@@ -951,9 +951,9 @@ document.addEventListener("click", async (ev) => {
 // from GET /api/portal/<token>/recommendations, fetched alongside d/v in load().
 // Each section lists up to `shown` products (with a "show all N" affordance
 // when `total > shown`) as: an icon row of source chips, the name (linked when
-// `url` is present), the operator's read-only note, and a client-editable note
-// + hide control. Click/save/hide/collapse-toggle wiring is Task 2 — this only
-// renders the markup + data-* attributes those handlers will bind to.
+// `url` is present and http(s)/relative), the operator's read-only note, and a
+// client-editable note + hide control. Click/save/hide/collapse-toggle wiring
+// is bound by wireRecommendationsCard() below, called once per render().
 function renderRecommendations(sections){
   let secHtml = "";
   sections.forEach(sec=>{
@@ -968,8 +968,9 @@ function renderRecommendations(sections){
     let idx = 0;
     products.forEach(p=>{
       const pk = esc(p.product_key || "");
-      const nameHtml = p.url
-        ? `<a href="${esc(p.url)}">${esc(p.name || "")}</a>`
+      const safeUrl = /^(https?:\/\/|\/)/.test(String(p.url||"")) ? p.url : "";
+      const nameHtml = safeUrl
+        ? `<a href="${esc(safeUrl)}">${esc(p.name || "")}</a>`
         : esc(p.name || "");
       const icons = Array.isArray(p.icons) ? p.icons : [];
       const chips = icons.map(ic=>{
@@ -1016,7 +1017,7 @@ function renderRecommendations(sections){
   return `<div class="card" id="recsCard"><h2>My Recommendations</h2>${secHtml || '<p class="muted">No recommendations yet.</p>'}</div>`;
 }
 
-// Task 2 (Phase 2b-ii): wire the "My Recommendations" card's three writes +
+// Phase 2b-ii: wire the "My Recommendations" card's three writes +
 // the client-side "Show all N" reveal. Called once per render() (like the
 // wishlist/ff-matches wiring above it) — app.innerHTML is rebuilt on every
 // load(), so every .rec-* element here is fresh and re-querying + re-binding
@@ -1873,11 +1874,11 @@ function render(d, v, rec){
       <p class="small err" id="wishErr" hidden></p></div>`;
   }
 
-  // Phase 2b-ii Task 1: "My Recommendations" — one collapsible sub-section per
+  // Phase 2b-ii: "My Recommendations" — one collapsible sub-section per
   // recommendation source (wishlist adds, quiz picks, biofield matches, etc.),
   // fetched independently in load() so an empty/absent payload never blocks the
-  // rest of the page. Click/save/hide/expand wiring lands in Task 2 — this only
-  // renders the markup + data-* attributes those handlers will bind to.
+  // rest of the page. Click/save/hide/expand wiring is bound by
+  // wireRecommendationsCard(), called once per render().
   if (recSections.length) {
     html += renderRecommendations(recSections);
   }
