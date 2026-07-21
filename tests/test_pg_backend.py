@@ -42,3 +42,31 @@ def test_pg_rotate_race_no_lost_update(monkeypatch):
     assert not errors, errors[:2]
     assert final == WRITERS * ITERS, f"lost updates: {final} != {WRITERS*ITERS}"
     cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_context_manager_commits_on_success(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    with db.connect("ignored") as cx:
+        cx.execute("DROP TABLE IF EXISTS cm_t")
+        cx.execute("CREATE TABLE cm_t (id BIGINT)")
+        cx.execute("INSERT INTO cm_t (id) VALUES (?)", (42,))
+    cx2 = db.connect("ignored")
+    assert cx2.execute("SELECT id FROM cm_t").fetchone()[0] == 42
+    cx2.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_context_manager_rolls_back_on_exception(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    with db.connect("ignored") as cx:
+        cx.execute("DROP TABLE IF EXISTS cm_r")
+        cx.execute("CREATE TABLE cm_r (id BIGINT)")
+        cx.commit()
+    try:
+        with db.connect("ignored") as cx:
+            cx.execute("INSERT INTO cm_r (id) VALUES (?)", (1,))
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    cx3 = db.connect("ignored")
+    assert cx3.execute("SELECT count(*) FROM cm_r").fetchone()[0] == 0
+    cx3.close()
