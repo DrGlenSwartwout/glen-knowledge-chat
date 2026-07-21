@@ -6,7 +6,7 @@ def _cx():
     cx = sqlite3.connect(":memory:")
     cx.row_factory = sqlite3.Row
     cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, "
-               "status TEXT, pay_status TEXT, invoice_sent_at TEXT)")
+               "status TEXT, pay_status TEXT, invoice_sent_at TEXT, items_json TEXT)")
     cx.execute("CREATE TABLE biofield_reveals (id INTEGER PRIMARY KEY, email TEXT, scan_date TEXT)")
     cx.execute("CREATE TABLE ff_match_drafts (email TEXT, scan_date TEXT, status TEXT)")
     cx.execute("CREATE TABLE intake_responses (email TEXT PRIMARY KEY, status TEXT)")
@@ -126,3 +126,41 @@ def test_process_strip_returns_multi_sources():
     assert res["source"] == "biofield"                # back-compat: first
     rec = next(s for s in res["stages"] if s["key"] == "recommendation")
     assert rec["sources"] == ["biofield", "scan"] and rec["done"] is True
+
+
+def test_process_strip_prefers_order_line_source():
+    import sqlite3, json
+    from dashboard import client_360
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, status TEXT, "
+               "pay_status TEXT, invoice_sent_at TEXT, items_json TEXT)")
+    cx.execute("CREATE TABLE biofield_reveals (id INTEGER PRIMARY KEY, email TEXT, scan_date TEXT)")
+    cx.execute("CREATE TABLE ff_match_drafts (email TEXT, scan_date TEXT, status TEXT)")
+    cx.execute("CREATE TABLE intake_responses (email TEXT PRIMARY KEY, status TEXT)")
+    cx.execute("CREATE TABLE inquiries (id INTEGER PRIMARY KEY, client_email TEXT)")
+    # presence would say biofield, but the current order's lines are self + scan -> those win
+    cx.execute("INSERT INTO biofield_reveals VALUES (1,'a@b.com','2026-07-01')")
+    cx.execute("INSERT INTO orders (email, status, pay_status, invoice_sent_at, items_json) VALUES (?,?,?,?,?)",
+               ("a@b.com", "confirmed", "unpaid", "",
+                json.dumps([{"slug": "x", "source": "self"}, {"slug": "y", "source": "scan"}])))
+    res = client_360.process_strip(cx, "a@b.com")
+    assert set(res["sources"]) == {"self", "scan"}
+    rec = next(s for s in res["stages"] if s["key"] == "recommendation")
+    assert set(rec["sources"]) == {"self", "scan"}
+
+
+def test_process_strip_falls_back_to_presence_without_line_source():
+    import sqlite3, json
+    from dashboard import client_360
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, status TEXT, "
+               "pay_status TEXT, invoice_sent_at TEXT, items_json TEXT)")
+    cx.execute("CREATE TABLE biofield_reveals (id INTEGER PRIMARY KEY, email TEXT, scan_date TEXT)")
+    cx.execute("CREATE TABLE ff_match_drafts (email TEXT, scan_date TEXT, status TEXT)")
+    cx.execute("CREATE TABLE intake_responses (email TEXT PRIMARY KEY, status TEXT)")
+    cx.execute("CREATE TABLE inquiries (id INTEGER PRIMARY KEY, client_email TEXT)")
+    cx.execute("INSERT INTO biofield_reveals VALUES (1,'a@b.com','2026-07-01')")
+    cx.execute("INSERT INTO orders (email, status, pay_status, invoice_sent_at, items_json) VALUES (?,?,?,?,?)",
+               ("a@b.com", "confirmed", "unpaid", "", json.dumps([{"slug": "x"}])))   # no source
+    res = client_360.process_strip(cx, "a@b.com")
+    assert res["sources"] == ["biofield"]        # presence fallback
