@@ -80,7 +80,7 @@ counts.
 
 | Source | `kind` | +1 when |
 |---|---|---|
-| biofield | clinical | the product appears in a newly generated biofield reveal |
+| biofield | engagement | the client ACTS on a reveal for the product — clicks to learn about it, or orders it (NOT merely that a reveal was generated) |
 | intake | clinical | the product is recommended from an intake |
 | scan | engagement | client opens the product page and interacts / adds to list / orders (NOT when the AI match is generated) |
 | chat | engagement | client opens the product page and interacts / adds to list / orders from a chat CTA |
@@ -166,12 +166,15 @@ to the Invoice→Sent→Paid→Fulfilled stages.
 ### Phase 1 — the spine (backend + operator; lowest risk)
 - Source registry + `recommendation_events` log + derived aggregates (count, first_touch,
   last_touch) + client hide flag.
-- Ingest ONLY the sources whose existing data matches their own counting rule:
-  `biofield` (`biofield_reveals` — recommendation-generated) and `purchased` (paid
-  `orders`). **`scan` is NOT ingested in Phase 1**: its counting rule is client-engagement,
-  and `ff_match_drafts` is match-*generation*, not engagement — counting it would inflate.
-  Scan/chat engagement begins accruing in Phase 2 when the portal/product-page instrument
-  client actions. (Intake likewise has no product-recommendation output today.)
+- Ingest ONLY `purchased` (paid `orders`) — the one source with a real recorded ACTION
+  today (a paid order line). **biofield, scan, intake, chat are all deferred**: every one
+  of them now counts a client ACTION (biofield = acted-on reveal; scan/chat = engagement;
+  intake = its own signal), and none of those actions are instrumented until Phase 2's
+  reveal-click tracking + order-line source capture. Ingesting reveal/draft *generation*
+  would count exposure, not action — exactly what this system rejects.
+- The operator Recommendations section therefore shows purchased staples (with re-order
+  counts) in Phase 1; the presence-based multi-badge strip still surfaces biofield / scan /
+  intake / chat *presence* (not counts).
 - Surface the aggregates on the OPERATOR client-360 hub (a "Recommendations" section:
   products with per-source icon+count), driven by lazy ingest-on-read — a Phase-1 preview
   of what the client portal (Phase 2) will show, exercising ingest→aggregate→display
@@ -187,6 +190,10 @@ to the Invoice→Sent→Paid→Fulfilled stages.
   every order.
 - Product-page "add to my portal" button → `self` source (and adds the product to the
   client's portal for future).
+- **biofield / scan / chat acted-on capture** — a `biofield` event when the client clicks
+  a reveal's product link (to learn) or orders from the biofield list; `scan`/`chat` events
+  on the same click/add/order actions. This is where the deferred clinical/AI sources start
+  accruing, on real client actions rather than generation.
 
 ### Phase 3 — marketing channels (separate integrations)
 - Email + newsletter CTA-click capture (GHL / email-content-engine tracked links) → events.
