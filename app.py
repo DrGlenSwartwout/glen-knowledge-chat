@@ -22303,6 +22303,53 @@ def _run_autoconfirm(cx, email, scan_date, content):
         return "error"
 
 
+@app.route("/api/console/autoconfirm/backfill", methods=["POST"])
+def api_autoconfirm_backfill():
+    """Console-gated backfill: runs the auto-confirm quality gate over the EXISTING
+    ai_draft backlog. Dry-run by default (commit=false) — returns counts + a sample
+    of hold-reasons without touching any row. commit=true actually confirms the
+    passing drafts via _autoconfirm_confirm_fn and logs, same as the live hook.
+    Never emails (silent confirm, same as _autoconfirm_confirm_fn elsewhere)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import analysis_autoconfirm as _ac
+    from dashboard import client_portal as _cp
+    from dashboard import portal_biofield_reports as _pbr
+    from dashboard.biofield_portal_publish import load_catalog, resolve_remedy_slug
+    commit = bool((request.get_json(silent=True) or {}).get("commit"))
+    catalog = load_catalog()
+    resolver = lambda n: resolve_remedy_slug(n, catalog)
+    counts = {"would_confirm": 0, "would_hold_quality": 0, "would_hold_sample": 0}
+    sample_reasons = []
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _pbr.init_table(cx); _ac.init_autoconfirm_log(cx)
+        rows = cx.execute("SELECT email, content_json FROM client_portals "
+                          "WHERE content_json LIKE '%\"biofield_status\": \"ai_draft\"%'").fetchall()
+        for email, cj in rows:
+            try:
+                content = json.loads(cj or "{}")
+            except Exception:
+                continue
+            if (content.get("biofield_status") or "") != "ai_draft":
+                continue
+            ok, reasons = _ac.evaluate_quality(content, resolve_slug=resolver,
+                                               red_flag_terms=_AUTOCONFIRM_RED_FLAGS)
+            if not ok:
+                counts["would_hold_quality"] += 1
+                if len(sample_reasons) < 15:
+                    sample_reasons.append({"email": email, "reasons": reasons})
+                continue
+            if _ac.should_sample(email, "", ANALYSIS_AUTOCONFIRM_SAMPLE_PCT):
+                counts["would_hold_sample"] += 1
+                continue
+            counts["would_confirm"] += 1
+            if commit:
+                _autoconfirm_confirm_fn(cx, email, "", content)
+                _ac._log(cx, email, "", "confirmed", [], False,
+                         datetime.now(timezone.utc).isoformat())
+    return jsonify({"ok": True, "committed": commit, "sample_reasons": sample_reasons, **counts})
+
+
 @app.route("/api/console/portal/set-current", methods=["POST"])
 def api_console_portal_set_current():
     """Operator: point a portal at an existing scan_date (authoritative, independent

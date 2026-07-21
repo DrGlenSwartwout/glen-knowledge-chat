@@ -54,3 +54,24 @@ def test_low_quality_draft_stays_ai_draft(monkeypatch, tmp_path):
     st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='held@x.com'")
           .fetchone()[0]) or {}).get("biofield_status")
     assert st == "ai_draft"    # held for human review
+
+def test_backfill_dryrun_counts_without_confirming(monkeypatch, tmp_path):
+    from dashboard import biofield_portal_publish as bpp
+    monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: "slug-x")
+    monkeypatch.setattr(app, "ANALYSIS_AUTOCONFIRM_ENABLED", True, raising=False)
+    monkeypatch.setattr(app, "ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "0", raising=False)
+    db = _auth(monkeypatch, tmp_path)
+    # seed one clean ai_draft directly
+    cx = sqlite3.connect(db)
+    _cp.upsert_portal(cx, "b@x.com", "B", {"biofield_status": "ai_draft",
+        "layers": [{"title": "C", "remedy": "V", "dosage": "1"}], "greeting": "hi"})
+    cx.close()
+    r = app.app.test_client().post("/api/console/autoconfirm/backfill",
+        headers={"X-Console-Key": "sek", "Content-Type": "application/json"},
+        data=json.dumps({"commit": False}))
+    j = r.get_json()
+    assert j["ok"] and j["would_confirm"] == 1
+    cx = sqlite3.connect(db)
+    st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='b@x.com'")
+          .fetchone()[0]) or {}).get("biofield_status")
+    assert st == "ai_draft"   # dry run did NOT change anything
