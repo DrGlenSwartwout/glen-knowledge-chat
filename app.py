@@ -15673,13 +15673,15 @@ def _biofield_pipeline_clients(cx, include_complete=False):
     """Every client in the Biofield pipeline: anyone with a biofield portal OR a
     non-cancelled biofield-analysis order. Complete ones are hidden unless asked."""
     cand = {}
-    # Every buyer is auto-provisioned a portal at order time with
-    # biofield_status='none' (portal_provision.ensure_portal_for_buyer). Those are NOT
-    # biofield clients, so a bare "has the key" match floods the pipeline with the whole
-    # buyer base (hundreds of handed_off-only + '(unnamed)' cards). Only portals that
-    # entered the biofield flow (requested/pending/ai_draft/confirmed, or a legacy portal
-    # with no explicit status) belong; parse the status and skip 'none'. A 'none' buyer
-    # who ALSO has a real biofield-analysis order is still picked up by the orders pass.
+    # Portals get auto-provisioned outside the manual-Biofield flow and would otherwise
+    # flood this board with the whole audience:
+    #   - 'none'    : every buyer, at order time (portal_provision.ensure_portal_for_buyer)
+    #   - 'pending' : every biofield-reveal lead, via ensure_token / portal_backfill
+    # Neither is a manual Biofield Analysis client. Include a portal only when its status
+    # is an affirmative flow state (requested/ai_draft/confirmed) or it's a legacy portal
+    # with no explicit status (treated as confirmed). A skipped-status client who ALSO has
+    # a live biofield-analysis order is still surfaced by the orders pass below.
+    _FLOW = ("requested", "ai_draft", "confirmed")
     for r in cx.execute("SELECT email, name, content_json FROM client_portals "
                         "WHERE content_json LIKE '%biofield_status%' "
                         "AND TRIM(COALESCE(email,''))<>''"):
@@ -15687,7 +15689,7 @@ def _biofield_pipeline_clients(cx, include_complete=False):
             st = (json.loads(r[2] or "{}") or {}).get("biofield_status")
         except Exception:
             st = None
-        if st == "none":
+        if st and st not in _FLOW:      # 'none', 'pending', any non-flow status
             continue
         cand.setdefault(r[0].lower(), r[1] or "")
     for r in cx.execute("SELECT email, name FROM orders "
