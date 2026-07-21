@@ -56,3 +56,44 @@ def list_events(cx, email):
         "WHERE client_email=? ORDER BY id", (e,)).fetchall()
     return [{"product_key": r[0], "source_key": r[1], "occurred_at": r[2], "origin_ref": r[3]}
             for r in rows]
+
+
+def ingest_biofield(cx, email):
+    """One biofield event per (remedy slug, reveal). occurred_at/origin_ref = scan_date."""
+    from dashboard import biofield_reveals
+    try:
+        rows = biofield_reveals.list_for_email(cx, email)
+    except Exception:
+        return 0
+    n = 0
+    for r in rows:
+        sd = (r.get("scan_date") or "")
+        for rem in (r.get("remedies") or []):
+            slug = (rem.get("slug") or "").strip()
+            if not slug:
+                continue
+            if record_event(cx, email, slug, "biofield", occurred_at=sd, origin_ref=sd):
+                n += 1
+    return n
+
+
+def ingest_purchased(cx, email):
+    """One purchased event per (line slug, PAID order). occurred_at = paid_at; origin_ref = order id."""
+    from dashboard import orders
+    try:
+        rows = orders.list_orders_by_email(cx, email)
+    except Exception:
+        return 0
+    n = 0
+    for o in rows:
+        if (o.get("pay_status") or "").strip().lower() != "paid":
+            continue
+        oid = o.get("id")
+        occ = o.get("paid_at") or o.get("created_at") or ""
+        for line in (o.get("items") or []):
+            slug = (line.get("slug") or "").strip()
+            if not slug:
+                continue
+            if record_event(cx, email, slug, "purchased", occurred_at=occ, origin_ref=str(oid)):
+                n += 1
+    return n
