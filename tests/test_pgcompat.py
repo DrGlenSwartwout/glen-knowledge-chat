@@ -299,3 +299,29 @@ def test_plain_alter_without_add_column_unaffected():
     # Not an ADD COLUMN -> untouched (only '?' pass would apply, none here).
     sql = "ALTER TABLE t RENAME TO t2"
     assert translate_sql(sql) == sql
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v5: strftime('<iso>','now') -> to_char(now() AT TIME ZONE 'UTC', ...)
+# ---------------------------------------------------------------------------
+
+def test_strftime_millis_translated_in_default():
+    sql = "created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))"
+    out = translate_sql(sql)
+    assert "strftime" not in out
+    assert "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')" in out
+
+def test_strftime_seconds_translated_in_values():
+    sql = "VALUES (?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))"
+    out = translate_sql(sql)
+    assert "strftime" not in out
+    assert "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')" in out
+    assert "%s" in out  # the ? still becomes a placeholder
+
+def test_strftime_translation_idempotent():
+    once = translate_sql("x DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))")
+    assert translate_sql(once) == once
+
+def test_strftime_with_whitespace_variants():
+    sql = "strftime(  '%Y-%m-%dT%H:%M:%SZ' ,  'now' )"
+    assert "to_char" in translate_sql(sql) and "strftime" not in translate_sql(sql)

@@ -44,6 +44,20 @@ _RE_PRAGMA_FOREIGN_KEYS = re.compile(r"(?i)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+\s
 _RE_ADD_COLUMN = re.compile(
     r"(?i)\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\S+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"
 )
+# 6) `strftime('<fmt>','now')` -> Postgres `to_char(now() AT TIME ZONE 'UTC', '<fmt>')`.
+#    Every strftime-in-SQL site is a current-UTC-timestamp expression (in a DDL DEFAULT
+#    or a VALUES clause), in exactly two ISO-8601 formats. SQLite's `%f` = "SS.SSS"
+#    (seconds with 3-digit millis) maps to Postgres `SS.MS`; the literal `T`/`Z` become
+#    quoted text in to_char. The output text is byte-for-byte what SQLite produced, so
+#    string comparisons against the stored timestamp columns stay correct. These DEFAULT
+#    clauses fail at CREATE TABLE on Postgres (no strftime fn) -- their tables were
+#    silently not-created before this translation. Runs before the '%'->'%%' escape pass,
+#    and the replacement contains no '%'/'?', so it composes cleanly and is idempotent
+#    (no strftime remains after substitution).
+_RE_STRFTIME_MS = re.compile(
+    r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%fZ'\s*,\s*'now'\s*\)")
+_RE_STRFTIME_S = re.compile(
+    r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)")
 
 
 def _scan_sql_spans(sql: str):
@@ -131,6 +145,10 @@ def _translate_ddl_idioms(sql: str) -> str:
     sql = _RE_AUTOINCREMENT.sub("BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", sql)
     sql = _RE_DATETIME_NOW.sub("now()::text", sql)
     sql = _RE_ADD_COLUMN.sub(r"ALTER TABLE IF EXISTS \1 ADD COLUMN IF NOT EXISTS ", sql)
+    sql = _RE_STRFTIME_MS.sub(
+        "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')", sql)
+    sql = _RE_STRFTIME_S.sub(
+        "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')", sql)
     sql = _translate_insert_or_ignore(sql)
     return sql
 
