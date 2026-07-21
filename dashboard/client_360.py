@@ -133,14 +133,17 @@ def _invoices(cx, email):
     out = {"total_paid_cents": 0, "open_balance_cents": 0, "orders": [], "fmp": []}
     try:
         rows = cx.execute(
-            "SELECT id, COALESCE(status,'') status, COALESCE(created_at,'') created_at, "
-            "COALESCE(total_cents,0) total FROM orders "
+            "SELECT id, COALESCE(status,'') status, COALESCE(created_at,'') created_at "
+            "FROM orders "
             "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
             "ORDER BY id DESC", (email,)).fetchall()
     except sqlite3.OperationalError:
         rows = []
     for r in rows:
-        bal = order_payments.balance(cx, r["id"])
+        try:
+            bal = order_payments.balance(cx, r["id"])
+        except sqlite3.OperationalError:
+            continue
         out["orders"].append({
             "id": r["id"], "date": r["created_at"], "status": r["status"],
             "total_cents": bal["invoice_cents"], "paid_cents": bal["paid_cents"],
@@ -153,6 +156,8 @@ def _invoices(cx, email):
         out["fmp"] = fmp_orders.client_order_history(cx, email=email)
     except Exception:
         out["fmp"] = []
+    finally:
+        cx.row_factory = sqlite3.Row
     return out
 
 

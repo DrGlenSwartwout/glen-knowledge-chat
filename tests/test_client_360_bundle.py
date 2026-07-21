@@ -62,3 +62,33 @@ def test_bundle_empty_client(tmp_path):
     assert b["invoices"] == {"total_paid_cents": 0, "open_balance_cents": 0, "orders": [], "fmp": []}
     assert b["comms"] == []
     assert b["process"]["source"] is None
+
+
+def test_process_reads_after_fmp_history_call(tmp_path):
+    """Regression: _invoices() calls fmp_orders.client_order_history(cx, ...),
+    which sets cx.row_factory = None and never restores it (there's no
+    fmp_clients table in this fixture, so the call raises and is caught inside
+    client_order_history's caller). _invoices() must restore
+    cx.row_factory = sqlite3.Row afterward so that process_strip's
+    string-keyed row access (order["id"]) doesn't choke on a None row_factory.
+
+    NOTE: this deliberately calls _invoices() then process_strip() directly,
+    NOT bundle(). Inside bundle(), _comms() runs between them and its callee
+    recent_comms.recent_comms() unconditionally sets cx.row_factory =
+    sqlite3.Row as its very first statement -- so bundle() would mask the
+    leak and this test would pass even without the fix. Calling _invoices()
+    directly isolates the exact contract this fix establishes: _invoices()
+    itself must leave cx.row_factory sane for whatever runs next."""
+    cx = _cx()
+    cx.execute("INSERT INTO people (id,email,name,phone,city,state,island,profession,order_count,last_order_date) "
+               "VALUES (1,'c@d.com','Cy Dee','808','Hilo','HI','Big Island','yoga',1,'2026-07-15')")
+    cx.execute("INSERT INTO orders (email,status,pay_status,invoice_sent_at,total_cents,created_at) "
+               "VALUES ('c@d.com','confirmed','unpaid','',5000,'2026-07-15')")
+
+    inv = client_360._invoices(cx, "c@d.com")
+    assert inv["fmp"] == []  # fmp_clients table absent -> caught, empty
+
+    proc = client_360.process_strip(cx, "c@d.com")  # would raise TypeError pre-fix
+    assert proc["order_id"] == 1
+    assert proc["stages"][1]["done"] is True   # "invoice" stage read fine
+    assert proc["stages"][2]["done"] is False  # "sent" stage read fine (no sent date)
