@@ -61,3 +61,31 @@ def test_list_portals_reports_token_state():
     assert rows["has@x.com"]["has_token"] is True
     assert rows["no@x.com"]["has_token"] is False
     assert rows["has@x.com"]["name"] == "Has"
+
+
+def _seed_people(cx):
+    cx.execute("CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+               "email TEXT UNIQUE NOT NULL, name TEXT DEFAULT '')")
+
+
+def test_list_portals_fills_blank_name_from_people():
+    cp, cx = _cx()
+    _seed_people(cx)
+    cp.upsert_portal(cx, "blank@x.com", "", {})            # name-less portal
+    cp.upsert_portal(cx, "echo@x.com", "", {})             # name-less portal
+    cp.upsert_portal(cx, "named@x.com", "On Portal", {})   # already named
+    cx.execute("INSERT INTO people (email, name) VALUES (?,?)", ("blank@x.com", "Real Person"))
+    cx.execute("INSERT INTO people (email, name) VALUES (?,?)", ("echo@x.com", "echo@x.com"))
+    cx.commit()
+    rows = {r["email"]: r for r in cp.list_portals(cx)}
+    assert rows["blank@x.com"]["name"] == "Real Person"    # borrowed from people
+    assert rows["echo@x.com"]["name"] == ""                # email-echo skipped
+    assert rows["named@x.com"]["name"] == "On Portal"      # portal name untouched
+
+
+def test_list_portals_ok_without_people_table():
+    # people table absent -> best-effort, no crash, blank stays blank.
+    cp, cx = _cx()
+    cp.upsert_portal(cx, "np@x.com", "", {})
+    rows = {r["email"]: r for r in cp.list_portals(cx)}
+    assert rows["np@x.com"]["name"] == ""

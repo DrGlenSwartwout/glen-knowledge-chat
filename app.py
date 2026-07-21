@@ -15618,7 +15618,8 @@ def _biofield_pipeline_for(cx, email, name):
     paid = _biofield_paid_order(cx, el)
     o = cx.execute(
         "SELECT id, COALESCE(status,''), COALESCE(pay_status,''), COALESCE(portal_published,0), "
-        "COALESCE(total_cents,0) FROM orders WHERE lower(COALESCE(email,''))=? "
+        "COALESCE(total_cents,0), COALESCE(created_at,'') "
+        "FROM orders WHERE lower(COALESCE(email,''))=? "
         "AND COALESCE(status,'')<>'cancelled' ORDER BY id DESC LIMIT 1", (el,)).fetchone()
     inv_id = o[0] if o else None
     inv_paid = bool(o and o[2] == "paid")
@@ -15633,12 +15634,40 @@ def _biofield_pipeline_for(cx, email, name):
         "fulfilled": {"done": fulfilled},
     }
     done_count = sum(1 for k in _PIPELINE_STEP_KEYS if steps[k]["done"])
+    # Card name: portal/order name wins, but many portals were minted name-less (the
+    # '(unnamed)' cards). Fall back to the people table (client_360's name source).
+    # Skip a people.name that's just the email echoed back — the card already shows the
+    # email below, so that would only add noise; leave it '(unnamed)' honestly.
+    if not (name or "").strip():
+        try:
+            prow2 = cx.execute("SELECT name FROM people WHERE lower(email)=? LIMIT 1",
+                               (el,)).fetchone()
+            pn = (prow2[0] or "").strip() if prow2 else ""
+            if pn and pn.lower() != el:
+                name = pn
+        except Exception:
+            pass
     # "Complete" ignores invoice_published (a pre-paid, analysis-only client never
     # publishes a remedy invoice): analysis out + paid + fulfilled = done.
     complete = (steps["analysis_published"]["done"] and steps["invoice_paid"]["done"]
                 and steps["fulfilled"]["done"])
-    return {"email": email, "name": name or "", "updated_at": updated,
-            "steps": steps, "done_count": done_count, "complete": complete}
+    # Card date = most recent activity across the client's portal + order (ISO strings
+    # sort lexicographically, so max() == most recent). Drives the per-card date and the
+    # within-section ordering.
+    _dates = [d for d in (updated, (paid or {}).get("paid_at") or "",
+                          (o[5] if o else "")) if d]
+    date = max(_dates) if _dates else ""
+    # Section buckets for the board: paid (analysis or invoice) but not yet fulfilled
+    # rises to the top as the live work queue; fulfilled next; everyone else last.
+    if steps["fulfilled"]["done"]:
+        section = "fulfilled"
+    elif steps["paid"]["done"] or steps["invoice_paid"]["done"]:
+        section = "paid_unfulfilled"
+    else:
+        section = "other"
+    return {"email": email, "name": name or "", "updated_at": updated, "date": date,
+            "section": section, "steps": steps, "done_count": done_count,
+            "complete": complete}
 
 
 def _biofield_pipeline_clients(cx, include_complete=False):
@@ -15674,7 +15703,7 @@ def _biofield_pipeline_clients(cx, include_complete=False):
         if p["complete"] and not include_complete:
             continue
         out.append(p)
-    out.sort(key=lambda x: x["updated_at"] or "", reverse=True)
+    out.sort(key=lambda x: x.get("date") or x.get("updated_at") or "", reverse=True)
     return out
 
 

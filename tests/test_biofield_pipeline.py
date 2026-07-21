@@ -132,6 +132,58 @@ def test_pipeline_none_portal_with_biofield_order_still_shown(monkeypatch, tmp_p
     assert "both@x.com" in _clients(db, all_=True)
 
 
+def _seed_person(db, email, name):
+    cx = sqlite3.connect(db)
+    from dashboard import portal_identity as _pi
+    _pi.init_people_table(cx) if hasattr(_pi, "init_people_table") else cx.execute(
+        "CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "email TEXT UNIQUE NOT NULL, name TEXT DEFAULT '', roles TEXT DEFAULT '[]', "
+        "tags TEXT DEFAULT '[]', created_at TEXT DEFAULT '', updated_at TEXT DEFAULT '')")
+    cx.execute("INSERT OR REPLACE INTO people (email, name) VALUES (?,?)", (email, name))
+    cx.commit(); cx.close()
+
+
+def test_pipeline_fills_blank_name_from_people(monkeypatch, tmp_path):
+    # A name-less portal ('(unnamed)' card) should borrow the client's real name from
+    # the people table; a people.name that's just the email echoed back stays blank.
+    db = _auth(monkeypatch, tmp_path)
+    _ensure_orders_table(db)
+    _seed_portal(db, "blank@x.com", "", "requested")
+    _seed_person(db, "blank@x.com", "Real Name")
+    _seed_portal(db, "echo@x.com", "", "requested")
+    _seed_person(db, "echo@x.com", "echo@x.com")   # name == email -> not a real name
+    shown = _clients(db, all_=True)
+    assert shown["blank@x.com"]["name"] == "Real Name"
+    assert shown["echo@x.com"]["name"] == ""       # left '(unnamed)' by the frontend
+
+
+def test_pipeline_section_paid_unfulfilled(monkeypatch, tmp_path):
+    # Paid the analysis but not shipped -> top "paid_unfulfilled" bucket, with a date.
+    db = _auth(monkeypatch, tmp_path)
+    _seed_portal(db, "pu@x.com", "Pay Unf", "ai_draft")
+    _seed_biofield_order(db, "pu@x.com", "Pay Unf", "new", "paid")
+    c = _clients(db, all_=True)["pu@x.com"]
+    assert c["section"] == "paid_unfulfilled"
+    assert c["date"]                       # a date is present
+
+
+def test_pipeline_section_fulfilled(monkeypatch, tmp_path):
+    db = _auth(monkeypatch, tmp_path)
+    _seed_portal(db, "ff@x.com", "Full Filled", "confirmed")
+    _seed_biofield_order(db, "ff@x.com", "Full Filled", "shipped", "paid")
+    c = _clients(db, all_=True)["ff@x.com"]
+    assert c["section"] == "fulfilled"     # shipped wins even though also paid
+
+
+def test_pipeline_section_other(monkeypatch, tmp_path):
+    # A requested client with no paid order and no fulfillment -> "other".
+    db = _auth(monkeypatch, tmp_path)
+    _ensure_orders_table(db)
+    _seed_portal(db, "ot@x.com", "Other One", "requested")
+    c = _clients(db, all_=True)["ot@x.com"]
+    assert c["section"] == "other"
+
+
 def test_pipeline_requires_key(monkeypatch, tmp_path):
     _auth(monkeypatch, tmp_path)
     r = app.app.test_client().get("/api/console/biofield-pipeline")
