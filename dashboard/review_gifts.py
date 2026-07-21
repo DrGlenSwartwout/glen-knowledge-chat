@@ -2,6 +2,8 @@ import json
 import os
 import datetime
 
+from dashboard import db
+
 _DEFAULT_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "review-gifts.json")
 _REWARD_CATALOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "reward-gifts.json")
 
@@ -94,10 +96,9 @@ def init_table(cx):
 
 def migrate_reward_columns(cx):
     init_table(cx)
-    cols = [r[1] for r in cx.execute("PRAGMA table_info(review_gifts)").fetchall()]
-    if "source" not in cols:
+    if not db.column_exists(cx, "review_gifts", "source"):
         cx.execute("ALTER TABLE review_gifts ADD COLUMN source TEXT DEFAULT 'review'")
-    if "reward_grant_id" not in cols:
+    if not db.column_exists(cx, "review_gifts", "reward_grant_id"):
         cx.execute("ALTER TABLE review_gifts ADD COLUMN reward_grant_id INTEGER")
     cx.commit()
 

@@ -213,3 +213,20 @@ def test_insert_or_ignore_string_literal_returning_and_real_returning_both_prese
     sql = "INSERT OR IGNORE INTO t (a, s) VALUES (?, 'returning') RETURNING id"
     expected = "INSERT INTO t (a, s) VALUES (%s, 'returning') ON CONFLICT DO NOTHING RETURNING id"
     assert translate_sql(sql) == expected
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v3: PRAGMA foreign_keys -> no-op (Postgres always enforces FKs)
+# ---------------------------------------------------------------------------
+
+def test_pragma_foreign_keys_on_translated_to_noop():
+    assert translate_sql("PRAGMA foreign_keys=ON") == "SELECT 1"
+
+def test_pragma_foreign_keys_off_lowercase_with_semicolon_and_spaces():
+    assert translate_sql("pragma foreign_keys = OFF;") == "SELECT 1"
+
+def test_pragma_table_info_unchanged():
+    # Only PRAGMA foreign_keys is no-op'd -- PRAGMA table_info must pass through
+    # untouched (column_exists handles that one via a real backend-aware query).
+    sql = "PRAGMA table_info(x)"
+    assert translate_sql(sql) == sql

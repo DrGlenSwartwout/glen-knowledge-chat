@@ -7,6 +7,8 @@ Caller supplies the sqlite3 connection (same pattern as journal_store).
 import json
 import sqlite3
 
+from dashboard import db
+
 _ELEMENTS = ("Wood", "Fire", "Earth", "Metal", "Water")
 
 
@@ -29,8 +31,8 @@ def init_table(cx):
 
 def _ensure_override_col(cx):
     """Additive migration for tables created before scene_override existed."""
-    cols = [r[1] for r in cx.execute("PRAGMA table_info(member_element_state)").fetchall()]
-    if cols and "scene_override" not in cols:
+    if db.column_exists(cx, "member_element_state", "email") and \
+            not db.column_exists(cx, "member_element_state", "scene_override"):
         cx.execute("ALTER TABLE member_element_state ADD COLUMN scene_override TEXT")
 
 

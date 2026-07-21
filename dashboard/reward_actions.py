@@ -3,6 +3,7 @@ approve (fulfill) or dismiss a pending reward grant. OWNER/OPS, LOW_WRITE. Manua
 no automated store-credit/coupon/product; the operator hands out the gift by hand."""
 import datetime
 import os
+from dashboard import db
 from dashboard.actions import register_action, Action, LOW_WRITE, get_action
 from dashboard.rbac import OWNER, OPS
 
@@ -19,8 +20,7 @@ def _actor_name(ctx):
 
 
 def init_fulfilled_column(cx):
-    cols = [r[1] for r in cx.execute("PRAGMA table_info(member_reward_grants)").fetchall()]
-    if "fulfilled_at" not in cols:
+    if not db.column_exists(cx, "member_reward_grants", "fulfilled_at"):
         cx.execute("ALTER TABLE member_reward_grants ADD COLUMN fulfilled_at TEXT")
         cx.commit()
 

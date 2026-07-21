@@ -119,6 +119,28 @@ def test_backend_of_untagged_is_sqlite():
     raw.close()
 
 
+def test_column_exists_sqlite(tmp_path, monkeypatch):
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    cx = db.connect(str(tmp_path / "colexists.db"))
+    cx.execute("CREATE TABLE t (known TEXT)")
+    cx.commit()
+    assert db.column_exists(cx, "t", "known") is True
+    assert db.column_exists(cx, "t", "missing") is False
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_column_exists_postgres(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("/data/colexists_pg.db")
+    cx.execute("DROP TABLE IF EXISTS t")
+    cx.execute("CREATE TABLE t (known TEXT)")
+    cx.commit()
+    assert db.column_exists(cx, "t", "known") is True
+    assert db.column_exists(cx, "t", "missing") is False
+    cx.close()
+
+
 @pytest.mark.skipif(not pg, reason="PG_DSN not set")
 def test_pg_cursor_is_iterable(monkeypatch):
     # Regression: `for row in cx.execute(...)` (121 sites) must work on Postgres.

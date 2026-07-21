@@ -19,6 +19,12 @@ _RE_INSERT_OR_IGNORE = re.compile(r"(?i)\bINSERT\s+OR\s+IGNORE\s+INTO\b")
 # comment-aware "code span" (see _scan_sql_spans), never against the raw SQL,
 # so it can't false-match inside a string literal or a comment.
 _RE_RETURNING_WORD = re.compile(r"(?i)\bRETURNING\b")
+# 4) `PRAGMA foreign_keys=ON/OFF` -> `SELECT 1` (harmless no-op). Postgres has no
+#    such PRAGMA and always enforces FKs; issuing it would error. Anchored to the
+#    whole statement (allowing a trailing ';' and surrounding whitespace) so it
+#    matches only the standalone foreign_keys PRAGMA -- NOT `PRAGMA table_info(...)`
+#    or any other PRAGMA, which must keep passing through unchanged.
+_RE_PRAGMA_FOREIGN_KEYS = re.compile(r"(?i)^\s*PRAGMA\s+foreign_keys\s*=\s*\w+\s*;?\s*$")
 
 
 def _scan_sql_spans(sql: str):
@@ -101,6 +107,8 @@ def _translate_ddl_idioms(sql: str) -> str:
     risk (see tests + report): the idioms are DDL/DML-only in practice, and none
     of the replacements re-introduce the pattern they replace, so repeated
     translation is idempotent."""
+    if _RE_PRAGMA_FOREIGN_KEYS.match(sql):
+        return "SELECT 1"
     sql = _RE_AUTOINCREMENT.sub("BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", sql)
     sql = _RE_DATETIME_NOW.sub("now()::text", sql)
     sql = _translate_insert_or_ignore(sql)

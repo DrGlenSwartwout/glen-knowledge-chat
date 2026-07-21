@@ -9,6 +9,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import db
 from dashboard import customers as _customers
 
 # ---------------------------------------------------------------------------
@@ -284,8 +285,7 @@ def consume_skip(cx, sub_id: int) -> None:
 def migrate_add_free_months(cx) -> None:
     """Idempotent: add free_months_remaining (INTEGER, default 0) — banked comped
     membership cycles for Pay It Forward free-month rewards."""
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
-    if "free_months_remaining" not in cols:
+    if not db.column_exists(cx, "subscriptions", "free_months_remaining"):
         cx.execute("ALTER TABLE subscriptions ADD COLUMN free_months_remaining INTEGER DEFAULT 0")
         cx.commit()
 
@@ -382,8 +382,7 @@ def migrate_add_membership_columns(cx) -> None:
 
 def migrate_add_term_cap_column(cx):
     """Idempotent: add term_charges_total (NULL = uncapped) for fixed-term memberships."""
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
-    if "term_charges_total" not in cols:
+    if not db.column_exists(cx, "subscriptions", "term_charges_total"):
         cx.execute("ALTER TABLE subscriptions ADD COLUMN term_charges_total INTEGER")
         cx.commit()
 
@@ -392,8 +391,7 @@ def migrate_add_attribution_column(cx):
     """Idempotent: add attributed_practitioner_id (TEXT, NULL default) — the
     Supabase practitioner id string that owns this Continuous Care membership,
     for fee-share credit in later tasks."""
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
-    if "attributed_practitioner_id" not in cols:
+    if not db.column_exists(cx, "subscriptions", "attributed_practitioner_id"):
         cx.execute("ALTER TABLE subscriptions ADD COLUMN attributed_practitioner_id TEXT")
         cx.commit()
 
@@ -402,8 +400,7 @@ def migrate_add_consent_column(cx):
     """Idempotent: add practitioner_share_consent (INTEGER, default 0) — whether
     the member has consented to their attributed practitioner viewing their
     continuity data (doctor continuity tooling, later tasks)."""
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(subscriptions)")}
-    if "practitioner_share_consent" not in cols:
+    if not db.column_exists(cx, "subscriptions", "practitioner_share_consent"):
         cx.execute(
             "ALTER TABLE subscriptions ADD COLUMN practitioner_share_consent"
             " INTEGER NOT NULL DEFAULT 0"

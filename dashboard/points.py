@@ -19,9 +19,6 @@ def init_points_table(cx):
                 created_at TEXT DEFAULT (now()::text),
                 scope TEXT NOT NULL DEFAULT 'rm'
             )""")
-        cols = [r[0] for r in cx.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='points_ledger'").fetchall()]
     else:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS points_ledger (
@@ -34,8 +31,7 @@ def init_points_table(cx):
                 created_at TEXT DEFAULT (datetime('now')),
                 scope TEXT NOT NULL DEFAULT 'rm'
             )""")
-        cols = [r[1] for r in cx.execute("PRAGMA table_info(points_ledger)").fetchall()]
-    if "scope" not in cols:
+    if not db.column_exists(cx, "points_ledger", "scope"):
         cx.execute("ALTER TABLE points_ledger ADD COLUMN scope TEXT NOT NULL DEFAULT 'rm'")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_points_email ON points_ledger(email)")
     try:
