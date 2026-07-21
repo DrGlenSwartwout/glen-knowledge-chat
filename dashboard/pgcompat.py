@@ -15,9 +15,83 @@ _RE_DATETIME_NOW = re.compile(r"(?i)datetime\(\s*'now'\s*\)")
 #    is appended separately by _translate_insert_or_ignore, since it must land at
 #    the end of the statement or just before a trailing RETURNING clause).
 _RE_INSERT_OR_IGNORE = re.compile(r"(?i)\bINSERT\s+OR\s+IGNORE\s+INTO\b")
-# Trailing RETURNING clause (to the end of the statement) — used to find where to
-# splice in "ON CONFLICT DO NOTHING" ahead of it, case-insensitive.
-_RE_RETURNING_CLAUSE = re.compile(r"(?i)\bRETURNING\b.*\Z", re.DOTALL)
+# A bare RETURNING keyword — only meaningful when matched against a quote/
+# comment-aware "code span" (see _scan_sql_spans), never against the raw SQL,
+# so it can't false-match inside a string literal or a comment.
+_RE_RETURNING_WORD = re.compile(r"(?i)\bRETURNING\b")
+
+
+def _scan_sql_spans(sql: str):
+    """Split `sql` into contiguous (kind, start, end) spans classified as
+    'code', 'string' (single-quoted literal, including its quotes), or
+    'comment' (`--` line or `/* */` block). Mirrors the scanner already used
+    in `translate_sql` below for the `?` pass, so the two stay consistent
+    (same simplistic single-quote model: a doubled '' escape is not treated
+    specially, matching the existing placeholder-scanner behavior)."""
+    spans = []
+    i, n = 0, len(sql)
+    code_start = 0
+    while i < n:
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < n else ""
+        if ch == "'":
+            if i > code_start:
+                spans.append(("code", code_start, i))
+            j = i + 1
+            while j < n and sql[j] != "'":
+                j += 1
+            j = min(j + 1, n)
+            spans.append(("string", i, j))
+            i = j
+            code_start = i
+        elif ch == "-" and nxt == "-":
+            if i > code_start:
+                spans.append(("code", code_start, i))
+            j = sql.find("\n", i)
+            j = n if j == -1 else j
+            spans.append(("comment", i, j))
+            i = j
+            code_start = i
+        elif ch == "/" and nxt == "*":
+            if i > code_start:
+                spans.append(("code", code_start, i))
+            j = sql.find("*/", i + 2)
+            j = n if j == -1 else j + 2
+            spans.append(("comment", i, j))
+            i = j
+            code_start = i
+        else:
+            i += 1
+    if n > code_start:
+        spans.append(("code", code_start, n))
+    return spans
+
+
+def _find_trailing_returning(sql: str, spans) -> Optional[int]:
+    """Return the start offset of a genuine RETURNING keyword -- one that
+    appears in a 'code' span, i.e. outside any string literal or comment --
+    or None if there isn't one. Takes the last such match (there should only
+    ever be one real trailing RETURNING clause)."""
+    last = None
+    for kind, start, end in spans:
+        if kind != "code":
+            continue
+        for m in _RE_RETURNING_WORD.finditer(sql, start, end):
+            last = m.start()
+    return last
+
+
+def _end_of_code(sql: str, spans) -> int:
+    """Return the offset of the true end of SQL *code* -- i.e. right after
+    the last 'code' or 'string' span, before any trailing comment(s), with
+    trailing whitespace stripped."""
+    end = 0
+    for kind, _start, s_end in spans:
+        if kind in ("code", "string"):
+            end = s_end
+    while end > 0 and sql[end - 1].isspace():
+        end -= 1
+    return end
 
 def _translate_ddl_idioms(sql: str) -> str:
     """Auto-translate the mechanical SQLite DDL/DML idioms to their Postgres
@@ -59,15 +133,23 @@ def _translate_insert_or_ignore(sql: str) -> str:
     if not _RE_INSERT_OR_IGNORE.search(sql):
         return sql
     sql = _RE_INSERT_OR_IGNORE.sub("INSERT INTO", sql)
-    m = _RE_RETURNING_CLAUSE.search(sql)
-    if m:
-        start = m.start()
-        sql = sql[:start] + "ON CONFLICT DO NOTHING " + sql[start:]
+    spans = _scan_sql_spans(sql)
+    ret_pos = _find_trailing_returning(sql, spans)
+    if ret_pos is not None:
+        # Genuine trailing RETURNING (outside strings/comments): splice the
+        # clause in immediately before it.
+        sql = sql[:ret_pos] + "ON CONFLICT DO NOTHING " + sql[ret_pos:]
     else:
-        sql = sql.rstrip()
-        if sql.endswith(";"):
-            sql = sql[:-1].rstrip()
-        sql = sql + " ON CONFLICT DO NOTHING"
+        # No real RETURNING: insert at the true end of the SQL *code*, before
+        # any trailing comment (and any trailing ';'), not after it.
+        end = _end_of_code(sql, spans)
+        code = sql[:end]
+        if code.endswith(";"):
+            code = code[:-1].rstrip()
+        trailing = sql[end:].lstrip()
+        sql = code + " ON CONFLICT DO NOTHING"
+        if trailing:
+            sql = sql + " " + trailing
     return sql
 
 def translate_sql(sql: str) -> str:

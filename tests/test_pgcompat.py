@@ -175,3 +175,41 @@ def test_insert_or_replace_not_translated():
     # Out of scope: INSERT OR REPLACE must be left untouched by this translator.
     sql = "INSERT OR REPLACE INTO t (a) VALUES (?)"
     assert translate_sql(sql) == "INSERT OR REPLACE INTO t (a) VALUES (%s)"
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v2 FIX: quote/comment-aware ON CONFLICT placement
+# ---------------------------------------------------------------------------
+
+def test_insert_or_ignore_returning_word_inside_string_literal_is_not_a_clause():
+    # BUG 1: "returning" as string DATA must not be mistaken for a trailing
+    # RETURNING clause -- the literal must stay intact and the clause must
+    # land at the true end of the statement, after the literal.
+    sql = "INSERT OR IGNORE INTO t (a, s) VALUES (?, 'returning')"
+    expected = "INSERT INTO t (a, s) VALUES (%s, 'returning') ON CONFLICT DO NOTHING"
+    assert translate_sql(sql) == expected
+
+def test_insert_or_ignore_trailing_line_comment_clause_lands_before_comment():
+    # BUG 2: a trailing "-- comment" must not swallow the appended clause --
+    # it has to be spliced in before the comment, not after it.
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?) -- hi"
+    expected = "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING -- hi"
+    assert translate_sql(sql) == expected
+
+def test_insert_or_ignore_trailing_block_comment_clause_lands_before_comment():
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?) /* note */"
+    expected = "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING /* note */"
+    assert translate_sql(sql) == expected
+
+def test_insert_or_ignore_genuine_returning_still_works():
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?) RETURNING id"
+    expected = "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING RETURNING id"
+    assert translate_sql(sql) == expected
+
+def test_insert_or_ignore_string_literal_returning_and_real_returning_both_present():
+    # A string literal containing "returning" AND a genuine trailing RETURNING
+    # clause in the same statement must resolve to the real clause -- the
+    # literal must not be touched, and the fake match must not win.
+    sql = "INSERT OR IGNORE INTO t (a, s) VALUES (?, 'returning') RETURNING id"
+    expected = "INSERT INTO t (a, s) VALUES (%s, 'returning') ON CONFLICT DO NOTHING RETURNING id"
+    assert translate_sql(sql) == expected
