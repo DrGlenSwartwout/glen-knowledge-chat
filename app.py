@@ -23898,6 +23898,153 @@ def intake_submit():
     return jsonify({"ok": True})
 
 
+# --- Public funnel intake (truly.vip/join -> /begin/intake) ------------------
+# A cold visitor fills the intake immediately, no login. Identity is the opt-in
+# email bound to a SCOPED intake token (never the master portal token, which is
+# emailed to the address out of band). See dashboard/intake_public.py.
+@app.route("/begin/intake")
+def begin_intake_page():
+    return send_from_directory(STATIC, "begin-intake.html")
+
+
+def _intake_public_email(cx, now):
+    from dashboard import intake_public as _ip
+    return _ip.resolve_session(cx, request.args.get("token", ""), now)
+
+
+@app.route("/api/intake/public/start", methods=["POST"])
+def intake_public_start():
+    from dashboard import (intake as _intake, intake_public as _ip, customers as _cu,
+                           evox as _ev, client_portal as _cp)
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    email = (body.get("email") or "").strip().lower()
+    if (body.get("company") or "").strip():          # honeypot -> silently drop bots
+        return jsonify({"ok": True})
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        return jsonify({"error": "email_required"}), 400
+    if not bool(body.get("tos_agreed")):
+        return jsonify({"error": "tos_required"}), 400
+    _init_people_table()
+    now = _hst_now()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        _cu.find_or_create_by_email(cx, email=email, name=name)
+        parts = name.split()
+        _ip.save_public_draft(cx, email, {
+            "first_name": parts[0] if parts else "",
+            "last_name": " ".join(parts[1:]) if len(parts) > 1 else "",
+            "email": email}, now.isoformat())
+        token = _ip.create_session(cx, email, name, now)
+        _ev.init_evox_tables(cx)
+        _cp.init_client_portal_table(cx)
+        portal_token = _ev.ensure_portal_token(cx, email, name)
+        setup_url = f"{PUBLIC_BASE_URL}/evox?token={portal_token}"
+    # SECURITY: the portal token is the MASTER credential — email it to the owner,
+    # never return it here. The browser only ever holds the scoped intake token.
+    try:
+        send_evox_setup_link(email, name, setup_url)
+    except Exception:
+        app.logger.exception("intake portal-link send failed for %s", email)
+    return jsonify({"ok": True, "token": token})
+
+
+@app.route("/api/intake/public/form")
+def intake_public_form():
+    from dashboard import intake as _intake, intake_public as _ip
+    now = _hst_now()
+    answers, submitted = {}, False
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        email = _ip.resolve_session(cx, request.args.get("token", ""), now)
+        if email:
+            row = _intake.get_response(cx, email)
+            answers = (row["answers"] if row else {}) or {}
+            submitted = _intake.is_submitted(cx, email)
+    return jsonify({"form": _intake.INTAKE_FORM, "answers": answers, "submitted": submitted})
+
+
+@app.route("/api/intake/public/save-draft", methods=["POST"])
+def intake_public_save_draft():
+    from dashboard import intake as _intake, intake_public as _ip
+    now = _hst_now()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        email = _ip.resolve_session(cx, request.args.get("token", ""), now)
+        if not email:
+            return jsonify({"error": "expired"}), 401
+        answers = (request.get_json(silent=True) or {}).get("answers") or {}
+        _ip.save_public_draft(cx, email, answers, now.isoformat())
+    return jsonify({"ok": True})
+
+
+@app.route("/api/intake/public/submit", methods=["POST"])
+def intake_public_submit():
+    from dashboard import intake as _intake, intake_public as _ip
+    now = _hst_now()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        email = _ip.resolve_session(cx, request.args.get("token", ""), now)
+        if not email:
+            return jsonify({"error": "expired"}), 401
+        answers = (request.get_json(silent=True) or {}).get("answers") or {}
+        errors = _intake.validate_response({**answers, "email": email})
+        if errors:
+            return jsonify({"error": "invalid", "errors": errors}), 400
+        res = _ip.public_submit(cx, email, answers, now.isoformat())
+    if res == "already":
+        return jsonify({"error": "already_submitted"}), 409
+    return jsonify({"ok": True})
+
+
+@app.route("/api/intake/public/chat", methods=["POST"])
+def intake_public_chat():
+    from dashboard import intake as _intake, intake_public as _ip, intake_chat as _ic
+    now = _hst_now()
+    with sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        email = _ip.resolve_session(cx, request.args.get("token", ""), now)
+        if not email:
+            return jsonify({"error": "expired"}), 401
+        row = _intake.get_response(cx, email)
+        answers = (row["answers"] if row else {}) or {}
+    history = (request.get_json(silent=True) or {}).get("messages") or []
+    msgs = [{"role": "assistant" if m.get("role") == "assistant" else "user",
+             "content": str(m.get("content") or "")}
+            for m in history if str(m.get("content") or "").strip()]
+    if not msgs:
+        msgs = [{"role": "user", "content": "(the client is ready to begin their intake)"}]
+    known = {k: v for k, v in answers.items() if not k.startswith("_")}
+    system = (_ic.build_system(get_system_prompt("self-healing"), answers.get("first_name") or "")
+              + "\n\nFORM TO COLLECT:\n" + _ic.form_outline()
+              + "\n\nALREADY ON FILE (do not re-ask): " + json.dumps(known))
+    try:
+        resp = _cl.messages.create(model="claude-haiku-4-5-20251001", max_tokens=800,
+                                   system=system, messages=msgs)
+        text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+    except Exception:
+        app.logger.exception("intake chat failed")
+        return jsonify({"error": "chat_unavailable"}), 503
+    say, updates, done = _ic.parse_reply(text)
+    merged = _ip.merge_answers(answers, updates)
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _intake.init_intake_table(cx)
+        _ip.init_intake_sessions_table(cx)
+        _ip.save_public_draft(cx, email, merged, now.isoformat())
+    return jsonify({"say": say, "updates": updates, "answers": merged, "done": done})
+
+
 @app.route("/api/consult/state")
 def consult_state():
     from dashboard import consult as _consult

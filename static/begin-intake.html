@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your Intake — Remedy Match</title>
+<style>
+  :root{
+    --brand:#2f6f5e; --brand-dark:#1F5A4D; --gold:#d4a843;
+    --ink:#1c2622; --muted:#6b7a74; --line:#dfe7e3; --card:#ffffff;
+    --bg:#f3f7f5; --card2:#f8faf9; --err:#b3402f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.5}
+  .wrap{max-width:820px;margin:0 auto;padding:24px 18px 80px}
+  header.mast{display:flex;align-items:center;gap:12px;padding:18px 0 10px}
+  header.mast .logo{width:38px;height:38px;border-radius:50%;background:var(--brand);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700}
+  header.mast h1{font-size:1.15rem;margin:0;color:var(--brand-dark)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;
+    box-shadow:0 1px 3px rgba(20,50,40,.05);margin:0 0 16px}
+  h2{font-size:1.35rem;margin:0 0 .4rem;color:var(--brand-dark)}
+  h3{font-size:1.02rem;margin:1.2rem 0 .5rem;color:var(--brand)}
+  p.lede{color:var(--muted);margin:.2rem 0 1rem}
+  label{font-weight:600;display:block;margin:.7rem 0 .3rem;font-size:.94rem}
+  .muted{color:var(--muted)} .small{font-size:.85rem}
+  input,select,textarea{width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);
+    border-radius:10px;padding:11px 12px;font-size:1rem;font-family:inherit}
+  input[readonly]{background:#eef3f1;color:var(--muted)}
+  textarea{resize:vertical;min-height:74px}
+  .btn{background:var(--brand);color:#fff;border:0;border-radius:11px;padding:13px 20px;font-size:1rem;
+    font-weight:600;cursor:pointer}
+  .btn:hover{background:var(--brand-dark)} .btn:disabled{opacity:.5;cursor:default}
+  .btn.full{display:block;width:100%}
+  .btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+  .btn.gold{background:var(--gold);color:#3a2e05}
+  .row2{display:flex;gap:12px;flex-wrap:wrap} .row2>div{flex:1 1 220px}
+  .tos{display:flex;align-items:flex-start;gap:10px;margin:1rem 0}
+  .tos input{width:auto;margin-top:4px} .tos label{margin:0;font-weight:400}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .err{color:var(--err)} .field-err input,.field-err textarea,.field-err select,.field-err.scale{outline:2px solid var(--err);border-radius:10px}
+  /* mode choice */
+  .modes{display:flex;gap:14px;flex-wrap:wrap}
+  .mode{flex:1 1 240px;text-align:left;background:var(--card2);border:1.5px solid var(--line);border-radius:14px;
+    padding:18px;cursor:pointer}
+  .mode:hover{border-color:var(--brand)} .mode h4{margin:.1rem 0 .3rem;font-size:1.08rem;color:var(--brand-dark)}
+  .mode .ic{font-size:1.6rem}
+  /* form fields */
+  .sec{margin:0 0 .4rem} .field{margin:0 0 1rem}
+  .help{color:var(--muted);font-size:.82rem;margin:.1rem 0 .35rem}
+  .scale{display:flex;flex-direction:column;gap:.2rem}
+  .scale-opt{display:flex;gap:9px;align-items:flex-start;font-weight:400;font-size:.94rem}
+  .scale-opt input{width:auto;margin-top:.28rem}
+  .tbl{border:1px solid var(--line);border-radius:12px;padding:11px;background:var(--card2)}
+  .trow{display:flex;flex-wrap:wrap;gap:9px;align-items:flex-end;padding:9px 0;border-bottom:1px dashed var(--line)}
+  .trow:last-child{border-bottom:0} .tcol{flex:1 1 130px;min-width:110px}
+  .tcol label{font-size:.76rem;color:var(--muted);margin:0 0 .2rem}
+  .sub{font-weight:400;font-size:.86rem;color:var(--muted);margin:.5rem 0 .2rem}
+  /* chat */
+  .chatwrap{display:flex;flex-direction:column;gap:0}
+  #chatlog{display:flex;flex-direction:column;gap:10px;max-height:340px;overflow:auto;padding:4px 2px}
+  .msg{padding:10px 14px;border-radius:14px;max-width:88%;font-size:.98rem}
+  .msg.bot{background:var(--card2);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+  .msg.me{background:var(--brand);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+  .chatform{display:flex;gap:8px;margin-top:10px}
+  .chatform input{flex:1}
+  /* live large-print banner */
+  #bigprint{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#fffdf5,#fff);
+    border:2px solid var(--gold);border-radius:14px;padding:14px 18px;margin:0 0 14px;display:none}
+  #bigprint .bplabel{font-size:.8rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  #bigprint .bpval{font-size:1.9rem;font-weight:700;color:var(--brand-dark);line-height:1.15;word-break:break-word}
+  @keyframes flash{0%{background:#fdf3d6}100%{background:var(--card2)}}
+  .flash input,.flash textarea,.flash select,.flash.scale,.flash.tbl{animation:flash 1.6s ease-out}
+  .hidden{display:none!important}
+  .success{text-align:center;padding:26px 10px}
+  .success .big{font-size:2.6rem}
+  @media print{
+    body{background:#fff} .noprint{display:none!important}
+    .card{border:0;box-shadow:none;padding:0} .wrap{max-width:100%;padding:0}
+    #bigprint{display:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast noprint">
+    <div class="logo">RM</div>
+    <h1>Remedy Match — Your Intake</h1>
+  </header>
+
+  <!-- 1. OPT-IN -->
+  <section id="screen-optin" class="card">
+    <h2>Begin your intake</h2>
+    <p class="lede">A few details first, then you can fill the form yourself or talk it through with Dr. Glen's guide — whichever you prefer.</p>
+    <div class="row2">
+      <div><label for="in-name">Your name</label><input id="in-name" autocomplete="name"></div>
+      <div><label for="in-email">Email address</label><input id="in-email" type="email" autocomplete="email"></div>
+    </div>
+    <div class="hp"><label>Company<input id="in-company" tabindex="-1" autocomplete="off"></label></div>
+    <div class="tos">
+      <input id="in-tos" type="checkbox">
+      <label for="in-tos">I agree to the <a href="/terms" target="_blank" rel="noopener">terms of service for Wellness Services</a>.</label>
+    </div>
+    <p id="optin-err" class="err small" hidden></p>
+    <button id="optin-btn" class="btn full">Continue</button>
+  </section>
+
+  <!-- 2. MODE CHOICE -->
+  <section id="screen-mode" class="card hidden">
+    <h2>How would you like to complete it?</h2>
+    <p class="lede">Both save as you go, and you'll review, sign, and submit at the end.</p>
+    <div class="modes">
+      <button class="mode" id="mode-manual">
+        <div class="ic">📝</div><h4>Fill it out myself</h4>
+        <div class="muted small">Type your answers into the form at your own pace.</div>
+      </button>
+      <button class="mode" id="mode-chat">
+        <div class="ic">💬</div><h4>Talk it through with our guide</h4>
+        <div class="muted small">Answer in plain conversation — you'll watch your form fill in, in real time.</div>
+      </button>
+    </div>
+  </section>
+
+  <!-- 3. CHAT (chat mode only) -->
+  <section id="screen-chat" class="card hidden noprint">
+    <h2>Let's talk it through</h2>
+    <p class="lede small">Answer naturally. Your form fills in below as we go — you can edit anything yourself too.</p>
+    <div class="chatwrap">
+      <div id="chatlog"></div>
+      <div class="chatform">
+        <input id="chat-input" placeholder="Type your answer…" autocomplete="off">
+        <button id="chat-send" class="btn">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- live large-print banner (chat) -->
+  <div id="bigprint"><div class="bplabel" id="bp-label"></div><div class="bpval" id="bp-val"></div></div>
+
+  <!-- 3/4. FORM + REVIEW -->
+  <section id="screen-form" class="card hidden">
+    <h2 id="form-title">Your intake form</h2>
+    <p class="lede small" id="form-sub">Review everything below, sign, and submit.</p>
+    <div id="form-host"></div>
+    <p id="submit-err" class="err small" hidden></p>
+    <div class="row2 noprint" style="margin-top:14px">
+      <div><button id="print-btn" class="btn ghost full">Download / Print</button></div>
+      <div><button id="submit-btn" class="btn gold full">Review complete — submit my intake</button></div>
+    </div>
+  </section>
+
+  <!-- 5. DONE -->
+  <section id="screen-done" class="card hidden">
+    <div class="success">
+      <div class="big">✅</div>
+      <h2>Your intake is in.</h2>
+      <p class="lede">Thank you — Dr. Glen has everything he needs to prepare. We've also emailed you a private portal link to continue your journey.</p>
+      <button id="print-done" class="btn ghost noprint">Download / print a copy</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const show = id => { ["optin","mode","chat","form","done"].forEach(k=>{
+  $("#screen-"+k).classList.toggle("hidden", k!==id && !(id==="chat-and-form" && (k==="chat"||k==="form")));
+}); };
+function showChatAndForm(){ ["optin","mode","done"].forEach(k=>$("#screen-"+k).classList.add("hidden"));
+  $("#screen-chat").classList.remove("hidden"); $("#screen-form").classList.remove("hidden"); }
+
+const S = { token:null, formDef:null, getters:{}, setters:{}, fieldEls:{}, chat:[] };
+
+// ---- opt-in ----
+$("#optin-btn").addEventListener("click", async ()=>{
+  const name=$("#in-name").value.trim(), email=$("#in-email").value.trim();
+  const tos=$("#in-tos").checked, company=$("#in-company").value.trim();
+  const err=$("#optin-err");
+  if(!name){ err.textContent="Please enter your name."; err.hidden=false; return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ err.textContent="Please enter a valid email."; err.hidden=false; return; }
+  if(!tos){ err.textContent="Please agree to the terms to continue."; err.hidden=false; return; }
+  err.hidden=true; $("#optin-btn").disabled=true;
+  let d={};
+  try{ const r=await fetch("/api/intake/public/start",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name,email,tos_agreed:true,company})}); d=await r.json().catch(()=>({})); }
+  catch(e){ d={}; }
+  if(!d.token){ err.textContent="Something went wrong. Please try again."; err.hidden=false; $("#optin-btn").disabled=false; return; }
+  S.token=d.token;
+  await loadForm();
+  show("mode");
+});
+
+// ---- load + build the form once ----
+async function loadForm(){
+  const r=await fetch("/api/intake/public/form?token="+encodeURIComponent(S.token));
+  const d=await r.json();
+  S.formDef=d.form; buildForm(d.answers||{});
+}
+
+let saveTimer=null;
+function scheduleSave(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{ fetch("/api/intake/public/save-draft?token="+encodeURIComponent(S.token),
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answers:collect()})}).catch(()=>{}); },1200);
+}
+function collect(){ const o={}; Object.keys(S.getters).forEach(k=>o[k]=S.getters[k]()); return o; }
+
+function buildForm(answers){
+  const host=$("#form-host"); host.innerHTML=""; S.getters={}; S.setters={}; S.fieldEls={};
+  S.formDef.sections.forEach(sec=>{
+    const w=document.createElement("div"); w.className="sec";
+    const h=document.createElement("h3"); h.textContent=sec.title; w.appendChild(h);
+    (sec.fields||[]).forEach(f=> w.appendChild(field(f, answers[f.id])));
+    host.appendChild(w);
+  });
+  // email is the opt-in identity — lock it
+  if(S.fieldEls.email){ S.fieldEls.email.setAttribute("readonly","readonly"); }
+}
+
+function flash(fid){
+  const el=S.fieldEls[fid]; if(!el) return;
+  const box=el.closest(".field")||el; box.classList.add("flash");
+  setTimeout(()=>box.classList.remove("flash"),1600);
+  box.scrollIntoView({behavior:"smooth",block:"center"});
+}
+function bigprint(label,val){
+  if(val==null||val==="") return;
+  $("#bp-label").textContent=label; $("#bp-val").textContent=(typeof val==="object")?JSON.stringify(val):String(val);
+  $("#bigprint").style.display="block";
+}
+
+// build one field; registers getter + setter + element
+function field(f,val){
+  if(f.type==="consent"){
+    const wrap=document.createElement("div"); wrap.className="field";
+    const row=document.createElement("label"); row.style.cssText="display:flex;gap:10px;font-weight:400;align-items:flex-start";
+    const cb=document.createElement("input"); cb.type="checkbox"; cb.style.width="auto"; cb.style.marginTop="4px";
+    cb.checked=!!(val&&val.agreed); cb.addEventListener("change",scheduleSave);
+    const sp=document.createElement("span"); sp.textContent=f.label+(f.required?" *":"");
+    row.appendChild(cb); row.appendChild(sp); wrap.appendChild(row);
+    const sl=document.createElement("div"); sl.className="sub"; sl.textContent="Signature (type your full name)"; wrap.appendChild(sl);
+    const sig=document.createElement("input"); sig.value=(val&&val.signature)||""; sig.addEventListener("input",scheduleSave); wrap.appendChild(sig);
+    const dl=document.createElement("div"); dl.className="sub"; dl.textContent="Date"; wrap.appendChild(dl);
+    const dt=document.createElement("input"); dt.type="date"; dt.value=(val&&val.date)||new Date().toISOString().slice(0,10);
+    dt.addEventListener("change",scheduleSave); wrap.appendChild(dt);
+    S.getters[f.id]=()=>({agreed:cb.checked,signature:sig.value,date:dt.value});
+    S.setters[f.id]=v=>{ if(v&&typeof v==="object"){cb.checked=!!v.agreed; if(v.signature)sig.value=v.signature; if(v.date)dt.value=v.date;} };
+    S.fieldEls[f.id]=wrap; return wrap;
+  }
+  const wrap=document.createElement("div"); wrap.className="field";
+  const lab=document.createElement("label"); lab.textContent=f.label+(f.required?" *":""); wrap.appendChild(lab);
+  if(f.help){ const h=document.createElement("p"); h.className="help"; h.textContent=f.help; wrap.appendChild(h); }
+
+  if(f.type==="table"){
+    const tw=document.createElement("div"); tw.className="tbl"; const rowsBox=document.createElement("div"); tw.appendChild(rowsBox);
+    const rows=[]; const cols=f.columns||[];
+    const addRow=rv=>{
+      const tr=document.createElement("div"); tr.className="trow"; const cg={};
+      cols.forEach(c=>{
+        const cw=document.createElement("div"); cw.className="tcol";
+        const cl=document.createElement("label"); cl.textContent=c.label||""; cw.appendChild(cl);
+        let inp;
+        if(c.type==="single_choice"){ inp=document.createElement("select");
+          const b=document.createElement("option"); b.value="";b.textContent="Select…"; inp.appendChild(b);
+          (c.options||[]).forEach(o=>{const op=document.createElement("option");op.value=o;op.textContent=o;inp.appendChild(op);});
+          inp.value=(rv&&rv[c.id])||""; inp.addEventListener("change",scheduleSave); cg[c.id]=()=>inp.value||""; }
+        else if(c.type==="number"){ inp=document.createElement("input"); inp.type="number";
+          inp.value=(rv&&rv[c.id]!=null)?rv[c.id]:""; inp.addEventListener("input",scheduleSave);
+          cg[c.id]=()=>inp.value===""?null:Number(inp.value); }
+        else { inp=document.createElement("input"); inp.value=(rv&&rv[c.id])||""; inp.addEventListener("input",scheduleSave); cg[c.id]=()=>inp.value; }
+        cw.appendChild(inp); tr.appendChild(cw);
+      });
+      const rm=document.createElement("button"); rm.type="button"; rm.className="btn ghost"; rm.textContent="Remove";
+      rm.style.cssText="padding:6px 12px;font-size:.8rem;flex:0 0 auto;align-self:center";
+      const entry={g:cg}; rm.addEventListener("click",()=>{const i=rows.indexOf(entry);if(i>-1)rows.splice(i,1);tr.remove();scheduleSave();});
+      tr.appendChild(rm); rows.push(entry); rowsBox.appendChild(tr);
+    };
+    const add=document.createElement("button"); add.type="button"; add.className="btn ghost"; add.textContent="Add row";
+    add.style.cssText="margin-top:.5rem;padding:7px 14px;font-size:.85rem"; add.addEventListener("click",()=>addRow(null));
+    tw.appendChild(add); (Array.isArray(val)?val:[]).forEach(addRow);
+    wrap.appendChild(tw);
+    S.getters[f.id]=()=>rows.map(e=>{const o={};Object.keys(e.g).forEach(k=>o[k]=e.g[k]());return o;});
+    S.setters[f.id]=v=>{ if(!Array.isArray(v))return; rows.length=0; rowsBox.innerHTML=""; v.forEach(addRow); };
+    S.fieldEls[f.id]=tw; return wrap;
+  }
+
+  if(f.type==="scale"){
+    const g=document.createElement("div"); g.className="scale";
+    (f.options||[]).forEach(o=>{
+      const ol=document.createElement("label"); ol.className="scale-opt";
+      const rd=document.createElement("input"); rd.type="radio"; rd.name="sc-"+f.id; rd.value=String(o.value);
+      if(val===o.value) rd.checked=true; rd.addEventListener("change",scheduleSave);
+      const sp=document.createElement("span"); sp.textContent=o.value+": "+o.label;
+      ol.appendChild(rd); ol.appendChild(sp); g.appendChild(ol);
+    });
+    wrap.appendChild(g); wrap._scale=g;
+    S.getters[f.id]=()=>{const c=g.querySelector("input:checked");return c?Number(c.value):null;};
+    S.setters[f.id]=v=>{const r=g.querySelector('input[value="'+v+'"]');if(r)r.checked=true;};
+    S.fieldEls[f.id]=g; return wrap;
+  }
+
+  if(f.type==="single_choice"){
+    const sel=document.createElement("select"); const b=document.createElement("option"); b.value="";b.textContent="Select…"; sel.appendChild(b);
+    (f.options||[]).forEach(o=>{const op=document.createElement("option");op.value=o;op.textContent=o;sel.appendChild(op);});
+    sel.value=(typeof val==="string")?val:""; sel.addEventListener("change",scheduleSave); wrap.appendChild(sel);
+    S.getters[f.id]=()=>sel.value||""; S.setters[f.id]=v=>{sel.value=v||"";}; S.fieldEls[f.id]=sel; return wrap;
+  }
+  if(f.type==="textarea"){
+    const ta=document.createElement("textarea"); ta.value=(typeof val==="string")?val:""; ta.addEventListener("input",scheduleSave); wrap.appendChild(ta);
+    S.getters[f.id]=()=>ta.value; S.setters[f.id]=v=>{ta.value=(v==null)?"":String(v);}; S.fieldEls[f.id]=ta; return wrap;
+  }
+  const inp=document.createElement("input");
+  inp.type=(["email","tel","date","number"].includes(f.type))?f.type:"text";
+  if(f.type==="number"){ inp.value=(val!=null)?val:""; S.getters[f.id]=()=>inp.value===""?null:Number(inp.value); S.setters[f.id]=v=>{inp.value=(v==null)?"":v;}; }
+  else { inp.value=(typeof val==="string")?val:""; S.getters[f.id]=()=>inp.value; S.setters[f.id]=v=>{inp.value=(v==null)?"":String(v);}; }
+  inp.addEventListener("input",scheduleSave); wrap.appendChild(inp); S.fieldEls[f.id]=inp; return wrap;
+}
+
+// ---- mode selection ----
+$("#mode-manual").addEventListener("click",()=>{ $("#form-title").textContent="Your intake form";
+  $("#form-sub").textContent="Fill everything in, then review, sign, and submit at the bottom."; show("form"); });
+$("#mode-chat").addEventListener("click",()=>{ showChatAndForm(); $("#form-title").textContent="Your intake (filling in as we talk)";
+  $("#form-sub").textContent="Watch it fill in above as we talk. Edit anything yourself, then review, sign, and submit.";
+  botTurn(true); $("#chat-input").focus(); });
+
+// ---- chat ----
+function addMsg(role,text){ const m=document.createElement("div"); m.className="msg "+(role==="me"?"me":"bot"); m.textContent=text;
+  $("#chatlog").appendChild(m); $("#chatlog").scrollTop=$("#chatlog").scrollHeight; }
+async function botTurn(first){
+  $("#chat-send").disabled=true;
+  try{
+    const r=await fetch("/api/intake/public/chat?token="+encodeURIComponent(S.token),
+      {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:S.chat})});
+    const d=await r.json().catch(()=>({}));
+    if(d.error){ addMsg("bot","(Our guide is unavailable right now — you can fill the form yourself below.)"); }
+    else {
+      if(d.say){ S.chat.push({role:"assistant",content:d.say}); addMsg("bot",d.say); }
+      applyUpdates(d.updates||{});
+      if(d.done){ $("#chat-input").placeholder="All set — review and submit below."; }
+    }
+  }catch(e){ addMsg("bot","(Connection issue — please fill the form below.)"); }
+  $("#chat-send").disabled=false;
+}
+function applyUpdates(updates){
+  const labels=fieldLabels();
+  Object.keys(updates||{}).forEach(fid=>{
+    if(!S.setters[fid]) return;
+    S.setters[fid](updates[fid]); flash(fid); bigprint(labels[fid]||fid, updates[fid]);
+  });
+  if(Object.keys(updates||{}).length) scheduleSave();
+}
+function fieldLabels(){ const m={}; (S.formDef.sections||[]).forEach(s=>(s.fields||[]).forEach(f=>m[f.id]=f.label)); return m; }
+async function sendChat(){
+  const t=$("#chat-input").value.trim(); if(!t) return;
+  $("#chat-input").value=""; addMsg("me",t); S.chat.push({role:"user",content:t}); await botTurn(false);
+}
+$("#chat-send").addEventListener("click",sendChat);
+$("#chat-input").addEventListener("keydown",e=>{ if(e.key==="Enter"){e.preventDefault();sendChat();} });
+
+// ---- submit / print ----
+function clearErrs(){ Object.values(S.fieldEls).forEach(el=>{const b=el.closest?.(".field")||el; b.classList&&b.classList.remove("field-err");}); }
+async function submit(){
+  $("#submit-btn").disabled=true; $("#submit-err").hidden=true; clearErrs(); if(saveTimer)clearTimeout(saveTimer);
+  let r,d;
+  try{ r=await fetch("/api/intake/public/submit?token="+encodeURIComponent(S.token),
+    {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answers:collect()})}); d=await r.json().catch(()=>({})); }
+  catch(e){ d={}; }
+  if(r&&r.ok){ show("done"); return; }
+  if(r&&r.status===409){ show("done"); return; }
+  if(r&&r.status===400&&Array.isArray(d.errors)){
+    $("#submit-err").textContent="Please complete the highlighted fields."; $("#submit-err").hidden=false;
+    d.errors.forEach(fid=>{const el=S.fieldEls[fid]; const b=el&&(el.closest?.(".field")||el); b&&b.classList&&b.classList.add("field-err");});
+    const first=S.fieldEls[d.errors[0]]; first&&first.scrollIntoView&&first.scrollIntoView({behavior:"smooth",block:"center"});
+    $("#submit-btn").disabled=false; return;
+  }
+  $("#submit-err").textContent="Something went wrong. Please try again."; $("#submit-err").hidden=false; $("#submit-btn").disabled=false;
+}
+$("#submit-btn").addEventListener("click",submit);
+$("#print-btn").addEventListener("click",()=>window.print());
+$("#print-done").addEventListener("click",()=>window.print());
+</script>
+</body>
+</html>
