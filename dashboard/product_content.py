@@ -23,6 +23,7 @@ import os
 import re
 import json
 import sqlite3
+from dashboard import db
 import datetime as _dt
 from pathlib import Path
 
@@ -86,7 +87,7 @@ def purge_refusal_cache(cx):
 
 def _cache_get(slug, ctype):
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             init_product_content_table(cx)
             row = cx.execute(
                 "SELECT content_json, sources_json, generated_at FROM generated_product_content "
@@ -103,7 +104,7 @@ def _cache_get(slug, ctype):
 
 def _cache_put(slug, ctype, content, sources):
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             init_product_content_table(cx)
             cx.execute(
                 "INSERT INTO generated_product_content "

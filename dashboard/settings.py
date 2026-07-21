@@ -4,6 +4,7 @@ Backs the /console/settings page. Active-Mac lives here.
 """
 
 import sqlite3
+from dashboard import db
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -17,7 +18,7 @@ KNOWN_HOSTNAMES = {
 
 
 def _ensure_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS settings_kv (
                 key        TEXT PRIMARY KEY,
@@ -29,7 +30,7 @@ def _ensure_table():
 
 def get(key, default=None):
     _ensure_table()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT value FROM settings_kv WHERE key=?", (key,)).fetchone()
     return row[0] if row else default
 
@@ -37,7 +38,7 @@ def get(key, default=None):
 def set(key, value):
     _ensure_table()
     ts = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO settings_kv (key, value, updated_at) VALUES (?, ?, ?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
