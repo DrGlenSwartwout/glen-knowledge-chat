@@ -29,48 +29,95 @@ def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 def _add_col(cx: sqlite3.Connection, table: str, col: str, decl: str) -> None:
     """Idempotent ALTER TABLE ADD COLUMN."""
-    have = {r[1] for r in cx.execute(f"PRAGMA table_info({table})")}
+    from dashboard import db
+    if db.backend_of(cx) == "postgres":
+        have = {r[0] for r in cx.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name=? AND table_schema=current_schema()", (table,)).fetchall()}
+    else:
+        have = {r[1] for r in cx.execute(f"PRAGMA table_info({table})")}
     if col not in have:
         cx.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 def init_ingredients_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS suppliers (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, company TEXT NOT NULL,
-          address_street TEXT, address_city TEXT, address_province TEXT, address_postal_code TEXT,
-          email TEXT, phone_business TEXT, phone_cell TEXT, phone_fax TEXT, url TEXT,
-          qb_id TEXT, active INTEGER,
-          notes TEXT, extras TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    pg = db.backend_of(cx) == "postgres"
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS suppliers (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, company TEXT NOT NULL,
+              address_street TEXT, address_city TEXT, address_province TEXT, address_postal_code TEXT,
+              email TEXT, phone_business TEXT, phone_cell TEXT, phone_fax TEXT, url TEXT,
+              qb_id TEXT, active INTEGER,
+              notes TEXT, extras TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS suppliers (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, company TEXT NOT NULL,
+              address_street TEXT, address_city TEXT, address_province TEXT, address_postal_code TEXT,
+              email TEXT, phone_business TEXT, phone_cell TEXT, phone_fax TEXT, url TEXT,
+              qb_id TEXT, active INTEGER,
+              notes TEXT, extras TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_fmp ON suppliers(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS ingredients (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, name TEXT NOT NULL, form TEXT, status TEXT,
-          common_names TEXT, canonical_id INTEGER REFERENCES ingredients(id),
-          extras TEXT,
-          inci_name TEXT, cas_number TEXT, hygroscopic_rating TEXT, solubility TEXT,
-          stability_notes TEXT, spec_notes TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS ingredients (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, name TEXT NOT NULL, form TEXT, status TEXT,
+              common_names TEXT, canonical_id INTEGER REFERENCES ingredients(id),
+              extras TEXT,
+              inci_name TEXT, cas_number TEXT, hygroscopic_rating TEXT, solubility TEXT,
+              stability_notes TEXT, spec_notes TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS ingredients (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, name TEXT NOT NULL, form TEXT, status TEXT,
+              common_names TEXT, canonical_id INTEGER REFERENCES ingredients(id),
+              extras TEXT,
+              inci_name TEXT, cas_number TEXT, hygroscopic_rating TEXT, solubility TEXT,
+              stability_notes TEXT, spec_notes TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredients_fmp ON ingredients(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_ingredients_canon ON ingredients(canonical_id)")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS ingredient_sources (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT,
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          supplier_id INTEGER REFERENCES suppliers(id),
-          supplier_name TEXT, sku TEXT,
-          price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
-          extras TEXT,
-          preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
-          minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if pg:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS ingredient_sources (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              supplier_id INTEGER REFERENCES suppliers(id),
+              supplier_name TEXT, sku TEXT,
+              price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
+              extras TEXT,
+              preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
+              minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS ingredient_sources (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              supplier_id INTEGER REFERENCES suppliers(id),
+              supplier_name TEXT, sku TEXT,
+              price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
+              extras TEXT,
+              preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
+              minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingsrc_fmp ON ingredient_sources(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_ingsrc_ing ON ingredient_sources(ingredient_id)")
     # Override-protection columns (idempotent — safe on existing DBs)
@@ -79,10 +126,16 @@ def init_ingredients_schema(cx: sqlite3.Connection) -> None:
     _add_col(cx, "ingredients", "par_level_unit", "TEXT")
     _add_col(cx, "ingredient_sources", "overrides", "TEXT")
     # One-time backfill: promote par_level/par_level_unit out of extras JSON
-    cx.execute("""UPDATE ingredients
-                  SET par_level = CAST(json_extract(extras,'$.par_level') AS REAL),
-                      par_level_unit = json_extract(extras,'$.par_level_unit')
-                  WHERE par_level IS NULL AND json_extract(extras,'$.par_level') IS NOT NULL""")
+    if pg:
+        cx.execute("""UPDATE ingredients
+                      SET par_level = CAST(extras::jsonb ->> 'par_level' AS REAL),
+                          par_level_unit = extras::jsonb ->> 'par_level_unit'
+                      WHERE par_level IS NULL AND extras::jsonb ->> 'par_level' IS NOT NULL""")
+    else:
+        cx.execute("""UPDATE ingredients
+                      SET par_level = CAST(json_extract(extras,'$.par_level') AS REAL),
+                          par_level_unit = json_extract(extras,'$.par_level_unit')
+                      WHERE par_level IS NULL AND json_extract(extras,'$.par_level') IS NOT NULL""")
     cx.commit()
 
 

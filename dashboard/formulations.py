@@ -10,25 +10,48 @@ _ITEM_NUMERIC_EXTRA = {"dose"}  # dose coerces to float via _coerce_core
 
 
 def init_formulations_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS formulations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT, name TEXT NOT NULL, status TEXT,
-          product_slug TEXT, extras TEXT,
-          notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    if db.backend_of(cx) == "postgres":
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS formulations (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT, name TEXT NOT NULL, status TEXT,
+              product_slug TEXT, extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS formulations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT, name TEXT NOT NULL, status TEXT,
+              product_slug TEXT, extras TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_formulations_fmp ON formulations(fmp_id) WHERE fmp_id IS NOT NULL")
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS formulation_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fmp_id TEXT,
-          formulation_id INTEGER REFERENCES formulations(id),
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          ingredient_name TEXT, dose REAL, dose_unit TEXT, raw_text TEXT,
-          extras TEXT, notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    if db.backend_of(cx) == "postgres":
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS formulation_items (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              fmp_id TEXT,
+              formulation_id INTEGER REFERENCES formulations(id),
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              ingredient_name TEXT, dose REAL, dose_unit TEXT, raw_text TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS formulation_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              fmp_id TEXT,
+              formulation_id INTEGER REFERENCES formulations(id),
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              ingredient_name TEXT, dose REAL, dose_unit TEXT, raw_text TEXT,
+              extras TEXT, notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_formitems_fmp ON formulation_items(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_formitems_form ON formulation_items(formulation_id)")
     # Override-protection column (idempotent — safe on existing DBs)

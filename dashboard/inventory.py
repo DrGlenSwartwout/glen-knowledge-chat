@@ -18,20 +18,37 @@ def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 
 def init_inventory_schema(cx: sqlite3.Connection) -> None:
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS inventory_txns (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          ingredient_id INTEGER REFERENCES ingredients(id),
-          txn_type TEXT NOT NULL,
-          qty REAL NOT NULL,
-          unit TEXT,
-          txn_date TEXT,
-          source_kind TEXT,
-          source_ref TEXT,
-          notes TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now'))
-        )""")
+    from dashboard import db
+    if db.backend_of(cx) == "postgres":
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_txns (
+              id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              txn_type TEXT NOT NULL,
+              qty REAL NOT NULL,
+              unit TEXT,
+              txn_date TEXT,
+              source_kind TEXT,
+              source_ref TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (now()::text),
+              updated_at TEXT DEFAULT (now()::text)
+            )""")
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_txns (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              ingredient_id INTEGER REFERENCES ingredients(id),
+              txn_type TEXT NOT NULL,
+              qty REAL NOT NULL,
+              unit TEXT,
+              txn_date TEXT,
+              source_kind TEXT,
+              source_ref TEXT,
+              notes TEXT,
+              created_at TEXT DEFAULT (datetime('now')),
+              updated_at TEXT DEFAULT (datetime('now'))
+            )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_invtxn_source ON inventory_txns(source_ref) WHERE source_ref IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_invtxn_ing ON inventory_txns(ingredient_id)")
     cx.commit()
