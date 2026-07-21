@@ -6569,8 +6569,10 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
         items_rec.append({"name": _disp_name, "qty": qty, "desc": _disp_name,
                           "slug": slug, "unit_cents": it["unit_cents"], "line_cents": it["unit_cents"] * qty})
         # Services / digital goods carry no bottle: counting them would push the
-        # "default" placeholder into quote(), which raises UnknownBottleType and
-        # drops the whole cart to the coarse qty rule — charging a phantom bottle.
+        # "default" placeholder into quote(), which internally catches the
+        # UnknownBottleType pick_boxes raises and returns shipping_cents: None —
+        # _shipping_for_cart then falls to the coarse qty rule via the `cents > 0`
+        # False branch (not via its own except), charging a phantom bottle.
         if _shipping.is_shippable(p):
             _flat = int(p.get("flat_shipping_cents") or 0)
             if _flat > 0 and not p.get("bundle"):
@@ -39931,7 +39933,8 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                     unit_cents = min(unit_cents, _cand)   # lowest wins among automatics
         line_cents = unit_cents * qty
         subtotal_list += line_cents
-        cart.append({"slug": slug, "qty": qty})
+        _fmt = (ln.get("format") or "").strip().lower()
+        cart.append({"slug": slug, "qty": qty, "format": _fmt})
         rec = {"slug": slug, "name": p["name"], "qty": qty,
                "unit_cents": unit_cents, "line_cents": line_cents}
         # Customer-facing per-line note (free text; picked from / auto-saved to the
@@ -39939,7 +39942,6 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
         _note = (ln.get("note") or "").strip()
         if _note:
             rec["note"] = _note
-        _fmt = (ln.get("format") or "").strip().lower()
         if _fmt and _fmt != "bottle":
             rec["format"] = _fmt
         # Mark ONLY owner-typed per-line overrides, so Edit Invoice can tell them
@@ -40528,7 +40530,8 @@ def api_orders_shipping_preview():
             "country": (a.get("country") or "US").upper()}
     # Only real catalog products carry a bottle; membership/unknown slugs are skipped by
     # _price_cart, matching how shipping is computed at create/edit.
-    cart = [{"slug": (l.get("slug") or "").strip(), "qty": l.get("qty")}
+    cart = [{"slug": (l.get("slug") or "").strip(), "qty": l.get("qty"),
+             "format": (l.get("format") or "")}
             for l in lines_in if (l.get("slug") or "").strip()]
     if pickup:
         return jsonify({"ok": True, "shipping_cents": 0, "get_cents": 0, "pickup": True})
@@ -41562,7 +41565,8 @@ def api_invoice_update(token):
         unit_cents = int(p.get("price_cents") or 0)  # SERVER price only — ignore client
         line_cents = unit_cents * qty
         subtotal_list += line_cents
-        cart.append({"slug": slug, "qty": qty})
+        _fmt = (ln.get("format") or "").strip().lower()
+        cart.append({"slug": slug, "qty": qty, "format": _fmt})
         items_rec.append({"slug": slug, "name": p["name"], "qty": qty,
                           "unit_cents": unit_cents, "line_cents": line_cents})
     if not cart:

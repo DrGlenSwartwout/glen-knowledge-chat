@@ -111,7 +111,9 @@ PENDING_BOTTLE_NAMES = frozenset()
 # authoritative at runtime; Rae must add this row (dims or capacity) via
 # /admin/shipping before prod can rate it. The `_STANDARD_BOTTLES` seed below makes
 # it testable and keeps a fresh/dev catalog resolvable; if the row is absent in prod,
-# `pick_boxes` raises UnknownBottleType for it exactly like any other missing type.
+# `pick_boxes` raises UnknownBottleType for it exactly like any other missing type —
+# `quote()` catches that internally (see below) and returns shipping_cents: None,
+# it never propagates out to a caller's except.
 CELLO_BOTTLE_TYPE = "cello-refill"
 
 # Old repo-private names -> prod's. Applied by init_shipping_schema to any pre-existing
