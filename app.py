@@ -89,6 +89,7 @@ from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
 from dashboard import client_360
+from dashboard import db
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -206,7 +207,7 @@ _CTA_RUNG = {"page": "curious", "email": "engaged", "action": "ready", "inline":
 
 
 def _init_shortlink_cache():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS shortlink_cache (
                 product_name  TEXT PRIMARY KEY,
@@ -1714,11 +1715,17 @@ _init_log_db()
 
 
 def _init_abuse_flags():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
-        cx.execute(
-            "CREATE TABLE IF NOT EXISTS abuse_flags "
-            "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
-        )
+    with _db_lock, db.connect(LOG_DB) as cx:
+        if db.backend_of(cx) == "postgres":
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS abuse_flags "
+                "(id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+            )
+        else:
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS abuse_flags "
+                "(id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, ip TEXT, reason TEXT, ts TEXT)"
+            )
         cx.execute("CREATE INDEX IF NOT EXISTS idx_abuse_flags_ts ON abuse_flags(ts)")
         cx.commit()
 
@@ -1728,7 +1735,7 @@ _init_abuse_flags()
 def _init_shipping_tables():
     """Order-Flow Plumbing — bottle catalog, box-fit matrix, USPS rate history."""
     from dashboard.shipping import init_shipping_schema
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_shipping_schema(cx)
 
 _init_shipping_tables()
@@ -1737,7 +1744,7 @@ _init_shipping_tables()
 def _init_ingredients_tables():
     """Ingredients + sources catalog (FMP-migrated raw-material master)."""
     from dashboard.ingredient_catalog import init_ingredients_schema
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_ingredients_schema(cx)
 
 _init_ingredients_tables()
@@ -1746,7 +1753,7 @@ _init_ingredients_tables()
 def _init_formulations_tables():
     """Formulations (recipes) — FMP-migrated, references Phase-1 ingredients."""
     from dashboard.formulations import init_formulations_schema
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_formulations_schema(cx)
 
 _init_formulations_tables()
@@ -1755,7 +1762,7 @@ _init_formulations_tables()
 def _init_materials_tables():
     """Materials (production inputs + packaging) — FMP-migrated, references Phase-1 suppliers."""
     from dashboard.materials_catalog import init_materials_schema
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_materials_schema(cx)
 
 _init_materials_tables()
@@ -1764,7 +1771,7 @@ _init_materials_tables()
 def _init_purchase_orders_tables():
     """Purchase orders (history) — FMP-migrated. PO header + line items + receiving."""
     from dashboard.purchase_orders import init_purchase_orders_schema
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_purchase_orders_schema(cx)
 
 _init_purchase_orders_tables()
@@ -1773,7 +1780,7 @@ _init_purchase_orders_tables()
 def _init_inventory_tables():
     """Inventory management — on-hand tracking, txn history, baselines & receipts."""
     from dashboard.inventory import init_inventory_schema
-    cx = sqlite3.connect(str(LOG_DB))
+    cx = db.connect(str(LOG_DB))
     try:
         init_inventory_schema(cx)
     finally:
@@ -1785,7 +1792,7 @@ _init_inventory_tables()
 def _init_production_tables():
     """Production runs & batch logging — record formulation batches, ingredients used, timestamped."""
     from dashboard.production import init_production_schema
-    cx = sqlite3.connect(str(LOG_DB))
+    cx = db.connect(str(LOG_DB))
     try:
         init_production_schema(cx)
     finally:
@@ -1796,7 +1803,7 @@ _init_production_tables()
 
 def _init_cta_clicks():
     """CTA click log — public endpoint, minimal data, no console key."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS cta_clicks (
                 ts       TEXT NOT NULL,
@@ -1810,7 +1817,7 @@ _init_cta_clicks()
 
 def _init_chip_taps():
     """Chip-tap log — public endpoint, minimal data, no console key."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS chip_taps (
                 ts         TEXT NOT NULL,
@@ -1825,7 +1832,7 @@ _init_chip_taps()
 def _init_sourcing_tables():
     """Email-sourcing collector — review queue, staged quotes, matched sources."""
     from dashboard.sourcing import init_sourcing_schema
-    cx = sqlite3.connect(str(LOG_DB))
+    cx = db.connect(str(LOG_DB))
     try:
         init_sourcing_schema(cx)
     finally:

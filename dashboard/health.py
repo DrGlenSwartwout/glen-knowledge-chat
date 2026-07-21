@@ -6,13 +6,14 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from .cache import last_success
+from . import db
 
 LOG_DB = str(Path(__file__).parent.parent / "chat_log.db")
 
 
 def _check_db():
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute("SELECT 1").fetchone()
         return {"ok": True}
     except Exception as e:

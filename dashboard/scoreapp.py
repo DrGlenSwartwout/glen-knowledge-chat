@@ -4,12 +4,14 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 
+from . import db
+
 LOG_DB = str(Path(__file__).parent.parent / "chat_log.db")
 
 
 def recent_signups(limit=10):
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             # Reuse the inbound_leads table — scoreapp signups land here as source='scoreapp'.
             # `id` lets the dashboard reuse the per-lead action endpoints
             # (/api/leads/<id>/draft-reply, /tag, /dismiss, /send-reply).
