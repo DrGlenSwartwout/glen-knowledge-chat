@@ -227,10 +227,15 @@ Multi-subsystem — built as four sub-slices, each its own plan/PR:
   so a `self` recommendation can be mis-attributed across a shared session. Acceptable for a
   self-selection signal; harden (session-fixation) only if the `self` source ever drives a
   higher-stakes surface.
-- **2d — reveal / engagement click capture:** a `biofield` event when the client clicks a
-  reveal's product link or orders from the biofield list; `scan`/`chat` events on the same
-  click/add/order actions. Where the deferred clinical/AI sources start accruing on real
-  client actions rather than generation.
+- **2d — reveal / engagement click capture (biofield + scan SHIPPED; chat DEFERRED):** a
+  `biofield` event when the client orders from the reveal or clicks a remedy's product link;
+  a `scan` event when they click a scan/FF-matched product in the portal. Each ACTION counts
+  (unique `origin_ref` via `record_click`); identity is the surface token; capture is
+  fire-and-forget `sendBeacon`; the biofield-from-order event is distinct from the order's
+  `purchased` event. **`chat` is BLOCKED/deferred:** chat visitors are mostly anonymous
+  (`amg_session`, no reliable email) and the CTA-click log carries neither the product slug
+  nor an email — attributing `chat` needs slug-capture on `/api/cta-click` + a chat→email
+  identity first. That is the only remaining source before Phase 3.
 
 ### Phase 3 — marketing channels (separate integrations)
 - Email + newsletter CTA-click capture (GHL / email-content-engine tracked links) → events.
