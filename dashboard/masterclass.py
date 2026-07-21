@@ -2,6 +2,8 @@
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -19,13 +21,13 @@ def init_masterclass_tables(cx) -> None:
 
 def create_event(cx, *, topic, description, start_ts, duration_min,
                  price_cents, member_price_cents) -> int:
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO masterclass_events (topic, description, start_ts, duration_min, "
         "price_cents, member_price_cents, created_at) VALUES (?,?,?,?,?,?,?)",
         ((topic or "").strip(), (description or "").strip(), start_ts, int(duration_min),
          int(price_cents), int(member_price_cents), _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 def get_event(cx, event_id):
     cur = cx.execute("SELECT * FROM masterclass_events WHERE id=?", (event_id,))

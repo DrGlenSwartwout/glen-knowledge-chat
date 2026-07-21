@@ -5,6 +5,7 @@ actions are audited + governed by the dispatch spine like any other."""
 import json
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
 from dashboard.actions import action, LOW_WRITE
 from dashboard.rbac import OWNER, OPS, VA
 
@@ -38,12 +39,13 @@ def enqueue(cx, *, op, email, payload, actor=""):
         raise ValueError(f"unknown op: {op}")
     if not (email or "").strip():
         raise ValueError("email required")
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO ghl_write_queue (created_at, op, email, payload_json, status, actor) "
         "VALUES (?,?,?,?, 'pending', ?)",
         (_now(), op, email.strip(), json.dumps(payload or {}), actor or ""))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def list_pending(cx, limit=100):

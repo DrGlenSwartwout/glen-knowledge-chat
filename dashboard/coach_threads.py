@@ -3,6 +3,8 @@ matched pair (coach_email, member_email); two roles (coach/member) + a source ta
 ('coaching' now, 'peer' later) so the peer-matching arc reuses these tables. Text
 only, async. Privacy + block/report policy live in the routes; this module is state."""
 
+from dashboard import dbwrite
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS coach_threads (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,10 +104,11 @@ def thread_for_pair(cx, coach_email, member_email):
 def post_message(cx, *, thread_id, sender_role, body):
     ep = cx.execute("SELECT active_epoch FROM coach_threads WHERE id=?", (thread_id,)).fetchone()
     epoch = (ep["active_epoch"] if ep else 1) or 1
-    cur = cx.execute("INSERT INTO coach_messages (thread_id, sender_role, body, created_at, epoch) "
-                     "VALUES (?,?,?,?,?)", (thread_id, sender_role, body, _now(), epoch))
+    new_id = dbwrite.insert_returning_id(
+        cx, "INSERT INTO coach_messages (thread_id, sender_role, body, created_at, epoch) "
+        "VALUES (?,?,?,?,?)", (thread_id, sender_role, body, _now(), epoch))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def messages(cx, thread_id, epoch=None):

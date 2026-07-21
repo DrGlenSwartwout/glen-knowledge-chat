@@ -16,6 +16,7 @@ import os
 from datetime import datetime, timezone
 
 from dashboard import orders as _orders
+from dashboard import dbwrite
 
 # Statuses an order can be in and still be combinable (not yet out the door).
 _TERMINAL = _orders._TERMINAL_STATUSES  # ("shipped","delivered","done","cancelled")
@@ -162,13 +163,13 @@ def create_shipment(cx, order_ids, *, ship_to=None, household_id=None,
     if ship_to is None:
         ship_to = dict(members[0].get("address") or {})
         ship_to.setdefault("name", members[0].get("name") or "")
-    cur = cx.execute(
+    sid = int(dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO combined_shipments (created_at, created_by, household_id, "
         "ship_to_json, status, updated_at) VALUES (?,?,?,?,?,?)",
         (_now(), created_by,
          (int(household_id) if household_id is not None else None),
-         json.dumps(ship_to), "open", _now()))
-    sid = int(cur.lastrowid)
+         json.dumps(ship_to), "open", _now())))
     for oid in ids:
         _orders.set_order_group(cx, oid, sid)
     cx.commit()

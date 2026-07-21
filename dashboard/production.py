@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from dashboard import dbwrite
+
 
 def _default_db_path() -> str:
     base = os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))
@@ -188,11 +190,10 @@ def log_run(formulation_id, run_date, quantity_units, items, batch_number=None, 
     with _connect(db_path) as cx:
         if not cx.execute("SELECT 1 FROM formulations WHERE id=?", (formulation_id,)).fetchone():
             raise ValueError(f"no formulation {formulation_id}")
-        cur = cx.execute("""
+        rid = int(dbwrite.insert_returning_id(cx, """
             INSERT INTO production_runs (formulation_id, batch_number, run_date, quantity_units, status, source_kind)
             VALUES (?, ?, ?, ?, 'completed', 'manual')
-        """, (formulation_id, batch_number, run_date, quantity_units))
-        rid = int(cur.lastrowid)
+        """, (formulation_id, batch_number, run_date, quantity_units)))
         for it in items:
             ing_id = it.get("ingredient_id")
             label = None

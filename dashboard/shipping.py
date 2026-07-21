@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from dashboard import packing
+from dashboard import dbwrite
 
 
 BOX_SIZES = ("S", "M", "L")
@@ -601,13 +602,14 @@ def add_bottle_type(
     db_path: Optional[str] = None,
 ) -> int:
     with _connect(db_path) as cx:
-        cur = cx.execute(
+        new_id = dbwrite.insert_returning_id(
+            cx,
             "INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
             "VALUES (?, ?, ?, ?)",
             (name, notes, diameter_mm, height_mm),
         )
         cx.commit()
-        return int(cur.lastrowid)
+        return int(new_id)
 
 
 def list_bottle_types(db_path: Optional[str] = None) -> List[dict]:
@@ -866,14 +868,14 @@ def propose_rate_update(
         raise ValueError(f"box_size must be one of {BOX_SIZES}, got {box_size!r}")
     charged = round_to_dollar(usps_retail_cents)
     with _connect(db_path) as cx:
-        cur = cx.execute("""
+        new_id = dbwrite.insert_returning_id(cx, """
             INSERT INTO usps_rates
                 (box_size, usps_retail_cents, charged_cents, effective_date,
                  source_url, confirmed_by, confirmed_at)
             VALUES (?, ?, ?, ?, ?, ?, NULL)
         """, (box_size, usps_retail_cents, charged, effective_date, source_url, PENDING))
         cx.commit()
-        return int(cur.lastrowid)
+        return int(new_id)
 
 
 def list_pending_rate_updates(db_path: Optional[str] = None) -> List[dict]:

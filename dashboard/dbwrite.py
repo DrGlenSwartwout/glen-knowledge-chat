@@ -63,3 +63,20 @@ def insert_or_replace(cx, table: str, columns: Sequence[str], values: Sequence,
     else:
         sql = f"INSERT OR REPLACE INTO {table} ({cols_sql}) VALUES ({placeholders})"
         cx.execute(sql, tuple(values))
+
+
+def insert_returning_id(cx, sql: str, params=(), *, pk: str = "id"):
+    """Run a single INSERT and return the new row's autoincrement/IDENTITY id.
+    SQLite: execute + cur.lastrowid. Postgres has no lastrowid, so append
+    `RETURNING <pk>` and read it back. `pk` (default 'id') is the autoincrement
+    column — a code literal, not user input. `sql` must be ONE INSERT statement
+    with no existing RETURNING clause. Returns None if no row was inserted (e.g.
+    an ON CONFLICT that did nothing on Postgres — no call site here does that)."""
+    from dashboard import db
+    if db.backend_of(cx) == "postgres":
+        stmt = sql.rstrip()
+        if stmt.endswith(";"):
+            stmt = stmt[:-1].rstrip()
+        row = cx.execute(f"{stmt} RETURNING {pk}", params).fetchone()
+        return row[0] if row else None
+    return cx.execute(sql, params).lastrowid

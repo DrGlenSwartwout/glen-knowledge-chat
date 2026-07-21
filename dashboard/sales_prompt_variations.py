@@ -1,5 +1,7 @@
 import datetime
 
+from dashboard import dbwrite
+
 def _now(): return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 _SEED = {
@@ -72,7 +74,7 @@ def review_variations(cx, kind):
 
 def insert_variation(cx, kind, label, prompt_template, state="review"):
     init_table(cx)
-    cur = cx.execute("INSERT INTO sales_prompt_variations (kind, label, prompt_template, state, created_at) "
+    new_id = dbwrite.insert_returning_id(cx, "INSERT INTO sales_prompt_variations (kind, label, prompt_template, state, created_at) "
                      "VALUES (?,?,?,?,?)", (kind, label, prompt_template, state, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id

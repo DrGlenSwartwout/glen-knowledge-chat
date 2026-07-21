@@ -5,6 +5,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -176,12 +178,11 @@ def upsert(cx, email, scan_date, interpretation, remedies, source, layers=None):
                 (json.dumps(interpretation or {}), json.dumps(remedies or []), lj, now, rid))
             cx.commit()
         return rid, False
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO biofield_reveals (email, scan_date, interpretation_json, remedies_json, layers_json, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?,?)",
         (email, scan_date, json.dumps(interpretation or {}), json.dumps(remedies or []), lj, now, now))
     cx.commit()
-    new_id = cur.lastrowid
     # A free member who spent >= $100 since their last reveal earns this one fully un-blurred.
     maybe_unlock_for_spend(cx, email, new_id)
     return new_id, True

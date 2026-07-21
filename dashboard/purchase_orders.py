@@ -6,6 +6,7 @@ import json
 import sqlite3
 from datetime import date
 from dashboard.ingredient_catalog import _connect
+from dashboard import dbwrite
 
 
 def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
@@ -129,11 +130,11 @@ def create_draft_po(cx, supplier_id, supplier_name, lines):
     skipped; price_per_unit may be None (cost stored NULL). Returns {po_id, line_count}."""
     today = date.today().isoformat()
     vendor_po_no = "DRAFT-" + today.replace("-", "") + "-" + str(supplier_id)
-    cur = cx.execute(
+    po_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO purchase_orders (supplier_id, supplier_name, vendor_po_no, po_date, status) "
         "VALUES (?,?,?,?,'draft')",
         (supplier_id, supplier_name or "", vendor_po_no, today))
-    po_id = cur.lastrowid
     n = 0
     for ln in (lines or []):
         ing_id = ln.get("ingredient_id")

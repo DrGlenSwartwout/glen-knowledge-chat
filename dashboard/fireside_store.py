@@ -8,6 +8,8 @@ the caller holds the DB lock around writes.
 import json
 import sqlite3
 
+from dashboard import dbwrite
+
 _JSON_COLS = ("transcript", "ash_coverage", "signals")
 _NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
 
@@ -75,13 +77,13 @@ def get_or_create(cx, amg_session: str) -> dict:
         ).fetchone()
         if row is not None:
             return _decode(row)
-        cur = cx.execute(
+        new_id = dbwrite.insert_returning_id(cx,
             f"INSERT INTO fireside_sessions (amg_session, last_turn_at) "
             f"VALUES (?, {_NOW})",
             (amg_session or "",),
         )
         cx.commit()
-        return get(cx, cur.lastrowid)
+        return get(cx, new_id)
     finally:
         cx.row_factory = _saved_rf
 

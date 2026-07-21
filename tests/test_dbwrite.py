@@ -98,3 +98,45 @@ def test_insert_or_replace_pg_on_secondary_unique(monkeypatch):
     rows = cx.execute("SELECT token_hash, created_at FROM tok_t").fetchall()
     assert len(rows) == 1 and rows[0][0] == "hash2" and rows[0][1] == "t2"
     cx.close()
+
+
+def test_insert_returning_id_sqlite(tmp_path):
+    import sqlite3
+    from dashboard import dbwrite
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    cx.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
+    a = dbwrite.insert_returning_id(cx, "INSERT INTO t (v) VALUES (?)", ("x",))
+    b = dbwrite.insert_returning_id(cx, "INSERT INTO t (v) VALUES (?)", ("y",))
+    assert a == 1 and b == 2
+
+
+@pytest.mark.skipif(not _pg, reason="PG_DSN not set")
+def test_insert_returning_id_pg(monkeypatch):
+    from dashboard import db, dbwrite
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS iri_t")
+    cx.execute("CREATE TABLE iri_t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)")
+    a = dbwrite.insert_returning_id(cx, "INSERT INTO iri_t (v) VALUES (?)", ("x",))
+    b = dbwrite.insert_returning_id(cx, "INSERT INTO iri_t (v) VALUES (?)", ("y",))
+    cx.commit()
+    assert a == 1 and b == 2
+    assert cx.execute("SELECT v FROM iri_t WHERE id=?", (b,)).fetchone()[0] == "y"
+    cx.close()
+
+
+@pytest.mark.skipif(not _pg, reason="PG_DSN not set")
+def test_insert_returning_id_pg_on_conflict_do_update(monkeypatch):
+    # coach_connect pattern: ON CONFLICT DO UPDATE always returns the row id.
+    from dashboard import db, dbwrite
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS iri_u")
+    cx.execute("CREATE TABLE iri_u (id INTEGER PRIMARY KEY AUTOINCREMENT, k TEXT UNIQUE, v TEXT)")
+    sql = ("INSERT INTO iri_u (k, v) VALUES (?, ?) "
+           "ON CONFLICT(k) DO UPDATE SET v=excluded.v")
+    a = dbwrite.insert_returning_id(cx, sql, ("key", "v1")); cx.commit()
+    b = dbwrite.insert_returning_id(cx, sql, ("key", "v2")); cx.commit()   # conflict -> update
+    assert a == b                                                          # same row id returned
+    assert cx.execute("SELECT v FROM iri_u WHERE id=?", (a,)).fetchone()[0] == "v2"
+    cx.close()

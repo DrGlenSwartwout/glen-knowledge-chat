@@ -9,6 +9,8 @@ import socket
 import sqlite3
 from datetime import datetime, timezone, timedelta
 
+from dashboard import dbwrite
+
 OWNER_EMAIL = os.environ.get("GLEN_EMAIL", "drglenswartwout@gmail.com")
 
 
@@ -76,10 +78,10 @@ def record_failure(cx, context, error, *, throttle_min=20, now=None, notify=True
     try:
         init_stripe_alerts_table(cx)
         ts = now or _now()
-        cur = cx.execute(
+        rowid = dbwrite.insert_returning_id(
+            cx,
             "INSERT INTO stripe_failures (context, error, created_at) VALUES (?,?,?)",
             (str(context or ""), str(error or "")[:500], ts))
-        rowid = cur.lastrowid
         cx.commit()
         # Durability read-back: prove the row is queryable AFTER commit, and capture
         # WHICH db file it landed in. If a future incident emails but shows no console

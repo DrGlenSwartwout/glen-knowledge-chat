@@ -8,6 +8,8 @@ in e4l.db yet — so the dedup key is the normalized query while pending/working
 import datetime
 import sqlite3
 
+from dashboard import dbwrite
+
 STALE_WORKING_SECS = 1800  # a 'working' row older than this (crash/reboot mid-fulfill) no longer blocks a new request
 
 
@@ -52,12 +54,12 @@ def create_request(cx, query, requested_by=None):
     if row:
         return {"created": False, "id": row[0], "status": row[1]}
     now = _now()
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO scan_pull_requests (query, query_norm, status, requested_by, created_at, updated_at) "
         "VALUES (?,?, 'pending', ?, ?, ?)",
         (query.strip(), qn, (requested_by or None), now, now))
     cx.commit()
-    return {"created": True, "id": cur.lastrowid, "status": "pending"}
+    return {"created": True, "id": new_id, "status": "pending"}
 
 
 def pending(cx, limit=50):

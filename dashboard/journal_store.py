@@ -9,6 +9,8 @@ passes a sqlite3 connection.
 import json
 import sqlite3
 
+from dashboard import dbwrite
+
 # Columns that hold JSON structures (stored as TEXT, decoded on read).
 _JSON_COLS = (
     "emotion_scores", "tcm_scores", "top_emotions", "polyvagal_state",
@@ -57,12 +59,12 @@ def insert(cx, record: dict):
         v = record.get(c)
         vals.append(json.dumps(v) if c in _JSON_COLS else v)
     placeholders = ",".join("?" * len(_ALL_COLS))
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         f"INSERT INTO journal_entries ({','.join(_ALL_COLS)}) VALUES ({placeholders})",
         vals,
     )
     cx.commit()
-    return [{"id": cur.lastrowid}]
+    return [{"id": new_id}]
 
 
 def _decode(row: sqlite3.Row) -> dict:

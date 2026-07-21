@@ -17,6 +17,7 @@ import re
 import sqlite3
 
 from dashboard import db
+from dashboard import dbwrite
 from dashboard.biofield_schedule import build_schedule
 from dashboard.biofield_dimensions import DEPTH_KEY, depth_label, depth_match, get_tag
 
@@ -88,13 +89,13 @@ def init_auth_tables(cx):
 
 def create_test(cx, name, email, date):
     init_auth_tables(cx)
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO biofield_auth_tests(name,email,date_test,created_at,updated_at) "
         "VALUES(?,?,?,?,?)",
         ((name or "").strip(), (email or "").strip().lower(), (date or "").strip(),
          _now(), _now()))
     cx.commit()
-    return "a" + str(cur.lastrowid)
+    return "a" + str(new_id)
 
 
 def update_header(cx, tid, name=None, email=None, date=None):
@@ -139,7 +140,7 @@ def add_chain_row(cx, tid, layer, head, most_affected, remedy,
     init_auth_tables(cx)
     now = _now()   # born unedited: updated_at == created_at
     codes_json = json.dumps([str(c).strip() for c in (codes or []) if str(c).strip()])
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(cx,
         "INSERT INTO biofield_auth_chain(test_id,layer,head,most_affected,remedy,"
         "dosage,frequency,timing,sort_seq,created_at,updated_at,confirmed,origin,codes) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -147,7 +148,7 @@ def add_chain_row(cx, tid, layer, head, most_affected, remedy,
          (remedy or "").strip(), dosage or "", frequency or "", timing or "", 0, now, now,
          1 if confirmed else 0, (origin or "live"), codes_json))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def confirm_row(cx, rid):

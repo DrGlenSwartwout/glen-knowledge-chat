@@ -36,6 +36,8 @@ from datetime import datetime
 from html import escape, unescape
 from typing import Dict, List, Optional
 
+from dashboard import dbwrite
+
 
 TRACK_URL = "https://tools.usps.com/go/TrackConfirmAction?tLabels={}"
 
@@ -315,12 +317,13 @@ def record_shipment(cx: sqlite3.Connection, **fields) -> Optional[int]:
     ]
     vals = [fields.get(c) for c in cols]
     placeholders = ", ".join("?" for _ in cols)
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         f"INSERT INTO shipments ({', '.join(cols)}) VALUES ({placeholders})",
         vals,
     )
     cx.commit()
-    return int(cur.lastrowid)
+    return int(new_id)
 
 
 def _iso_now() -> str:

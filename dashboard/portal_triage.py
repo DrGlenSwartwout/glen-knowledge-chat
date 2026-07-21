@@ -13,6 +13,8 @@ import re
 import sqlite3
 from datetime import datetime, timezone
 
+from dashboard import dbwrite
+
 CATEGORIES = ("question", "complaint", "issue", "bug", "health-concern", "request", "other")
 URGENCIES = ("low", "medium", "high")
 
@@ -32,13 +34,14 @@ def init_table(cx):
 
 def add_item(cx, email, name, category, urgency, summary, recommendation, message, answer=""):
     init_table(cx)
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO portal_triage(email,name,category,urgency,summary,recommendation,"
         "message,answer,created_at,resolved) VALUES(?,?,?,?,?,?,?,?,?,0)",
         ((email or "").strip().lower(), (name or "").strip(), category, urgency,
          summary, recommendation, message, answer, _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def list_open(cx, limit=50):

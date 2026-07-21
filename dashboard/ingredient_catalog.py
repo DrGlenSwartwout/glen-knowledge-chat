@@ -10,6 +10,7 @@ from dashboard._core_edit import (
     _unlock_core as _unlock_core_field,
     _coerce_core,
 )
+from dashboard import dbwrite
 
 _ING_CORE = {"name", "form", "common_names", "par_level", "par_level_unit"}
 _SRC_CORE = {"price_per_unit", "unit_size", "unit_type"}
@@ -251,10 +252,10 @@ def _insert_allowed(table, fields, allowed, required, numeric_extra=None, db_pat
     if not cols:
         raise ValueError("no fields to insert")
     with _connect(db_path) as cx:
-        cur = cx.execute(
+        new_id = dbwrite.insert_returning_id(cx,
             f"INSERT INTO {table} ({','.join(cols)}) VALUES ({','.join('?' for _ in cols)})", vals)
         cx.commit()
-        return int(cur.lastrowid)
+        return int(new_id)
 
 
 def create_ingredient(fields, db_path=None) -> int:

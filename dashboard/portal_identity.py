@@ -18,6 +18,7 @@ import json
 import secrets
 
 from dashboard import client_portal as _cp
+from dashboard import dbwrite
 from dashboard.practitioner_portal import _ensure_auth_tokens
 from dashboard.timeutil import is_expired as _is_expired
 
@@ -73,12 +74,13 @@ def _get_or_create_person(cx, email: str, name: str = ""):
         except Exception:
             roles = []
         return row[0], (roles or ["client"])
-    cur = cx.execute(
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO people (email, name, roles, created_at, updated_at) VALUES (?,?,?,?,?)",
         (email, name or "", json.dumps(["client"]), "", ""),
     )
     cx.commit()
-    return cur.lastrowid, ["client"]
+    return new_id, ["client"]
 
 
 def _roles_by_person_id(cx, person_id):

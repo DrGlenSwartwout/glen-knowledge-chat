@@ -7,6 +7,8 @@ member is shown to a coach as first name + note only."""
 
 import hashlib
 
+from dashboard import dbwrite
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS coach_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,7 +104,11 @@ def create_request(cx, coach_email, member_email, member_name, note, member_vide
                   "AND status IN ('pending','accepted') LIMIT 1",
                   (_lc(coach_email), member_email)).fetchone():
         return None  # already applied to this coach
-    cur = cx.execute(
+    # ON CONFLICT DO UPDATE always yields a row, so RETURNING id (Postgres, via the
+    # helper) returns the right id whether inserted or updated — and on SQLite this is
+    # more correct than the old cur.lastrowid, which is stale on the UPDATE (re-apply) path.
+    new_id = dbwrite.insert_returning_id(
+        cx,
         "INSERT INTO coach_requests (coach_email,member_email,member_name,note,"
         "member_video_url,status,created_at) VALUES (?,?,?,?,?, 'pending', ?) "
         "ON CONFLICT(coach_email,member_email) DO UPDATE SET status='pending', "
@@ -112,7 +118,7 @@ def create_request(cx, coach_email, member_email, member_name, note, member_vide
         (_lc(coach_email), member_email, member_name, (note or "")[:500],
          member_video_url or "", _now()))
     cx.commit()
-    return cur.lastrowid
+    return new_id
 
 
 def requests_for_coach(cx, coach_email, status="pending"):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 from dashboard.ingredient_catalog import _connect, _add_col  # reuse Phase-1 helpers
 from dashboard._core_edit import _set_core as _set_core_field, _unlock_core as _unlock_core_field
+from dashboard import dbwrite
 
 _ITEM_CORE = {"dose", "dose_unit"}
 _ITEM_NUMERIC_EXTRA = {"dose"}  # dose coerces to float via _coerce_core
@@ -137,12 +138,12 @@ def add_formulation_item(formulation_id, ingredient_id, dose, dose_unit, db_path
         if not cx.execute("SELECT 1 FROM ingredients WHERE id=?", (ingredient_id,)).fetchone():
             raise ValueError(f"no ingredient {ingredient_id}")
         row = cx.execute("SELECT name FROM ingredients WHERE id=?", (ingredient_id,)).fetchone()
-        cur = cx.execute("""
+        new_id = dbwrite.insert_returning_id(cx, """
             INSERT INTO formulation_items (formulation_id, ingredient_id, ingredient_name, dose, dose_unit)
             VALUES (?, ?, ?, ?, ?)
         """, (formulation_id, ingredient_id, row["name"] if row else None, d, dose_unit or None))
         cx.commit()
-        return int(cur.lastrowid)
+        return int(new_id)
 
 
 def remove_formulation_item(item_id, db_path=None) -> None:
