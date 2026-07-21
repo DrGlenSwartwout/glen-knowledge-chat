@@ -184,7 +184,7 @@ def _practitioner_effective_settings(pid, program_member):
     """Live global settings with the practitioner's clamped discount block swapped in.
     Falls back to plain global settings when the practitioner has no saved config."""
     from dashboard import practitioner_pricing as _ppx
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cfg = _ppx.get_config(cx, pid)
     return _ppx.effective_settings(cfg, program_member=bool(program_member),
                                    settings=_pricing_settings())
@@ -283,7 +283,7 @@ GLEN_PMI_URL        = os.environ.get("GLEN_PMI_URL", "https://zoom.us/j/90717934
 
 
 def _init_auth_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -323,7 +323,7 @@ _init_auth_tables()
 
 def _migrate_auth_tokens_extra():
     """Additive migration: add extra TEXT column to auth_tokens (Slice 3)."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         try:
             cx.execute("ALTER TABLE auth_tokens ADD COLUMN extra TEXT")
             cx.commit()
@@ -337,7 +337,7 @@ _migrate_auth_tokens_extra()
 def _migrate_orders_portal_published():
     """Additive: `portal_published` marks an invoice/order visible on the client's
     portal (Slice B1 — operator publishes it; the portal renders a pay card)."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         try:
             cx.execute("ALTER TABLE orders ADD COLUMN portal_published INTEGER NOT NULL DEFAULT 0")
             cx.commit()
@@ -725,7 +725,7 @@ def _send_portal_welcome(email, name, token):
         return
     try:
         from dashboard import email_suppression as _es
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _es.init_table(cx)
             if _es.is_suppressed(cx, em):
                 return
@@ -756,7 +756,7 @@ def _link_resend_generic(purpose, url_template, ttl):
     def handler(email, extra):
         tok = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("CREATE TABLE IF NOT EXISTS auth_tokens "
                        "(token_hash TEXT, email TEXT, purpose TEXT, extra TEXT, "
                        "created_at TEXT, expires_at TEXT, consumed_at TEXT)")
@@ -776,7 +776,7 @@ def _household_cc_report(member_email, member_label_or_subject):
         return
     try:
         from dashboard import household as _hh
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _hh.init_household_tables(cx)
             recips = _hh.cc_recipients_for(cx, (member_email or "").strip().lower())
         for care in recips:
@@ -830,7 +830,7 @@ def _send_reveal_link(rid):
     'ready' link, and mark notified only on a successful send. Returns True if sent.
     SMTP runs outside the db lock. No approval gate (callers decide)."""
     from dashboard import biofield_reveals as _br
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _br.init_table(cx)
         row = cx.execute("SELECT email FROM biofield_reveals WHERE id=?", (rid,)).fetchone()
         if not row or not row[0]:
@@ -857,7 +857,7 @@ def _send_reveal_link(rid):
     body = _reveal_email_body(url, portal_url)
     sent = _send_inquiry_email(email, "Your Biofield Analysis is ready", body)
     if sent:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _br.set_notified(cx, rid)
         try:
             _household_cc_report(email, None)
@@ -869,7 +869,7 @@ def _send_reveal_link(rid):
 def _resend_biofield_reveal(email, extra):
     """Resend path (not approval-gated): find the latest reveal for the email and send it."""
     from dashboard import biofield_reveals as _br
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _br.init_table(cx)
         row = cx.execute("SELECT id FROM biofield_reveals WHERE email=? ORDER BY id DESC LIMIT 1",
                          (email,)).fetchone()
@@ -881,7 +881,7 @@ def _resend_biofield_reveal(email, extra):
 def _resend_inquiry_reply(inquiry_id, practitioner_id):
     """Mint a fresh inquiry reply token for (inquiry_id, practitioner_id) and email the
     practitioner the secure reply link. No-op if the practitioner is unknown."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         prow = cx.execute(
             "SELECT practitioner_email FROM inquiry_practitioners "
             "WHERE inquiry_id=? AND practitioner_id=? AND practitioner_email IS NOT NULL "
@@ -923,7 +923,7 @@ def get_authenticated_user(request_obj):
     if not tok:
         return None
     th = _hash_token(tok)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             """SELECT u.id, u.email, u.name, u.ghl_contact_id, s.expires_at
@@ -955,7 +955,7 @@ def is_member(session_id="", email=""):
     if not session_id and not email:
         return False
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=(email or ""))
         return bool(state.get("tos_agreed_at"))
     except Exception as e:
@@ -976,7 +976,7 @@ def _record_entry_unlock(trigger, email, first_name="", last_name="", ref_slug="
         return
     try:
         sid = _entry_session_id(email)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
             row = cx.execute(
                 "SELECT unlocked_gates FROM journey_state WHERE session_id=?",
@@ -1189,7 +1189,7 @@ def resolve_or_create_shortlink(product_name: str, alias_info: dict):
         return alias_info["url"], False
 
     # Cache hit?
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT shortlink FROM shortlink_cache WHERE product_name = ?",
@@ -1198,7 +1198,7 @@ def resolve_or_create_shortlink(product_name: str, alias_info: dict):
     if row:
         # Update last_used_at non-blocking
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute("UPDATE shortlink_cache SET last_used_at = ? WHERE product_name = ?",
                            (datetime.now(timezone.utc).isoformat(), product_name))
                 cx.commit()
@@ -1221,7 +1221,7 @@ def resolve_or_create_shortlink(product_name: str, alias_info: dict):
     # Cache the new shortlink
     try:
         ts = datetime.now(timezone.utc).isoformat()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 """INSERT OR REPLACE INTO shortlink_cache
                    (product_name, shortlink, canonical, domain, rebrandly_id,
@@ -1237,7 +1237,7 @@ def resolve_or_create_shortlink(product_name: str, alias_info: dict):
 
 def get_cached_shortlink(product_name: str):
     """Read-only lookup — returns shortlink if cached, else None."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT shortlink FROM shortlink_cache WHERE product_name = ?",
@@ -1613,7 +1613,7 @@ def build_product_directive(snippets_text: str = "", query_text: str = ""):
 # initializers above can use them; kept here as a section anchor.)
 
 def _init_log_db():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS query_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1857,7 +1857,7 @@ def log_query(query: str, level: str, answer: str,
     """
     ts = datetime.now(timezone.utc).isoformat()
     wc = word_count or len((answer or "").split())
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cur = cx.execute(
             """INSERT INTO query_log
                (ts, query, level, answer, session_id, email, name,
@@ -2497,7 +2497,7 @@ def _recent_query_texts(session_id, email, limit=8):
     """Most-recent chat questions for this visitor (for awareness inference)."""
     out = []
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             if email:
                 rows = cx.execute(
@@ -2531,7 +2531,7 @@ def _classify_awareness_haiku(session_id, query_texts, heuristic_stage):
         haiku_stage = ((msg.content[0].text if msg.content else "") or "").strip().lower()
         if haiku_stage not in ("problem", "solution", "product", "most"):
             return
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             begin_funnel.set_awareness(cx, session_id, haiku_stage)
             cx.execute(
                 "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -2648,7 +2648,7 @@ def begin_quiz_answer():
                   or (data.get("session_id") or "").strip() or uuid.uuid4().hex)
     if not isinstance(answers, dict):
         return jsonify({"error": "bad_answers"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         quiz_engine.store_response(cx, session_id=session_id, quiz_id=quiz_id, answers=answers)
     resp = jsonify({"ok": True, "segment": quiz_engine.segment_of(answers)})
     if not request.cookies.get("amg_session"):
@@ -2678,7 +2678,7 @@ def begin_quiz_optin():
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
 
     # capture email + ToS (free_tier) and mark the assessment gate
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # `state` is captured from the ToS unlock so the response reports the
         # free_tier rung the visitor just earned. The quiz gate below advances
         # the PERSISTED rung to `assess` (monotonic); that elevated rung is
@@ -2749,7 +2749,7 @@ def _fireside_coverage_async(fireside_id, user_text, ally_text, coverage):
             from dashboard import fireside_store, ash_map
             extracted = ash_map._haiku_extract(coverage or {}, user_text, ally_text)
             merged = ash_map.merge_turn(coverage or {}, extracted)
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 fireside_store.update_coverage(cx, fireside_id, merged)
         except Exception as e:
             print(f"[fireside] coverage update failed: {e!r}", flush=True)
@@ -2820,7 +2820,7 @@ def begin_fireside_agent():
         return _blocked
 
     # Read state + record the traveler turn under the lock.
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         sess = fireside_store.get_or_create(cx, session_id)
         fireside_id = sess["id"]
         coverage = sess.get("ash_coverage") or {}
@@ -2861,7 +2861,7 @@ def begin_fireside_agent():
 
         clean, hooked = fireside_agent.parse_hook("".join(full))
         hooked = bool(hooked and fireside_agent.should_hook(this_turn, coverage, message))
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             fireside_store.append_turn(cx, fireside_id, "glendalf", clean)
             if hooked:
                 fireside_store.mark_ended(cx, fireside_id)
@@ -2898,7 +2898,7 @@ def begin_fireside_optin():
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
 
     name = ""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         try:
             sess = fireside_store.get_or_create(cx, session_id)
             name = (sess.get("user_name") or "").strip()
@@ -2963,7 +2963,7 @@ def begin_doorway_optin():
     signals = data.get("signals") or {}
     sig_tags = voice_signal_tags(signals)
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.record_unlock(
             cx, session_id=session_id, trigger="tos", email=email,
             first_name=first_name, tos=True, ref_slug=ref_slug,
@@ -3026,7 +3026,7 @@ def begin_quiz_result_data():
     session_id = (request.cookies.get("amg_session") or "").strip()
     resp_row = None
     if session_id:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             resp_row = quiz_engine.get_response(cx, session_id=session_id, quiz_id=quiz_id)
     if not resp_row:
         return jsonify({"taken": False, "disclaimer": quiz.get("disclaimer", "")})
@@ -3038,7 +3038,7 @@ def begin_quiz_result_data():
         launch = _founding.get_launch(slug)
         if launch:
             today = _now_utc().strftime("%Y-%m-%d")
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 if _founding.is_open(cx, slug, now_iso=today):
                     founding = {
@@ -3099,7 +3099,7 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
     token and sets the cookie. See _confirm_post_page for why."""
     from flask import redirect as _redirect
     th = _hash_token((token or "").strip())
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens "
@@ -3137,7 +3137,7 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
                     # is not reentrant; nesting would deadlock). Use a dedicated
                     # connection so merge_wishlist's internal commit() never touches
                     # this handler's shared `cx`.
-                    with _wsq.connect(LOG_DB) as _cxw:
+                    with db.connect(LOG_DB) as _cxw:
                         _wl.init_wishlist_table(_cxw)
                         _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
@@ -3287,7 +3287,7 @@ def begin_ascend_recommend():
         session_id = (request.cookies.get("amg_session") or "").strip()
         auth_user = get_authenticated_user(request)
         email = (auth_user["email"] if auth_user else "") or ""
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         resolved_email = (state.get("email") or email or "").strip().lower()
         reached = _ascend_reached(resolved_email, state)
@@ -3330,7 +3330,7 @@ def begin_ascend_inquire():
         auth_email = ((auth_user["email"] if auth_user else "") or "").strip().lower()
         # Resolve the email from the one record: prefer the authenticated email,
         # else the journey state (a session-only ToS member still has an email).
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=auth_email)
         email = (auth_email or (state.get("email") or "")).strip().lower()
         if not email:
@@ -3340,7 +3340,7 @@ def begin_ascend_inquire():
             return jsonify({"ok": False, "need_optin": True,
                             "error": "Please agree to our Terms to request a consultation."}), 403
         # Record the inquiry (one record per email+rung).
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _init_ascend_inquiries(cx)
             cx.execute(
                 "INSERT INTO ascend_inquiries (email, slug, goal, note, created_at) VALUES (?,?,?,?,?) "
@@ -3475,7 +3475,7 @@ def _biofield_verify_token(th):
     Never raises; on any error returns (False, None)."""
     from dashboard import biofield_reveals as _br
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             at = cx.execute(
                 "SELECT email, expires_at FROM auth_tokens WHERE token_hash=? AND purpose='biofield_reveal'",
@@ -3509,7 +3509,7 @@ def _biofield_unlock_flags(row, email):
         paid = False
     fu_rid = None
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _br.init_free_unlocks(cx)
             fu_rid = _br.free_unlock_reveal_id(cx, email)
             # A reveal earned by >= $100 spend is fully un-blurred, same as paid,
@@ -3670,7 +3670,7 @@ def begin_biofield_reveal_top(token):
         if not bool(row.get("first_approved")):
             return jsonify({"ok": False, "reason": "pending"})
 
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _br.init_free_unlocks(cx)
             if _br.free_unlock_reveal_id(cx, email) is not None:
                 return jsonify({"ok": False, "reason": "used"})
@@ -3701,7 +3701,7 @@ def begin_biofield_request_review(token):
         email = (row.get("email") or "").strip().lower()
         if not is_member(email=email):
             return jsonify({"ok": False, "reason": "tos"})
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _br.init_table(cx)
             _br.mark_requested(cx, row["id"])
         return jsonify({"ok": True, "requested": True})
@@ -3887,7 +3887,7 @@ def api_sample_for_slug(slug):
         # closed internally, but the connect() itself sits outside that
         # function, so it needs its own guard here.
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 view["header"] = _ps.build_share_header(cx, slug)
         except Exception:
@@ -3897,7 +3897,7 @@ def api_sample_for_slug(slug):
         # this page, whether the DB lacks affiliate_signups, the lock, the
         # connection, or the insert itself fails.
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 if _cx.execute(
                     "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
                     (slug,)).fetchone():
@@ -3929,7 +3929,7 @@ def sample_portal_for_slug(slug):
         # set the cookie, since we could not confirm the slug is approved.
         from dashboard import public_surface as _ps
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 if _cx.execute(
                     "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
                     (slug,)).fetchone():
@@ -3959,7 +3959,7 @@ def api_console_share_header(email, action):
     if action not in ("approve", "reject"):
         return jsonify({"error": "unknown action"}), 400
     from dashboard import share_header as _sh
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _sh.init_share_headers_table(cx)
         (_sh.approve if action == "approve" else _sh.reject)(cx, email)
@@ -3978,7 +3978,7 @@ def api_console_share_header_pending():
     if not _portal_open_is_owner():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import share_header as _sh
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _sh.init_share_headers_table(cx)
         pending = _sh.list_pending(cx)
@@ -3993,7 +3993,7 @@ def api_portal_share_header(token):
     body = (request.get_json(silent=True) or {})
     from dashboard import client_portal as _cp
     from dashboard import share_header as _sh
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -4193,7 +4193,7 @@ def membership_cancel(token):
     """One-click cancel via a tokened link minted at biofield-trial grant time."""
     from dashboard import subscriptions as _subs
     th = _hash_token((token or "").strip())
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, expires_at FROM auth_tokens "
             "WHERE token_hash=? AND purpose='membership_cancel'",
@@ -4235,7 +4235,7 @@ def membership_pause(token):
     permanently lost. Tokened via the same membership_cancel token (member id)."""
     from dashboard import subscriptions as _subs
     th = _hash_token((token or "").strip())
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row   # subscriptions helpers need Row for _row_to_dict
         row = cx.execute(
             "SELECT email, expires_at FROM auth_tokens "
@@ -4302,14 +4302,14 @@ def begin_state():
     session_id = (request.cookies.get("amg_session") or "").strip()
     auth_user = get_authenticated_user(request)
     email = auth_user["email"] if auth_user else ""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
     ref_slug = (request.cookies.get("rm_ref") or "").strip()
     query_texts = _recent_query_texts(session_id, email)
     payload = dict(state)
     payload["surfaced_cards"] = begin_funnel.surface(state, query_texts, ref_slug)
     _sig_email = state.get("email") or email
-    with sqlite3.connect(LOG_DB) as _cx:
+    with db.connect(LOG_DB) as _cx:
         signals = _begin_signals(_cx, _sig_email, state)
     payload["journey_map"] = begin_funnel.journey_map(state, ref_slug, signals)
     payload["next_step"] = {
@@ -4328,12 +4328,12 @@ def begin_travel_style():
     session_id = (request.cookies.get("amg_session") or "").strip()
     auth_user = get_authenticated_user(request)
     email = auth_user["email"] if auth_user else ""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.set_travel_style(cx, session_id=session_id, style=style, email=email)
     ref_slug = (request.cookies.get("rm_ref") or "").strip()
     query_texts = _recent_query_texts(session_id, email)
     _sig_email = state.get("email") or email
-    with sqlite3.connect(LOG_DB) as _cx:
+    with db.connect(LOG_DB) as _cx:
         signals = _begin_signals(_cx, _sig_email, state)
     return jsonify({"ok": True, "next_step": {
         "prompt": begin_funnel.next_step_prompt(state, query_texts),
@@ -4349,7 +4349,7 @@ def begin_card_click():
     session_id = (request.cookies.get("amg_session") or data.get("session_id") or "").strip()
     if key in begin_funnel.CARD_CATALOG:
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
                     "VALUES (?,?,?,?,?,?,?)",
@@ -4390,7 +4390,7 @@ def journey_claim_coupon():
     session_id = (request.cookies.get("amg_session") or "").strip()
     au = get_authenticated_user(request)
     email = (au["email"] if au else "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         email = (state.get("email") or email or "").strip().lower()
         if not email or not state.get("tos_agreed_at"):
@@ -4410,7 +4410,7 @@ def journey_wallet():
     session_id = (request.cookies.get("amg_session") or "").strip()
     au = get_authenticated_user(request)
     email = (au["email"] if au else "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         email = (state.get("email") or email or "").strip().lower()
         if not email:
@@ -4446,7 +4446,7 @@ def journey_activate_gifting():
     session_id = (request.cookies.get("amg_session") or "").strip()
     au = get_authenticated_user(request)
     email = (au["email"] if au else "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         state = begin_funnel.get_state(cx, session_id=session_id, email=email)
         email = (state.get("email") or email or "").strip().lower()
         if not email or not state.get("tos_agreed_at"):
@@ -4487,7 +4487,7 @@ def journey_quest_state():
         session_id = (request.cookies.get("amg_session") or "").strip()
         au = get_authenticated_user(request)
         email = (au["email"] if au else "").strip()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             state = begin_funnel.get_state(cx, session_id=session_id, email=email)
             email = (state.get("email") or email or "").strip().lower()
             if request.method == "POST":
@@ -4553,7 +4553,7 @@ def begin_unlock():
     query_texts = _recent_query_texts(session_id, email)
 
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             state = begin_funnel.record_unlock(
                 cx, session_id=session_id, trigger=trigger,
                 email=email, detail=detail, first_name=first_name,
@@ -4593,7 +4593,7 @@ def begin_unlock():
     # only cost is a duplicate API call + event row — acceptable.
     try:
         already = False
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT awareness_classified_at FROM journey_state WHERE session_id=? "
                 "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
@@ -4614,7 +4614,7 @@ def begin_unlock():
     try:
         from dashboard import founding as _founding
         if _founding.get_launch("neuro-magnesium"):
-            with sqlite3.connect(LOG_DB) as _fcx:
+            with db.connect(LOG_DB) as _fcx:
                 _fcx.row_factory = sqlite3.Row
                 _founding_open = _founding.is_open(
                     _fcx, "neuro-magnesium", now_iso=_now_utc().strftime("%Y-%m-%d"))
@@ -4713,7 +4713,7 @@ def _chat_page_link_index():
     pages = []
     try:
         from dashboard import topic_pages as _tp, ingredient_pages as _ip
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _tp.init_table(cx)
             for r in _tp.list_pages(cx):
                 if r.get("state") == "approved":
@@ -4768,7 +4768,7 @@ def _velocity_guard(req, tier, session_id=""):
         allowed, retry = _chat_velocity.check(ip, pol["per_min"], pol["per_day"])
         if not allowed:
             try:
-                with _db_lock, sqlite3.connect(LOG_DB) as _af:
+                with _db_lock, db.connect(LOG_DB) as _af:
                     _af.execute(
                         "INSERT INTO abuse_flags (session_id, ip, reason, ts) VALUES (?,?,?,?)",
                         (session_id or "", ip, "velocity",
@@ -4837,7 +4837,7 @@ def chat():
                                  mode="brief")
         _ip = client_ip(request.headers.get("X-Forwarded-For", ""), request.remote_addr or "")
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _fx:
+            with _db_lock, db.connect(LOG_DB) as _fx:
                 _flagged = is_flagged(_fx, session_id, _ip, datetime.now(timezone.utc).isoformat())
         except Exception:
             _flagged = False
@@ -4867,7 +4867,7 @@ def chat():
     if mode == "full" and _tier in ("registered", "member") and _eff_email:
         _pol = LIMITS[_tier]
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 _used = monthly_full_words(_cx, _eff_email, datetime.now(timezone.utc).isoformat())
         except Exception:
             _used = 0
@@ -4964,7 +4964,7 @@ def chat():
         # conversation memory layer that makes "Continue with the Bowden
         # Connection" work after page refresh.
         if not history and session_id:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 rows = cx.execute(
                     """SELECT query, answer FROM query_log
@@ -5125,7 +5125,7 @@ def chat():
             # NOTE: _recent_query_texts acquires _db_lock itself, so it must be
             # called OUTSIDE the lock block below (the lock is non-reentrant).
             _qtexts = [query] + _recent_query_texts(session_id, email)
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 _state = begin_funnel.get_state(_cx, session_id, email)
                 surfaced_cards = begin_funnel.surface_for_chat(_state, _qtexts, ref_slug)
                 if surfaced_cards:
@@ -5172,7 +5172,7 @@ def chat():
                     _cand = _tc2.extract_topic_candidate(query or "", answer or "", _cl)
                     if _cand:
                         _cslug = _cand["slug"]
-                        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+                        with _db_lock, db.connect(LOG_DB) as _cx:
                             _crow = _tp2.get_page(_cx, _cslug)
                         if not (_crow and _crow.get("state") in ("approved", "draft", "gated")):
                             _offer = {
@@ -5369,7 +5369,7 @@ def begin_match_chat():
         personal_block, household_note = "", ""
         if email and for_whom != "someone-else":
             try:
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     ppl = cx.execute("SELECT name FROM people WHERE email=?", (email,)).fetchall()
                 if len(ppl) > 1:
                     nm = ", ".join([p[0] for p in ppl if p[0]][:5])
@@ -5493,7 +5493,7 @@ def begin_match_chat():
         try:
             _q_texts = [m.get("content", "") for m in (history or []) if m.get("role") == "user"]
             _q_texts.append(query)
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 _ns_state = begin_funnel.get_state(_cx, session_id=session_id, email=email)
                 _ns_signals = _begin_signals(_cx, _ns_state.get("email") or email, _ns_state)
             _next_chips = begin_funnel.next_step_chips(_ns_state, ref="",
@@ -5525,7 +5525,7 @@ def begin_match_voice_signal():
     source     = (data.get("source") or "match-dictation").strip()[:40]
     metrics    = data.get("metrics") or {}
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("""CREATE TABLE IF NOT EXISTS voice_signals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
                 session_id TEXT, email TEXT, source TEXT,
@@ -5968,7 +5968,7 @@ def _plan_ship_credit(email, chargeable_cents):
         return 0
     try:
         from dashboard import ship_credit as _ship_credit
-        with _sqlite3.connect(LOG_DB) as _scx:
+        with db.connect(LOG_DB) as _scx:
             _points_init_ship(_scx)
             bal = _ship_credit.balance(_scx, email)
         return _ship_credit.plan_application(bal, chargeable_cents)
@@ -5990,7 +5990,7 @@ def _ship_credit_balance_if_enabled(email):
         return 0
     try:
         from dashboard import ship_credit as _ship_credit
-        with _sqlite3.connect(LOG_DB) as _scx:
+        with db.connect(LOG_DB) as _scx:
             _points_init_ship(_scx)
             return _ship_credit.balance(_scx, email)
     except Exception as e:  # noqa: BLE001
@@ -6031,7 +6031,7 @@ ANALYSIS_QUOTA_ENABLED = os.environ.get("ANALYSIS_QUOTA_ENABLED", "").strip().lo
 from dashboard import analysis_quota as _analysis_quota  # noqa: E402
 
 def _init_analysis_quota_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _analysis_quota.init_analysis_quota_table(cx)
 
 _init_analysis_quota_table()
@@ -6250,7 +6250,7 @@ def _resolve_repertoire_slugs(email):
     if not (REPERTOIRE_ENABLED and email and _is_paid_member(email)):
         return None
     try:
-        with sqlite3.connect(LOG_DB) as _rep_cx:
+        with db.connect(LOG_DB) as _rep_cx:
             repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
             return _ff_filter_slugs(repertoire.repertoire_slugs(_rep_cx, email))
     except Exception as e:
@@ -6538,7 +6538,7 @@ def _price_cart(cart, *, ship, coupon_pct=None, subscriber_tier_pct=None,
     rep_slugs = None
     if REPERTOIRE_ENABLED and email and _is_paid_member(email):
         try:
-            with sqlite3.connect(LOG_DB) as _rep_cx:
+            with db.connect(LOG_DB) as _rep_cx:
                 repertoire.init_repertoire_table(_rep_cx)  # defensive: fresh-DB guard
                 # FF-only (Glen 2026-07, margin): non-FF repertoire SKUs never reach
                 # the discount engine, matching _resolve_repertoire_slugs.
@@ -6696,7 +6696,7 @@ def _settle_referral(order, *, order_ref: str) -> None:
         # Only credit on full-price sales
         if int(order.get("discount_cents") or 0) != 0:
             return
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _points.init_points_table(cx)
             _rewards.init_affiliate_earnings_table(cx)
@@ -6772,7 +6772,7 @@ def _raise_settlement_skip_todo(order_ref, kind, skipped):
         names = ", ".join(str(s) for s in skipped)
         dedup_key = f"settle-skip:{order_ref}"
         _init_todos_table()
-        _tcx = sqlite3.connect(LOG_DB)
+        _tcx = db.connect(LOG_DB)
         try:
             _tcx.execute(
                 """INSERT INTO todos (created_at, owner, category, title, body, priority, source, dedup_key)
@@ -6840,7 +6840,7 @@ def _capture_portal_referral(dispensary_code, patient_email, practitioner_email,
         return
     try:
         from dashboard import referrals as _rf
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _rf.record_redemption(cx, dispensary_code or "", practitioner_email, patient_email,
                                   order_ref or "", kind="dispensary_portal")
     except Exception as _e:
@@ -6863,7 +6863,7 @@ def _settle_order_points(order, *, order_ref):
     product_cents = (int(order.get("total_cents") or 0)
                      - int(order.get("shipping_cents") or 0)
                      - int(order.get("get_cents") or 0))
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _points.init_points_table(cx)
         if redeemed > 0 and not _points.has_entry(cx, order_ref=order_ref, reason="redeem"):
@@ -6952,7 +6952,7 @@ def _ensure_subscription_row(md, pi_id):
         # Recover items + ship from metadata or stash
         stash_key = md.get("stash_key")
         if stash_key:
-            with sqlite3.connect(LOG_DB) as _scx:
+            with db.connect(LOG_DB) as _scx:
                 _scx.row_factory = sqlite3.Row
                 _sr = _scx.execute(
                     "SELECT items_json, ship_json FROM pending_subscriptions WHERE key=?",
@@ -6970,7 +6970,7 @@ def _ensure_subscription_row(md, pi_id):
         today = _now_utc().strftime("%Y-%m-%d")
         next_date = _subs_ret.add_months(today, cadence)
 
-        with sqlite3.connect(LOG_DB) as _scx2:
+        with db.connect(LOG_DB) as _scx2:
             _scx2.row_factory = sqlite3.Row
             _subs_ret.init_subscriptions_table(_scx2)
             _rowid = _subs_ret.create_once(
@@ -7009,7 +7009,7 @@ def _grant_group_bundle(md, pi_id):
             pi_d = _sp.get_payment_intent(pi_id)
             g_cus = pi_d.get("customer") or ""
             g_pm  = pi_d.get("payment_method") or ""
-            with sqlite3.connect(LOG_DB) as _gcx:
+            with db.connect(LOG_DB) as _gcx:
                 _gcx.row_factory = sqlite3.Row
                 _subs_gb.init_subscriptions_table(_gcx)
                 _subs_gb.migrate_add_membership_columns(_gcx)
@@ -7079,7 +7079,7 @@ def _settle_client_effects(md):
                 subtotal = int(md.get("subtotal_cents") or 0)
                 scope = f"dispensary:{_pid}"
                 if p_email:
-                    with sqlite3.connect(LOG_DB) as _pcx:
+                    with db.connect(LOG_DB) as _pcx:
                         _pcx.row_factory = sqlite3.Row
                         _points_ret.init_points_table(_pcx)
                         if redeemed > 0:
@@ -7107,7 +7107,7 @@ def _settle_client_effects(md):
         try:
             _p_email = (md.get("patient_email") or "").strip().lower()
             if _p_email and _inv:
-                with sqlite3.connect(LOG_DB) as _sccx:
+                with db.connect(LOG_DB) as _sccx:
                     _sccx.row_factory = sqlite3.Row
                     _o = _bos_orders.find_order_by_external_ref(_sccx, str(_inv))
                     _applied = int((_o or {}).get("ship_credit_applied_cents") or 0)
@@ -7131,7 +7131,7 @@ def _settle_biofield_effects(md, sid):
         bf_email = (md.get("email") or "").strip().lower()
         bf_inv = md.get("invoice_id") or ""
         if bf_email:
-            _bcx = _sqlite3.connect(LOG_DB)
+            _bcx = db.connect(LOG_DB)
             try:
                 _bf.init_table(_bcx)
                 _bf.seed_paid(_bcx, bf_email, via="stripe", order_ref=bf_inv)
@@ -7171,7 +7171,7 @@ def _grant_membership_line_dep(order):
     # re-checks this too; this only avoids the connection when there's nothing to do.)
     if not _mp.cart_has_membership_tier(order.get("items") or []):
         return
-    with sqlite3.connect(LOG_DB) as _mcx:
+    with db.connect(LOG_DB) as _mcx:
         _mcx.row_factory = sqlite3.Row
         _grant_membership_line_on_paid(_mcx, order)
 
@@ -7192,7 +7192,7 @@ _SETTLEMENT_DEPS = _SimpleNamespace(
 # Source = Pinecone specific-formulations (page copy) + ingredients (study citations).
 try:
     from dashboard import product_content as _product_content
-    with sqlite3.connect(LOG_DB) as _cx:
+    with db.connect(LOG_DB) as _cx:
         _product_content.init_product_content_table(_cx)
         _product_content.purge_refusal_cache(_cx)  # self-heal pre-fix cached refusals
 except Exception as _pce:
@@ -7225,7 +7225,7 @@ def _product_how(product):
 # Section preferences: remember which detail panels a client opens (What's inside /
 # How it works / The research), keyed by session + email, so future formulations
 # default-open those AND email campaigns can focus on what the client engages with.
-with sqlite3.connect(LOG_DB) as _cx:
+with db.connect(LOG_DB) as _cx:
     _cx.execute("""CREATE TABLE IF NOT EXISTS section_prefs (
         session_id TEXT PRIMARY KEY, email TEXT, opened TEXT, updated_at TEXT)""")
     _cx.execute("CREATE INDEX IF NOT EXISTS idx_section_prefs_email ON section_prefs(email)")
@@ -7234,13 +7234,13 @@ _SECTIONS = ("ingredients", "how", "research", "description", "video", "comparis
 # Repertoire reorder pricing table (dashboard/repertoire.py) — created at startup so
 # the flag-gated read path in _price_cart never hits a missing-table error; _price_cart
 # also re-inits defensively at read time (belt-and-suspenders for fresh/test DBs).
-with sqlite3.connect(LOG_DB) as _cx:
+with db.connect(LOG_DB) as _cx:
     repertoire.init_repertoire_table(_cx)
 
 
 def _read_open_sections(session_id, email=""):
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = None
             if session_id:
                 row = cx.execute("SELECT opened FROM section_prefs WHERE session_id=?", (session_id,)).fetchone()
@@ -7265,7 +7265,7 @@ def begin_section_pref():
     au = get_authenticated_user(request)
     email = (au or {}).get("email", "") if au else ""
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             row = cx.execute("SELECT opened FROM section_prefs WHERE session_id=?", (session_id,)).fetchone()
             opened = set(json.loads(row[0])) if row and row[0] else set()
             opened.add(section)
@@ -7297,7 +7297,7 @@ def begin_wishlist_toggle():
     email, session_id = _wishlist_ids(request)
     session_id = session_id or uuid.uuid4().hex
     try:
-        with _db_lock, _sq.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _wl.init_wishlist_table(cx)
             owner = _wl.resolve_owner(email, session_id)
             saved = _wl.toggle(cx, owner, slug)
@@ -7319,7 +7319,7 @@ def begin_wishlist_get():
     from dashboard import wishlist as _wl
     email, session_id = _wishlist_ids(request)
     try:
-        with _db_lock, _sq.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _wl.init_wishlist_table(cx)
             slugs = _wl.list_union(cx, email, session_id)
     except Exception as _e:
@@ -7445,7 +7445,7 @@ def begin_product_data(slug):
         from dashboard import founding as _founding
         _launch = _founding.get_launch(slug)
         if _launch:
-            with sqlite3.connect(LOG_DB) as _fcx:
+            with db.connect(LOG_DB) as _fcx:
                 _fcx.row_factory = sqlite3.Row
                 _rem = _founding.remaining(_fcx, slug)
             data["founding"] = {"batch_label": _launch.get("batch_label", ""),
@@ -7472,7 +7472,7 @@ def _related_semantic(slug, k=12):
     `_TITLE_TO_SLUG` (deterministic in-catalog resolution)."""
     import sqlite3 as _sq, json as _json
     try:
-        with _sq.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute("CREATE TABLE IF NOT EXISTS related_semantic ("
                        "slug TEXT PRIMARY KEY, slugs_json TEXT, generated_at TEXT)")
             row = cx.execute("SELECT slugs_json FROM related_semantic WHERE slug=?",
@@ -7506,7 +7506,7 @@ def _related_semantic(slug, k=12):
         return []
 
     try:
-        with _sq.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute("INSERT OR REPLACE INTO related_semantic(slug,slugs_json,generated_at) "
                        "VALUES (?,?,datetime('now'))", (slug, _json.dumps(slugs)))
     except Exception as e:
@@ -7535,7 +7535,7 @@ def begin_product_page_data(slug):
     # Attach a short 'basic info' string per ingredient for the hover pop-up on the
     # product page. Best-effort: any failure leaves info absent -> plain link.
     try:
-        with sqlite3.connect(LOG_DB) as _icx:
+        with db.connect(LOG_DB) as _icx:
             for _ing in ingredients:
                 _ing["info"] = _er.ingredient_ref(_icx, _ing.get("name", ""), _ing.get("slug", "")).get("info", "")
     except Exception:
@@ -7593,7 +7593,7 @@ def begin_product_page_data(slug):
     if _REVIEWS_ENABLED:
         from dashboard import product_reviews as _pr
         try:
-            with sqlite3.connect(LOG_DB) as _rcx:
+            with db.connect(LOG_DB) as _rcx:
                 _agg = _pr.aggregate(_rcx, slug)
                 _approved = _pr.approved_for_slug(_rcx, slug)
             _revs = [{"name": (r.get("name") or "A verified buyer"),
@@ -7624,7 +7624,7 @@ def begin_product_page_data(slug):
         import sqlite3 as _sq
         from dashboard import sales_pages as _sp
         try:
-            with _sq.connect(LOG_DB) as _cx:
+            with db.connect(LOG_DB) as _cx:
                 for _s in sections:
                     if _s["id"] not in ("intro", "description", "research"):
                         continue
@@ -7656,7 +7656,7 @@ def begin_product_page_data(slug):
         try:
             _img_sec = next((s for s in sections if s["id"] == "images"), None)
             if _img_sec is not None:
-                with _sq2.connect(LOG_DB) as _cx2:
+                with db.connect(LOG_DB) as _cx2:
                     if _SALES_IMAGE_VARIATIONS_ENABLED:
                         _grouped = _si2.display_images_grouped(_cx2, slug)
                         _state = _si2.images_grouped_state(_cx2, slug)
@@ -7690,7 +7690,7 @@ def begin_product_page_data(slug):
             _sess = request.cookies.get("amg_session", "")
             _au = get_authenticated_user(request)
             _em = ((_au or {}).get("email") or "").strip().lower() if _au else ""
-            with _sq3.connect(LOG_DB) as _cx3:
+            with db.connect(LOG_DB) as _cx3:
                 _all = _si3.get_images(_cx3, slug)
                 _picks = _sv3.get_picks(_cx3, slug, session_id=_sess, email=_em)
                 _both = _sv3.picked_both(_cx3, slug, session_id=_sess, email=_em)
@@ -7706,7 +7706,7 @@ def begin_product_page_data(slug):
             # Phase 4b: restrict the pick options to the active champion/challenger pair
             if _SALES_IMAGE_TOURNAMENT_ENABLED:
                 from dashboard import sales_image_pairs as _sp4b
-                with _sq3.connect(LOG_DB) as _cxp:
+                with db.connect(LOG_DB) as _cxp:
                     for _k in _sip3.IMAGE_KINDS:
                         _vs = [im["variant"] for im in _all if im["kind"] == _k]
                         _pr = _sp4b.ensure_pair(_cxp, slug, _k, _vs)
@@ -7748,7 +7748,7 @@ def begin_product_page_data(slug):
         from dashboard import founding as _founding2
         _launch2 = _founding2.get_launch(slug)
         if _launch2:
-            with sqlite3.connect(LOG_DB) as _fcx2:
+            with db.connect(LOG_DB) as _fcx2:
                 _fcx2.row_factory = sqlite3.Row
                 _rem2 = _founding2.remaining(_fcx2, slug)
             _page_data["founding"] = {"batch_label": _launch2.get("batch_label", ""),
@@ -7761,7 +7761,7 @@ def begin_product_page_data(slug):
             import sqlite3 as _wsq
             from dashboard import wishlist as _wl
             _wem, _wses = _wishlist_ids(request)
-            with _db_lock, _wsq.connect(LOG_DB) as _wcx:
+            with _db_lock, db.connect(LOG_DB) as _wcx:
                 _wl.init_wishlist_table(_wcx)
                 _page_data["wishlist_saved"] = slug in _wl.list_union(_wcx, _wem, _wses)
         except Exception as _e:
@@ -7784,7 +7784,7 @@ def begin_product_page_gen(slug, section):
         from dashboard import sales_pages as _sp
         try:
             try:
-                with _sq.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     cached = _sp.get_section(cx, slug, section)
             except Exception as _dbe:
                 print(f"[sales-gen] cache read failed (degrading to generate): {_dbe}", flush=True)
@@ -7811,7 +7811,7 @@ def begin_product_page_gen(slug, section):
             text = "".join(acc).strip()
             if text:
                 try:
-                    with _sq.connect(LOG_DB) as cx:
+                    with db.connect(LOG_DB) as cx:
                         _sp.upsert_section(cx, slug, section, text, model="claude-haiku-4-5-20251001")
                 except Exception as e:
                     print(f"[sales-gen] cache write failed: {e}", flush=True)
@@ -7864,7 +7864,7 @@ def _ingredient_kickoff_build(slug, name):
     def _build():
         try:
             # guard: if a row already has content for both sections, skip
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _ip.init_table(cx)
                 page = _ip.get_page(cx, slug)
                 if page:
@@ -7902,7 +7902,7 @@ def _ingredient_kickoff_build(slug, name):
                     print(f"[ingredient-build] section {section} failed: {_sec_err}", flush=True)
 
             # write everything to the store (state stays draft)
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _ip.init_table(cx)
                 for section, text in sections_text.items():
                     if text:
@@ -7937,7 +7937,7 @@ def begin_ingredient_page_data(slug):
     email = _ingredient_viewer_email()
     if not _ingredient_paid_ok(email):
         return jsonify({"slug": slug, "name": name, "state": "locked"})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ip.init_table(cx)
         page = _ip.get_page(cx, slug)
         if page and page.get("state") == "approved":
@@ -7990,7 +7990,7 @@ def _topic_catalog_slugs():
         prods = {}
     topics = {}
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             from dashboard import topic_pages as _tp
             for row in _tp.list_pages(cx):
                 if row["state"] == "approved":
@@ -8008,7 +8008,7 @@ def _topic_kickoff_build(slug, kind, name):
 
     def _build():
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _tp.init_table(cx)
                 page = _tp.get_page(cx, slug)
                 if page:
@@ -8031,7 +8031,7 @@ def _topic_kickoff_build(slug, kind, name):
             ing, prods, topics = _topic_catalog_slugs()
             links = _tc.validate_links(curation.get("links") or {},
                                        ingredient_slugs=ing, product_slugs=prods, topic_slugs=topics)
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _tp.init_table(cx)
                 for section, text in content.items():
                     if text:
@@ -8205,7 +8205,7 @@ def learn_topic_page(slug):
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         page = _tp.get_page(cx, slug)
     if _tr.is_public(page):
         return Response(_tr.render_page_html(page, base_url=PUBLIC_BASE_URL), mimetype="text/html")
@@ -8221,7 +8221,7 @@ def learn_topic_request(slug):
     email = (request.form.get("email") or request.values.get("email") or "").strip()
     kind = (request.values.get("kind") or "symptom").strip()
     name = slug.replace("-", " ").title()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _tp.init_table(cx)
         if email:
             _tp.record_request(cx, slug, email)
@@ -8252,7 +8252,7 @@ def learn_suggest_submit(slug):
     if not email:
         # re-render the form (browser 'required' normally prevents this)
         return Response(_tr.render_suggest_html(slug, name), mimetype="text/html")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _tp.record_suggestion(cx, slug, name, kind, email)
     return Response(_tr.render_suggest_html(slug, name, submitted=True), mimetype="text/html")
 
@@ -8262,7 +8262,7 @@ def learn_index():
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
     return Response(_tr.render_index_html(rows), mimetype="text/html")
 
@@ -8272,7 +8272,7 @@ def learn_sitemap():
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         rows = [r for r in _tp.list_pages(cx) if r["state"] == "approved"]
     xml = _tr.render_sitemap_xml(rows, PUBLIC_BASE_URL)
     return Response(xml, mimetype="application/xml")
@@ -8310,7 +8310,7 @@ def _mentor_kickoff_build(slug, name):
         # safe on its own (SQLite serializes writes at the file level); this
         # matches the synchronous mentor_page.rebuild action path, which works.
         try:
-            cx = sqlite3.connect(LOG_DB, timeout=30)
+            cx = db.connect(LOG_DB, timeout=30)
             try:
                 _mp.init_table(cx)
                 page = _mp.get_page(cx, slug)
@@ -8331,7 +8331,7 @@ def mentors_index():
     from dashboard import mentor_pages as _mp, mentor_render as _mr
     if not MENTOR_PAGES_ENABLED:
         return ("Not found", 404)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         rows = _mp.list_public(cx)
     return Response(_mr.render_index_html(rows), mimetype="text/html")
 
@@ -8341,7 +8341,7 @@ def mentors_sitemap():
     from dashboard import mentor_pages as _mp, mentor_render as _mr
     if not MENTOR_PAGES_ENABLED:
         return ("Not found", 404)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         rows = _mp.list_public(cx)
     xml = _mr.render_sitemap_xml(rows, PUBLIC_BASE_URL)
     return Response(xml, mimetype="application/xml")
@@ -8353,7 +8353,7 @@ def mentor_page(slug):
     if not MENTOR_PAGES_ENABLED:
         return ("Not found", 404)
     slug = (slug or "").strip().lower()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         page = _mp.get_page(cx, slug)
     if _mr.is_public(page):
         return Response(_mr.render_page_html(page, base_url=PUBLIC_BASE_URL), mimetype="text/html")
@@ -8374,7 +8374,7 @@ def mentor_page_request(slug):
     email = (request.form.get("email") or request.values.get("email") or "").strip()
     seed = _ms.get_seed(slug)
     name = (seed or {}).get("name") or slug.replace("-", " ").title()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _mp.init_table(cx)
         if email:
             _mp.record_request(cx, slug, email)
@@ -8419,7 +8419,7 @@ def begin_ingredient_page_gen(slug, section):
         import sqlite3 as _sq
         try:
             try:
-                with _db_lock, _sq.connect(LOG_DB) as cx:
+                with _db_lock, db.connect(LOG_DB) as cx:
                     _ip.init_table(cx)
                     cached = _ip.get_section(cx, slug, section)
             except Exception as _dbe:
@@ -8447,7 +8447,7 @@ def begin_ingredient_page_gen(slug, section):
             text = "".join(acc).strip()
             if text:
                 try:
-                    with _db_lock, _sq.connect(LOG_DB) as cx:
+                    with _db_lock, db.connect(LOG_DB) as cx:
                         _ip.init_table(cx)
                         _ip.upsert_section(cx, slug, section, text,
                                            model="claude-haiku-4-5-20251001")
@@ -8548,7 +8548,7 @@ def api_submit_review():
     from dashboard import product_reviews as _pr
     from dashboard import review_scoring as _rs
     from dashboard import points as _points
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _points.init_points_table(cx)
         if not _review_verified_buyer(cx, email, slug):
             return jsonify({"ok": False, "error": "no verified purchase"}), 403
@@ -8596,7 +8596,7 @@ def review_media(slug, filename):
 def _allowed_video_seconds(email):
     from dashboard import product_reviews as _pr
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             return 300 if _pr.has_successful_video(cx, email) else 90
     except Exception:
         return 90
@@ -8614,7 +8614,7 @@ def api_review_limits():
 # ── Review invite tokens (Task 7) ─────────────────────────────────────────────
 
 def _init_review_link_tokens():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "CREATE TABLE IF NOT EXISTS review_link_tokens "
             "(token TEXT PRIMARY KEY, email TEXT, product_slug TEXT, created_at TEXT)"
@@ -8627,7 +8627,7 @@ _init_review_link_tokens()
 def _review_token_mint(email: str, slug: str) -> str:
     """Mint a random token bound to (email, slug), store it, return the plaintext token."""
     tok = secrets.token_urlsafe(24)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT OR IGNORE INTO review_link_tokens (token, email, product_slug, created_at) "
             "VALUES (?,?,?,?)",
@@ -8641,7 +8641,7 @@ def _review_token_verify(tok: str):
     """Look up a review invite token. Returns (email, slug) or (None, None) for unknown tokens."""
     if not tok:
         return (None, None)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, product_slug FROM review_link_tokens WHERE token=?", (tok,)
         ).fetchone()
@@ -8689,7 +8689,7 @@ def _send_review_invite(email: str, name: str, slug: str):
 # attribution resolves a ?p= token against a LOCAL table (no Supabase dependency).
 
 def _init_testimonial_tokens():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "CREATE TABLE IF NOT EXISTS testimonial_tokens "
             "(token TEXT PRIMARY KEY, practitioner_id INTEGER, created_at TEXT)"
@@ -8709,7 +8709,7 @@ def _norm_pid(practitioner_id) -> str:
 def _testimonial_token_mint(practitioner_id) -> str:
     """Mint a ?p= token attributing a testimonial to a practitioner. Returns plaintext token."""
     tok = secrets.token_urlsafe(24)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT OR IGNORE INTO testimonial_tokens (token, practitioner_id, created_at) "
             "VALUES (?,?,?)", (tok, _norm_pid(practitioner_id), _now_utc().isoformat()))
@@ -8721,7 +8721,7 @@ def _testimonial_practitioner_id(tok: str) -> str:
     """Resolve a ?p= token to a practitioner id (UUID string). '' for unknown/blank tokens."""
     if not tok:
         return ""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT practitioner_id FROM testimonial_tokens WHERE token=?", (tok,)).fetchone()
     return str(row[0]) if row and row[0] is not None else ""
@@ -8733,7 +8733,7 @@ def _testimonial_token_for_practitioner(practitioner_id) -> str:
     if not pid:
         return ""
     _init_testimonial_tokens()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT token FROM testimonial_tokens WHERE practitioner_id=? LIMIT 1", (pid,)).fetchone()
         if row:
@@ -8798,7 +8798,7 @@ def _cert_l1_assignment(practitioner_id, email, modules_completed):
     record_url = f"{base}&p={tok}" if tok else base
     sub = None
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             sub = _pr_module().cohort_submission(
                 cx, _ASH_L1_TAG, email=email or "", practitioner_id=_norm_pid(practitioner_id))
     except Exception:
@@ -8866,7 +8866,7 @@ def api_submit_testimonial():
     from dashboard import product_reviews as _pr
     from dashboard import review_scoring as _rs
     _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rid = _pr.upsert_review(cx, "_results", email, name, rating, body, video_kind, video_ref,
                                 kind="testimonial", practitioner_id=pid, consent_public=1,
                                 source_tag=tag)
@@ -8997,7 +8997,7 @@ def api_testimonial_invites_scan():
     except (TypeError, ValueError):
         gmail_limit = 200
     gmail_diag = {"enabled": _GMAIL_FEEDBACK_ENABLED}
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         gmail_texts = _gmail_client_texts(cx, days, limit=gmail_limit, diag=gmail_diag)
         active = sorted(set(_recent_active_emails(cx, days=days)) | set(gmail_texts.keys()))
         for e in active:
@@ -9039,7 +9039,7 @@ def api_testimonial_invites_list():
     if not _console_key_ok():
         return jsonify({"error": "Unauthorized"}), 401
     from dashboard import testimonial_invites as _ti
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pending = _ti.pending_queue(cx)
     return jsonify({"ok": True, "pending": pending})
 
@@ -9057,7 +9057,7 @@ def api_console_points_ledger():
     except (TypeError, ValueError):
         limit = 50
     from dashboard import points as _points
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _points.init_points_table(cx)
         summ = cx.execute(
@@ -9083,7 +9083,7 @@ def api_console_points_dedup():
     if not _console_key_ok():
         return jsonify({"error": "Unauthorized"}), 401
     apply = request.args.get("apply") == "1"
-    cx = sqlite3.connect(LOG_DB); cx.row_factory = sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = sqlite3.Row
     try:
         dupes = cx.execute(
             "SELECT order_ref, reason, scope, COUNT(*) c, MIN(id) keep "
@@ -9117,7 +9117,7 @@ def api_console_dispensary_pay_mix():
     recorded on dispensary ingest, so this is an inference, not a stored field."""
     if not _console_key_ok():
         return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             "SELECT CASE WHEN stripe_payment_intent IS NOT NULL AND stripe_payment_intent!='' "
@@ -9153,7 +9153,7 @@ def begin_product_image_gen(slug):
     if not _SALES_AI_IMAGES_ENABLED or not _get_product(slug):
         return ("", 404)
     from dashboard import sales_images as _si
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         if _SALES_IMAGE_VARIATIONS_ENABLED:
             if not _si.needs_topup(cx, slug):
                 return jsonify({"ok": True, "state": "done"})
@@ -9190,7 +9190,7 @@ def begin_product_image_pick(slug):
     au = get_authenticated_user(request)
     email = ((au or {}).get("email") or "").strip().lower() if au else ""
     from dashboard import sales_votes as _sv
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _sv.record_pick(cx, slug, kind, variant, session_id, email)
         picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
         both = _sv.picked_both(cx, slug, session_id=session_id, email=email)
@@ -9216,7 +9216,7 @@ def begin_product_image_vote(slug):
     au = get_authenticated_user(request)
     email = ((au or {}).get("email") or "").strip().lower() if au else ""
     from dashboard import sales_images as _si, sales_votes as _sv
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pv, mid = _si.tags_for(cx, slug, kind, variant)
         _sv.record_pick(cx, slug, kind, variant, session_id, email, prompt_variant_id=pv, model_id=mid)
         picks = _sv.get_picks(cx, slug, session_id=session_id, email=email)
@@ -9319,7 +9319,7 @@ def api_studio_claim():
 
     from dashboard import studio_bridge as _sbr
     try:
-        with sqlite3.connect(LOG_DB) as _cx:
+        with db.connect(LOG_DB) as _cx:
             _sbr.init_table(_cx)
             _sbr.record_pending(
                 _cx, email,
@@ -9357,7 +9357,7 @@ def studio_claim_return():
             si    = stripe_pay.get_setup_intent(sess.get("setup_intent"))
             cus   = si.get("customer")
             pm    = si.get("payment_method")
-            with sqlite3.connect(LOG_DB) as _cx:
+            with db.connect(LOG_DB) as _cx:
                 _cx.row_factory = sqlite3.Row
                 _sbr.init_table(_cx)
                 _subs.init_subscriptions_table(_cx)
@@ -9487,14 +9487,14 @@ def biofield_checkout():
         redeem = 0
     if redeem > 0:
         from dashboard import points as _points
-        with sqlite3.connect(LOG_DB) as _bcx:
+        with db.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(redeem, _points.balance(_bcx, email))
     elif PROGRAM_CARE_TASTER_ENABLED:
         # No explicit redeem requested: auto-apply the $1 deposit credit (if any) so
         # it actually lands as $1 off the program at checkout.
         from dashboard import points as _points
-        with sqlite3.connect(LOG_DB) as _bcx:
+        with db.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(PROGRAM_DEPOSIT_CREDIT_CENTS, _points.balance(_bcx, email))
     pc = _price_biofield(points_to_redeem_cents=redeem, tier=tier)
@@ -9512,7 +9512,7 @@ def biofield_checkout():
                   get_cents=pc["priced"]["get_cents"], discount_cents=pc["discount_cents"],
                   points_redeemed_cents=redeemed, shipping_cents=pc["shipping_cents"])
     try:
-        with _sqlite3.connect(LOG_DB) as _lcx:
+        with db.connect(LOG_DB) as _lcx:
             _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
     except Exception as _e:
         print(f"[biofield] persist qbo_lines failed: {_e!r}", flush=True)
@@ -9574,7 +9574,7 @@ def begin_checkout(slug):
         redeem = 0
     if redeem > 0:
         from dashboard import points as _points
-        with sqlite3.connect(LOG_DB) as _bcx:
+        with db.connect(LOG_DB) as _bcx:
             _points.init_points_table(_bcx)
             redeem = min(redeem, _points.balance(_bcx, email))
     _ref_pct, _ref_ctx = _resolve_checkout_coupon_pct(data.get("referral_code"), email)
@@ -9613,7 +9613,7 @@ def begin_checkout(slug):
     if _self_coupon and _self_pct >= (_ref_pct or 0) and _self_pct > (_gift_pct or 0):
         try:
             from dashboard import coupons as _coupons
-            with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+            with _db_lock, db.connect(LOG_DB) as _ccx:
                 _coupons.mark_redeemed(_ccx, _self_coupon["code"], order_ref=checkout_ref)
         except Exception as e:  # noqa: BLE001
             print(f"[coupons] redeem-mark failed: {e!r}", flush=True)
@@ -9621,7 +9621,7 @@ def begin_checkout(slug):
         try:
             from dashboard import coupons as _coupons
             from dashboard import referrals as _rf
-            with _db_lock, sqlite3.connect(LOG_DB) as _gcx:
+            with _db_lock, db.connect(LOG_DB) as _gcx:
                 _coupons.mark_redeemed(_gcx, _gift_coupon["code"], order_ref=checkout_ref)
                 _rf.record_redemption(_gcx, _gift_coupon["code"], _gift_coupon["email"], email, checkout_ref)
         except Exception as e:  # noqa: BLE001
@@ -9630,7 +9630,7 @@ def begin_checkout(slug):
            "total": round(_charged / 100.0, 2),
            "method": method, "customer_id": ""}
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
                        "VALUES (?,?,?,?,?,?,?)",
                        (begin_funnel._now(), session_id, email, "purchase",
@@ -9647,7 +9647,7 @@ def begin_checkout(slug):
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
     try:
-        with _sqlite3.connect(LOG_DB) as _lcx:
+        with db.connect(LOG_DB) as _lcx:
             _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
     except Exception as _e:
         print(f"[funnel] persist qbo_lines failed: {_e!r}", flush=True)
@@ -9696,7 +9696,7 @@ def _fulfill_biofield_trial(session_id):
         pi = _sp.get_payment_intent(pi_id)
         if not (pi.get("status") == "succeeded" and pi.get("customer") and pi.get("payment_method")):
             return {"ok": False, "reason": "unpaid"}
-        with _db_lock, sqlite3.connect(LOG_DB) as _bc:
+        with _db_lock, db.connect(LOG_DB) as _bc:
             _bc.execute("CREATE TABLE IF NOT EXISTS biofield_trial_grants (session_id TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
             # Claim-then-create: write the idempotency marker FIRST and commit, so the redirect
             # and the webhook (in any order, even simultaneously) create exactly one membership.
@@ -9808,7 +9808,7 @@ def _notify_first_cc_signup(email, plan_label, amount_cents):
     DB lock, so concurrent/replayed fulfillments send exactly one alert. Best-effort:
     never raises into the fulfiller (an alert must never undo a committed signup)."""
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("CREATE TABLE IF NOT EXISTS ops_notices "
                        "(key TEXT PRIMARY KEY, created_at TEXT)")
             first = cx.execute(
@@ -9945,7 +9945,7 @@ def _fulfill_prepay_term(session_id):
         if pi.get("status") != "succeeded":
             return {"ok": False, "reason": "unpaid"}
         claimed = False
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             # Wishlist Task 4: payment just verified succeeded, so this is a real
             # purchaser email — merge the anonymous session's wishlist into it so
             # the list follows the visitor home. Called from both the /prepay/return
@@ -9962,7 +9962,7 @@ def _fulfill_prepay_term(session_id):
                     # is not reentrant; nesting would deadlock). Use a dedicated
                     # connection so merge_wishlist's internal commit() never touches
                     # this handler's shared `cx`.
-                    with _wsq.connect(LOG_DB) as _cxw:
+                    with db.connect(LOG_DB) as _cxw:
                         _wl.init_wishlist_table(_cxw)
                         _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
@@ -10029,7 +10029,7 @@ def _fulfill_prepay_term(session_id):
                 try:
                     if REPERTOIRE_ENABLED:
                         import dashboard.purchase_history as purchase_history
-                        with sqlite3.connect(LOG_DB) as _hcx:
+                        with db.connect(LOG_DB) as _hcx:
                             purchase_history.init_purchase_history_table(_hcx)
                             _hist = purchase_history.slugs_since(
                                 _hcx, email, _window_days_for_term(tier["months"]))
@@ -10120,7 +10120,7 @@ def _fulfill_continuous_care_monthly(session_id):
             print(f"[continuous-care] no vaulted card on {session_id} — skipping", flush=True)
             return {"ok": False, "reason": "no_card"}
         claimed = False
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row  # active_memberships_by_email returns dict-rows
             cx.execute(
                 "CREATE TABLE IF NOT EXISTS continuous_care_grants "
@@ -10177,7 +10177,7 @@ def _fulfill_continuous_care_monthly(session_id):
                     try:
                         if REPERTOIRE_ENABLED:
                             import dashboard.purchase_history as purchase_history
-                            with sqlite3.connect(LOG_DB) as _hcx:
+                            with db.connect(LOG_DB) as _hcx:
                                 purchase_history.init_purchase_history_table(_hcx)
                                 _hist = purchase_history.slugs_since(
                                     _hcx, email, _window_days_for_term(term_months))
@@ -10231,7 +10231,7 @@ def _fulfill_continuous_care_monthly(session_id):
                 try:
                     if REPERTOIRE_ENABLED:
                         import dashboard.purchase_history as purchase_history
-                        with sqlite3.connect(LOG_DB) as _hcx:
+                        with db.connect(LOG_DB) as _hcx:
                             purchase_history.init_purchase_history_table(_hcx)
                             _hist = purchase_history.slugs_since(
                                 _hcx, email, _window_days_for_term(term_months))
@@ -10245,7 +10245,7 @@ def _fulfill_continuous_care_monthly(session_id):
         # auto-charge block did. Outside the write lock (own connection + commit).
         cancel_url = ""
         try:
-            with sqlite3.connect(LOG_DB) as _cx:
+            with db.connect(LOG_DB) as _cx:
                 cancel_url = _mint_membership_cancel_url(_cx, email) or ""
         except Exception as _ce:
             print(f"[continuous-care] cancel-token mint failed: {_ce!r}", flush=True)
@@ -10350,7 +10350,7 @@ def _fulfill_membership_product(session_id):
         return "not_paid"
     today = _date.today()
     today_s = today.isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         init_membership_tables(cx)
         try:
@@ -10477,7 +10477,7 @@ def _fulfill_biofield_program(session_id):
         if pi.get("status") != "succeeded":
             return {"ok": False, "reason": "unpaid"}
         claimed = False
-        with _db_lock, sqlite3.connect(LOG_DB) as _ctc:
+        with _db_lock, db.connect(LOG_DB) as _ctc:
             _ctc.execute(
                 "CREATE TABLE IF NOT EXISTS care_taster_grants "
                 "(order_ref TEXT PRIMARY KEY, email TEXT, granted_at TEXT)")
@@ -10516,7 +10516,7 @@ def _fulfill_masterclass(session_id):
             return {"ok": False, "reason": "incomplete"}
         if _sp.get_payment_intent(pi_id).get("status") != "succeeded":
             return {"ok": False, "reason": "unpaid"}
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _mc.init_masterclass_tables(cx)
             _mc.mark_paid(cx, event_id, email)
@@ -10554,7 +10554,7 @@ def begin_checkout_return():
                 # confirmed invoice auto-records as paid and drops into fulfillment.
                 if _kind == "in-house" and inv:
                     try:
-                        _cxih = _sqlite3.connect(LOG_DB); _cxih.row_factory = _sqlite3.Row
+                        _cxih = db.connect(LOG_DB); _cxih.row_factory = _sqlite3.Row
                         try:
                             _oih = _bos_orders.find_order_by_external_ref(_cxih, inv)
                             if _oih:
@@ -10596,7 +10596,7 @@ def begin_checkout_return():
                                                     "client")):
                         _o_for_points = None
                         try:
-                            _cxo = _sqlite3.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
+                            _cxo = db.connect(LOG_DB); _cxo.row_factory = _sqlite3.Row
                             try:
                                 _o = _bos_orders.find_order_by_external_ref(_cxo, inv)
                                 if _o:
@@ -10626,7 +10626,7 @@ def begin_checkout_return():
                             # stored qbo_lines_json). ──
                             try:
                                 from dashboard import qbo_sale as _qsale
-                                _fcxo2 = _sqlite3.connect(LOG_DB); _fcxo2.row_factory = _sqlite3.Row
+                                _fcxo2 = db.connect(LOG_DB); _fcxo2.row_factory = _sqlite3.Row
                                 try:
                                     _fo2 = _bos_orders.find_order_by_external_ref(_fcxo2, inv)
                                     if _fo2:
@@ -10669,7 +10669,7 @@ def begin_checkout_return():
                             # confirmed (paid-only; idempotent via qbo_sales_receipt_id).
                             try:
                                 from dashboard import qbo_sale as _qsale
-                                _bcxo2 = _sqlite3.connect(LOG_DB); _bcxo2.row_factory = _sqlite3.Row
+                                _bcxo2 = db.connect(LOG_DB); _bcxo2.row_factory = _sqlite3.Row
                                 try:
                                     _bo2 = _bos_orders.find_order_by_external_ref(_bcxo2, bf_inv)
                                     if _bo2:
@@ -10684,7 +10684,7 @@ def begin_checkout_return():
                             # checkout sets metadata customer_id="").
                             if pi_id:
                                 try:
-                                    _bcxo3 = _sqlite3.connect(LOG_DB); _bcxo3.row_factory = _sqlite3.Row
+                                    _bcxo3 = db.connect(LOG_DB); _bcxo3.row_factory = _sqlite3.Row
                                     try:
                                         _bo3 = _bos_orders.find_order_by_external_ref(_bcxo3, bf_inv)
                                         if _bo3:
@@ -10707,7 +10707,7 @@ def begin_checkout_return():
                 _settle_order = None
                 if inv:
                     try:
-                        _scx0 = _sqlite3.connect(LOG_DB); _scx0.row_factory = _sqlite3.Row
+                        _scx0 = db.connect(LOG_DB); _scx0.row_factory = _sqlite3.Row
                         try:
                             _fo = _bos_orders.find_order_by_external_ref(_scx0, inv)
                             _settle_order = dict(_fo) if _fo else None
@@ -10726,7 +10726,7 @@ def begin_checkout_return():
                 # if this fails, the webhook's own settled_at gate still backfills.
                 if inv and _settle_order:
                     try:
-                        _mcx = _sqlite3.connect(LOG_DB)
+                        _mcx = db.connect(LOG_DB)
                         try:
                             _bos_orders.mark_order_settled(_mcx, _settle_order["id"])
                         finally:
@@ -10754,7 +10754,7 @@ def begin_checkout_return():
                     f_slug = md.get("slug") or ""
                     stash_key = md.get("stash_key")
                     if stash_key:
-                        with sqlite3.connect(LOG_DB) as _scx:
+                        with db.connect(LOG_DB) as _scx:
                             _scx.row_factory = sqlite3.Row
                             _sr = _scx.execute(
                                 "SELECT items_json, ship_json FROM "
@@ -10766,7 +10766,7 @@ def begin_checkout_return():
                         items_list = json.loads(md.get("items") or "[]")
                         ship_dict = json.loads(md.get("ship") or "{}")
                     # Cap re-check: abort gracefully if founding is no longer open.
-                    with sqlite3.connect(LOG_DB) as _cap_cx:
+                    with db.connect(LOG_DB) as _cap_cx:
                         _cap_cx.row_factory = sqlite3.Row
                         _subs_f.init_subscriptions_table(_cap_cx)
                         _subs_f.migrate_add_founding_columns(_cap_cx)
@@ -10776,7 +10776,7 @@ def begin_checkout_return():
                         print(f"[founding-return] cap hit after payment — skipping reservation for {f_email}",
                               flush=True)
                     else:
-                        with sqlite3.connect(LOG_DB) as _fcx:
+                        with db.connect(LOG_DB) as _fcx:
                             _fcx.row_factory = sqlite3.Row
                             _subs_f.init_subscriptions_table(_fcx)
                             _subs_f.migrate_add_founding_columns(_fcx)
@@ -11034,7 +11034,7 @@ def begin_concierge_add():
     except Exception:
         qty = 1
     unit = round(p["price_cents"] / 100.0, 2)
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         order = _bos_orders.find_order_by_external_ref(cx, invoice_id)
@@ -11127,7 +11127,7 @@ def full_report():
         return jsonify({"error": "log_id required"}), 400
 
     # Look up the original query
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT query, level, session_id FROM query_log WHERE id = ?",
@@ -11307,7 +11307,7 @@ def _full_report_send_email(log_id, query, level, email, name, session_id,
     # Update email_sent_at in query_log (best-effort)
     now_iso = datetime.now(timezone.utc).isoformat()
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 "UPDATE query_log SET email_sent_at = ? WHERE id = ?",
                 (now_iso, log_id)
@@ -11401,7 +11401,7 @@ def auth_magic_link_request():
     th    = _hash_token(token)
     now   = _now_utc()
     expires = now + timedelta(minutes=AUTH_TOKEN_TTL_MIN)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             """INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at)
                VALUES (?,?,?,?,?)""",
@@ -11434,7 +11434,7 @@ def auth_magic_link_verify():
         return jsonify({"error": "Missing token"}), 400
     th = _hash_token(token)
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens WHERE token_hash = ?",
@@ -11501,7 +11501,7 @@ def auth_magic_link_verify():
         try:
             cid, _, err = ghl_upsert_contact(email, "", "", source_tag="chatbot-login")
             if cid:
-                with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+                with _db_lock, db.connect(LOG_DB) as cx2:
                     cx2.execute("UPDATE users SET ghl_contact_id = ? WHERE id = ?",
                                 (cid, user_id))
                     cx2.commit()
@@ -11536,7 +11536,7 @@ def auth_logout():
     tok = request.cookies.get("amg_auth", "")
     if tok:
         th = _hash_token(tok)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("DELETE FROM sessions WHERE token_hash = ?", (th,))
             cx.commit()
     resp = jsonify({"ok": True})
@@ -11557,7 +11557,7 @@ def link_resend():
         if inquiry_id and practitioner_id:
             _resend_inquiry_reply(inquiry_id, practitioner_id)  # Task 2
         elif token:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 row = cx.execute("SELECT email, purpose, extra FROM auth_tokens WHERE token_hash=?",
                                  (_hash_token(token),)).fetchone()
             if row:
@@ -11592,7 +11592,7 @@ def history():
         limit = 30
     limit = max(1, min(limit, 100))
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             """SELECT id, ts, query, answer, mode, level, image_count,
@@ -11638,7 +11638,7 @@ def me():
     sid = request.cookies.get("amg_session", "").strip()
     if not sid:
         return jsonify({"authenticated": False})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             """SELECT email, name FROM query_log
@@ -11664,7 +11664,7 @@ def api_cta_click():
         log_id = data.get("log_id")
         cta_type = str(data.get("cta_type", ""))[:64]
         ts = datetime.now(timezone.utc).isoformat()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
                 (ts, log_id, cta_type),
@@ -11683,7 +11683,7 @@ def api_chip_tap():
         session_id = str(data.get("session_id", ""))[:200]
         label = str(data.get("label", ""))[:200]
         ts = datetime.now(timezone.utc).isoformat()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO chip_taps (ts, session_id, label) VALUES (?, ?, ?)",
                 (ts, session_id, label),
@@ -11703,7 +11703,7 @@ def rate():
     if not log_id or rating not in (1, 2, 3, 4, 5):
         return jsonify({"error": "Invalid"}), 400
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE query_log SET rating=?, rated_at=? WHERE id=?",
                    (rating, ts, log_id))
         cx.commit()
@@ -12011,7 +12011,7 @@ def _resolve_channel_tags(personal: bool = False,
 
 # ── Referral tracking ─────────────────────────────────────────────────────────
 def _init_referral_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS affiliate_signups (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -12259,7 +12259,7 @@ _init_referral_tables()
 # ── /begin funnel journey-state engine ───────────────────────────────────────
 
 def _init_journey_tables():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         begin_funnel.init_journey_tables(cx)
         quiz_engine.init_quiz_tables(cx)
 
@@ -12341,7 +12341,7 @@ def init_inquiry_tables(cx):
 
 
 def _init_inquiry_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_inquiry_tables(cx)
 
 _init_inquiry_tables()
@@ -12415,7 +12415,7 @@ def init_membership_tables(cx):
 from dashboard import coaching as _coaching  # noqa: E402 (Phase 2B coaching windows)
 
 def _init_membership_tables():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         init_membership_tables(cx)
         _coaching.init_coaching_table(cx)
 
@@ -12424,7 +12424,7 @@ _init_membership_tables()
 
 def _init_data_sharing_tables():
     from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ds.init_data_sharing_tables(cx)
         _dr.init_reward_tables(cx)
 
@@ -12453,7 +12453,7 @@ def _mint_membership_magic_link(email, ttl_min=MEMBERSHIP_MAGIC_TTL_MIN, *, cx=N
     if cx is not None:
         cx.execute(sql, row)          # caller's transaction; caller commits
         return plain
-    with _db_lock, sqlite3.connect(LOG_DB) as own_cx:
+    with _db_lock, db.connect(LOG_DB) as own_cx:
         own_cx.execute(sql, row)
     return plain
 
@@ -12466,7 +12466,7 @@ def _mint_coaching_activate_link(email, order_id, ttl_min=60 * 24 * 30):
     th = _hash_token(plain)
     now_iso = datetime.utcnow().isoformat() + "Z"
     exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
             "VALUES (?,?,?,?,?,?)",
@@ -12480,7 +12480,7 @@ def _validate_membership_magic_link(token):
     if not token:
         return None
     th = _hash_token(token)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens "
             "WHERE token_hash=? AND purpose='membership_magic_link'",
@@ -12509,7 +12509,7 @@ def _mint_gift_note_link(email, *, order_ref, ttl_min=60 * 24 * 30):
     th = _hash_token(plain)
     now_iso = datetime.utcnow().isoformat() + "Z"
     exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
             "VALUES (?,?,?,?,?,?)",
@@ -12525,7 +12525,7 @@ def _validate_gift_note_link(token):
         return None
     import json
     th = _hash_token(token)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, extra, expires_at, consumed_at FROM auth_tokens "
             "WHERE token_hash=? AND purpose='pif_gift_note'", (th,)).fetchone()
@@ -12552,7 +12552,7 @@ def _consume_gift_note_token(token):
         return
     th = _hash_token(token)
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND purpose='pif_gift_note'",
                    (now_iso, th))
 
@@ -12567,7 +12567,7 @@ def _mint_lead_magnet_guide_link(email, ttl_min=60 * 24 * LEAD_MAGNET_GUIDE_TTL_
     th = _hash_token(plain)
     now_iso = datetime.utcnow().isoformat() + "Z"
     exp_iso = (datetime.utcnow() + timedelta(minutes=int(ttl_min))).isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
             "VALUES (?,?,?,?,?,?)",
@@ -12581,7 +12581,7 @@ def _validate_lead_magnet_guide_link(token):
     if not token:
         return None
     th = _hash_token(token)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens "
             "WHERE token_hash=? AND purpose='lead_magnet_guide'", (th,)).fetchone()
@@ -12827,7 +12827,7 @@ def _active_membership_for_email(email):
     """Return the active membership row as a dict (with derived days_remaining), or None."""
     if not email:
         return None
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT * FROM memberships WHERE email=? AND expires_at > ? "
@@ -12885,7 +12885,7 @@ def _portal_biofield_unlocked(email):
             return True
         if _family_plan_enabled():
             from dashboard import family_plan as _fp
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 _fp.init_family_plan_table(cx)
                 return bool(_fp.covers(cx, email))
@@ -12925,7 +12925,7 @@ def api_console_biofield_portal_audit():
     from dashboard import client_portal as _cp
     import json as _json
     rows, seen = [], set()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pbr.init_table(cx)
         _cp.init_client_portal_table(cx)
@@ -12973,7 +12973,7 @@ def api_console_biofield_mark_paid():
     if not email or "@" not in email:
         return jsonify({"ok": False, "error": "valid email required"}), 400
     from dashboard import biofield_store as _bf
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _bf.init_table(cx)
         _bf.seed_paid(cx, email, via=(body.get("via") or "owner_console"),
                       order_ref=(body.get("order_ref") or "manual-unblur"))
@@ -12992,7 +12992,7 @@ def api_console_client_scans_sync():
     items = data.get("batch") or [{"email": data.get("email"), "scans": data.get("scans")}]
     total = 0
     new_rows = []            # ONLY genuinely newly-inserted scans this sync (not re-pushes)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cs.init_client_scans_table(cx)
         for it in items:
             try:
@@ -13010,7 +13010,7 @@ def api_console_client_scans_sync():
             from dashboard import analysis_quota as _aq
             from dashboard import notify_state as _ns2
             from dashboard import email_suppression as _es
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _cs.init_client_scans_table(cx); _aq.init_analysis_quota_table(cx)
                 for row in new_rows:
                     em, sd, sid = row["email"], row["scan_date"], row["scan_id"]
@@ -13044,7 +13044,7 @@ def api_console_taskboard_sync():
     from dashboard import task_board as _tb
     data = request.get_json(silent=True) or {}
     cards = data.get("cards") or []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _tb.init_task_board_table(cx)
         n = _tb.upsert_board(cx, cards, data.get("generated_at"))
     return jsonify({"ok": True, "upserted": n})
@@ -13056,7 +13056,7 @@ def api_console_taskboard():
     if not _console_key_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import task_board as _tb
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _tb.init_task_board_table(cx)
         board = _tb.get_board(cx)
     return jsonify(board)
@@ -13079,7 +13079,7 @@ def api_console_scan_recommendations_sync():
         return jsonify({"error": "batch (list) required"}), 400
     scans = rows = 0
     client_emails = set()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _sr.init_table(cx)
         for it in batch:
             if not isinstance(it, dict):
@@ -13126,7 +13126,7 @@ def api_console_prl_sync():
             seed = json.load(f)
     except Exception as _e:
         return jsonify({"error": f"seed load failed: {_e!r}"}), 500
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _prl.init_tables(cx)
         counts = _prl.sync_from_seed(cx, seed)
     return jsonify({"ok": True, **counts})
@@ -13140,7 +13140,7 @@ def api_console_scan_recommendations_read():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import scan_recommendations as _sr
     email = (request.args.get("email") or "").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _sr.init_table(cx)
         out = {"ok": True,
@@ -13169,7 +13169,7 @@ def api_console_client_species_sync():
     if not isinstance(batch, list):
         return jsonify({"error": "batch (list) required"}), 400
     count = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cs.init_table(cx)
         for it in batch:
             if not isinstance(it, dict) or not (it.get("email") or "").strip():
@@ -13189,7 +13189,7 @@ def api_console_client_species_read():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_species as _cs
     email = (request.args.get("email") or "").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_table(cx)
         total = cx.execute("SELECT COUNT(*) FROM client_species").fetchone()[0]
@@ -13218,7 +13218,7 @@ def api_console_client_species_override():
     email = (body.get("email") or "").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cs.init_table(cx)
         _cs.upsert(cx, email, body.get("species"), body.get("animal_name"))
     return jsonify({"ok": True, "email": email, "is_animal": _cs.is_animal(body.get("species"))})
@@ -13230,7 +13230,7 @@ def api_console_analysis_requests():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import analysis_requests as _ar
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ar.init_analysis_requests_table(cx)
         reqs = _ar.pending(cx, int(request.args.get("limit", 50)))
     return jsonify({"ok": True, "requests": reqs})
@@ -13245,7 +13245,7 @@ def api_console_analysis_request_complete(req_id):
     status = ((request.get_json(silent=True) or {}).get("status") or "done").strip()
     if status not in ("done", "failed"):
         status = "done"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ar.init_analysis_requests_table(cx)
         _ar.mark(cx, req_id, status)
     return jsonify({"ok": True, "status": status})
@@ -13313,7 +13313,7 @@ def api_console_life_stress_curation(email):
         return jsonify({"error": "unauthorized"}), 401
     e = (email or "").strip().lower()
     from dashboard import life_stress_curation
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         cur = life_stress_curation.get(cx, e)
     return jsonify({"ok": True, "curation": cur})
@@ -13395,7 +13395,7 @@ def api_console_scan_pull_create():
     if not query:
         return jsonify({"ok": False, "error": "query required"}), 400
     requested_by = request.headers.get("X-Console-User", "") or None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _spr.init_scan_pull_requests_table(cx)
         res = _spr.create_request(cx, query, requested_by)
     return jsonify({"ok": True, "id": res["id"], "status": res["status"]})
@@ -13407,7 +13407,7 @@ def api_console_scan_pull_list():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import scan_pull_requests as _spr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _spr.init_scan_pull_requests_table(cx)
         reqs = _spr.pending(cx, int(request.args.get("limit", 50)))
     return jsonify({"ok": True, "requests": reqs})
@@ -13423,7 +13423,7 @@ def api_console_scan_pull_complete(req_id):
     status = (body.get("status") or "done").strip()
     if status not in ("done", "failed", "working"):
         status = "done"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _spr.init_scan_pull_requests_table(cx)
         _spr.mark(cx, req_id, status, scan_id=body.get("scan_id"),
                   draft_id=body.get("draft_id"), message=body.get("message"))
@@ -13436,7 +13436,7 @@ def api_console_scan_pull_get(req_id):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import scan_pull_requests as _spr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _spr.init_scan_pull_requests_table(cx)
         row = _spr.get(cx, req_id)
     if not row:
@@ -13456,7 +13456,7 @@ def _send_new_scan_email(email, scan_date, scan_id, token):
     recips = [email]
     try:
         from dashboard import household as _hh
-        with sqlite3.connect(LOG_DB) as _cxh:
+        with db.connect(LOG_DB) as _cxh:
             _hh.init_household_tables(_cxh)
             recips += _hh.cc_recipients_for(_cxh, email)   # caregivers get their own copy
     except Exception:
@@ -13465,7 +13465,7 @@ def _send_new_scan_email(email, scan_date, scan_id, token):
         try:
             try:
                 from dashboard import email_suppression as _es
-                with sqlite3.connect(LOG_DB) as _cxsup:
+                with db.connect(LOG_DB) as _cxsup:
                     if _es.is_suppressed(_cxsup, to):
                         continue
             except Exception as _se:
@@ -13486,7 +13486,7 @@ def membership_category(email):
         return "none"
     try:
         from dashboard import subscriptions as _subs
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cat = _subs.category_for(cx, email)
             if cat == "none":
@@ -13677,7 +13677,7 @@ _register_mark_delivered_action()
 def _activate_coaching_by_tracking(tracking_number):
     """Webhook path: open its own connection, resolve shipment by tracking number, activate."""
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         sh = _tracking.shipment_by_tracking(cx, tracking_number)
         if not sh:
@@ -13702,7 +13702,7 @@ def _member_context_for_email(email, *, query_log_n=5):
 
     # Intake from inbound_leads (most recent scoreapp / practice-better / concierge)
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT first_name, raw_json FROM inbound_leads "
                 "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
@@ -13738,7 +13738,7 @@ def _member_context_for_email(email, *, query_log_n=5):
 
     # Recent inquiries
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             for r in cx.execute(
                 "SELECT main_challenge, main_goal, created_at FROM inquiries "
@@ -13752,7 +13752,7 @@ def _member_context_for_email(email, *, query_log_n=5):
     # Recent queries. Production table uses 'query' column; test table uses
     # 'question'.  Try 'question' first; fall back to 'query' on OperationalError.
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             try:
                 rows = cx.execute(
@@ -13820,7 +13820,7 @@ def get_referral_sources():
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, created_at, name, slug, description, utm_source, utm_medium, utm_campaign, active
             FROM referral_sources ORDER BY name ASC
@@ -13846,7 +13846,7 @@ def post_referral_source():
         return jsonify({"error": "name required"}), 400
     ts = datetime.now(timezone.utc).isoformat()
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("""
                 INSERT INTO referral_sources (created_at, name, slug, description, utm_source, utm_medium, utm_campaign)
                 VALUES (?,?,?,?,?,?,?)
@@ -13865,7 +13865,7 @@ def get_referrals():
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     # Stats per utm_source
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         stats = cx.execute("""
             SELECT utm_source,
                    COUNT(*) as total,
@@ -13952,7 +13952,7 @@ def affiliate_hub_page(slug):
 
 @app.route("/affiliate/hub-data/<slug>")
 def affiliate_hub_data(slug):
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         aff = cx.execute(
             "SELECT name, organization, slug FROM affiliate_signups WHERE slug=? AND status='approved'",
             (slug,)
@@ -13960,7 +13960,7 @@ def affiliate_hub_data(slug):
     if not aff:
         return jsonify({"error": "Not found"}), 404
     name, org, slug = aff
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         offers = cx.execute(
             "SELECT name, description, url_template, COALESCE(instructions, '') "
             "FROM affiliate_offers WHERE active=1 ORDER BY sort_order ASC"
@@ -14154,7 +14154,7 @@ def _scoreapp_payload_for(email):
     if not email:
         return None
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT raw_json FROM inbound_leads "
                 "WHERE source='scoreapp' AND email=? "
@@ -14174,7 +14174,7 @@ def _recent_inquiry_practitioner_ids(client_email, days=30):
     Only includes rows where status='sent' (not skipped, not failed)."""
     if not client_email:
         return []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute(
             "SELECT ip.inquiry_id, ip.practitioner_id, ip.practitioner_email, ip.shared_at "
             "FROM inquiry_practitioners ip "
@@ -14271,7 +14271,7 @@ def affiliate_apply_form():
             "Please agree to our Terms to become an Ambassador."))
     if _tos and not is_member(_sid, email):
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 begin_funnel.record_unlock(
                     _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
                     email=email, first_name=_first, tos=True)
@@ -14292,7 +14292,7 @@ def affiliate_apply_form():
     ts    = datetime.now(timezone.utc).isoformat()
 
     # Return existing portal if email already registered
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         existing = cx.execute("SELECT token FROM affiliate_signups WHERE email=?", (email,)).fetchone()
     if existing:
         resp = _redirect("/portal/login")
@@ -14303,12 +14303,12 @@ def affiliate_apply_form():
         return resp
 
     # Ensure unique slug
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         if cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
             slug = f"{base}-{token[:6]}"
 
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             # Generate Rebrandly short link → points to affiliate hub
             _hub_dest = f"{request.host_url.rstrip('/')}/affiliate/hub/{slug}"
             short_url = _rebrandly_create(
@@ -14366,7 +14366,7 @@ def affiliate_apply():
                         "error": "Please agree to our Terms to become an Ambassador."}), 403
     if _tos and not is_member(_sid, email):
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 begin_funnel.record_unlock(
                     _cx, session_id=(_sid or uuid.uuid4().hex), trigger="tos",
                     email=email, first_name=(name.split(None, 1)[0] if name else ""),
@@ -14395,17 +14395,17 @@ def affiliate_apply():
 
     ts = datetime.now(timezone.utc).isoformat()
     # Check if email already exists — if so, return their existing portal
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         existing_row = cx.execute("SELECT token, slug FROM affiliate_signups WHERE email=?", (email,)).fetchone()
     if existing_row:
         token, slug = existing_row
     else:
         # Ensure slug uniqueness
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             if cx.execute("SELECT id FROM affiliate_signups WHERE slug=?", (slug,)).fetchone():
                 slug = f"{base}-{token[:6]}"
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute("""
                     INSERT INTO affiliate_signups
                       (created_at, name, email, organization, website, promo_method, slug, token, status)
@@ -14465,7 +14465,7 @@ def affiliate_social_links_submit():
     urls  = data.get("urls") or []
     if not token:
         return jsonify({"error": "token required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT slug, email, status FROM affiliate_signups WHERE token=?",
                          (token,)).fetchone()
         if not row:
@@ -14482,7 +14482,7 @@ def affiliate_portal_data():
     token = request.args.get("token", "").strip()
     if not token:
         return jsonify({"error": "token required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("""
             SELECT id, name, email, organization, slug, status, created_at, short_url
             FROM affiliate_signups WHERE token=?
@@ -14494,7 +14494,7 @@ def affiliate_portal_data():
         return jsonify({"error": "Application pending review"}), 403
 
     from dashboard import affiliate_dashboard as _ad
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         return jsonify(_ad.build_dashboard(cx, slug, quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL))
 
 
@@ -14518,7 +14518,7 @@ def affiliate_payload_peek():
         sql = "SELECT received_at, raw_json FROM pb_events ORDER BY id DESC LIMIT ?"
     else:
         return jsonify({"error": "source must be 'groovekart' or 'practice-better'"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute(sql, (limit,)).fetchall()
     out = []
     for received_at, raw in rows:
@@ -14537,7 +14537,7 @@ def get_affiliates():
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT a.id, a.created_at, a.name, a.email, a.organization,
                    a.website, a.promo_method, a.slug, a.status,
@@ -14561,7 +14561,7 @@ def patch_affiliate(aff_id):
     status = data.get("status", "")
     if status not in ("approved", "rejected", "suspended"):
         return jsonify({"error": "status must be approved, rejected, or suspended"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE affiliate_signups SET status=? WHERE id=?", (status, aff_id))
         if status == "approved":
             row = cx.execute("SELECT name, organization, slug, created_at FROM affiliate_signups WHERE id=?", (aff_id,)).fetchone()
@@ -14592,7 +14592,7 @@ def backfill_affiliate_links():
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     results = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute(
             "SELECT id, slug, name, organization FROM affiliate_signups WHERE (short_url IS NULL OR short_url='') AND status='approved'"
         ).fetchall()
@@ -14601,7 +14601,7 @@ def backfill_affiliate_links():
         destination = f"{base_url}/affiliate/hub/{slug}"
         short_url = _rebrandly_create(slug, destination, title=f"Affiliate: {org or name}")
         if short_url:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute("UPDATE affiliate_signups SET short_url=? WHERE id=?", (short_url, aff_id))
                 cx.commit()
             results.append({"slug": slug, "short_url": short_url, "status": "created"})
@@ -14907,7 +14907,7 @@ def api_practitioner_portal_data():
     branding = {}
     try:
         from dashboard import practitioner_settings as _ps
-        with sqlite3.connect(LOG_DB) as _cx:
+        with db.connect(LOG_DB) as _cx:
             _cx.row_factory = sqlite3.Row
             _ps.init_settings_table(_cx)
             _s = _ps.get_settings(_cx, pid)
@@ -14920,7 +14920,7 @@ def api_practitioner_portal_data():
     try:
         from dashboard import portal_view as _pv
         _amb_email = (data.get("email") or "").strip()
-        with sqlite3.connect(LOG_DB) as _cx:
+        with db.connect(LOG_DB) as _cx:
             data["ambassador"] = _pv._ambassador_block(
                 _cx, _amb_email, QUIZ_URL, PUBLIC_BASE_URL)
     except Exception:
@@ -14945,7 +14945,7 @@ def api_practitioner_pricing():
     errs = _ppx.validate_config(config)
     if errs:
         return jsonify({"ok": False, "error": "; ".join(errs)}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ppx.set_config(cx, pid, config)
     return jsonify({"ok": True, **(_pp.portal_data(pid) or {})})
 
@@ -15031,7 +15031,7 @@ def api_practitioner_checkout():
         # return-handler can book a real Sales Receipt once payment is confirmed.
         if out.get("qbo_payload"):
             try:
-                with _sqlite3.connect(LOG_DB) as _lcx:
+                with db.connect(LOG_DB) as _lcx:
                     _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
             except Exception as e:
                 print(f"[practitioner-checkout] persist qbo_lines failed: {e!r}", flush=True)
@@ -15113,7 +15113,7 @@ def api_practitioner_personal_checkout():
         # return-handler can book a real Sales Receipt once payment is confirmed.
         if out.get("qbo_payload"):
             try:
-                with _sqlite3.connect(LOG_DB) as _lcx:
+                with db.connect(LOG_DB) as _lcx:
                     _bos_orders.set_order_qbo_lines(_lcx, out["invoice_id"], out["qbo_payload"])
             except Exception as _e:
                 print(f"[personal-checkout] persist qbo_lines failed: {_e!r}", flush=True)
@@ -15222,7 +15222,7 @@ def api_practitioner_dropship_checkout():
         # return-handler can book a real Sales Receipt once payment is confirmed.
         if out.get("qbo_payload"):
             try:
-                with _sqlite3.connect(LOG_DB) as _lcx:
+                with db.connect(LOG_DB) as _lcx:
                     _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
             except Exception as e:
                 print(f"[dropship-checkout] persist qbo_lines failed: {e!r}", flush=True)
@@ -15437,7 +15437,7 @@ def api_console_rewards():
         return jsonify({"items": []})
     from dashboard import data_sharing_rewards as _dr, review_gifts as _rg
     items = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _dr.init_reward_tables(cx)
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
@@ -15463,7 +15463,7 @@ def api_console_reward_gift_options_list():
     if not _reward_gifts_enabled():
         return jsonify({"options": []})
     from dashboard import review_gifts as _rg
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         options = _rg.list_gift_options(cx)
     return jsonify({"options": options})
 
@@ -15487,7 +15487,7 @@ def api_console_reward_gift_options_add():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "level must be a number"})
     from dashboard import review_gifts as _rg
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         opt_id = _rg.add_gift_option(cx, level, sku, label)
     return jsonify({"ok": True, "id": opt_id})
 
@@ -15505,7 +15505,7 @@ def api_console_reward_gift_options_delete():
     if not opt_id:
         return jsonify({"ok": False, "error": "id required"})
     from dashboard import review_gifts as _rg
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _rg.delete_gift_option(cx, opt_id)
     return jsonify({"ok": True})
 
@@ -15523,7 +15523,7 @@ def api_console_reward_gift_options_toggle():
     if not opt_id:
         return jsonify({"ok": False, "error": "id required"})
     from dashboard import review_gifts as _rg
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _rg.init_reward_gift_options(cx)
         row = cx.execute("SELECT active FROM reward_gift_options WHERE id=?", (opt_id,)).fetchone()
         if not row:
@@ -15541,7 +15541,7 @@ def api_console_handoffs():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_portal as _cp
     out = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         cx.row_factory = sqlite3.Row
         for r in cx.execute("SELECT email, name, updated_at, content_json FROM client_portals "
@@ -15580,7 +15580,7 @@ def api_console_next_actions():
     from dashboard import (console_next_action as _na, biofield_reveals as _br,
                            ff_match_drafts as _ff, client_portal as _cp, orders as _ord,
                            household_holds as _hh, data_sharing_rewards as _dr)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _br.init_table(cx); _ff.init_table(cx)
         _cp.init_client_portal_table(cx); _ord.init_orders_table(cx)
         _hh.init_hold_tables(cx)
@@ -15714,7 +15714,7 @@ def api_console_biofield_pipeline():
         return jsonify({"error": "unauthorized"}), 401
     include = (request.args.get("all") or "").strip().lower() in ("1", "true", "yes")
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         clients = _biofield_pipeline_clients(cx, include_complete=include)
     return jsonify({"ok": True, "clients": clients})
@@ -15866,7 +15866,7 @@ def api_console_sales_pages_list():
     if bad:
         return bad
     from dashboard import sales_pages as _sp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pages = _sp.list_draft_pages(cx)
     for pg in pages:
         pg["name"] = (_get_product(pg["slug"]) or {}).get("name", pg["slug"])
@@ -15881,7 +15881,7 @@ def api_console_sales_page_load(slug):
     from dashboard import sales_pages as _sp
     from dashboard import sales_copy as _sc
     p = _get_product(slug)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         page = _sp.get_page(cx, slug)
     content = (page or {}).get("content", {})
     sections = [{"id": s, "text": content.get(s, "")} for s in _sc.NARRATIVE_SECTIONS]
@@ -15902,7 +15902,7 @@ def api_console_ingredient_pages_list():
         return bad
     import json as _json
     from dashboard import ingredient_pages as _ipages
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ipages.init_table(cx)
         rows = cx.execute(
             "SELECT ingredient_slug, name, state, content_json "
@@ -15927,7 +15927,7 @@ def api_console_ingredient_page_load(slug):
         return bad
     from dashboard import ingredient_pages as _ipages
     from dashboard import ingredient_copy as _ic
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ipages.init_table(cx)
         page = _ipages.get_page(cx, slug)
     content = (page or {}).get("content") or {}
@@ -15956,7 +15956,7 @@ def api_console_topic_pages_list():
     if bad:
         return bad
     from dashboard import topic_pages as _tp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pages = _tp.list_pages(cx)
     return jsonify({"ok": True, "pages": pages})
 
@@ -15967,7 +15967,7 @@ def api_console_topic_page_load(slug):
     if bad:
         return bad
     from dashboard import topic_pages as _tp, topic_copy as _tc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         page = _tp.get_page(cx, slug)
     content = (page or {}).get("content") or {}
     sections = [{"id": s, "text": content.get(s, "")} for s in _tc.NARRATIVE_SECTIONS]
@@ -15995,7 +15995,7 @@ def api_console_topic_suggestions_list():
     if bad:
         return bad
     from dashboard import topic_pages as _tp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = _tp.list_suggestions(cx)
     return jsonify({"ok": True, "suggestions": rows})
 
@@ -16011,7 +16011,7 @@ def api_console_mentor_pages_list():
     if bad:
         return bad
     from dashboard import mentor_pages as _mp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pages = _mp.list_pages(cx)
     return jsonify({"ok": True, "pages": pages})
 
@@ -16023,7 +16023,7 @@ def api_console_mentor_page_load(slug):
         return bad
     from dashboard import mentor_pages as _mp, mentor_copy as _mc
     slug = (slug or "").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         page = _mp.get_page(cx, slug)
     content = (page or {}).get("content") or {}
     sections = [{"id": s, "text": content.get(s, "")} for s in _mc.NARRATIVE_SECTIONS]
@@ -16063,7 +16063,7 @@ def api_console_reviews_list():
     if bad:
         return bad
     from dashboard import product_reviews as _pr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pending = _pr.pending_queue(cx)
     for r in pending:
         if r.get("product_slug") == "_results":
@@ -16076,7 +16076,7 @@ def api_console_reviews_list():
             r["video_url"] = r.get("video_ref")
     if _REVIEWS_GIFTS:
         from dashboard import review_gifts as _rg
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             for r in pending:
                 r["gift"] = _rg.get_for_review(cx, r["id"])
     return jsonify({"ok": True, "pending": pending, "recent": []})
@@ -16185,7 +16185,7 @@ def api_console_biofield_reveals():
     from dashboard import biofield_reveals as _br
     from dashboard import portal_biofield_reports as _pbr
     from dashboard import client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _br.init_table(cx)
         _pbr.init_table(cx)          # so _biofield_requested can query status
         _cp.init_client_portal_table(cx)
@@ -16223,7 +16223,7 @@ def api_console_opens():
     from dashboard import opens as _op
     kind = (request.args.get("kind") or "").strip()
     keys = [k for k in (request.args.get("keys") or "").split(",") if k]
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _op.init_opens_table(cx)
         data = _op.opens_for(cx, kind, keys)
     return jsonify({"ok": True, "opens": data})
@@ -16240,7 +16240,7 @@ def api_console_masterclass_create():
     if not topic or not start_ts:
         return jsonify({"error": "topic and start_ts required"}), 400
     duration = int(body.get("duration_min") or 60)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _mc.init_masterclass_tables(cx); _init_calendar_table()
         eid = _mc.create_event(cx, topic=topic, description=body.get("description") or "",
@@ -16269,7 +16269,7 @@ def api_console_masterclass_create():
                               os.environ["ZOOM_CLIENT_SECRET"])
         m = _zoom.create_meeting(tok, host=GLEN_ZOOM_USER, topic=f"MasterClass: {topic}",
                                  start_iso=start_ts, duration_min=duration, waiting_room=False)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx2:
+        with _db_lock, db.connect(LOG_DB) as cx2:
             _mc.init_masterclass_tables(cx2)
             _mc.set_zoom(cx2, eid, m.get("join_url"), m.get("meeting_id"))
         zoom_ok = bool(m.get("join_url"))
@@ -16285,7 +16285,7 @@ def api_console_masterclass_zoom_url(event_id):
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import masterclass as _mc
     url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _mc.init_masterclass_tables(cx)
         _mc.set_zoom(cx, event_id, url, "")
@@ -16303,7 +16303,7 @@ def masterclass_page(event_id):
 @app.route("/api/masterclass/<int:event_id>")
 def api_masterclass_get(event_id):
     from dashboard import masterclass as _mc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _mc.init_masterclass_tables(cx)
         ev = _mc.get_event(cx, event_id)
@@ -16347,7 +16347,7 @@ def api_masterclass_register(event_id):
     name = (body.get("name") or "").strip()
     if "@" not in email:
         return jsonify({"error": "email required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _mc.init_masterclass_tables(cx)
         ev = _mc.get_event(cx, event_id)
@@ -16369,7 +16369,7 @@ def api_masterclass_register(event_id):
         metadata={"kind": "masterclass", "event_id": str(event_id), "email": email, "name": name},
         success_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}?paid=1",
         cancel_url=f"{PUBLIC_BASE_URL}/masterclass/{event_id}")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _mc.init_masterclass_tables(cx)
         _mc.register(cx, event_id, email, name, is_member, amount, paid=False)
@@ -16397,7 +16397,7 @@ def api_console_remedy_meanings():
         if _key != CONSOLE_SECRET and not _owner_token_ok(_key):
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import biofield_meanings as _bm
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _bm.init_table(cx)
         stored = {r["slug"]: r for r in _bm.get_all(cx)}
     products = _PRODUCTS.get("products") or {}
@@ -16437,7 +16437,7 @@ def api_console_studio_credits():
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import studio_credit as _sc
     status = request.args.get("status") or None
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _sc.migrate(cx)
         claims = _sc.list_claims(cx, status=status)
     return jsonify({"claims": claims})
@@ -16480,7 +16480,7 @@ def api_console_members():
             return jsonify({"error": "unauthorized"}), 401
     from dashboard import subscriptions as _subs
     buckets = {"trial": [], "full": [], "paused": []}
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _subs.migrate_add_failed_count(cx)
         _subs.migrate_add_membership_columns(cx)
@@ -16536,7 +16536,7 @@ def api_console_search():
     if "people" in types:
         try:
             from dashboard import customers as _cust
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 for p in _cust.find_people(cx, q, limit=6):
                     nm = (p.get("name")
                           or (str(p.get("first_name") or "") + " " + str(p.get("last_name") or "")).strip()
@@ -16570,7 +16570,7 @@ def api_console_search():
     # Orders — LIKE on email / name / external_ref, most recent first.
     if "orders" in types:
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 rows = cx.execute(
                     "SELECT id, external_ref, email, name, total_cents, status FROM orders "
@@ -16610,7 +16610,7 @@ def console_image_leaderboard():
     if _gate is not None:
         return _gate
     from dashboard import sales_image_leaderboard as _lb
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         data = _lb.leaderboard(cx)
         _evo_html = ""
         _pg_html = ""
@@ -16633,7 +16633,7 @@ def console_image_evolution_decide():
         return jsonify({"ok": False, "error": "evolution disabled"}), 400
     d = request.get_json(silent=True) or {}
     from dashboard import sales_image_evolution as _ev
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         res = _ev.decide(cx, d.get("proposal_id"), (d.get("decision") or "").strip(), actor="console")
     return jsonify(res)
 
@@ -16647,7 +16647,7 @@ def console_image_evolution_trial():
         return jsonify({"ok": False, "error": "evolution disabled"}), 400
     d = request.get_json(silent=True) or {}
     from dashboard import sales_image_evolution as _ev
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         res = _ev.trial(cx, (d.get("axis") or "").strip(), (d.get("kind") or "").strip(),
                         (d.get("candidate_key") or "").strip(), actor="console")
     return jsonify(res)
@@ -16662,7 +16662,7 @@ def console_image_evolution_undo():
         return jsonify({"ok": False, "error": "evolution disabled"}), 400
     d = request.get_json(silent=True) or {}
     from dashboard import sales_image_evolution as _ev
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         res = _ev.undo(cx, d.get("log_id"), actor="console")
     return jsonify(res)
 
@@ -16681,7 +16681,7 @@ def console_image_prompts_generate():
     except (TypeError, ValueError):
         n = 2
     from dashboard import sales_image_prompt_gen as _pg
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         out = _pg.generate_candidates(cx, kind, n)
     return jsonify({"ok": True, "count": len(out)})
 
@@ -16695,7 +16695,7 @@ def console_image_prompts_review():
         return jsonify({"ok": False, "error": "evolution disabled"}), 400
     d = request.get_json(silent=True) or {}
     from dashboard import sales_image_prompt_gen as _pg
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         res = _pg.review_action(cx, d.get("id"), (d.get("decision") or "").strip(),
                                 prompt_template=d.get("prompt_template"))
     return jsonify(res)
@@ -16715,7 +16715,7 @@ def api_practitioner_settings_get():
     if not pid:
         return jsonify({"ok": False, "error": "not signed in"}), 401
     from dashboard import practitioner_settings as _ps
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         settings = _ps.get_settings(cx, pid)
@@ -16822,7 +16822,7 @@ def api_practitioner_settings_post():
     chat_enabled_in = body.get("chat_enabled")
     chat_enabled = bool(chat_enabled_in) if chat_enabled_in is not None else None
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         _ps.set_branding(cx, pid, branding_clean, chat_enabled=chat_enabled)
@@ -16900,7 +16900,7 @@ def practitioner_coach_profile():
         fname = f"coach-{secrets.token_hex(8)}.mp4"
         (_PORTAL_ASSETS_DIR / fname).write_bytes(vf.read())
         intro_video_url = f"/portal-asset/{fname}"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx)
         if not intro_video_url:
@@ -17046,7 +17046,7 @@ def api_practitioner_storefront(slug):
     if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
         return ("", 404)
     from dashboard import public_surface as _ps
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         view = _ps.build_practitioner_storefront(cx, slug)
     if not view:
@@ -17065,13 +17065,13 @@ def practitioner_storefront(slug):
     if not re.match(r"^[A-Za-z0-9_-]{1,64}$", slug or ""):
         return ("", 404)
     from dashboard import public_surface as _ps
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         if not _ps.build_practitioner_storefront(cx, slug):
             return ("", 404)
     # Record the view for this approved affiliate
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+        with _db_lock, db.connect(LOG_DB) as _cx:
             _ps.record_view(_cx, slug, "storefront")
     except Exception:
         pass  # instrumentation must never break the page
@@ -17100,7 +17100,7 @@ def api_client_catalog(code):
     chat_enabled = False
     try:
         from dashboard import practitioner_settings as _ps
-        with sqlite3.connect(LOG_DB) as _cx:
+        with db.connect(LOG_DB) as _cx:
             _cx.row_factory = sqlite3.Row
             _ps.init_settings_table(_cx)
             _settings = _ps.get_settings(_cx, pid)
@@ -17187,7 +17187,7 @@ def api_client_checkout(code):
             redeem_req = 0
         try:
             from dashboard import points as _points
-            with sqlite3.connect(LOG_DB) as _bcx:
+            with db.connect(LOG_DB) as _bcx:
                 _bcx.row_factory = sqlite3.Row
                 _points.init_points_table(_bcx)
                 bal_cents = _points.balance(_bcx, email, scope=_scope)
@@ -17229,7 +17229,7 @@ def api_client_checkout(code):
     # return-handler can book a real Sales Receipt once payment is confirmed.
     if out.get("qbo_payload"):
         try:
-            with _sqlite3.connect(LOG_DB) as _lcx:
+            with db.connect(LOG_DB) as _lcx:
                 _bos_orders.set_order_qbo_lines(_lcx, out.get("invoice_id"), out["qbo_payload"])
         except Exception as e:
             print(f"[client-checkout] persist qbo_lines failed: {e!r}", flush=True)
@@ -17292,7 +17292,7 @@ def api_client_points(code):
     bal = 0
     if enabled:
         from dashboard import points as _points
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _points.init_points_table(cx)
             bal = _points.balance(cx, email, scope=f"dispensary:{pid}")
@@ -17396,7 +17396,7 @@ def api_practitioner_continuity_roster():
     if not pid:
         return jsonify({"ok": False, "error": "not signed in"}), 401
     from dashboard import continuity_view as _cv
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _continuity_cx(cx)
         roster = _cv.roster(cx, pid)
     return jsonify({"ok": True, "roster": roster})
@@ -17410,7 +17410,7 @@ def api_practitioner_continuity_patient(patient_email):
     if not pid:
         return jsonify({"ok": False, "error": "not signed in"}), 401
     from dashboard import continuity_view as _cv
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, patient_email):
             return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
@@ -17430,7 +17430,7 @@ def api_practitioner_continuity_recommend():
     items = body.get("items") or []
     note = body.get("note") or ""
     from dashboard import continuity_view as _cv
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, patient_email):
             return jsonify({"ok": False, "error": "not authorized for this patient"}), 403
@@ -17545,7 +17545,7 @@ def _resolve_checkout_coupon_pct(referral_code, referee_email):
         return daily, None
     try:
         from dashboard import referrals as _rf
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             res = _rf.resolve(cx, code, referee_email, pct=_referral_pct())
         if not res:
             return daily, None
@@ -17563,7 +17563,7 @@ def _best_active_self_coupon_code(email, product_slug):
         return ""
     try:
         from dashboard import coupons as _coupons
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _coupons.init_coupons_table(cx)
             actives = [c for c in _coupons.wallet(cx, email=email, kind="self")
                        if c.get("product_slug") == product_slug]
@@ -17580,7 +17580,7 @@ def _resolve_self_coupon_pct(code, product_slug):
         return 0, None
     try:
         from dashboard import coupons as _coupons
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _coupons.init_coupons_table(cx)
             found = _coupons.validate(cx, code, product_slug=product_slug)
         return (int(found["pct"]), found) if found else (0, None)
@@ -17597,7 +17597,7 @@ def _resolve_gift_coupon_pct(code, referee_email):
         return 0, None
     try:
         from dashboard import coupons as _coupons
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _coupons.init_coupons_table(cx)
             found = _coupons.validate_gift(cx, code, referee_email=referee_email)
         return (int(found["pct"]), found) if found else (0, None)
@@ -17612,7 +17612,7 @@ def _record_referral_if_any(referral_ctx, referee_email, order_ref):
         return False
     try:
         from dashboard import referrals as _rf
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             return _rf.record_redemption(cx, referral_ctx["code"], referral_ctx["owner_email"],
                                          referee_email, order_ref)
     except Exception as e:  # noqa: BLE001 - referral never blocks order creation
@@ -17633,7 +17633,7 @@ def api_referral_my_code():
         return jsonify({"ok": False, "need_optin": True,
                         "error": "Please agree to our Terms to get your referral code."}), 403
     from dashboard import referrals as _rf
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         code = _rf.get_or_create_code(cx, email)
     pct = _referral_pct()
     return jsonify({"ok": True, "code": code, "pct": pct,
@@ -17686,7 +17686,7 @@ def reorder_request():
     if email and "@" in email:
         token = secrets.token_urlsafe(32)
         now = _now_utc()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                 "VALUES (?,?,?,?,?)",
@@ -17895,7 +17895,7 @@ def _client_species_for(email):
         return None
     try:
         from dashboard import client_species as _cs
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _cs.init_table(cx)
             rec = _cs.get(cx, email)
         if rec and rec["is_animal"]:
@@ -17930,7 +17930,7 @@ def _portal_tos_agreed(primary_email):
         return False
     try:
         from dashboard import household as _hh
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             caregivers = _hh.caregivers_for(cx, primary_email)   # a read; fetch then release
         for cg in caregivers:
             # is_member opens its own _db_lock connection, so do not nest it inside cx.
@@ -17966,7 +17966,7 @@ def _scan_recommendations_for(email, scan_date=None):
     try:
         from dashboard import scan_recommendations as _sr
         from dashboard.order_destination import destination_for
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _sr.init_table(cx)
             dates = _sr.scan_dates_for(cx, email)
@@ -18097,7 +18097,7 @@ def _broad_benefit_slug_set():
     matcher -- it only silently drops the signal, leaving every candidate
     not-broad."""
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             broad_benefit.init_table(cx)
             # Seed once here too, so the "broadly effective" FF signal works on a
             # fresh deploy WITHOUT the support-programs console being opened first.
@@ -18378,7 +18378,7 @@ def _portal_options_for(email):
         courtesy = None
         try:
             from dashboard import client_prices as _cp
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 courtesy = _cp.get_price(cx, email, "biofield-analysis")
         except Exception:
             courtesy = None
@@ -18391,7 +18391,7 @@ def _portal_options_for(email):
         if _family_plan_enabled():
             try:
                 from dashboard import family_plan as _fp
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     cx.row_factory = sqlite3.Row
                     _fp.init_family_plan_table(cx)
                     opts["family_plan"] = {
@@ -18610,7 +18610,7 @@ def _portal_reorder_module(email):
     email = (email or "").strip().lower()
     if not email:
         return {}
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         try:
             repertoire.init_repertoire_table(cx)  # fresh-DB guard
@@ -18843,7 +18843,7 @@ def _portal_chat_thread(email, limit=100):
         return []
     try:
         from dashboard import portal_chat as _pchat
-        with sqlite3.connect(LOG_DB) as _cx:
+        with db.connect(LOG_DB) as _cx:
             return _pchat.list_messages(_cx, email, limit=limit)
     except Exception as e:
         print(f"[portal-chat] thread load failed: {e!r}", flush=True)
@@ -18977,7 +18977,7 @@ def evox_start():
     if "@" not in email:
         return jsonify({"error": "email_required"}), 400
     _init_people_table()  # base table must exist before find_or_create_by_email
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         _cp.init_client_portal_table(cx)
@@ -18996,7 +18996,7 @@ def evox_start():
 @app.route("/api/evox/state")
 def evox_state():
     from dashboard import evox as _ev
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -19012,7 +19012,7 @@ def evox_readiness():
     from dashboard import evox as _ev
     body = request.get_json(force=True) or {}
     item, value = body.get("item"), bool(body.get("value"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -19034,7 +19034,7 @@ def evox_readiness():
 def evox_availability():
     from dashboard import evox as _ev
     _init_calendar_table()  # rae_busy_intervals reads calendar_events
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -19055,7 +19055,7 @@ def evox_book():
     body = request.get_json(force=True) or {}
     start_ts = (body.get("start_ts") or "").strip()
     _init_calendar_table()  # create_booking inserts a calendar_events row
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -19111,7 +19111,7 @@ def evox_run_reminders():
     lo = (now + timedelta(hours=24)).isoformat()
     hi = (now + timedelta(hours=48)).isoformat()
     sent = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         try:
@@ -19168,14 +19168,14 @@ def client_portal_bodymap_page(token):
 @app.route("/api/portal/<token>")
 def api_client_portal(token):
     from dashboard import client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     try:
         from dashboard import notify_state as _ns
-        with _db_lock, sqlite3.connect(LOG_DB) as _cxe:
+        with _db_lock, db.connect(LOG_DB) as _cxe:
             _ns.mark_engaged(_cxe, (portal.get("email") or ""))
     except Exception as e:
         print(f"[engaged] {e!r}", flush=True)
@@ -19193,7 +19193,7 @@ def api_client_portal(token):
         try:
             import sqlite3 as _wsq
             from dashboard import wishlist as _wl
-            with _db_lock, _wsq.connect(LOG_DB) as _cxw:
+            with _db_lock, db.connect(LOG_DB) as _cxw:
                 _wl.init_wishlist_table(_cxw)
                 _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
         except Exception as _e:
@@ -19210,7 +19210,7 @@ def api_client_portal(token):
     if _household_view_enabled() and primary_email:
         try:
             from dashboard import household as _hh
-            with sqlite3.connect(LOG_DB) as _cxh:
+            with db.connect(LOG_DB) as _cxh:
                 _hh.init_household_tables(_cxh)
                 household = _hh.viewable_members_for(_cxh, primary_email)
                 if _household_sharing_enabled():
@@ -19238,7 +19238,7 @@ def api_client_portal(token):
             household = []
             household_cc = {}
             household_caregivers = []
-    cx_r = sqlite3.connect(LOG_DB)
+    cx_r = db.connect(LOG_DB)
     _pbr.init_table(cx_r)
     dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
     req_date = (request.args.get("scan_date") or "").strip()
@@ -19309,7 +19309,7 @@ def api_client_portal(token):
     # no-body reorder checkout ALSO calls, so display and charge stay identical.
     # A merge failure must never break the portal render.
     try:
-        with sqlite3.connect(LOG_DB) as _rcx:
+        with db.connect(LOG_DB) as _rcx:
             reorder_src = _merge_accepted_recommendation_items(
                 _rcx, email_for_reports, reorder_src)
     except Exception:
@@ -19324,7 +19324,7 @@ def api_client_portal(token):
     if email_for_reports:
         try:
             from dashboard import client_prices as _cpx
-            with sqlite3.connect(LOG_DB) as _cpcx:
+            with db.connect(LOG_DB) as _cpcx:
                 _cpx.init_table(_cpcx)
                 _cp_ff_flat = _cpx.get_ff_flat(_cpcx, email_for_reports)
                 _cp_by_slug = {r["slug"]: r["price_cents"] for r in (_cpx.list_for(_cpcx, email_for_reports) or [])}
@@ -19354,7 +19354,7 @@ def api_client_portal(token):
                         "description": f.get("description", ""), "rank": f.get("rank")}
                        for f in (bf_content.get("findings") or [])]
     from dashboard import notify_state as _ns
-    with sqlite3.connect(LOG_DB) as _cxn:
+    with db.connect(LOG_DB) as _cxn:
         notify_on = (_ns.get_state(_cxn, email_for_reports)["opt_status"] != "out") if email_for_reports else True
     membership_cat, trial_credit_cents = "none", 0
     if email_for_reports:
@@ -19366,7 +19366,7 @@ def api_client_portal(token):
     if ELEMENT_BACKDROP_ENABLED:
         try:
             from dashboard import portal_element_view as _pev
-            with sqlite3.connect(LOG_DB) as _cxe:
+            with db.connect(LOG_DB) as _cxe:
                 element_state = _pev.element_view(_cxe, (portal.get("email") or "").strip().lower())
         except Exception:
             element_state = None
@@ -19410,7 +19410,7 @@ def api_client_portal(token):
     if _portal_scan_history_enabled():
         try:
             from dashboard import client_portal as _cp_sh
-            with sqlite3.connect(LOG_DB) as _cx_sh:
+            with db.connect(LOG_DB) as _cx_sh:
                 _aa = _cp_sh.get_auto_advance(_cx_sh, email_for_reports) if email_for_reports else True
             payload["scan_history_enabled"] = True
             payload["auto_advance"] = _aa
@@ -19444,7 +19444,7 @@ def api_client_portal(token):
     # best-effort — a recommendation lookup hiccup must never fail the portal load.
     if email_for_reports:
         try:
-            with sqlite3.connect(LOG_DB) as _cxr:
+            with db.connect(LOG_DB) as _cxr:
                 _cxr.row_factory = sqlite3.Row
                 _card = _active_recommendation_card(_cxr, email_for_reports)
             if _card:
@@ -19465,7 +19465,7 @@ def api_client_portal(token):
         if _portal_scan_history_enabled() and household:
             try:
                 from dashboard import client_portal as _cp_hh
-                with sqlite3.connect(LOG_DB) as _cx_hh:
+                with db.connect(LOG_DB) as _cx_hh:
                     _pbr.init_table(_cx_hh)
                     for _m in household:
                         try:
@@ -19483,7 +19483,7 @@ def api_client_portal(token):
     if _read_receipts_enabled():
         try:
             from dashboard import opens as _op
-            with sqlite3.connect(LOG_DB) as _cxo:
+            with db.connect(LOG_DB) as _cxo:
                 _op.init_opens_table(_cxo)
                 _keys = [_op.report_key(email_for_reports, d) for d in (bf_scan_dates or [])]
                 _byk = _op.opens_for(_cxo, "report", _keys)
@@ -19496,7 +19496,7 @@ def api_client_portal(token):
         try:
             from dashboard import client_scans as _cs
             from dashboard import analysis_requests as _ar
-            with sqlite3.connect(LOG_DB) as _cxs:
+            with db.connect(LOG_DB) as _cxs:
                 _cs.init_client_scans_table(_cxs)
                 _synced = _cs.scans_for(_cxs, email_for_reports)
                 _ar.init_analysis_requests_table(_cxs)
@@ -19515,7 +19515,7 @@ def api_client_portal(token):
     # Slice B1: operator-published, still-unpaid invoices show as a pay card on the
     # portal. Best-effort — never breaks the portal load.
     try:
-        with sqlite3.connect(LOG_DB) as _cxi:
+        with db.connect(LOG_DB) as _cxi:
             _invs = _published_invoices_for(_cxi, email_for_reports)
             _past = _past_invoices_for(_cxi, email_for_reports)
         if _invs:
@@ -19551,7 +19551,7 @@ def api_client_portal(token):
     # by ?member=, so a member's card shows THEIR draft, not the caregiver's.
     if _ff_matches_enabled():
         try:
-            with sqlite3.connect(LOG_DB) as _cxf:
+            with db.connect(LOG_DB) as _cxf:
                 _cxf.row_factory = sqlite3.Row
                 ff_match_drafts.init_table(_cxf)
                 _ffd = ff_match_drafts.get(_cxf, email_for_reports,
@@ -19590,7 +19590,7 @@ def api_client_portal(token):
             if _ls_block:
                 payload["life_stress"] = _ls_block
                 try:
-                    with sqlite3.connect(LOG_DB) as _cx_ls:
+                    with db.connect(LOG_DB) as _cx_ls:
                         _ls_block["selected"] = life_stress_selection.get(_cx_ls, email_for_reports)
                 except Exception as _e:
                     print(f"[life-stress/selected] {_e!r}", flush=True)
@@ -19650,7 +19650,7 @@ def api_client_portal(token):
             import sqlite3 as _wsq2
             from dashboard import wishlist as _wl2
             _wcards = []
-            with _db_lock, _wsq2.connect(LOG_DB) as _wcx2:
+            with _db_lock, db.connect(LOG_DB) as _wcx2:
                 _wl2.init_wishlist_table(_wcx2)
                 _wslugs = _wl2.list_for(_wcx2, "email:" + email_for_reports)
             for _s in _wslugs:
@@ -19673,7 +19673,7 @@ def api_client_portal(token):
     if _data_sharing_enabled():
         try:
             from dashboard import data_sharing as _ds, data_sharing_rewards as _dr
-            with sqlite3.connect(LOG_DB) as _cxds:
+            with db.connect(LOG_DB) as _cxds:
                 _ds.init_data_sharing_tables(_cxds)
                 _dr.init_reward_tables(_cxds)
                 _consent = _ds.get_consent(_cxds, email_for_reports)
@@ -19702,7 +19702,7 @@ def api_portal_program(token):
     from dashboard import portal_view as _pv
     from dashboard import program_tiers as _pt
     sess_cookie = request.cookies.get("rm_portal_session", "")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
@@ -19759,7 +19759,7 @@ def api_portal_photo_upload(token):
     if len(blob) > _PHOTO_MAX:
         return jsonify({"ok": False, "error": "image too large (max 5 MB)"}), 400
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
         email = (portal.get("email") or "").strip().lower() if portal else ""
@@ -19775,7 +19775,7 @@ def api_portal_photo_serve(token):
     portal <img> hides cleanly."""
     from dashboard import client_photos as _cph
     from dashboard import client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
         email = (portal.get("email") or "").strip().lower() if portal else ""
@@ -19935,7 +19935,7 @@ def api_portal_bodymap(token):
     404 when the token is unknown."""
     from dashboard import client_portal as _cp
     system = (request.args.get("system") or "face").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -19955,7 +19955,7 @@ def api_portal_share_consent(token):
     data = request.get_json(silent=True) or {}
     caregiver = (data.get("caregiver_email") or "").strip().lower()
     consent = 1 if data.get("consent") else 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -19977,7 +19977,7 @@ def api_portal_cc_pref(token):
     data = request.get_json(silent=True) or {}
     member = (data.get("member_email") or "").strip().lower()
     enabled = 1 if data.get("cc_enabled") else 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -19991,7 +19991,7 @@ def api_portal_cc_pref(token):
 def api_portal_agree_tos(token):
     if request.method == "OPTIONS":
         return "", 200
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -20017,7 +20017,7 @@ def api_portal_scan_prefs(token):
     if not _portal_scan_history_enabled():
         return jsonify({"error": "not found"}), 403
     body = request.get_json(silent=True) or {}
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         from dashboard import client_portal as _cp, notify_state as _ns
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -20062,7 +20062,7 @@ def api_portal_sharing(token):
         return jsonify({"error": "not found"}), 404
     body = request.get_json(silent=True) or {}
     toggles = body.get("toggles", {})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         from dashboard import client_portal as _cp, household as _hh, \
             data_sharing as _ds, data_sharing_rewards as _dr
         _cp.init_client_portal_table(cx)
@@ -20090,7 +20090,7 @@ def api_portal_notify_pref(token):
     pref = ((request.get_json(silent=True) or {}).get("pref") or "").strip().lower()
     if pref not in ("in", "out"):
         return jsonify({"error": "pref must be in|out"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         portal = _cp.get_portal_by_token(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
@@ -20118,7 +20118,7 @@ def api_portal_wishlist_toggle(token):
     import sqlite3 as _wsq
     from dashboard import wishlist as _wl
     try:
-        with _db_lock, _wsq.connect(LOG_DB) as _cx:
+        with _db_lock, db.connect(LOG_DB) as _cx:
             _cx.row_factory = sqlite3.Row
             _rec = _portal_record_for(_cx, token)
             if not _rec:
@@ -20155,7 +20155,7 @@ def api_portal_scene_pref(token):
     if el not in ("water", "wood", "earth", "metal", "fire", "auto", ""):
         return jsonify({"error": "invalid element"}), 400
     saved = None if el in ("auto", "") else el
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -20174,7 +20174,7 @@ def api_portal_open(token):
         return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
     from dashboard import client_portal as _cp
     from dashboard import opens as _op
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
@@ -20184,7 +20184,7 @@ def api_portal_open(token):
     if _household_view_enabled() and email_for_reports:
         try:
             from dashboard import household as _hh
-            with sqlite3.connect(LOG_DB) as _cxh:
+            with db.connect(LOG_DB) as _cxh:
                 _hh.init_household_tables(_cxh)
                 _m = (request.args.get("member") or (request.get_json(silent=True) or {}).get("member") or "").strip().lower()
                 if _m and _hh.can_view(_cxh, email_for_reports, _m):
@@ -20196,7 +20196,7 @@ def api_portal_open(token):
         return jsonify({"ok": False, "error": "missing scan_date"}), 400
     if _portal_open_is_owner():   # explicit owner/console key → don't record
         return jsonify({"ok": True, "recorded": False, "reason": "owner"})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _op.init_opens_table(cx)
         st = _op.record_open(cx, "report", _op.report_key(email_for_reports, scan_date))
     return jsonify({"ok": True, "recorded": True, "open": st})
@@ -20215,7 +20215,7 @@ def _request_analysis_core(token, scan_id, scan_date):
     from dashboard import analysis_quota as _aq
     from dashboard import portal_biofield_reports as _pbr
     scan_date = (scan_date or "").strip()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
@@ -20225,7 +20225,7 @@ def _request_analysis_core(token, scan_id, scan_date):
     if _household_view_enabled() and email_for_reports:
         try:
             from dashboard import household as _hh
-            with sqlite3.connect(LOG_DB) as _cxh:
+            with db.connect(LOG_DB) as _cxh:
                 _hh.init_household_tables(_cxh)
                 _m = (request.args.get("member") or (request.get_json(silent=True) or {}).get("member") or "").strip().lower()
                 if _m and _hh.can_view(_cxh, email_for_reports, _m):
@@ -20234,7 +20234,7 @@ def _request_analysis_core(token, scan_id, scan_date):
             print(f"[request-analysis] household {_e!r}", flush=True)
     if not scan_date or not email_for_reports:
         return {"ok": False, "error": "missing scan_date"}, 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # already processed (published report) or already requested → no quota spent
         _pbr.init_table(cx)
         if scan_date in set(_pbr.list_report_dates(cx, email_for_reports)):
@@ -20282,7 +20282,7 @@ def api_portal_ff_matches(token):
     pre-FF-match behavior; no payload key exists anywhere either)."""
     if not _ff_matches_enabled():
         return ("", 404)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
@@ -20295,7 +20295,7 @@ def api_portal_ff_matches(token):
         if _household_view_enabled() and email:
             try:
                 from dashboard import household as _hh
-                with sqlite3.connect(LOG_DB) as _cxh:
+                with db.connect(LOG_DB) as _cxh:
                     _hh.init_household_tables(_cxh)
                     _m = (request.args.get("member")
                           or (request.get_json(silent=True) or {}).get("member")
@@ -20358,7 +20358,7 @@ def api_portal_ff_add_to_invoice(token):
     volume/adjustments in the composer; this just seeds the queue honestly."""
     if not _ff_matches_enabled():
         return ("", 404)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
@@ -20370,7 +20370,7 @@ def api_portal_ff_add_to_invoice(token):
         if _household_view_enabled() and email:
             try:
                 from dashboard import household as _hh
-                with sqlite3.connect(LOG_DB) as _cxh:
+                with db.connect(LOG_DB) as _cxh:
                     _hh.init_household_tables(_cxh)
                     _m = (request.args.get("member")
                           or (request.get_json(silent=True) or {}).get("member")
@@ -20420,7 +20420,7 @@ def api_console_ff_match_drafts_list():
     ?status= filter (e.g. 'draft' or 'published')."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         ff_match_drafts.init_table(cx)
         drafts = ff_match_drafts.list_by_status(cx, request.args.get("status"))
@@ -20440,7 +20440,7 @@ def api_console_ff_match_drafts_publish():
     scan_date = body.get("scan_date") or ""
     if not email or not scan_date:
         return jsonify({"error": "email and scan_date required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         ff_match_drafts.init_table(cx)
         if "items" in body:
@@ -20501,7 +20501,7 @@ def api_eye_programs():
     """Public, read-only reference: all authored eye condition programs at full
     depth (all modifiers shown), in clinical order. Ungated, like the consumer
     support-program card."""
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         progs = condition_programs.all(cx)
@@ -20515,7 +20515,7 @@ def api_console_condition_programs_list():
     use) + the broad-benefit slug list."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         programs = condition_programs.all(cx)
@@ -20562,7 +20562,7 @@ def api_console_condition_programs_upsert():
     items = body.get("items") or []
     modifiers = body.get("modifiers") or []
     unknown_slugs = _unknown_slugs_in_items(items, modifiers)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         condition_programs.upsert(cx, key, body.get("label") or "",
@@ -20584,7 +20584,7 @@ def api_console_broad_benefit_toggle():
     action = (body.get("action") or "").strip().lower()
     if not slug or action not in ("add", "remove"):
         return jsonify({"error": "slug and action ('add'|'remove') required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_support_programs_tables(cx)
         if action == "add":
@@ -20681,7 +20681,7 @@ def _client_condition_for(email):
         return None
     try:
         from dashboard import client_conditions as _cc
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _cc.init_table(cx)
             override = _cc.get(cx, email)
@@ -20731,7 +20731,7 @@ def _client_facts_for(email):
     Best-effort; any error returns {}."""
     try:
         from dashboard import client_facts as _cf
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             return _cf.get_facts(cx, email)
     except Exception:
@@ -20794,7 +20794,7 @@ def _prl_supplement_for(email, scan_date):
         return None
     try:
         from dashboard import prl_supplement as _prl
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _prl.init_tables(cx)
             email_norm = (email or "").strip().lower()
@@ -20876,7 +20876,7 @@ def _support_program_for(email):
         key = _client_condition_for(email)
         if not key:
             return None
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _init_support_programs_tables(cx)
             prog = condition_programs.get(cx, key)
@@ -20909,7 +20909,7 @@ def _life_stress_for(email):
         import datetime as _dt_ls
         block = life_stress.recommend(email, _dt_ls.date.today().isoformat())
         from dashboard import life_stress_curation
-        with sqlite3.connect(LOG_DB) as _cx_lsc:
+        with db.connect(LOG_DB) as _cx_lsc:
             block = life_stress_curation.apply(_cx_lsc, email, block, _PRODUCTS)
         return block
     except Exception:
@@ -20926,7 +20926,7 @@ def _practitioner_program_card(email):
         return None
     try:
         from dashboard import practitioner_programs as _pgm
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             saved = _pgm.get(cx, email)
             if not saved:
@@ -20966,7 +20966,7 @@ def api_practitioner_condition_program_get(patient_email):
         return jsonify({"ok": False, "error": "not signed in"}), 401
     email = (patient_email or "").strip().lower()
     from dashboard import continuity_view as _cv, practitioner_programs as _pgm
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, email):
@@ -21009,7 +21009,7 @@ def api_practitioner_condition_program_save():
     body = request.get_json(silent=True) or {}
     email = (body.get("patient_email") or "").strip().lower()
     from dashboard import continuity_view as _cv, practitioner_programs as _pgm
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, email):
@@ -21038,7 +21038,7 @@ def api_portal_support_program_add_to_invoice(token):
     choices Rae finalizes in the composer, not auto-added."""
     if not _support_programs_enabled():
         return ("", 404)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
@@ -21050,7 +21050,7 @@ def api_portal_support_program_add_to_invoice(token):
         if _household_view_enabled() and email:
             try:
                 from dashboard import household as _hh
-                with sqlite3.connect(LOG_DB) as _cxh:
+                with db.connect(LOG_DB) as _cxh:
                     _hh.init_household_tables(_cxh)
                     _m = (request.args.get("member")
                           or (request.get_json(silent=True) or {}).get("member")
@@ -21109,7 +21109,7 @@ def api_portal_client_fact(token):
     key = (body.get("key") or "").strip()
     if key not in ALLOWED_CLIENT_FACT_KEYS:
         return jsonify({"ok": False, "error": "unknown fact key"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -21127,7 +21127,7 @@ def api_portal_life_stress_selection(token):
     client's current pool are kept (a client can only prefer what they were offered)."""
     if not _life_stress_enabled():
         return ("", 404)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
@@ -21139,7 +21139,7 @@ def api_portal_life_stress_selection(token):
         if _household_view_enabled() and email:
             try:
                 from dashboard import household as _hh
-                with sqlite3.connect(LOG_DB) as _cxh:
+                with db.connect(LOG_DB) as _cxh:
                     _hh.init_household_tables(_cxh)
                     _m = (request.args.get("member")
                           or (request.get_json(silent=True) or {}).get("member")
@@ -21171,7 +21171,7 @@ def api_practitioner_life_stress_selection(patient_email):
     email = (patient_email or "").strip().lower()
     from dashboard import continuity_view as _cv
     from dashboard import life_stress_curation
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, email):
@@ -21212,7 +21212,7 @@ def api_practitioner_life_stress_curation(patient_email):
     valid = [s for s in submitted if s in prods or life_stress.slug_for_essence(s, _PRODUCTS)]
     from dashboard import continuity_view as _cv
     from dashboard import life_stress_curation
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _continuity_cx(cx)
         if not _cv.authorized_patient(cx, pid, email):
@@ -21252,7 +21252,7 @@ def api_console_client_condition_get():
         return jsonify({"error": "email required"}), 400
     from dashboard import client_conditions as _cc
     tags = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         override = _cc.get(cx, email)
@@ -21287,7 +21287,7 @@ def api_console_client_condition_set():
     if condition_key and condition_key not in _SUPPORT_PROGRAM_CONDITION_KEYS:
         return jsonify({"error": "invalid condition_key"}), 400
     from dashboard import client_conditions as _cc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         if condition_key:
@@ -21326,7 +21326,7 @@ def api_invoice_open(token):
     from dashboard import opens as _op
     if _portal_open_is_owner():
         return jsonify({"ok": True, "recorded": False, "reason": "owner"})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _op.init_opens_table(cx)
         st = _op.record_open(cx, "invoice", _op.invoice_key(token))
     return jsonify({"ok": True, "recorded": True, "open": st})
@@ -21339,7 +21339,7 @@ def api_portal_chat(token):
     data = request.get_json() or {}
     query = (data.get("query") or "").strip()
     history = data.get("history") or []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         from dashboard import client_portal as _cp
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -21348,7 +21348,7 @@ def api_portal_chat(token):
     email = (portal.get("email") or "").strip().lower()
     content = portal.get("content") or {}
     try:
-        with sqlite3.connect(LOG_DB) as ocx:
+        with db.connect(LOG_DB) as ocx:
             ocx.row_factory = sqlite3.Row
             from dashboard import orders as _o
             client_orders = _o.list_orders_by_email(ocx, email)
@@ -21373,7 +21373,7 @@ def api_portal_chat(token):
     community_related = []
     if qvec is not None:
         try:
-            with sqlite3.connect(LOG_DB) as ccx:
+            with db.connect(LOG_DB) as ccx:
                 ccx.row_factory = sqlite3.Row
                 community_related = _community_related(ccx, qvec, _is_paid_member(email), k=2)
         except Exception as e:
@@ -21415,7 +21415,7 @@ def api_portal_chat(token):
         # sessions; Dr. Glen can reply into it from the console).
         try:
             from dashboard import portal_chat as _pchat
-            with _db_lock, sqlite3.connect(LOG_DB) as _pcx:
+            with _db_lock, db.connect(LOG_DB) as _pcx:
                 _pchat.record_exchange(_pcx, email, query, answer,
                                        client_name=(portal.get("name") or "You"))
         except Exception as e:
@@ -21438,11 +21438,11 @@ def api_portal_chat(token):
                     if not _active_membership_for_email(em):
                         return
                     from dashboard import portal_element, member_element_state
-                    with sqlite3.connect(LOG_DB) as _rcx:
+                    with db.connect(LOG_DB) as _rcx:
                         scores = portal_element.analyze(_rcx, em)
                     if not scores:
                         return
-                    with _db_lock, sqlite3.connect(LOG_DB) as _wcx:
+                    with _db_lock, db.connect(LOG_DB) as _wcx:
                         member_element_state.upsert(_wcx, em, scores, source="portal_chat")
                 except Exception as e:
                     print(f"[portal-element] refresh failed: {e!r}", flush=True)
@@ -21490,7 +21490,7 @@ def _notify_client_of_reply(email, name):
     try:
         from dashboard import notify_state as _ns
         from dashboard import client_portal as _cp
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _ns.init_table(cx)
             if _ns.get_state(cx, email).get("opt_status") == "out":
                 return False
@@ -21522,7 +21522,7 @@ def api_console_portal_message(email):
         return jsonify({"error": "empty message"}), 400
     from dashboard import portal_chat as _pchat
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         mid = _pchat.add_message(cx, email, _pchat.PRACTITIONER, content, author=author)
         rec = _cp.get_portal_content_by_email(cx, email) or {}
     notified = False
@@ -21539,13 +21539,13 @@ def api_console_portal_draft_reply(email):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import portal_chat as _pchat, portal_concierge as _pcz, client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         msgs = _pchat.list_messages(cx, email, limit=20)
         rec = _cp.get_portal_content_by_email(cx, email) or {}
     if not msgs:
         return jsonify({"ok": True, "draft": ""})
     try:
-        with sqlite3.connect(LOG_DB) as ocx:
+        with db.connect(LOG_DB) as ocx:
             ocx.row_factory = sqlite3.Row
             from dashboard import orders as _o
             orders = _o.list_orders_by_email(ocx, email)
@@ -21584,7 +21584,7 @@ def _triage_portal_message(email, name, query, answer):
         res = _pt.classify(_complete, query, answer)
         if not res:
             return
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _pt.add_item(cx, email, name, res["category"], res["urgency"],
                          res["summary"], res["recommendation"], query, answer)
         # All flagged items show in the console queue + roll into the daily digest;
@@ -21594,7 +21594,7 @@ def _triage_portal_message(email, name, query, answer):
         subject = f"[Portal triage · {res['urgency']}] {res['category']} — {name or email}"
         try:
             token = None
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 from dashboard import client_portal as _cp
                 token = _cp.ensure_token(cx, email, name or "")
             link = portal_link(token) if token else ""
@@ -21623,7 +21623,7 @@ def api_console_triage():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import portal_triage as _pt
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         return jsonify({"open_count": _pt.open_count(cx), "items": _pt.list_open(cx)})
 
 
@@ -21632,7 +21632,7 @@ def api_console_triage_resolve(item_id):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import portal_triage as _pt
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _pt.resolve(cx, item_id)
     return jsonify({"ok": True})
 
@@ -21641,7 +21641,7 @@ def _send_triage_digest():
     """Email Dr. Glen a digest of all OPEN triage items. Returns the item count
     (0 -> nothing open, no email sent)."""
     from dashboard import portal_triage as _pt
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         items = _pt.list_open(cx, limit=200)
     count, body = _pt.format_digest(items)
     if not count:
@@ -21786,7 +21786,7 @@ def sms_inbound():
     from dashboard import notify_state as _ns
     frm = (request.form.get("From") or request.values.get("From") or "").strip()
     body = (request.form.get("Body") or request.values.get("Body") or "").strip().upper()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         email = _ns.email_by_phone(cx, frm)
         if email:
             if body in ("STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "QUIT"):
@@ -21802,7 +21802,7 @@ def sms_status():
     f = request.form if request.form else request.values
     sid = (f.get("MessageSid") or "").strip()
     if sid:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _sd.record(cx, sid, f.get("To") or "", f.get("MessageStatus") or "",
                        f.get("ErrorCode") or "")
     return ("", 204)
@@ -21814,7 +21814,7 @@ def api_admin_sms_deliveries():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import sms_delivery as _sd
     failed = request.args.get("failed") in ("1", "true", "yes")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = _sd.recent(cx, limit=int(request.args.get("limit", 100)), failed_only=failed)
     return jsonify({"deliveries": rows})
 
@@ -21856,7 +21856,7 @@ def api_client_portal_checkout(token):
     _portal_priced_lines (Task 5b), so member pricing holds; the add-then-
     confirm + QBO invoice + Stripe-URL flow is identical either way."""
     from dashboard import client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
@@ -21875,7 +21875,7 @@ def api_client_portal_checkout(token):
         # (e.g. its own per-row "Reorder" button) is purchasable. Only accepted-rec
         # slugs are added; general entitlement is NOT broadened.
         try:
-            with sqlite3.connect(LOG_DB) as _rcx:
+            with db.connect(LOG_DB) as _rcx:
                 entitled = entitled | _accepted_recommendation_slugs(_rcx, email)
         except Exception:
             pass  # entitlement-union failure must never break checkout
@@ -21886,7 +21886,7 @@ def api_client_portal_checkout(token):
             # member price. Failure must never break checkout.
             try:
                 from dashboard import wishlist as _wl
-                with sqlite3.connect(LOG_DB) as _wcx:
+                with db.connect(LOG_DB) as _wcx:
                     _wl.init_wishlist_table(_wcx)
                     entitled = entitled | _wl.slugs_for(_wcx, "email:" + email)
             except Exception:
@@ -21910,7 +21910,7 @@ def api_client_portal_checkout(token):
         # ("no longer available") or being silently dropped.
         base_items = (portal.get("content") or {}).get("reorder_items") or []
         try:
-            with sqlite3.connect(LOG_DB) as _rcx:
+            with db.connect(LOG_DB) as _rcx:
                 items = _merge_accepted_recommendation_items(_rcx, email, base_items)
         except Exception:
             items = base_items  # merge failure must never break checkout
@@ -21922,7 +21922,7 @@ def api_client_portal_checkout(token):
     try:
         ship = {}
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
             if prior:
@@ -21943,7 +21943,7 @@ def api_client_portal_checkout(token):
                       total_cents=int(subtotal_cents),
                       address=ship, channel="retail")
         try:
-            with _sqlite3.connect(LOG_DB) as _lcx:
+            with db.connect(LOG_DB) as _lcx:
                 _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
         except Exception as _e:
             print(f"[portal-reorder] persist qbo_lines failed: {_e!r}", flush=True)
@@ -21997,19 +21997,19 @@ def api_portal_recommendation_accept(token):
     active recommendation (identity from the portal token, never a body field)."""
     from dashboard import client_portal as _cp
     from dashboard import practitioner_recommendations as _pr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pr.init_table(cx)
         rec = _pr.active_for_patient(cx, email)
     if not rec or rec.get("status") != "sent":
         return jsonify({"error": "No active recommendation to accept."}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _pr.set_status(cx, rec["id"], "accepted")
     return jsonify({"ok": True, "accepted": True})
 
@@ -22020,13 +22020,13 @@ def api_portal_recommendation_dismiss(token):
     to the authenticated patient's OWN recommendation (from the token/session)."""
     from dashboard import client_portal as _cp
     from dashboard import practitioner_recommendations as _pr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     email = (portal.get("email") or "").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pr.init_table(cx)
         rec = _pr.active_for_patient(cx, email)
@@ -22072,13 +22072,13 @@ def api_console_biofield_publish():
     existing_aa = True
     existing_pin = None
     try:
-        with sqlite3.connect(LOG_DB) as _cx_prefs:
+        with db.connect(LOG_DB) as _cx_prefs:
             _cp.init_client_portal_table(_cx_prefs)
             existing_aa = _cp.get_auto_advance(_cx_prefs, email)
             existing_pin = _cp.get_current_scan(_cx_prefs, email)
     except Exception:
         existing_aa, existing_pin = True, None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token, pid = _cp.upsert_portal(cx, email, name, content)
         _cp.set_biofield_status(cx, email, "confirmed")
@@ -22147,7 +22147,7 @@ def api_console_portal_set_current():
     if not email or not scan_date:
         return jsonify({"error": "email and scan_date required"}), 400
     from dashboard import client_portal as _cp, portal_biofield_reports as _pbr
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         if scan_date not in _pbr.list_report_dates(cx, email):
@@ -22164,7 +22164,7 @@ def api_console_portal_backfill_scan_history():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import portal_scan_backfill as _bf
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         result = _bf.backfill(cx)
     return jsonify({"ok": True, **result})
 
@@ -22194,7 +22194,7 @@ def api_console_portal_notify_scan():
     if not _portal_scan_notify_enabled():
         return jsonify({"ok": True, "sent": False, "reason": "flag off"})
     from dashboard import client_portal as _cp, notify_state as _ns, inbox as _inbox
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         if member:
             from dashboard import household as _hh
@@ -22261,7 +22261,7 @@ def api_console_consult_ready():
     if not email:
         return jsonify({"error": "email required"}), 400
     ready = bool(body.get("ready"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _consult.init_consult_tables(cx)
         new_state = _consult.set_consult_ready(cx, email, ready)
@@ -22273,7 +22273,7 @@ def console_intake(email):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import intake as _intake
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         row = _intake.get_response(cx, email)
@@ -22287,7 +22287,7 @@ def console_intake_submissions():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import intake as _intake
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         subs = _intake.list_submitted(cx)
@@ -22306,7 +22306,7 @@ def api_console_intake_on_file():
     if not email:
         return jsonify({"error": "email required"}), 400
     on_file = bool(body.get("on_file"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         if on_file:
@@ -22328,7 +22328,7 @@ def console_intake_import():
         return jsonify({"error": "email required"}), 400
     if not isinstance(answers, dict):
         return jsonify({"error": "answers must be an object"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _intake.import_response(cx, email, answers, _hst_now().isoformat())
@@ -22413,7 +22413,7 @@ def community_page():
 @app.route("/api/community/library")
 def community_library():
     from dashboard import community as _cm
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import evox as _ev
         _ev.init_evox_tables(cx)
@@ -22505,7 +22505,7 @@ def _member_interest_vec(cx, email, liked_topics):
 def community_feed():
     from dashboard import (community as _cm, community_signals as _cs, community_feed as _cf,
                            evox as _ev, client_portal as _cp)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx); _cp.init_client_portal_table(cx)
         _cm.init_community_tables(cx); _cm.init_feed_tables(cx); _cs.init_signal_tables(cx)
@@ -22550,7 +22550,7 @@ def community_react():
     body = request.get_json(force=True) or {}
     reaction = (body.get("reaction") or "").strip()
     content_id = body.get("content_id")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cm.init_community_tables(cx); _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22570,7 +22570,7 @@ def community_react():
 def community_reactions():
     from dashboard import community_signals as _cs
     content_id = request.args.get("content_id", type=int)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22587,7 +22587,7 @@ def community_signal():
     ttype = (body.get("target_type") or "").strip()
     tkey = (body.get("target_key") or "").strip()
     signal = (body.get("signal") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22605,7 +22605,7 @@ def community_signal():
 @app.route("/api/community/signals")
 def community_signals():
     from dashboard import community_signals as _cs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_signal_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22620,7 +22620,7 @@ def community_publish():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import community as _cm
     body = request.get_json(force=True) or {}
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cm.init_community_tables(cx)
         cid = _cm.upsert_full(cx, type=body.get("type", "coaching_replay"),
@@ -22641,7 +22641,7 @@ def community_publish():
 @app.route("/api/community/coaches")
 def community_coaches():
     from dashboard import coach_directory as _cd, coaching as _co, coach_connect as _cc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cd.init_coach_tables(cx); _co.init_coaching_table(cx); _cc.init_connect_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22672,7 +22672,7 @@ def community_coach_request():
     ref = (request.form.get("coach_ref") or (request.get_json(silent=True) or {}).get("coach_ref") or "").strip()
     note = (request.form.get("note") or (request.get_json(silent=True) or {}).get("note") or "").strip()
     # 1) authenticate + resolve the coach BEFORE touching any uploaded file
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx); _cd.init_coach_tables(cx); _co.init_coaching_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22705,7 +22705,7 @@ def community_coach_request():
         _video_path.write_bytes(vf.read())
         member_video_url = f"/portal-asset/{fname}"
     # 3) create the application under the write lock
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx)
         rid = _cc.create_request(cx, coach_email, member_email, first_name, note,
@@ -22724,7 +22724,7 @@ def community_coach_request():
 @app.route("/api/community/coach-waitlist", methods=["POST"])
 def community_coach_waitlist():
     from dashboard import coaching as _co, coach_connect as _cc
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22743,7 +22743,7 @@ def community_coaching_interest():
     tier = (body.get("tier") or "").strip()
     if tier not in ("rae", "glen"):
         return jsonify({"error": "bad_tier"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -22788,7 +22788,7 @@ def community_coach_subscribe():
         return jsonify({"error": "bad_tier"}), 400
     if not _STRIPE_ACTIVE:
         return jsonify({"error": "unavailable"}), 503
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         ident = _evox_ident(cx, request.args.get("token", ""))
         if ident is None:
@@ -22832,7 +22832,7 @@ def _fulfill_coach_sub(session_id):
             return {"ok": False, "reason": "no_card"}
         from datetime import date as _date
         next_charge = _subs.add_months(_date.today().isoformat(), 1)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cx.execute("CREATE TABLE IF NOT EXISTS coach_sub_grants "
                        "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
@@ -22881,7 +22881,7 @@ def portal_family_plan_subscribe(token):
         return jsonify({"error": "unavailable"}), 503
     from dashboard import portal_identity as _pi, family_plan as _fp
     sess_cookie = request.cookies.get("rm_portal_session", "")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
                                      client_login_enabled=_client_login_enabled())
@@ -22923,7 +22923,7 @@ def _fulfill_family_plan(session_id):
             return {"ok": False, "reason": "no_card"}
         from datetime import date as _date
         next_charge = _subs.add_months(_date.today().isoformat(), 1)
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cx.execute("CREATE TABLE IF NOT EXISTS family_sub_grants "
                        "(session_id TEXT PRIMARY KEY, email TEXT, created_at TEXT)")
@@ -22966,7 +22966,7 @@ def portal_family_plan_cancel(token):
     no refund, no proration (the current paid cycle simply is not renewed)."""
     from dashboard import portal_identity as _pi, family_plan as _fp
     sess_cookie = request.cookies.get("rm_portal_session", "")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _fp.init_family_plan_table(cx)
         ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
@@ -22980,7 +22980,7 @@ def portal_family_plan_cancel(token):
 @app.route("/api/community/coach-subscribe/cancel", methods=["POST"])
 def community_coach_subscribe_cancel():
     from dashboard import coach_subscriptions as _cs
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_sub_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23006,7 +23006,7 @@ def coach_subscriptions_charge_cron():
     from datetime import date as _date
     today = _date.today().isoformat()
     charged = failed = 0
-    with sqlite3.connect(LOG_DB) as rcx:
+    with db.connect(LOG_DB) as rcx:
         rcx.row_factory = sqlite3.Row
         _cs.init_sub_tables(rcx)
         due_rows = _cs.due(rcx, today)
@@ -23027,7 +23027,7 @@ def coach_subscriptions_charge_cron():
             app.logger.exception("coach sub charge raised for %s", email)
             ok = False
             pi_id = ""
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _cs.init_sub_tables(cx)
             _cs.record_charge(cx, email=email, tier=tier, amount_cents=sub["amount_cents"],
@@ -23064,7 +23064,7 @@ def household_holds_sweep_cron():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import household_holds as _holds
     released = combined = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _holds.init_hold_tables(cx)
         for g in _holds.due_holds(cx):
@@ -23098,7 +23098,7 @@ def api_cron_qbo_heal_pending():
     # concurrent-rebook / double-book window on a single web instance. See qbo_heal's
     # module docstring for why the CAS clear alone does not make that safe.
     with _db_lock:
-        cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+        cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
         try:
             healed = _heal.heal_pending_receipts(
                 cx,
@@ -23127,7 +23127,7 @@ def family_plan_charge_cron():
     today = _date.today().isoformat()
     retry_at = (_date.today() + _timedelta(days=2)).isoformat()  # dunning: next attempt 2 days out
     charged = failed = cancelled = 0
-    with sqlite3.connect(LOG_DB) as rcx:
+    with db.connect(LOG_DB) as rcx:
         rcx.row_factory = sqlite3.Row
         _fp.init_family_plan_table(rcx)
         due_rows = _fp.due(rcx, today)
@@ -23144,7 +23144,7 @@ def family_plan_charge_cron():
             app.logger.exception("family plan charge raised for %s", email)
             ok = False
             pi_id = ""
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _fp.init_family_plan_table(cx)
             _fp.record_charge(cx, caregiver_email=email, amount_cents=sub["amount_cents"],
@@ -23194,7 +23194,7 @@ def practitioner_coach_requests():
     if not email:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_connect as _cc, coach_directory as _cd
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
         vol = _cd.get_volunteer(cx, email)
@@ -23216,7 +23216,7 @@ def practitioner_coach_request_respond():
     body = request.get_json(force=True) or {}
     rid = body.get("request_id")
     accept = bool(body.get("accept"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_connect_tables(cx); _cd.init_coach_tables(cx)
         if _cc.request_owner(cx, rid) != email:
@@ -23291,7 +23291,7 @@ def _member_thread_ctx(cx, token):
 @app.route("/api/coach-thread/member")
 def coach_thread_member_get():
     from dashboard import coach_threads as _ct, coach_directory as _cd
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx); _cd.init_coach_tables(cx)
         email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
@@ -23311,7 +23311,7 @@ def coach_thread_member_get():
 def coach_thread_member_message():
     from dashboard import coach_threads as _ct
     body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
@@ -23331,7 +23331,7 @@ def coach_thread_member_message():
 @app.route("/api/coach-thread/member/block", methods=["POST"])
 def coach_thread_member_block():
     from dashboard import coach_threads as _ct, coach_connect as _cc
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
         email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
@@ -23349,7 +23349,7 @@ def coach_thread_member_block():
 def coach_thread_member_report():
     from dashboard import coach_threads as _ct
     reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         email, pair = _member_thread_ctx(cx, request.args.get("token", ""))
@@ -23374,7 +23374,7 @@ def coach_thread_coach_list():
     if not email:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct, coach_connect as _cc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
         out = []
@@ -23398,7 +23398,7 @@ def coach_thread_coach_get(thread_id):
     if not email:
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         t = _coach_owns(cx, thread_id, email)
@@ -23419,7 +23419,7 @@ def coach_thread_coach_message(thread_id):
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
     body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         t = _coach_owns(cx, thread_id, email)
@@ -23442,7 +23442,7 @@ def coach_thread_coach_report(thread_id):
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
     reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         t = _coach_owns(cx, thread_id, email)
@@ -23461,7 +23461,7 @@ def console_coach_threads():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         return jsonify({"threads": _ct.list_all_threads(cx)})
@@ -23473,7 +23473,7 @@ def console_coach_thread_transcript(thread_id):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         t = _ct.get_thread(cx, thread_id)
@@ -23493,7 +23493,7 @@ def console_coach_thread_unmatch(thread_id):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct, coach_connect as _cc
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx); _cc.init_connect_tables(cx)
         t = _ct.get_thread(cx, thread_id)
@@ -23532,7 +23532,7 @@ def console_coach_thread_resolve_report(thread_id):
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import coach_threads as _ct
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         t = _ct.get_thread(cx, thread_id)
@@ -23561,7 +23561,7 @@ def _peer_ident_paid(cx, token):
 @app.route("/api/peer/state")
 def peer_state():
     from dashboard import peer_connect as _pc
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
         email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
@@ -23581,7 +23581,7 @@ def peer_state():
 def peer_optin():
     from dashboard import peer_connect as _pc
     active = bool((request.get_json(silent=True) or {}).get("active"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
         email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
@@ -23633,7 +23633,7 @@ def _peer_blended_candidate(cx, me, pool):
 @app.route("/api/peer/proposal")
 def peer_proposal():
     from dashboard import peer_connect as _pc, community as _cm
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
         _cm.init_community_tables(cx); _cm.init_feed_tables(cx)   # member_interest cache
@@ -23663,7 +23663,7 @@ def peer_interest():
         kind = None
     matched = False
     both = ()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx); _ct.init_thread_tables(cx)
         email, eligible = _peer_ident_paid(cx, request.args.get("token", ""))
@@ -23701,7 +23701,7 @@ def peer_interest():
 @app.route("/api/peer/connections")
 def peer_connections():
     from dashboard import peer_connect as _pc
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _pc.init_peer_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23734,7 +23734,7 @@ def _peer_thread_role(cx, thread_id, email):
 @app.route("/api/peer-thread/<int:thread_id>")
 def peer_thread_get(thread_id):
     from dashboard import coach_threads as _ct
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23756,7 +23756,7 @@ def peer_thread_get(thread_id):
 def peer_thread_message(thread_id):
     from dashboard import coach_threads as _ct
     body = ((request.get_json(silent=True) or {}).get("body") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23778,7 +23778,7 @@ def peer_thread_message(thread_id):
 @app.route("/api/peer-thread/<int:thread_id>/block", methods=["POST"])
 def peer_thread_block(thread_id):
     from dashboard import coach_threads as _ct, peer_connect as _pc
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx); _pc.init_peer_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23798,7 +23798,7 @@ def peer_thread_block(thread_id):
 def peer_thread_report(thread_id):
     from dashboard import coach_threads as _ct
     reason = ((request.get_json(silent=True) or {}).get("reason") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ct.init_thread_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23816,7 +23816,7 @@ def peer_thread_report(thread_id):
 @app.route("/api/onboarding/state")
 def onboarding_state():
     from dashboard import onboarding as _ob
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import evox as _ev
         _ev.init_evox_tables(cx)
@@ -23832,7 +23832,7 @@ def onboarding_state():
 def onboarding_availability():
     from dashboard import evox as _ev, onboarding as _ob
     _init_calendar_table()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23857,7 +23857,7 @@ def onboarding_book():
     body = request.get_json(force=True) or {}
     start_ts = (body.get("start_ts") or "").strip()
     _init_calendar_table()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23891,7 +23891,7 @@ def onboarding_book():
 @app.route("/api/intake/form")
 def intake_form():
     from dashboard import intake as _intake
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         if _evox_ident(cx, request.args.get("token", "")) is None:
             return jsonify({"error": "not_found"}), 404
@@ -23901,7 +23901,7 @@ def intake_form():
 @app.route("/api/intake/state")
 def intake_state():
     from dashboard import intake as _intake
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23918,7 +23918,7 @@ def intake_state():
 @app.route("/api/intake/save-draft", methods=["POST"])
 def intake_save_draft():
     from dashboard import intake as _intake
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23934,7 +23934,7 @@ def intake_save_draft():
 @app.route("/api/intake/submit", methods=["POST"])
 def intake_submit():
     from dashboard import intake as _intake
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -23979,7 +23979,7 @@ def intake_public_start():
         return jsonify({"error": "tos_required"}), 400
     _init_people_table()
     now = _hst_now()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24008,7 +24008,7 @@ def intake_public_form():
     from dashboard import intake as _intake, intake_public as _ip
     now = _hst_now()
     answers, submitted = {}, False
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24024,7 +24024,7 @@ def intake_public_form():
 def intake_public_save_draft():
     from dashboard import intake as _intake, intake_public as _ip
     now = _hst_now()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24040,7 +24040,7 @@ def intake_public_save_draft():
 def intake_public_submit():
     from dashboard import intake as _intake, intake_public as _ip
     now = _hst_now()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24061,7 +24061,7 @@ def intake_public_submit():
 def intake_public_chat():
     from dashboard import intake as _intake, intake_public as _ip, intake_chat as _ic
     now = _hst_now()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24089,7 +24089,7 @@ def intake_public_chat():
         return jsonify({"error": "chat_unavailable"}), 503
     say, updates, done = _ic.parse_reply(text)
     merged = _ip.merge_answers(answers, updates)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         _ip.init_intake_sessions_table(cx)
@@ -24100,7 +24100,7 @@ def intake_public_chat():
 @app.route("/api/consult/state")
 def consult_state():
     from dashboard import consult as _consult
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _consult.init_consult_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -24122,7 +24122,7 @@ def consult_state():
 def consult_availability():
     from dashboard import evox as _ev, consult as _consult
     _init_calendar_table()  # rae_busy_intervals reads calendar_events
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx); _consult.init_consult_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -24149,7 +24149,7 @@ def consult_book():
     body = request.get_json(force=True) or {}
     start_ts = (body.get("start_ts") or "").strip()
     _init_calendar_table()  # create_booking inserts a calendar_events row
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx); _consult.init_consult_tables(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -24180,7 +24180,7 @@ def consult_book():
     # --- lock released ---
     try:
         from dashboard import client_portal as _cp
-        with sqlite3.connect(LOG_DB) as cx2:
+        with db.connect(LOG_DB) as cx2:
             token = _cp.ensure_token(cx2, email, "") if hasattr(_cp, "ensure_token") else None
         b["portal_url"] = portal_link(token) if token else f"{portal_base()}/portal/login"
     except Exception:
@@ -24192,7 +24192,7 @@ def consult_book():
 @app.route("/api/consult/join")
 def consult_join():
     from dashboard import consult as _consult
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import evox as _ev
         _ev.init_evox_tables(cx)
@@ -24261,7 +24261,7 @@ def triage_page(token):
 
 @app.route("/api/triage/state")
 def triage_state():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         from dashboard import triage as _triage; _triage.init_triage_tables(cx)
         inv = _triage_ident(cx, request.args.get("token", ""))
@@ -24276,7 +24276,7 @@ def triage_state():
 @app.route("/api/triage/availability")
 def triage_availability():
     from dashboard import evox as _ev, triage as _triage
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
         inv = _triage_ident(cx, request.args.get("token", ""))
@@ -24299,7 +24299,7 @@ def triage_book():
     body = request.get_json(force=True) or {}
     start_ts = (body.get("start_ts") or "").strip()
     token = request.args.get("token", "")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _ev.init_evox_tables(cx); _triage.init_triage_tables(cx); _init_calendar_table()
         inv = _triage_ident(cx, token)
@@ -24331,7 +24331,7 @@ def triage_book():
 @app.route("/api/triage/join")
 def triage_join():
     from dashboard import triage as _triage, consult as _consult
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _triage.init_triage_tables(cx)
         inv = _triage_ident(cx, request.args.get("token", ""))
@@ -24357,7 +24357,7 @@ def api_console_biofield_load():
     from dashboard import portal_biofield_reports as _pbr
     from dashboard import household as _hh
     req_date = (request.args.get("scan_date") or "").strip()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         _hh.init_household_tables(cx)
@@ -24395,7 +24395,7 @@ def api_console_portal_links():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_portal as _cp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portals = _cp.list_portals(cx)
     return jsonify({"ok": True, "portals": portals})
@@ -24420,7 +24420,7 @@ def api_console_client_photo():
     if not blob:
         return jsonify({"ok": False, "error": "empty image"}), 400
     from dashboard import client_photos as _cph
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cph.put(cx, email, blob, (body.get("content_type") or "image/jpeg"),
                  source=(body.get("source") or "console"),
                  force=bool(body.get("force", True)))
@@ -24435,7 +24435,7 @@ def serve_client_photo(email):
     if not (_portal_console_ok() or _portal_open_is_owner()):
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import client_photos as _cph
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rec = _cph.get(cx, email)
     if not rec:
         return Response("", status=404)
@@ -24455,7 +24455,7 @@ def api_console_portal_link():
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         link, reissued = _cp.portal_link_for(cx, email, portal_base())
     if not link:
@@ -24475,7 +24475,7 @@ def api_console_portal_link_resend():
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         link, reissued = _cp.portal_link_for(cx, email, portal_base())
         row = cx.execute("SELECT name FROM client_portals WHERE email=?", (email,)).fetchone()
@@ -24502,7 +24502,7 @@ def api_console_affiliate_backfill():
     from dashboard import affiliate_dashboard as _ad
     if not _ad.autoenroll_enabled():
         return jsonify({"error": "AFFILIATE_AUTOENROLL_ENABLED is off"}), 409
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         n = _ad.backfill_affiliates_from_people(cx)
         cx.commit()
     return jsonify({"ok": True, "created": n})
@@ -24524,7 +24524,7 @@ def api_console_portal_backfill_findings():
     if not email or not isinstance(findings, list):
         return jsonify({"ok": False, "error": "email and findings[] required"}), 400
     from dashboard import client_portal as _cp, portal_biofield_reports as _pbr
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         rec = _cp.get_portal_content_by_email(cx, email)
@@ -24563,7 +24563,7 @@ def api_console_portal_backfill():
     except (TypeError, ValueError):
         limit = None
     from dashboard import portal_backfill as _pb, client_portal as _cp, biofield_reveals as _br
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _br.init_table(cx)
         res = _pb.backfill_portals(cx, commit=commit, limit=limit)
@@ -24588,7 +24588,7 @@ def api_console_family_plan():
         email = (request.args.get("email") or "").strip().lower()
         if not email:
             return jsonify({"error": "email required"}), 400
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _fp.init_family_plan_table(cx)
             _hh.init_household_tables(cx)
@@ -24612,7 +24612,7 @@ def api_console_family_plan():
     if amount_cents is not None and amount_cents < 0:
         return jsonify({"error": "amount_cents must be non-negative"}), 400
     with _db_lock:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _fp.init_family_plan_table(cx)
             _fp.activate(cx, email, next_charge_at=next_charge_at, source=source,
@@ -24633,7 +24633,7 @@ def api_console_family_plan_cancel():
     if not email:
         return jsonify({"error": "email required"}), 400
     with _db_lock:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _fp.init_family_plan_table(cx)
             _fp.set_status(cx, email, "cancelled")
     return jsonify({"ok": True, "email": email, "status": "cancelled"})
@@ -24647,14 +24647,14 @@ def api_console_household():
     from dashboard import portal_biofield_reports as _pbr
     if request.method == "GET":
         primary = (request.args.get("primary_email") or "").strip().lower()
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _hh.init_household_tables(cx); _pbr.init_table(cx)
             members = _hh.members_for(cx, primary)
             for m in members:
                 m["scan_dates"] = _pbr.list_report_dates(cx, m["email"])
         return jsonify({"ok": True, "members": members})
     data = request.get_json(silent=True) or {}
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _hh.init_household_tables(cx)
         if request.method == "POST":
             _hh.add_member(cx, data.get("primary_email"), data.get("member_email"),
@@ -24677,7 +24677,7 @@ def api_console_household_reassign():
     from dashboard import household as _hh
     from dashboard import portal_biofield_reports as _pbr
     data = request.get_json(silent=True) or {}
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _hh.init_household_tables(cx); _pbr.init_table(cx)
         res = _hh.reassign_report(cx, data.get("scan_date"), data.get("from_email"),
                                   data.get("to_email"), by="console")
@@ -24699,7 +24699,7 @@ def api_console_household_holds():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import household_holds as _hhh
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _hhh.init_hold_tables(cx)
         holds = _hhh.list_open_holds(cx)
@@ -24726,7 +24726,7 @@ def api_console_biofield_review_queue():
     from dashboard import client_portal as _cp
     from dashboard import portal_biofield_reports as _pbr
     queue = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
@@ -24767,7 +24767,7 @@ def api_console_biofield_corrections():
         return jsonify({"error": "unauthorized"}), 401
     since = (request.args.get("since") or "").strip()
     out = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _init_biofield_corrections(cx)
         q = "SELECT email, scan_date, content_json, created_at FROM biofield_corrections"
@@ -24823,7 +24823,7 @@ def api_client_portal_view(token):
     from dashboard import portal_identity as _pi
     from dashboard import portal_view as _pv
     sess = request.cookies.get("rm_portal_session", "")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         ident = _pi.resolve_identity(
             cx, token=token, session_token=sess,
@@ -24850,7 +24850,7 @@ def _biofield_transition(token, new_status, tag):
     sess = request.cookies.get("rm_portal_session", "")
     body = request.get_json(silent=True) or {}
     req_date = (body.get("scan_date") or request.args.get("scan_date") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
         _pbr.init_table(cx)
@@ -24914,7 +24914,7 @@ def api_portal_social_links(token):
     from dashboard import affiliate_dashboard as _ad
     sess = request.cookies.get("rm_portal_session", "")
     urls = (request.get_json(silent=True) or {}).get("urls") or []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
         ident = _pi.resolve_identity(cx, token=token, session_token=sess,
@@ -24950,7 +24950,7 @@ def client_login_request():
     from dashboard import portal_identity as _pi
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if "@" in email:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             row = cx.execute("SELECT id, name FROM people WHERE email=?", (email,)).fetchone()
             if row:
                 magic = _pi.create_client_magic_link(cx, row[0], email)
@@ -24977,7 +24977,7 @@ def client_login_verify():
     from dashboard import portal_identity as _pi
     token = (request.args.get("token") or request.form.get("token") or "").strip()
     if request.method == "GET":
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             live = _pi.validate_client_magic_link(cx, token) if token else None
         if not live:
             return _redir("/portal/login?error=link")
@@ -24986,7 +24986,7 @@ def client_login_verify():
             heading="Welcome back",
             blurb="Continue to open your healing home.",
             button="Continue", hidden={"token": token})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         pid = _pi.consume_client_magic_link(cx, token) if token else None
         if not pid:
             return _redir("/portal/login?error=link")
@@ -25020,7 +25020,7 @@ def portal_group_join_checkout():
     referral_code = (body.get("referral_code") or "").strip()[:32]
     sess_cookie = request.cookies.get("rm_portal_session", "")
     from dashboard import portal_identity as _pi
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
                                      client_login_enabled=_client_login_enabled())
     if ident is None:
@@ -25050,7 +25050,7 @@ def portal_continuous_care_checkout():
     sess_cookie = request.cookies.get("rm_portal_session", "")
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pi._ensure_people_table(cx)
         ident = _pi.resolve_identity(cx, token=token, session_token=sess_cookie,
@@ -25079,7 +25079,7 @@ def portal_group_join_return():
             email = ((sess.get("metadata") or {}).get("email") or "").strip().lower()
             si = stripe_pay.get_setup_intent(sess.get("setup_intent"))
             cus, pm = si.get("customer"), si.get("payment_method")
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 _subs.init_subscriptions_table(cx)
                 _subs.migrate_add_membership_columns(cx)
@@ -25118,7 +25118,7 @@ def admin_client_portal_upsert():
     from dashboard import client_portal as _cp
     from dashboard import portal_biofield_reports as _pbr
     scan_date = (body.get("scan_date") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         # Never un-publish: a re-hand-off pushes biofield_status='ai_draft', but if this
@@ -25150,7 +25150,7 @@ def admin_client_portal_upsert():
     # a new scan landed on their persistent portal and they should hear about it.
     updated = token is None
     if token is None:
-        with _db_lock, sqlite3.connect(LOG_DB) as _tcx:
+        with _db_lock, db.connect(LOG_DB) as _tcx:
             token = _cp.ensure_token(_tcx, email, name)
     url = portal_link(token)
     emailed = False
@@ -25204,7 +25204,7 @@ def portal_claim():
         return redirect("/")
     from dashboard import client_portal as _cp
     from dashboard import notify_state as _ns
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _ns.init_table(cx)
         token = _cp.ensure_token(cx, email)
@@ -25273,7 +25273,7 @@ def healing_oasis_request():
     from dashboard import notify_state as _ns
     _init_people_table()
     link = None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ns.init_table(cx)
@@ -25314,7 +25314,7 @@ def admin_portal_get_or_create_link():
         return jsonify({"error": "email required"}), 400
     from dashboard import client_portal as _cp
     from dashboard import notify_state as _ns
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _ns.init_table(cx)
         token = _cp.ensure_token(cx, email, name)
@@ -25350,7 +25350,7 @@ def admin_portal_rollout_enroll():
     else:
         from dashboard import client_portal as _cp
         from dashboard import notify_state as _ns
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _cp.init_client_portal_table(cx)
             _ns.init_table(cx)
             token = _cp.ensure_token(cx, email, name)
@@ -25385,7 +25385,7 @@ def admin_client_portal_delete():
     from dashboard import portal_biofield_reports as _pbr
     from dashboard import notify_state as _ns
     from dashboard import process_queue as _pq
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _pbr.init_table(cx)
         _init_biofield_corrections(cx)
@@ -25413,7 +25413,7 @@ def admin_portal_reissue_link():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_portal as _cp
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         token = _cp.reissue_token(cx, email)
         rec = _cp.get_portal_content_by_email(cx, email)
@@ -25443,7 +25443,7 @@ def api_admin_notify_state():
     email = (body.get("email") or "").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         if body.get("phone"):
             _ns.set_phone(cx, email, body["phone"])
@@ -25462,7 +25462,7 @@ def api_admin_notify_sent():
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ns.incr_notify(cx, email)
     return jsonify({"ok": True})
 
@@ -25471,7 +25471,7 @@ def api_admin_notify_sent():
 def api_portal_process_request(token):
     from dashboard import client_portal as _cp, process_queue as _pq
     scan_date = ((request.get_json(silent=True) or {}).get("scan_date") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         portal = _cp.get_portal_by_token(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
@@ -25484,7 +25484,7 @@ def api_admin_process_requests():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import process_queue as _pq
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         pending = _pq.list_pending(cx)
     return jsonify({"pending": pending})
 
@@ -25497,7 +25497,7 @@ def api_admin_process_request_done():
     email = ((request.get_json(silent=True) or {}).get("email") or "").strip().lower()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _pq.mark_done(cx, email)
     return jsonify({"ok": True})
 
@@ -25541,7 +25541,7 @@ def cert_login():
     if email and "@" in email:
         token = secrets.token_urlsafe(32)
         now = _now_utc()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                 "VALUES (?,?,?,?,?)",
@@ -25620,7 +25620,7 @@ def api_cert_submit():
     except Exception:
         pid = ""
     sid = uuid.uuid4().hex
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         _cs.create(
@@ -25680,7 +25680,7 @@ def api_cert_mine():
     if not email:
         return jsonify({"ok": False, "error": "not signed in"}), 401
     from dashboard import cert_submissions as _cs, cert_rules as _cr
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         subs = _cs.list_for_email(cx, email)
@@ -25745,7 +25745,7 @@ def api_cert_review_list():
     from dashboard import cert_submissions as _cs, cert_rules as _cr
     status = (request.args.get("status") or "").strip() or None
     email = (request.args.get("email") or "").strip() or None
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         if email:
@@ -25775,7 +25775,7 @@ def api_cert_review_approve():
                 if str(m).strip().isdigit()]
     note = (body.get("note") or "").strip() or None
     from dashboard import cert_submissions as _cs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         sub = _cs.get(cx, sid)
@@ -25802,7 +25802,7 @@ def api_cert_review_return():
     sid = (body.get("id") or "").strip()
     note = (body.get("note") or "").strip() or "Please revise and resubmit."
     from dashboard import cert_submissions as _cs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         if not _cs.get(cx, sid):
@@ -25819,7 +25819,7 @@ def api_cert_review_publish():
     sid = (body.get("id") or "").strip()
     from dashboard import cert_submissions as _cs
     from dashboard import practitioner_portal as _pp
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cs.init_tables(cx)
         sub = _cs.get(cx, sid)
@@ -25876,7 +25876,7 @@ def _has_paid_biofield(email):
         return False
     try:
         from dashboard import biofield_store as _bf
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _bf.init_table(cx)
             row = cx.execute(
@@ -25893,7 +25893,7 @@ def _biofield_has_intake(email):
     if not email:
         return False
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT 1 FROM inbound_leads "
                 "WHERE email=? AND source IN ('scoreapp','practice-better','concierge') "
@@ -25909,7 +25909,7 @@ def _biofield_has_fresh_scan(email):
     try:
         from dashboard import scan_freshness as _sf
         import datetime as _dt
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _sf.init_table(cx)
             return _sf.is_fresh(cx, email, today=_dt.date.today().isoformat(),
@@ -25931,7 +25931,7 @@ def api_e4l_scan_freshness():
         return jsonify({"error": "unauthorized"}), 401
     rows = ((request.get_json(silent=True) or {}).get("rows") or [])[:5000]
     from dashboard import scan_freshness as _sf
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _sf.init_table(cx)
         _sf.upsert(cx, rows)
     for _r in rows:
@@ -25967,7 +25967,7 @@ def api_e4l_reveal_draft():
         return jsonify({"error": "email, scan_date, and interpretation or remedies required"}), 400
     from dashboard import biofield_reveals as _br, biofield_meanings as _bm
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _br.init_table(cx)
             _bm.init_table(cx)
             # Guardrail + canonical override.
@@ -26025,7 +26025,7 @@ def api_e4l_reveal_draft():
                 # Suppression guard: don't email the reveal-ready link to a suppressed
                 # (hard-bounced/test) address — the draft row stays, just no email.
                 from dashboard import email_suppression as _es
-                with sqlite3.connect(LOG_DB) as _scx:
+                with db.connect(LOG_DB) as _scx:
                     _es.init_table(_scx)
                     _suppressed = _es.is_suppressed(_scx, email)
                 if _suppressed:
@@ -26036,7 +26036,7 @@ def api_e4l_reveal_draft():
                     url = f"{PUBLIC_BASE_URL}/begin/biofield/{token}"
                     body = _reveal_email_body(url, portal_url)
                     if _send_inquiry_email(email, "Your Biofield Analysis is ready", body):
-                        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                        with _db_lock, db.connect(LOG_DB) as cx:
                             _br.set_notified(cx, rid)
             except Exception as e:
                 print(f"[reveal-draft] notify failed: {e!r}", flush=True)
@@ -26062,7 +26062,7 @@ def api_e4l_scan_analysis():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import scan_analysis as _sa
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _sa.init_table(cx)
         _sa.upsert(cx, email, art)
     return jsonify({"ok": True, "email": email})
@@ -26090,7 +26090,7 @@ def member_scan_analysis_page():
     analysis = None
     if email:
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _sa.init_table(cx)
                 got = _sa.get(cx, email)
             analysis = got.get("analysis") if got else None
@@ -26139,7 +26139,7 @@ def member_scan_analysis_chat():
     analysis = None
     if email:
         try:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _sa.init_table(cx)
                 got = _sa.get(cx, email)
             analysis = got.get("analysis") if got else None
@@ -26198,7 +26198,7 @@ def biofield_request():
     if email and "@" in email:
         claimed = False
         if ANALYSIS_QUOTA_ENABLED and not _is_paid_member(email):
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _analysis_quota.init_analysis_quota_table(cx)
                 if not _analysis_quota.try_claim(cx, email):
                     return jsonify({"ok": False, "reason": "monthly_quota"}), 200
@@ -26209,7 +26209,7 @@ def biofield_request():
         try:
             token = secrets.token_urlsafe(32)
             now = _now_utc()
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                     "VALUES (?,?,?,?,?)",
@@ -26221,7 +26221,7 @@ def biofield_request():
         except Exception as e:
             print(f"[biofield] magic link send failed: {e!r}", flush=True)
             if claimed:
-                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                with _db_lock, db.connect(LOG_DB) as cx:
                     _analysis_quota.release(cx, email)
     return jsonify({"ok": True})
 
@@ -26263,7 +26263,7 @@ def api_biofield_ready():
     if not email:
         return jsonify({"error": "not signed in"}), 401
     from dashboard import biofield_store as _bf, biofield_gate as _gate
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
         st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake,
@@ -26300,7 +26300,7 @@ def api_biofield_photo():
     path = photo_dir / f"{digest}.{ext}"
     path.write_bytes(blob)
     from dashboard import biofield_store as _bf
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _bf.init_table(cx)
         _bf.set_photo_on_file(cx, email, str(path))
     return jsonify({"ok": True})
@@ -26319,7 +26319,7 @@ def admin_biofield_photo():
     email = (request.args.get("email") or "").strip()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
         row = _bf.get(cx, email)
@@ -26350,7 +26350,7 @@ def admin_biofield_photo_delete():
     if not email:
         return jsonify({"error": "email required"}), 400
     deleted_file = False
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
         row = _bf.get(cx, email)
@@ -26378,7 +26378,7 @@ def api_biofield_confirm():
     data = request.get_json(silent=True) or {}
     item = (data.get("item") or "").strip().lower()
     from dashboard import biofield_store as _bf, biofield_gate as _gate
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
         if item == "scan":
@@ -26409,7 +26409,7 @@ def api_biofield_book():
         return jsonify({"error": "not signed in"}), 401
     from dashboard import biofield_store as _bf, biofield_gate as _gate
     _init_todos_table()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _bf.init_table(cx)
         st = _gate.gate_state(cx, email, has_intake=_biofield_has_intake,
@@ -26458,7 +26458,7 @@ def api_cert_commitment():
     email = (body.get("email") or "").strip()
     if not email:
         return jsonify({"error": "email required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         cert_bonus.init_tables(cx)
         if body.get("clear"):
@@ -26713,7 +26713,7 @@ def api_console_care_share_reverse():
     sub_id = body.get("sub_id")
     order_count = body.get("order_count")
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         sub = _subs.get(cx, sub_id)
     if not sub or not sub.get("attributed_practitioner_id"):
@@ -26739,7 +26739,7 @@ def _run_biofield_bonuses(dry_run=False):
     today = _date.today().isoformat()
 
     granted_total = 0
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         cert_bonus.init_tables(cx)
         for c in cert_bonus.list_active(cx):
@@ -26848,7 +26848,7 @@ def api_reorder_items():
         return jsonify({"ok": False, "need_optin": True,
                         "error": "Please agree to our Terms to continue your order."}), 403
     scope = (request.args.get("scope") or "last").strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         orders = _bos_orders.list_orders_by_email(cx, email)
     src = orders[:1] if scope == "last" else orders
@@ -26873,7 +26873,7 @@ def api_reorder_items():
     # Annotate each item with whether the buyer has already reviewed it.
     # Open a dedicated short connection — the orders cx is already closed.
     from dashboard import product_reviews as _pr
-    with sqlite3.connect(LOG_DB) as rcx:
+    with db.connect(LOG_DB) as rcx:
         for it in items:
             s = it.get("slug")
             if not _REVIEWS_ENABLED:
@@ -26891,7 +26891,7 @@ def api_points_balance():
     if not email:
         return jsonify({"error": "not signed in"}), 401
     from dashboard import points as _points
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _points.init_points_table(cx)
         bal = _points.balance(cx, email)
     return jsonify({"balance_cents": bal, "balance_dollars": f"{bal/100:.2f}"})
@@ -26903,7 +26903,7 @@ def _resolve_ship_address(email, body_address):
     ship = body_address or {}
     if not ship:
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 prior = _bos_orders.list_orders_by_email(cx, email, limit=1)
             if prior:
@@ -26912,7 +26912,7 @@ def _resolve_ship_address(email, body_address):
             ship = {}
     if not ship and email:
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 cx.row_factory = sqlite3.Row
                 prow = cx.execute("SELECT id FROM people WHERE lower(email)=?",
                                   ((email or "").strip().lower(),)).fetchone()
@@ -26940,7 +26940,7 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
     requested_redeem = int(points_to_redeem_cents or 0)
     if requested_redeem > 0:
         from dashboard import points as _pts_co
-        with sqlite3.connect(LOG_DB) as _cx_pts:
+        with db.connect(LOG_DB) as _cx_pts:
             _pts_co.init_points_table(_cx_pts)
             _bal = _pts_co.balance(_cx_pts, email)
         requested_redeem = min(requested_redeem, _bal)
@@ -26976,7 +26976,7 @@ def _checkout_cart(email, cart, *, ship, points_to_redeem_cents=0, referral_code
                   shipping_cents=pc["shipping_cents"],
                   ship_credit_applied_cents=_sc_apply)
     try:
-        with _sqlite3.connect(LOG_DB) as _lcx:
+        with db.connect(LOG_DB) as _lcx:
             _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
     except Exception as _e:
         print(f"[reorder] persist qbo_lines failed: {_e!r}", flush=True)
@@ -27048,7 +27048,7 @@ def begin_founding_reserve():
     body = request.get_json(silent=True) or {}
     slug = (body.get("slug") or "").strip()
     from dashboard import founding as _founding
-    with sqlite3.connect(LOG_DB) as _ocx:
+    with db.connect(LOG_DB) as _ocx:
         _ocx.row_factory = sqlite3.Row
         if not _founding.is_open(_ocx, slug, now_iso=_now_utc().strftime("%Y-%m-%d")):
             return jsonify({"error": "founding_closed"}), 409
@@ -27061,7 +27061,7 @@ def begin_founding_reserve():
         metadata["ship"] = ship_json
     else:
         stash_key = uuid.uuid4().hex
-        with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+        with _db_lock, db.connect(LOG_DB) as _cx:
             _cx.execute("CREATE TABLE IF NOT EXISTS pending_subscriptions "
                         "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
             _cx.execute("INSERT INTO pending_subscriptions (key, items_json, ship_json, created_at) "
@@ -27084,7 +27084,7 @@ def begin_founding_status(slug):
     if not launch:
         return jsonify({"error": "no_founding_launch"}), 404
     today = _now_utc().strftime("%Y-%m-%d")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         return jsonify({
             "open": _founding.is_open(cx, slug, now_iso=today),
@@ -27172,7 +27172,7 @@ def api_founding_ship():
     slug = (request.get_json(silent=True) or {}).get("slug", "")
     from dashboard import subscriptions as _subs
     out = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _subs.init_subscriptions_table(cx)
         _subs.migrate_add_founding_columns(cx)
@@ -27269,7 +27269,7 @@ def reorder_subscribe():
                       points_redeemed_cents=pc["points_redeemed_cents"],
                       shipping_cents=pc["shipping_cents"])
         try:
-            with _sqlite3.connect(LOG_DB) as _lcx:
+            with db.connect(LOG_DB) as _lcx:
                 _bos_orders.set_order_qbo_lines(_lcx, checkout_ref, qbo_payload)
         except Exception as _e:
             print(f"[subscribe] persist qbo_lines failed: {_e!r}", flush=True)
@@ -27290,7 +27290,7 @@ def reorder_subscribe():
         else:
             # Stash in DB and put the key in metadata
             stash_key = uuid.uuid4().hex
-            with _db_lock, sqlite3.connect(LOG_DB) as _cx:
+            with _db_lock, db.connect(LOG_DB) as _cx:
                 _cx.execute(
                     "CREATE TABLE IF NOT EXISTS pending_subscriptions "
                     "(key TEXT PRIMARY KEY, items_json TEXT, ship_json TEXT, created_at TEXT)")
@@ -27336,7 +27336,7 @@ def _get_sub_authed(sub_id, cookie_email):
         sub_id = int(sub_id)
     except (TypeError, ValueError):
         return None, (jsonify({"error": "invalid id"}), 400)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         sub = _subs.get(cx, sub_id)
     if sub is None:
@@ -27353,7 +27353,7 @@ def api_subscription_details():
     if not email:
         return jsonify({"error": "not signed in"}), 401
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _subs.init_subscriptions_table(cx)
         rows = _subs.get_manageable_by_email(cx, email)   # active + paused, so paused can be resumed
@@ -27385,7 +27385,7 @@ def api_subscription_skip():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_skip_next(cx, sub_id, True)
     return jsonify({"ok": True})
 
@@ -27402,7 +27402,7 @@ def api_subscription_resume_skip():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_skip_next(cx, sub_id, False)
     return jsonify({"ok": True})
 
@@ -27419,7 +27419,7 @@ def api_subscription_pause():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_status(cx, sub_id, "paused")
     return jsonify({"ok": True})
 
@@ -27436,7 +27436,7 @@ def api_subscription_resume():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_status(cx, sub_id, "active")
     return jsonify({"ok": True})
 
@@ -27453,7 +27453,7 @@ def api_subscription_cancel():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_status(cx, sub_id, "cancelled")
     return jsonify({"ok": True})
 
@@ -27476,7 +27476,7 @@ def api_subscription_cadence():
     if err:
         return err
     from dashboard import subscriptions as _subs
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _subs.set_cadence(cx, sub_id, cadence)
     return jsonify({"ok": True})
 
@@ -27527,7 +27527,7 @@ def practitioner_checkout_return():
                 # idempotent via qbo_sales_receipt_id (book_sale_on_payment claims it).
                 if inv:
                     try:
-                        _pcx = _sqlite3.connect(LOG_DB); _pcx.row_factory = _sqlite3.Row
+                        _pcx = db.connect(LOG_DB); _pcx.row_factory = _sqlite3.Row
                         try:
                             _po = _bos_orders.find_order_by_external_ref(_pcx, inv)
                             if _po and _po["qbo_lines_json"] and not _po["qbo_sales_receipt_id"]:
@@ -27565,7 +27565,7 @@ def api_practitioner_admin_clear_orders():
         return jsonify({"ok": False, "error": "practitioner_id required"}), 400
     counts = {}
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             for tbl in ("wholesale_orders", "dispensary_orders", "wholesale_cart"):
                 try:
                     counts[tbl] = cx.execute(
@@ -27583,7 +27583,7 @@ def _log_referral_event(lead_id, email, first_name, last_name, utm_source, utm_m
     if not utm_source:
         return
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO referral_events
               (received_at, lead_id, email, first_name, last_name,
@@ -27605,7 +27605,7 @@ def _capture_concierge_referral(email, first_name, last_name, ref_slug):
     if not email or not ref_slug:
         return
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         if not cx.execute(
             "SELECT 1 FROM affiliate_signups WHERE slug=? AND status='approved'",
             (ref_slug,)
@@ -27633,7 +27633,7 @@ def _stamp_affiliate_journey(session_id, email, first_name, last_name, recruiter
     (skips if a become_affiliate event already exists). Credits the recruiter if a
     real approved slug is present. NEVER raises into the caller."""
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
             init_inquiry_tables(cx)
             init_membership_tables(cx)
@@ -27661,7 +27661,7 @@ def _attribute_conversion_by_email(email, conversion_type, detail="", order_valu
     email = (email or "").strip().lower()
     if not email:
         return None
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("""
             SELECT re.utm_source FROM referral_events re
             JOIN affiliate_signups a ON a.slug = re.utm_source AND a.status = 'approved'
@@ -27682,7 +27682,7 @@ def _attribute_conversion_by_email(email, conversion_type, detail="", order_valu
 
 # ── Inbound lead DB table ─────────────────────────────────────────────────────
 def _init_leads_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS inbound_leads (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27713,7 +27713,7 @@ _init_leads_table()
 
 def _log_inbound_lead(source, email, first_name, last_name, phone, raw, ghl_result):
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO inbound_leads
               (received_at, source, email, first_name, last_name, phone, raw_json,
@@ -27734,7 +27734,7 @@ def _record_webhook_debug(source, raw, headers=None):
     raises into the webhook path."""
     try:
         ts = datetime.now(timezone.utc).isoformat()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("""
                 CREATE TABLE IF NOT EXISTS webhook_debug (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27760,7 +27760,7 @@ def leads_pending_ghl():
     given = request.headers.get("X-Webhook-Secret", "") or request.headers.get("X-Console-Key", "")
     if not ((ws and given == ws) or (cs and given == cs)):
         return jsonify({"error": "unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute("""
             SELECT id, received_at, source, email, first_name, last_name, phone, raw_json, ghl_error
@@ -27785,7 +27785,7 @@ def leads_mark_ghl_synced():
     contact_id = data.get("contact_id")
     if not lead_id or not contact_id:
         return jsonify({"error": "id and contact_id required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE inbound_leads SET ghl_contact_id=?, ghl_error=NULL WHERE id=?",
                    (contact_id, lead_id))
         cx.commit()
@@ -27805,7 +27805,7 @@ def _ghl_queue_auth():
 def ghl_queue_pending():
     if not _ghl_queue_auth():
         return jsonify({"error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         rows = _bos_ghl_queue.list_pending(cx, limit=int(request.args.get("limit", 100) or 100))
     except (TypeError, ValueError):
@@ -27824,7 +27824,7 @@ def ghl_queue_result():
     status = data.get("status", "done")
     if not qid:
         return jsonify({"ok": False, "error": "id required"}), 400
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _bos_ghl_queue.mark_result(cx, int(qid), status, data.get("result", ""))
     finally:
@@ -27850,7 +27850,7 @@ def api_lead_draft_reply(lead_id):
     if err: return err
     data     = request.get_json(force=True) or {}
     guidance = (data.get("guidance") or "").strip()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT first_name, last_name, email, source, raw_json FROM inbound_leads WHERE id=?",
             (lead_id,)
@@ -27896,7 +27896,7 @@ def api_lead_send_reply(lead_id):
     body    = (data.get("body") or "").strip()
     if not subject or not body:
         return jsonify({"error": "subject and body required"}), 400
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT email FROM inbound_leads WHERE id=?", (lead_id,)).fetchone()
     if not row or not row[0]:
         return jsonify({"error": "lead not found or has no email"}), 404
@@ -27907,7 +27907,7 @@ def api_lead_send_reply(lead_id):
     except Exception as e:
         return jsonify({"error": f"send failed: {e}"}), 502
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE inbound_leads SET last_outbound_at=? WHERE id=?", (ts, lead_id))
         cx.commit()
     return jsonify({"ok": True, "to": to_email, "gmail_id": result.get("id"),
@@ -27922,7 +27922,7 @@ def api_lead_tag(lead_id):
     tag  = (data.get("tag") or "").strip()
     if not tag:
         return jsonify({"error": "tag required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT tags FROM inbound_leads WHERE id=?", (lead_id,)).fetchone()
         if not row:
             return jsonify({"error": "not found"}), 404
@@ -27943,7 +27943,7 @@ def api_lead_tag(lead_id):
 def api_lead_dismiss(lead_id):
     err = _lead_auth_or_401()
     if err: return err
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE inbound_leads SET status='dismissed' WHERE id=?", (lead_id,))
         cx.commit()
     return jsonify({"ok": True})
@@ -28034,7 +28034,7 @@ def _pb_fetch_all_records():
 WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
 def _init_pb_events_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS pb_events (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28076,7 +28076,7 @@ def pb_webhook():
     ts         = datetime.now(timezone.utc).isoformat()
 
     # Log to pb_events table (existing)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO pb_events (received_at, event_type, pb_email, pb_name, raw_json)
             VALUES (?, ?, ?, ?, ?)
@@ -28167,7 +28167,7 @@ def sync_pb_to_people_and_ghl(dry_run=False, limit=None):
 
     # Phase 2 — SQLite upsert (one transaction)
     if not dry_run:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             for n in norm:
                 row = cx.execute(
@@ -28449,7 +28449,7 @@ def sync_practitioners_to_people(dry_run=False, limit=None):
         summary["people_upserted"] = len(persons)
     else:
         ts = datetime.now(timezone.utc).isoformat()
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             for person in persons:
                 if _upsert_person_additive(cx, person, ts):
                     summary["people_upserted"] += 1
@@ -28550,7 +28550,7 @@ def classify_people(dry_run=False, limit=None):
     summary = {"scanned": 0, "updated": 0, "added_client": 0, "added_prospect": 0,
                "added_opted_in": 0, "added_cold": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         tos = _tos_agreed_emails(cx)
         q = "SELECT id,email,tags,order_count,pb_id FROM people"
@@ -28583,7 +28583,7 @@ def sync_people_to_ghl(dry_run=False, limit=None):
     started = _pb_time.time()
     summary = {"opted_in": 0, "enqueued": 0, "skipped_already_pending": 0,
                "skipped_no_type": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         q = 'SELECT email,tags FROM people WHERE tags LIKE ?'
         if limit:
@@ -28658,7 +28658,7 @@ def enroll_segment_in_workflow(workflow_id, segment_tags=("type:client", "consen
     summary = {"workflow_id": wf, "matched": 0, "enqueued": 0,
                "skipped_already": 0, "dry_run": bool(dry_run), "elapsed_sec": 0}
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         clauses = " AND ".join(["tags LIKE ?"] * len(segment_tags))
         rows = cx.execute(
@@ -28790,7 +28790,7 @@ def scoreapp_webhook():
                   {"body": "\n".join(note_lines)})
 
     lead_id = None
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT id FROM inbound_leads WHERE email=? ORDER BY id DESC LIMIT 1", (email,)).fetchone()
         if row:
             lead_id = row[0]
@@ -28816,7 +28816,7 @@ def scoreapp_webhook():
             th = _hash_token(plain)
             now_iso = datetime.utcnow().isoformat() + "Z"
             exp_iso = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
                     "VALUES (?,?,?,?,?,?)",
@@ -28992,7 +28992,7 @@ def webhook_stripe():
                     if sess.get("payment_status") == "paid":
                         inv = (sess.get("metadata") or {}).get("invoice_id")
                         if inv:
-                            _wcx = _sqlite3.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
+                            _wcx = db.connect(LOG_DB); _wcx.row_factory = _sqlite3.Row
                             try:
                                 _wo = _bos_orders.find_order_by_external_ref(_wcx, inv)
                                 if _wo and _wo["qbo_lines_json"]:
@@ -29085,7 +29085,7 @@ def get_inbound_leads():
     limit = int(request.args.get("limit", 100))
     source = request.args.get("source", "")
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         if source:
             rows = cx.execute("""
                 SELECT received_at, source, email, first_name, last_name,
@@ -29115,7 +29115,7 @@ def get_pb_events():
 
     limit = int(request.args.get("limit", 500))
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, received_at, event_type, pb_email, pb_name, raw_json
             FROM pb_events WHERE synced = 0
@@ -29141,7 +29141,7 @@ def mark_pb_synced():
     if not ids:
         return jsonify({"ok": True, "marked": 0})
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.executemany("UPDATE pb_events SET synced=1 WHERE id=?", [(i,) for i in ids])
         cx.commit()
 
@@ -29152,7 +29152,7 @@ def mark_pb_synced():
 CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", os.environ.get("WEBHOOK_SECRET", ""))
 
 def _init_todos_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS todos (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29197,7 +29197,7 @@ _init_todos_table()
 
 def _init_workspace_schema():
     """Tables backing the per-owner Workspace page (focused item, threads, time, steps)."""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS owner_state (
                 owner            TEXT PRIMARY KEY,
@@ -29283,7 +29283,7 @@ _init_workspace_schema()
 
 
 def _init_calendar_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS calendar_events (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29471,7 +29471,7 @@ def get_calendar():
         date_clause, date_params = "AND substr({col},1,10) >= date('now')", []
     placeholders = ",".join("?" for _ in owners)
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         if kind == "accomplishments":
             rows = cx.execute(f"""
                 SELECT id, owner, title, at, notes, created_by, created_at
@@ -29510,7 +29510,7 @@ def post_calendar():
 
     ts = datetime.now(timezone.utc).isoformat()
     upserted = skipped = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # Build suppression rules per owner: list of (title_pattern, day_of_week, hour)
         sup_rows = cx.execute(
             "SELECT owner, title_pattern, day_of_week, hour FROM calendar_suppressed"
@@ -29589,7 +29589,7 @@ def post_calendar_accomplishment():
     notes = body.get("notes", "") or ""
     created_by = ctx.get("user_name") or "admin"
     now = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO calendar_accomplishments "
             "(owner, title, at, notes, created_by, created_at) VALUES (?,?,?,?,?,?)",
@@ -29617,7 +29617,7 @@ def patch_calendar(event_id):
         to = (data.get("to") or "").lower()
         if to not in ("glen", "rae", "shaira"):
             return jsonify({"error": "Invalid delegate target"}), 400
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT summary, start, end, location, owner FROM calendar_events WHERE id=?",
                 (event_id,)).fetchone()
@@ -29647,7 +29647,7 @@ def patch_calendar(event_id):
         new_status = "delete_requested"
     else:
         new_status = "hidden"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE calendar_events SET status=? WHERE id=?", (new_status, event_id))
         cx.commit()
     return jsonify({"ok": True, "status": new_status})
@@ -29660,7 +29660,7 @@ def patch_calendar_alert(event_id):
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     enabled = (request.get_json(force=True) or {}).get("alert", True)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE calendar_events SET cal_alert=? WHERE id=?", (1 if enabled else 0, event_id))
         cx.commit()
     return jsonify({"ok": True, "cal_alert": 1 if enabled else 0})
@@ -29676,7 +29676,7 @@ def get_calendar_alerts():
     from datetime import datetime, timezone, timedelta
     now = datetime.now(timezone.utc)
     window_end = now + timedelta(minutes=90)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, summary, start, owner
             FROM calendar_events
@@ -29693,7 +29693,7 @@ def calendar_delete_queue():
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, google_cal_id, google_event_id, summary
             FROM calendar_events WHERE status='delete_requested'
@@ -29708,7 +29708,7 @@ def clear_delete_queue():
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     ids = (request.get_json(force=True) or {}).get("ids", [])
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.executemany("UPDATE calendar_events SET status='deleted' WHERE id=?", [(i,) for i in ids])
         cx.commit()
     return jsonify({"ok": True, "cleared": len(ids)})
@@ -29720,7 +29720,7 @@ def unsuppress_calendar_event(event_id):
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT summary, owner, start FROM calendar_events WHERE id=?", (event_id,)
         ).fetchone()
@@ -29744,7 +29744,7 @@ def suppress_calendar_event(event_id):
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT summary, owner, start FROM calendar_events WHERE id=?", (event_id,)
         ).fetchone()
@@ -29809,7 +29809,7 @@ def get_todos():
     else:
         owner = requested_owner
     status = request.args.get("status", "open")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("""
             SELECT id, created_at, owner, category, title, body, priority,
                    status, delegated_to, delegated_at, done_at, source, dedup_key,
@@ -29840,7 +29840,7 @@ def post_todos():
 
     ts = datetime.now(timezone.utc).isoformat()
     inserted = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         for item in items:
             owner           = (item.get("owner") or "glen").lower()
             category        = item.get("category") or "General"
@@ -29889,7 +29889,7 @@ def patch_todo(todo_id):
     action = data.get("action", "")
     ts     = datetime.now(timezone.utc).isoformat()
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         if action == "done":
             cx.execute("UPDATE todos SET status='done', done_at=? WHERE id=?", (ts, todo_id))
         elif action == "delegate":
@@ -29938,7 +29938,7 @@ def draft_reply_endpoint(todo_id):
             return jsonify({"error": "Unauthorized"}), 401
     data     = request.get_json(force=True) or {}
     guidance = (data.get("guidance") or "").strip()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT title, body, category FROM todos WHERE id=?", (todo_id,)).fetchone()
     if not row:
         return jsonify({"error": "Not found"}), 404
@@ -29975,7 +29975,7 @@ def delete_todo(todo_id):
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE todos SET status='dismissed' WHERE id=?", (todo_id,))
         cx.commit()
     return jsonify({"ok": True})
@@ -30381,7 +30381,7 @@ def portal_asset_serve(filename):
 # ── Rae Feedback (humor / speech monitoring) ──────────────────────────────────
 
 def _init_rae_feedback_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS rae_feedback (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30409,7 +30409,7 @@ _init_rae_feedback_table()
 
 def _init_heygen_reviewed_table():
     """Local 'mark reviewed' flag for HeyGen renders (HeyGen has no such concept)."""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS heygen_reviewed (
                 video_id    TEXT PRIMARY KEY,
@@ -30435,7 +30435,7 @@ def post_rae_feedback():
 
     ts = datetime.now(timezone.utc).isoformat()
     inserted = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         for e in events:
             cx.execute("""
                 INSERT INTO rae_feedback
@@ -30475,7 +30475,7 @@ def get_rae_feedback():
     query += " ORDER BY ts DESC LIMIT ?"
     params.append(limit)
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(query, params).fetchall()
 
@@ -30490,7 +30490,7 @@ def get_rae_feedback_summary():
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         by_style = cx.execute("""
             SELECT greeting_style,
@@ -30530,7 +30530,7 @@ def api_rae_feedback_tag(fb_id):
     tag  = (data.get("tag") or "").strip().lower()
     if tag not in ("helpful", "not_helpful", "noise"):
         return jsonify({"error": "tag must be one of: helpful, not_helpful, noise"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         n = cx.execute("UPDATE rae_feedback SET tag=? WHERE id=?", (tag, fb_id)).rowcount
         cx.commit()
     if not n:
@@ -30545,7 +30545,7 @@ def api_rae_feedback_mark_reviewed(fb_id):
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         n = cx.execute("UPDATE rae_feedback SET reviewed_at=? WHERE id=?", (ts, fb_id)).rowcount
         cx.commit()
     if not n:
@@ -30585,7 +30585,7 @@ GHL_FIELD_MAP = {
 }
 
 def _init_people_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS people (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30654,7 +30654,7 @@ def _init_households_tables():
     """Two tables: `households` for metadata, `household_candidates` for the
     detection-and-suggest workflow. Run at import time alongside other
     schema initializers."""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS households (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30698,7 +30698,7 @@ _init_households_tables()
 def _init_pending_merges_table():
     """Queued people-row merges from the candidate review flow. Apply is a
     separate operator action — never auto-executed."""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS pending_merges (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30939,7 +30939,7 @@ def get_people():
     limit  = min(int(request.args.get("limit", 50)), 200)
     offset = int(request.args.get("offset", 0))
     where, args = _people_search_query(request.args)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         total = cx.execute(f"SELECT COUNT(*) FROM people {where}", args).fetchone()[0]
         rows  = cx.execute(
@@ -30962,7 +30962,7 @@ def get_recent_comms():
             return jsonify({"error": "Unauthorized"}), 401
     from dashboard.recent_comms import recent_comms
     email = (request.args.get("q", "") or "").strip()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         return jsonify(recent_comms(cx, email))
 
 
@@ -30972,7 +30972,7 @@ def get_person(person_id):
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
     if not row:
@@ -30994,7 +30994,7 @@ def upsert_people():
     merge_tags = request.args.get("merge_tags", "").lower() in ("1", "true", "yes")
     ts = datetime.now(timezone.utc).isoformat()
     inserted = updated = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         for p in items:
             email = (p.get("email") or "").strip().lower()
             if not email:
@@ -31051,7 +31051,7 @@ def add_person_note(person_id):
             return jsonify({"error":"Unauthorized"}), 401
     note = (request.get_json(force=True) or {}).get("note","").strip()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             UPDATE people SET notes = CASE
               WHEN notes='' THEN ?
@@ -31068,7 +31068,7 @@ def list_person_tags_route():
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute("SELECT tags FROM people").fetchall()
     return jsonify({"tags": distinct_tags([r[0] for r in rows])})
 
@@ -31088,7 +31088,7 @@ def update_person_tags_route(person_id):
             or not all(isinstance(t, str) for t in add)
             or not all(isinstance(t, str) for t in remove)):
         return jsonify({"error": "add/remove must be lists of strings"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT tags FROM people WHERE id=?", (person_id,)).fetchone()
         if not row:
             return jsonify({"error": "not found"}), 404
@@ -31116,7 +31116,7 @@ def admin_dedupe_people_tags():
             return jsonify({"error": "Unauthorized"}), 401
     dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
     scanned = changed = removed = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute("SELECT id, tags FROM people").fetchall()
         for r in rows:
@@ -31231,7 +31231,7 @@ def create_household():
     notes = (body.get("notes") or "").strip()
     ts = datetime.now(timezone.utc).isoformat()
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # Pre-flight: ensure no member is already in a household
         for pid in member_ids:
             existing_slug = _person_household_slug(cx, pid)
@@ -31276,7 +31276,7 @@ def create_household():
 
     # Push to GHL outside the lock. Per-member errors collected.
     ghl_errors = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         members = cx.execute("""
             SELECT id, email FROM people WHERE id IN ({})
         """.format(",".join("?" * len(member_ids))), member_ids).fetchall()
@@ -31305,7 +31305,7 @@ def create_household():
 def list_households():
     auth_err = _check_console_auth()
     if auth_err: return auth_err
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute("""
             SELECT h.id, h.slug, h.name, h.head_person_id, h.updated_at,
@@ -31337,7 +31337,7 @@ def list_households():
 def get_household(slug):
     auth_err = _check_console_auth()
     if auth_err: return auth_err
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute("SELECT * FROM households WHERE slug=?", (slug,)).fetchone()
         if not row:
@@ -31376,7 +31376,7 @@ def get_household(slug):
 def get_person_household(person_id):
     auth_err = _check_console_auth()
     if auth_err: return auth_err
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         slug = _person_household_slug(cx, person_id)
         if not slug:
             return jsonify({"household": None})
@@ -31396,7 +31396,7 @@ def person_household_suggestions(person_id):
     import re as _re
     from dashboard import household as _hh
     def _norm_street(s): return _re.sub(r"\s+", " ", (s or "").strip().rstrip(".,")).strip().lower()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _hh.init_household_tables(cx)
         me = cx.execute("SELECT id, email, address1, zip FROM people WHERE id=?",
@@ -31445,7 +31445,7 @@ def person_connect(person_id):
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     from dashboard import household as _hh
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _hh.init_household_tables(cx)
     body = request.get_json(force=True) or {}
     mode = (body.get("mode") or "").strip()
@@ -31457,7 +31457,7 @@ def person_connect(person_id):
 
     if mode == "dismiss":
         pair = json.dumps(sorted([int(person_id), int(other_id)]))
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             now = datetime.now(timezone.utc).isoformat()
             updated = cx.execute("UPDATE household_candidates SET status='dismissed', resolved_at=?, "
                                  "resolved_by='glen' WHERE person_ids=? AND status='pending'",
@@ -31470,7 +31470,7 @@ def person_connect(person_id):
         return jsonify({"ok": True, "dismissed": True})
 
     # Ensure a CRM household grouping exists for the pair (idempotent).
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         slug_self = _person_household_slug(cx, person_id)
         slug_other = _person_household_slug(cx, other_id)
@@ -31515,13 +31515,13 @@ def person_connect(person_id):
         return jsonify({"error": "caregiver_person_id + cared_for_person_id required"}), 400
     method = ((body.get("consent") or {}).get("method") or "portal").strip()
     consent_basis = method if method in ("verbal", "written") else None
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         emails = {r[0]: r[1] for r in cx.execute(
             "SELECT id, email FROM people WHERE id IN (?,?)", (cg_id, cf_id)).fetchall()}
     cg_email, cf_email = emails.get(cg_id), emails.get(cf_id)
     if not cg_email or not cf_email:
         return jsonify({"error": "caregiver/cared-for email missing"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _hh.init_household_tables(cx)
         already = cx.execute("SELECT 1 FROM household_members WHERE primary_email=? AND member_email=?",
                              (cg_email.strip().lower(), cf_email.strip().lower())).fetchone()
@@ -31543,7 +31543,7 @@ def list_household_candidates():
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     status = request.args.get("status", "pending")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             "SELECT * FROM household_candidates WHERE status=? ORDER BY detected_at DESC",
@@ -31582,7 +31582,7 @@ def confirm_household_candidate(cand_id):
     if not (name and head_id):
         return jsonify({"error": "name + head_person_id required"}), 400
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT person_ids, status FROM household_candidates WHERE id=?", (cand_id,)).fetchone()
     if not row:
         return jsonify({"error": "candidate not found"}), 404
@@ -31608,7 +31608,7 @@ def confirm_household_candidate(cand_id):
         body = resp.get_json()
 
     # Link candidate to the new household
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             UPDATE household_candidates SET status='confirmed',
                 resolved_at=?, resolved_by=?, household_id=?
@@ -31622,7 +31622,7 @@ def confirm_household_candidate(cand_id):
 def dismiss_household_candidate(cand_id):
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         if not cx.execute("SELECT 1 FROM household_candidates WHERE id=?", (cand_id,)).fetchone():
             return jsonify({"error": "candidate not found"}), 404
         cx.execute("""
@@ -31642,7 +31642,7 @@ def queue_merge_from_candidate(cand_id):
     if not keeper_id:
         return jsonify({"error": "keeper_person_id required"}), 400
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT person_ids, status FROM household_candidates WHERE id=?",
                           (cand_id,)).fetchone()
         if not row:
@@ -31679,7 +31679,7 @@ def list_pending_merges():
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
     status = request.args.get("status", "pending")
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute("SELECT * FROM pending_merges WHERE status=? ORDER BY queued_at DESC",
                            (status,)).fetchall()
@@ -31702,7 +31702,7 @@ def list_pending_merges():
 def apply_pending_merge(merge_id):
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT keeper_person_id, dupe_person_id, status FROM pending_merges WHERE id=?",
                           (merge_id,)).fetchone()
         if not row:
@@ -31723,7 +31723,7 @@ def apply_pending_merge(merge_id):
 def cancel_pending_merge(merge_id):
     auth_err = _check_console_or_scoped_auth()
     if auth_err: return auth_err
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         if not cx.execute("SELECT 1 FROM pending_merges WHERE id=?", (merge_id,)).fetchone():
             return jsonify({"error": "merge not found"}), 404
         cx.execute("UPDATE pending_merges SET status='cancelled' WHERE id=?", (merge_id,))
@@ -31739,7 +31739,7 @@ def update_household(slug):
     ts = datetime.now(timezone.utc).isoformat()
 
     ghl_errors = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute("SELECT * FROM households WHERE slug=?", (slug,)).fetchone()
         if not row:
@@ -31811,7 +31811,7 @@ def add_household_member(slug):
         return jsonify({"error": "person_id required"}), 400
 
     ghl_errors = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         if not cx.execute("SELECT 1 FROM households WHERE slug=?", (slug,)).fetchone():
             return jsonify({"error": "household not found"}), 404
@@ -31849,7 +31849,7 @@ def remove_household_member(slug, person_id):
     if auth_err: return auth_err
 
     ghl_errors = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         h_row = cx.execute("SELECT head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
         if not h_row:
@@ -31875,7 +31875,7 @@ def disband_household(slug):
     if auth_err: return auth_err
 
     ghl_errors = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         if not cx.execute("SELECT 1 FROM households WHERE slug=?", (slug,)).fetchone():
             return jsonify({"error": "household not found"}), 404
@@ -31905,7 +31905,7 @@ def disband_household(slug):
 def _resync_household_to_ghl(slug):
     """Re-push the household tags for every member to GHL. Returns ghl_errors list."""
     ghl_errors = []
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         h_row = cx.execute("SELECT head_person_id FROM households WHERE slug=?", (slug,)).fetchone()
         if not h_row:
@@ -31934,7 +31934,7 @@ def resync_household_ghl(slug):
 def resync_all_households_to_ghl():
     """Iterate every household and push its tags to GHL. Used by daily cron
     for drift recovery. Returns {households_synced, ghl_errors_total}."""
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         slugs = [r[0] for r in cx.execute("SELECT slug FROM households").fetchall()]
     total_errors = 0
     for slug in slugs:
@@ -31967,7 +31967,7 @@ def detect_household_candidates():
                "skipped_already_household": 0, "skipped_dedup": 0}
     ts = datetime.now(timezone.utc).isoformat()
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         people = cx.execute("""
             SELECT id, LOWER(TRIM(email)) AS email_lc, LOWER(TRIM(last_name)) AS last_lc,
@@ -32589,7 +32589,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
             owner    = (inp.get("owner") or "glen").lower()
             category = (inp.get("category") or "").strip()
             limit    = max(1, min(int(inp.get("limit") or 20), 50))
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 rows = cx.execute("""
                     SELECT id, title, priority, category, created_at
                     FROM todos
@@ -32611,7 +32611,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
         if name == "complete_todo":
             tid = int(inp["id"])
             ts  = datetime.now(timezone.utc).isoformat()
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 row = cx.execute("SELECT title FROM todos WHERE id=?", (tid,)).fetchone()
                 if not row:
                     return f"No todo with id {tid}."
@@ -32626,7 +32626,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
             if to not in ("glen", "rae", "shaira", "justus"):
                 return f"Invalid delegate target: {to!r}"
             ts = datetime.now(timezone.utc).isoformat()
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 row = cx.execute(
                     "SELECT owner, category, title, body, priority, source, ai_summary, suggested_reply "
                     "FROM todos WHERE id=?", (tid,)
@@ -32650,7 +32650,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
 
         if name == "dismiss_todo":
             tid = int(inp["id"])
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 row = cx.execute("SELECT title FROM todos WHERE id=?", (tid,)).fetchone()
                 if not row:
                     return f"No todo with id {tid}."
@@ -32661,7 +32661,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
         if name == "draft_todo_reply":
             tid      = int(inp["id"])
             guidance = (inp.get("guidance") or "").strip()
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 row = cx.execute("SELECT title, body, category FROM todos WHERE id=?",
                                  (tid,)).fetchone()
             if not row:
@@ -32697,7 +32697,7 @@ def _execute_todo_tool(name: str, inp: dict) -> str:
             priority = (inp.get("priority") or "normal")
             body     = (inp.get("body") or "")
             ts = datetime.now(timezone.utc).isoformat()
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cur = cx.execute("""
                     INSERT INTO todos (created_at, owner, category, title, body, priority, source)
                     VALUES (?,?,?,?,?,?,?)
@@ -32902,7 +32902,7 @@ def _justus_tool_dispatch(actor):
         params = dict(inp)
         if name == "complete_todo" and "id" in params:
             params["todo_id"] = params.pop("id")
-        cx = _sqlite3.connect(LOG_DB)
+        cx = db.connect(LOG_DB)
         cx.row_factory = _sqlite3.Row
         try:
             res = _bos_dispatch.dispatch_action(
@@ -33060,7 +33060,7 @@ def _do_capture_split(text: str, owner: str) -> dict:
     ts = datetime.now(timezone.utc).isoformat()
     ts_epoch = int(_time.time())
     inserted = []
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         for i, it in enumerate(items):
             title    = (it.get("title") or "").strip()[:200]
             body     = (it.get("body") or "").strip()
@@ -33159,7 +33159,7 @@ def _auth(required_scope=None):
 
     # Per-user access token
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT u.id, u.name, u.scope "
                 "FROM access_tokens t JOIN workspace_users u ON u.id = t.user_id "
@@ -33175,7 +33175,7 @@ def _auth(required_scope=None):
 
     # Best-effort last_used_at touch (don't hold the request open if it fails)
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             cx.execute("UPDATE access_tokens SET last_used_at=datetime('now') WHERE token=?", (key,))
             cx.commit()
     except Exception:
@@ -33291,7 +33291,7 @@ def todo_focus(todo_id):
     ok, ctx, code = _auth()
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33325,7 +33325,7 @@ def todo_unfocus(todo_id):
     ok, ctx, code = _auth()
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33350,7 +33350,7 @@ def todo_complete_workspace(todo_id):
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     outcome = (request.get_json(force=True) or {}).get("outcome","").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33388,7 +33388,7 @@ def todo_mark_blocked(todo_id):
     reason = (request.get_json(force=True) or {}).get("reason","").strip()
     if not reason:
         return jsonify({"error":"Reason required"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33411,7 +33411,7 @@ def todo_messages_get(todo_id):
     ok, ctx, code = _auth()
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33465,7 +33465,7 @@ def _thread_history_for_justus(cx, todo_id: int, limit: int = 10) -> list:
 def _persist_justus_reply(todo_id: int, full_text: str):
     """Store Justus's full reply, parse [ASK:glen|rae] tag → justus_to_X row."""
     import re as _re
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO todo_messages (todo_id, role, content) VALUES (?, ?, ?)",
             (todo_id, "justus", full_text)
@@ -33500,7 +33500,7 @@ def todo_messages_post(todo_id):
     if ctx.get("scope") != "admin" and role != ctx.get("user_name"):
         return jsonify({"error":"Forbidden — cannot post as another user"}), 403
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33517,7 +33517,7 @@ def todo_messages_post(todo_id):
         return jsonify({"ok": True})
 
     # Shaira spoke → stream Justus's reply.
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         todo_ctx = _todo_context_for_justus(cx, todo_id)
         history = _thread_history_for_justus(cx, todo_id, limit=10)
     # Drop the just-inserted shaira line (it's the new query, included separately by the stream helper)
@@ -33539,7 +33539,7 @@ def todo_steps_get(todo_id):
     ok, ctx, code = _auth()
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33562,7 +33562,7 @@ def todo_steps_post(todo_id):
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     # Owner check upfront (extract path reads the todo anyway, but we 403 sooner)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
     if not owner:
         return jsonify({"error":"Not found"}), 404
@@ -33574,7 +33574,7 @@ def todo_steps_post(todo_id):
     text = (data.get("text") or "").strip()
     if not text:
         return jsonify({"error":"Empty text"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT COALESCE(MAX(sequence), 0) FROM todo_steps WHERE todo_id=?", (todo_id,)).fetchone()
         seq = (row[0] or 0) + 1
         cx.execute(
@@ -33587,7 +33587,7 @@ def todo_steps_post(todo_id):
 
 
 def _extract_steps_via_justus(todo_id: int):
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT title, body, ai_summary FROM todos WHERE id=?", (todo_id,)
         ).fetchone()
@@ -33619,7 +33619,7 @@ def _extract_steps_via_justus(todo_id: int):
             extracted.append(m.group(1).strip())
     if not extracted:
         return jsonify({"error": "Justus returned no steps", "raw": text}), 500
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("DELETE FROM todo_steps WHERE todo_id=? AND done=0", (todo_id,))
         row = cx.execute("SELECT COALESCE(MAX(sequence), 0) FROM todo_steps WHERE todo_id=?", (todo_id,)).fetchone()
         seq = row[0] or 0
@@ -33638,7 +33638,7 @@ def todo_steps_patch(todo_id, step_id):
     ok, ctx, code = _auth()
     if not ok:
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         owner = _todo_owner(cx, todo_id)
         if not owner:
             return jsonify({"error":"Not found"}), 404
@@ -33664,7 +33664,7 @@ def workspace_state(owner):
         return jsonify({"error":"Unauthorized" if code == 401 else "Forbidden"}), code
     if not _can_access_owner(ctx, owner):
         return jsonify({"error":"Forbidden"}), 403
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         focused = cx.execute(
             "SELECT focused_todo_id FROM owner_state WHERE owner=?", (owner,)
@@ -33806,7 +33806,7 @@ def access_token_create():
     display_name = (data.get("display_name") or name.title()).strip()
     note = (data.get("note") or "").strip()
     token = _secrets.token_urlsafe(32)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO workspace_users (name, display_name, scope) VALUES (?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET display_name=excluded.display_name, scope=excluded.scope",
@@ -33836,7 +33836,7 @@ def access_token_list():
     first 8 chars (prefix) for identification + revoke."""
     if not _ws_auth_ok():
         return jsonify({"error":"Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = cx.execute(
             "SELECT t.token, t.created_at, t.last_used_at, t.revoked_at, t.note, "
             "       u.name, u.display_name, u.scope "
@@ -33862,7 +33862,7 @@ def access_token_revoke(prefix):
         return jsonify({"error":"Unauthorized"}), 401
     if not prefix or len(prefix) < 6:
         return jsonify({"error":"prefix too short"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         rows = cx.execute(
             "SELECT token FROM access_tokens WHERE token LIKE ? AND revoked_at IS NULL",
             (prefix + "%",)
@@ -33920,7 +33920,7 @@ def cron_backup_workspace():
     happens to be writable (i.e. when run on a Mac, not on Render)."""
     if not _ws_auth_ok():
         return jsonify({"error":"Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         messages = [dict(r) for r in cx.execute(
             "SELECT id, todo_id, role, content, created_at FROM todo_messages ORDER BY id ASC"
@@ -34026,7 +34026,7 @@ def api_shaira_daily():
 
 # ── Token storage (OAuth tokens persisted in DB for cloud cron) ───────────────
 def _init_tokens_table():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute("""
             CREATE TABLE IF NOT EXISTS oauth_tokens (
                 name       TEXT PRIMARY KEY,
@@ -34045,7 +34045,7 @@ def get_token(name):
         key = request.headers.get("X-Console-Key","") or request.args.get("key","")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error":"Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT token_json, updated_at FROM oauth_tokens WHERE name=?", (name,)).fetchone()
     if not row:
         return jsonify({"error":"Not found"}), 404
@@ -34063,7 +34063,7 @@ def put_token(name):
     if not token_json:
         return jsonify({"error":"Missing token_json"}), 400
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("""
             INSERT INTO oauth_tokens (name, token_json, updated_at) VALUES (?,?,?)
             ON CONFLICT(name) DO UPDATE SET token_json=excluded.token_json, updated_at=excluded.updated_at
@@ -34079,14 +34079,14 @@ def _drain_sales_image_queue():
         return
     from dashboard import sales_images as _si, sales_image_prompts as _sip, replicate_client as _rc
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             pending = _si.list_pending(cx)[:2]   # cap per tick (Replicate spend)
     except Exception as e:
         print(f"[sales-img] queue read failed: {e}", flush=True); return
     for slug in pending:
         p = _get_product(slug)
         if not p:
-            with sqlite3.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
+            with db.connect(LOG_DB) as cx: _si.mark_failed(cx, slug)
             continue
         prod = dict(p)
         dest = _SALES_IMG_DIR / slug
@@ -34094,15 +34094,15 @@ def _drain_sales_image_queue():
         if _SALES_IMAGE_VARIATIONS_ENABLED:
             from dashboard import sales_image_models as _mods
             try:
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     n = _si.generate_missing(
                         cx, slug, dest,
                         generate_fn=lambda mid, prompt: _mods.generate(cx, mid, prompt))
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     _si.mark_done(cx, slug)
             except Exception as e:
                 print(f"[sales-img] {slug} variation gen failed: {e}", flush=True)
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     _si.mark_failed(cx, slug)
             continue
         if not prod.get("ingredients"):
@@ -34115,12 +34115,12 @@ def _drain_sales_image_queue():
                     data = _rc.generate_image(prompt)
                     fname = f"{kind}-{variant}.png"
                     (dest / fname).write_bytes(data)
-                    with sqlite3.connect(LOG_DB) as cx:
+                    with db.connect(LOG_DB) as cx:
                         _si.record_image(cx, slug, kind, variant, fname)
                     ok += 1
                 except Exception as e:
                     print(f"[sales-img] {slug} {kind}-{variant} failed: {e}", flush=True)
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             (_si.mark_done if ok else _si.mark_failed)(cx, slug)
 
 
@@ -34132,21 +34132,21 @@ def _drain_review_videos():
     from dashboard import review_scoring as _rs, points as _points
     import journal_blueprint as _jb
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             pending = _vj.claim_pending(cx, 3)
     except Exception as e:
         print(f"[reviews-video] queue read failed: {e}", flush=True); return
     for rid in pending:
         try:
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 r = _pr.get_review(cx, rid)
             if not r or r.get("video_kind") != "upload" or not r.get("video_ref"):
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
                 continue
             path = _REVIEW_MEDIA_DIR / r["product_slug"] / r["video_ref"]
             if not path.exists():
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
                 continue
             _whisper = _jb._whisper_transcribe(str(path)) or {}
@@ -34158,7 +34158,7 @@ def _drain_review_videos():
             written = int(r.get("ai_score") or 0)
             total = min(5, written + sc["video_points"])
             delta = max(0, total - written)
-            with sqlite3.connect(LOG_DB) as cx:
+            with db.connect(LOG_DB) as cx:
                 if delta > 0:
                     try:
                         _points.init_points_table(cx)
@@ -34184,7 +34184,7 @@ def _drain_review_videos():
                         _src = path
                         _dst = _REVIEW_MEDIA_DIR / r["product_slug"] / (_src.stem + "-trim.mp4")
                         if _vt.trim_video(str(_src), str(_dst), win[0], win[1]):
-                            with sqlite3.connect(LOG_DB) as cx:
+                            with db.connect(LOG_DB) as cx:
                                 _pr.set_trimmed(cx, rid, _dst.name)
                 except Exception as e:  # noqa: BLE001 - trim never undoes a credited score
                     print(f"[reviews-video] trim failed rid={rid}: {e}", flush=True)
@@ -34192,12 +34192,12 @@ def _drain_review_videos():
                 try:
                     from dashboard import review_gifts as _rg
                     from dashboard import orders as _o2
-                    with sqlite3.connect(LOG_DB) as cx:
+                    with db.connect(LOG_DB) as cx:
                         _has_gift = _rg.get_for_review(cx, rid) is not None
                         _capped = _rg.recent_active_gift(cx, r["email"], 30)
                     if not _has_gift and not _capped:
                         _cat = _rg.load_catalog()
-                        with sqlite3.connect(LOG_DB) as cx:
+                        with db.connect(LOG_DB) as cx:
                             cx.row_factory = sqlite3.Row
                             _hist = []
                             for _o in _o2.list_orders_by_email(cx, r["email"], limit=5):
@@ -34207,14 +34207,14 @@ def _drain_review_videos():
                         _sg = _rs.suggest_gift(_cl, transcript, prod, _hist[:10], _cat, strip=_strip_dash)
                         if _sg:
                             _lbl = _rg.catalog_by_sku().get(_sg["sku"], {}).get("label", _sg["sku"])
-                            with sqlite3.connect(LOG_DB) as cx:
+                            with db.connect(LOG_DB) as cx:
                                 _rg.add_suggestion(cx, rid, r["email"], _sg["sku"], _lbl, _sg["reason"])
                 except Exception as e:  # noqa: BLE001 - gift never blocks scoring/credit/trim
                     print(f"[reviews-video] gift suggest failed rid={rid}: {e}", flush=True)
         except Exception as e:  # noqa: BLE001 - one job's failure never aborts the sweep
             print(f"[reviews-video] job {rid} failed: {e}", flush=True)
             try:
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     _pr.set_video_result(cx, rid, 0, "", "failed"); _vj.mark(cx, rid, "failed")
             except Exception:
                 pass
@@ -34230,7 +34230,7 @@ def _render_challenger(slug, kind, product):
     """
     from dashboard import sales_images as _si, sales_image_prompts as _sip, replicate_client as _rc
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             variant = _si.next_variant(cx, slug, kind)
         prompt = _sip.build_one_prompt(kind, variant)
         data = _rc.generate_image(prompt)
@@ -34238,7 +34238,7 @@ def _render_challenger(slug, kind, product):
         dest.mkdir(parents=True, exist_ok=True)
         fname = f"{kind}-{variant}.png"
         (dest / fname).write_bytes(data)
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _si.record_image(cx, slug, kind, variant, fname)
         return variant
     except Exception as e:
@@ -34267,7 +34267,7 @@ def _run_image_tournament():
     from dashboard import sales_images as _si, sales_votes as _sv, sales_image_pairs as _sp, sales_image_prompts as _sip
     import datetime as _dt
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             slugs = _si.list_image_slugs(cx)
     except Exception as e:
         print(f"[tournament] slug read failed: {e}", flush=True)
@@ -34279,13 +34279,13 @@ def _run_image_tournament():
             continue
         for kind in _sip.IMAGE_KINDS:
             try:
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     variants = [im["variant"] for im in _si.get_images(cx, slug) if im["kind"] == kind]
                     pair = _sp.ensure_pair(cx, slug, kind, variants)
                 if not pair or pair["converged"]:
                     continue
                 champ, chall = pair["champion_variant"], pair["challenger_variant"]
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     a, b = _sv.pair_counts(cx, slug, kind, champ, chall, since=pair["last_render_at"])
                 total = a + b
                 if total < _TOURNEY_MIN_VOTES or (max(a, b) / total) < _TOURNEY_MARGIN:
@@ -34295,19 +34295,19 @@ def _run_image_tournament():
                 if a >= b:  # champion defends
                     defenses = pair["defenses"] + 1
                     if defenses >= _TOURNEY_K:
-                        with sqlite3.connect(LOG_DB) as cx:
+                        with db.connect(LOG_DB) as cx:
                             _sp.set_pair(cx, slug, kind, champion=champ, challenger=chall,
                                          defenses=defenses, converged=True, last_render_at=pair["last_render_at"])
                     else:
                         newv = _render_challenger(slug, kind, p)
                         if newv:
-                            with sqlite3.connect(LOG_DB) as cx:
+                            with db.connect(LOG_DB) as cx:
                                 _sp.set_pair(cx, slug, kind, champion=champ, challenger=newv,
                                              defenses=defenses, converged=False, last_render_at=now)
                 else:  # challenger wins -> new champion
                     newv = _render_challenger(slug, kind, p)
                     if newv:
-                        with sqlite3.connect(LOG_DB) as cx:
+                        with db.connect(LOG_DB) as cx:
                             _sp.set_pair(cx, slug, kind, champion=chall, challenger=newv,
                                          defenses=0, converged=False, last_render_at=now)
             except Exception as e:
@@ -34319,7 +34319,7 @@ def _run_image_evolution():
         return
     from dashboard import sales_image_evolution as _ev
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _ev.propose(cx)
     except Exception as e:
         print(f"[sales-img] evolution propose failed: {e}", flush=True)
@@ -34330,7 +34330,7 @@ def _run_prompt_topup():
         return
     from dashboard import sales_image_prompt_gen as _pg
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             _pg.topup(cx)
     except Exception as e:
         print(f"[sales-img] prompt topup failed: {e}", flush=True)
@@ -34349,7 +34349,7 @@ def _run_cron():
         "rae_gmail":   "/tmp/token_rae.json",
         "calendar":    "/tmp/token_calendar.json",
     }
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         for name, path in token_map.items():
             row = cx.execute("SELECT token_json FROM oauth_tokens WHERE name=?", (name,)).fetchone()
             if row:
@@ -34381,7 +34381,7 @@ def _run_cron():
         for name, path in token_map.items():
             p = _Path(path)
             if p.exists():
-                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                with _db_lock, db.connect(LOG_DB) as cx:
                     cx.execute("""
                         INSERT INTO oauth_tokens (name, token_json, updated_at) VALUES (?,?,?)
                         ON CONFLICT(name) DO UPDATE SET token_json=excluded.token_json, updated_at=excluded.updated_at
@@ -34443,7 +34443,7 @@ def api_webhook_debug():
     try:
         source = (request.args.get("source") or "").strip()
         limit = max(1, min(int(request.args.get("limit") or 10), 50))
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cx.execute("""CREATE TABLE IF NOT EXISTS webhook_debug (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, received_at TEXT NOT NULL,
@@ -34561,7 +34561,7 @@ def api_heygen_recent():
 def api_heygen_mark_reviewed(video_id):
     # HeyGen itself has no "reviewed" concept — track it locally.
     ts = datetime.now(timezone.utc).isoformat()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO heygen_reviewed (video_id, reviewed_at) VALUES (?,?) "
             "ON CONFLICT(video_id) DO UPDATE SET reviewed_at=excluded.reviewed_at",
@@ -34724,7 +34724,7 @@ def unsubscribe():
     portal_token = (request.args.get("token", "") or "").strip()
     if portal_token and not email:
         from dashboard import client_portal as _cp, notify_state as _ns
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             portal = _cp.get_portal_by_token(cx, portal_token)
             if portal:
                 _ns.set_opt(cx, portal["email"], "out")
@@ -34983,7 +34983,7 @@ def cron_charge_subscriptions():
 
     charged = skipped = failed = notified = comped = 0
 
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         # Run idempotent migration to ensure failed_count column exists
         _subs.migrate_add_failed_count(cx)
@@ -35328,7 +35328,7 @@ def cron_backfill_membership_grants():
     dry = request.args.get("dry_run", "").lower() in ("1", "true", "yes")
     from dashboard import subscriptions as _subs
     fixed = 0
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _subs.init_subscriptions_table(cx); _subs.migrate_add_membership_columns(cx); _subs.migrate_add_term_cap_column(cx); _subs.migrate_add_attribution_column(cx); _subs.migrate_add_consent_column(cx)
         rows = cx.execute("SELECT DISTINCT email, next_charge_date FROM subscriptions "
@@ -35359,7 +35359,7 @@ def cron_easypost_sync():
     registered = 0
     activated = 0
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _tracking.init_tracking_schema(cx); _tracking.migrate_add_delivery_columns(cx)
         # 1) register trackers for shipments with a tracking number but no tracker yet
@@ -36715,7 +36715,7 @@ def api_admin_chat_log_export():
     except ValueError:
         return fail("limit must be an integer", status=400)
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             rows = cx.execute(
                 "SELECT id, ts, query, level, answer, rating, rated_at, "
@@ -37047,7 +37047,7 @@ def practitioner_finder_inquiry():
     sorted_ids = sorted(str(i) for i in practitioner_ids)
     pcount     = len(sorted_ids)
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # Ensure ip column exists (defensive ALTER — mirrors schema-evolution pattern)
         try:
             cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
@@ -37100,7 +37100,7 @@ def practitioner_finder_inquiry():
     records_map = {str(r["id"]): r for r in records}
 
     # Check opt-outs in batch
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         opted_out_emails = {
             row[0] for row in cx.execute(
                 "SELECT email FROM practitioner_inquiry_opt_outs"
@@ -37142,7 +37142,7 @@ def practitioner_finder_inquiry():
         plain_claim   = secrets.token_urlsafe(32)
         send_tokens.append((rec, plain_reply, plain_optout, plain_claim))
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # inquiries row
         cx.execute(
             "INSERT INTO inquiries "
@@ -37242,7 +37242,7 @@ def practitioner_finder_inquiry():
         if ok:
             sent_count += 1
         else:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "UPDATE inquiry_practitioners SET status='failed' "
                     "WHERE inquiry_id=? AND practitioner_id=?",
@@ -37252,7 +37252,7 @@ def practitioner_finder_inquiry():
 
     # ── Journey signal (fire-and-forget) ─────────────────────────────────────
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO journey_events "
                 "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -37339,7 +37339,7 @@ def _validate_auth_token(cx, token_plain, purpose):
 def practitioner_claim_get(token):
     """Render the claim form for a practitioner."""
     token = token.strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row, err = _validate_auth_token(cx, token, "practitioner_claim")
     if err:
         html, code = err
@@ -37358,7 +37358,7 @@ def practitioner_claim_get(token):
 def practitioner_claim_post(token):
     """Consume the claim token and flip accepts_inquiries=True in Supabase."""
     token = token.strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row, err = _validate_auth_token(cx, token, "practitioner_claim")
         if err:
             html, code = err
@@ -37389,7 +37389,7 @@ def practitioner_optout(token):
     inquiries without them ever clicking."""
     token = token.strip()
     if request.method == "GET":
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _row, err = _validate_auth_token(cx, token, "practitioner_optout")
         if err:
             html, code = err
@@ -37400,7 +37400,7 @@ def practitioner_optout(token):
             blurb="Confirm and we'll stop sending you new client inquiries. "
                   "You can ask us to turn them back on at any time.",
             button="Confirm opt-out")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row, err = _validate_auth_token(cx, token, "practitioner_optout")
         if err:
             html, code = err
@@ -37439,7 +37439,7 @@ def inquiry_reply_get(inquiry_id, practitioner_id):
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "").split(",")[0].strip()
     ua = request.headers.get("User-Agent", "")
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # Validate reply token
         tok_row = cx.execute(
             "SELECT token_hash, expires_at FROM inquiry_reply_tokens "
@@ -37509,7 +37509,7 @@ def inquiry_reply_post(inquiry_id, practitioner_id):
     th = _hash_token(token_plain)
     now_iso = _now_utc().isoformat()
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         # Validate reply token
         tok_row = cx.execute(
             "SELECT token_hash, expires_at FROM inquiry_reply_tokens "
@@ -37598,7 +37598,7 @@ def _validate_share_token(token):
     if not token:
         return None, None
     th = _hash_token(token)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT email, expires_at, consumed_at FROM auth_tokens "
@@ -37629,7 +37629,7 @@ def share_with_practitioner_get(token):
     recent  = _recent_inquiry_practitioner_ids(email)
 
     # Read globally-opted-out emails so we hide them from the recipient list
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         opted_out = {r[0] for r in cx.execute(
             "SELECT email FROM practitioner_inquiry_opt_outs").fetchall()}
 
@@ -37701,7 +37701,7 @@ def share_with_practitioner_post(token):
         return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
     recent = _recent_inquiry_practitioner_ids(email)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         opted_out = {r[0] for r in cx.execute(
             "SELECT email FROM practitioner_inquiry_opt_outs").fetchall()}
     eligible = [
@@ -37715,7 +37715,7 @@ def share_with_practitioner_post(token):
 
     # Pull the original inquiry context per (inquiry_id) to populate the share
     # email body.
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         inq_ids = sorted({iid for (iid, _, _) in eligible})
         placeholders = ",".join(["?"] * len(inq_ids))
@@ -37754,7 +37754,7 @@ def share_with_practitioner_post(token):
             print(f"[share] send failed for {pemail}: {e!r}", flush=True)
             ok = False
         if ok:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "UPDATE inquiry_practitioners SET shared_at=? "
                     "WHERE inquiry_id=? AND practitioner_id=?",
@@ -37764,7 +37764,7 @@ def share_with_practitioner_post(token):
 
     # Mark the share token consumed
     th = _hash_token(token)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "UPDATE auth_tokens SET consumed_at=? "
             "WHERE token_hash=? AND consumed_at IS NULL",
@@ -37859,7 +37859,7 @@ def admin_membership_grant():
     granted_at = datetime.utcnow().isoformat() + "Z"
     expires_at = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO memberships "
             "(id, email, granted_at, expires_at, granted_by, source, truly_vip_ref, notes) "
@@ -37896,7 +37896,7 @@ def admin_membership_grant():
         print(f"[membership-grant] email send failed: {e!r}", flush=True)
 
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO journey_events "
                 "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -37935,7 +37935,7 @@ def admin_pif_milestone():
             value_cents = max(0, int(value_cents))
         except (ValueError, TypeError):
             return jsonify({"ok": False, "error": "value_cents must be an integer"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         if value_cents is not None:
             _pif.award_milestone(cx, email, milestone_key=key, value_cents=value_cents)
         else:
@@ -37957,7 +37957,7 @@ def api_pif_summary():
     from dashboard import pay_it_forward as _pif
     from dashboard import points as _points
     from dashboard import coupons as _coupons
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _points.init_points_table(cx)
         balance_cents = _points.balance(cx, email)
         tier1_earned_cents = _points.earned_by_reason(cx, email, "referral_reward")
@@ -38012,7 +38012,7 @@ def api_pif_gift_note():
     from dashboard import product_reviews as _pr
     from dashboard import review_scoring as _rs
     _ctx = {"name": "Dr. Glen Swartwout — Biofield Analysis & Functional Formulations"}
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         red = _rf.redemption_by_order_ref(cx, order_ref)
         if not red or (red.get("referee_email") or "").lower() != recipient:
             return jsonify({"ok": False, "error": "redemption not found"}), 400
@@ -38041,7 +38041,7 @@ def api_pif_gift_note():
 @app.route("/admin/escalations", methods=["GET"])
 @require_console_key
 def admin_escalations_list():
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             "SELECT id, created_at, email, query_text, ai_response, flag_reason "
@@ -38066,7 +38066,7 @@ def coaching_escalate():
         return jsonify({"error": "query_text required"}), 400
     eid = str(uuid.uuid4())
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
             "INSERT INTO escalation_queue "
             "(id, created_at, email, query_text, ai_response, ai_confidence, "
@@ -38076,7 +38076,7 @@ def coaching_escalate():
              "member_request", "pending")
         )
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
                 "VALUES (?,?,?,'membership_escalation_filed',?,'','')",
@@ -38095,7 +38095,7 @@ def coaching_escalate():
 @app.route("/admin/escalations/<eid>", methods=["GET"])
 @require_console_key
 def admin_escalation_detail(eid):
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT id, created_at, email, query_text, ai_response, flag_reason, status "
@@ -38119,7 +38119,7 @@ def admin_escalation_reply(eid):
     if not video_url or not text:
         return jsonify({"error": "video_url and text required"}), 400
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email, query_text, status FROM escalation_queue WHERE id=?",
             (eid,)
@@ -38153,7 +38153,7 @@ def admin_escalation_reply(eid):
     except Exception as e:
         print(f"[escalation-reply] email send failed: {e!r}", flush=True)
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.execute(
                 "INSERT INTO journey_events (ts, session_id, email, trigger, detail, rung_before, rung_after) "
                 "VALUES (?,?,?,'membership_escalation_replied',?,'','')",
@@ -38184,7 +38184,7 @@ def coaching_auth_token(token):
     # Consume the token
     th = _hash_token(token)
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cur = cx.execute(
             "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
             (now_iso, th)
@@ -38212,7 +38212,7 @@ def coaching_auth_token(token):
 def coaching_activate(token):
     """GET previews; POST opens the coaching window for the order the token names."""
     th = _hash_token((token or "").strip())
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT email, extra, expires_at, consumed_at FROM auth_tokens "
@@ -38267,7 +38267,7 @@ def household_hold_ship(token):
                "<div style='font-family:Georgia,serif;max-width:520px;margin:60px auto'>"
                "<h1>This shipment is already on its way</h1>"
                "<p>Nothing more to do — your household order has been released.</p></div>")
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _holds.init_hold_tables(cx)
         hold = _holds.hold_by_release_token(cx, token)
@@ -38311,7 +38311,7 @@ def coaching_studio_credit_post():
     email = (data.get("email") or "").strip().lower()
     studio_ref = (data.get("studio_ref") or "").strip()
     if email and "@" in email:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _sc.migrate(cx)
             claim, is_new = _sc.upsert_self_serve_claim(
                 cx, email=email, invoice_ref=studio_ref)
@@ -38341,7 +38341,7 @@ def coaching_studio_credit_post():
 def cron_membership_renewals():
     import json as _json
     now_iso = datetime.utcnow().isoformat() + "Z"
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         rows = cx.execute(
             "SELECT id, email, expires_at, last_reminder_at, source FROM memberships "
@@ -38434,13 +38434,13 @@ def cron_membership_renewals():
             print(f"[renewal-cron] send failed for {r['email']}: {e!r}", flush=True)
             ok_sent = False
         if ok_sent:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 cx.execute(
                     "UPDATE memberships SET last_reminder_at=? WHERE id=?",
                     (now_iso, r["id"])
                 )
             try:
-                with sqlite3.connect(LOG_DB) as cx:
+                with db.connect(LOG_DB) as cx:
                     cx.execute(
                         "INSERT INTO journey_events "
                         "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
@@ -38465,7 +38465,7 @@ def cron_pif_gift_note_invites():
     from dashboard import pif_gift_notes as _gn
     base = request.host_url.rstrip("/")
     invited = 0
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = _gn.pending_invites(cx, days=PIF_GIFT_NOTE_DELAY_DAYS, max_age_days=PIF_GIFT_NOTE_MAX_AGE_DAYS)
     for row in rows:
         if dry_run:
@@ -38488,7 +38488,7 @@ def cron_pif_gift_note_invites():
             print(f"[pif-t2 invite] send failed for {row['referee_email']}: {e!r}", flush=True)
             ok_sent = False
         if ok_sent:
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _gn.mark_invited(cx, row["referee_email"], row["order_ref"])
             invited += 1
     return jsonify({"invited": invited, "dry_run": dry_run}), 200
@@ -38532,7 +38532,7 @@ def coaching_start():
     email = (request.cookies.get("rm_member_email", "") or "").strip().lower()
     if not email or not _active_membership_for_email(email):
         return jsonify({"ok": False, "reason": "not_member", "offer_99": True}), 200
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         aw = _coaching.active_window(cx, email)
         if aw:
@@ -38555,7 +38555,7 @@ def coaching_dashboard():
     # Resolve first name from inbound_leads (best effort) or email local-part
     client_first = email.split("@", 1)[0]
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT first_name FROM inbound_leads "
                 "WHERE email=? AND first_name IS NOT NULL AND first_name != '' "
@@ -38569,7 +38569,7 @@ def coaching_dashboard():
     # Pull last 5 Glen replies
     glen_replies = []
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             for r in cx.execute(
                 "SELECT id, query_text, glen_reply_url, glen_reply_text, replied_at "
@@ -38586,7 +38586,7 @@ def coaching_dashboard():
     can_activate = False
     offer_99 = False
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cw = _coaching.active_window(cx, email)
             if cw:
@@ -38912,7 +38912,7 @@ def api_wholesale_apply():
     sid = request.cookies.get("amg_session") or uuid.uuid4().hex
     parts = clean["name"].split(None, 1)
     try:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             begin_funnel.init_journey_tables(cx)
             begin_funnel.record_unlock(
                 cx, session_id=sid, trigger="tos", email=clean["email"],
@@ -39035,7 +39035,7 @@ def admin_tax_get_report():
     wholesale / out-of-state / unknown-state). ?format=csv for a download."""
     date_from = (request.args.get("from") or "").strip()
     date_to = (request.args.get("to") or "").strip()
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _bos_orders.init_orders_table(cx)
         rep = _bos_orders.get_tax_report(cx, date_from=date_from, date_to=date_to)
@@ -39149,7 +39149,7 @@ def _alert_stripe(context, err):
     """Best-effort: record a Stripe session-create failure (throttled owner email
     + console signal). Runs inside checkout except blocks — must never raise."""
     try:
-        cx = _sqlite3.connect(LOG_DB)
+        cx = db.connect(LOG_DB)
         try:
             res = _stripe_alerts.record_failure(cx, context, str(err))
         finally:
@@ -39167,7 +39167,7 @@ def _alert_stripe(context, err):
 
 
 def _init_bos_ghl_queue():
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _bos_ghl_queue.init_ghl_queue_table(cx)
     finally:
@@ -39178,7 +39178,7 @@ _init_bos_ghl_queue()
 
 
 def _init_bos_events():
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _bos_events.init_event_tables(cx)
     finally:
@@ -39189,7 +39189,7 @@ _init_bos_events()
 
 
 def _init_bos_orders():
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _bos_orders.init_orders_table(cx)
         _bos_orders.init_fulfillments_table(cx)
@@ -39206,7 +39206,7 @@ _init_bos_orders()
 
 
 def _init_recommendation_events():
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         recommendation_events.init_recommendation_events(cx)
 
 
@@ -39243,7 +39243,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
     paid_cents (when not None) records the order as paid for that captured amount
     WITHOUT moving it off `status` — for already-captured charges like the trial."""
     try:
-        cx = _sqlite3.connect(LOG_DB)
+        cx = db.connect(LOG_DB)
         try:
             _oid = _bos_orders.upsert_order(
                 cx, source=source, external_ref=external_ref, email=email, name=name,
@@ -39299,7 +39299,7 @@ def _ingest_order(*, source, external_ref, email="", name="", phone="",
                         if s:
                             slugs.append(s)
                     if slugs:
-                        with _db_lock, sqlite3.connect(LOG_DB) as _rep_cx:
+                        with _db_lock, db.connect(LOG_DB) as _rep_cx:
                             repertoire.init_repertoire_table(_rep_cx)
                             repertoire.add_skus(_rep_cx, email, slugs)
             except Exception as _re:
@@ -39315,7 +39315,7 @@ def _role_for_token(token):
     if not token:
         return None
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             row = cx.execute(
                 "SELECT u.scope FROM access_tokens t "
                 "JOIN workspace_users u ON u.id = t.user_id "
@@ -39349,7 +39349,7 @@ def bos_action(key):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     confirmed = bool(body.pop("confirmed", False))
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         res = _bos_dispatch.dispatch_action(
@@ -39368,7 +39368,7 @@ def console_order_invoice_link(oid):
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         order = _bos_orders.get_order(cx, oid)
@@ -39436,7 +39436,7 @@ def console_order_publish_to_portal(oid):
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard.practitioner_portal import create_order_invoice_token
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         row = cx.execute("SELECT invoice_token, email, name FROM orders WHERE id=?", (oid,)).fetchone()
         if not row:
             return jsonify({"ok": False, "error": "order not found"}), 404
@@ -39445,7 +39445,7 @@ def console_order_publish_to_portal(oid):
         cli_name = (row[2] or "").strip()
     if not tok:                                 # mint outside the held connection
         tok = create_order_invoice_token(oid)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("UPDATE orders SET portal_published=1, invoice_token=? WHERE id=?", (tok, oid))
         cx.commit()
     # Optional: notify the client their invoice is ready. Links to their PORTAL (which
@@ -39456,7 +39456,7 @@ def console_order_publish_to_portal(oid):
     if body.get("email") and cli_email:
         try:
             from dashboard import client_portal as _cp
-            with _db_lock, sqlite3.connect(LOG_DB) as _tcx:
+            with _db_lock, db.connect(LOG_DB) as _tcx:
                 _cp.init_client_portal_table(_tcx)
                 ptok = _cp.ensure_token(_tcx, cli_email, cli_name)
             purl = portal_link(ptok)
@@ -39497,7 +39497,7 @@ def console_biofield_analysis_paid():
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         paid = _biofield_paid_order(cx, request.args.get("email") or "")
     if paid:
         return jsonify({"ok": True, "paid": True, "order_id": paid["order_id"],
@@ -39515,7 +39515,7 @@ def console_client_invoice():
     email = (request.args.get("email") or "").strip().lower()
     if not email:
         return jsonify({"ok": True, "order": None})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         r = cx.execute(
             "SELECT id, COALESCE(status,'') status, COALESCE(portal_published,0) pub, "
@@ -39560,7 +39560,7 @@ def console_client_360():
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     email = (request.args.get("email") or "").strip().lower()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         if email:
             try:
@@ -39601,7 +39601,7 @@ def console_membership_enroll():
             return jsonify({"ok": False, "error": "source must start with membership_"}), 400
     else:
         src = tier["source"]
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         init_membership_tables(cx)
         _grant_membership(cx, email, days, src)
@@ -39632,7 +39632,7 @@ def console_membership_revoke():
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     now = datetime.utcnow().isoformat() + "Z"
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         init_membership_tables(cx)
         cur = cx.execute(
@@ -39654,7 +39654,7 @@ def console_membership_reconcile_alerts():
     actor = _bos_actor()
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         init_membership_tables(cx)
@@ -39680,7 +39680,7 @@ def console_shipment_suggestions():
     if not enabled:
         return jsonify({"ok": True, "enabled": False, "clusters": [],
                         "ship_credit_enabled": ship_credit})
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         def _household_of(pid):
@@ -39805,7 +39805,7 @@ def console_shipment_recalc_shipping(sid):
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = _sqlite3.Row
         res = _recompute_combined_shipping(cx, sid)
     return jsonify(res), (200 if res.get("ok") else 400)
@@ -39866,7 +39866,7 @@ def console_reprice_orders_from_qbo():
     only = (request.args.get("order_id") or "").strip()
     from dashboard import qbo_billing as _qb_local
     catalog = (_PRODUCTS.get("products") or {})
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     results = []
     try:
@@ -39971,7 +39971,7 @@ _rma.register()
 # ── Studio-credit free month: console actions (log claim / approve+grant / reject) ──
 from dashboard import studio_credit as _scstore
 from dashboard import studio_credit_actions as _sca
-with sqlite3.connect(LOG_DB) as _sc_cx:
+with db.connect(LOG_DB) as _sc_cx:
     _scstore.migrate(_sc_cx)
 _sca.configure(grant_fn=_studio_credit_grant_and_notify)
 _sca.register()
@@ -39994,7 +39994,7 @@ def api_customers_search():
     from dashboard import customers as _cust
     from dashboard import points as _points
     q = (request.args.get("q") or "").strip()
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         people = _cust.find_people(cx, q, limit=10)
         _points.init_points_table(cx)
@@ -40103,7 +40103,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     _cprices, _ff_flat, _cohorts, _loyalty, _earned = {}, None, [], [], set()
     try:
         from dashboard import client_prices as _cp_mod
-        _cpx = _sqlite3.connect(LOG_DB)
+        _cpx = db.connect(LOG_DB)
         _cpx.row_factory = _sqlite3.Row
         try:
             _cp_mod.init_table(_cpx)
@@ -40218,7 +40218,7 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     if points_redeem_cents_in not in (None, ""):
         from dashboard import points as _points
         _pemail = (email or "").strip().lower()
-        _pcx = _sqlite3.connect(LOG_DB)
+        _pcx = db.connect(LOG_DB)
         try:
             _points.init_points_table(_pcx)
             _pbal = _points.balance(_pcx, _pemail) if _pemail else 0
@@ -40374,7 +40374,7 @@ def api_orders_edit(oid):
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
     pickup = bool(body.get("pickup"))
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         order = _bos_orders.get_order(cx, oid)
@@ -40428,7 +40428,7 @@ def api_orders_grant_member_access(oid):
     actor = _bos_actor()
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         order = _bos_orders.get_order(cx, oid)
@@ -40536,7 +40536,7 @@ def api_orders_manual():
     if "pickup" in body:
         pickup = bool(body.get("pickup"))
     else:
-        _pcx = _sqlite3.connect(LOG_DB)
+        _pcx = db.connect(LOG_DB)
         try:
             from dashboard import client_prefs as _cpf
             pickup = _cpf.get_pickup_default(_pcx, customer.get("email"))
@@ -40547,7 +40547,7 @@ def api_orders_manual():
     # Published/paid/confirmed orders are left alone (those are Rae's, deliberately out).
     cancelled_ids = []
     if body.get("replace_open") and (customer.get("email") or "").strip():
-        with _db_lock, sqlite3.connect(LOG_DB) as _ccx:
+        with _db_lock, db.connect(LOG_DB) as _ccx:
             cancelled_ids = _cancel_open_handoff_orders(_ccx, customer["email"])
     addr_in = customer.get("address") or {}
     ship = {
@@ -40588,7 +40588,7 @@ def api_orders_manual():
     if _REVIEWS_GIFTS and _gift_email:
         try:
             from dashboard import review_gifts as _rg
-            _gcx = _sqlite3.connect(LOG_DB)
+            _gcx = db.connect(LOG_DB)
             try:
                 _gift_rows = _rg.pending_for(_gcx, _gift_email)
             finally:
@@ -40599,7 +40599,7 @@ def api_orders_manual():
         except Exception as e:  # noqa: BLE001 - gift never blocks order creation
             print(f"[orders.manual] gift add failed: {e}", flush=True); _gift_rows = []
     person_id = customer.get("person_id")
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         if not person_id and (customer.get("email") or "").strip():
@@ -40675,7 +40675,7 @@ def api_orders_price_preview():
     if _pemail:
         try:
             from dashboard import client_prices as _cp_mod
-            _cpx = _sqlite3.connect(LOG_DB)
+            _cpx = db.connect(LOG_DB)
             _cpx.row_factory = _sqlite3.Row
             try:
                 _cp_mod.init_table(_cpx)
@@ -40792,7 +40792,7 @@ def api_invoice_snippets_list():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import invoice_snippets as _snip
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _snip.init_table(cx)
         return jsonify({"ok": True, "snippets": _snip.list_all(cx)})
@@ -40807,7 +40807,7 @@ def api_invoice_snippets_delete(sid):
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import invoice_snippets as _snip
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _snip.init_table(cx)
         return jsonify({"ok": True, "removed": _snip.remove(cx, sid)})
@@ -40876,7 +40876,7 @@ def api_orders_membership_offer():
 def api_order_payments_list(oid):
     if _bos_actor() is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         return jsonify({"ok": True, "rows": _op.list_payments(cx, oid),
@@ -40891,7 +40891,7 @@ def api_order_payments_add(oid):
     if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         row = _op.add_payment(
@@ -40916,7 +40916,7 @@ def api_order_refunds_add(oid):
     if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         row = _op.add_refund(
@@ -40937,7 +40937,7 @@ def api_order_payment_void(pid):
     if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     b = request.get_json(silent=True) or {}
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         row = _op.void(cx, pid, b.get("reason") or "", actor=actor.name)
@@ -40953,7 +40953,7 @@ def api_order_payment_resync(pid):
     actor = _bos_actor()
     if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         row = _op.resync(cx, pid)
@@ -40976,7 +40976,7 @@ def api_backfill_legacy_payments():
     dry = (request.args.get("dry_run") or "1").strip().lower() not in ("0", "false", "no")
     body = request.get_json(silent=True) or {}
     skip = body.get("skip") or []
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
         res = _op.backfill_legacy_payments(cx, dry_run=dry, skip_order_ids=skip)
@@ -40996,7 +40996,7 @@ def api_console_customer_rename():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(silent=True) or {}
     from dashboard import customers as _cust
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         res = _cust.rename_by_email(
             cx, body.get("email"), name=body.get("name"),
@@ -41073,7 +41073,7 @@ def api_console_client_prefs():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import client_prefs as _cpf
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _cpf.init_table(cx)
         if request.method == "GET":
@@ -41125,7 +41125,7 @@ def api_console_client_prices():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import client_prices as _cp
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _cp.init_table(cx)
         if request.method == "GET":
@@ -41206,7 +41206,7 @@ def api_console_cohorts():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import cohorts as _co
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _co.init_tables(cx)
         if request.method == "GET":
@@ -41232,7 +41232,7 @@ def api_console_cohort_members():
     if actor is None or actor.role != _bos_rbac.OWNER:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import cohorts as _co
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _co.init_tables(cx)
         if request.method == "GET":
@@ -41262,7 +41262,7 @@ def api_console_cohort_members():
 def _mint_plan_choice_token(email):
     tok = secrets.token_urlsafe(24)
     now = datetime.now(timezone.utc)
-    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("INSERT INTO auth_tokens (token_hash, email, purpose, created_at, expires_at) "
                    "VALUES (?,?,?,?,?)",
                    (_hash_token(tok), (email or "").strip().lower(), "plan_choice",
@@ -41274,7 +41274,7 @@ def _mint_plan_choice_token(email):
 def _email_from_plan_choice_token(token):
     th = _hash_token((token or "").strip())
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         row = cx.execute(
             "SELECT email FROM auth_tokens WHERE token_hash=? AND purpose='plan_choice' "
             "AND (expires_at IS NULL OR expires_at > ?)", (th, now)).fetchone()
@@ -41294,7 +41294,7 @@ def api_plan_choice_get(token):
     if not email:
         return jsonify({"ok": False, "error": "this link is invalid or expired"}), 404
     from dashboard import cohorts as _co
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _co.init_tables(cx)
         plans = [{"key": c["key"], "name": c["name"], "description": c["description"]}
@@ -41320,7 +41320,7 @@ def api_plan_choice_set(token):
         return jsonify({"ok": False, "error": "this link is invalid or expired"}), 404
     key = ((request.get_json(silent=True) or {}).get("cohort_key") or "").strip()
     from dashboard import cohorts as _co
-    with _db_lock, _sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _co.init_tables(cx)
         ok = _co.set_choice(cx, email, key)
     if not ok:
@@ -41333,7 +41333,7 @@ def _plan_choice_pending(days=21, window=10):
     a plan yet — the 3-week nudge cohort. Best-effort; empty on any gap."""
     try:
         from dashboard import cohorts as _co
-        with _sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             cx.row_factory = _sqlite3.Row
             _co.init_tables(cx)
             choice_keys = {c["key"] for c in _co.choosable_cohorts(cx)}
@@ -41397,7 +41397,7 @@ def _invoice_order_for_token(token):
     oid = _pp.order_id_from_invoice_token(token)
     if not oid:
         return None
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         return _bos_orders.get_order(cx, int(oid))
     finally:
@@ -41410,7 +41410,7 @@ def _invoice_points_balance(order):
     email = (order.get("email") or "").strip().lower()
     if not email:
         return 0
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     try:
         _points.init_points_table(cx)
         return _points.balance(cx, email)
@@ -41493,7 +41493,7 @@ def _invoice_display_name(order):
             return nm
         try:
             from dashboard import customers as _cust
-            cx = _sqlite3.connect(LOG_DB)
+            cx = db.connect(LOG_DB)
             cx.row_factory = _sqlite3.Row
             try:
                 pid = order.get("person_id")
@@ -41568,7 +41568,7 @@ def api_invoice_get(token):
     summary["savings_offer"] = _order_savings_offer(order)   # switch-to-save (None unless a cheaper plan)
     summary["membership_offer"] = _invoice_membership_offer(order)   # join-and-save (None if paid/member)
     oid = order.get("id")
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
@@ -41597,7 +41597,7 @@ def api_invoice_get(token):
             # function scope (Python's static scoping), raising UnboundLocalError
             # on every call regardless of whether this branch runs.
             from dashboard import opens as _opens
-            with sqlite3.connect(LOG_DB) as _cxo:
+            with db.connect(LOG_DB) as _cxo:
                 _opens.init_opens_table(_cxo)
                 summary["opened"] = _opens.get_open(_cxo, "invoice", _opens.invoice_key(token))
         except Exception as _e:
@@ -41618,7 +41618,7 @@ def _invoice_membership_offer(order):
             return None
         email = (order.get("email") or "").strip().lower()
         if email:
-            with _sqlite3.connect(LOG_DB) as _mc:
+            with db.connect(LOG_DB) as _mc:
                 if _mp.owns_group(_mc, email):
                     return None
         tiers = _mp.invoice_offer_tiers()
@@ -41669,7 +41669,7 @@ def api_invoice_membership(token):
         tier_key = (body.get("tier") or "month").strip()
         if tier_key not in _mp.invoice_offer_tiers():
             return jsonify({"ok": False, "error": "tier not offered"}), 400
-        with _sqlite3.connect(LOG_DB) as _mc:
+        with db.connect(LOG_DB) as _mc:
             if _mp.owns_group(_mc, (order.get("email") or "").strip().lower()):
                 return jsonify({"ok": False, "error": "already a member"}), 409
         lines.append({"slug": _mp.line_slug(tier_key), "qty": 1})
@@ -41679,7 +41679,7 @@ def api_invoice_membership(token):
     payload = [{"slug": l["slug"], "qty": int(l.get("qty") or 1),
                 **({"unit_cents": l["unit_cents"]} if l.get("override") else {})}
                for l in lines]
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         priced, _was_paid = _reprice_and_persist_invoice(
             cx, order, payload, pickup=(order.get("channel") == "pickup"))
@@ -41708,7 +41708,7 @@ def _order_savings_offer(order):
         if not email:
             return None
         from dashboard import cohorts as _co
-        cx = _sqlite3.connect(LOG_DB)
+        cx = db.connect(LOG_DB)
         cx.row_factory = _sqlite3.Row
         try:
             _co.init_tables(cx)
@@ -41748,7 +41748,7 @@ def api_invoice_apply_plan(token):
     forever = bool(body.get("forever"))
     email = (order.get("email") or "").strip().lower()
     from dashboard import cohorts as _co
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         _co.init_tables(cx)
@@ -41839,7 +41839,7 @@ def api_invoice_update(token):
     points = min(int(order.get("points_redeemed_cents") or 0), total_cents,
                  _invoice_points_balance(order))
     total_cents -= points
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _bos_orders.upsert_order(
             cx, source=order["source"], external_ref=order["external_ref"],
@@ -41874,7 +41874,7 @@ def api_invoice_cancel(token):
     if order.get("pay_status") == "paid" or order.get("status") in _bos_orders._TERMINAL_STATUSES:
         return jsonify({"ok": False, "error": "This order can no longer be cancelled "
                         "online — please reach out and we'll help."}), 409
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         _bos_orders.set_order_status(cx, order["id"], "cancelled")
@@ -41914,7 +41914,7 @@ def api_invoice_apply_points(token):
     gross_total = int(order.get("total_cents") or 0) + int(order.get("points_redeemed_cents") or 0)
     new_points = max(0, min(requested, gross_total, _invoice_points_balance(order)))
     new_total = gross_total - new_points
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _bos_orders.upsert_order(
             cx, source=order["source"], external_ref=order["external_ref"],
@@ -41989,7 +41989,7 @@ def api_invoice_claim_paid(token):
     method = ((request.get_json(silent=True) or {}).get("method") or "").strip().lower()
     if method not in ("zelle", "wise"):
         return jsonify({"ok": False, "error": "unknown payment method"}), 400
-    cx = _sqlite3.connect(LOG_DB); cx.row_factory = _sqlite3.Row
+    cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _bos_orders.set_order_payment_claimed(cx, order["id"], method=method)
     finally:
@@ -42040,7 +42040,7 @@ def bos_events():
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         try:
@@ -42062,7 +42062,7 @@ def bos_event_approve(event_id):
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         res = _bos_dispatch.approve_event(cx, event_id, actor)
@@ -42076,7 +42076,7 @@ def bos_event_cancel(event_id):
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         res = _bos_dispatch.cancel_event(cx, event_id)
@@ -42090,7 +42090,7 @@ def bos_home_signals():
     actor = _bos_actor()
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         cells = _bos_signals.aggregate_signals(cx, actor)
@@ -42121,7 +42121,7 @@ def coaching_cohort_api():
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     active_only = request.args.get("active") == "1"
-    cx = sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = sqlite3.Row
     try:
         rows = _coaching.list_windows(cx, active_only=active_only,
@@ -42170,7 +42170,7 @@ def bos_payments_list():
     from the orders table, plus recent stripe_failures (declined/failed charges)."""
     if _bos_actor() is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         try:
@@ -42212,7 +42212,7 @@ def bos_backfill_trial_orders():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
     from dashboard import stripe_pay as _sp
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         res = _bos_payments.backfill_trial_orders(cx, _sp.get_session, dry_run=dry)
@@ -42232,7 +42232,7 @@ def bos_reconcile_captured_charges():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     dry = (request.args.get("dry_run") or "").strip().lower() in ("1", "true", "yes")
     from dashboard import stripe_pay as _sp
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         res = _bos_payments.reconcile_captured_charges(
@@ -42248,7 +42248,7 @@ def api_console_backfill_affiliate_people():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     from dashboard import affiliate_dashboard as _ad
     dry = request.args.get("dry_run", "0") == "1"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         missing = [r[0] for r in cx.execute(
             "SELECT a.email FROM affiliate_signups a WHERE a.status='approved' "
             "AND NOT EXISTS (SELECT 1 FROM people p WHERE lower(p.email)=lower(a.email))").fetchall()]
@@ -42265,7 +42265,7 @@ def api_console_backfill_member_people():
     from dashboard import subscriptions as _subs
     dry = request.args.get("dry_run", "0") == "1"
     now = _subs._now_iso()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         missing = [r[0] for r in cx.execute(
             "SELECT DISTINCT m.email FROM ("
             "  SELECT email FROM subscriptions WHERE kind='membership' AND status='active' "
@@ -42296,7 +42296,7 @@ def api_console_fmp_orders_ingest():
     if dry:
         return jsonify({"ok": True, "dry_run": True,
                         "counts": {k: len(payload.get(k, [])) for k in ("clients", "invoices", "items", "addresses")}})
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _fo.ensure_tables(cx)
         counts = _fo.ingest_payload(cx, payload)
         try:
@@ -42324,7 +42324,7 @@ def api_console_fmp_orders():
     name = (request.args.get("name") or "").strip() or None
     if not (client_id or email or (name and len(name) >= 2)):
         return jsonify({"ok": True, "results": []})
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         results = _fo.client_order_history(cx, client_id=client_id, email=email, name=name)
     return jsonify({"ok": True, "results": results})
 
@@ -42345,7 +42345,7 @@ def api_console_fmp_history_rebuild():
             slug_map = json.load(_f)
     except Exception as e:
         return fail(f"could not load data/fmp_slug_map.json: {e}", status=400)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ph.init_purchase_history_table(cx)
         result = _fh.rebuild_from_fmp(cx, slug_map)
     return ok(result)
@@ -42368,7 +42368,7 @@ def api_console_gk_email_history_rebuild():
             catalog_slugs = set((json.load(_f) or {}).get("products", {}).keys())
     except Exception as e:
         return fail(f"could not load data/products.json: {e}", status=400)
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ph.init_purchase_history_table(cx)
         result = _gh.rebuild_from_gk_emails(
             cx, fetch_fn=_gh.fetch_gk_order_emails, catalog_slugs=catalog_slugs)
@@ -42403,7 +42403,7 @@ def api_console_repertoire_reseed():
     from dashboard import purchase_history as _ph
     from dashboard import repertoire as _rep
 
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _ph.init_purchase_history_table(cx)
         _rep.init_repertoire_table(cx)
 
@@ -42459,7 +42459,7 @@ def api_console_test_portal_welcome():
         return jsonify({"ok": False, "error": "email required"}), 400
     dry = request.args.get("dry_run", "1") == "1"
     login_url = portal_base() + "/portal/login"
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute("CREATE TABLE IF NOT EXISTS portal_welcome_sent ("
                    "  email TEXT PRIMARY KEY, sent_at TEXT)")
         name = ""
@@ -42521,7 +42521,7 @@ def bos_orders_create():
     if actor is None:
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     if request.method == "GET":
-        cx = _sqlite3.connect(LOG_DB)
+        cx = db.connect(LOG_DB)
         cx.row_factory = _sqlite3.Row
         try:
             try:
@@ -42655,7 +42655,7 @@ def bos_orders_create():
     # --- existing POST body unchanged below ---
     b = request.get_json(silent=True) or {}
     ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         oid = _bos_orders.upsert_order(
@@ -42680,7 +42680,7 @@ def bos_backorders():
     actor = _bos_actor()
     if actor is None or actor.role not in (_bos_rbac.OWNER, _bos_rbac.OPS):
         return jsonify({"ok": False, "error": "unauthorized"}), 401
-    cx = _sqlite3.connect(LOG_DB)
+    cx = db.connect(LOG_DB)
     cx.row_factory = _sqlite3.Row
     try:
         data = _bos_orders.backorder_rollup(cx)
@@ -42798,7 +42798,7 @@ def admin_sales_images_backfill():
         return jsonify({"ok": False, "error": "variations disabled"}), 400
     arg = (request.values.get("slug") or "").strip()
     from dashboard import sales_images as _si
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         targets = _si.backfill_slugs(cx, arg, _si.list_image_slugs(cx) if arg == "all"
                                      else [arg] if arg else [])
         enq = []
@@ -42814,7 +42814,7 @@ def api_console_coupons():
         key = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
         if key != CONSOLE_SECRET and not _owner_token_ok(key):
             return jsonify({"error": "Unauthorized"}), 401
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         from dashboard import coupons as _coupons
         _coupons.init_coupons_table(cx)
         rows = cx.execute(
@@ -42839,7 +42839,7 @@ def api_console_top_products():
     except (ValueError, TypeError):
         limit = 20
     from dashboard import product_sales as _ps
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ps.init_product_sales_table(cx)
         items = _ps.top_products(cx, year=year, by=by, limit=limit)
     return jsonify({"products": items})
@@ -42863,7 +42863,7 @@ def api_console_sales_import():
     write = (request.form.get("write", "") or "").strip().lower() in ("1", "true", "yes", "on")
     written = 0
     if write:
-        with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        with _db_lock, db.connect(LOG_DB) as cx:
             _ps.init_product_sales_table(cx)
             written = _ps.write_fmp_sales(cx, agg)
     return jsonify({"ok": True, "line_items": len(rows), "product_rows": len(agg), "written": written})
@@ -42884,7 +42884,7 @@ def api_console_triage_invite():
         return jsonify({"error": "email required"}), 400
     if practitioner not in ("glen", "rae"):
         return jsonify({"error": "bad_practitioner"}), 400
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _triage.init_triage_tables(cx)
         token = _triage.create_invite(cx, email, name, practitioner)
