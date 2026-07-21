@@ -407,6 +407,7 @@
 const seg = location.pathname.split("/").filter(Boolean).pop();
 const isMe = (seg === "me");
 const token = seg; // reused by reorder()/checkout; "me" resolves via the session
+let _recoPayload = null; // My Recommendations (2b-ii) payload, set in load() before render(); keeps render(d,v) signature
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
@@ -841,7 +842,8 @@ async function load(){
   ]);
   const ok = isMe ? !!view : !!data;
   if(!ok){ notFound(); return; }
-  render(data, view, reco);
+  _recoPayload = reco;
+  render(data, view);
 }
 
 // Poll loop for the cold-portal "Preparing your analysis…" state. Each tick
@@ -1126,9 +1128,9 @@ function wireRecommendationsCard(){
   });
 }
 
-function render(d, v, rec){
+function render(d, v){
   d = d || {};
-  const recSections = (rec && Array.isArray(rec.sections)) ? rec.sections : [];
+  const recSections = (_recoPayload && Array.isArray(_recoPayload.sections)) ? _recoPayload.sections : [];
   // Premium element backdrop: key the Glendalf scene off the member's deficient
   // element (null when not a paid member / not yet computed -> plain portal).
   try {
