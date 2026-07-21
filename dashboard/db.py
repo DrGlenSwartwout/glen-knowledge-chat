@@ -59,5 +59,12 @@ def _connect_postgres(db_path: str, *, timeout: float):
     if not dsn:
         raise RuntimeError("DB_BACKEND=postgres but PG_DSN is unset")
     import psycopg  # optional dep
+    from dashboard.dbschema import schema_for_path
     _connect_timeout = max(1, int(round(timeout)))
-    return _PgConn(psycopg.connect(dsn, connect_timeout=_connect_timeout))
+    raw = psycopg.connect(dsn, connect_timeout=_connect_timeout)
+    schema = schema_for_path(db_path)  # already sanitized to [a-z0-9_] -> safe to quote-interpolate
+    with raw.cursor() as c:
+        c.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        c.execute(f'SET search_path TO "{schema}"')
+    raw.commit()
+    return _PgConn(raw)

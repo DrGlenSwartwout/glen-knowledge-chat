@@ -70,3 +70,19 @@ def test_pg_context_manager_rolls_back_on_exception(monkeypatch):
     cx3 = db.connect("ignored")
     assert cx3.execute("SELECT count(*) FROM cm_r").fetchone()[0] == 0
     cx3.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_schema_isolation(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    a = db.connect("/data/iso_a.db")
+    b = db.connect("/data/iso_b.db")
+    for cx in (a, b):
+        cx.execute("CREATE TABLE IF NOT EXISTS t (id BIGINT)")
+        cx.execute("DELETE FROM t")
+        cx.commit()
+    a.execute("INSERT INTO t (id) VALUES (?)", (1,))
+    a.commit()
+    # same unqualified table name, different schema -> b's t is still empty
+    assert b.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
+    a.close()
+    b.close()
