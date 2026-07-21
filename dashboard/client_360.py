@@ -1,6 +1,7 @@
 """Per-client "client-360" hub: read + assemble everything the console knows
 about one client (by email). Pure functions take open sqlite connections so
 they are testable offline. No writes."""
+import json
 import sqlite3
 
 _SOURCE_ACTION = {
@@ -40,12 +41,10 @@ def process_strip(cx, email):
     """The client's CURRENT in-flight cycle as sequence-status stages.
     cx: LOG_DB connection (row_factory=sqlite3.Row). Read-only."""
     e = (email or "").strip().lower()
-    sources = _detect_sources(cx, e)
-    source = sources[0] if sources else None
     try:
         order = cx.execute(
             "SELECT id, COALESCE(status,'') status, COALESCE(pay_status,'') pay, "
-            "COALESCE(invoice_sent_at,'') sent FROM orders "
+            "COALESCE(invoice_sent_at,'') sent, COALESCE(items_json,'[]') items FROM orders "
             "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
             "ORDER BY id DESC LIMIT 1", (e,)).fetchone()
     except sqlite3.OperationalError:
@@ -54,6 +53,18 @@ def process_strip(cx, email):
     status = order["status"] if order else ""
     pay = order["pay"] if order else ""
     sent = order["sent"] if order else ""
+
+    line_sources = []
+    if order:
+        try:
+            for ln in (json.loads(order["items"]) or []):
+                sk = (ln.get("source") or "").strip()
+                if sk and sk not in line_sources:
+                    line_sources.append(sk)
+        except Exception:
+            line_sources = []
+    sources = line_sources or _detect_sources(cx, e)
+    source = sources[0] if sources else None
 
     rec_action = _SOURCE_ACTION.get(source, {"kind": "none"}) if source else {"kind": "none"}
     stages = [
