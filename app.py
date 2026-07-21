@@ -20361,7 +20361,8 @@ def api_portal_ff_add_to_invoice(token):
         for it in draft["items"]:
             unit = _ff_line_cents(cx, email, it.get("slug") or "")
             items.append({"slug": it.get("slug") or "", "name": it.get("name") or "",
-                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+                          "qty": 1, "unit_cents": unit, "line_cents": unit,
+                          "source": "scan"})
         total = sum(i["line_cents"] for i in items)
         _bos_orders.upsert_order(
             cx, source="in-house", external_ref=ext, status="proposed",
@@ -21043,7 +21044,8 @@ def api_portal_support_program_add_to_invoice(token):
             slug = (it.get("slug") or "").strip()
             unit = _ff_line_cents(cx, email, slug)
             items.append({"slug": slug, "name": it.get("name") or slug,
-                          "qty": 1, "unit_cents": unit, "line_cents": unit})
+                          "qty": 1, "unit_cents": unit, "line_cents": unit,
+                          "source": "intake"})
         total = sum(i["line_cents"] for i in items)
         _bos_orders.upsert_order(
             cx, source="in-house", external_ref=ext, status="proposed",
