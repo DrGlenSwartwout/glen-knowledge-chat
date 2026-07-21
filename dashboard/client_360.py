@@ -3,6 +3,7 @@ about one client (by email). Pure functions take open sqlite connections so
 they are testable offline. No writes."""
 import json
 import sqlite3
+from dashboard import db
 
 _SOURCE_ACTION = {
     "biofield": {"kind": "link", "target": "/console/biofield-portal"},
@@ -19,7 +20,7 @@ def _exists(cx, sql, params):
     """True if the query returns a row; False if the table is absent."""
     try:
         return cx.execute(sql, params).fetchone() is not None
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False
 
 
@@ -47,7 +48,7 @@ def process_strip(cx, email):
             "COALESCE(invoice_sent_at,'') sent, COALESCE(items_json,'[]') items FROM orders "
             "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
             "ORDER BY id DESC LIMIT 1", (e,)).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         order = None
     oid = order["id"] if order else None
     status = order["status"] if order else ""
@@ -100,7 +101,7 @@ def client_tags_for_email(email, *, e4l_path=None):
             return empty
         data = clinical_tags_console.client_tags(cx, row["client_id"])
         return {"active": data.get("active", []), "suggested": data.get("suggested", [])}
-    except sqlite3.Error:
+    except db.Error:
         return empty
     finally:
         cx.close()
@@ -116,7 +117,7 @@ def _person(cx, email):
             "COALESCE(profession,'') profession, COALESCE(order_count,0) oc, "
             "COALESCE(last_order_date,'') lod FROM people WHERE lower(email)=? LIMIT 1",
             (email,)).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return empty
     if not r:
         return empty
@@ -132,7 +133,7 @@ def _tests(cx, email):
     try:
         for s in client_scans.scans_for(cx, email):
             by_date[s["scan_date"]] = "scan"
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         pass
     try:
         for rv in biofield_reveals.list_for_email(cx, email):
@@ -152,12 +153,12 @@ def _invoices(cx, email):
             "FROM orders "
             "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
             "ORDER BY id DESC", (email,)).fetchall()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         rows = []
     for r in rows:
         try:
             bal = order_payments.balance(cx, r["id"])
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             continue
         out["orders"].append({
             "id": r["id"], "date": r["created_at"], "status": r["status"],

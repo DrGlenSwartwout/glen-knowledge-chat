@@ -290,3 +290,39 @@ def test_pg_pif_pending_invites_window(monkeypatch):
     got = pif_gift_notes.pending_invites(cx, days=7, max_age_days=60, limit=50)
     assert [r["referee_email"] for r in got] == ["due@x.com"]
     cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_db_operational_error_catches_missing_table(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    try:
+        cx.execute("SELECT 1 FROM no_such_table_zzz").fetchone()
+        assert False, "expected an error"
+    except db.OperationalError:
+        cx.rollback()   # caught the psycopg UndefinedTable via the backend-neutral tuple
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_db_integrity_error_catches_unique_violation(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS exc_u")
+    cx.execute("CREATE TABLE exc_u (k TEXT PRIMARY KEY)")
+    cx.execute("INSERT INTO exc_u (k) VALUES ('a')"); cx.commit()
+    try:
+        cx.execute("INSERT INTO exc_u (k) VALUES ('a')"); cx.commit()
+        assert False, "expected an error"
+    except db.IntegrityError:
+        cx.rollback()   # caught the psycopg UniqueViolation via the backend-neutral tuple
+    cx.close()
+
+
+def test_db_exception_tuples_include_sqlite_types():
+    # On any env the tuples must at least include the sqlite3 base types (superset guarantee).
+    import sqlite3
+    for name, base in (("Error", sqlite3.Error), ("IntegrityError", sqlite3.IntegrityError),
+                       ("OperationalError", sqlite3.OperationalError)):
+        val = getattr(db, name)
+        types = val if isinstance(val, tuple) else (val,)
+        assert base in types, f"db.{name} must include sqlite3.{name}"

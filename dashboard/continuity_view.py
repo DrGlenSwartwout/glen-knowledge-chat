@@ -5,6 +5,7 @@ may only ever touch a patient who has a CONSENTED CONTINUITY link to them.
 """
 import datetime as _dt
 import sqlite3
+from dashboard import db
 from typing import Optional
 
 from dashboard import scan_analysis as _scan
@@ -28,7 +29,7 @@ def _prepay_authorized(cx, practitioner_id, patient_email) -> bool:
             ((patient_email or "").strip(), str(practitioner_id), today),
         ).fetchone()
         return row is not None
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False  # prepay_term_grants not present yet
 
 
@@ -71,7 +72,7 @@ def roster(cx, practitioner_id) -> list:
             (str(practitioner_id), today),
         ).fetchall()
         emails |= {r[0] for r in prepay_rows}
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         pass  # prepay_term_grants not present yet
     return [{"email": e, "name": _display_name(cx, e)} for e in emails]
 
@@ -87,7 +88,7 @@ def _display_name(cx, email) -> str:
         ).fetchone()
         if row and row[0]:
             return row[0]
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         pass
     return (email or "").split("@")[0]
 
@@ -109,7 +110,7 @@ def latest_biofield_test_id(cx, patient_email) -> str:
             "ORDER BY id DESC LIMIT 1",
             (e,),
         ).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return None
     return ("a" + str(row[0])) if row else None
 
@@ -124,7 +125,7 @@ def _member_price_cents(cx, test_id) -> int:
             "SELECT special_price_cents FROM biofield_portal_published WHERE test_id=?",
             (str(test_id),),
         ).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return 0
     return int(row[0]) if row and row[0] else 0
 

@@ -5,6 +5,29 @@ import sqlite3
 
 from dashboard.pgcompat import translate_sql, HybridRow
 
+# Backend-neutral exception types for `except db.X:` at sites that must tolerate the
+# same DB error on either backend. Each is a strict SUPERSET of the sqlite3 type (it
+# always includes it), so swapping `except sqlite3.X` -> `except db.X` is behavior-
+# preserving on SQLite and additionally catches the Postgres equivalent — e.g. a UNIQUE
+# violation is sqlite3.IntegrityError on SQLite and psycopg.IntegrityError (UniqueViolation)
+# on Postgres. psycopg is imported guarded so a sqlite-only env without it (e.g. secretless
+# CI) still works, falling back to the bare sqlite3 types.
+try:
+    import psycopg as _psycopg
+    Error = (sqlite3.Error, _psycopg.Error)
+    IntegrityError = (sqlite3.IntegrityError, _psycopg.IntegrityError)
+    # sqlite3.OperationalError covers "no such table/column" + operational/lock issues;
+    # on Postgres those are UndefinedTable/UndefinedColumn (ProgrammingError subclasses)
+    # + OperationalError. Kept NARROW (schema-existence + operational) so a genuine dialect
+    # bug (SyntaxError etc.) still surfaces instead of being silently swallowed.
+    OperationalError = (sqlite3.OperationalError, _psycopg.OperationalError,
+                        _psycopg.errors.UndefinedTable, _psycopg.errors.UndefinedColumn,
+                        _psycopg.errors.DuplicateTable, _psycopg.errors.DuplicateColumn)
+except ImportError:
+    Error = sqlite3.Error
+    IntegrityError = sqlite3.IntegrityError
+    OperationalError = sqlite3.OperationalError
+
 def backend() -> str:
     return (os.environ.get("DB_BACKEND") or "sqlite").strip().lower()
 

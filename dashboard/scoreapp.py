@@ -1,6 +1,7 @@
 """ScoreApp recent quiz signups — read from chat_log.db (populated by /webhook/scoreapp)."""
 
 import sqlite3
+from dashboard import db
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -32,7 +33,7 @@ def recent_signups(limit=10):
         return {"signups": signups,
                 "count": len(signups),
                 "as_of": datetime.now(timezone.utc).isoformat()}
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return {"signups": [],
                 "count": 0,
                 "as_of": datetime.now(timezone.utc).isoformat()}

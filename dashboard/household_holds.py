@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
 
+from dashboard import db
 from dashboard import orders as _orders
 from dashboard import family_plan as _fp
 from dashboard import household as _hh
@@ -146,7 +147,7 @@ def open_or_join_hold(cx, order_id, *, caregiver_email, household_key, hold_days
             "INSERT INTO household_holds (caregiver_email, household_key, status, "
             "opened_at, hold_until, updated_at) VALUES (?,?,'open',?,?,?)",
             (_lc(caregiver_email), _lc(household_key), _iso(now), hold_until, _iso(now)))
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         # Lost the race: a concurrent same-household order already opened a group
         # between our read above and this INSERT (ux_hold_open_per_household
         # rejected the duplicate open row). Re-query and join that group instead

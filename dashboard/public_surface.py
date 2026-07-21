@@ -16,6 +16,7 @@ functions as an implied health claim.
 
 import copy
 import sqlite3
+from dashboard import db
 from datetime import datetime, timezone
 
 from dashboard import share_header as _sh
@@ -147,13 +148,13 @@ def build_share_header(cx, slug):
         row = cx.execute(
             "SELECT email FROM affiliate_signups WHERE slug=? AND status='approved'",
             (slug,)).fetchone()
-    except sqlite3.Error:
+    except db.Error:
         return None
     if not row:
         return None
     try:
         hdr = _sh.get_approved(cx, row["email"])
-    except sqlite3.Error:
+    except db.Error:
         return None
     if not hdr:
         return None

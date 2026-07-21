@@ -2,6 +2,8 @@ import datetime
 import secrets
 import sqlite3
 
+from dashboard import db
+
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -40,7 +42,7 @@ def get_or_create_code(cx, email):
                        (e, code, _now()))
             cx.commit()
             return code
-        except sqlite3.IntegrityError:  # UNIQUE collision on code, retry
+        except db.IntegrityError:  # UNIQUE collision on code, retry
             continue
     raise RuntimeError("could not mint a unique referral code")
 

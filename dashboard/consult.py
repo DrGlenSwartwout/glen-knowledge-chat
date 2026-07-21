@@ -3,6 +3,8 @@ without importing app."""
 import sqlite3, json as _json
 from datetime import datetime, timezone, timedelta
 
+from dashboard import db
+
 CONSULT = {"session_type": "biofield-consult", "practitioner": "glen",
            "duration_min": 30, "medium": "video", "test_slug": "biofield-analysis"}
 
@@ -39,7 +41,7 @@ def has_paid_purchase(cx, email: str, slug: str) -> bool:
     try:
         rows = cx.execute("SELECT items_json, pay_status, paid_cents FROM orders "
                           "WHERE lower(email)=?", (email,)).fetchall()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False
     for items, pay_status, paid_cents in rows:
         paid = (str(pay_status or "").lower() == "paid") or (int(paid_cents or 0) > 0)

@@ -4,6 +4,8 @@ fulfills pending rows (synthesize + publish) and marks them done. One row per
 import datetime
 import sqlite3
 
+from dashboard import db
+
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -42,7 +44,7 @@ def create_request(cx, email, scan_id, scan_date):
         cx.execute("INSERT INTO analysis_requests (email, scan_id, scan_date, requested_at, status) "
                    "VALUES (?,?,?,?, 'pending')", (e, str(scan_id or ""), d, _now()))
         cx.commit()
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         # lost a UNIQUE race to a concurrent insert → report the existing row's
         # state rather than 500ing.
         row = cx.execute("SELECT status FROM analysis_requests WHERE email=? AND scan_date=?",
