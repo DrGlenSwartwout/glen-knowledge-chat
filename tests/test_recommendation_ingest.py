@@ -20,19 +20,43 @@ def _cx():
 
 def test_ingest_biofield_one_event_per_remedy_per_reveal(monkeypatch):
     cx = _cx()
-    cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
+    cur1 = cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
                ("a@b.com", "2026-07-01",
                 json.dumps([{"name": "Neuro Magnesium", "slug": "neuro-magnesium"},
                             {"name": "No Slug", "slug": ""}])))
-    cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
+    cur2 = cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
                ("a@b.com", "2026-07-08",
                 json.dumps([{"name": "Neuro Magnesium", "slug": "neuro-magnesium"}])))
     n = re.ingest_biofield(cx, "a@b.com")
-    assert n == 2                       # slug="" skipped; two distinct scan_dates for neuro-magnesium
+    assert n == 2                       # slug="" skipped; two distinct reveals for neuro-magnesium
     ev = [e for e in re.list_events(cx, "a@b.com")]
     assert all(e["source_key"] == "biofield" for e in ev)
-    assert {e["origin_ref"] for e in ev} == {"2026-07-01", "2026-07-08"}
+    # origin_ref is the reveal id (dedup grain), NOT the scan_date
+    assert {e["origin_ref"] for e in ev} == {str(cur1.lastrowid), str(cur2.lastrowid)}
     assert re.ingest_biofield(cx, "a@b.com") == 0     # idempotent
+
+
+def test_ingest_biofield_distinct_reveals_same_scan_date_both_counted(monkeypatch):
+    """Regression: two DISTINCT reveals sharing a scan_date must not collapse into one event.
+    Dedup key is (client_email, product_key, source_key, origin_ref) and origin_ref must be the
+    reveal id, not scan_date -- otherwise same-day reveals with the same remedy slug collapse."""
+    cx = _cx()
+    same_date = "2026-07-01"
+    cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
+               ("a@b.com", same_date,
+                json.dumps([{"name": "Neuro Magnesium", "slug": "neuro-magnesium"}])))
+    cx.execute("INSERT INTO biofield_reveals (email, scan_date, remedies_json) VALUES (?,?,?)",
+               ("a@b.com", same_date,
+                json.dumps([{"name": "Neuro Magnesium", "slug": "neuro-magnesium"}])))
+    n = re.ingest_biofield(cx, "a@b.com")
+    assert n == 2                       # two distinct reveals -> two events, despite same scan_date
+    ev = [e for e in re.list_events(cx, "a@b.com") if e["product_key"] == "neuro-magnesium"]
+    assert len(ev) == 2
+    prods = {p["product_key"]: p for p in re.product_sources(cx, "a@b.com")}
+    biofield_count = sum(s["count"] for s in prods["neuro-magnesium"]["sources"]
+                          if s["source"] == "biofield")
+    assert biofield_count == 2
+    assert re.ingest_biofield(cx, "a@b.com") == 0     # idempotent on re-ingest
 
 
 def test_ingest_purchased_paid_only_by_line(monkeypatch):

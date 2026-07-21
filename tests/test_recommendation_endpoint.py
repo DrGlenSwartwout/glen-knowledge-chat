@@ -1,6 +1,5 @@
 import json, sqlite3
 import app as app_module
-from dashboard import recommendation_events as re
 
 
 def test_endpoint_lazy_ingests_and_returns_recommendations(monkeypatch, tmp_path):

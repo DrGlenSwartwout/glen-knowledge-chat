@@ -34,7 +34,7 @@ def init_recommendation_events(cx):
     cx.commit()
 
 
-def record_event(cx, email, product_key, source_key, *, occurred_at, origin_ref):
+def record_event(cx, email, product_key, source_key, *, occurred_at, origin_ref, commit=True):
     e = (email or "").strip().lower()
     pk = (product_key or "").strip()
     sk = (source_key or "").strip()
@@ -45,7 +45,8 @@ def record_event(cx, email, product_key, source_key, *, occurred_at, origin_ref)
         "(client_email, product_key, source_key, occurred_at, origin_ref, created_at) "
         "VALUES (?,?,?,?,?,?)",
         (e, pk, sk, occurred_at, str(origin_ref or ""), _now()))
-    cx.commit()
+    if commit:
+        cx.commit()
     return cur.rowcount == 1
 
 
@@ -59,7 +60,8 @@ def list_events(cx, email):
 
 
 def ingest_biofield(cx, email):
-    """One biofield event per (remedy slug, reveal). occurred_at/origin_ref = scan_date."""
+    """One biofield event per (remedy slug, reveal). occurred_at = scan_date; origin_ref = reveal id
+    (NOT scan_date — two distinct reveals can share a scan_date, and origin_ref is the dedup grain)."""
     from dashboard import biofield_reveals
     try:
         rows = biofield_reveals.list_for_email(cx, email)
@@ -68,12 +70,16 @@ def ingest_biofield(cx, email):
     n = 0
     for r in rows:
         sd = (r.get("scan_date") or "")
+        rid = str(r.get("id") or sd)   # per-reveal identity; fall back to scan_date if somehow missing
         for rem in (r.get("remedies") or []):
             slug = (rem.get("slug") or "").strip()
             if not slug:
                 continue
-            if record_event(cx, email, slug, "biofield", occurred_at=sd, origin_ref=sd):
+            # dedup grain: one event per (remedy slug, reveal)
+            if record_event(cx, email, slug, "biofield", occurred_at=sd, origin_ref=rid, commit=False):
                 n += 1
+    if n:
+        cx.commit()
     return n
 
 
@@ -94,12 +100,16 @@ def ingest_purchased(cx, email):
             slug = (line.get("slug") or "").strip()
             if not slug:
                 continue
-            if record_event(cx, email, slug, "purchased", occurred_at=occ, origin_ref=str(oid)):
+            # dedup grain: one event per (line slug, order)
+            if record_event(cx, email, slug, "purchased", occurred_at=occ, origin_ref=str(oid), commit=False):
                 n += 1
+    if n:
+        cx.commit()
     return n
 
 
 def set_hidden(cx, email, product_key, hidden=True):
+    """Toggle the recommendation_hidden flag for one (client_email, product_key)."""
     e = (email or "").strip().lower()
     pk = (product_key or "").strip()
     if not e or not pk:
