@@ -8,6 +8,11 @@ from dashboard.pgcompat import translate_sql, HybridRow
 def backend() -> str:
     return (os.environ.get("DB_BACKEND") or "sqlite").strip().lower()
 
+def backend_of(cx) -> str:
+    """The backend a given connection object belongs to: a _PgConn is 'postgres';
+    a plain sqlite3.Connection (or anything without a .backend tag) is 'sqlite'."""
+    return getattr(cx, "backend", "sqlite")
+
 def connect(db_path: str, *, timeout: float = 5.0):
     b = backend()
     if b == "sqlite":
@@ -34,6 +39,7 @@ class _PgCursor:
         return [HybridRow(cols, r) for r in rows]
 
 class _PgConn:
+    backend = "postgres"
     def __init__(self, conn, pool):
         self._conn = conn
         self._pool = pool

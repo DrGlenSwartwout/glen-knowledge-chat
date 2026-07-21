@@ -95,3 +95,25 @@ def test_pg_pool_reuses_backends(monkeypatch):
         with db.connect("/data/pooltest.db") as cx:
             seen.add(cx.execute("SELECT pg_backend_pid()").fetchone()[0])
     assert len(seen) < 20  # pooled: far fewer backends than checkouts
+
+
+def test_backend_of_sqlite(tmp_path, monkeypatch):
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    cx = db.connect(str(tmp_path / "b.db"))
+    assert db.backend_of(cx) == "sqlite"
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_backend_of_postgres(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("/data/backendof.db")
+    assert db.backend_of(cx) == "postgres"
+    cx.close()
+
+
+def test_backend_of_untagged_is_sqlite():
+    import sqlite3
+    raw = sqlite3.connect(":memory:")
+    assert db.backend_of(raw) == "sqlite"
+    raw.close()

@@ -7,7 +7,7 @@ from dashboard import db
 
 
 def init_points_table(cx):
-    if db.backend() == "postgres":
+    if db.backend_of(cx) == "postgres":
         cx.execute("""
             CREATE TABLE IF NOT EXISTS points_ledger (
                 id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -68,7 +68,7 @@ def _add(cx, email, delta_cents, reason, order_ref, scope="rm"):
     # the same order under gunicorn's 2 workers) inserts exactly one row. Return the
     # re-read true balance so the result is correct whether we inserted or ignored.
     snapshot = balance(cx, email, scope=scope) + int(delta_cents)
-    if db.backend() == "postgres":
+    if db.backend_of(cx) == "postgres":
         cx.execute("""INSERT INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
                       VALUES (?,?,?,?,?,?)
                       ON CONFLICT (order_ref, reason, scope) DO NOTHING""",
