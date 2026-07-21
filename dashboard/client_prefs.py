@@ -10,6 +10,7 @@ sends pickup=True as a deliberate shipping courtesy, cannot silently teach the
 system that every biofield client picks up.
 """
 import sqlite3
+from dashboard import db
 from datetime import datetime, timezone
 
 
@@ -61,6 +62,6 @@ def get_pickup_default(cx, email):
     try:
         row = cx.execute("SELECT pickup_default FROM client_prefs WHERE email=?",
                          (email,)).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False          # table absent — nobody has set a preference yet
     return bool(row[0]) if row else False

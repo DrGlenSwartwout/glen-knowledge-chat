@@ -4,6 +4,7 @@ guard. Claims arrive from the console (manual entry) or the public self-serve fo
 approval queue. The grant+notify side effect is injected at approve time so this
 module stays Flask-free and unit-testable."""
 import sqlite3
+from dashboard import db
 import uuid
 from datetime import datetime, timedelta
 
@@ -81,7 +82,7 @@ def studio_credit_granted_within_year(cx, email):
             "WHERE email=? AND source='studio_credit' AND granted_at > ? "
             "ORDER BY granted_at DESC LIMIT 1",
             (email, cutoff)).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return None   # memberships table absent (shouldn't happen in prod)
     if not row:
         return None

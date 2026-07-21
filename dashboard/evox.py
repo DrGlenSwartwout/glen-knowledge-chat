@@ -5,6 +5,7 @@ import secrets
 import json as _json
 from datetime import datetime, timedelta, timezone
 
+from dashboard import db
 from dashboard import dbwrite
 
 READINESS_ITEMS = ("pc_ok", "cradle_ok", "headset_ok", "zyto_ok")
@@ -177,7 +178,7 @@ def create_booking(cx, email: str, start_ts: str, *, duration_min: int = 60,
             "VALUES (?,?,?,?,'booked',?,?,?,?,?)",
             (email, practitioner, start_ts, end_ts, 1 if prepaid else 0, ics_uid, now,
              session_type, medium))
-    except sqlite3.IntegrityError as e:
+    except db.IntegrityError as e:
         cx.rollback()
         if "UNIQUE" in str(e).upper():
             raise SlotTaken(start_ts)
@@ -243,7 +244,7 @@ def has_cradle_purchase(cx, email: str) -> bool:
     email = (email or "").strip().lower()
     try:
         rows = cx.execute("SELECT items_json FROM orders WHERE lower(email)=?", (email,)).fetchall()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False
     for (items,) in rows:
         try:

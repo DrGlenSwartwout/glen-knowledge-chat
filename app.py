@@ -328,7 +328,7 @@ def _migrate_auth_tokens_extra():
         try:
             cx.execute("ALTER TABLE auth_tokens ADD COLUMN extra TEXT")
             cx.commit()
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass  # already exists
 
 
@@ -342,7 +342,7 @@ def _migrate_orders_portal_published():
         try:
             cx.execute("ALTER TABLE orders ADD COLUMN portal_published INTEGER NOT NULL DEFAULT 0")
             cx.commit()
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass  # already exists
 
 
@@ -1650,7 +1650,7 @@ def _init_log_db():
         ]:
             try:
                 cx.execute(f"ALTER TABLE query_log ADD COLUMN {col_def}")
-            except sqlite3.OperationalError:
+            except db.OperationalError:
                 pass  # column already exists
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_session ON query_log(session_id)")
         cx.execute("CREATE INDEX IF NOT EXISTS idx_query_log_email   ON query_log(email)")
@@ -8962,7 +8962,7 @@ def _recent_active_emails(cx, days=7, limit=500):
             for row in cx.execute(sql, (win,)).fetchall():
                 if row[0]:
                     emails.add(row[0])
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass
     return sorted(emails)[:limit]
 
@@ -8977,7 +8977,7 @@ def _known_client_emails(cx, limit=5000):
             for row in cx.execute(sql).fetchall():
                 if row[0]:
                     out.add(row[0])
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass
     return set(list(out)[:limit])
 
@@ -9890,7 +9890,7 @@ def _last_attributed_practitioner(email, *, db_path=None):
                 "ORDER BY granted_at DESC LIMIT 1", (e,)).fetchone()
             if r:
                 cands.append((r[0] or "", str(r[1]), int(r[2] or 0)))
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass
         try:
             r = cx.execute(
@@ -9899,7 +9899,7 @@ def _last_attributed_practitioner(email, *, db_path=None):
                 "AND kind='membership' ORDER BY created_at DESC LIMIT 1", (e,)).fetchone()
             if r:
                 cands.append((r[0] or "", str(r[1]), int(r[2] or 0)))
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass
     if not cands:
         return None
@@ -10400,7 +10400,7 @@ def _fulfill_membership_product(session_id):
                 "VALUES (?,?,?,?)",
                 (session_id, email, tier["key"], datetime.utcnow().isoformat() + "Z"))
             cx.commit()
-        except sqlite3.IntegrityError:
+        except db.IntegrityError:
             return "already"
         days = _mp.grant_days(tier["key"], today)
         # From here on the idempotency claim is committed. Any exception below
@@ -12377,7 +12377,7 @@ def init_inquiry_tables(cx):
     # Additive migration: shared_at for Phase 2b share-with-practitioner tracking
     try:
         cx.execute("ALTER TABLE inquiry_practitioners ADD COLUMN shared_at TEXT")
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         pass  # already exists
 
 
@@ -13893,7 +13893,7 @@ def post_referral_source():
                 VALUES (?,?,?,?,?,?,?)
             """, (ts, name, slug, desc, utm_src, utm_med, utm_camp))
             cx.commit()
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         return jsonify({"error": f"slug '{slug}' already exists"}), 409
     return jsonify({"ok": True, "slug": slug,
                     "tracking_url": f"{QUIZ_URL}?ref={slug}"}), 201
@@ -14465,7 +14465,7 @@ def affiliate_apply():
                 except Exception as _e:
                     print(f"[affiliate-apply] people upsert skipped: {_e!r}", flush=True)
                 cx.commit()
-        except sqlite3.IntegrityError as e:
+        except db.IntegrityError as e:
             return jsonify({"error": f"Signup failed: {str(e)[:100]}"}), 409
 
     tracking_url = (
@@ -35774,7 +35774,7 @@ def api_shipping_add_bottle():
         new_id = _shipping.add_bottle_type(
             name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": new_id})
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         return fail("bottle type already exists", status=409)
     except Exception as e: return fail(e)
 
@@ -35802,7 +35802,7 @@ def api_shipping_update_bottle(bid):
         _shipping.update_bottle_type(
             bid, name, diameter_mm=diameter_mm, height_mm=height_mm, notes=notes)
         return ok({"id": bid})
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         return fail("bottle name already exists", status=409)
     except Exception as e: return fail(e)
 
@@ -37185,7 +37185,7 @@ def practitioner_finder_inquiry():
         try:
             cx.execute("ALTER TABLE inquiries ADD COLUMN ip TEXT")
             cx.commit()
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass  # already exists
 
         # ── Rate limit 2: one inquiry per session per 24h (different email or set) ──
@@ -41253,7 +41253,7 @@ def api_console_client_prefs():
                     "ORDER BY created_at DESC, id DESC LIMIT 1", (email,)).fetchone()
                 if _r:
                     last_pay_method = _r[0]
-            except sqlite3.OperationalError:
+            except db.OperationalError:
                 pass
             return jsonify({"ok": True, "email": email,
                             "pickup_default": _cpf.get_pickup_default(cx, email),

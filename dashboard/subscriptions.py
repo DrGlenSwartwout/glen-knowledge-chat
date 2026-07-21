@@ -101,7 +101,7 @@ def init_subscriptions_table(cx) -> None:
             cx.execute(stmt)
     try:
         cx.execute("ALTER TABLE subscriptions ADD COLUMN order_ref TEXT")
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         pass  # already migrated
     # Atomic dedup backstop: prod runs gunicorn with 2 workers + gevent, so the
     # redirect (one process) and the Stripe webhook (another process) can both
@@ -201,7 +201,7 @@ def create_once(cx, *, order_ref, **create_kwargs):
         return None
     try:
         return create(cx, order_ref=order_ref, **create_kwargs)
-    except sqlite3.IntegrityError:
+    except db.IntegrityError:
         return None  # lost the race to another process; not a double-create
 
 
@@ -707,7 +707,7 @@ def count_founding(cx, founding_slug: str) -> int:
             "SELECT COUNT(*) FROM subscriptions WHERE founding=1 AND founding_slug=?"
             " AND status!='cancelled'", (founding_slug,)
         ).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return 0
     return int(row[0]) if row else 0
 

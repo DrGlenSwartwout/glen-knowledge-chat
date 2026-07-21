@@ -14,6 +14,7 @@ import datetime
 import os
 import subprocess
 import sqlite3
+from dashboard import db
 
 
 def _db_path(db_path=None):
@@ -42,7 +43,7 @@ def _connect_ro(path):
         cx = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         cx.row_factory = sqlite3.Row
         return cx
-    except sqlite3.Error:
+    except db.Error:
         return None
 
 
@@ -53,7 +54,7 @@ def _merge_group(cx, client_id):
     try:
         rows = cx.execute("SELECT dup_client_id, canonical_client_id "
                           "FROM e4l_identity_merges").fetchall()
-    except sqlite3.Error:
+    except db.Error:
         return {client_id}
     canon = {int(d): int(c) for d, c in rows}
     c = canon.get(client_id, client_id)
@@ -152,7 +153,7 @@ def emotions_for_codes(codes, *, db_path=None):
             f"ORDER BY is_primary DESC, structure ASC", tuple(codes)).fetchall()
         for r in rows:
             out.setdefault(r["code"], []).append(r["structure"])
-    except sqlite3.Error:
+    except db.Error:
         return {}
     finally:
         cx.close()
@@ -179,7 +180,7 @@ def organs_for_codes(codes, *, db_path=None):
             f"ORDER BY is_primary DESC, structure ASC", tuple(codes)).fetchall()
         for r in rows:
             out.setdefault(r["code"], []).append(r["structure"])
-    except sqlite3.Error:
+    except db.Error:
         return {}
     finally:
         cx.close()
@@ -221,7 +222,7 @@ def scan_context(email, today, *, db_path=None, window_days=14, limit=12):
             return none
         days = _days_ago(scan["scan_date"], today)
         all_findings = _findings(cx, scan["scan_id"])
-    except sqlite3.Error:
+    except db.Error:
         return none
     finally:
         cx.close()
@@ -274,7 +275,7 @@ def findings_for_scan_date(email, scan_date, *, db_path=None, limit=12):
         if not row:
             return []
         all_findings = _findings(cx, row["scan_id"])
-    except sqlite3.Error:
+    except db.Error:
         return []
     finally:
         cx.close()
@@ -308,7 +309,7 @@ def search_clients(q, *, db_path=None, limit=20):
                FROM e4l_clients c
                WHERE c.name LIKE ? COLLATE NOCASE OR c.email LIKE ? COLLATE NOCASE
                ORDER BY c.name""", (like, like)).fetchall()
-    except sqlite3.Error:
+    except db.Error:
         return []
     finally:
         cx.close()

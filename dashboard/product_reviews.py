@@ -1,5 +1,6 @@
 import datetime
 import sqlite3
+from dashboard import db
 
 
 def _now():
@@ -26,7 +27,7 @@ def init_table(cx):
                  "gift_owner_email TEXT DEFAULT ''"):
         try:
             cx.execute(f"ALTER TABLE product_reviews ADD COLUMN {_col}")
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             pass
     cx.commit()
 

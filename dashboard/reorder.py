@@ -3,6 +3,7 @@ import json
 import math
 import os
 import sqlite3
+from dashboard import db
 from pathlib import Path
 from typing import Optional
 
@@ -182,7 +183,7 @@ def product_velocity(db_path=None) -> dict:
     with _connect(db_path) as cx:
         try:
             row = cx.execute("SELECT MAX(period) FROM product_sales").fetchone()
-        except sqlite3.OperationalError:
+        except db.OperationalError:
             return {}
         latest = row[0] if row else None
         if not latest:

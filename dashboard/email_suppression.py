@@ -4,6 +4,7 @@ email_suppression.add console action. Spam-blocks are NOT stored here (the addre
 is valid — our sender reputation is the problem). Reversible: delete a row if an
 address recovers."""
 import sqlite3
+from dashboard import db
 
 
 def init_table(cx):
@@ -19,7 +20,7 @@ def is_suppressed(cx, email):
     try:
         r = cx.execute("SELECT 1 FROM email_suppression WHERE email=lower(?)",
                        (email.strip().lower(),)).fetchone()
-    except sqlite3.OperationalError:
+    except db.OperationalError:
         return False
     return bool(r)
 
