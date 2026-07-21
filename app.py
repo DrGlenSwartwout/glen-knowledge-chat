@@ -15633,6 +15633,19 @@ def _biofield_pipeline_for(cx, email, name):
         "fulfilled": {"done": fulfilled},
     }
     done_count = sum(1 for k in _PIPELINE_STEP_KEYS if steps[k]["done"])
+    # Card name: portal/order name wins, but many portals were minted name-less (the
+    # '(unnamed)' cards). Fall back to the people table (client_360's name source).
+    # Skip a people.name that's just the email echoed back — the card already shows the
+    # email below, so that would only add noise; leave it '(unnamed)' honestly.
+    if not (name or "").strip():
+        try:
+            prow2 = cx.execute("SELECT name FROM people WHERE lower(email)=? LIMIT 1",
+                               (el,)).fetchone()
+            pn = (prow2[0] or "").strip() if prow2 else ""
+            if pn and pn.lower() != el:
+                name = pn
+        except Exception:
+            pass
     # "Complete" ignores invoice_published (a pre-paid, analysis-only client never
     # publishes a remedy invoice): analysis out + paid + fulfilled = done.
     complete = (steps["analysis_published"]["done"] and steps["invoice_paid"]["done"]
