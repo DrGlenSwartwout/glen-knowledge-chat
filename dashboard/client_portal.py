@@ -132,14 +132,31 @@ def list_portals(cx, *, limit=2000):
     rows = cx.execute(
         "SELECT email, name, updated_at FROM client_portals ORDER BY updated_at DESC LIMIT ?",
         (int(limit),)).fetchall()
+    # Many portals are minted name-less (auto-provisioned at order time). Fill blank
+    # names from the people table (the client hub / biofield pipeline use the same
+    # source) so the lookup isn't a wall of '(unnamed)'. One bulk read, best-effort:
+    # people may be absent on some DBs. A people.name that just echoes the email is
+    # not a real name, so it's skipped (the email column already shows it).
+    people = {}
+    try:
+        for pe, pn in cx.execute("SELECT lower(email), name FROM people WHERE TRIM(COALESCE(name,''))<>''"):
+            if pe:
+                people[pe] = pn
+    except Exception:
+        people = {}
     out = []
     for r in rows:
         email = r[0] or ""
+        name = r[1] or ""
+        if not name.strip():
+            cand = (people.get(email.lower()) or "").strip()
+            if cand and cand.lower() != email.lower():
+                name = cand
         try:
             has_token = bool(_ns.get_state(cx, email).get("portal_token")) if email else False
         except Exception:
             has_token = False
-        out.append({"email": email, "name": r[1] or "",
+        out.append({"email": email, "name": name,
                     "updated_at": r[2] or "", "has_token": has_token})
     return out
 
