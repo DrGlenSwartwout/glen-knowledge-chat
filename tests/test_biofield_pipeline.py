@@ -98,6 +98,40 @@ def test_pipeline_paid_not_handed_off(monkeypatch, tmp_path):
     assert c["steps"]["handed_off"]["done"] is False
 
 
+def _ensure_orders_table(db):
+    # The pipeline endpoint reads the orders table (always present in prod). Portal-only
+    # tests must create it so the orders pass doesn't hit "no such table".
+    cx = sqlite3.connect(db)
+    _orders.init_orders_table(cx)
+    for col, ddl in (("portal_published", "INTEGER NOT NULL DEFAULT 0"), ("invoice_token", "TEXT")):
+        try:
+            cx.execute(f"ALTER TABLE orders ADD COLUMN {col} {ddl}")
+        except Exception:
+            pass
+    cx.commit(); cx.close()
+
+
+def test_pipeline_excludes_none_status_buyer_portals(monkeypatch, tmp_path):
+    # Every buyer is auto-provisioned a portal with biofield_status='none'. Those are
+    # not biofield clients and must NOT pollute the pipeline (the '(unnamed)' flood).
+    db = _auth(monkeypatch, tmp_path)
+    _ensure_orders_table(db)
+    _seed_portal(db, "buyer@x.com", "", "none")
+    _seed_portal(db, "real@x.com", "Real Client", "requested")
+    shown = _clients(db, all_=True)
+    assert "buyer@x.com" not in shown        # 'none' buyer portal excluded
+    assert "real@x.com" in shown             # a requested biofield client stays
+
+
+def test_pipeline_none_portal_with_biofield_order_still_shown(monkeypatch, tmp_path):
+    # A 'none' buyer portal is excluded by the portal pass, but if that same email has
+    # a live biofield-analysis order, the orders pass must still surface them.
+    db = _auth(monkeypatch, tmp_path)
+    _seed_portal(db, "both@x.com", "Both", "none")
+    _seed_biofield_order(db, "both@x.com", "Both", "new", "paid")
+    assert "both@x.com" in _clients(db, all_=True)
+
+
 def test_pipeline_requires_key(monkeypatch, tmp_path):
     _auth(monkeypatch, tmp_path)
     r = app.app.test_client().get("/api/console/biofield-pipeline")
