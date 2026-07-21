@@ -86,3 +86,12 @@ def test_pg_schema_isolation(monkeypatch):
     assert b.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
     a.close()
     b.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_pool_reuses_backends(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    seen = set()
+    for _ in range(20):
+        with db.connect("/data/pooltest.db") as cx:
+            seen.add(cx.execute("SELECT pg_backend_pid()").fetchone()[0])
+    assert len(seen) < 20  # pooled: far fewer backends than checkouts

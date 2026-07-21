@@ -34,8 +34,10 @@ class _PgCursor:
         return [HybridRow(cols, r) for r in rows]
 
 class _PgConn:
-    def __init__(self, conn):
+    def __init__(self, conn, pool):
         self._conn = conn
+        self._pool = pool
+        self._released = False
     def execute(self, sql, params=()):
         cur = self._conn.cursor()
         return _PgCursor(cur).execute(sql, params)
@@ -43,8 +45,12 @@ class _PgConn:
         self._conn.commit()
     def rollback(self):
         self._conn.rollback()
+    def _release(self):
+        if not self._released:
+            self._released = True
+            self._pool.putconn(self._conn)
     def close(self):
-        self._conn.close()
+        self._release()
     def __enter__(self):
         return self
     def __exit__(self, exc_type, exc, tb):
@@ -52,19 +58,54 @@ class _PgConn:
             self._conn.commit()
         else:
             self._conn.rollback()
+        self._release()   # pooled resource: return on context exit
         return False
+    def __del__(self):
+        try:
+            self._release()
+        except Exception:
+            pass
+
+_PG_POOLS = {}          # dsn -> ConnectionPool
+_PG_ENSURED = set()     # (dsn, schema) already CREATE SCHEMA'd
+import threading as _threading
+_PG_LOCK = _threading.Lock()
+
+def _get_pg_pool(dsn, timeout):
+    with _PG_LOCK:
+        pool = _PG_POOLS.get(dsn)
+        if pool is None:
+            from psycopg_pool import ConnectionPool
+            pool = ConnectionPool(dsn, min_size=2, max_size=10, open=True,
+                                  kwargs={"connect_timeout": max(1, int(round(timeout)))})
+            _PG_POOLS[dsn] = pool
+        return pool
+
+def _ensure_pg_schema(raw, dsn, schema):
+    key = (dsn, schema)
+    with _PG_LOCK:
+        if key in _PG_ENSURED:
+            return
+    with raw.cursor() as c:
+        c.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+    raw.commit()
+    with _PG_LOCK:
+        _PG_ENSURED.add(key)
 
 def _connect_postgres(db_path: str, *, timeout: float):
     dsn = os.environ.get("PG_DSN")
     if not dsn:
         raise RuntimeError("DB_BACKEND=postgres but PG_DSN is unset")
-    import psycopg  # optional dep
     from dashboard.dbschema import schema_for_path
-    _connect_timeout = max(1, int(round(timeout)))
-    raw = psycopg.connect(dsn, connect_timeout=_connect_timeout)
     schema = schema_for_path(db_path)  # already sanitized to [a-z0-9_] -> safe to quote-interpolate
-    with raw.cursor() as c:
-        c.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-        c.execute(f'SET search_path TO "{schema}"')
-    raw.commit()
-    return _PgConn(raw)
+    pool = _get_pg_pool(dsn, timeout)
+    raw = pool.getconn()
+    try:
+        _ensure_pg_schema(raw, dsn, schema)
+        with raw.cursor() as c:
+            c.execute(f'SET search_path TO "{schema}"')
+        raw.commit()
+    except Exception:
+        pool.putconn(raw)
+        raise
+    return _PgConn(raw, pool)
