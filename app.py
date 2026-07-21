@@ -35541,14 +35541,14 @@ def admin_upload_gmail_token():
         for required in ("token", "refresh_token", "client_id", "client_secret"):
             if required not in token_json:
                 return fail(f"token JSON missing field: {required}", status=400)
-        target = os.environ.get("GMAIL_TOKEN_PATH", "/data/google-token.json")
-        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        # De-disked: persist to the oauth_tokens DB row the reply-watcher reads,
+        # not the /data disk file. name="inbox_gmail" matches load_gmail_credentials'
+        # default and the /api/tokens/inbox_gmail PUT.
         import json as _json
-        with open(target, "w") as f:
-            _json.dump(token_json, f)
-        os.chmod(target, 0o600)
+        from dashboard import gmail_token as _gt
+        _gt._write_db_token(str(LOG_DB), "inbox_gmail", _json.dumps(token_json))
         return ok({
-            "saved_to": target,
+            "saved_to": "oauth_tokens[inbox_gmail]",
             "scopes": token_json.get("scopes", []),
             "client_id_suffix": token_json.get("client_id", "")[-12:],
         })

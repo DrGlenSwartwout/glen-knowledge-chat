@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import threading
 from collections import namedtuple
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Sequence
+
+from dashboard import db
 
 DEFAULT_SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
@@ -41,21 +42,23 @@ def default_db_path() -> str:
 
 
 def _read_db_token(db_path: str, name: str) -> Optional[str]:
-    with sqlite3.connect(db_path, timeout=10) as cx:
-        try:
+    try:
+        with db.connect(db_path, timeout=10) as cx:
             row = cx.execute(
                 "SELECT token_json FROM oauth_tokens WHERE name=?", (name,)
             ).fetchone()
-        except sqlite3.OperationalError as e:
-            if "no such table" in str(e):
-                return None
-            raise
+    except db.OperationalError as e:
+        # Table not yet created (fresh DB): SQLite "no such table" /
+        # Postgres UndefinedTable. Treat as "no token", not an error.
+        if "no such table" in str(e).lower() or "does not exist" in str(e).lower():
+            return None
+        raise
     return row[0] if row else None
 
 
 def _write_db_token(db_path: str, name: str, token_json: str) -> None:
     ts = datetime.now(timezone.utc).isoformat()
-    with _lock, sqlite3.connect(db_path, timeout=10) as cx:
+    with _lock, db.connect(db_path, timeout=10) as cx:
         cx.execute(
             "CREATE TABLE IF NOT EXISTS oauth_tokens (name TEXT PRIMARY KEY, "
             "token_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
