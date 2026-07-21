@@ -33,3 +33,18 @@ def evaluate_quality(content, *, resolve_slug, red_flag_terms):
             if term and term.lower() in blob:
                 reasons.append(f"red_flag term: {term}")
     return (not reasons, reasons)
+
+
+def should_sample(email, scan_date, pct):
+    """Deterministic audit sampling: hash(email|scan_date) mod 100 < pct."""
+    try:
+        pct = int(pct)
+    except (TypeError, ValueError):
+        pct = 0
+    if pct <= 0:
+        return False
+    if pct >= 100:
+        return True
+    key = f"{(email or '').strip().lower()}|{(scan_date or '').strip()}"
+    bucket = int(hashlib.sha256(key.encode()).hexdigest(), 16) % 100
+    return bucket < pct
