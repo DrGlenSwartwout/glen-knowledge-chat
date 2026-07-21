@@ -91,6 +91,7 @@ from dashboard import ash_ally
 from dashboard import client_360
 from dashboard import recommendation_events
 from dashboard import db
+from dashboard import dbwrite
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -892,10 +893,15 @@ def _resend_inquiry_reply(inquiry_id, practitioner_id):
         pmail = prow[0]
         tok = secrets.token_urlsafe(32)
         now = datetime.utcnow()
-        cx.execute("INSERT OR REPLACE INTO inquiry_reply_tokens "
-                   "(token_hash, inquiry_id, practitioner_id, created_at, expires_at) VALUES (?,?,?,?,?)",
-                   (_hash_token(tok), inquiry_id, practitioner_id,
-                    now.isoformat() + "Z", (now + timedelta(days=30)).isoformat() + "Z"))
+        # token_hash is freshly random each call; the dedup key is (inquiry_id,
+        # practitioner_id) (its UNIQUE constraint) — a new token replaces the old one
+        # for that pair.
+        dbwrite.insert_or_replace(
+            cx, "inquiry_reply_tokens",
+            ("token_hash", "inquiry_id", "practitioner_id", "created_at", "expires_at"),
+            (_hash_token(tok), inquiry_id, practitioner_id,
+             now.isoformat() + "Z", (now + timedelta(days=30)).isoformat() + "Z"),
+            conflict_cols=("inquiry_id", "practitioner_id"))
         cx.commit()
     url = f"{PUBLIC_BASE_URL}/inquiries/{inquiry_id}/{practitioner_id}/reply?token={tok}"
     body = ("Aloha,\n\nHere is your fresh secure reply link for this inquiry:\n"
@@ -1222,13 +1228,12 @@ def resolve_or_create_shortlink(product_name: str, alias_info: dict):
     try:
         ts = datetime.now(timezone.utc).isoformat()
         with _db_lock, db.connect(LOG_DB) as cx:
-            cx.execute(
-                """INSERT OR REPLACE INTO shortlink_cache
-                   (product_name, shortlink, canonical, domain, rebrandly_id,
-                    created_at, last_used_at)
-                   VALUES (?,?,?,?,?,?,?)""",
-                (product_name, short, canonical, domain, rid, ts, ts)
-            )
+            dbwrite.insert_or_replace(
+                cx, "shortlink_cache",
+                ("product_name", "shortlink", "canonical", "domain", "rebrandly_id",
+                 "created_at", "last_used_at"),
+                (product_name, short, canonical, domain, rid, ts, ts),
+                conflict_cols=("product_name",))
             cx.commit()
     except Exception as e:
         print(f"[shortlink] cache write failed: {e}", flush=True)
@@ -7507,8 +7512,14 @@ def _related_semantic(slug, k=12):
 
     try:
         with db.connect(LOG_DB) as cx:
-            cx.execute("INSERT OR REPLACE INTO related_semantic(slug,slugs_json,generated_at) "
-                       "VALUES (?,?,datetime('now'))", (slug, _json.dumps(slugs)))
+            # generated_at was datetime('now') inline; compute in Python (same
+            # 'YYYY-MM-DD HH:MM:SS' form) so it rides the portable upsert helper.
+            gen_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            dbwrite.insert_or_replace(
+                cx, "related_semantic",
+                ("slug", "slugs_json", "generated_at"),
+                (slug, _json.dumps(slugs), gen_at),
+                conflict_cols=("slug",))
     except Exception as e:
         print(f"[related-sem] cache write failed: {e}", flush=True)
     return slugs
@@ -37257,12 +37268,12 @@ def practitioner_finder_inquiry():
             )
             # inquiry_reply_tokens
             expires_reply = (ts_now + timedelta(days=30)).isoformat() + "Z"
-            cx.execute(
-                "INSERT OR REPLACE INTO inquiry_reply_tokens "
-                "(token_hash, inquiry_id, practitioner_id, created_at, expires_at) "
-                "VALUES (?,?,?,?,?)",
-                (_hash_token(plain_reply), inquiry_id, pid, created_at, expires_reply)
-            )
+            # dedup on (inquiry_id, practitioner_id); token_hash is freshly random.
+            dbwrite.insert_or_replace(
+                cx, "inquiry_reply_tokens",
+                ("token_hash", "inquiry_id", "practitioner_id", "created_at", "expires_at"),
+                (_hash_token(plain_reply), inquiry_id, pid, created_at, expires_reply),
+                conflict_cols=("inquiry_id", "practitioner_id"))
             # auth_tokens: practitioner_optout (365d)
             expires_optout = (ts_now + timedelta(days=365)).isoformat() + "Z"
             cx.execute(
@@ -37491,11 +37502,10 @@ def practitioner_optout(token):
         extra = json.loads(row["extra"] or "{}")
         pid = extra.get("practitioner_id", "")
         now_iso = _now_utc().isoformat()
-        cx.execute(
-            "INSERT OR REPLACE INTO practitioner_inquiry_opt_outs (email, ts, practitioner_id) "
-            "VALUES (?, ?, ?)",
-            (email, now_iso, pid or None)
-        )
+        dbwrite.insert_or_replace(
+            cx, "practitioner_inquiry_opt_outs",
+            ("email", "ts", "practitioner_id"), (email, now_iso, pid or None),
+            conflict_cols=("email",))
         cx.execute(
             "UPDATE auth_tokens SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL",
             (now_iso, th)
