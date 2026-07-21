@@ -73,6 +73,20 @@ def test_intake_wrong_host_is_404(client):
     assert r.status_code == 404
 
 
+def test_intake_rate_limited_after_burst(client):
+    c, _ = client
+    ok = 0
+    for i in range(12):
+        r = c.post("/api/mentorship/intake/start", base_url=_MHOST,
+                   json={"email": f"user{i}@example.com", "tos_agreed": True})
+        if r.status_code == 200:
+            ok += 1
+    # Same IP burst: after the per-IP cap, further attempts are rejected (429).
+    r = c.post("/api/mentorship/intake/start", base_url=_MHOST,
+               json={"email": "last@example.com", "tos_agreed": True})
+    assert r.status_code == 429
+
+
 def test_mentorship_host_learn_serves_course_catalog(client):
     # Forward-delegation coverage: on the MENTORSHIP host, app.py's learn_index
     # delegates to the blueprint's learn_home() rather than serving topic pages.

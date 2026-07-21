@@ -628,10 +628,9 @@ def send_mentorship_setup_link(to_email: str, name: str, setup_url: str) -> tupl
                 s.sendmail(smtp_from, [to_email], msg.as_string())
             return "smtp", None
         except Exception as e:
-            app.logger.exception("send_mentorship_setup_link SMTP failed")
-            return "error", str(e)
+            print(f"[mentorship] SMTP setup-link send failed: {e}", flush=True)
 
-    # console fallback (development / pre-config)
+    # console fallback (development / pre-config, or SMTP failure above)
     print(f"[mentorship] setup link for {to_email}: {setup_url}", flush=True)
     return "console", None
 

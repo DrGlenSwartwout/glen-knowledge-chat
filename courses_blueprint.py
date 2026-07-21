@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import time as _time
 from urllib.parse import urlparse
 
 from flask import Blueprint, request, jsonify, redirect, make_response, render_template_string, abort
@@ -14,6 +15,28 @@ from dashboard import course_tokens
 
 courses_bp = Blueprint("courses", __name__)
 _write_lock = threading.Lock()
+
+_RL_WINDOW_S = 3600
+_RL_MAX_PER_IP = 10
+_RL_MAX_PER_EMAIL = 3
+
+
+def _rate_limited(cx, ip: str, email: str) -> bool:
+    """sqlite-backed sliding window: caps intake attempts per-IP and per-email
+    within _RL_WINDOW_S. sqlite-backed (not in-memory) so the limit survives
+    across gunicorn worker processes."""
+    cx.execute("CREATE TABLE IF NOT EXISTS course_intake_rl(k TEXT, ts REAL)")
+    now = _time.time()
+    cx.execute("DELETE FROM course_intake_rl WHERE ts < ?", (now - _RL_WINDOW_S,))
+    ip_n = cx.execute("SELECT COUNT(*) FROM course_intake_rl WHERE k=?", (f"ip:{ip}",)).fetchone()[0]
+    em_n = cx.execute("SELECT COUNT(*) FROM course_intake_rl WHERE k=?", (f"em:{email}",)).fetchone()[0]
+    if ip_n >= _RL_MAX_PER_IP or em_n >= _RL_MAX_PER_EMAIL:
+        cx.commit()
+        return True
+    cx.execute("INSERT INTO course_intake_rl(k, ts) VALUES(?,?)", (f"ip:{ip}", now))
+    cx.execute("INSERT INTO course_intake_rl(k, ts) VALUES(?,?)", (f"em:{email}", now))
+    cx.commit()
+    return False
 
 
 def _mentorship_host() -> str:
@@ -144,9 +167,12 @@ def mentorship_intake_start():
     name = (data.get("name") or "").strip()
     if "@" not in email or "." not in email or not data.get("tos_agreed"):
         return jsonify({"ok": False, "error": "invalid"}), 400
+    ip = (request.headers.get("X-Forwarded-For", request.remote_addr or "") or "").split(",")[0].strip()
     with _write_lock:
         cx = _connect()
         try:
+            if _rate_limited(cx, ip, email):
+                return jsonify({"ok": False, "error": "rate_limited"}), 429
             try:
                 from dashboard import customers
                 customers.find_or_create_by_email(cx, email=email, name=name)  # lead capture
