@@ -71,6 +71,14 @@ try:
 except Exception as _je:
     print(f"[journal] blueprint NOT registered: {_je}", flush=True)
 
+# ── MentorshipU courses blueprint (Stage 1: LMS pages + intake) ─────────────
+try:
+    from courses_blueprint import courses_bp
+    app.register_blueprint(courses_bp)
+    print("[courses] blueprint registered: /learn, /api/mentorship/intake/start", flush=True)
+except Exception as _ce:
+    print(f"[courses] blueprint NOT registered: {_ce}", flush=True)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
 NAMESPACES        = ["clinical-qa", "mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", "glen-authored-works", ""]
@@ -267,6 +275,27 @@ def _on_portal_host():
     until PORTAL_BASE_URL names a separate domain, so it is inert pre-migration."""
     ph = _portal_host()
     return bool(ph) and (request.host or "").split(":")[0].lower() == ph.lower()
+
+
+def mentorship_base():
+    """Base URL for MentorshipU course links. Defaults to PUBLIC_BASE_URL, so
+    behavior is unchanged until MENTORSHIP_BASE_URL names a distinct host."""
+    return (os.environ.get("MENTORSHIP_BASE_URL") or PUBLIC_BASE_URL).rstrip("/")
+
+
+def _mentorship_host():
+    from urllib.parse import urlparse
+    mb = os.environ.get("MENTORSHIP_BASE_URL", "")
+    return urlparse(mb).hostname or "" if mb else ""
+
+
+def _on_mentorship_host():
+    """True when THIS request arrived on the dedicated MentorshipU host (e.g.
+    mentorshipu.com). Always False until MENTORSHIP_BASE_URL names that host."""
+    mh = _mentorship_host()
+    return bool(mh) and (request.host or "").split(":")[0].lower() == mh.lower()
+
+
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
 # EVOX remote-session booking (Rae's lane). Office-hours spec: "days:HH:MM-HH:MM"
@@ -2527,6 +2556,11 @@ def _serve_funnel_home():
 
 @app.route("/")
 def index():
+    # On the dedicated MentorshipU host (mentorshipu.com) the front door is the
+    # course catalog, not the funnel. Inert until MENTORSHIP_BASE_URL names that host.
+    if _on_mentorship_host():
+        from flask import redirect as _redirect
+        return _redirect("/learn", code=302)
     # On the dedicated portal host (myhealingoasis.com) the front door is the
     # portal sign-in, not the funnel. Inert until PORTAL_BASE_URL names that host.
     if _on_portal_host():
