@@ -2,20 +2,41 @@
 from typing import Optional, Sequence
 
 def translate_sql(sql: str) -> str:
-    """SQLite '?' params -> psycopg '%s', leaving '?' inside single-quoted string
-    literals alone, and escaping every literal '%' as '%%' (psycopg treats '%' as
-    a placeholder marker). Escape percents first, then convert '?' outside strings."""
+    """SQLite '?' params -> psycopg '%s'. Leaves '?' inside single-quoted string
+    literals and inside SQL comments alone, and escapes every literal '%' as '%%'
+    (psycopg treats '%' as a placeholder marker)."""
     sql = sql.replace("%", "%%")
     out = []
+    i, n = 0, len(sql)
     in_str = False
-    for ch in sql:
-        if ch == "'":
-            in_str = not in_str
+    while i < n:
+        ch = sql[i]
+        nxt = sql[i + 1] if i + 1 < n else ""
+        if in_str:
             out.append(ch)
-        elif ch == "?" and not in_str:
+            if ch == "'":
+                in_str = False
+            i += 1
+        elif ch == "'":
+            in_str = True
+            out.append(ch)
+            i += 1
+        elif ch == "-" and nxt == "-":
+            j = sql.find("\n", i)
+            j = n if j == -1 else j
+            out.append(sql[i:j])
+            i = j
+        elif ch == "/" and nxt == "*":
+            j = sql.find("*/", i + 2)
+            j = n if j == -1 else j + 2
+            out.append(sql[i:j])
+            i = j
+        elif ch == "?":
             out.append("%s")
+            i += 1
         else:
             out.append(ch)
+            i += 1
     return "".join(out)
 
 class HybridRow:
@@ -24,7 +45,10 @@ class HybridRow:
     def __init__(self, columns: Sequence[str], values: Sequence):
         self._cols = list(columns)
         self._vals = tuple(values)
-        self._idx = {c: i for i, c in enumerate(self._cols)}
+        self._idx = {}
+        for i, c in enumerate(self._cols):
+            if c not in self._idx:
+                self._idx[c] = i
     def __getitem__(self, key):
         if isinstance(key, str):
             return self._vals[self._idx[key]]
