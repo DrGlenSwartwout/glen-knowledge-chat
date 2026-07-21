@@ -97,3 +97,115 @@ def test_schema_creates_on_sqlite(name, tmp_path, monkeypatch):
             cx.execute(f"SELECT * FROM {tbl} LIMIT 0")
     finally:
         cx.close()
+
+
+# ---------------------------------------------------------------------------
+# Batch 3b — 5 more dashboard `init_*_schema(cx)` helpers finishing the
+# product/inventory subsystem: purchase_orders, production, shipping,
+# sourcing, tracking. Same mechanic as 3a, but each module's cross-module
+# FK dependency chain differs, so `deps` lists the OTHER modules' init
+# functions (in app.py's real init order) that must run first on Postgres
+# (which validates FK targets at CREATE TABLE time, unlike SQLite).
+# ---------------------------------------------------------------------------
+
+# name -> (import_path, fn) for every dependency `init_*_schema` a batch-3b
+# module's tables carry a FOREIGN KEY into.
+DEP_FNS = {
+    "ingredients": ("dashboard.ingredient_catalog", "init_ingredients_schema"),
+    "materials": ("dashboard.materials_catalog", "init_materials_schema"),
+    "formulations": ("dashboard.formulations", "init_formulations_schema"),
+}
+
+MODULES_3B = {
+    "purchase_orders": {
+        "import_path": "dashboard.purchase_orders",
+        "fn": "init_purchase_orders_schema",
+        "tables": ["purchase_orders", "po_items", "po_receiving"],
+        # purchase_orders.supplier_id -> suppliers; po_items.ingredient_id -> ingredients,
+        # po_items.material_id -> materials (materials_catalog itself needs suppliers,
+        # i.e. ingredients, first) — mirrors app.py's real init order.
+        "deps": ["ingredients", "materials"],
+    },
+    "production": {
+        "import_path": "dashboard.production",
+        "fn": "init_production_schema",
+        "tables": ["production_runs", "production_run_items"],
+        # production_runs.formulation_id -> formulations (needs ingredients);
+        # production_run_items.ingredient_id -> ingredients, .material_id -> materials.
+        "deps": ["ingredients", "formulations", "materials"],
+    },
+    "shipping": {
+        "import_path": "dashboard.shipping",
+        "fn": "init_shipping_schema",
+        "tables": [
+            "bottle_types", "box_capacity", "usps_rates",
+            "product_bottle_types", "packing_settings",
+        ],
+        "deps": [],  # box_capacity FKs bottle_types, both owned by this module
+    },
+    "sourcing": {
+        "import_path": "dashboard.sourcing",
+        "fn": "init_sourcing_schema",
+        "tables": ["supplier_quotes"],
+        # supplier_quotes.supplier_id -> suppliers, .ingredient_id -> ingredients,
+        # .applied_source_id -> ingredient_sources — all owned by ingredient_catalog.
+        "deps": ["ingredients"],
+    },
+    "tracking": {
+        "import_path": "dashboard.tracking",
+        "fn": "init_tracking_schema",
+        "tables": ["shipments"],
+        "deps": [],  # no FKs at all
+    },
+}
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+@pytest.mark.parametrize("name", sorted(MODULES_3B))
+def test_schema_3b_creates_on_postgres(name, monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    spec = MODULES_3B[name]
+    init_fn = _load(spec)
+    cx = db.connect("/data/chat_log.db")
+    try:
+        import importlib
+        for dep in spec["deps"]:
+            dep_path, dep_fn_name = DEP_FNS[dep]
+            dep_fn = getattr(importlib.import_module(dep_path), dep_fn_name)
+            dep_fn(cx)
+            cx.commit()
+        for tbl in spec["tables"]:
+            cx.execute(f"DROP TABLE IF EXISTS {tbl} CASCADE")
+        cx.commit()
+        init_fn(cx)
+        cx.commit()
+        for tbl in spec["tables"]:
+            row = cx.execute(
+                "SELECT count(*) FROM information_schema.tables "
+                "WHERE table_schema=current_schema() AND table_name=?",
+                (tbl,),
+            ).fetchone()
+            assert row[0] == 1, f"{name}: table {tbl} was not created on postgres"
+    finally:
+        cx.close()
+
+
+@pytest.mark.parametrize("name", sorted(MODULES_3B))
+def test_schema_3b_creates_on_sqlite(name, tmp_path, monkeypatch):
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    spec = MODULES_3B[name]
+    init_fn = _load(spec)
+    db_path = str(tmp_path / f"{name}.db")
+    cx = db.connect(db_path)
+    try:
+        import importlib
+        for dep in spec["deps"]:
+            dep_path, dep_fn_name = DEP_FNS[dep]
+            dep_fn = getattr(importlib.import_module(dep_path), dep_fn_name)
+            dep_fn(cx)
+        init_fn(cx)
+        for tbl in spec["tables"]:
+            # trivial SELECT ... LIMIT 0 must not raise if the table exists
+            cx.execute(f"SELECT * FROM {tbl} LIMIT 0")
+    finally:
+        cx.close()
