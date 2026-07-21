@@ -3693,6 +3693,28 @@ def begin_biofield_reveal_top(token):
         return jsonify({"ok": False, "reason": "error"})
 
 
+@app.route("/begin/biofield/<token>/remedy-click", methods=["POST"])
+def begin_biofield_remedy_click(token):
+    """Client clicked a remedy's product link in their reveal — a biofield ACTION.
+    Fire-and-forget from the page (sendBeacon); never blocks navigation."""
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "reason": "invalid"})
+        email = (row.get("email") or "").strip().lower()
+        slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+        if email and slug:
+            from dashboard import recommendation_events as _re
+            with _db_lock, db.connect(LOG_DB) as cx:
+                _re.init_recommendation_events(cx)
+                _re.record_click(cx, email, slug, "biofield")
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[biofield-remedy-click] {e!r}", flush=True)
+        return jsonify({"ok": False, "reason": "error"})
+
+
 @app.route("/begin/biofield/<token>/request", methods=["POST"])
 def begin_biofield_request_review(token):
     """Client asks Dr. Glen to review this scan (Option B). Stamps requested_at so

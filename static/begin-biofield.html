@@ -511,6 +511,14 @@
         nameLink.setAttribute("target", "_blank");
         nameLink.setAttribute("rel", "noopener");
         nameLink.textContent = rem.name || "";
+        nameLink.addEventListener("click", function(){
+          try {
+            navigator.sendBeacon(
+              "/begin/biofield/" + encodeURIComponent(_token) + "/remedy-click",
+              new Blob([JSON.stringify({slug: rem.slug})], {type: "application/json"}));
+          } catch(e) {}
+          // do not preventDefault — the link navigates normally
+        });
         container.appendChild(nameLink);
 
         if (rem.meaning) {
