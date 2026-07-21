@@ -16,7 +16,12 @@
   .pcard{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
   .phead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
   .phead b{ font-size:15px; } .email{ color:#9db4ff; font-size:12px; margin-left:6px; }
-  .prog{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .prog{ color:var(--muted); font-size:12px; white-space:nowrap; text-align:right; }
+  .cdate{ color:var(--muted); font-size:11px; display:block; margin-top:2px; }
+  h2.sec{ margin:26px 24px 2px; font-size:14px; color:var(--gold); text-transform:uppercase;
+          letter-spacing:.06em; font-weight:700; }
+  h2.sec .cnt{ color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
+  .secsub{ margin:0 24px 10px; color:var(--muted); font-size:12px; }
   ol.steps{ list-style:none; margin:0; padding:0; }
   ol.steps li{ display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13.5px; }
   .dot{ width:12px; height:12px; border-radius:50%; flex:0 0 auto; border:2px solid var(--amber); }
@@ -53,6 +58,13 @@
   function unlock(){ localStorage.setItem('console_key', document.getElementById('key-input').value); document.getElementById('keybox').style.display='none'; boot(); }
   function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function toggleAll(){ showAll = !showAll; boot(); }
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmtDate(iso){
+    if(!iso) return '';
+    var m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(!m) return '';
+    return MON[(+m[2])-1]+' '+(+m[3])+', '+m[1];
+  }
 
   function composer(email){ return '/console/biofield-portal?email='+encodeURIComponent(email)+'&key='+encodeURIComponent(key()); }
   function ordersLink(id){ return '/console/orders'+(id?('?order='+id):'?')+'&key='+encodeURIComponent(key()); }
@@ -91,7 +103,8 @@
       +'<span class="email">'+esc(c.email)+'</span>'
       +" <a href='/console/client?email="+encodeURIComponent(c.email)+"&key="+encodeURIComponent(key())+"'>Client hub</a>"
       +'</div>'
-      +'<div class="prog">'+(c.complete?'complete':done+'/6')+'</div></div>'
+      +'<div class="prog">'+(c.complete?'complete':done+'/6')
+      +(c.date?'<span class="cdate">'+esc(fmtDate(c.date))+'</span>':'')+'</div></div>'
       +'<ol class="steps">'+lis+'</ol></div>';
   }
 
@@ -111,7 +124,24 @@
     var list = j.clients || [];
     if(!list.length){ document.getElementById('content').innerHTML='<p class="empty">'
       +(showAll?'No Biofield clients yet.':'Nothing in flight — everyone&rsquo;s caught up. 🌺')+'</p>'; return; }
-    document.getElementById('content').innerHTML = '<div class="grid">'+list.map(card).join('')+'</div>';
+    // Three sections in priority order: paid-but-not-fulfilled (the live work queue) on
+    // top, then fulfilled, then everyone else. Backend already sorted by date desc, so
+    // each bucket keeps most-recent-first.
+    var SECTIONS = [
+      { k:'paid_unfulfilled', title:'Paid — awaiting fulfillment',
+        sub:'Biofield Analysis or invoice paid, remedies not yet shipped.' },
+      { k:'fulfilled', title:'Fulfilled', sub:'Remedies shipped.' },
+      { k:'other', title:'Others', sub:'In progress — not yet paid.' }
+    ];
+    var html = '';
+    SECTIONS.forEach(function(sec){
+      var rows = list.filter(function(c){ return (c.section||'other')===sec.k; });
+      if(!rows.length) return;
+      html += '<h2 class="sec">'+esc(sec.title)+' <span class="cnt">('+rows.length+')</span></h2>'
+           +  '<p class="secsub">'+esc(sec.sub)+'</p>'
+           +  '<div class="grid">'+rows.map(card).join('')+'</div>';
+    });
+    document.getElementById('content').innerHTML = html;
   }
   boot();
 </script>
