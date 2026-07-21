@@ -100,7 +100,7 @@ function renderInvoices(inv){
   var rows=inv.orders.map(function(o){
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>"+esc(o.status)+"</td><td>"+money(o.total_cents)+
       "</td><td>"+money(o.paid_cents)+"</td><td>"+money(o.balance_cents)+
-      "</td><td><a href='"+esc(o.edit_url)+"?key="+encodeURIComponent(key())+"'>edit</a></td></tr>";});
+      "</td><td><a href='"+esc(o.edit_url)+"&key="+encodeURIComponent(key())+"'>edit</a></td></tr>";});
   var fmp=(inv.fmp||[]).map(function(o){
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>FMP</td><td>"+
       (o.total!=null?money(Math.round(o.total*100)):"")+"</td><td></td><td>"+

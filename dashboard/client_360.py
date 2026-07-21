@@ -41,11 +41,14 @@ def process_strip(cx, email):
     cx: LOG_DB connection (row_factory=sqlite3.Row). Read-only."""
     e = (email or "").strip().lower()
     source = _detect_source(cx, e)
-    order = cx.execute(
-        "SELECT id, COALESCE(status,'') status, COALESCE(pay_status,'') pay, "
-        "COALESCE(invoice_sent_at,'') sent FROM orders "
-        "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
-        "ORDER BY id DESC LIMIT 1", (e,)).fetchone()
+    try:
+        order = cx.execute(
+            "SELECT id, COALESCE(status,'') status, COALESCE(pay_status,'') pay, "
+            "COALESCE(invoice_sent_at,'') sent FROM orders "
+            "WHERE lower(COALESCE(email,''))=? AND COALESCE(status,'')<>'cancelled' "
+            "ORDER BY id DESC LIMIT 1", (e,)).fetchone()
+    except sqlite3.OperationalError:
+        order = None
     oid = order["id"] if order else None
     status = order["status"] if order else ""
     pay = order["pay"] if order else ""
@@ -122,7 +125,7 @@ def _tests(cx, email):
     try:
         for rv in biofield_reveals.list_for_email(cx, email):
             by_date[rv["scan_date"]] = "biofield"   # biofield wins on a shared date
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     return [{"date": d, "type": t}
             for d, t in sorted(by_date.items(), key=lambda kv: kv[0], reverse=True)]

@@ -1,5 +1,4 @@
 import sqlite3
-import pytest
 from dashboard import client_360
 
 
