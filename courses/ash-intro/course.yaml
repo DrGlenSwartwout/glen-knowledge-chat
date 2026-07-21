@@ -1,8 +1,12 @@
 title: ASH Intro
-description: REPLACE_WITH_ONE_WARM_SENTENCE. A free introduction that opens the door to the certification.
+description: A free introduction to Accelerated Self Healing.
 modules:
   - slug: 01-intro
     title: Introduction
     lessons:
       - 01-out-takes
-      - 02-welcome
+      - 02-what-is-biofield-analysis
+      - 03-my-life-story
+      - 04-remedy-match
+      - 05-architecture-of-coherence
+      - 06-two-keys-to-the-healing-kingdom

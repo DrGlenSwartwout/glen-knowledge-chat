@@ -1,9 +1,64 @@
 title: ASH Certification
-description: REPLACE_WITH_ONE_WARM_SENTENCE shown on the course card.
+description: The full Accelerated Self Healing certification curriculum.
 modules:
-  - slug: 01-foundations
-    title: Foundations
+  - slug: 01-healing-your-past
+    title: Healing Your Past
     lessons:
-      - 01-intro
-# Add more modules and lessons here. Each `slug` must match a sub-directory,
-# and each lesson name must match a `<lesson>.md` file inside that sub-directory.
+      - 01-healing-your-past-1a
+      - 02-healing-the-past-1b
+  - slug: 02-epigenetic-healing
+    title: Epigenetic Healing
+    lessons:
+      - 01-epigenetic-healing-1
+      - 02-epigenetic-healing-1a
+      - 03-epigenetic-healing-2
+  - slug: 03-symptoms
+    title: Symptoms
+    lessons:
+      - 01-symptoms-1
+      - 02-symptoms-1a
+      - 03-symptoms-1b
+      - 04-symptom-tracking-2
+  - slug: 04-navigating-terrain
+    title: Navigating Terrain
+    lessons:
+      - 01-navigating-terrain-1
+      - 02-navigating-terrain-1a
+      - 03-navigating-terrain-1b
+      - 04-terrain-2
+  - slug: 05-diagnosis
+    title: Diagnosis
+    lessons:
+      - 01-dispelling-diagnosis-1
+      - 02-diagnosis-1a
+  - slug: 06-treatment
+    title: Treatment
+    lessons:
+      - 01-treatment-1a
+      - 02-treatment-1b
+      - 03-treatment-2
+  - slug: 07-regulation
+    title: Regulation
+    lessons:
+      - 01-regulation-1a
+      - 02-regulation-1b
+      - 03-regulation-2
+  - slug: 08-prognosis
+    title: Prognosis
+    lessons:
+      - 01-prognosis-1a
+      - 02-prognosis-1b
+      - 03-prognosis-2
+  - slug: 09-dimensions-of-healing
+    title: Dimensions of Healing
+    lessons:
+      - 01-spirit-2
+      - 02-body-2
+      - 03-mind-2
+      - 04-family-2
+  - slug: 10-practitioner-sessions
+    title: Practitioner Sessions
+    lessons:
+      - 01-diy-healing-implementation-1
+      - 02-practitioner-roundtable-intro
+      - 03-hea-clinical-call
