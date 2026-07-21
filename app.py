@@ -41339,6 +41339,14 @@ def api_invoice_get(token):
              "kind": p["kind"], "amount_cents": p["amount_cents"]} for p in _pays]
         summary["balance_due_cents"] = _bal["balance_cents"]
         summary["refunded_cents"] = _bal["refunded_cents"]
+        # Legacy pre-ledger paid order (no ledger rows, payment recorded on the order
+        # itself): show the payment line from orders.paid_cents so the customer invoice
+        # itemizes "Paid $X (method)" alongside the true balance due (mirrors balance()).
+        if _bal.get("legacy_fallback") and not summary["payments"]:
+            summary["payments"] = [{
+                "date": (order.get("paid_at") or "")[:10],
+                "method": order.get("pay_method") or "",
+                "kind": "payment", "amount_cents": _bal["paid_cents"]}]
     finally:
         cx.close()
     if _read_receipts_enabled():
@@ -42352,11 +42360,12 @@ def bos_orders_create():
             except Exception as _e:
                 print(f"[orders] biofield pdf annotate skipped: {_e!r}", flush=True)
             # Ledger paid/balance annotation: attach ledger_paid_cents/ledger_balance_cents
-            # ONLY to orders that have active order_payments rows (a payment or refund
-            # recorded), so pre-ledger / legacy-paid orders keep their pay_status badge
-            # without a misleading "balance = full total". One grouped query — no
-            # per-order round-trips. Raw SQL (NOT the _op module: this handler locally
-            # rebinds `_op` to dashboard.opens further down, which would shadow it).
+            # so the card shows "Paid $X · Bal $Y". Ledger rows win; a pre-ledger /
+            # legacy-paid order (no order_payments rows, but orders.paid_cents set) falls
+            # back to its recorded paid_cents — the ACCURATE paid + balance, never a
+            # misleading "balance = full total" (mirrors order_payments.balance). One
+            # grouped query — no per-order round-trips. Raw SQL (NOT the _op module: this
+            # handler locally rebinds `_op` to dashboard.opens further down, shadowing it).
             try:
                 _led = {}
                 for e in cx.execute(
@@ -42367,6 +42376,10 @@ def bos_orders_create():
                     led = _led.get(int(o.get("id")))
                     if led:
                         paid = led["payment"] - led["refund"]
+                        o["ledger_paid_cents"] = paid
+                        o["ledger_balance_cents"] = int(o.get("total_cents") or 0) - paid
+                    elif int(o.get("paid_cents") or 0) > 0 and o.get("pay_status") == "paid":
+                        paid = int(o.get("paid_cents") or 0)
                         o["ledger_paid_cents"] = paid
                         o["ledger_balance_cents"] = int(o.get("total_cents") or 0) - paid
             except Exception as _e:

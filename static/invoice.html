@@ -198,8 +198,12 @@ async function load() {
   LINES = ORDER.lines.map(l => ({slug:l.slug, name:l.name, qty:l.qty, unit_cents:l.unit_cents,
     kind:l.kind, tier:l.tier, note:l.note,
     service:l.service, srp_cents:l.srp_cents, regular_cents:l.regular_cents}));
+  // "Paid" banner only when the invoice is actually settled. A legacy order can be
+  // pay_status='paid' yet still carry a balance due (partial payment recorded on the
+  // order before the invoice was edited up) — then show the Balance due row instead.
+  var fullyPaid = ORDER.pay_status === 'paid' && Number(ORDER.balance_due_cents || 0) <= 0;
   if (ORDER.pay_status === 'paid' || !ORDER.editable) {
-    $('paid-banner').style.display = ORDER.pay_status==='paid' ? 'block' : 'none';
+    $('paid-banner').style.display = fullyPaid ? 'block' : 'none';
   }
   renderLines(); renderTotals(); renderPayments(); setupPay(); renderSavings(); renderMembershipOffer();
   if (ORDER.invoice_note){ $('note-text').textContent = ORDER.invoice_note; $('note-card').style.display=''; }
@@ -308,6 +312,13 @@ function buildInvoicePrintHtml(o){
   if(o.points_redeemed_cents) tot += r('Points', o.points_redeemed_cents, true);
   if(o.ship_credit_applied_cents) tot += r('Shipping credit', o.ship_credit_applied_cents, true);
   tot += `<div class="r grand"><span>Total</span><span>${money(o.total_cents)}</span></div>`;
+  // Payments recorded (incl. legacy Zelle/Wise/check) + any balance still owed, so the
+  // printed invoice shows amount paid and balance due — not just a "Paid" chip.
+  (o.payments||[]).forEach(p => {
+    tot += r((p.kind==='refund'?'Refund':'Paid')+(p.method?(' · '+p.method):''), p.amount_cents, p.kind==='refund');
+  });
+  if (Number(o.balance_due_cents||0) > 0)
+    tot += `<div class="r grand"><span>Balance due</span><span>${money(o.balance_due_cents)}</span></div>`;
   const savings = totalSavings(lines);
   if(savings>0) tot += r('You save', savings, false, 'save');
   const today = new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
@@ -320,7 +331,7 @@ function buildInvoicePrintHtml(o){
     <table class="pd-lines"><thead><tr><th>Item</th><th class="num">Value</th><th class="num">Regular</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Amount</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6">No items.</td></tr>'}</tbody></table>
     <div class="pd-tot">${tot}</div>
-    ${o.pay_status==='paid' ? `<div class="pd-paid">Paid. Mahalo 🌿</div>` : ''}
+    ${(o.pay_status==='paid' && Number(o.balance_due_cents||0)<=0) ? `<div class="pd-paid">Paid. Mahalo 🌿</div>` : ''}
     ${o.invoice_note ? `<div class="pd-note"><span class="pd-note-k">Notes</span>${esc(o.invoice_note)}</div>` : ''}
     <div class="pd-foot">Thank you. Questions? (808) 217-9647 · Remedy Match LLC, Hilo, Hawai‘i</div>
   </div>`;
