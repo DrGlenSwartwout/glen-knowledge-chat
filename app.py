@@ -3145,7 +3145,7 @@ def _magic_link_login_view(token, *, purpose, cookie, dest, invalid_html,
                     # this handler's shared `cx`.
                     with db.connect(LOG_DB) as _cxw:
                         _wl.init_wishlist_table(_cxw)
-                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
+                        _wishlist_merge_with_self(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
                     print(f"[wishlist] merge skipped: {_e}", flush=True)
 
@@ -7291,6 +7291,28 @@ def _wishlist_ids(request):
     return email, session_id
 
 
+def _wishlist_merge_with_self(cx, session_id, email):
+    """Merge an anonymous session wishlist into the client's email wishlist AND
+    record each merged product as a 'self' recommendation. Failure-isolated:
+    never breaks the login/merge flow."""
+    from dashboard import wishlist as _wl
+    e = (email or "").strip().lower()
+    sid = session_id or ""
+    if not e or not sid:
+        return
+    merged = _wl.slugs_for(cx, "sess:" + sid)   # capture BEFORE merge deletes the sess rows
+    _wl.merge_wishlist(cx, sid, e)
+    if not merged:
+        return
+    try:
+        from dashboard import recommendation_events as _re
+        _re.init_recommendation_events(cx)
+        for slug in merged:
+            _re.record_self(cx, e, slug)
+    except Exception:
+        pass
+
+
 @app.route("/begin/wishlist/toggle", methods=["POST"])
 def begin_wishlist_toggle():
     if not _WISHLIST_ENABLED:
@@ -7307,6 +7329,13 @@ def begin_wishlist_toggle():
             _wl.init_wishlist_table(cx)
             owner = _wl.resolve_owner(email, session_id)
             saved = _wl.toggle(cx, owner, slug)
+            if saved and email:   # email-keyed add only; anonymous sess adds never attribute
+                try:
+                    from dashboard import recommendation_events as _re
+                    _re.init_recommendation_events(cx)
+                    _re.record_self(cx, email, slug)
+                except Exception:
+                    pass
     except Exception as _e:
         print(f"[wishlist] toggle failed: {_e}", flush=True)
         return jsonify({"error": "failed"}), 500
@@ -9976,7 +10005,7 @@ def _fulfill_prepay_term(session_id):
                     # this handler's shared `cx`.
                     with db.connect(LOG_DB) as _cxw:
                         _wl.init_wishlist_table(_cxw)
-                        _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email)
+                        _wishlist_merge_with_self(_cxw, request.cookies.get("amg_session", ""), email)
                 except Exception as _e:
                     print(f"[wishlist] merge skipped: {_e}", flush=True)
             cx.execute(
@@ -19209,7 +19238,7 @@ def api_client_portal(token):
             from dashboard import wishlist as _wl
             with _db_lock, db.connect(LOG_DB) as _cxw:
                 _wl.init_wishlist_table(_cxw)
-                _wl.merge_wishlist(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
+                _wishlist_merge_with_self(_cxw, request.cookies.get("amg_session", ""), email_for_reports)
         except Exception as _e:
             print(f"[wishlist] merge skipped: {_e}", flush=True)
     # Task 3: household/family portal-view switcher. Flag-gated + best-effort — a
@@ -20232,6 +20261,13 @@ def api_portal_wishlist_toggle(token):
                     print(f"[wishlist] household re-point skipped: {_he}", flush=True)
             _wl.init_wishlist_table(_cx)
             _saved = _wl.toggle(_cx, "email:" + _email, slug) if _email else False
+            if _saved and _email:
+                try:
+                    from dashboard import recommendation_events as _re
+                    _re.init_recommendation_events(_cx)
+                    _re.record_self(_cx, _email, slug)
+                except Exception:
+                    pass
         return jsonify({"saved": _saved})
     except Exception as _e:
         print(f"[wishlist] portal toggle failed: {_e}", flush=True)

@@ -106,6 +106,15 @@ def set_hidden(cx, email, product_key, hidden=True):
     cx.commit()
 
 
+def record_self(cx, email, product_key):
+    """A client self-selected a product (added it to their wishlist). One sticky
+    'self' membership per (client, product) — stable origin_ref, so re-adds are a
+    no-op and the membership persists even if the product is later un-wishlisted
+    (append-only; the client hides via the hide control)."""
+    return record_event(cx, email, product_key, "self",
+                        occurred_at=_now(), origin_ref="self")
+
+
 def product_sources(cx, email):
     """Per product: its sources (each with count, first_touch, last_touch), ordered by
     first_touch (icon order), plus a hidden flag. Callers sort/limit products for display."""
