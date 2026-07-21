@@ -166,11 +166,19 @@ to the Invoice→Sent→Paid→Fulfilled stages.
 ### Phase 1 — the spine (backend + operator; lowest risk)
 - Source registry + `recommendation_events` log + derived aggregates (count, first_touch,
   last_touch) + client hide flag.
-- Ingest from sources whose data ALREADY exists: `biofield` (`biofield_reveals`), `scan`
-  (`ff_match_drafts`), `purchased` (`orders`).
-- Wire the client-360 process strip to read per-product/per-line sources as multi-badges.
-- No new client UI, no order-creation changes, no marketing integrations. Proves the model
-  on real data.
+- Ingest ONLY the sources whose existing data matches their own counting rule:
+  `biofield` (`biofield_reveals` — recommendation-generated) and `purchased` (paid
+  `orders`). **`scan` is NOT ingested in Phase 1**: its counting rule is client-engagement,
+  and `ff_match_drafts` is match-*generation*, not engagement — counting it would inflate.
+  Scan/chat engagement begins accruing in Phase 2 when the portal/product-page instrument
+  client actions. (Intake likewise has no product-recommendation output today.)
+- Surface the aggregates on the OPERATOR client-360 hub (a "Recommendations" section:
+  products with per-source icon+count), driven by lazy ingest-on-read — a Phase-1 preview
+  of what the client portal (Phase 2) will show, exercising ingest→aggregate→display
+  end-to-end.
+- Wire the client-360 process strip to multi-badge (present sources), via presence
+  detection in Phase 1 (authoritative per-line source arrives in Phase 2).
+- No new client UI, no order-creation changes, no marketing integrations.
 
 ### Phase 2 — client portal + ordering (the payoff; touches money path)
 - The categorized portal UI (icon rows + counts, top-5 + show-more, hide control).
