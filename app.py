@@ -6079,7 +6079,12 @@ ANALYSIS_AUTOCONFIRM_ENABLED = os.environ.get(
     "ANALYSIS_AUTOCONFIRM_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 ANALYSIS_AUTOCONFIRM_SAMPLE_PCT = os.environ.get("ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "10")
 _AUTOCONFIRM_RED_FLAGS = {"cancer", "tumor", "pregnan", "suicid", "chest pain",
-                          "stroke", "seizure"}
+                          "stroke", "seizure", "heart attack", "arrhythmia",
+                          "hemorrhage", "bleeding", "breastfeed", "lactation",
+                          "miscarriage", "child", "infant", "baby", "newborn",
+                          "pediatric", "medication", "prescription",
+                          "blood thinner", "anticoagulant", "warfarin",
+                          "lithium", "chemo"}
 FIRESIDE_ENABLED = os.environ.get("FIRESIDE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 FIRESIDE_MAX_CHARS = 4000  # cap a single fireside message (cost + row growth)
 PIF_GIFT_NOTE_DELAY_DAYS = int(os.environ.get("PIF_GIFT_NOTE_DELAY_DAYS", "14"))
@@ -22284,6 +22289,9 @@ def api_console_biofield_publish():
 def _autoconfirm_confirm_fn(cx, email, scan_date, content):
     """Prod confirm action for a gated auto-confirm. Silent — no client email; the
     existing scan-notify drip handles notification separately."""
+    # scan_id="" below is intentional today: both real ai_draft callers (the live
+    # handoff hook and the backfill route) pass no scan_id. It's a latent overwrite
+    # risk only if a future caller starts passing a real scan_id here.
     from dashboard import client_portal as _cp
     from dashboard import portal_biofield_reports as _pbr
     _cp.set_biofield_status(cx, email, "confirmed")
@@ -22327,7 +22335,8 @@ def api_autoconfirm_backfill():
     commit = bool((request.get_json(silent=True) or {}).get("commit"))
     catalog = load_catalog()
     resolver = lambda n: resolve_remedy_slug(n, catalog)
-    counts = {"would_confirm": 0, "would_hold_quality": 0, "would_hold_sample": 0}
+    counts = {"would_confirm": 0, "would_hold_quality": 0, "would_hold_sample": 0,
+              "skipped_malformed": 0}
     sample_reasons = []
     with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _pbr.init_table(cx); _ac.init_autoconfirm_log(cx)
@@ -22337,6 +22346,7 @@ def api_autoconfirm_backfill():
             try:
                 content = json.loads(cj or "{}")
             except Exception:
+                counts["skipped_malformed"] += 1
                 continue
             if (content.get("biofield_status") or "") != "ai_draft":
                 continue
@@ -22353,6 +22363,14 @@ def api_autoconfirm_backfill():
             counts["would_confirm"] += 1
             if commit:
                 _autoconfirm_confirm_fn(cx, email, "", content)
+                # _autoconfirm_confirm_fn was called with scan_date="" here, so it skips
+                # upsert_report and only flips client_portals.content. The portal decides
+                # blur from the per-scan REPORT row's status when one exists (the normal
+                # case), so we must also flip that row or a report-backed draft stays
+                # blurred while this route reports success.
+                lr = _pbr.latest_report(cx, email)
+                if lr and lr.get("scan_date"):
+                    _pbr.set_report_status(cx, email, lr["scan_date"], "confirmed")
                 _ac._log(cx, email, "", "confirmed", [], False,
                          datetime.now(timezone.utc).isoformat())
     return jsonify({"ok": True, "committed": commit, "sample_reasons": sample_reasons, **counts})
@@ -25374,9 +25392,7 @@ def admin_client_portal_upsert():
         # confirmed in place so the free tier self-serves. Held drafts stay ai_draft
         # (Rae's inbox). Never raises.
         if (content.get("biofield_status") or "ai_draft") == "ai_draft":
-            outcome = _run_autoconfirm(cx, email, scan_date, content)
-            if outcome == "confirmed":
-                content = dict(content); content["biofield_status"] = "confirmed"
+            _run_autoconfirm(cx, email, scan_date, content)
     # Persistent portal: a returning client keeps their existing link (token is None on
     # update). Resolve the stable link anyway so send=true can still NOTIFY them — e.g.
     # a new scan landed on their persistent portal and they should hear about it.

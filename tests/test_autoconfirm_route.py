@@ -109,6 +109,36 @@ def test_backfill_commit_confirms_only_clean(monkeypatch, tmp_path):
     assert log_rec and log_rec[0] == "confirmed"
     cx.close()
 
+def test_backfill_commit_flips_report_row_too(monkeypatch, tmp_path):
+    # Bug: commit=true called _autoconfirm_confirm_fn with scan_date="", which skips
+    # upsert_report, leaving the per-scan REPORT row at ai_draft even though
+    # client_portals.content flips to confirmed. The portal blurs off the report row
+    # when one exists, so a report-backed draft stayed blurred despite "success".
+    from dashboard import biofield_portal_publish as bpp
+    from dashboard import portal_biofield_reports as _pbr
+    monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: "slug-x")
+    monkeypatch.setattr(app, "ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "0", raising=False)
+    db = _auth(monkeypatch, tmp_path)
+    email = "report@x.com"
+    content = {"biofield_status": "ai_draft", "greeting": "hi",
+               "layers": [{"title": "C", "remedy": "Vitality", "dosage": "1 cap"}]}
+    cx = sqlite3.connect(db)
+    _cp.upsert_portal(cx, email, "Report", content)
+    _pbr.init_table(cx)
+    _pbr.upsert_report(cx, email, "2026-07-01", "", content, "ai_draft")
+    cx.close()
+    r = app.app.test_client().post("/api/console/autoconfirm/backfill",
+        headers={"X-Console-Key": "sek", "Content-Type": "application/json"},
+        data=json.dumps({"commit": True}))
+    j = r.get_json()
+    assert j["ok"] and j["would_confirm"] == 1
+    cx = sqlite3.connect(db)
+    st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email=?",
+          (email,)).fetchone()[0]) or {}).get("biofield_status")
+    assert st == "confirmed"
+    assert _pbr.get_report(cx, email, "2026-07-01")["status"] == "confirmed"
+    cx.close()
+
 def test_handoffs_show_autoconfirm_reason(monkeypatch, tmp_path):
     from dashboard import biofield_portal_publish as bpp
     monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: None)  # forces held_quality

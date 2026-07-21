@@ -16,9 +16,17 @@ def evaluate_quality(content, *, resolve_slug, red_flag_terms):
     """(ok, reasons). ok only when every check passes; reasons lists each failure."""
     reasons = []
     content = content or {}
-    layers = [L for L in (content.get("layers") or []) if (L.get("title") or "").strip()]
+    all_layers = content.get("layers") or []
+    layers = [L for L in all_layers if (L.get("title") or "").strip()]
     if not layers:
         reasons.append("no titled layer")
+    for i, L in enumerate(all_layers):
+        title = (L.get("title") or "").strip()
+        if title:
+            continue
+        rem = (L.get("remedy") or "").strip()
+        if rem or _dosing_present(L):
+            reasons.append(f"layer {i}: has content but no title")
     for i, L in enumerate(layers):
         rem = (L.get("remedy") or "").strip()
         if not rem:

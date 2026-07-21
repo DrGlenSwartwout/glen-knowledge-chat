@@ -54,6 +54,15 @@ def test_quality_fail_red_flag_term():
         resolve_slug=_RES, red_flag_terms={"cancer"})
     assert ok is False and any("red_flag" in r for r in reasons)
 
+def test_quality_fail_untitled_layer_with_content():
+    ok, reasons = ac.evaluate_quality(
+        _draft(layers=[
+            {"title": "Cellular", "remedy": "Vitality", "dosage": "1 cap", "frequency": "daily"},
+            {"remedy": "Bogus", "dosage": "1 cap"},
+        ]),
+        resolve_slug=_RES, red_flag_terms=set())
+    assert ok is False and any("no title" in r for r in reasons)
+
 def test_sampler_bounds():
     assert ac.should_sample("a@x.com", "2026-07-01", 0) is False
     assert ac.should_sample("a@x.com", "2026-07-01", 100) is True
