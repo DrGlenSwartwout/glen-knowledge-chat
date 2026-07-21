@@ -19663,6 +19663,35 @@ def api_client_portal(token):
     return jsonify(payload)
 
 
+@app.route("/api/portal/<token>/recommendations", methods=["GET"])
+def api_portal_recommendations(token):
+    """Read-only: a client's recommended-products sections, grouped by source
+    (biofield/intake/scan/.../purchased), each ranked by that source's touch count
+    then recency, top 5 shown + a total count. Token-authed like the other
+    /api/portal/<token>/... routes — identity comes ONLY from the portal token."""
+    from dashboard import (client_portal as _cp, recommendation_events as _re,
+                            recommendation_prefs as _rp, portal_recommendations as _pr,
+                            products as _products)
+    with sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _re.init_recommendation_events(cx)
+        _rp.init_recommendation_prefs(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        ps = _re.product_sources(cx, email)
+        notes = _rp.get_notes(cx, email)
+        state = _rp.get_section_state(cx, email)
+    catalog = _products.load_products()
+
+    def resolve(slug):
+        p = catalog.get(slug) or {}
+        return {"name": p.get("name"), "url": p.get("url")}
+
+    return jsonify({"ok": True, "sections": _pr.build_sections(ps, notes, state, resolve)})
+
+
 @app.route("/api/portal/<token>/program", methods=["GET"])
 def api_portal_program(token):
     """Personalized membership program blocks for the program page."""
