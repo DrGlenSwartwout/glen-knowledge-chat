@@ -89,6 +89,7 @@ from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
 from dashboard import client_360
+from dashboard import recommendation_events
 from dashboard import db
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
@@ -39155,6 +39156,14 @@ def _init_bos_orders():
 _init_bos_orders()
 
 
+def _init_recommendation_events():
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        recommendation_events.init_recommendation_events(cx)
+
+
+_init_recommendation_events()
+
+
 def _normalize_ship_address(addr, fallback_name=""):
     """Normalize a posted shipping address to the shape easypost.build_shipment
     reads (street/city/state/zip/country). State is upper-cased for the GET
@@ -39504,6 +39513,13 @@ def console_client_360():
     email = (request.args.get("email") or "").strip().lower()
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
+        if email:
+            try:
+                recommendation_events.init_recommendation_events(cx)
+                recommendation_events.ingest_purchased(cx, email)   # Phase 1: purchased is the only recorded action
+            except Exception:
+                pass
+        cx.row_factory = sqlite3.Row   # ingest readers may reset it; restore before bundle
         data = client_360.bundle(cx, email)
     return jsonify({"ok": True, **data})
 

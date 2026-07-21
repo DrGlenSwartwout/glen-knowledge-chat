@@ -108,3 +108,21 @@ def test_missing_recommendation_tables_do_not_raise():
                "pay_status TEXT, invoice_sent_at TEXT)")
     res = client_360.process_strip(cx, "a@b.com")
     assert res["source"] is None
+
+
+def test_process_strip_returns_multi_sources():
+    from dashboard import client_360
+    import sqlite3
+    cx = sqlite3.connect(":memory:"); cx.row_factory = sqlite3.Row
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT, status TEXT, pay_status TEXT, invoice_sent_at TEXT)")
+    cx.execute("CREATE TABLE biofield_reveals (id INTEGER PRIMARY KEY, email TEXT, scan_date TEXT)")
+    cx.execute("CREATE TABLE ff_match_drafts (email TEXT, scan_date TEXT, status TEXT)")
+    cx.execute("CREATE TABLE intake_responses (email TEXT PRIMARY KEY, status TEXT)")
+    cx.execute("CREATE TABLE inquiries (id INTEGER PRIMARY KEY, client_email TEXT)")
+    cx.execute("INSERT INTO biofield_reveals VALUES (1,'a@b.com','2026-07-01')")
+    cx.execute("INSERT INTO ff_match_drafts VALUES ('a@b.com','2026-07-01','draft')")
+    res = client_360.process_strip(cx, "a@b.com")
+    assert res["sources"] == ["biofield", "scan"]     # all present, priority order
+    assert res["source"] == "biofield"                # back-compat: first
+    rec = next(s for s in res["stages"] if s["key"] == "recommendation")
+    assert rec["sources"] == ["biofield", "scan"] and rec["done"] is True
