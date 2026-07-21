@@ -1,10 +1,13 @@
 """Money widgets — PB sessions, Authorize.net (GrooveKart + GHL), Wise, QuickBooks."""
 
 import os
+import threading
 import requests
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from .cache import cached, last_success
+from dashboard import db
 
 # ── Credentials (from Render env vars) ────────────────────────────────────────
 PB_CLIENT_ID     = os.environ.get("PRACTICE_BETTER_CLIENT_ID", "")
@@ -20,26 +23,68 @@ QB_REFRESH_TOKEN = os.environ.get("QUICKBOOKS_PROD_REFRESH_TOKEN", "")
 
 QB_TOKEN_URL    = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 QB_BASE_URL     = f"https://quickbooks.api.intuit.com/v3/company/{QB_REALM_ID}"
+
+# Legacy file cache path, kept read-only for one-time seeding during cutover.
+# The refresh token itself now lives in the oauth_tokens DB row "qbo_refresh"
+# (see _qb_rt_read/_qb_rt_write_at below) so it survives across disk-less
+# multi-instance web workers. Retire this file once one successful prod
+# refresh has written the DB row.
 QB_RT_CACHE     = os.environ.get("QB_RT_CACHE_PATH", "/data/qb_refresh_token")
 
+_rt_lock = threading.Lock()
+_QB_RT_NAME = "qbo_refresh"
 
-def _qb_rt_read():
+
+def _qb_default_db_path() -> str:
+    # Mirror app.LOG_DB / gmail_token.default_db_path: DATA_DIR persistent disk
+    # on Render (/data), repo root in local dev.
+    root = os.environ.get("DATA_DIR") or str(Path(__file__).resolve().parent.parent)
+    return str(Path(root) / "chat_log.db")
+
+
+def _qb_rt_read(db_path: str):
+    try:
+        with db.connect(db_path, timeout=10) as cx:
+            row = cx.execute(
+                "SELECT token_json FROM oauth_tokens WHERE name=?", (_QB_RT_NAME,)
+            ).fetchone()
+    except db.OperationalError as e:
+        # Table not yet created (fresh DB): SQLite "no such table" /
+        # Postgres UndefinedTable. Treat as "no token", not an error.
+        if "no such table" in str(e).lower() or "does not exist" in str(e).lower():
+            return None
+        raise
+    return (row[0].strip() or None) if row and row[0] else None
+
+
+def _qb_rt_write_at(db_path: str, token: str) -> None:
+    """Upsert the RT row. Assumes the caller holds the appropriate lock
+    (in-process on SQLite, the FOR UPDATE row lock on Postgres)."""
+    if not token:
+        return
+    ts = datetime.now(timezone.utc).isoformat()
+    with db.connect(db_path, timeout=10) as cx:
+        cx.execute(
+            "CREATE TABLE IF NOT EXISTS oauth_tokens (name TEXT PRIMARY KEY, "
+            "token_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        cx.execute(
+            "INSERT INTO oauth_tokens (name, token_json, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET token_json=excluded.token_json, "
+            "updated_at=excluded.updated_at",
+            (_QB_RT_NAME, token, ts),
+        )
+        cx.commit()
+
+
+def _qb_rt_seed_from_legacy_file():
+    """One-time: if the DB row is empty but the legacy /data file exists,
+    return its contents so the already-rotated on-disk RT is not lost at cutover."""
     try:
         with open(QB_RT_CACHE) as f:
             return f.read().strip() or None
     except (FileNotFoundError, OSError):
         return None
-
-
-def _qb_rt_write(token):
-    if not token:
-        return
-    try:
-        os.makedirs(os.path.dirname(QB_RT_CACHE), exist_ok=True)
-        with open(QB_RT_CACHE, "w") as f:
-            f.write(token)
-    except OSError as e:
-        print(f"[qb] could not persist refresh token to {QB_RT_CACHE}: {e}")
 
 
 # ── PB ────────────────────────────────────────────────────────────────────────
@@ -143,43 +188,87 @@ def wise_data(days=30):
 
 # ── QuickBooks ────────────────────────────────────────────────────────────────
 def qb_refresh():
-    """Refresh QB access token. Tries persisted (rotated) RT first, falls back
-    to env-var RT. Persists the new RT Intuit returns on every call — Intuit
-    rotates refresh tokens on every use, so without persistence the env-var
-    value goes invalid after the first refresh."""
+    """Refresh the QB access token. The refresh token rotates on every use
+    (Intuit invalidates the one just sent), so read->POST->persist must be
+    serialized: a SELECT..FOR UPDATE row lock on Postgres (correct across
+    instances), an in-process lock on SQLite (single instance by construction).
+    Seed order for the RT: persisted DB row -> legacy /data file -> env var."""
     import base64
     auth = base64.b64encode(f"{QB_CLIENT_ID}:{QB_CLIENT_SECRET}".encode()).decode()
+    db_path = _qb_default_db_path()
 
-    candidates = []
-    cached = _qb_rt_read()
-    if cached:
-        candidates.append(("cache", cached))
-    if QB_REFRESH_TOKEN and QB_REFRESH_TOKEN != cached:
-        candidates.append(("env", QB_REFRESH_TOKEN))
+    def _do_refresh(rt):
+        r = requests.post(QB_TOKEN_URL,
+                          headers={"Authorization": f"Basic {auth}",
+                                   "Accept": "application/json",
+                                   "Content-Type": "application/x-www-form-urlencoded"},
+                          data={"grant_type": "refresh_token", "refresh_token": rt},
+                          timeout=15)
+        r.raise_for_status()
+        payload = r.json()
+        return payload.get("refresh_token"), payload["access_token"]
+
+    def _candidates(persisted):
+        cands = []
+        if persisted:
+            cands.append(("db", persisted))
+        seed = _qb_rt_seed_from_legacy_file()
+        if seed and seed != persisted:
+            cands.append(("file", seed))
+        if QB_REFRESH_TOKEN and QB_REFRESH_TOKEN not in (persisted, ""):
+            cands.append(("env", QB_REFRESH_TOKEN))
+        return cands
 
     last_err = None
-    for source, rt in candidates:
-        try:
-            r = requests.post(QB_TOKEN_URL,
-                              headers={"Authorization": f"Basic {auth}",
-                                       "Accept": "application/json",
-                                       "Content-Type": "application/x-www-form-urlencoded"},
-                              data={"grant_type": "refresh_token",
-                                    "refresh_token": rt},
-                              timeout=15)
-            r.raise_for_status()
-            payload = r.json()
-            new_rt = payload.get("refresh_token")
-            if new_rt:
-                _qb_rt_write(new_rt)
-            return payload["access_token"]
-        except requests.HTTPError as e:
-            last_err = e
-            print(f"[qb] refresh from {source} failed: {e}")
-            continue
+
+    if db.backend() == "postgres":
+        # Hold the row lock across the whole read->POST->write critical section.
+        with db.connect(db_path, timeout=15) as cx:
+            cx.execute(
+                "CREATE TABLE IF NOT EXISTS oauth_tokens (name TEXT PRIMARY KEY, "
+                "token_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
+            )
+            row = cx.execute(
+                "SELECT token_json FROM oauth_tokens WHERE name=? FOR UPDATE",
+                (_QB_RT_NAME,),
+            ).fetchone()
+            persisted = (row[0].strip() or None) if row and row[0] else None
+            for source, rt in _candidates(persisted):
+                try:
+                    new_rt, access = _do_refresh(rt)
+                    if new_rt:
+                        cx.execute(
+                            "INSERT INTO oauth_tokens (name, token_json, updated_at) "
+                            "VALUES (?,?,?) ON CONFLICT(name) DO UPDATE SET "
+                            "token_json=excluded.token_json, updated_at=excluded.updated_at",
+                            (_QB_RT_NAME, new_rt, datetime.now(timezone.utc).isoformat()),
+                        )
+                    cx.commit()  # releases the FOR UPDATE lock
+                    return access
+                except requests.HTTPError as e:
+                    last_err = e
+                    print(f"[qb] refresh from {source} failed: {e}")
+                    continue
+            cx.commit()
+    else:
+        # SQLite single instance: in-process lock; do NOT hold a DB write txn
+        # across the network POST (SQLite write locks are database-wide).
+        with _rt_lock:
+            persisted = _qb_rt_read(db_path)
+            for source, rt in _candidates(persisted):
+                try:
+                    new_rt, access = _do_refresh(rt)
+                    if new_rt:
+                        _qb_rt_write_at(db_path, new_rt)
+                    return access
+                except requests.HTTPError as e:
+                    last_err = e
+                    print(f"[qb] refresh from {source} failed: {e}")
+                    continue
+
     if last_err:
         raise last_err
-    raise RuntimeError("No QB refresh token available (cache empty + env var unset)")
+    raise RuntimeError("No QB refresh token available (DB empty + file/env unset)")
 
 
 def qb_get(access_token, path, params=None):
