@@ -832,13 +832,16 @@ async function load(){
   const sd = selectedScanDate ? `?scan_date=${encodeURIComponent(selectedScanDate)}` : "";
   if (memberParam) q.set("member", memberParam);
   const dq = q.toString() ? `?${q.toString()}` : "";
-  const [data, view] = await Promise.all([
+  const [data, view, reco] = await Promise.all([
     fetchJson(`/api/portal/${encodeURIComponent(seg)}${dq}`),
     fetchJson(`/api/portal/${encodeURIComponent(seg)}/view${sd}`),
+    // My Recommendations (Phase 2b-ii): independent of data/view — a null/absent
+    // payload (flag off, no sections) simply renders no card, never blocks the page.
+    fetchJson(`/api/portal/${encodeURIComponent(seg)}/recommendations`),
   ]);
   const ok = isMe ? !!view : !!data;
   if(!ok){ notFound(); return; }
-  render(data, view);
+  render(data, view, reco);
 }
 
 // Poll loop for the cold-portal "Preparing your analysis…" state. Each tick
@@ -943,8 +946,71 @@ document.addEventListener("click", async (ev) => {
   }
 });
 
-function render(d, v){
+// "My Recommendations" (Phase 2b-ii Task 1): one collapsible sub-section per
+// recommendation source, shared by the initial payload render — sections come
+// from GET /api/portal/<token>/recommendations, fetched alongside d/v in load().
+// Each section lists up to `shown` products (with a "show all N" affordance
+// when `total > shown`) as: an icon row of source chips, the name (linked when
+// `url` is present), the operator's read-only note, and a client-editable note
+// + hide control. Click/save/hide/collapse-toggle wiring is Task 2 — this only
+// renders the markup + data-* attributes those handlers will bind to.
+function renderRecommendations(sections){
+  let secHtml = "";
+  sections.forEach(sec=>{
+    const src = esc(sec.source || "");
+    const label = esc(sec.label || sec.source || "");
+    const icon = esc(sec.icon || "");
+    const total = Number(sec.total) || 0;
+    const shown = Number(sec.shown) || 0;
+    const collapsed = !!sec.collapsed;
+    const products = Array.isArray(sec.products) ? sec.products : [];
+    let rows = "";
+    products.forEach(p=>{
+      const pk = esc(p.product_key || "");
+      const nameHtml = p.url
+        ? `<a href="${esc(p.url)}">${esc(p.name || "")}</a>`
+        : esc(p.name || "");
+      const icons = Array.isArray(p.icons) ? p.icons : [];
+      const chips = icons.map(ic=>{
+        const count = Number(ic.count) || 0;
+        const title = `${esc(ic.source || "")} ×${count} · first ${esc(ic.first_touch || "")}`;
+        return `<span class="pill" title="${title}">${esc(ic.icon || "")}${count}</span>`;
+      }).join(" ");
+      const opNote = p.operator_note
+        ? `<p class="muted small" style="margin:.3rem 0">${esc(p.operator_note)}</p>`
+        : "";
+      rows += `<div class="rec-row" data-pk="${pk}" style="padding:9px 0;border-bottom:1px dashed var(--line)">
+        <div class="rec-row-icons" style="margin-bottom:.25rem">${chips}</div>
+        <div class="rec-row-name">${nameHtml}</div>
+        ${opNote}
+        <div class="rec-row-actions" style="display:flex;gap:8px;align-items:center;margin-top:.35rem">
+          <input type="text" class="rec-cnote" data-pk="${pk}" value="${esc(p.client_note || "")}" placeholder="your note" style="flex:1;min-width:0">
+          <button type="button" class="btn ghost small rec-hide" data-pk="${pk}">hide</button>
+        </div>
+      </div>`;
+    });
+    const moreHtml = total > shown
+      ? `<button type="button" class="btn ghost small rec-showmore" data-section="${src}" style="margin-top:.5rem">Show all ${total}</button>`
+      : "";
+    secHtml += `<div class="rec-section" data-section="${src}" style="margin:.9rem 0">
+      <div class="rec-section-header" data-section-toggle="${src}" data-collapsed="${collapsed ? "1" : "0"}"
+        style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <span>${icon}</span><strong>${label}</strong>
+        <span class="pill">${total} product${total === 1 ? "" : "s"}</span>
+        <span style="flex:1"></span><span class="muted">${collapsed ? "▸" : "▾"}</span>
+      </div>
+      <div class="rec-section-body" data-section-body="${src}"${collapsed ? " hidden" : ""} style="margin-top:.5rem">
+        ${rows || '<p class="muted small">No products yet.</p>'}
+        ${moreHtml}
+      </div>
+    </div>`;
+  });
+  return `<div class="card" id="recsCard"><h2>My Recommendations</h2>${secHtml || '<p class="muted">No recommendations yet.</p>'}</div>`;
+}
+
+function render(d, v, rec){
   d = d || {};
+  const recSections = (rec && Array.isArray(rec.sections)) ? rec.sections : [];
   // Premium element backdrop: key the Glendalf scene off the member's deficient
   // element (null when not a paid member / not yet computed -> plain portal).
   try {
@@ -1688,6 +1754,15 @@ function render(d, v){
       <button class="btn full" id="wishOrderBtn" disabled>Order selected</button>
       <p class="muted small" style="margin:.7rem 0 0">Select items, set how many, and order them together. Member price and shipping are calculated at checkout.</p>
       <p class="small err" id="wishErr" hidden></p></div>`;
+  }
+
+  // Phase 2b-ii Task 1: "My Recommendations" — one collapsible sub-section per
+  // recommendation source (wishlist adds, quiz picks, biofield matches, etc.),
+  // fetched independently in load() so an empty/absent payload never blocks the
+  // rest of the page. Click/save/hide/expand wiring lands in Task 2 — this only
+  // renders the markup + data-* attributes those handlers will bind to.
+  if (recSections.length) {
+    html += renderRecommendations(recSections);
   }
 
   if(Array.isArray(d.locked_rows) && d.locked_rows.length){
