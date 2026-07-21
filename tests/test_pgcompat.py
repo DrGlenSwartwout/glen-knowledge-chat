@@ -325,3 +325,35 @@ def test_strftime_translation_idempotent():
 def test_strftime_with_whitespace_variants():
     sql = "strftime(  '%Y-%m-%dT%H:%M:%SZ' ,  'now' )"
     assert "to_char" in translate_sql(sql) and "strftime" not in translate_sql(sql)
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom v6: multi-arg datetime('now', <mod>) -> to_char(now()+interval)
+# ---------------------------------------------------------------------------
+
+def test_datetime_now_mod_placeholder():
+    out = translate_sql("WHERE ts > datetime('now', ?)")
+    assert "datetime('now'" not in out
+    assert "(%s)::interval" in out
+    assert "to_char((now() AT TIME ZONE 'UTC') + (%s)::interval, 'YYYY-MM-DD HH24:MI:SS')" in out
+
+def test_datetime_now_mod_literal():
+    out = translate_sql("WHERE created_at > datetime('now','-24 hour')")
+    assert "datetime('now'" not in out
+    assert "('-24 hour')::interval" in out
+
+def test_bare_datetime_now_still_uses_existing_rule():
+    # The zero-arg form is NOT matched by the multi-arg rule; existing rule -> now()::text.
+    assert translate_sql("SELECT datetime('now')") == "SELECT now()::text"
+
+def test_datetime_now_mod_idempotent():
+    # DDL-idiom idempotency is tested on the placeholder-free literal form: translate_sql's
+    # separate '?'->'%s' / '%'->'%%' passes are not themselves double-runnable (by design),
+    # so a '?' variant would fail on the escape pass, not on this rule.
+    once = translate_sql("x > datetime('now', '-7 days')")
+    assert translate_sql(once) == once
+
+def test_datetime_now_mod_and_bare_together():
+    out = translate_sql("WHERE datetime(x) > datetime('now') AND datetime(x) < datetime('now', '+3 days')")
+    assert "now()::text" in out                          # bare -> now()::text
+    assert "('+3 days')::interval" in out                # multi-arg -> interval

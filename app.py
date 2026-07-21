@@ -38424,12 +38424,22 @@ def cron_membership_renewals():
     now_iso = datetime.utcnow().isoformat() + "Z"
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        rows = cx.execute(
-            "SELECT id, email, expires_at, last_reminder_at, source FROM memberships "
-            "WHERE datetime(expires_at) > datetime('now') "
-            "AND datetime(expires_at) < datetime('now', '+3 days') "
-            "LIMIT 500"
-        ).fetchall()
+        if db.backend_of(cx) == "postgres":
+            # datetime(col) has no Postgres equivalent; compare as real timestamps.
+            # expires_at is stored ISO-8601 (isoformat()+"Z"), which ::timestamptz parses.
+            rows = cx.execute(
+                "SELECT id, email, expires_at, last_reminder_at, source FROM memberships "
+                "WHERE expires_at::timestamptz > now() "
+                "AND expires_at::timestamptz < now() + interval '3 days' "
+                "LIMIT 500"
+            ).fetchall()
+        else:
+            rows = cx.execute(
+                "SELECT id, email, expires_at, last_reminder_at, source FROM memberships "
+                "WHERE datetime(expires_at) > datetime('now') "
+                "AND datetime(expires_at) < datetime('now', '+3 days') "
+                "LIMIT 500"
+            ).fetchall()
     reminded = 0
     for r in rows:
         last = r["last_reminder_at"]

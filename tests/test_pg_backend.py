@@ -244,3 +244,49 @@ def test_pg_seed_baselines_json_extract(monkeypatch):
     got = cx.execute("SELECT qty FROM inventory_txns WHERE ingredient_id=?", (1,)).fetchone()
     assert float(got[0]) == 1.0
     cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_membership_expiry_window_timestamptz(monkeypatch):
+    # Ports app.py cron_membership_renewals: datetime(expires_at) window -> ::timestamptz.
+    from datetime import datetime, timezone, timedelta
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS memberships")
+    cx.execute("CREATE TABLE memberships (id TEXT PRIMARY KEY, email TEXT, expires_at TEXT, "
+               "last_reminder_at TEXT, source TEXT)")
+    now = datetime.now(timezone.utc)
+    # app writes naive datetime.utcnow().isoformat()+"Z" (no offset, single Z)
+    def iso(d): return d.replace(tzinfo=None).isoformat() + "Z"
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("a","a@x.com", iso(now+timedelta(days=1)), None, "s"))   # in window
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("b","b@x.com", iso(now-timedelta(days=1)), None, "s"))   # expired (excluded)
+    cx.execute("INSERT INTO memberships VALUES (?,?,?,?,?)", ("c","c@x.com", iso(now+timedelta(days=10)), None, "s"))  # too far (excluded)
+    cx.commit()
+    rows = cx.execute(
+        "SELECT id FROM memberships WHERE expires_at::timestamptz > now() "
+        "AND expires_at::timestamptz < now() + interval '3 days' LIMIT 500").fetchall()
+    assert [r[0] for r in rows] == ["a"]
+    cx.close()
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_pif_pending_invites_window(monkeypatch):
+    # Ports dashboard/pif_gift_notes.pending_invites: datetime(created_at) window on PG.
+    from datetime import datetime, timezone, timedelta
+    from dashboard import referrals, pif_gift_notes
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    cx.execute("DROP TABLE IF EXISTS referral_redemptions")
+    referrals.init_tables(cx)
+    pif_gift_notes.ensure_columns(cx)
+    now = datetime.now(timezone.utc)
+    def ins(email, age_days):
+        cx.execute("INSERT INTO referral_redemptions (referee_email, code, owner_email, order_ref, created_at, kind) "
+                   "VALUES (?,?,?,?,?,?)",
+                   (email, "C1", "own@x.com", "o1", (now - timedelta(days=age_days)).isoformat(), "referral"))
+    ins("fresh@x.com", 2)     # too recent (< 7d) -> excluded
+    ins("due@x.com", 20)      # 7d..60d window -> included
+    ins("old@x.com", 90)      # older than max_age 60d -> excluded
+    cx.commit()
+    got = pif_gift_notes.pending_invites(cx, days=7, max_age_days=60, limit=50)
+    assert [r["referee_email"] for r in got] == ["due@x.com"]
+    cx.close()

@@ -58,6 +58,20 @@ _RE_STRFTIME_MS = re.compile(
     r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%fZ'\s*,\s*'now'\s*\)")
 _RE_STRFTIME_S = re.compile(
     r"(?i)strftime\(\s*'%Y-%m-%dT%H:%M:%SZ'\s*,\s*'now'\s*\)")
+# 7) Multi-arg `datetime('now', <mod>)` -> Postgres current-UTC + interval, formatted
+#    to the SAME 'YYYY-MM-DD HH24:MI:SS' text SQLite's datetime() emits. <mod> is either
+#    a bound `?` (value like '-7 days') or a quoted literal ('-24 hour'); SQLite interval
+#    modifiers ('-N days', '-N hour', '+N days') are valid Postgres interval literals, so
+#    `(<mod>)::interval` casts either form. Reproducing SQLite's exact space-format output
+#    means the string comparison `col <op> datetime('now', mod)` behaves BYTE-IDENTICALLY
+#    on both backends regardless of how `col` is stored (these are coarse date-window
+#    filters where the date prefix dominates -- see app.py _recent_active_emails). The bare
+#    zero-arg `datetime('now')` is handled separately (rule 2) and is NOT matched here (this
+#    requires a second argument). Runs before the '%'->'%%' / '?'->'%s' passes; the emitted
+#    `?` (when <mod> is a placeholder) is converted by the later placeholder pass. Idempotent
+#    (no `datetime('now',` remains after substitution).
+_RE_DATETIME_NOW_MOD = re.compile(
+    r"(?i)datetime\(\s*'now'\s*,\s*('[^']*'|\?)\s*\)")
 
 
 def _scan_sql_spans(sql: str):
@@ -149,6 +163,8 @@ def _translate_ddl_idioms(sql: str) -> str:
         "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')", sql)
     sql = _RE_STRFTIME_S.sub(
         "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')", sql)
+    sql = _RE_DATETIME_NOW_MOD.sub(
+        r"to_char((now() AT TIME ZONE 'UTC') + (\1)::interval, 'YYYY-MM-DD HH24:MI:SS')", sql)
     sql = _translate_insert_or_ignore(sql)
     return sql
 

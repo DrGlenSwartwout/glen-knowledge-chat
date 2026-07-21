@@ -27,16 +27,24 @@ def pending_invites(cx, *, days, max_age_days=60, limit=200):
     recipient email.  The max_age_days upper bound prevents blasting the historical backlog
     when the feature flag is first flipped on.
     Returns [{referee_email, owner_email, code, order_ref, created_at}]."""
+    from dashboard import db as _db
     ensure_columns(cx)
     cutoff = f"-{int(days)} days"
     max_age = f"-{int(max_age_days)} days"
+    if _db.backend_of(cx) == "postgres":
+        # datetime(col) has no Postgres equivalent; compare as real timestamps.
+        # created_at is stored ISO-8601 (isoformat()), which ::timestamptz parses.
+        window = ("AND created_at::timestamptz <= now() + (?)::interval "
+                  "AND created_at::timestamptz >= now() + (?)::interval ")
+    else:
+        window = ("AND datetime(created_at) <= datetime('now', ?) "
+                  "AND datetime(created_at) >= datetime('now', ?) ")
     rows = cx.execute(
         "SELECT referee_email, owner_email, code, order_ref, created_at "
         "FROM referral_redemptions "
         "WHERE note_invited_at IS NULL "
         "AND TRIM(COALESCE(referee_email,'')) <> '' "
-        "AND datetime(created_at) <= datetime('now', ?) "
-        "AND datetime(created_at) >= datetime('now', ?) "
+        + window +
         "ORDER BY created_at ASC LIMIT ?",
         (cutoff, max_age, int(limit))).fetchall()
     return [{"referee_email": r[0], "owner_email": r[1], "code": r[2],
