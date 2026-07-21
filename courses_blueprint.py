@@ -87,6 +87,57 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 # host, permanently shadowing illtowell's topic pages. Instead app.py's
 # learn_index / learn_topic_page delegate here via _on_mentorship_host(). These
 # stay plain module-level functions for that delegation.
+_REGISTER_FORM = """
+<div id="register" style="margin-top:2rem;padding:1.25rem;border:1px solid #cfe0da;border-radius:8px;background:#f6faf8">
+  <h2 style="margin-top:0">Welcome — register free</h2>
+  <p>Leave your name and email below and we will send you an access link to unlock the member lessons. No cost, no pressure.</p>
+  <form id="mu-register-form">
+    <p><label>Name<br><input type="text" name="name" id="mu-name" style="width:100%;padding:.4rem"></label></p>
+    <p><label>Email<br><input type="email" name="email" id="mu-email" required style="width:100%;padding:.4rem"></label></p>
+    <p><label><input type="checkbox" name="tos_agreed" id="mu-tos" required> I agree to be contacted about my free access link.</label></p>
+    <input type="text" name="company" id="mu-company" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off">
+    <p><button type="submit">Register free</button></p>
+  </form>
+  <p id="mu-register-msg" style="display:none"></p>
+</div>
+<script>
+(function () {
+  var form = document.getElementById("mu-register-form");
+  if (!form) return;
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var msg = document.getElementById("mu-register-msg");
+    fetch("/api/mentorship/intake/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: document.getElementById("mu-name").value,
+        email: document.getElementById("mu-email").value,
+        tos_agreed: document.getElementById("mu-tos").checked,
+        company: document.getElementById("mu-company").value
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data && data.ok) {
+          form.style.display = "none";
+          msg.textContent = "Check your email for your access link.";
+          msg.style.display = "block";
+        } else {
+          msg.textContent = "Something did not go through. Please check your email address and try again.";
+          msg.style.display = "block";
+        }
+      })
+      .catch(function () {
+        msg.textContent = "Something did not go through. Please check your email address and try again.";
+        msg.style.display = "block";
+      });
+  });
+})();
+</script>
+"""
+
+
 def learn_home():
     # Following an emailed link sets the member cookie, then redirects clean.
     token = request.args.get("token")
@@ -98,8 +149,9 @@ def learn_home():
     items = []
     for course in cc.list_courses():
         items.append(f'<li><a href="/learn/{course.slug}">{course.title}</a> — {course.description}</li>')
-    cta = "" if level else '<p><a href="/learn/register">Register free to unlock member lessons</a></p>'
-    body = f"<h1>MentorshipU</h1><ul>{''.join(items)}</ul>{cta}"
+    cta = "" if level else '<p><a href="/learn#register">Register free to unlock member lessons</a></p>'
+    form = "" if level else _REGISTER_FORM
+    body = f"<h1>MentorshipU</h1><ul>{''.join(items)}</ul>{cta}{form}"
     return render_template_string(_PAGE, title="Courses", body=body)
 
 
@@ -117,7 +169,7 @@ def course_home(course_slug):
             if state == "open":
                 rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{l.title}</a></li>')
             elif state == "locked_register":
-                rows.append(f'<li>{l.title} <a href="/learn/register">(register free)</a></li>')
+                rows.append(f'<li>{l.title} <a href="/learn#register">(register free)</a></li>')
             else:
                 rows.append(f"<li>{l.title} (members-only, upgrade coming soon)</li>")
         rows.append("</ul>")
@@ -143,7 +195,7 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     if not ca.is_visible(lesson.access, level):
         state = ca.lock_state(lesson.access, level)
         msg = "Register free to watch this lesson." if state == "locked_register" else "This lesson is for paid members."
-        body = f'<p><a href="/learn/{course.slug}">← {course.title}</a></p><h1>{lesson.title}</h1><p>{msg}</p><p><a href="/learn/register">Register</a></p>'
+        body = f'<p><a href="/learn/{course.slug}">← {course.title}</a></p><h1>{lesson.title}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>'
         return render_template_string(_PAGE, title=lesson.title, body=body), 403
     embed = ""
     if lesson.rumble_id:

@@ -127,4 +127,52 @@ def test_learn_reaches_topic_pages_on_illtowell(client, monkeypatch):
     r = c.get("/learn/some-unseeded-topic", base_url="http://illtowell.com")
     assert r.status_code == 200
     assert b"This guide is being prepared." in r.data
-    assert b"MentorshipU" not in r.data
+
+
+def test_learn_home_shows_registration_form_for_anon(client):
+    # H6: /learn renders an inline form (no separate /learn/register route)
+    # that posts straight to the working intake API.
+    c, _ = client
+    r = c.get("/learn", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b'id="register"' in r.data
+    assert b"/api/mentorship/intake/start" in r.data
+    assert b'type="email"' in r.data
+    assert b'name="tos_agreed"' in r.data
+    assert b'name="company"' in r.data  # honeypot
+
+
+def test_learn_home_hides_registration_form_for_member(client):
+    c, appmod = client
+    from dashboard import course_tokens
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        course_tokens.init_course_tokens_table(cx)
+        token = course_tokens.mint_course_token(cx, "m2@example.com", "M2")
+    r = c.get(f"/learn?token={token}", base_url=_MHOST)
+    # learn_home redirects after consuming a ?token= link; follow it to land
+    # on the clean /learn page with the member cookie set.
+    r = c.get("/learn", base_url=_MHOST, headers={"Cookie": f"mu_token={token}"})
+    assert r.status_code == 200
+    assert b'id="register"' not in r.data
+
+
+def test_learn_register_dead_link_is_gone_everywhere(client):
+    # No CTA anywhere may still point at the dead /learn/register route:
+    # learn_home's own CTA, the locked_register messaging on a course page,
+    # and the locked_register messaging on a member-gated lesson page.
+    c, _ = client
+
+    r = c.get("/learn", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b"/learn/register" not in r.data
+    assert b"/learn#register" in r.data
+
+    r = c.get("/learn/ash-intro", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b"/learn/register" not in r.data
+    assert b"/learn#register" in r.data
+
+    r = c.get("/learn/ash-intro/01-intro/02-welcome", base_url=_MHOST)
+    assert r.status_code == 403
+    assert b"/learn/register" not in r.data
+    assert b"/learn#register" in r.data
