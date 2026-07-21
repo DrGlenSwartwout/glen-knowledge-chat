@@ -74,3 +74,35 @@ def test_email_suppression_unported_module_schema_creates_on_postgres(monkeypatc
         assert got is not None and got["created_at"] is not None
     finally:
         cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_insert_or_ignore_end_to_end_on_postgres(monkeypatch):
+    """PAYOFF: INSERT OR IGNORE -> ON CONFLICT DO NOTHING, exercised end-to-end
+    through the adapter against a real Postgres table with a UNIQUE index —
+    inserting the same key twice is idempotent (no error, exactly one row)."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+
+    cx = db.connect("/data/chat_log.db")
+    try:
+        cx.execute("DROP TABLE IF EXISTS pgcompat_ioi_tmp")
+        cx.commit()
+        cx.execute(
+            "CREATE TABLE pgcompat_ioi_tmp (k TEXT, v TEXT, "
+            "UNIQUE (k))"
+        )
+        cx.commit()
+
+        cx.execute("INSERT OR IGNORE INTO pgcompat_ioi_tmp (k,v) VALUES (?,?)", ("a", "1"))
+        cx.commit()
+        # Second insert with the same key must be silently ignored, not error.
+        cx.execute("INSERT OR IGNORE INTO pgcompat_ioi_tmp (k,v) VALUES (?,?)", ("a", "1"))
+        cx.commit()
+
+        rows = cx.execute("SELECT k, v FROM pgcompat_ioi_tmp WHERE k=?", ("a",)).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["v"] == "1"
+    finally:
+        cx.execute("DROP TABLE IF EXISTS pgcompat_ioi_tmp")
+        cx.commit()
+        cx.close()

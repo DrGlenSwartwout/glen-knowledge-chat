@@ -107,3 +107,71 @@ def test_autoincrement_as_string_literal_data_is_also_translated_known_risk():
     sql = "INSERT INTO t (note) VALUES ('id INTEGER PRIMARY KEY AUTOINCREMENT')"
     expected = "INSERT INTO t (note) VALUES ('id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY')"
     assert translate_sql(sql) == expected
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom auto-translation v2: INSERT OR IGNORE -> ON CONFLICT DO NOTHING
+# ---------------------------------------------------------------------------
+
+def test_insert_or_ignore_translated_basic():
+    sql = "INSERT OR IGNORE INTO t (a,b) VALUES (?,?)"
+    assert translate_sql(sql) == "INSERT INTO t (a,b) VALUES (%s,%s) ON CONFLICT DO NOTHING"
+
+def test_insert_or_ignore_case_insensitive():
+    sql = "insert or ignore into t (a,b) values (?,?)"
+    assert translate_sql(sql) == "INSERT INTO t (a,b) values (%s,%s) ON CONFLICT DO NOTHING"
+
+def test_insert_or_ignore_mixed_case_and_whitespace():
+    sql = "Insert  Or   Ignore Into t (a) VALUES (?)"
+    assert translate_sql(sql) == "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING"
+
+def test_insert_or_ignore_with_returning():
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?) RETURNING id"
+    assert translate_sql(sql) == "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING RETURNING id"
+
+def test_insert_or_ignore_with_returning_lowercase():
+    sql = "insert or ignore into t (a) values (?) returning id"
+    assert translate_sql(sql) == "INSERT INTO t (a) values (%s) ON CONFLICT DO NOTHING returning id"
+
+def test_insert_or_ignore_with_trailing_semicolon():
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?);"
+    assert translate_sql(sql) == "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING"
+
+def test_insert_or_ignore_with_trailing_whitespace():
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?)   \n"
+    assert translate_sql(sql) == "INSERT INTO t (a) VALUES (%s) ON CONFLICT DO NOTHING"
+
+def test_normal_insert_unaffected_except_placeholder():
+    sql = "INSERT INTO t (a,b) VALUES (?,?)"
+    assert translate_sql(sql) == "INSERT INTO t (a,b) VALUES (%s,%s)"
+
+def test_insert_or_ignore_combined_with_autoincrement_and_datetime_now():
+    sql = ("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+           "created_at TEXT DEFAULT (datetime('now')), v TEXT); "
+           "INSERT OR IGNORE INTO t (v) VALUES (?)")
+    expected = ("CREATE TABLE t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+                "created_at TEXT DEFAULT (now()::text), v TEXT); "
+                "INSERT INTO t (v) VALUES (%s) ON CONFLICT DO NOTHING")
+    assert translate_sql(sql) == expected
+
+def test_insert_or_ignore_idiom_idempotent_when_applied_twice():
+    # Exercise the DDL-idiom layer directly (not the full translate_sql, which
+    # unconditionally escapes '%' on every call -- applying that full pipeline
+    # twice to its own output is never idempotent once a placeholder exists,
+    # independent of this feature). The idiom transform itself must be stable.
+    from dashboard.pgcompat import _translate_ddl_idioms
+    sql = "INSERT OR IGNORE INTO t (a) VALUES (?)"
+    once = _translate_ddl_idioms(sql)
+    twice = _translate_ddl_idioms(once)
+    assert once == twice
+
+def test_insert_or_ignore_idempotent_on_already_postgres_sql():
+    # No placeholder -> no '%' escaping concern; a statement that already
+    # carries ON CONFLICT DO NOTHING (and no "INSERT OR IGNORE") is untouched.
+    sql = "INSERT INTO t (a) VALUES ('x') ON CONFLICT DO NOTHING"
+    assert translate_sql(sql) == sql
+
+def test_insert_or_replace_not_translated():
+    # Out of scope: INSERT OR REPLACE must be left untouched by this translator.
+    sql = "INSERT OR REPLACE INTO t (a) VALUES (?)"
+    assert translate_sql(sql) == "INSERT OR REPLACE INTO t (a) VALUES (%s)"
