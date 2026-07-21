@@ -143,7 +143,7 @@ def learn_home():
     token = request.args.get("token")
     if token:
         resp = make_response(redirect("/learn", code=302))
-        resp.set_cookie("mu_token", token, httponly=True, samesite="Lax", max_age=60 * 60 * 24 * 30)
+        resp.set_cookie("mu_token", token, httponly=True, samesite="Lax", secure=True, max_age=60 * 60 * 24 * 30)
         return resp
     level = _member_level()
     items = []
