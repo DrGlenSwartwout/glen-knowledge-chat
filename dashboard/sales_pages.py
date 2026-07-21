@@ -1,16 +1,17 @@
 import json
 import datetime
 
+from dashboard import db
+
 
 def _now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 def _ensure_columns(cx):
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(sales_pages)").fetchall()}
-    if "approved_at" not in cols:
+    if not db.column_exists(cx, "sales_pages", "approved_at"):
         cx.execute("ALTER TABLE sales_pages ADD COLUMN approved_at TEXT DEFAULT ''")
-    if "approved_by" not in cols:
+    if not db.column_exists(cx, "sales_pages", "approved_by"):
         cx.execute("ALTER TABLE sales_pages ADD COLUMN approved_by TEXT DEFAULT ''")
 
 

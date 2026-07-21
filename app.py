@@ -9914,12 +9914,11 @@ def _patient_practitioner_brand(email, *, db_path=None):
 
 def _ensure_prepay_grant_columns(cx):
     """Idempotently add the attribution columns to prepay_term_grants."""
-    have = {r[1] for r in cx.execute("PRAGMA table_info(prepay_term_grants)")}
-    if "attributed_practitioner_id" not in have:
+    if not db.column_exists(cx, "prepay_term_grants", "attributed_practitioner_id"):
         cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN attributed_practitioner_id TEXT")
-    if "practitioner_share_consent" not in have:
+    if not db.column_exists(cx, "prepay_term_grants", "practitioner_share_consent"):
         cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN practitioner_share_consent INTEGER NOT NULL DEFAULT 0")
-    if "term_end" not in have:
+    if not db.column_exists(cx, "prepay_term_grants", "term_end"):
         cx.execute("ALTER TABLE prepay_term_grants ADD COLUMN term_end TEXT")
 
 
@@ -30789,8 +30788,14 @@ def _merge_two_people(cx, keeper_id, dupe_id):
     updates["synced_at"]  = now
 
     if updates:
-        # Filter to columns that actually exist on the people table
-        existing_cols = {row[1] for row in cx.execute("PRAGMA table_info(people)").fetchall()}
+        # Filter to columns that actually exist on the people table (variable-length
+        # candidate set, so keep a single column list rather than a per-key round trip)
+        if db.backend_of(cx) == "postgres":
+            existing_cols = {r[0] for r in cx.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema=current_schema() AND table_name='people'").fetchall()}
+        else:
+            existing_cols = {row[1] for row in cx.execute("PRAGMA table_info(people)").fetchall()}
         safe_updates = {c: v for c, v in updates.items() if c in existing_cols}
         if safe_updates:
             set_clause = ", ".join(f"{c}=?" for c in safe_updates)

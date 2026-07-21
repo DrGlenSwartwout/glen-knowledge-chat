@@ -11,6 +11,8 @@ saved, not the seed file.
 import json
 from datetime import datetime, timezone
 
+from dashboard import db
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -44,8 +46,7 @@ def init_table(cx):
             items_json TEXT NOT NULL DEFAULT '[]',
             updated_at TEXT
         )""")
-    cols = {r[1] for r in cx.execute("PRAGMA table_info(condition_programs)")}
-    if "modifiers_json" not in cols:
+    if not db.column_exists(cx, "condition_programs", "modifiers_json"):
         cx.execute("ALTER TABLE condition_programs "
                    "ADD COLUMN modifiers_json TEXT NOT NULL DEFAULT '[]'")
     _ensure_seed_state_table(cx)

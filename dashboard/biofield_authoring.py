@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 
+from dashboard import db
 from dashboard.biofield_schedule import build_schedule
 from dashboard.biofield_dimensions import DEPTH_KEY, depth_label, depth_match, get_tag
 
@@ -479,7 +480,7 @@ def _has_col(cx, table, col):
     """True only when `table` exists AND has column `col` (snapshot schemas vary)."""
     if not _has(cx, table):
         return False
-    return any(r[1] == col for r in cx.execute(f"PRAGMA table_info({table})").fetchall())
+    return db.column_exists(cx, table, col)
 
 
 def remedy_catalog(cx, q="", limit=20):
