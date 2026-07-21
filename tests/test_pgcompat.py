@@ -48,3 +48,62 @@ def test_hybrid_row_first_wins_still_holds_case_insensitively():
     r = HybridRow(["id", "V", "ID"], (1, "x", 2))
     assert r["id"] == 1
     assert r["ID"] == 1
+
+
+# ---------------------------------------------------------------------------
+# DDL-idiom auto-translation: AUTOINCREMENT -> IDENTITY, datetime('now') -> now()::text
+# ---------------------------------------------------------------------------
+
+def test_autoincrement_translated_in_create_table():
+    sql = "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)"
+    assert translate_sql(sql) == "CREATE TABLE t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, v TEXT)"
+
+def test_autoincrement_translated_lowercase():
+    sql = "create table t (id integer primary key autoincrement, v text)"
+    assert translate_sql(sql) == "create table t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, v text)"
+
+def test_autoincrement_translated_with_extra_whitespace():
+    sql = "CREATE TABLE t (id INTEGER   PRIMARY KEY    AUTOINCREMENT, v TEXT)"
+    assert translate_sql(sql) == "CREATE TABLE t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, v TEXT)"
+
+def test_datetime_now_translated_in_default_clause():
+    sql = "CREATE TABLE t (id INTEGER, created_at TEXT DEFAULT (datetime('now')))"
+    assert translate_sql(sql) == "CREATE TABLE t (id INTEGER, created_at TEXT DEFAULT (now()::text))"
+
+def test_datetime_now_translated_in_where_clause():
+    sql = "SELECT * FROM t WHERE created_at > datetime('now')"
+    assert translate_sql(sql) == "SELECT * FROM t WHERE created_at > now()::text"
+
+def test_plain_select_only_placeholder_converted():
+    assert translate_sql("SELECT a FROM t WHERE id=?") == "SELECT a FROM t WHERE id=%s"
+
+def test_placeholder_autoincrement_and_datetime_now_together():
+    sql = ("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+           "created_at TEXT DEFAULT (datetime('now')), v TEXT); "
+           "INSERT INTO t (v) VALUES (?)")
+    expected = ("CREATE TABLE t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+                "created_at TEXT DEFAULT (now()::text), v TEXT); "
+                "INSERT INTO t (v) VALUES (%s)")
+    assert translate_sql(sql) == expected
+
+def test_ddl_idioms_idempotent_on_already_postgres_sql():
+    sql = ("CREATE TABLE t (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+           "created_at TEXT DEFAULT (now()::text))")
+    assert translate_sql(sql) == sql
+
+def test_ddl_idioms_idempotent_when_translated_twice():
+    sql = "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')))"
+    once = translate_sql(sql)
+    twice = translate_sql(once)
+    assert once == twice
+
+def test_autoincrement_as_string_literal_data_is_also_translated_known_risk():
+    # KNOWN, ACCEPTED RISK (documented in report): the DDL-idiom regexes run on
+    # the raw SQL before the quote-aware placeholder pass, so a string literal
+    # that happens to contain the exact phrase "INTEGER PRIMARY KEY AUTOINCREMENT"
+    # as DATA (not schema) will also be rewritten. This is a mechanical, low-blast
+    # -radius idiom (DDL-only in practice) and the residual risk of a literal data
+    # value colliding with this exact DDL phrase is judged acceptable for v1.
+    sql = "INSERT INTO t (note) VALUES ('id INTEGER PRIMARY KEY AUTOINCREMENT')"
+    expected = "INSERT INTO t (note) VALUES ('id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY')"
+    assert translate_sql(sql) == expected

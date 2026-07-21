@@ -1,10 +1,37 @@
 """Pure helpers to run SQLite-dialect SQL through psycopg with minimal call-site churn."""
+import re
 from typing import Optional, Sequence
+
+# Two mechanical, high-volume SQLite->Postgres DDL idioms auto-translated on every
+# Postgres query so the ~117 unported modules' CREATE TABLEs work with ZERO source
+# changes. Case-insensitive. Compiled once at module level.
+#
+# 1) `INTEGER PRIMARY KEY AUTOINCREMENT` -> `BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`
+_RE_AUTOINCREMENT = re.compile(r"(?i)\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b")
+# 2) `datetime('now')` -> `now()::text`. Bare form only — `datetime('now','localtime')`
+#    and other multi-arg variants are intentionally left alone (out of scope for v1).
+_RE_DATETIME_NOW = re.compile(r"(?i)datetime\(\s*'now'\s*\)")
+
+def _translate_ddl_idioms(sql: str) -> str:
+    """Auto-translate the two mechanical SQLite DDL idioms to their Postgres
+    equivalents. Runs on the raw SQL, before any quote/comment-aware parsing —
+    so a string-literal DATA value that happens to contain the exact phrase
+    "INTEGER PRIMARY KEY AUTOINCREMENT" would also be rewritten. This is a
+    known, accepted low-blast-radius risk for v1 (see tests + report): the
+    idiom is DDL-only in practice, and neither replacement re-introduces the
+    pattern it replaces, so repeated translation is idempotent."""
+    sql = _RE_AUTOINCREMENT.sub("BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", sql)
+    sql = _RE_DATETIME_NOW.sub("now()::text", sql)
+    return sql
 
 def translate_sql(sql: str) -> str:
     """SQLite '?' params -> psycopg '%s'. Leaves '?' inside single-quoted string
     literals and inside SQL comments alone, and escapes every literal '%' as '%%'
-    (psycopg treats '%' as a placeholder marker)."""
+    (psycopg treats '%' as a placeholder marker). Also auto-translates the two
+    mechanical AUTOINCREMENT / datetime('now') DDL idioms first (see
+    `_translate_ddl_idioms`) — neither introduces a '%' or '?', so running them
+    before the escape/placeholder pass below is safe."""
+    sql = _translate_ddl_idioms(sql)
     sql = sql.replace("%", "%%")
     out = []
     i, n = 0, len(sql)
