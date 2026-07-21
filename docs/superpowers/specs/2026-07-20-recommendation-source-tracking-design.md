@@ -207,6 +207,11 @@ Multi-subsystem — built as four sub-slices, each its own plan/PR:
   `source`. On order placement (`upsert_order` choke point), emit an "acted-on"
   `recommendation_events` event per sourced line (idempotent, failure-isolated so it can
   never break order creation). This is distinct from the later paid `purchased` event.
+  - *Edit caveat (append-only):* if an operator changes a saved line's `source` (or slug)
+    and re-saves, a new acted-on event is emitted while the prior one remains (events are
+    never deleted). Two rows for one line is expected; 2b's counting reads the log as-is.
+    Server-side validation of the `source` value (registry-only) is deferred to a later
+    registry-validation slice — today the console picker offers only the 5 valid values.
 - **2b — client portal UI:** the categorized portal (collapsible sections with remembered
   state, icon rows + counts, top-5 + show-more, per-product hide control, operator note +
   client note), reading `product_sources` + the per-product prefs. Wire the client-360
