@@ -60,6 +60,9 @@ function hdr(){ return {"X-Console-Key": key()}; }
 function qsEmail(){ var p=new URLSearchParams(location.search); return (p.get("email")||p.get("pq")||"").trim(); }
 function money(c){ return "$"+((c||0)/100).toFixed(2); }
 function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":s); return d.innerHTML; }
+function escAttr(s){ return String(s==null?"":s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 
 var SRC_ACTION_LABEL={biofield:"Open composer",scan:"Open FF draft",intake:"Open CRM",chat:"Open CRM"};
 var SRC_ICON = {biofield:"📡", intake:"📝", scan:"🔬", chat:"💬", self:"🛒",
@@ -141,11 +144,11 @@ function renderRecommendations(recs){
   document.getElementById("h-recs").textContent = recs.length+" products";
   host.innerHTML = "<table>"+recs.slice(0,5).map(function(p){
     var icons = p.sources.map(function(s){
-      return "<span title='"+esc(s.source)+" ×"+s.count+" (first "+esc(s.first_touch)+")'>"+
+      return "<span title='"+escAttr(s.source)+" ×"+s.count+" (first "+escAttr(s.first_touch)+")'>"+
              (SRC_ICON[s.source]||"•")+esc(String(s.count))+"</span>";}).join(" ");
-    var noteUi = "<input class='op-note' data-pk='"+esc(p.product_key)+"' value='"+esc(p.operator_note||"")+"' "+
+    var noteUi = "<input class='op-note' data-pk='"+escAttr(p.product_key)+"' value='"+escAttr(p.operator_note||"")+"' "+
       "placeholder='operator note' style='width:140px'> "+
-      "<button class='op-note-save' data-pk='"+esc(p.product_key)+"'>save</button> "+
+      "<button class='op-note-save' data-pk='"+escAttr(p.product_key)+"'>save</button> "+
       "<span class='pill' title='client note'>"+esc(p.client_note||"")+"</span>";
     return "<tr><td>"+esc(p.product_key)+"</td><td>"+icons+"</td><td>"+noteUi+"</td></tr>";}).join("")+"</table>"
     + (recs.length>5 ? "<p class=empty>+"+(recs.length-5)+" more</p>" : "");

@@ -19716,7 +19716,7 @@ def api_portal_rec_client_note(token):
     from dashboard import client_portal as _cp, recommendation_prefs as _rp
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
-    note = data.get("note") or ""
+    note = (data.get("note") or "")[:4000]
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
         portal = _portal_record_for(cx, token)
@@ -39630,9 +39630,10 @@ def console_rec_operator_note():
     pk = (data.get("product_key") or "").strip()
     if not email or not pk:
         return jsonify({"ok": False, "error": "email and product_key required"}), 400
+    note = (data.get("note") or "")[:4000]
     with _db_lock, sqlite3.connect(LOG_DB) as cx:
         _rp.init_recommendation_prefs(cx)
-        _rp.set_operator_note(cx, email, pk, data.get("note") or "")
+        _rp.set_operator_note(cx, email, pk, note)
     return jsonify({"ok": True})
 
 
