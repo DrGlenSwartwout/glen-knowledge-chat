@@ -7306,6 +7306,13 @@ def begin_wishlist_toggle():
             _wl.init_wishlist_table(cx)
             owner = _wl.resolve_owner(email, session_id)
             saved = _wl.toggle(cx, owner, slug)
+            if saved and email:   # email-keyed add only; anonymous sess adds never attribute
+                try:
+                    from dashboard import recommendation_events as _re
+                    _re.init_recommendation_events(cx)
+                    _re.record_self(cx, email, slug)
+                except Exception:
+                    pass
     except Exception as _e:
         print(f"[wishlist] toggle failed: {_e}", flush=True)
         return jsonify({"error": "failed"}), 500
