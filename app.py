@@ -88,6 +88,7 @@ from dashboard.openai_failover import build_openai_client as _build_openai_clien
 from dashboard.people import set_person_tags, distinct_tags, dedupe_tags_ci
 from dashboard import affiliate_dashboard
 from dashboard import ash_ally
+from dashboard import client_360
 from dashboard.chat_limits import (client_ip, VelocityLimiter, LIMITS,
                                     tier_for, monthly_full_words, is_flagged)
 from dashboard.voice_doorway import voice_signal_tags
@@ -39337,6 +39338,20 @@ def console_client_invoice():
         "pay_status": r["pay"], "total_dollars": f"{(r['total'] or 0) / 100:.2f}",
         "physical_units": _order_physical_units({"items": items}),
         "edit_url": edit_url, "lines": lines}, **biofield_paid})
+
+
+@app.route("/api/console/client-360", methods=["GET"])
+def console_client_360():
+    """The client-centered hub payload: person + clinical tags + tests +
+    invoices + comms + current-process strip, all for one email. Read-only."""
+    actor = _bos_actor()
+    if actor is None:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    email = (request.args.get("email") or "").strip().lower()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        data = client_360.bundle(cx, email)
+    return jsonify({"ok": True, **data})
 
 
 @app.route("/api/console/membership/enroll", methods=["POST"])
