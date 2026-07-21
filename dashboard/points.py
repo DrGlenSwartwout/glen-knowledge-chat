@@ -3,20 +3,38 @@
 Earn is on full-price spend only (caller decides eligibility); redeem is bounded
 by balance here and by the price floor in dashboard.pricing.compute()."""
 
+from dashboard import db
+
 
 def init_points_table(cx):
-    cx.execute("""
-        CREATE TABLE IF NOT EXISTS points_ledger (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL,
-            delta_cents INTEGER NOT NULL,
-            reason TEXT,
-            order_ref TEXT,
-            balance_after INTEGER NOT NULL,
-            created_at TEXT DEFAULT (datetime('now')),
-            scope TEXT NOT NULL DEFAULT 'rm'
-        )""")
-    cols = [r[1] for r in cx.execute("PRAGMA table_info(points_ledger)").fetchall()]
+    if db.backend() == "postgres":
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS points_ledger (
+                id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                email TEXT NOT NULL,
+                delta_cents INTEGER NOT NULL,
+                reason TEXT,
+                order_ref TEXT,
+                balance_after INTEGER NOT NULL,
+                created_at TEXT DEFAULT (now()::text),
+                scope TEXT NOT NULL DEFAULT 'rm'
+            )""")
+        cols = [r[0] for r in cx.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='points_ledger'").fetchall()]
+    else:
+        cx.execute("""
+            CREATE TABLE IF NOT EXISTS points_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                delta_cents INTEGER NOT NULL,
+                reason TEXT,
+                order_ref TEXT,
+                balance_after INTEGER NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                scope TEXT NOT NULL DEFAULT 'rm'
+            )""")
+        cols = [r[1] for r in cx.execute("PRAGMA table_info(points_ledger)").fetchall()]
     if "scope" not in cols:
         cx.execute("ALTER TABLE points_ledger ADD COLUMN scope TEXT NOT NULL DEFAULT 'rm'")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_points_email ON points_ledger(email)")
@@ -50,9 +68,15 @@ def _add(cx, email, delta_cents, reason, order_ref, scope="rm"):
     # the same order under gunicorn's 2 workers) inserts exactly one row. Return the
     # re-read true balance so the result is correct whether we inserted or ignored.
     snapshot = balance(cx, email, scope=scope) + int(delta_cents)
-    cx.execute("""INSERT OR IGNORE INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
-                  VALUES (?,?,?,?,?,?)""",
-               (email, int(delta_cents), reason, order_ref, snapshot, scope))
+    if db.backend() == "postgres":
+        cx.execute("""INSERT INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
+                      VALUES (?,?,?,?,?,?)
+                      ON CONFLICT (order_ref, reason, scope) DO NOTHING""",
+                   (email, int(delta_cents), reason, order_ref, snapshot, scope))
+    else:
+        cx.execute("""INSERT OR IGNORE INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
+                      VALUES (?,?,?,?,?,?)""",
+                   (email, int(delta_cents), reason, order_ref, snapshot, scope))
     cx.commit()
     return balance(cx, email, scope=scope)
 
