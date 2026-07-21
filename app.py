@@ -550,6 +550,63 @@ def send_evox_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
     return "console-log", "no email send mechanism configured"
 
 
+def send_mentorship_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
+    """Email a MentorshipU access link. Returns (sent_via, error_or_none).
+
+    SMTP when configured, else console-log fallback. Mirrors send_evox_setup_link's
+    SMTP -> console cascade (same local os.environ.get() reads for host/user/pass/
+    from/port, since those aren't module-level globals here); monkeypatchable as
+    app.send_mentorship_setup_link in tests.
+    """
+    first = (name or "").split(" ")[0] or "there"
+    subject = "Your MentorshipU access link"
+    text = (
+        f"Hi {first},\n\n"
+        "You are in. Your learning space is ready, and your progress will be "
+        "waiting for you every time you return.\n\n"
+        f"Open your courses here:\n{setup_url}\n\n"
+        "This link is yours. Keep it handy.\n\n"
+        "In good health,\nDr. Glen Swartwout"
+    )
+    html = (
+        f"<p>Hi {first},</p>"
+        "<p>You are in. Your learning space is ready, and your progress will be "
+        "waiting for you every time you return.</p>"
+        f'<p><a href="{setup_url}">Open your courses</a></p>'
+        "<p>This link is yours. Keep it handy.</p>"
+        "<p>In good health,<br>Dr. Glen Swartwout</p>"
+    )
+
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(text, "plain"))
+            msg.attach(MIMEText(html, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            app.logger.exception("send_mentorship_setup_link SMTP failed")
+            return "error", str(e)
+
+    # console fallback (development / pre-config)
+    print(f"[mentorship] setup link for {to_email}: {setup_url}", flush=True)
+    return "console", None
+
+
 def send_portal_welcome_email(to_email, name, login_url):
     """Send the one-time 'your portal is ready' welcome. Mirrors
     send_magic_link_email's cascade (GHL workflow -> SMTP -> console-log).
