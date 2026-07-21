@@ -3,8 +3,9 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from urllib.parse import urlparse
 
-from flask import Blueprint, request, jsonify, redirect, make_response, render_template_string
+from flask import Blueprint, request, jsonify, redirect, make_response, render_template_string, abort
 
 from dashboard import courses_content as cc
 from dashboard import courses_access as ca
@@ -13,6 +14,21 @@ from dashboard import course_tokens
 
 courses_bp = Blueprint("courses", __name__)
 _write_lock = threading.Lock()
+
+
+def _mentorship_host() -> str:
+    mb = os.environ.get("MENTORSHIP_BASE_URL", "")
+    return (urlparse(mb).hostname or "") if mb else ""
+
+
+@courses_bp.before_request
+def _gate_to_mentorship_host():
+    host = _mentorship_host()
+    req_host = (request.host or "").split(":")[0].lower()
+    # Fail closed: if no mentorship host is configured, the blueprint serves nowhere,
+    # so an unset MENTORSHIP_BASE_URL in prod cannot expose course routes on illtowell.com.
+    if not host or req_host != host.lower():
+        abort(404)
 
 
 def _db_path():
