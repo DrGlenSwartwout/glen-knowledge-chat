@@ -54,7 +54,7 @@ import requests
 from flask import Blueprint, jsonify, request, send_from_directory
 
 from tcm_mapper import compare_haiku_to_mapper
-from dashboard import journal_store
+from dashboard import journal_store, db
 from dashboard.tcm_analysis import (
     ANTHROPIC_MESSAGES,
     HAIKU_MODEL,
@@ -195,7 +195,7 @@ def analyze():
     save_error = None
     saved_id = None
     try:
-        with sqlite3.connect(LOG_DB) as cx:
+        with db.connect(LOG_DB) as cx:
             saved = journal_store.insert(cx, record)
         if isinstance(saved, list) and saved:
             saved_id = saved[0].get("id")
@@ -252,7 +252,7 @@ def today():
     include_test = request.args.get("include_test", "false").lower() == "true"
     include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = journal_store.select(cx, since_iso=cutoff, order="desc", limit=10)
     if not include_test:
         rows = [r for r in rows if not (r.get("metadata") or {}).get("test")]
@@ -269,7 +269,7 @@ def history():
     include_test      = request.args.get("include_test", "false").lower() == "true"
     include_followups = request.args.get("include_followups", "false").lower() == "true"
     cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         rows = journal_store.select(cx, since_iso=cutoff, order="asc")
     test_rows     = [r for r in rows if (r.get("metadata") or {}).get("test")]
     followup_rows = [r for r in rows if (r.get("metadata") or {}).get("entry_type") == "affirmation_reading"]
