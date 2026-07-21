@@ -102,7 +102,7 @@
       </div>
       <div id="snippet-mgr-list"></div>
     </div>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Note (shown to customer)</th><th></th></tr></thead>
+    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Source</th><th>Note (shown to customer)</th><th></th></tr></thead>
       <tbody id="lines"></tbody></table>
     <div class="addline">
       <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
@@ -181,7 +181,8 @@ if (_urlKey) localStorage.setItem("console_key", _urlKey);
 const KEY = _urlKey || localStorage.getItem("console_key") || "";
 const HEADERS = { "Content-Type":"application/json", "X-Console-Key":KEY };
 let CATALOG = [];          // [{slug,name,price_cents}]
-let LINES = [];            // [{slug,name,qty,unit_cents,edited,note}]
+let LINES = [];            // [{slug,name,qty,unit_cents,edited,note,source}]
+const SOURCE_OPTS = ['self','biofield','scan','intake','chat'];
 let SNIPPETS = [];         // shared saved-message library [{id,text}] for the per-line note dropdown
 let LAST_ORDER = null;     // {order_id, external_ref, totals}
 const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edit mode if set
@@ -252,7 +253,7 @@ function addLine(){
   const ovRaw=$("prod-unit").value.trim();
   const edited = ovRaw!=="";
   const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
-  LINES.push({slug, name:p.name, qty, unit_cents, edited, note:"", format:'bottle'});
+  LINES.push({slug, name:p.name, qty, unit_cents, edited, note:"", format:'bottle', source:'self'});
   $("prod-qty").value=1; $("prod-unit").value="";
   SHIP_CENTS=null;   // new line changes packing -> require a reprice
   renderLines();
@@ -332,6 +333,7 @@ function renderLines(){
     <td><input id="u-${i}" type="number" step="0.01" value="${(l.unit_cents/100).toFixed(2)}" onchange="editLine(${i},'unit',this.value)" style="width:90px"></td>
     <td id="vp-${i}" style="font-size:12px;color:var(--muted)">…</td>
     <td id="ln-${i}">${dollars(l.qty*l.unit_cents)}</td>
+    <td><select onchange="setSource(${i},this.value)">${SOURCE_OPTS.map(o=>`<option value="${o}"${(l.source||'self')===o?' selected':''}>${o}</option>`).join("")}</select></td>
     <td style="white-space:nowrap">
       <input type="text" id="note-${i}" value="${esc(l.note||'')}" oninput="setNote(${i},this.value)" placeholder="note (optional)" style="width:150px">
       <select onchange="applySnippet(${i},this.value); this.selectedIndex=0" title="Insert a saved message" style="max-width:130px">${snippetOptions()}</select>
@@ -345,10 +347,11 @@ function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||
 function rmLine(i){ LINES.splice(i,1); SHIP_CENTS=null; renderLines(); }
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
-function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; if((l.format||'bottle')!=='bottle') b.format=l.format; return b; }); }
+function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; if((l.format||'bottle')!=='bottle') b.format=l.format; b.source = l.source || 'self'; return b; }); }
 // Per-line note helpers. setNote updates the model without a re-render (re-rendering
 // on each keystroke would drop focus mid-typing); the note doesn't affect pricing.
 function setNote(i,v){ if(LINES[i]) LINES[i].note=v; }
+function setSource(i,v){ if(LINES[i]) LINES[i].source=v; }
 function applySnippet(i,text){ if(!text||!LINES[i]) return; LINES[i].note=text; const inp=$("note-"+i); if(inp) inp.value=text; }
 function snippetOptions(){ return '<option value="">＋ saved…</option>' + SNIPPETS.map(s=>`<option value="${esc(s.text)}">${esc(s.text)}</option>`).join(''); }
 // Shared saved-message library: load once, offer in every per-line dropdown, prune here.
@@ -566,7 +569,7 @@ async function loadOrderForEdit(oid){
   // the client's current specials — including the all-FFs flat rate — re-apply.
   LINES = (o.items||[]).filter(l=>!l.gift).map(l=>({slug:l.slug||"", name:l.name||l.slug||"",
             qty:Number(l.qty||1), unit_cents:Number(l.unit_cents||0), edited:l.override===true,
-            note:l.note||"", format:(l.format||'bottle')}));
+            note:l.note||"", format:(l.format||'bottle'), source:(l.source||'self')}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
   if (o.channel==="pickup") $("pickup").checked = true;

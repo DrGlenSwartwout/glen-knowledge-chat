@@ -103,11 +103,21 @@ Computed from the log (materialized or on read — decide in the plan):
 - `first_touch` = min(occurred_at) — drives icon ORDER.
 - `last_touch` = max(occurred_at) — drives the recency tie-break in sort.
 
-### Client visibility
+### Client / product preferences
 
-Per (client, product): a client-set **hide** flag. Hiding removes the product from the
-client's portal view but keeps all event data (and it still counts on the operator side).
-A hidden product can be un-hidden.
+A per-(client, product) preferences record (folds in Phase 1's `recommendation_hidden`):
+
+- **hide** flag — client-set; removes the product from the client's portal view but keeps
+  all event data (it still counts on the operator side). Un-hideable.
+- **operator note** — free text, authored by the operator in the console, READ-ONLY to the
+  client, shown next to the remedy in the portal (personalized guidance / dosing / "why
+  this one for you").
+- **client note** — free text, authored and edited BY the client on the portal (their own
+  note on the remedy).
+
+Plus a per-(client, section) **section-collapse** state: each portal category can be
+shown/hidden by the client and the choice is remembered across visits (persisted per client
+off the portal token, so it survives across devices — not just localStorage).
 
 ### Product identity
 
@@ -138,7 +148,9 @@ The hard link lives on the **order line**, captured at ordering — not inferred
 
 ## Presentation — client portal
 
-- Products grouped by source **category**.
+- Products grouped by source **category**. Each category is a **collapsible section** with
+  a show/hide control whose state is **remembered per client** across visits (see
+  section-collapse above).
 - Within a category: sorted **count DESC, then last_touch DESC** (recency tie-break);
   show **top 5** with a **"show more"** expander.
 - Each product row shows:
@@ -146,7 +158,9 @@ The hard link lives on the **order line**, captured at ordering — not inferred
     carrying its `count` at center (the row reads as the product's journey, e.g. self →
     scan → email → biofield);
   - an **order button** (carries this list's source);
-  - a **hide** control.
+  - a **hide** control;
+  - the **operator note** (read-only guidance) and the client's own editable **client
+    note**.
 - Purchased is a source like any other: a product bought repeatedly shows a purchased
   icon with its re-order count and can rank in a "Purchased / your staples" grouping.
 - Client-facing surface uses the existing portal token identity (writes/reads key off the
@@ -184,16 +198,31 @@ to the Invoice→Sent→Paid→Fulfilled stages.
 - No new client UI, no order-creation changes, no marketing integrations.
 
 ### Phase 2 — client portal + ordering (the payoff; touches money path)
-- The categorized portal UI (icon rows + counts, top-5 + show-more, hide control).
-- Order buttons with per-line source capture + the manual per-line source picker (default
-  `self`) in `/orders/new`; the `source` key + whitelist change; `purchased` event on
-  every order.
-- Product-page "add to my portal" button → `self` source (and adds the product to the
-  client's portal for future).
-- **biofield / scan / chat acted-on capture** — a `biofield` event when the client clicks
-  a reveal's product link (to learn) or orders from the biofield list; `scan`/`chat` events
-  on the same click/add/order actions. This is where the deferred clinical/AI sources start
-  accruing, on real client actions rather than generation.
+Multi-subsystem — built as four sub-slices, each its own plan/PR:
+
+- **2a — order-line source capture (foundation, money path):** a `source` key on each order
+  `items_json` line, captured at order time — the manual per-line source picker (default
+  `self`) in `/orders/new`, the portal add-to-invoice buttons stamping their source
+  (FF→`scan`, support→`intake`), and the render whitelist (`_invoice_line_view`) carrying
+  `source`. On order placement (`upsert_order` choke point), emit an "acted-on"
+  `recommendation_events` event per sourced line (idempotent, failure-isolated so it can
+  never break order creation). This is distinct from the later paid `purchased` event.
+  - *Edit caveat (append-only):* if an operator changes a saved line's `source` (or slug)
+    and re-saves, a new acted-on event is emitted while the prior one remains (events are
+    never deleted). Two rows for one line is expected; 2b's counting reads the log as-is.
+    Server-side validation of the `source` value (registry-only) is deferred to a later
+    registry-validation slice — today the console picker offers only the 5 valid values.
+- **2b — client portal UI:** the categorized portal (collapsible sections with remembered
+  state, icon rows + counts, top-5 + show-more, per-product hide control, operator note +
+  client note), reading `product_sources` + the per-product prefs. Wire the client-360
+  process strip to prefer per-line `source` (2a) over the presence heuristic.
+- **2c — product-page "add to my portal":** a product-page button → `self` source (adds the
+  product to the client's portal for future); requires tying a product-page visitor to a
+  client identity (portal token / logged-in email).
+- **2d — reveal / engagement click capture:** a `biofield` event when the client clicks a
+  reveal's product link or orders from the biofield list; `scan`/`chat` events on the same
+  click/add/order actions. Where the deferred clinical/AI sources start accruing on real
+  client actions rather than generation.
 
 ### Phase 3 — marketing channels (separate integrations)
 - Email + newsletter CTA-click capture (GHL / email-content-engine tracked links) → events.

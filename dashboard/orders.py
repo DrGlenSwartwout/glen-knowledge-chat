@@ -128,6 +128,25 @@ def init_orders_table(cx):
     cx.commit()
 
 
+def _emit_source_events(cx, order_id, email, items):
+    """Best-effort: one acted-on recommendation event per sourced line. NEVER raises
+    (money-path safety — a recommendation_events failure must never break order
+    creation/update). Idempotent via record_event's INSERT OR IGNORE."""
+    try:
+        from dashboard import recommendation_events
+        for line in (items or []):
+            src = (line.get("source") or "").strip()
+            slug = (line.get("slug") or "").strip()
+            if not src or not slug:
+                continue
+            recommendation_events.record_event(
+                cx, email, slug, src, occurred_at=_now(), origin_ref=str(order_id),
+                commit=False)
+        cx.commit()
+    except Exception:
+        pass
+
+
 def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
                  items=None, total_cents=0, address=None, channel="retail",
                  status="new", get_cents=0, person_id=None,
@@ -181,6 +200,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
         vals.append(row[0])
         cx.execute(f"UPDATE orders SET {', '.join(sets)} WHERE id=?", vals)
         cx.commit()
+        if items is not None:
+            _emit_source_events(cx, row[0], email, items)
         return row[0]
     cur = cx.execute(
         "INSERT INTO orders (created_at, source, external_ref, channel, email, name, "
@@ -199,6 +220,8 @@ def upsert_order(cx, *, source, external_ref, email="", name="", phone="",
          (int(margin_cents) if margin_cents is not None else None),
          max(0, int(ship_credit_applied_cents or 0))))
     cx.commit()
+    if items is not None:
+        _emit_source_events(cx, cur.lastrowid, email, items)
     return cur.lastrowid
 
 
