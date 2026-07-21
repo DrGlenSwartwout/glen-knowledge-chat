@@ -54,7 +54,7 @@
   <div class="sub">Act on a contact in GHL. Writes queue here and push automatically every few minutes. (People directory and household merges live in the main console.)</div>
 
   <div class="panel">
-    <h2>Act on a contact</h2>
+    <h2>Act on a contact <a id="client-hub-link" style="display:none;font-size:12px;font-weight:normal;color:var(--gold);margin-left:8px" target="_blank" rel="noopener">Open client hub &rarr;</a></h2>
     <label for="email">Contact email</label>
     <div style="position:relative">
       <input id="email" type="email" placeholder="person@example.com" autocomplete="off" />
@@ -83,10 +83,22 @@
   function key(){ return localStorage.getItem('console_key') || ''; }
   // Auto-unlock: if arriving with ?key= (from the ops nav), seed the console key once.
   (function(){ var u=new URLSearchParams(location.search).get('key'); if(u) localStorage.setItem('console_key', u); })();
-  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadQueue(); }
+  function unlock(){ localStorage.setItem('console_key', document.getElementById('key').value); document.getElementById('gate').style.display='none'; loadQueue(); updateHubLink(); }
   function hdr(){ return { 'X-Console-Key': key(), 'Content-Type':'application/json' }; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function val(id){ return document.getElementById(id).value.trim(); }
+
+  function updateHubLink(){
+    var hub = document.getElementById('client-hub-link');
+    if (!hub) return;
+    var email = val('email');
+    if (email) {
+      hub.href = "/console/client?email=" + encodeURIComponent(email) + "&key=" + encodeURIComponent(key());
+      hub.style.display = "inline";
+    } else {
+      hub.style.display = "none";
+    }
+  }
 
   function show(msg, isErr){
     var r = document.getElementById('result');
@@ -155,10 +167,11 @@
         return '<div class="ac-item" data-email="'+esc(p.email||'')+'" style="padding:7px 12px;cursor:pointer">'+nm+' <span class="meta">'+esc(p.email||'')+'</span></div>';
       }).join('');
       d.style.display='block';
-      d.querySelectorAll('.ac-item').forEach(function(it){ it.onclick=function(){ document.getElementById('email').value=it.dataset.email; crmAcHide(); }; });
+      d.querySelectorAll('.ac-item').forEach(function(it){ it.onclick=function(){ document.getElementById('email').value=it.dataset.email; crmAcHide(); updateHubLink(); }; });
     }, 250);
   }
   document.getElementById('email').addEventListener('input', crmSearch);
+  document.getElementById('email').addEventListener('input', updateHubLink);
   document.addEventListener('click', function(e){ if(!e.target.closest('#crm-ac') && e.target!==document.getElementById('email')) crmAcHide(); });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') crmAcHide(); });
 
@@ -167,6 +180,7 @@
   (function(){
     var em = new URLSearchParams(location.search).get('email');
     if(em){ var f = document.getElementById('email'); if(f) f.value = em; }
+    updateHubLink();
   })();
 </script>
 </body>

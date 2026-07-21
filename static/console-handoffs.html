@@ -88,7 +88,9 @@
     }).join('');
     var done = c.done_count!=null ? c.done_count : 0;
     return '<div class="pcard"><div class="phead"><div><b>'+esc(c.name||'(unnamed)')+'</b>'
-      +'<span class="email">'+esc(c.email)+'</span></div>'
+      +'<span class="email">'+esc(c.email)+'</span>'
+      +" <a href='/console/client?email="+encodeURIComponent(c.email)+"&key="+encodeURIComponent(key())+"'>Client hub</a>"
+      +'</div>'
       +'<div class="prog">'+(c.complete?'complete':done+'/6')+'</div></div>'
       +'<ol class="steps">'+lis+'</ol></div>';
   }
