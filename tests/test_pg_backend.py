@@ -217,3 +217,30 @@ def test_pg_lastrowid_raises_clear_error(monkeypatch):
     with pytest.raises(AttributeError, match="RETURNING"):
         _ = cur.lastrowid
     cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_pg_seed_baselines_json_extract(monkeypatch):
+    # Exercises inventory.seed_baselines on Postgres: json_extract -> extras::jsonb ->>,
+    # INSERT OR IGNORE -> ON CONFLICT DO NOTHING, and cur.rowcount, all composed.
+    import json
+    from dashboard import inventory as inv
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    cx = db.connect("ignored")
+    for t in ("inventory_txns", "ingredients"):
+        cx.execute(f"DROP TABLE IF EXISTS {t}")
+    cx.execute("CREATE TABLE ingredients (id BIGINT PRIMARY KEY, fmp_id TEXT, name TEXT, "
+               "extras TEXT, par_level REAL, par_level_unit TEXT)")
+    inv.init_inventory_schema(cx)
+    cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras,par_level_unit) VALUES (?,?,?,?,?)",
+               (1, "f1", "Mag", json.dumps({"inventory_starting": "1.0"}), "kg"))
+    cx.execute("INSERT INTO ingredients (id,fmp_id,name,extras) VALUES (?,?,?,?)",
+               (2, "f2", "Lipoic", json.dumps({})))  # no baseline
+    cx.commit()
+    n1 = inv.seed_baselines(cx); cx.commit()
+    assert n1 == 1                       # only ingredient 1 has inventory_starting
+    n2 = inv.seed_baselines(cx); cx.commit()
+    assert n2 == 0                       # idempotent (ON CONFLICT DO NOTHING)
+    got = cx.execute("SELECT qty FROM inventory_txns WHERE ingredient_id=?", (1,)).fetchone()
+    assert float(got[0]) == 1.0
+    cx.close()
