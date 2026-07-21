@@ -75,7 +75,7 @@ def _member_level():
 
 _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }} — MentorshipU</title></head>
+<title>{{ title }} · MentorshipU</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1c2b26">
 {{ body|safe }}
 </body></html>"""
@@ -89,7 +89,7 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 # stay plain module-level functions for that delegation.
 _REGISTER_FORM = """
 <div id="register" style="margin-top:2rem;padding:1.25rem;border:1px solid #cfe0da;border-radius:8px;background:#f6faf8">
-  <h2 style="margin-top:0">Welcome — register free</h2>
+  <h2 style="margin-top:0">Welcome. Register free</h2>
   <p>Leave your name and email below and we will send you an access link to unlock the member lessons. No cost, no pressure.</p>
   <form id="mu-register-form">
     <p><label>Name<br><input type="text" name="name" id="mu-name" style="width:100%;padding:.4rem"></label></p>
@@ -148,7 +148,7 @@ def learn_home():
     level = _member_level()
     items = []
     for course in cc.list_courses():
-        items.append(f'<li><a href="/learn/{course.slug}">{course.title}</a> — {course.description}</li>')
+        items.append(f'<li><a href="/learn/{course.slug}">{course.title}</a>: {course.description}</li>')
     cta = "" if level else '<p><a href="/learn#register">Register free to unlock member lessons</a></p>'
     form = "" if level else _REGISTER_FORM
     body = f"<h1>MentorshipU</h1><ul>{''.join(items)}</ul>{cta}{form}"
