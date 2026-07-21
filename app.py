@@ -19692,6 +19692,56 @@ def api_portal_recommendations(token):
     return jsonify({"ok": True, "sections": _pr.build_sections(ps, notes, state, resolve)})
 
 
+@app.route("/api/portal/<token>/recommendation/hide", methods=["POST"])
+def api_portal_rec_hide(token):
+    """Client hides one recommended product from their own portal view. Token-authed:
+    identity comes ONLY from the portal token."""
+    from dashboard import client_portal as _cp, recommendation_events as _re
+    data = request.get_json(silent=True) or {}
+    pk = (data.get("product_key") or "").strip()
+    hidden = bool(data.get("hidden"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _re.set_hidden(cx, (portal.get("email") or "").strip().lower(), pk, hidden)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/recommendation/client-note", methods=["POST"])
+def api_portal_rec_client_note(token):
+    """Client's own note on a recommended product (distinct from the operator note,
+    which is console-only and untouched by this endpoint). Token-authed."""
+    from dashboard import client_portal as _cp, recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    pk = (data.get("product_key") or "").strip()
+    note = data.get("note") or ""
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _rp.set_client_note(cx, (portal.get("email") or "").strip().lower(), pk, note)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/recommendation/section", methods=["POST"])
+def api_portal_rec_section(token):
+    """Client's collapse/expand state for one recommendations section. Token-authed."""
+    from dashboard import client_portal as _cp, recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    sk = (data.get("section_key") or "").strip()
+    collapsed = bool(data.get("collapsed"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _rp.set_section_state(cx, (portal.get("email") or "").strip().lower(), sk, collapsed)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/program", methods=["GET"])
 def api_portal_program(token):
     """Personalized membership program blocks for the program page."""
