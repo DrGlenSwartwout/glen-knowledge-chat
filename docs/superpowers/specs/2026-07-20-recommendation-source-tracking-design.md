@@ -216,9 +216,17 @@ Multi-subsystem — built as four sub-slices, each its own plan/PR:
   state, icon rows + counts, top-5 + show-more, per-product hide control, operator note +
   client note), reading `product_sources` + the per-product prefs. Wire the client-360
   process strip to prefer per-line `source` (2a) over the presence heuristic.
-- **2c — product-page "add to my portal":** a product-page button → `self` source (adds the
-  product to the client's portal for future); requires tying a product-page visitor to a
-  client identity (portal token / logged-in email).
+- **2c — self via the wishlist bridge (SHIPPED):** product pages are anonymous and portal
+  product links go off-site, so there is no reliable product-page identity. Instead, a `self`
+  event is emitted when a product lands in a client's EMAIL-keyed wishlist — the token-authed
+  portal toggle, the begin-side toggle when email-identified, and `merge_wishlist` at login
+  (anonymous session adds become `self` the moment the client is identified). Sticky
+  (`origin_ref="self"`, one per product, survives un-wishlist; the client hides it via the
+  hide control). **Known limitation (inherited from the wishlist, not introduced here):** on a
+  shared/kiosk browser, an anonymous `amg_session` wishlist merges to whoever logs in next —
+  so a `self` recommendation can be mis-attributed across a shared session. Acceptable for a
+  self-selection signal; harden (session-fixation) only if the `self` source ever drives a
+  higher-stakes surface.
 - **2d — reveal / engagement click capture:** a `biofield` event when the client clicks a
   reveal's product link or orders from the biofield list; `scan`/`chat` events on the same
   click/add/order actions. Where the deferred clinical/AI sources start accruing on real
