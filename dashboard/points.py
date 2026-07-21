@@ -68,15 +68,11 @@ def _add(cx, email, delta_cents, reason, order_ref, scope="rm"):
     # the same order under gunicorn's 2 workers) inserts exactly one row. Return the
     # re-read true balance so the result is correct whether we inserted or ignored.
     snapshot = balance(cx, email, scope=scope) + int(delta_cents)
-    if db.backend_of(cx) == "postgres":
-        cx.execute("""INSERT INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
-                      VALUES (?,?,?,?,?,?)
-                      ON CONFLICT (order_ref, reason, scope) DO NOTHING""",
-                   (email, int(delta_cents), reason, order_ref, snapshot, scope))
-    else:
-        cx.execute("""INSERT OR IGNORE INTO points_ledger(email,delta_cents,reason,order_ref,balance_after,scope)
-                      VALUES (?,?,?,?,?,?)""",
-                   (email, int(delta_cents), reason, order_ref, snapshot, scope))
+    from dashboard.dbwrite import insert_or_ignore
+    insert_or_ignore(cx, "points_ledger",
+                     ["email", "delta_cents", "reason", "order_ref", "balance_after", "scope"],
+                     (email, int(delta_cents), reason, order_ref, snapshot, scope),
+                     conflict_cols=["order_ref", "reason", "scope"])
     cx.commit()
     return balance(cx, email, scope=scope)
 
