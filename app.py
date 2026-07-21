@@ -41286,6 +41286,7 @@ def _invoice_summary(order):
         "invoice_note": order.get("invoice_note") or "",
         "lines": [_invoice_line_view(l) for l in lines],
         "physical_units": _order_physical_units(order),
+        "pack_breakdown": _order_pack_breakdown(order),
         "subtotal_cents": subtotal,
         "discount_cents": int(order.get("discount_cents") or 0),
         "adjustment_cents": int(order.get("adjustment_cents") or 0),
@@ -42305,6 +42306,7 @@ def bos_orders_create():
                 _phys_catalog = {p.get("slug"): p for p in _catalog_products()}
                 for o in rows:
                     o["physical_units"] = _bos_orders.physical_units(o.get("items") or [], _phys_catalog)
+                    o["pack_breakdown"] = _order_pack_breakdown(o)
             except Exception as _e:
                 print(f"[orders] physical_units annotate skipped: {_e!r}", flush=True)
             # Display-name fallback: many orders carry only a shipping name, which is
