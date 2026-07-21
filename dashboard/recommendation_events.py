@@ -97,3 +97,38 @@ def ingest_purchased(cx, email):
             if record_event(cx, email, slug, "purchased", occurred_at=occ, origin_ref=str(oid)):
                 n += 1
     return n
+
+
+def set_hidden(cx, email, product_key, hidden=True):
+    e = (email or "").strip().lower()
+    pk = (product_key or "").strip()
+    if not e or not pk:
+        return
+    if hidden:
+        cx.execute("INSERT OR REPLACE INTO recommendation_hidden "
+                   "(client_email, product_key, hidden_at) VALUES (?,?,?)", (e, pk, _now()))
+    else:
+        cx.execute("DELETE FROM recommendation_hidden WHERE client_email=? AND product_key=?", (e, pk))
+    cx.commit()
+
+
+def product_sources(cx, email):
+    """Per product: its sources (each with count, first_touch, last_touch), ordered by
+    first_touch (icon order), plus a hidden flag. Callers sort/limit products for display."""
+    e = (email or "").strip().lower()
+    rows = cx.execute(
+        "SELECT product_key, source_key, COUNT(*) n, MIN(occurred_at) ft, MAX(occurred_at) lt "
+        "FROM recommendation_events WHERE client_email=? GROUP BY product_key, source_key",
+        (e,)).fetchall()
+    hidden = {r[0] for r in cx.execute(
+        "SELECT product_key FROM recommendation_hidden WHERE client_email=?", (e,)).fetchall()}
+    prods = {}
+    for pk, sk, n, ft, lt in rows:
+        p = prods.setdefault(pk, {"product_key": pk, "hidden": pk in hidden, "sources": []})
+        p["sources"].append({"source": sk, "count": int(n),
+                             "first_touch": ft or "", "last_touch": lt or ""})
+    out = []
+    for p in prods.values():
+        p["sources"].sort(key=lambda s: s["first_touch"])
+        out.append(p)
+    return out
