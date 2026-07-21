@@ -58,7 +58,12 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 </body></html>"""
 
 
-@courses_bp.route("/learn")
+# NOTE: `/learn` and `/learn/<course_slug>` are NOT registered on this blueprint.
+# They collide with app.py's own /learn topic-page routes, and because the
+# blueprint is registered first Werkzeug would let the blueprint win on every
+# host, permanently shadowing illtowell's topic pages. Instead app.py's
+# learn_index / learn_topic_page delegate here via _on_mentorship_host(). These
+# stay plain module-level functions for that delegation.
 def learn_home():
     # Following an emailed link sets the member cookie, then redirects clean.
     token = request.args.get("token")
@@ -75,7 +80,6 @@ def learn_home():
     return render_template_string(_PAGE, title="Courses", body=body)
 
 
-@courses_bp.route("/learn/<course_slug>")
 def course_home(course_slug):
     level = _member_level()
     try:

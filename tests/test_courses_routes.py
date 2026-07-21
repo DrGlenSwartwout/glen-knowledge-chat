@@ -71,3 +71,27 @@ def test_intake_wrong_host_is_404(client):
     r = c.post("/api/mentorship/intake/start", headers={"Host": "illtowell.com"},
                json={"email": "x@example.com", "tos_agreed": True})
     assert r.status_code == 404
+
+
+def test_learn_reaches_topic_pages_on_illtowell(client, monkeypatch):
+    # Regression for the /learn route collision: with topic pages enabled and a
+    # NON-mentorship host, /learn and /learn/<slug> must reach app.py's topic
+    # handlers (learn_index / learn_topic_page), NOT the course renderer and NOT
+    # a blueprint fail-closed 404. TOPIC_PAGES_ENABLED is read into a module
+    # constant at import, so we flip the already-loaded module attribute (setenv
+    # alone would not take effect without a reload).
+    c, appmod = client
+    monkeypatch.setattr(appmod, "TOPIC_PAGES_ENABLED", True)
+
+    # /learn -> topic-page index ("Wellness Topics"), never the course catalog.
+    r = c.get("/learn", base_url="http://illtowell.com")
+    assert r.status_code == 200
+    assert b"Wellness Topics" in r.data
+    assert b"MentorshipU" not in r.data
+
+    # /learn/<slug> -> topic handler. With no seeded page this renders the
+    # "being prepared" pending page (status 200), not course content, not 404.
+    r = c.get("/learn/some-unseeded-topic", base_url="http://illtowell.com")
+    assert r.status_code == 200
+    assert b"This guide is being prepared." in r.data
+    assert b"MentorshipU" not in r.data

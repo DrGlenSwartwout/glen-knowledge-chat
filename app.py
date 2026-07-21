@@ -8293,6 +8293,11 @@ def learn_clinical_glossary_dim_data(dim):
 
 @app.route("/learn/<slug>")
 def learn_topic_page(slug):
+    if _on_mentorship_host():
+        # On the MentorshipU host this path is the course home page. The course
+        # routes were taken off courses_bp to avoid shadowing these topic pages.
+        from courses_blueprint import course_home
+        return course_home(slug)
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
@@ -8350,6 +8355,11 @@ def learn_suggest_submit(slug):
 
 @app.route("/learn")
 def learn_index():
+    if _on_mentorship_host():
+        # On the MentorshipU host this path is the course catalog. The course
+        # routes were taken off courses_bp to avoid shadowing these topic pages.
+        from courses_blueprint import learn_home
+        return learn_home()
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
