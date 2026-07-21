@@ -11,7 +11,8 @@ def test_registry_has_the_ten_sources_with_shapes():
 
 
 def test_clinical_vs_engagement_kinds():
-    assert rs.get_source("biofield")["kind"] == "clinical"
+    # biofield counts client ACTIONS on a reveal (clicked-to-learn / ordered), so it is engagement.
+    assert rs.get_source("biofield")["kind"] == "engagement"
     assert rs.get_source("intake")["kind"] == "clinical"
     assert rs.get_source("scan")["kind"] == "engagement"
     assert rs.get_source("purchased")["kind"] == "engagement"

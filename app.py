@@ -39509,8 +39509,7 @@ def console_client_360():
         if email:
             try:
                 recommendation_events.init_recommendation_events(cx)
-                recommendation_events.ingest_biofield(cx, email)
-                recommendation_events.ingest_purchased(cx, email)
+                recommendation_events.ingest_purchased(cx, email)   # Phase 1: purchased is the only recorded action
             except Exception:
                 pass
         cx.row_factory = sqlite3.Row   # ingest readers may reset it; restore before bundle

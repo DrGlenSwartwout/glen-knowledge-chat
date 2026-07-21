@@ -5,7 +5,7 @@ an icon (shown in the portal with a count at its center), and a kind:
 Adding a source later is a dict entry, not a schema change."""
 
 RECOMMENDATION_SOURCES = {
-    "biofield":   {"label": "Biofield",   "icon": "📡", "kind": "clinical"},
+    "biofield":   {"label": "Biofield",   "icon": "📡", "kind": "engagement"},
     "intake":     {"label": "Intake",     "icon": "📝", "kind": "clinical"},
     "scan":       {"label": "Scan",       "icon": "🔬", "kind": "engagement"},
     "chat":       {"label": "Chat",       "icon": "💬", "kind": "engagement"},

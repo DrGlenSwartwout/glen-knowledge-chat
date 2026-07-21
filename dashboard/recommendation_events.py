@@ -59,30 +59,11 @@ def list_events(cx, email):
             for r in rows]
 
 
-def ingest_biofield(cx, email):
-    """One biofield event per (remedy slug, reveal). occurred_at = scan_date; origin_ref = reveal id
-    (NOT scan_date — two distinct reveals can share a scan_date, and origin_ref is the dedup grain)."""
-    from dashboard import biofield_reveals
-    try:
-        rows = biofield_reveals.list_for_email(cx, email)
-    except Exception:
-        return 0
-    n = 0
-    for r in rows:
-        sd = (r.get("scan_date") or "")
-        rid = str(r.get("id") or sd)   # per-reveal identity; fall back to scan_date if somehow missing
-        for rem in (r.get("remedies") or []):
-            slug = (rem.get("slug") or "").strip()
-            if not slug:
-                continue
-            # dedup grain: one event per (remedy slug, reveal)
-            if record_event(cx, email, slug, "biofield", occurred_at=sd, origin_ref=rid, commit=False):
-                n += 1
-    if n:
-        cx.commit()
-    return n
-
-
+# NOTE: biofield ingest is intentionally NOT in Phase 1. Per the refined counting rule,
+# a biofield event counts only when the client ACTS on a reveal (clicks to learn about a
+# product, or orders it) - both are engagement signals needing the reveal-click tracking
+# and order-line source capture that arrive in Phase 2. Until then the only source with a
+# real recorded action is `purchased` (a paid order line). See the design spec, Phase 2.
 def ingest_purchased(cx, email):
     """One purchased event per (line slug, PAID order). occurred_at = paid_at; origin_ref = order id."""
     from dashboard import orders
