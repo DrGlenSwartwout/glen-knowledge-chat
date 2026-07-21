@@ -1,0 +1,56 @@
+import json, sqlite3, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pytest
+try:
+    import app, dashboard
+    from dashboard import client_portal as _cp
+except Exception as e:
+    pytest.skip(f"app import needs secrets: {e}", allow_module_level=True)
+
+def _auth(mp, tmp):
+    db = str(tmp / "chat_log.db"); mp.setenv("DATA_DIR", str(tmp))
+    mp.setattr(app, "LOG_DB", db, raising=False)
+    for obj in (app, dashboard):
+        mp.setattr(obj, "CONSOLE_SECRET", "sek", raising=False)
+    mp.setattr(app, "ANALYSIS_AUTOCONFIRM_ENABLED", True, raising=False)
+    mp.setattr(app, "ANALYSIS_AUTOCONFIRM_SAMPLE_PCT", "0", raising=False)  # no sampling in test
+    cx = sqlite3.connect(db); _cp.init_client_portal_table(cx); cx.close()
+    return db
+
+def _publish_draft(payload):
+    # /admin/portal/upsert (admin_client_portal_upsert) is the actual hand-off
+    # bridge that writes a fresh ai_draft (it carries the never-un-publish guard
+    # this task's hook sits after). /api/console/biofield-portal is the OPERATOR
+    # "Publish" action, which always force-confirms regardless of draft status,
+    # so it can't exercise the auto-confirm hook.
+    return app.app.test_client().post("/admin/portal/upsert",
+        headers={"X-Console-Key": "sek", "Content-Type": "application/json"},
+        data=json.dumps(payload))
+
+def _clean_draft_body(email):
+    return {"email": email, "name": "T", "scan_date": "2026-07-01",
+            "content": {"biofield_status": "ai_draft", "greeting": "Aloha.",
+                        "layers": [{"title": "Cellular", "remedy": "Vitality",
+                                    "dosage": "1 cap", "frequency": "daily"}]}}
+
+def test_clean_ai_draft_auto_confirms(monkeypatch, tmp_path):
+    # Force resolver to accept any remedy so the test doesn't depend on catalog data.
+    from dashboard import biofield_portal_publish as bpp
+    monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: "slug-x")
+    db = _auth(monkeypatch, tmp_path)
+    _publish_draft(_clean_draft_body("free@x.com"))
+    cx = sqlite3.connect(db)
+    st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='free@x.com'")
+          .fetchone()[0]) or {}).get("biofield_status")
+    assert st == "confirmed"   # auto-confirmed
+
+def test_low_quality_draft_stays_ai_draft(monkeypatch, tmp_path):
+    from dashboard import biofield_portal_publish as bpp
+    monkeypatch.setattr(bpp, "resolve_remedy_slug", lambda n, c: None)  # nothing resolves → held
+    db = _auth(monkeypatch, tmp_path)
+    _publish_draft(_clean_draft_body("held@x.com"))
+    cx = sqlite3.connect(db)
+    st = (json.loads(cx.execute("SELECT content_json FROM client_portals WHERE email='held@x.com'")
+          .fetchone()[0]) or {}).get("biofield_status")
+    assert st == "ai_draft"    # held for human review

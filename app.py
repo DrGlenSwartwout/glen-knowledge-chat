@@ -25314,6 +25314,14 @@ def admin_client_portal_upsert():
         if scan_date:
             _pbr.upsert_report(cx, email, scan_date, (body.get("scan_id") or ""),
                                content, content.get("biofield_status") or "ai_draft")
+        # Phase-1 auto-confirm (dark unless ANALYSIS_AUTOCONFIRM_ENABLED): a freshly
+        # written ai_draft that clears the quality gate and isn't audit-sampled is
+        # confirmed in place so the free tier self-serves. Held drafts stay ai_draft
+        # (Rae's inbox). Never raises.
+        if (content.get("biofield_status") or "ai_draft") == "ai_draft":
+            outcome = _run_autoconfirm(cx, email, scan_date, content)
+            if outcome == "confirmed":
+                content = dict(content); content["biofield_status"] = "confirmed"
     # Persistent portal: a returning client keeps their existing link (token is None on
     # update). Resolve the stable link anyway so send=true can still NOTIFY them — e.g.
     # a new scan landed on their persistent portal and they should hear about it.
