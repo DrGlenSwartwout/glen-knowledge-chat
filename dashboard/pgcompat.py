@@ -47,11 +47,12 @@ class HybridRow:
         self._vals = tuple(values)
         self._idx = {}
         for i, c in enumerate(self._cols):
-            if c not in self._idx:
-                self._idx[c] = i
+            k = c.lower() if isinstance(c, str) else c
+            if k not in self._idx:
+                self._idx[k] = i
     def __getitem__(self, key):
         if isinstance(key, str):
-            return self._vals[self._idx[key]]
+            return self._vals[self._idx[key.lower()]]
         return self._vals[key]
     def keys(self):
         return list(self._cols)

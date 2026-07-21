@@ -35,3 +35,16 @@ def test_hybrid_row_duplicate_columns_first_wins():
     r = HybridRow(["id", "v", "id"], (1, "x", 2))
     assert r["id"] == 1
     assert r[2] == 2
+
+def test_hybrid_row_case_insensitive_name_lookup():
+    r = HybridRow(["Total", "V"], (5, "x"))
+    assert r["total"] == 5
+    assert r["Total"] == 5
+    assert r["v"] == "x"
+    assert r["V"] == "x"
+    assert r[0] == 5
+
+def test_hybrid_row_first_wins_still_holds_case_insensitively():
+    r = HybridRow(["id", "V", "ID"], (1, "x", 2))
+    assert r["id"] == 1
+    assert r["ID"] == 1

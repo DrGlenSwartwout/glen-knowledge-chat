@@ -59,4 +59,5 @@ def _connect_postgres(db_path: str, *, timeout: float):
     if not dsn:
         raise RuntimeError("DB_BACKEND=postgres but PG_DSN is unset")
     import psycopg  # optional dep
-    return _PgConn(psycopg.connect(dsn, connect_timeout=int(timeout)))
+    _connect_timeout = max(1, int(round(timeout)))
+    return _PgConn(psycopg.connect(dsn, connect_timeout=_connect_timeout))
