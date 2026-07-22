@@ -10,9 +10,11 @@ def test_load_course_parses_structure(tmp_path):
     lessons = course.modules[0].lessons
     assert [l.slug for l in lessons] == ["01-out-takes", "02-welcome"]
     assert lessons[0].access == "public"
-    assert lessons[0].rumble_id == "v1abcd"
+    assert lessons[0].rumble_id == ""  # optional/ignored in the Stage 1.5 model
+    assert "rumble.com/embed/v1abcd" in lessons[0].body_md
     assert lessons[1].access == "member"
     assert "Welcome transcript" in lessons[1].body_md
+    assert "youtube.com/embed/v2efgh" in lessons[1].body_md
 
 
 def test_list_courses_finds_course_dirs(tmp_path):

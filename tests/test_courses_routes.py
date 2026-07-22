@@ -25,6 +25,7 @@ def test_public_lesson_open_to_anon(client):
     r = c.get("/learn/ash-intro/01-intro/01-out-takes", base_url=_MHOST)
     assert r.status_code == 200
     assert b"rumble.com/embed/v1abcd" in r.data
+    assert b"<h2>Out-takes</h2>" in r.data
 
 
 def test_member_lesson_blocked_for_anon(client):
@@ -41,7 +42,31 @@ def test_member_lesson_open_with_token(client):
         token = course_tokens.mint_course_token(cx, "m@example.com", "M")
     r = c.get(f"/learn/ash-intro/01-intro/02-welcome?token={token}", base_url=_MHOST)
     assert r.status_code == 200
-    assert b"rumble.com/embed/v2efgh" in r.data
+    assert b"youtube.com/embed/v2efgh" in r.data
+    assert b"<h2>Welcome</h2>" in r.data
+
+
+def test_member_lesson_body_has_script_stripped(client, tmp_path):
+    # Stage 1.5: lesson bodies are stored HTML from Practice Better. A script
+    # tag in the source content must never reach a rendered lesson page.
+    c, appmod = client
+    from dashboard import course_tokens
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        course_tokens.init_course_tokens_table(cx)
+        token = course_tokens.mint_course_token(cx, "s@example.com", "S")
+    lesson_path = tmp_path / "courses" / "ash-intro" / "01-intro" / "02-welcome.md"
+    lesson_path.write_text(
+        "---\ntitle: Welcome\naccess: member\ndownloads: []\n---\n"
+        '<h2>Welcome</h2><script>alert(document.cookie)</script>'
+        "<p>Welcome transcript here.</p>\n"
+    )
+    r = c.get(f"/learn/ash-intro/01-intro/02-welcome?token={token}", base_url=_MHOST)
+    assert r.status_code == 200
+    # The page shell legitimately ships its own <script src="..."> asset tags;
+    # what must NEVER survive is the inline script from the lesson body.
+    assert b"alert(document.cookie)" not in r.data
+    assert b"<script>alert" not in r.data
+    assert b"Welcome transcript" in r.data
 
 
 def test_intake_start_ok(client):

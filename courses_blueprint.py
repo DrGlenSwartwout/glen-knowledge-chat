@@ -12,6 +12,7 @@ from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
 from dashboard import course_tokens
+from dashboard.courses_sanitize import sanitize_html
 
 courses_bp = Blueprint("courses", __name__)
 _write_lock = threading.Lock()
@@ -197,15 +198,11 @@ def lesson_page(course_slug, module_slug, lesson_slug):
         msg = "Register free to watch this lesson." if state == "locked_register" else "This lesson is for paid members."
         body = f'<p><a href="/learn/{course.slug}">← {course.title}</a></p><h1>{lesson.title}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>'
         return render_template_string(_PAGE, title=lesson.title, body=body), 403
-    embed = ""
-    if lesson.rumble_id:
-        embed = (f'<div style="position:relative;padding-bottom:56.25%"><iframe '
-                 f'src="https://rumble.com/embed/{lesson.rumble_id}/" frameborder="0" allowfullscreen '
-                 f'style="position:absolute;width:100%;height:100%"></iframe></div>')
+    safe_body = sanitize_html(lesson.body_md)
     dls = "".join(f'<li><a href="{d.get("url","")}">{d.get("label","Download")}</a></li>' for d in lesson.downloads)
     dls = f"<h3>Resources</h3><ul>{dls}</ul>" if dls else ""
     body = (f'<p><a href="/learn/{course.slug}">← {course.title}</a></p>'
-            f'<h1>{lesson.title}</h1>{embed}<div>{cc.render_body(lesson.body_md)}</div>{dls}')
+            f'<h1>{lesson.title}</h1><div>{safe_body}</div>{dls}')
     return render_template_string(_PAGE, title=lesson.title, body=body)
 
 

@@ -12,18 +12,30 @@ def test_bad_access_value_is_flagged(tmp_path):
     write_sample_course(str(tmp_path))
     p = os.path.join(str(tmp_path), "ash-intro", "01-intro", "02-welcome.md")
     with open(p, "w") as f:
-        f.write("---\ntitle: X\naccess: premium\nrumble_id: v9\ndownloads: []\n---\nbody\n")
+        f.write("---\ntitle: X\naccess: premium\ndownloads: []\n---\n<p>body</p>\n")
     errs = cl.lint_courses(root=str(tmp_path))
     assert any("access" in e and "premium" in e for e in errs)
 
 
-def test_missing_rumble_id_is_flagged(tmp_path):
+def test_missing_body_is_flagged(tmp_path):
     write_sample_course(str(tmp_path))
     p = os.path.join(str(tmp_path), "ash-intro", "01-intro", "01-out-takes.md")
     with open(p, "w") as f:
-        f.write("---\ntitle: X\naccess: public\nrumble_id: \ndownloads: []\n---\nbody\n")
+        f.write("---\ntitle: X\naccess: public\ndownloads: []\n---\n   \n")
     errs = cl.lint_courses(root=str(tmp_path))
-    assert any("rumble_id" in e for e in errs)
+    assert any("missing body" in e for e in errs)
+
+
+def test_disallowed_iframe_host_is_flagged(tmp_path):
+    write_sample_course(str(tmp_path))
+    p = os.path.join(str(tmp_path), "ash-intro", "01-intro", "01-out-takes.md")
+    with open(p, "w") as f:
+        f.write(
+            "---\ntitle: X\naccess: public\ndownloads: []\n---\n"
+            '<iframe src="https://evil.com/steal"></iframe>\n<p>body</p>\n'
+        )
+    errs = cl.lint_courses(root=str(tmp_path))
+    assert any("disallowed host" in e and "evil.com" in e for e in errs)
 
 
 def test_missing_lesson_file_is_flagged(tmp_path):

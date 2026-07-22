@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 
 import frontmatter
 import yaml
+from bs4 import BeautifulSoup
 
 from dashboard.courses_content import VALID_ACCESS, courses_root
+from dashboard.courses_sanitize import IFRAME_ALLOWED_HOSTS
 
 
 def lint_courses(root: str | None = None) -> list:
@@ -61,9 +64,14 @@ def _lint_lesson(course, mslug, lslug, path, cdir) -> list:
     access = str(meta.get("access") or "").strip().lower()
     if access not in VALID_ACCESS:
         errs.append(f"{tag} invalid access '{access}' (must be one of {VALID_ACCESS})")
-    if not str(meta.get("rumble_id") or "").strip():
-        errs.append(f"{tag} missing rumble_id")
+    body = post.content or ""
+    if not body.strip():
+        errs.append(f"{tag} missing body")
     for d in meta.get("downloads") or []:
         if not str(d.get("url") or "").strip():
             errs.append(f"{tag} download missing url: {d}")
+    for iframe in BeautifulSoup(body, "html.parser").find_all("iframe"):
+        host = (urlparse(iframe.get("src", "")).hostname or "").lower()
+        if host not in IFRAME_ALLOWED_HOSTS:
+            errs.append(f"{tag} body has iframe with disallowed host: {host or '(no src)'}")
     return errs
