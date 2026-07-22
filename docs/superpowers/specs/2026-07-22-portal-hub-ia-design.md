@@ -61,8 +61,7 @@ a grid scales by adding tiles without ever re-overloading the landing.
 **1 · Understand**
 - **My Analysis** — current scan, matches, healing path, personal video/audio/
   written report, unlock gate, consult prompt.
-- **My Remedies** — the *decision* view: top recommended remedies, ranked by the
-  analysis. "What should I take, and why, in priority order." Read-and-decide.
+- **My Remedies** — the *decision + audit* view (see below).
 - **My Health Profile** *(NEW)* — editable history, symptoms, intake + an
   AI-suggestions queue (see below).
 
@@ -85,6 +84,38 @@ a grid scales by adding tiles without ever re-overloading the landing.
 
 **Account** (top-bar menu, not a tile): profile summary, membership, notification
 prefs, scan prefs, onboarding.
+
+### New page — My Remedies
+
+Two sections:
+
+1. **Top recommended for you (ranked)** — the *decision* view: top remedies ranked
+   by the analysis, each with its "why" and an **"add to my Oasis / order"** action
+   that hands off into My Healing Oasis › Replenish. Absorbs today's "formulation
+   matches," "practitioner recommends," "My Recommendations," PRL options, and the
+   program card.
+
+2. **What you take from other companies (client-maintained)** — a list the client
+   builds of remedies/supplements they take elsewhere. Each entry carries:
+   - **Brand** and **product name**
+   - **Reason** (optional — why they take it)
+   - **Importance 1–10** (client-set)
+   - **Request review** button — asks Dr. Glen to review that product for their case
+   - **Review access** — link(s) to the resulting review / any existing review Glen
+     hosts for that product
+   - **Suggested upgrade** — where it genuinely helps, a pointer to our equivalent/
+     better formulation (e.g. reveal-style swaps). **Not every item gets a swap** —
+     a well-chosen product is confirmed as such; this preserves clinical integrity
+     and is not a blanket upsell.
+
+**Why capture the full stack.** Knowing everything the client takes lets the engine
+catch interactions and redundancy, feed the review-request queue, and target
+upgrades only where warranted. This is the remedy-side mirror of Healing Oasis ›
+Build Out's external-tools list — the client maintains it, Glen's engine reacts.
+
+**Data:** the external-remedy list is client-maintained (brand/product/reason/
+importance), the review-request produces a work item + a hosted review link, and
+the suggested-upgrade mapping reuses the existing product/reveal swap logic.
 
 ### New page — My Health Profile
 
@@ -115,7 +146,10 @@ The unified "your stuff" tile, two modes inside:
 - **Build Out** — the client's **tools inventory**, listing items bought from us
   *and* items they own from other sources (client-maintained, "+ Add a tool you
   own"), plus a **clinically-ordered roadmap of recommended additions** to
-  complete their home/office Healing Oasis.
+  complete their home/office Healing Oasis. The roadmap **leads with our
+  highest-impact tools — Harmony, Water Ionizer, Kloud** — emphasized as the
+  recommendations that most improve outcomes (recommended for nearly everyone),
+  above the terrain-specific gap items that follow.
 
 **Why the recommendations are generous and ordered.** Including externally-owned
 tools is what makes the roadmap correct: if the client already owns a light device
@@ -181,8 +215,10 @@ in the app). Absorbs today's "Your Ambassador links," "Become an Ambassador," an
 
 - Extend the payload builder `get_portal_view()` (`dashboard/portal_view.py:291`)
   and/or the `d` API (`api_client_portal`, `app.py:19474`) with the fields each new
-  page needs: health-record read/write, chat-suggestion queue, owned-tools
-  inventory (ours + external), ranked-remedy list, referral dashboard data.
+  page needs: health-record read/write, chat-suggestion queue, ranked-remedy list,
+  client-maintained **external-remedy** list (brand/product/reason/importance) +
+  review-request queue + hosted-review links + upgrade mapping, owned-tools
+  inventory (ours + external), referral dashboard data.
 - **Health record read/write** binds to the existing intake store (same one the
   console client-360 reads); add a portal write path + the chat-extraction →
   pending-suggestion producer.
