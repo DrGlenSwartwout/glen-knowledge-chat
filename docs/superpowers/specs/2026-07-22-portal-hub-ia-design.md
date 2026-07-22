@@ -117,6 +117,14 @@ Build Out's external-tools list — the client maintains it, Glen's engine react
 importance), the review-request produces a work item + a hosted review link, and
 the suggested-upgrade mapping reuses the existing product/reveal swap logic.
 
+> **Reuse found (2026-07-22):** the request-review + hosted-review half already
+> exists — flag `REVIEWS_ENABLED` (`app.py:6102`) + `dashboard/supplement_reviews.py`
+> + `_supplement_reviews_block` (`dashboard/portal_view.py:242`), keyed on
+> `product_name`/`product_brand` with a `requested → ai_draft → confirmed` status
+> and review text exposed only once Glen confirms. My Remedies' external list should
+> build on this module, not a new one. Adds needed: client-set `reason`/`importance`
+> and the suggested-upgrade mapping.
+
 ### New page — My Health Profile
 
 Two halves:
