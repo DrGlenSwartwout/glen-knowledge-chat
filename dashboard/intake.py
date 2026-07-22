@@ -6,7 +6,7 @@ Response shape: answers is a dict field_id -> value. Scalars for text/number/
 scale/single_choice; a list of row-dicts for `table` fields; `terms` is
 {"agreed": bool, "signature": str, "date": str}."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # --- scale option builders (labels are Glen's exact PB wording) ---
 def _scale(pairs):
@@ -265,7 +265,7 @@ def import_response(cx, email, answers, now, source="practice-better"):
     _upsert(cx, email, payload, "submitted", now, now)
 
 
-def save_self_edit(cx, email, partial_answers):
+def save_self_edit(cx, email, partial_answers, now=None):
     """Client self-edit write-back (portal "My Health Profile" edit). Merges
     ONLY the client-editable fields (health_profile.EDITABLE_FIELD_IDS) into
     the existing row's answers, using intake_public.merge_answers for the
@@ -275,13 +275,22 @@ def save_self_edit(cx, email, partial_answers):
     Stamps `self_edited_at` in the answers so a submitted row visibly carries
     a post-submission edit. Returns the updated answers dict.
 
+    `now` follows the same convention as save_draft/submit/mark_on_file in
+    this module: the caller passes an HST-local timestamp (app.py's
+    `_hst_now().isoformat()`) so this row's timestamps match the rest of the
+    codebase's local-time convention rather than UTC. If omitted (e.g. tests
+    that call this directly), falls back to computing the same HST-local
+    (UTC-10, no DST) wall clock inline.
+
     Lazy imports (health_profile imports this module at module load time,
     so importing it back at module scope here would be a cycle)."""
     from dashboard import health_profile as _hp
     from dashboard import intake_public as _ip
 
     email = (email or "").strip().lower()
-    now = datetime.now(timezone.utc).isoformat()
+    if now is None:
+        now = datetime.now(timezone.utc).astimezone(
+            timezone(timedelta(hours=-10))).replace(tzinfo=None).isoformat()
     existing = get_response(cx, email)
     current = (existing or {}).get("answers") or {}
     status = (existing or {}).get("status") or "draft"

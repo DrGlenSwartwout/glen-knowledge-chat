@@ -21564,6 +21564,8 @@ def api_portal_health_profile(token):
     else:
         field_id = (body.get("field_id") or "").strip()
         partial = {field_id: body.get("value")} if field_id else {}
+    if not isinstance(partial, dict):
+        return jsonify({"ok": False, "error": "answers must be an object"}), 400
     from dashboard import health_profile as _hp
     bad = [k for k in partial if k not in _hp.EDITABLE_FIELD_IDS]
     if bad:
@@ -21576,7 +21578,7 @@ def api_portal_health_profile(token):
         if not portal:
             return jsonify({"ok": False, "error": "unknown token"}), 404
         email = (portal.get("email") or "").strip().lower()
-        _intake.save_self_edit(cx, email, partial)
+        _intake.save_self_edit(cx, email, partial, _hst_now().isoformat())
         block = _hp.build_block(cx, email, True)
     return jsonify({"ok": True, "health_profile": block})
 
