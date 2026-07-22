@@ -108,9 +108,12 @@ def upsert_person_address(cx, person_id, addr):
     return True
 
 
-def find_or_create_by_email(cx, *, email, name="", phone=""):
+def find_or_create_by_email(cx, *, email, name="", phone="", source="order-entry"):
     """Return an existing person id for this email, or create a minimal record.
-    Email is the unique key on `people`."""
+    Email is the unique key on `people`. `source` is FIRST-TOUCH only: it is written
+    solely on creation, so an existing person keeps their original acquisition
+    source (e.g. a client already on file who later submits a product review stays
+    at their first source, not 'product-review')."""
     em = (email or "").strip().lower()
     if not em:
         return None
@@ -121,7 +124,8 @@ def find_or_create_by_email(cx, *, email, name="", phone=""):
         cx,
         "INSERT INTO people (email, name, phone, source, created_at, updated_at) "
         "VALUES (?,?,?,?,?,?)",
-        (em, (name or "").strip(), (phone or "").strip(), "order-entry", _now(), _now()))
+        (em, (name or "").strip(), (phone or "").strip(),
+         (source or "order-entry").strip(), _now(), _now()))
     cx.commit()
     return new_id
 
