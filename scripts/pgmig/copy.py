@@ -46,22 +46,48 @@ def copy_table(sqlite_cx, pg_cx, table: str) -> Dict:
         except Exception:
             pass
         inserted = 0
+        # Per-row fallback shares ONE transaction with the caller (copy_all commits
+        # once per table) -- without isolation, a later bad row's rollback() would
+        # discard every good row this loop already inserted earlier in the SAME
+        # pass, since they're all still uncommitted in that one transaction. A
+        # SAVEPOINT per row isolates each row: a failure rolls back ONLY to that
+        # row's savepoint, leaving previously-released (successful) rows intact
+        # and still pending commit at the end of copy_table/copy_all.
         for row in rows:
             try:
+                pg_cx.execute("SAVEPOINT pgmig_row")
                 r = pg_cx.execute(sql, tuple(row))
-                inserted += (r.rowcount or 0)
+                row_inserted = r.rowcount or 0
+                pg_cx.execute("RELEASE SAVEPOINT pgmig_row")
+                inserted += row_inserted
             except Exception as row_exc:
                 try:
-                    pg_cx.rollback()
+                    pg_cx.execute("ROLLBACK TO SAVEPOINT pgmig_row")
                 except Exception:
-                    pass
+                    # If even the ROLLBACK TO fails, the connection's transaction
+                    # is in an unrecoverable state -- bail out of the whole
+                    # fallback loop rather than risk silently losing further rows.
+                    try:
+                        pg_cx.rollback()
+                    except Exception:
+                        pass
+                    errors.append({"row": list(row), "error": str(row_exc)})
+                    break
                 errors.append({"row": list(row), "error": str(row_exc)})
 
     result["inserted"] = inserted
-    result["conflicts"] = source_rows - inserted
+    result["conflicts"] = source_rows - inserted - len(errors)
     if errors:
         result["errors"] = errors
     return result
+
+
+def any_errors(results: List[Dict]) -> bool:
+    """True if any per-table result dict carries a non-empty 'errors' list --
+    i.e. at least one row genuinely failed to persist (not merely an
+    ON CONFLICT DO NOTHING skip, which lands in 'conflicts' instead). The CLI
+    gates its exit status on this so a failed row can't pass unnoticed."""
+    return any(r.get("errors") for r in results)
 
 
 def copy_all(sqlite_path: str, *, truncate: bool = False) -> List[Dict]:
@@ -69,6 +95,11 @@ def copy_all(sqlite_path: str, *, truncate: bool = False) -> List[Dict]:
     (schema_for_path(sqlite_path), via db.connect(sqlite_path)), in FK
     parent-before-child order. Tables present on only one side are reported
     (not silently skipped) with a "note" explaining why they weren't copied."""
+    if db.backend() != "postgres":
+        raise RuntimeError(
+            "copy_all requires DB_BACKEND=postgres (an ops tool must not run "
+            "information_schema introspection or DDL against a SQLite handle); "
+            "got DB_BACKEND=%r" % db.backend())
     schema = schema_for_path(sqlite_path)
     sqlite_cx = sqlite3.connect(sqlite_path)
     try:

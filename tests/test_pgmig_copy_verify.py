@@ -132,3 +132,104 @@ def test_pg_fk_order_no_fk_table_sorts_first_and_cycle_raises(monkeypatch, tmp_p
 
     with pytest.raises(RuntimeError, match="FK cycle"):
         introspect.pg_fk_order(db.connect(src), schema)
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_per_row_fallback_isolates_bad_row_with_savepoint(monkeypatch, tmp_path):
+    """Reproduces the review's exact scenario: a NOT NULL violation partway
+    through the per-row fallback must NOT roll back the good rows inserted
+    earlier in the SAME pass. Source has good rows BEFORE (1,2) and AFTER (4)
+    a bad row (3, NULL into a NOT NULL column). Proves: the good rows
+    actually persist in PG (queried directly), `inserted` equals the real
+    persisted count, the bad row lands in `errors` (not silently dropped),
+    and `verify.parity` reports the true (mismatched) state rather than a
+    false green from a miscounted `inserted`.
+
+    Before the fix this reproduced the reviewed bug exactly: `inserted`
+    reported 3 but only 1 row (id=4) actually persisted, because the shared,
+    savepoint-less transaction's rollback() on row 3's failure discarded
+    rows 1 and 2 as well, and they were never added to `errors`.
+    """
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_savepoint.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT);")
+    cx.executescript(
+        "INSERT INTO widget (id,name) VALUES (1,'a'),(2,'b'),(3,NULL),(4,'d');"
+    )
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS widget CASCADE")
+        pcx.execute("CREATE TABLE widget (id BIGINT PRIMARY KEY, name TEXT NOT NULL)")
+        pcx.commit()
+
+    res = copy.copy_all(src)
+    by_table = {r["table"]: r for r in res}
+    widget = by_table["widget"]
+
+    assert widget["source_rows"] == 4
+    # Rows 1, 2, 4 persist; row 3 (NULL name) fails and is isolated by its
+    # own savepoint -- it must NOT drag rows 1/2 down with it.
+    assert widget["inserted"] == 3
+    assert "errors" in widget
+    assert len(widget["errors"]) == 1
+    assert widget["errors"][0]["row"][0] == 3
+    assert widget["conflicts"] == 0
+
+    # The proof: query PG directly for what ACTUALLY persisted.
+    with db.connect(src) as pcx:
+        actual_ids = sorted(r[0] for r in pcx.execute('SELECT id FROM "widget"').fetchall())
+        actual_count = pcx.execute('SELECT COUNT(*) FROM "widget"').fetchone()[0]
+
+    assert actual_ids == [1, 2, 4]
+    assert actual_count == 3 == widget["inserted"]
+
+    # verify.parity must reflect the TRUE state -- 4 source rows vs 3 landed,
+    # a genuine mismatch, not a false green from a miscounted `inserted`.
+    ver = verify.parity(src)
+    ver_by_table = {r["table"]: r for r in ver}
+    assert ver_by_table["widget"]["sqlite"] == 4
+    assert ver_by_table["widget"]["postgres"] == 3
+    assert ver_by_table["widget"]["ok"] is False
+    assert not verify.all_ok(ver)
+
+    assert copy.any_errors(res) is True
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_any_errors_false_on_clean_copy(monkeypatch, tmp_path):
+    """`any_errors` is the CLI's loud-failure gate: False when nothing failed."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_clean.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT);")
+    cx.executescript("INSERT INTO widget (id,name) VALUES (1,'a'),(2,'b');")
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS widget CASCADE")
+        pcx.execute("CREATE TABLE widget (id BIGINT PRIMARY KEY, name TEXT)")
+        pcx.commit()
+
+    res = copy.copy_all(src)
+    assert by_table_inserted(res, "widget") == 2
+    assert copy.any_errors(res) is False
+
+
+def by_table_inserted(results, table):
+    return next(r["inserted"] for r in results if r["table"] == table)
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_copy_all_asserts_postgres_backend(monkeypatch, tmp_path):
+    """M4: copy_all must refuse to run against a non-Postgres backend rather
+    than silently issuing information_schema queries against a SQLite handle."""
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    src = str(tmp_path / "pgmig_backend_guard.db")
+    sqlite3.connect(src).close()
+
+    with pytest.raises(RuntimeError, match="postgres"):
+        copy.copy_all(src)
