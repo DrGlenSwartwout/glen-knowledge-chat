@@ -53,6 +53,10 @@ _UPGRADE_MAP = {
     },
 }
 
+# Our own brand names — a client already on one of these is already on our
+# product, so no self-referential "upgrade" should ever be suggested.
+_OUR_BRANDS = {"remedy match", "healing oasis"}
+
 
 def _normalize(name):
     """Lowercased, whitespace-collapsed category key for a product name.
@@ -71,6 +75,9 @@ def suggest_upgrade(product_name, product_brand="", *, catalog=None):
     one that already equals our own slug) returns None. If the mapped slug is
     absent from the resolved catalog, also return None rather than point at a
     dead product."""
+    if _normalize(product_brand) in _OUR_BRANDS:
+        return None
+
     key = _normalize(product_name)
     entry = _UPGRADE_MAP.get(key)
     if not entry:
@@ -83,6 +90,9 @@ def suggest_upgrade(product_name, product_brand="", *, catalog=None):
     slug = entry["slug"]
     product = (catalog or {}).get(slug)
     if not product:
+        return None
+
+    if _normalize(product_name) == _normalize(product.get("name", "")):
         return None
 
     return {
