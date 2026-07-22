@@ -16,6 +16,7 @@ from dashboard import client_portal as _cp
 from dashboard import entity_refs as _er
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
+from dashboard import remedies_block as _rb
 from dashboard import supplement_reviews as _sr
 
 
@@ -319,7 +320,8 @@ def _onboarding_block(cx, email):
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
                     hub_enabled=False,
-                    biofield_unlocked=True, supplement_review_enabled=False):
+                    biofield_unlocked=True, supplement_review_enabled=False,
+                    remedies_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -355,4 +357,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "consult": _consult_block(cx, email),
         "onboarding": _onboarding_block(cx, email),
         "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
+        "remedies": _rb.build_block(cx, email, remedies_enabled),
     }

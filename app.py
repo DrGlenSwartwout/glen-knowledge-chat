@@ -6108,6 +6108,10 @@ _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().low
 # Ships dark; flip to route the portal through the hub instead of the single
 # Current-Analysis scroll. Same truthy set as the finder flag.
 _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# "My Remedies" client-portal tile (ranked recommendations + external supplement
+# stack, dashboard/remedies_block.py). Ships dark; same truthy set as the other
+# portal flags.
+_PORTAL_REMEDIES_ENABLED = os.environ.get("PORTAL_REMEDIES_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -25350,7 +25354,8 @@ def api_client_portal_view(token):
                                    finder_enabled=_PORTAL_FINDER_ENABLED,
                                    hub_enabled=_PORTAL_HUB_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
-                                   supplement_review_enabled=_sr.enabled())
+                                   supplement_review_enabled=_sr.enabled(),
+                                   remedies_enabled=_PORTAL_REMEDIES_ENABLED)
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
