@@ -29484,9 +29484,14 @@ def ghl_click_webhook():
     try:
         data = request.get_json(force=True, silent=True) or {}
         contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
-        email = (data.get("email") or contact.get("email") or "").strip().lower()
-        slug_raw = (data.get("product_slug") or data.get("slug") or "").strip()
-        source = (data.get("source") or "newsletter").strip().lower()
+        # GHL's Outbound Webhook nests the workflow's CUSTOM DATA under `customData`
+        # (verified live: `{"customData": {"product_slug": "brain-cleanse"}}`), while the
+        # contact's email is top-level. Read both places so either shape works.
+        cd = data.get("customData") if isinstance(data.get("customData"), dict) else {}
+        email = (data.get("email") or contact.get("email") or cd.get("email") or "").strip().lower()
+        slug_raw = (data.get("product_slug") or cd.get("product_slug")
+                    or data.get("slug") or cd.get("slug") or "").strip()
+        source = (data.get("source") or cd.get("source") or "newsletter").strip().lower()
         resolved = _rec_valid_slug(slug_raw)
         if email and resolved and source in _EMAIL_LINK_SOURCES:
             from dashboard import (recommendation_events as _re,

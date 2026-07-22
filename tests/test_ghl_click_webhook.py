@@ -29,6 +29,28 @@ def test_authed_click_records_newsletter_event(tmp_path, monkeypatch):
                for e in re.list_events(cx, "a@b.com"))   # normalized lower
 
 
+def test_real_ghl_payload_nested_customdata_records(tmp_path, monkeypatch):
+    """GHL's Outbound Webhook nests the workflow's custom data under `customData`
+    (email stays top-level). Verified live 2026-07-22 with a real GHL 'Test workflow'
+    fire — the flat-payload tests above missed this, so no events would record.
+    Payload below is the real shape (PII synthesized)."""
+    db = _seed(tmp_path, monkeypatch)
+    c = app_module.app.test_client()
+    r = c.post("/webhook/ghl-click?key=s3cret", json={
+        "contact_id": "TqB0thchnGJE54QvP7ZA",
+        "first_name": "Tester", "last_name": "McTester", "full_name": "Tester McTester",
+        "email": "tester@example.com",
+        "location": {"name": "Remedy Match", "city": "Hilo", "state": "HI"},
+        "workflow": {"id": "wf-1", "name": "Newsletter click - terrain-restore"},
+        "triggerData": {},
+        "customData": {"product_slug": "terrain-restore"},
+    })
+    assert r.status_code == 200
+    cx = sqlite3.connect(db)
+    assert any(e["source_key"] == "newsletter" and e["product_key"] == "terrain-restore"
+               for e in re.list_events(cx, "tester@example.com"))
+
+
 def test_bad_secret_is_401_and_records_nothing(tmp_path, monkeypatch):
     db = _seed(tmp_path, monkeypatch)
     c = app_module.app.test_client()
