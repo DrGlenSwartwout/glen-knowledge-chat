@@ -912,11 +912,13 @@
         btn.style.cssText = 'display:inline-block;margin-top:10px;padding:8px 16px;background:#3d8a52;color:#fdf4d8;border-radius:6px;text-decoration:none;font-size:14px;cursor:pointer;';
         btn.addEventListener('click', function() {
           try {
+            var m = target.match(/\/begin\/(?:buy|product)\/([^\/?#]+)/);
+            var slug = m ? decodeURIComponent(m[1]) : '';
             fetch('/api/cta-click', {
               method: 'POST',
               credentials: 'same-origin',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ log_id: logId, cta_type: type })
+              body: JSON.stringify({ log_id: logId, cta_type: type, slug: slug })
             });
           } catch (_) {}
         });
