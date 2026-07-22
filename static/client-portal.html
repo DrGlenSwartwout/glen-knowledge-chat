@@ -412,6 +412,19 @@
   .health-value { margin:.3rem 0 0; }
   .health-table-list { margin:.3rem 0 0; padding-left:1.1rem; }
   .health-table-list li { font-size:.9rem; margin:.2rem 0; }
+  /* Task 4: inline edit form that replaces .health-field-body while editing. */
+  .health-edit-row { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.3rem; }
+  .health-edit-input { flex:1 1 12rem; min-width:8rem; font:inherit; font-size:.9rem; padding:.35rem .5rem;
+    border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  textarea.health-edit-input { flex-basis:100%; resize:vertical; }
+  .health-edit-actions { display:flex; gap:.4rem; }
+  .health-save-btn,.health-cancel-btn { font-size:.78rem; border-radius:8px; padding:2px 10px; cursor:pointer;
+    font-family:inherit; background:none; border:1px solid var(--line); color:var(--muted); }
+  .health-save-btn { border-color:var(--brand); color:var(--brand); }
+  .health-save-btn:hover,.health-save-btn:focus-visible,
+  .health-cancel-btn:hover,.health-cancel-btn:focus-visible { border-color:var(--brand); color:var(--ink); outline:none; }
+  .health-save-btn:disabled { opacity:.6; cursor:default; }
+  .health-edit-msg { flex-basis:100%; }
 </style>
 </head>
 <body>
@@ -733,15 +746,17 @@ function buildHubHtml(d, v){
       <button type="button" class="hub-account" onclick="showTab('account')">Account</button></div>
     ${groups.map(grp).join("")}</div>`;
 }
-// My Health Profile panel body (Task 2, read-only). Renders v.health_profile.
-// sections (curated goals/dimensions/history from dashboard/health_profile.py)
-// as label/value rows. Scalars print esc(value) or an empty-state note; a
-// "table" field's value is a list of row-dicts (e.g. health_concerns,
-// supplements) rendered as a compact per-row list of "key: value" pairs — the
-// payload doesn't carry column labels, so raw field keys are used. Every
-// interpolated value goes through esc(). Includes an empty #healthSuggestions
-// placeholder (Task 7 fills it) and, per field, an inert Edit button carrying
-// data-field-id (wired up in Task 4) — neither does anything yet.
+// My Health Profile panel body. Renders v.health_profile.sections (curated
+// goals/dimensions/history from dashboard/health_profile.py) as label/value
+// rows. Scalars print esc(value) or an empty-state note; a "table" field's
+// value is a list of row-dicts (e.g. health_concerns, supplements) rendered
+// as a compact per-row list of "key: value" pairs — the payload doesn't carry
+// column labels, so raw field keys are used. Every interpolated value goes
+// through esc(). Includes an empty #healthSuggestions placeholder (Task 7
+// fills it) and, per scalar/scale/choice/textarea field, an Edit button wired
+// (Task 4, below) to swap the value for an input and POST the change. Table
+// fields keep their Edit button but only reveal a "coming soon" note — full
+// row add/remove editing is out of scope for Task 4.
 function healthFieldValueHtml(f){
   if (f.type === "table") {
     const rows = Array.isArray(f.value) ? f.value : [];
@@ -757,10 +772,14 @@ function healthFieldValueHtml(f){
     : `<p class="health-value">${esc(val)}</p>`;
 }
 function healthFieldHtml(f){
-  return `<div class="health-field">
+  // data-value carries the current scalar so Edit can open the input pre-filled
+  // without a round-trip; table fields have no scalar value so it's omitted.
+  const valueAttr = (f.type === "table") ? "" :
+    ` data-value="${esc(f.value===null||f.value===undefined?"":f.value)}"`;
+  return `<div class="health-field" data-field-id="${esc(f.id)}" data-field-type="${esc(f.type||"")}">
     <div class="health-field-head"><span class="health-label">${esc(f.label)}</span>
-      <button type="button" class="health-edit-btn" data-field-id="${esc(f.id)}">Edit</button></div>
-    ${healthFieldValueHtml(f)}
+      <button type="button" class="health-edit-btn" data-field-id="${esc(f.id)}"${valueAttr}>Edit</button></div>
+    <div class="health-field-body">${healthFieldValueHtml(f)}</div>
   </div>`;
 }
 function healthSectionHtml(sec){
@@ -1050,6 +1069,113 @@ document.addEventListener("change", function(ev){
   }).catch(() => {
     cb.checked = !cb.checked;  // revert
     if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
+  });
+});
+
+// My Health Profile inline editing (Task 4). The health_profile payload block
+// (dashboard/health_profile.py) doesn't carry the intake form's scale option
+// range, so this small map (mirrors intake.py's _TERRAIN/_PENETRATION/_TISSUE/
+// _RESPONSE/_COMMITMENT scale definitions) bounds the "scale" edit input's
+// min/max; an unrecognized scale id falls back to today's other 1-5 scales.
+// single_choice has no options in the payload either, so per the task brief it
+// falls back to a plain text input (same branch as "text").
+const HEALTH_SCALE_MAX = { terrain: 5, penetration: 5, tissue_layer: 5, response: 5, commitment: 10 };
+
+function healthEditInputHtml(fieldId, fieldType, rawValue){
+  const val = (rawValue === null || rawValue === undefined) ? "" : rawValue;
+  if (fieldType === "textarea") return `<textarea class="health-edit-input" rows="3">${esc(val)}</textarea>`;
+  if (fieldType === "number") return `<input type="number" class="health-edit-input" value="${esc(val)}">`;
+  if (fieldType === "scale") {
+    const max = HEALTH_SCALE_MAX[fieldId] || 5;
+    return `<input type="number" class="health-edit-input" min="1" max="${max}" step="1" value="${esc(val)}">`;
+  }
+  // text, single_choice (no options in payload to build a <select> from), and
+  // any other scalar type all fall back to a plain text input.
+  return `<input type="text" class="health-edit-input" value="${esc(val)}">`;
+}
+
+function healthEditFormHtml(fieldId, fieldType, rawValue){
+  return `<div class="health-edit-row">
+    ${healthEditInputHtml(fieldId, fieldType, rawValue)}
+    <div class="health-edit-actions">
+      <button type="button" class="health-save-btn">Save</button>
+      <button type="button" class="health-cancel-btn">Cancel</button>
+    </div>
+    <div class="health-edit-msg small muted" hidden></div>
+  </div>`;
+}
+
+// Looks up one curated field's fresh {id,label,type,value} from a health_profile
+// block (e.g. the POST response) by field id, across all its sections.
+function findHealthField(hp, fieldId){
+  const sections = (hp && Array.isArray(hp.sections)) ? hp.sections : [];
+  for (const sec of sections) {
+    const fields = Array.isArray(sec.fields) ? sec.fields : [];
+    const found = fields.find(f => f.id === fieldId);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Delegated on document (fields are injected via render()'s innerHTML, so a
+// per-render listener would stack, same reasoning as the Family Plan / client-fact
+// listeners above). Handles the three button classes that only ever exist inside
+// a .health-field: the Edit button from Task 2/4's render, and the Save/Cancel
+// pair this handler injects when editing opens. Table fields (health_concerns/
+// supplements/diagnoses/medications/surgeries/allergies) are out of scope for
+// this task -- Edit just reveals a factual "coming soon" note in place, no POST.
+document.addEventListener("click", function(ev){
+  const editBtn = ev.target.closest(".health-edit-btn");
+  const saveBtn = ev.target.closest(".health-save-btn");
+  const cancelBtn = ev.target.closest(".health-cancel-btn");
+  if (!editBtn && !saveBtn && !cancelBtn) return;
+  const field = ev.target.closest(".health-field");
+  if (!field) return;
+  const body = field.querySelector(".health-field-body");
+  if (!body) return;
+  const fieldId = field.getAttribute("data-field-id") || "";
+  const fieldType = field.getAttribute("data-field-type") || "";
+
+  if (editBtn) {
+    if (fieldType === "table") {
+      body.innerHTML = `<p class="muted small">Editing this list is coming soon.</p>`;
+      return;
+    }
+    if (!body.hasAttribute("data-prev-html")) body.setAttribute("data-prev-html", body.innerHTML);
+    const rawValue = editBtn.getAttribute("data-value") || "";
+    body.innerHTML = healthEditFormHtml(fieldId, fieldType, rawValue);
+    const input = body.querySelector(".health-edit-input");
+    if (input) input.focus();
+    return;
+  }
+  if (cancelBtn) {
+    const prev = body.getAttribute("data-prev-html");
+    if (prev !== null) { body.innerHTML = prev; body.removeAttribute("data-prev-html"); }
+    return;
+  }
+  // saveBtn: POST {field_id, value} to the health-profile write-back endpoint
+  // (Task 3), then update just this field's display from the returned block.
+  const input = body.querySelector(".health-edit-input");
+  const msg = body.querySelector(".health-edit-msg");
+  if (!input) return;
+  let value = input.value;
+  if (input.type === "number") value = (value === "") ? null : Number(value);
+  saveBtn.disabled = true;
+  if (msg) { msg.hidden = false; msg.classList.remove("err"); msg.textContent = "Saving…"; }
+  fetch(`/api/portal/${encodeURIComponent(token)}/health-profile`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+    body: JSON.stringify({field_id: fieldId, value: value})
+  }).then(r => r.json()).then(res => {
+    if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
+    const fresh = findHealthField(res.health_profile, fieldId);
+    body.removeAttribute("data-prev-html");
+    body.innerHTML = healthFieldValueHtml(fresh || {type: fieldType, value: value});
+    const btn = field.querySelector(".health-edit-btn");
+    // Direct DOM API, not innerHTML -- the raw value goes in unescaped on purpose.
+    if (btn) btn.setAttribute("data-value", (fresh ? fresh.value : value) ?? "");
+  }).catch(() => {
+    saveBtn.disabled = false;
+    if (msg) { msg.hidden = false; msg.classList.add("err"); msg.textContent = "Could not save. Please try again."; }
   });
 });
 
