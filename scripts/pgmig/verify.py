@@ -131,6 +131,19 @@ def all_ok(results: List[Dict]) -> bool:
 #   - anything else -> str(v) (e.g. an already-str value that didn't parse
 #     as a datetime, used as-is).
 #
+# NUL-byte normalization (P05.5 hardening, live dry-run): `scripts.pgmig
+# .copy.copy_table` strips embedded NUL (0x00) bytes from `str` values
+# before inserting into Postgres (TEXT/VARCHAR cannot hold 0x00; SQLite
+# can). Left unaccounted for here, a faithfully-sanitized row would read
+# back WITH the NUL on the SQLite side and WITHOUT it on the Postgres side
+# -- two different strings -> a false-positive checksum mismatch on an
+# otherwise-correct copy. So `\x00` is stripped from `str` values in THIS
+# normalization too (both sides, same code, same as the copy step) --
+# applied to the datetime-candidate string BEFORE the ISO-parse attempt,
+# so a NUL embedded in a date-like string can't affect whether it parses.
+# This does not touch `bytes`/BYTEA (a legitimate 0x00 there is preserved
+# by both the copy step and this normalization).
+#
 # Per-row hashing: the row's normalized values are joined with "\x1f" (ASCII
 # Unit Separator -- vanishingly unlikely to appear in real column data) and
 # md5'd; the row order of VALUES is fixed by an explicit column list (same
@@ -202,6 +215,8 @@ def _normalize_value(v) -> str:
     if isinstance(v, datetime):
         return _canonical_datetime(v)
     if isinstance(v, str):
+        if "\x00" in v:
+            v = v.replace("\x00", "")
         parsed = _try_parse_iso_datetime(v)
         if parsed is not None:
             return _canonical_datetime(parsed)
