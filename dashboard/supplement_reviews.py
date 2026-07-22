@@ -12,11 +12,18 @@ Transitions never downgrade (a confirmed review can't be walked back or overwrit
 so a re-run or a late analyzer draft can't un-publish an approved review. LOG_DB (SQLite).
 Distinct from dashboard/product_reviews.py, which is customer testimonials of products."""
 import datetime
+import os
 import re
 
 from dashboard import db
 
 _RANK = {"requested": 0, "ai_draft": 1, "confirmed": 2}
+
+
+def enabled():
+    """True when SUPPLEMENT_REVIEW_ENABLED is set truthy. Default off (dark)."""
+    return (os.environ.get("SUPPLEMENT_REVIEW_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
 
 
 def _now():

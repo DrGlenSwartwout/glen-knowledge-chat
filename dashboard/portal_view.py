@@ -16,6 +16,7 @@ from dashboard import client_portal as _cp
 from dashboard import entity_refs as _er
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
+from dashboard import supplement_reviews as _sr
 
 
 def _product_exists(slug):
@@ -238,6 +239,31 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     return block
 
 
+def _supplement_reviews_block(cx, email, enabled):
+    """Free product reviews the client has requested. Returns {"status":"off"}
+    unless the feature flag is on. A review's TEXT is exposed only once it is
+    'confirmed' by Glen in the console; requested/ai_draft rows show status only
+    (the client sees "in progress"). None-raising: any failure degrades to empty."""
+    if not enabled:
+        return {"status": "off"}
+    em = (email or "").strip().lower()
+    if not em:
+        return {"status": "empty", "reviews": []}
+    try:
+        _sr.init_table(cx)
+        rows = _sr.list_for_email(cx, em)
+    except Exception:
+        return {"status": "empty", "reviews": []}
+    reviews = []
+    for r in rows:
+        item = {"product_name": r["product_name"], "product_brand": r["product_brand"],
+                "status": r["status"]}
+        if r["status"] == "confirmed":
+            item["review"] = r["review_text"] or ""
+        reviews.append(item)
+    return {"status": "has_reviews" if reviews else "empty", "reviews": reviews}
+
+
 def _practitioner_finder_block(address, enabled):
     """Prefill data for the embedded /practitioner-finder card. Zip beats city
     (more precise); country defaults to US. An absent address yields an empty
@@ -290,7 +316,7 @@ def _onboarding_block(cx, email):
 
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
-                    biofield_unlocked=True):
+                    biofield_unlocked=True, supplement_review_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -324,4 +350,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
         "consult": _consult_block(cx, email),
         "onboarding": _onboarding_block(cx, email),
+        "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
     }
