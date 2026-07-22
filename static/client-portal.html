@@ -1933,7 +1933,10 @@ function render(d, v){
         <span class="od">${esc(date)}</span></span>
         <span class="pill">${esc(o.status||"")}</span></div>`;
     });
-    html += `<div class="card"><h2>Your orders</h2><div>${rows}</div></div>`;
+    const revOffer = (v.supplement_review && v.supplement_review.status !== "off")
+      ? `<p class="muted small" style="margin:.6rem 0 0">Taking something you're not sure about? <a href="https://illtowell.com/product-review">Get it reviewed free &rarr;</a></p>`
+      : "";
+    html += `<div class="card"><h2>Your orders</h2><div>${rows}</div>${revOffer}</div>`;
   }
 
   // Sales / upgrade (feature #2): the single next eligible ladder rung + CTA.
