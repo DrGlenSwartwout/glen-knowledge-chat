@@ -115,6 +115,14 @@ def record_self(cx, email, product_key):
                         occurred_at=_now(), origin_ref="self")
 
 
+def record_click(cx, email, product_key, source_key):
+    """A client took an ACTION on a product from a <source_key> surface (clicked its
+    link, or ordered from it). Each action counts — a UNIQUE origin_ref per call
+    (timestamp), deliberately unlike record_self's sticky origin_ref."""
+    return record_event(cx, email, product_key, source_key,
+                        occurred_at=_now(), origin_ref=_now())
+
+
 def product_sources(cx, email):
     """Per product: its sources (each with count, first_touch, last_touch), ordered by
     first_touch (icon order), plus a hidden flag. Callers sort/limit products for display."""

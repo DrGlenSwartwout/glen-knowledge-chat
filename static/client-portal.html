@@ -410,6 +410,26 @@ const token = seg; // reused by reorder()/checkout; "me" resolves via the sessio
 let _recoPayload = null; // My Recommendations (2b-ii) payload, set in load() before render(); keeps render(d,v) signature
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+// Best-effort slug extraction from an order URL of the form "/begin/product/<slug>"
+// (order_destination.destination_for's fixed shape) -- used ONLY to tag the scan/FF
+// matched-product links below with a data-scan-slug for the click beacon; never
+// shown to the client and never used for anything but that beacon's payload.
+const slugFromUrl = (u)=>{
+  const s = String(u||"").replace(/\/+$/,"");
+  const tail = s.split("/").pop();
+  return tail || "";
+};
+// Fire-and-forget click beacon for the scan/FF matched-product links (Phase 2d
+// Task 4): posts {slug, source:"scan"} to the portal's token-authed click
+// endpoint. Never blocks navigation -- no preventDefault, swallow any error.
+const beaconScanClick = (slug)=>{
+  if(!slug) return;
+  try{
+    navigator.sendBeacon(
+      "/api/portal/" + encodeURIComponent(token) + "/recommendation/click",
+      new Blob([JSON.stringify({slug: slug, source: "scan"})], {type: "application/json"}));
+  }catch(e){}
+};
 // Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
 // Only rendered for a confirmed analysis (dosing is server-gated). "" when empty.
 function scheduleHtml(sched){
@@ -446,7 +466,8 @@ function ffMatchesBodyHtml(block){
     : "matched automatically from your scan";
   let rows = items.map(it => {
     const nm = esc(it.name || it.label || it.item_code || "");
-    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const ffSlug = it.slug || slugFromUrl(it.url);
+    const nameHtml = it.url ? `<a href="${esc(it.url)}" class="scan-match-link" data-scan-slug="${esc(ffSlug)}">${nm}</a>` : nm;
     const meaning = it.meaning ? `<div class="muted" style="font-size:.9em">${esc(it.meaning)}</div>` : "";
     const dosing = (block.covered && it.dosing) ? `<div class="dose">${esc(it.dosing)}</div>` : "";
     return `<p style="margin:.5rem 0"><strong>${nameHtml}</strong>${meaning}${dosing}</p>`;
@@ -1633,8 +1654,9 @@ function render(d, v){
       s += sr.infoceuticals.map(i => {
         const name = esc(i.label);
         const days = i.protocol_days ? ` <span class="muted">· ${i.protocol_days}-day protocol</span>` : "";
+        const slug = slugFromUrl(i.order_url);
         return i.order_url
-          ? `<p style="margin:.25rem 0">${name}${days} — <a href="${esc(i.order_url)}">order</a></p>`
+          ? `<p style="margin:.25rem 0">${name}${days} — <a href="${esc(i.order_url)}" class="scan-match-link" data-scan-slug="${esc(slug)}">order</a></p>`
           : `<p style="margin:.25rem 0">${name}${days}</p>`;
       }).join("");
     }
@@ -2179,6 +2201,16 @@ function render(d, v){
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
 
   wireRecommendationsCard();
+
+  // Phase 2d Task 4: scan/FF matched-product links (the "What your scan matched"
+  // card and the "Your formulation matches" card) fire a non-blocking sendBeacon
+  // click (no preventDefault -- navigation proceeds immediately) so a scan-sourced
+  // recommendation click gets recorded. Direct per-element binding, like
+  // wireRecommendationsCard() above: app.innerHTML is rebuilt on every render(), so
+  // every .scan-match-link here is fresh and re-binding cannot double-fire.
+  app.querySelectorAll(".scan-match-link[data-scan-slug]").forEach(a=>{
+    a.addEventListener("click", ()=>{ beaconScanClick(a.getAttribute("data-scan-slug") || ""); });
+  });
 
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));

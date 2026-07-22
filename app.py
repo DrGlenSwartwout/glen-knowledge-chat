@@ -3693,6 +3693,28 @@ def begin_biofield_reveal_top(token):
         return jsonify({"ok": False, "reason": "error"})
 
 
+@app.route("/begin/biofield/<token>/remedy-click", methods=["POST"])
+def begin_biofield_remedy_click(token):
+    """Client clicked a remedy's product link in their reveal — a biofield ACTION.
+    Fire-and-forget from the page (sendBeacon); never blocks navigation."""
+    try:
+        th = _hash_token((token or "").strip())
+        valid, row = _biofield_verify_token(th)
+        if not valid or row is None:
+            return jsonify({"ok": False, "reason": "invalid"})
+        email = (row.get("email") or "").strip().lower()
+        slug = ((request.get_json(silent=True) or {}).get("slug") or "").strip()
+        if email and slug and slug in set(_biofield_visible_slugs(row, email)):
+            from dashboard import recommendation_events as _re
+            with _db_lock, db.connect(LOG_DB) as cx:
+                _re.init_recommendation_events(cx)
+                _re.record_click(cx, email, slug, "biofield")
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[biofield-remedy-click] {e!r}", flush=True)
+        return jsonify({"ok": False, "reason": "error"})
+
+
 @app.route("/begin/biofield/<token>/request", methods=["POST"])
 def begin_biofield_request_review(token):
     """Client asks Dr. Glen to review this scan (Option B). Stamps requested_at so
@@ -3798,6 +3820,14 @@ def begin_biofield_order_checkout(token):
         except CheckoutError as e:
             return jsonify({"ok": False, "error": str(e)}), 400
         out, stripe_url = res["out"], res["stripe_url"]
+        try:
+            from dashboard import recommendation_events as _re
+            with _db_lock, db.connect(LOG_DB) as _cx:
+                _re.init_recommendation_events(_cx)
+                for _it in items:
+                    _re.record_click(_cx, email, _it["slug"], "biofield")
+        except Exception:
+            pass
         _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
         return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
     except Exception as e:
@@ -19777,6 +19807,30 @@ def api_portal_rec_hide(token):
         if not portal:
             return jsonify({"ok": False, "error": "not found"}), 404
         _re.set_hidden(cx, (portal.get("email") or "").strip().lower(), pk, hidden)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/recommendation/click", methods=["POST"])
+def api_portal_rec_click(token):
+    """Client clicked a recommended product's buy link on their portal (e.g. the
+    scan/FF-matched products card). Records one engagement event for the given
+    source (failure-isolated). Token-authed: identity comes ONLY from the portal
+    token; unknown source -> no event recorded."""
+    from dashboard import client_portal as _cp, recommendation_events as _re, recommendation_sources as _rs
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    source = (data.get("source") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if email and slug and _rs.known_source(source):
+            try:
+                _re.record_click(cx, email, slug, source)
+            except Exception:
+                pass
     return jsonify({"ok": True})
 
 
