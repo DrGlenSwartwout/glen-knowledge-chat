@@ -19,7 +19,8 @@ def scan_db(sqlite_path: str) -> List[Dict]:
     to distinguish them, when merged, from scan_against_targets' 'pg-target'
     findings -- see that function's docstring for why the two are both
     needed (this one alone can miss a real hazard)."""
-    cx = sqlite3.connect(sqlite_path)
+    # M5: read-only -- a dedup scan of the source must not be able to mutate it.
+    cx = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
     try:
         findings = []
         for t in introspect.sqlite_tables(cx):
@@ -51,7 +52,8 @@ def scan_against_targets(sqlite_path: str, target_map: Dict[str, List[List[str]]
     Only scans tables the SQLite source actually has (a target-only table has
     no source rows to collide). Findings are tagged source='pg-target'.
     """
-    cx = sqlite3.connect(sqlite_path)
+    # M5: read-only -- a dedup scan of the source must not be able to mutate it.
+    cx = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
     try:
         sqlite_tables = set(introspect.sqlite_tables(cx))
         findings = []

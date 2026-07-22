@@ -63,14 +63,33 @@ def copy_table(sqlite_cx, pg_cx, table: str) -> Dict:
             except Exception as row_exc:
                 try:
                     pg_cx.execute("ROLLBACK TO SAVEPOINT pgmig_row")
+                    # RELEASE the savepoint once we've rolled back to it, same as
+                    # the success path does -- otherwise savepoints of the same
+                    # name (pgmig_row) accumulate, unreleased, across every
+                    # consecutive failing row in this loop.
+                    pg_cx.execute("RELEASE SAVEPOINT pgmig_row")
                 except Exception:
                     # If even the ROLLBACK TO fails, the connection's transaction
                     # is in an unrecoverable state -- bail out of the whole
                     # fallback loop rather than risk silently losing further rows.
+                    # M3: a full pg_cx.rollback() here undoes the WHOLE
+                    # transaction, including every row this loop already
+                    # inserted+released earlier in the SAME pass (none of them
+                    # were committed yet -- copy_all commits once per table,
+                    # after copy_table returns) -- so none of them actually
+                    # persisted. Reset `inserted` to 0 to reflect that reality
+                    # rather than report a stale non-zero count for rows that no
+                    # longer exist in Postgres. `conflicts` may still overcount
+                    # in this corner (rows that were rolled back, not genuine
+                    # ON CONFLICT skips), but `errors` is guaranteed non-empty
+                    # here, so any_errors()/the CLI's exit code still flag the
+                    # table as failed either way. This only triggers on a
+                    # broken/unrecoverable connection.
                     try:
                         pg_cx.rollback()
                     except Exception:
                         pass
+                    inserted = 0
                     errors.append({"row": list(row), "error": str(row_exc)})
                     break
                 errors.append({"row": list(row), "error": str(row_exc)})
@@ -101,7 +120,11 @@ def copy_all(sqlite_path: str, *, truncate: bool = False) -> List[Dict]:
             "information_schema introspection or DDL against a SQLite handle); "
             "got DB_BACKEND=%r" % db.backend())
     schema = schema_for_path(sqlite_path)
-    sqlite_cx = sqlite3.connect(sqlite_path)
+    # Money-grade run against a frozen snapshot: open the SOURCE truly
+    # read-only so this tool cannot mutate it (or its WAL) even by accident.
+    # The Postgres target (db.connect below) is unaffected -- it's written on
+    # purpose.
+    sqlite_cx = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
     try:
         sqlite_tables = set(introspect.sqlite_tables(sqlite_cx))
         pg_cx = db.connect(sqlite_path)

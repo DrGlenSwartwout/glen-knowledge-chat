@@ -14,7 +14,9 @@ from scripts.pgmig import introspect
 
 def parity(sqlite_path: str) -> List[Dict]:
     schema = schema_for_path(sqlite_path)
-    sqlite_cx = sqlite3.connect(sqlite_path)
+    # M5: open the SOURCE truly read-only -- a verify run must not be able to
+    # mutate the frozen snapshot (or its WAL) it's comparing against.
+    sqlite_cx = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
     try:
         sqlite_tables = set(introspect.sqlite_tables(sqlite_cx))
         pg_cx = db.connect(sqlite_path)

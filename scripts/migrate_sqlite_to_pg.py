@@ -35,6 +35,13 @@ Exit codes:
         that needs Postgres)
     3   preflight found collisions (and, for `full`, --force wasn't given)
     4   verify found a row-count mismatch
+    5   preflight INCOMPLETE: PG is configured (DB_BACKEND=postgres + PG_DSN)
+        but the PG-target unique-index cross-check itself failed to run
+        (e.g. introspection query error) -- this is NOT the same as the
+        legitimate sqlite-only skip (which stays exit 0); a configured
+        cross-check that couldn't run must never look like a clean
+        preflight, since it's the exact check the P06 cutover gate relies
+        on. `full` aborts on this (like a dirty preflight) unless --force.
 """
 import argparse
 import sys
@@ -51,6 +58,19 @@ EXIT_COPY_ERRORS = 1
 EXIT_ENV = 2
 EXIT_PREFLIGHT_DIRTY = 3
 EXIT_VERIFY_MISMATCH = 4
+EXIT_PREFLIGHT_INCOMPLETE = 5
+
+
+class PgTargetCrossCheckError(Exception):
+    """Raised by `_pg_target_map` when PG IS configured (DB_BACKEND=postgres
+    + PG_DSN) but the target-schema unique-index introspection itself fails.
+
+    This must propagate rather than degrade to {} like the "PG not
+    configured" case does -- the operator asked for the cross-check by
+    configuring PG, so a failure here is not a legitimate skip. Swallowing
+    it would let preflight/full report a clean/OK result while the exact
+    check the P06 cutover gate relies on silently never ran (false
+    assurance)."""
 
 
 def _pg_configured() -> bool:
@@ -102,9 +122,13 @@ def _merge_findings(sqlite_findings: List[Dict], pg_findings: List[Dict]) -> Lis
 
 def _pg_target_map(sqlite_path: str, out: TextIO) -> Dict[str, List[List[str]]]:
     """The Postgres target schema's own unique-index column sets, or {} (with
-    a printed note) if PG isn't configured or the introspection query fails
-    for any reason -- a broken cross-check must not crash `preflight`, which
-    is meant to be the SAFE, read-only-on-sqlite first step of a migration."""
+    a printed note) if PG isn't configured at all -- that is the ONE
+    legitimate quiet degradation (preflight itself never requires Postgres).
+
+    Raises PgTargetCrossCheckError if PG IS configured but the introspection
+    query fails for any reason -- see that class's docstring for why this
+    must NOT be swallowed into a silent {} the way the "not configured" case
+    is."""
     if not _pg_configured():
         print("(PG-target cross-check skipped: DB_BACKEND=postgres / PG_DSN not configured)",
               file=out)
@@ -118,15 +142,23 @@ def _pg_target_map(sqlite_path: str, out: TextIO) -> Dict[str, List[List[str]]]:
         finally:
             pg_cx.close()
     except Exception as exc:
-        print(f"WARNING: PG-target cross-check skipped ({exc})", file=out)
-        return {}
+        raise PgTargetCrossCheckError(str(exc)) from exc
 
 
 def _run_preflight(sqlite_path: str, out: TextIO) -> Tuple[List[Dict], int]:
     """Runs both the sqlite-source scan and (if configured) the pg-target
-    cross-check, prints a combined report, and returns (findings, exit_code)."""
+    cross-check, prints a combined report, and returns (findings, exit_code).
+
+    If PG is configured but the cross-check itself fails to run, this is
+    reported as an INCOMPLETE preflight (exit 5), distinct from both a clean
+    preflight (0) and a dirty one (3) -- it must never look like either."""
+    try:
+        target_map = _pg_target_map(sqlite_path, out)
+    except PgTargetCrossCheckError as exc:
+        print(f"PREFLIGHT INCOMPLETE (target cross-check could not run: {exc})", file=out)
+        return [], EXIT_PREFLIGHT_INCOMPLETE
+
     sqlite_findings = dedup.scan_db(sqlite_path)
-    target_map = _pg_target_map(sqlite_path, out)
     pg_findings = dedup.scan_against_targets(sqlite_path, target_map) if target_map else []
     findings = _merge_findings(sqlite_findings, pg_findings)
 
@@ -170,7 +202,8 @@ def _print_verify_summary(results: List[Dict], out: TextIO) -> bool:
         print(f"  - {r['table']}: sqlite={r['sqlite']} postgres={r['postgres']}  [{mark}]",
               file=out)
     ok = verify_mod.all_ok(results)
-    print("PARITY OK" if ok else "PARITY FAILED: mismatches above.", file=out)
+    print("ROW-COUNT PARITY OK (counts only -- content not compared)" if ok
+          else "PARITY FAILED: mismatches above.", file=out)
     return ok
 
 
@@ -201,13 +234,18 @@ def cmd_full(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     if not _require_pg_env(out):
         return EXIT_ENV
 
-    findings, preflight_code = _run_preflight(args.sqlite_path, out)
-    if findings:
+    _findings, preflight_code = _run_preflight(args.sqlite_path, out)
+    if preflight_code != EXIT_OK:
         if not args.force:
-            print("ABORTING: preflight found collisions above; re-run with --force "
-                  "to proceed anyway (only after resolving/accepting them).", file=out)
+            if preflight_code == EXIT_PREFLIGHT_INCOMPLETE:
+                print("ABORTING: preflight is INCOMPLETE (the PG-target cross-check "
+                      "could not run) above; re-run with --force to proceed anyway "
+                      "(only after understanding why the cross-check failed).", file=out)
+            else:
+                print("ABORTING: preflight found collisions above; re-run with --force "
+                      "to proceed anyway (only after resolving/accepting them).", file=out)
             return preflight_code
-        print("--force set: proceeding past a dirty preflight.", file=out)
+        print("--force set: proceeding past a dirty/incomplete preflight.", file=out)
 
     results = copy_mod.copy_all(args.sqlite_path, truncate=args.truncate)
     if _print_copy_summary(results, out):

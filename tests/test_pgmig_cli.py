@@ -77,10 +77,51 @@ def test_pg_commands_require_pg_env(monkeypatch, tmp_path, capsys, command):
     assert "DB_BACKEND" in out or "PG_DSN" in out
 
 
+def test_preflight_incomplete_when_pg_target_crosscheck_raises(monkeypatch, tmp_path, capsys):
+    """I1: PG IS configured (DB_BACKEND=postgres + PG_DSN) but the PG-target
+    unique-index introspection itself fails -- preflight must NOT silently
+    degrade to a sqlite-only scan and report PREFLIGHT CLEAN/exit 0 (that is
+    false assurance on the exact cross-check the P06 cutover gate relies
+    on). It must report PREFLIGHT INCOMPLETE and exit a distinct nonzero
+    code (5), different from both a clean run (0) and a dirty one (3).
+
+    Needs NO live Postgres: DB_BACKEND/PG_DSN are set only to satisfy
+    `_pg_configured()`; `db_mod.connect` is stubbed so no real connection is
+    attempted, and `introspect.pg_unique_indexes` is monkeypatched to raise,
+    simulating the introspection query itself failing against an
+    otherwise-configured target. Runs unconditionally (no pg skip-guard).
+    """
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    monkeypatch.setenv("PG_DSN", "postgresql://fake-unused-in-this-test/db")
+
+    class _FakeCx:
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli.db_mod, "connect", lambda *_a, **_k: _FakeCx())
+
+    def _raise(*_a, **_k):
+        raise RuntimeError("simulated introspection failure")
+
+    monkeypatch.setattr(cli.introspect, "pg_unique_indexes", _raise)
+
+    src = str(tmp_path / "pgmig_cli_incomplete.db")
+    _mk_clean_source(src)  # a legitimately clean sqlite source
+
+    code = cli.main(["preflight", src])
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_PREFLIGHT_INCOMPLETE
+    assert code != 0
+    assert "INCOMPLETE" in out
+    assert "simulated introspection failure" in out
+    assert "PREFLIGHT CLEAN" not in out
+
+
 @pytest.mark.skipif(not pg, reason="PG_DSN not set")
 def test_full_command_synthetic_source_exit_0(monkeypatch, tmp_path, capsys):
     """The CLI smoke test: `full` against an isolated synthetic source (its
-    own PG schema via a distinct basename) exits 0 and prints PARITY OK."""
+    own PG schema via a distinct basename) exits 0 and prints the row-count
+    parity-ok message."""
     monkeypatch.setenv("DB_BACKEND", "postgres")
     src = str(tmp_path / "pgmig_cli_full.db")
     cx = sqlite3.connect(src)
@@ -97,7 +138,7 @@ def test_full_command_synthetic_source_exit_0(monkeypatch, tmp_path, capsys):
     code = cli.main(["full", src])
     out = capsys.readouterr().out
     assert code == 0
-    assert "PARITY OK" in out
+    assert "ROW-COUNT PARITY OK (counts only -- content not compared)" in out
 
 
 @pytest.mark.skipif(not pg, reason="PG_DSN not set")

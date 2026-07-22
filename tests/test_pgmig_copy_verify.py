@@ -223,10 +223,13 @@ def by_table_inserted(results, table):
     return next(r["inserted"] for r in results if r["table"] == table)
 
 
-@pytest.mark.skipif(not pg, reason="PG_DSN not set")
 def test_copy_all_asserts_postgres_backend(monkeypatch, tmp_path):
     """M4: copy_all must refuse to run against a non-Postgres backend rather
-    than silently issuing information_schema queries against a SQLite handle."""
+    than silently issuing information_schema queries against a SQLite handle.
+
+    Unguarded (no PG skip-mark): the `db.backend() != "postgres"` assert this
+    tests fires BEFORE any PG connection is attempted, so it must run (and
+    pass) in the SQLite-only harness too."""
     monkeypatch.delenv("DB_BACKEND", raising=False)
     src = str(tmp_path / "pgmig_backend_guard.db")
     sqlite3.connect(src).close()
