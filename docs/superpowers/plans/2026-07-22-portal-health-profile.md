@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
-**Goal:** Add "My Health Profile" to the client portal: a client-editable view of their intake record that writes back to the **same** `intake_responses` table the admin console reads, plus a persisted AI-suggestions queue fed by their Ask-Dr-Glen chat (confirm / edit / dismiss). Ships dark behind `PORTAL_HEALTH_PROFILE_ENABLED`.
+**Goal:** Add "My Health Profile" to the client portal: a client-editable view of their whole self-reported intake record — including the clinical-dimension scales, which evolve as they heal — that writes back to the **same** `intake_responses` table the admin console reads. Plus a persisted suggestions queue fed by BOTH the Ask-Dr-Glen chat and clinician observations (confirm / edit / dismiss). The client owns the record; the AI and the practitioner only propose. Ships dark behind `PORTAL_HEALTH_PROFILE_ENABLED`.
 
 **Architecture:** Reuse the existing intake store and portal write-back conventions. `intake_responses` (in `chat_log.db` = `LOG_DB`, keyed by email, answers as `answers_json`) is the single source of truth; `INTAKE_FORM` (`dashboard/intake.py`) defines the fields. A new `health_suggestions` table holds pending chat-extracted edits. The portal panel renders a curated, editable subset of the record + the suggestions queue; edits and confirmed suggestions both flow through one self-edit write path into `intake_responses`. Console read (`/api/console/intake/<email>`) reflects everything automatically.
 
@@ -14,8 +14,8 @@
 - **One source of truth:** all writes land in `intake_responses` (email-keyed). No second health store.
 - **Identity from the token, never the request body** — resolve via `_portal_record_for(cx, token)` (`app.py:19166`), like every `/api/portal/<token>/*` endpoint.
 - **Never clobber a submitted intake:** a self-edit updates `answers_json` but must preserve `status='submitted'` and stamp an edit time; do not reset to draft or wipe unedited answers.
-- **Curated editable scope (NOT the whole intake form):** only the client-owned health fields are editable here — top health goals/concerns and the personal-health-history section (sleep, dental, vaccinations, and the `supplements`/`diagnoses`/`medications`/`surgeries`/`allergies` tables). The 5 clinical-dimension scales (`terrain`, `penetration`, `tissue_layer`, `response`, `commitment`), personal-info identity fields, and consent/signature are **read-only or excluded** — they are clinician-assessed or legal.
-- **Suggestions are pending until confirmed** — nothing a chat extractor proposes writes to `intake_responses` until the client confirms/edits.
+- **Editable scope = the client's whole self-reported health record, INCLUDING the 5 clinical-dimension scales.** The dimensions (`terrain`, `penetration`, `tissue_layer`, `response`, `commitment`) are self-reported at intake and **change over time with healing**, so the client edits them here too — alongside health goals/concerns and personal health history (sleep, dental, vaccinations, and the `supplements`/`diagnoses`/`medications`/`surgeries`/`allergies` tables). Only consent/signature (`terms`) and pure personal-info identity fields are excluded (legal / not health self-report).
+- **Suggestions have TWO sources — chat extraction AND clinician observation — and are pending until the client approves.** Nothing (AI-extracted or clinician-proposed) writes to `intake_responses` until the client confirms/edits. The client owns the record; the AI and the practitioner only propose.
 - Copy: no em dashes, no ALL CAPS. Theme-aware CSS vars only. Render-verify (not just parse) before flag flip.
 
 ---
@@ -38,11 +38,11 @@
 # tests/test_health_profile_block.py
 from dashboard import health_profile
 
-def test_editable_ids_exclude_clinical_and_consent():
+def test_editable_ids_include_dimensions_exclude_consent():
     ids = health_profile.EDITABLE_FIELD_IDS
-    for excluded in ("terrain","penetration","tissue_layer","response","commitment","terms"):
-        assert excluded not in ids
-    assert "health_concerns" in ids   # a curated health field IS editable
+    for included in ("terrain","penetration","tissue_layer","response","commitment","health_concerns"):
+        assert included in ids        # dimensions are self-reported and change with healing -> editable
+    assert "terms" not in ids         # consent/signature excluded
 
 def test_build_block_off_when_disabled():
     assert health_profile.build_block(None, "a@b.com", False) == {"enabled": False}
@@ -50,7 +50,7 @@ def test_build_block_off_when_disabled():
 
 - [ ] **Step 2: Run test to verify it fails** — `python3 -m pytest tests/test_health_profile_block.py -v` → FAIL (module missing).
 
-- [ ] **Step 3: Implement `dashboard/health_profile.py`.** Derive `EDITABLE_FIELD_IDS` from `INTAKE_FORM` (import it; include the health-goals + personal-health-history section field ids; exclude the 5 dimension scales, personal-info identity fields, and `terms`). `build_block` reads `intake.get_response(cx, email)`, projects the curated fields with their labels/types from `INTAKE_FORM`, and counts pending rows via `health_suggestions.count_pending(cx, email)` (guard with try/except so Task 5's table absence degrades to 0).
+- [ ] **Step 3: Implement `dashboard/health_profile.py`.** Derive `EDITABLE_FIELD_IDS` from `INTAKE_FORM` (import it; include the health-goals, the 5 clinical-dimension scales, and the personal-health-history section field ids; exclude ONLY `terms` (consent) and pure personal-info identity fields such as name/email). `build_block` reads `intake.get_response(cx, email)`, projects the curated fields with their labels/types from `INTAKE_FORM`, and counts pending rows via `health_suggestions.count_pending(cx, email)` (guard with try/except so Task 5's table absence degrades to 0).
 
 - [ ] **Step 4: Thread the flag + block.** In `app.py` add `_PORTAL_HEALTH_PROFILE_ENABLED` (same parse as `_PORTAL_HUB_ENABLED`) and pass `health_profile_enabled=...` into `get_portal_view`. In `dashboard/portal_view.py` add the param and `"health_profile": _hp.build_block(cx, email, health_profile_enabled)` in the view dict.
 
@@ -99,10 +99,12 @@ def test_self_edit_preserves_submitted_status():
     assert row["status"] == "submitted"                        # not reset to draft
     assert row["answers"]["sleep"] == "improving"             # value updated
 
-def test_self_edit_rejects_noneditable_field():
+def test_self_edit_accepts_dimension_rejects_consent():
     cx = _cx(); intake.submit(cx, "a@b.com", {"sleep": "poor"})
-    intake.save_self_edit(cx, "a@b.com", {"terrain": 5})       # clinical scale, excluded
-    assert "terrain" not in intake.get_response(cx, "a@b.com")["answers"]
+    intake.save_self_edit(cx, "a@b.com", {"terrain": 5, "terms": {"agreed": True}})
+    ans = intake.get_response(cx, "a@b.com")["answers"]
+    assert ans["terrain"] == 5      # dimension IS client-editable (self-reported, evolves with healing)
+    assert "terms" not in ans       # consent stays excluded
 ```
 (Adjust `submit`/`get_response` calls to the real signatures in `dashboard/intake.py`.)
 
@@ -129,15 +131,15 @@ def test_self_edit_rejects_noneditable_field():
 
 **Interfaces:**
 - Produces `dashboard/health_suggestions.py`:
-  - `init_table(cx)` → `health_suggestions(id INTEGER PK, email TEXT, source_msg_id INTEGER, field_id TEXT, suggested_value TEXT, rationale TEXT, status TEXT DEFAULT 'pending', created_at TEXT, resolved_at TEXT)`, index `(email, status)`.
-  - `add_pending(cx, email, field_id, value, rationale, source_msg_id)` — INSERT; dedupe on `(email, field_id, suggested_value, status='pending')` (UNIQUE + INSERT OR IGNORE) so re-mentions don't stack.
+  - `init_table(cx)` → `health_suggestions(id INTEGER PK, email TEXT, source TEXT, source_msg_id INTEGER, field_id TEXT, suggested_value TEXT, rationale TEXT, status TEXT DEFAULT 'pending', created_at TEXT, resolved_at TEXT)`, index `(email, status)`. `source` is `'chat'` or `'clinician'` (drives the UI framing; `source_msg_id` is null for clinician-entered).
+  - `add_pending(cx, email, field_id, value, rationale, source, source_msg_id=None)` — INSERT; dedupe on `(email, field_id, suggested_value, status='pending')` (UNIQUE + INSERT OR IGNORE) so re-mentions don't stack.
   - `list_pending(cx, email) -> list[dict]`; `count_pending(cx, email) -> int`; `resolve(cx, sug_id, email, status)` (`confirmed|edited|dismissed`, stamps `resolved_at`).
   - `extract_from_turn(client_msg, assistant_msg) -> list[{field_id,value,rationale}]` — parse a chat turn into candidate **editable** health facts, constrained to `health_profile.EDITABLE_FIELD_IDS` (model on the existing `_CONCIERGE_EXTRACT_SYSTEM` prompt at `app.py:11162`, but targeting health-record fields, not products).
 
 - [ ] **Step 1: Failing test** — `init_table` then `add_pending` twice with identical `(email,field_id,value)` → `count_pending == 1` (dedupe); `resolve(...,'dismissed')` → `count_pending == 0`.
 - [ ] **Step 2: Run → FAIL.**
 - [ ] **Step 3: Implement `dashboard/health_suggestions.py`** (table + CRUD + dedupe). Leave `extract_from_turn` returning `[]` unless a model call is wired; keep it pure/testable (accept an injected extractor for the unit test).
-- [ ] **Step 4: Hook extraction into the portal-chat tail** at `app.py:~21837` (beside `portal_chat.record_exchange`): flag-gated, call `extract_from_turn` on the exchange and `add_pending` each result keyed by the client email. Must never break the chat stream (wrap in try/except, mirror the existing suggestion SSE guard).
+- [ ] **Step 4: Hook extraction into the portal-chat tail** at `app.py:~21837` (beside `portal_chat.record_exchange`): flag-gated, call `extract_from_turn` on the exchange and `add_pending(..., source='chat', source_msg_id=<stored msg id>)` each result keyed by the client email. Must never break the chat stream (wrap in try/except, mirror the existing suggestion SSE guard).
 - [ ] **Step 5: Run tests → PASS.**
 - [ ] **Step 6: Commit** — `feat: health_suggestions table + chat extraction of pending record edits`
 
@@ -157,11 +159,27 @@ def test_self_edit_rejects_noneditable_field():
 
 ---
 
+### Task 6B: Console clinician-observation → pending suggestion
+
+Lets the practitioner propose a record change from the console; it lands as a `source='clinician'` pending suggestion the client approves — the same approve-mechanism as chat, never a direct write to the client's record.
+
+**Files:** Modify `app.py` (new `POST /api/console/client/<email>/health-suggestion`, console-auth gated); Test `tests/test_clinician_suggestion.py`.
+
+**Interfaces:** `POST /api/console/client/<email>/health-suggestion` body `{field_id, value, rationale}` → validates `field_id in EDITABLE_FIELD_IDS`, `health_suggestions.add_pending(cx, email, field_id, value, rationale, source='clinician')`. Console-authenticated (reuse the existing console auth gate used by other `/api/console/*` routes), NOT token-gated.
+
+- [ ] **Step 1: Failing test** — POST a clinician suggestion for an email → it appears in `list_pending(email)` with `source=='clinician'` and `status=='pending'`, and `intake_responses` is UNCHANGED (pending, not written).
+- [ ] **Step 2: Run → FAIL.**
+- [ ] **Step 3: Implement the endpoint** (console auth, validate field id, `add_pending` under `_db_lock`).
+- [ ] **Step 4: Run tests → PASS.**
+- [ ] **Step 5: Commit** — `feat: console clinician-observation creates a pending client-approved suggestion`
+
+---
+
 ### Task 7: Suggestions queue UI in the panel
 
 **Files:** Modify `static/client-portal.html` (populate `#healthSuggestions` from the Task 6 GET; render each pending item with Confirm / Edit / Dismiss; on action, POST and update the record + count).
 
-- [ ] **Step 1** — On opening the health panel (or at render when `suggestion_count>0`), fetch `GET /api/portal/<token>/health-suggestions` and render each as: "We heard this in your conversations: {rationale} → add to {field label}?" with Confirm / Edit / Dismiss. Confirm/Edit/Dismiss POST to `.../<sid>/resolve`; on success remove the item, update the tile badge, and refresh the affected field in the record.
+- [ ] **Step 1** — On opening the health panel (or at render when `suggestion_count>0`), fetch `GET /api/portal/<token>/health-suggestions` and render each with **source-aware framing**: `source=='chat'` → "We heard this in your conversations: {rationale} → update {field label}?"; `source=='clinician'` → "Your practitioner suggests: {rationale} → update {field label}?". Each with Confirm / Edit / Dismiss. Actions POST to `.../<sid>/resolve`; on success remove the item, update the tile badge, and refresh the affected field in the record.
 - [ ] **Step 2** — Server-free Node parse + a logic check of the render/handlers. Commit — `feat: My Health Profile AI-suggestions confirm/edit/dismiss queue`
 
 ---
@@ -176,5 +194,6 @@ def test_self_edit_rejects_noneditable_field():
 - **Placeholder scan:** `extract_from_turn` ships testable with an injectable extractor; the live model wiring is explicit in Task 5 Step 4, not a TODO.
 - **Type consistency:** `EDITABLE_FIELD_IDS`, `build_block`, `save_self_edit`, `add_pending/list_pending/count_pending/resolve/extract_from_turn` names are consistent across tasks; `health_profile` payload key and `data-panel="health"` match between server and client.
 
-## Open decision for review
-- **Curated editable scope** (Global Constraints) — confirm the client should edit health goals + personal-health-history but NOT the 5 clinical-dimension scales (my recommendation: yes, those are clinician-assessed). If you want clients to also self-report the dimension scales, that widens `EDITABLE_FIELD_IDS`.
+## Design decisions (settled)
+- **Editable scope includes the 5 clinical dimensions** — they are self-reported at intake and evolve as the client heals, so the client edits them here. Only consent/signature and pure identity fields are excluded.
+- **Suggestions come from both the chat AND the clinician** (Task 6B), and both are pending until the client approves. The client owns the record; AI and practitioner propose.
