@@ -2,9 +2,9 @@
 
 Gathers live system stats from the existing dashboard modules, asks Claude to
 compose each of the five briefings (daily-briefing, eyes-on-every-street,
-founders-radar, revenue-x-ray, pattern-which-connects), and writes each
-markdown payload to /data/intelligence/<slug>.md so the dashboard cards serve
-fresh content.
+founders-radar, revenue-x-ray, pattern-which-connects), and persists each
+briefing to the intelligence_briefings DB table (via dashboard.intelligence)
+so the dashboard cards serve fresh content.
 
 Triggered by POST /cron/regenerate-briefings (which is curled by the Render
 cron container). Lives in the web container so it has access to the persistent
@@ -197,7 +197,8 @@ def _generate_one(client, slug, snapshot):
 
 
 def regenerate_all():
-    """Generate all 5 briefings in parallel and write each to disk. Returns a
+    """Generate all 5 briefings in parallel and persist each to the
+    intelligence_briefings DB table (via dashboard.intelligence). Returns a
     summary dict the cron handler echoes back."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY not set")
