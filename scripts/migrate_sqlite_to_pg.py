@@ -213,6 +213,27 @@ def _print_verify_summary(results: List[Dict], out: TextIO) -> bool:
     return ok
 
 
+def _print_checksum_summary(results: List[Dict], out: TextIO) -> bool:
+    """Prints the P06 content-checksum table; returns True if all-ok.
+
+    A content-checksum digest is an order-independent, cross-backend-identical
+    hash of each table's row content (see scripts.pgmig.verify.checksum_table)
+    -- it catches corruption (truncation, type coercion) that preserves row
+    COUNT and so is invisible to `_print_verify_summary` above."""
+    print("CONTENT CHECKSUM:", file=out)
+    for r in results:
+        mark = "OK" if r["ok"] else "MISMATCH"
+        line = (f"  - {r['table']}: sqlite={r.get('sqlite_digest')} "
+                f"postgres={r.get('pg_digest')}  [{mark}]")
+        if not r["ok"] and r.get("reason"):
+            line += f"  ({r['reason']})"
+        print(line, file=out)
+    ok = verify_mod.checksum_all_ok(results)
+    print("CONTENT CHECKSUM PARITY OK" if ok
+          else "CONTENT CHECKSUM PARITY FAILED: mismatches above.", file=out)
+    return ok
+
+
 def cmd_preflight(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     out = out or sys.stdout
     _findings, code = _run_preflight(args.sqlite_path, out)
@@ -232,7 +253,11 @@ def cmd_verify(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     if not _require_pg_env(out):
         return EXIT_ENV
     results = verify_mod.parity(args.sqlite_path)
-    return EXIT_OK if _print_verify_summary(results, out) else EXIT_VERIFY_MISMATCH
+    ok = _print_verify_summary(results, out)
+    if getattr(args, "checksum", False):
+        cksum_results = verify_mod.checksum_parity(args.sqlite_path)
+        ok = _print_checksum_summary(cksum_results, out) and ok
+    return EXIT_OK if ok else EXIT_VERIFY_MISMATCH
 
 
 def cmd_full(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
@@ -262,6 +287,11 @@ def cmd_full(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     if not _print_verify_summary(ver, out):
         return EXIT_VERIFY_MISMATCH
 
+    if getattr(args, "checksum", False):
+        cksum_results = verify_mod.checksum_parity(args.sqlite_path)
+        if not _print_checksum_summary(cksum_results, out):
+            return EXIT_VERIFY_MISMATCH
+
     print("FULL MIGRATION OK.", file=out)
     return EXIT_OK
 
@@ -287,6 +317,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     vf = sub.add_parser("verify", help="Row-count parity check: sqlite source vs Postgres target.")
     vf.add_argument("sqlite_path")
+    vf.add_argument("--checksum", action="store_true",
+                     help="Also run a content-checksum parity check (per-row content digest, "
+                          "not just row counts) -- catches corruption same-count row-count "
+                          "parity can't see. Failing digest -> exit 4, same as a count mismatch.")
     vf.set_defaults(func=cmd_verify)
 
     fl = sub.add_parser("full", help="preflight -> copy -> verify, in one run.")
@@ -295,6 +329,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Proceed past a dirty preflight instead of aborting.")
     fl.add_argument("--truncate", action="store_true",
                      help="TRUNCATE every target table (child-to-parent) before copying.")
+    fl.add_argument("--checksum", action="store_true",
+                     help="Also run a content-checksum parity check after row-count verify -- "
+                          "catches corruption same-count row-count parity can't see. Failing "
+                          "digest -> exit 4, same as a count mismatch.")
     fl.set_defaults(func=cmd_full)
 
     return p
