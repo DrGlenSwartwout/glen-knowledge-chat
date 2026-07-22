@@ -400,6 +400,51 @@
   .hub-tile:hover,.hub-tile:focus-visible { border-color:#2f6f5e; box-shadow:0 6px 18px rgba(24,36,32,.08); outline:none; }
   .hub-tile .tname { font-weight:650; font-size:.95rem; }
   .hub-tile .tdesc { font-size:.78rem; color:var(--muted); }
+  /* Task 2: My Health Profile read-only panel. */
+  .health-section h2 { margin-top:0; }
+  .health-field { padding:.6rem 0; border-top:1px solid var(--line); }
+  .health-field:first-of-type { border-top:none; padding-top:0; }
+  .health-field-head { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+  .health-label { font-weight:650; font-size:.9rem; }
+  .health-edit-btn { font-size:.78rem; background:none; border:1px solid var(--line); border-radius:8px;
+    padding:2px 10px; color:var(--muted); cursor:pointer; font-family:inherit; }
+  .health-edit-btn:hover,.health-edit-btn:focus-visible { border-color:var(--brand); color:var(--ink); outline:none; }
+  .health-value { margin:.3rem 0 0; }
+  .health-table-list { margin:.3rem 0 0; padding-left:1.1rem; }
+  .health-table-list li { font-size:.9rem; margin:.2rem 0; }
+  /* Task 4: inline edit form that replaces .health-field-body while editing. */
+  .health-edit-row { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin-top:.3rem; }
+  .health-edit-input { flex:1 1 12rem; min-width:8rem; font:inherit; font-size:.9rem; padding:.35rem .5rem;
+    border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  textarea.health-edit-input { flex-basis:100%; resize:vertical; }
+  .health-edit-actions { display:flex; gap:.4rem; }
+  .health-save-btn,.health-cancel-btn { font-size:.78rem; border-radius:8px; padding:2px 10px; cursor:pointer;
+    font-family:inherit; background:none; border:1px solid var(--line); color:var(--muted); }
+  .health-save-btn { border-color:var(--brand); color:var(--brand); }
+  .health-save-btn:hover,.health-save-btn:focus-visible,
+  .health-cancel-btn:hover,.health-cancel-btn:focus-visible { border-color:var(--brand); color:var(--ink); outline:none; }
+  .health-save-btn:disabled { opacity:.6; cursor:default; }
+  .health-edit-msg { flex-basis:100%; }
+  /* Task 7: suggestions queue (chat-heard / clinician-proposed pending edits). */
+  .health-suggestions-card h2 { margin-top:0; }
+  .health-suggestion { padding:.6rem 0; border-top:1px solid var(--line); }
+  .health-suggestion:first-of-type { border-top:none; padding-top:0; }
+  .health-suggestion-text { margin:0 0 .3rem; font-size:.9rem; }
+  .health-suggestion-value { margin:0 0 .4rem; font-size:.88rem; color:var(--muted); }
+  .health-suggestion-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; }
+  .health-sugg-confirm,.health-sugg-edit,.health-sugg-dismiss,
+  .health-sugg-save-btn,.health-sugg-cancel-btn { font-size:.78rem; border-radius:8px; padding:2px 10px;
+    cursor:pointer; font-family:inherit; background:none; border:1px solid var(--line); color:var(--muted); }
+  .health-sugg-confirm,.health-sugg-save-btn { border-color:var(--brand); color:var(--brand); }
+  .health-sugg-confirm:hover,.health-sugg-confirm:focus-visible,
+  .health-sugg-edit:hover,.health-sugg-edit:focus-visible,
+  .health-sugg-dismiss:hover,.health-sugg-dismiss:focus-visible,
+  .health-sugg-save-btn:hover,.health-sugg-save-btn:focus-visible,
+  .health-sugg-cancel-btn:hover,.health-sugg-cancel-btn:focus-visible { border-color:var(--brand); color:var(--ink); outline:none; }
+  .health-sugg-confirm:disabled,.health-sugg-dismiss:disabled,.health-sugg-save-btn:disabled { opacity:.6; cursor:default; }
+  .health-sugg-edit-input { flex:1 1 12rem; min-width:8rem; font:inherit; font-size:.9rem; padding:.35rem .5rem;
+    border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  .health-suggestion-msg { flex-basis:100%; margin:.3rem 0 0; }
 </style>
 </head>
 <body>
@@ -433,6 +478,12 @@ const seg = location.pathname.split("/").filter(Boolean).pop();
 const isMe = (seg === "me");
 const token = seg; // reused by reorder()/checkout; "me" resolves via the session
 let _recoPayload = null; // My Recommendations (2b-ii) payload, set in load() before render(); keeps render(d,v) signature
+// Task 7: the current health_profile block (dashboard/health_profile.py shape),
+// cached so the suggestions-queue fetch/resolve handlers -- which run outside
+// render(d,v)'s scope, triggered by showTab() or a click -- can still look up a
+// field's label and refresh the record display. Set in buildHealthProfileHtml()
+// (render time) and re-set from each resolve response (server's fresh block).
+let _healthProfileBlock = null;
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
@@ -667,6 +718,11 @@ function showTab(name){
   document.querySelectorAll('[data-panel]').forEach(p =>
     p.hidden = (p.dataset.panel !== name));
   try{ sessionStorage.setItem('rm_portal_tab', name); }catch(e){}
+  // Task 7: fetch the suggestions queue every time the health panel becomes
+  // active (fresh each visit -- a clinician or chat turn may have added one
+  // since it was last open). loadHealthSuggestions() itself no-ops if
+  // #healthSuggestions isn't in the DOM (panel disabled/absent).
+  if (name === 'health') loadHealthSuggestions();
 }
 // A small control placed at the top of every non-hub panel so the client can
 // return to the hub landing. Uses the hardened showTab (falls back safely).
@@ -676,10 +732,18 @@ function backToHub(){
 // Journey-grouped hub landing. Each tile routes via the existing showTab() to a
 // [data-panel] section. Groups encode the healing journey. Later phases add tiles.
 function buildHubHtml(d, v){
+  // Task 2: the health tile is only meaningful (and only rendered) once the
+  // curated health_profile block is enabled — off-state must add nothing.
+  const understandTiles = [
+    ["current", "My Analysis", "Your current scan, matches and healing path"],
+  ];
+  if (v && v.health_profile && v.health_profile.enabled) {
+    const pending = v.health_profile.suggestion_count;
+    understandTiles.push(["health", "My Health Profile", "Your history, symptoms and intake",
+      (pending > 0) ? pending : undefined]);
+  }
   const groups = [
-    ["Understand", [
-      ["current", "My Analysis", "Your current scan, matches and healing path"],
-    ]],
+    ["Understand", understandTiles],
     ["Act", [
       ["finder", "Find a Practitioner", "Certified practitioners near you"],
       ["refer",  "Refer a Friend", "Share healing and earn as an Ambassador"],
@@ -695,9 +759,13 @@ function buildHubHtml(d, v){
       ["referrals","Referrals", "Who you've referred and your rewards"],
     ]],
   ];
-  const tile = ([panel,name,desc]) =>
-    `<button type="button" class="hub-tile" onclick="showTab('${panel}')">
-       <span class="tname">${esc(name)}</span><span class="tdesc">${esc(desc)}</span></button>`;
+  // 4th tuple slot (badge) is optional so every pre-existing 3-element tile
+  // renders exactly as before; reuses the existing .pill style, no new CSS.
+  // data-tile carries the panel name so Task 7's suggestion-resolve handler can
+  // find and live-update this tile's badge count without a full re-render.
+  const tile = ([panel,name,desc,badge]) =>
+    `<button type="button" class="hub-tile" data-tile="${esc(panel)}" onclick="showTab('${panel}')">
+       <span class="tname">${esc(name)}${badge?` <span class="pill">${esc(badge)}</span>`:""}</span><span class="tdesc">${esc(desc)}</span></button>`;
   const grp = ([label,tiles]) =>
     `<div class="hub-grid-group"><p class="glabel">${esc(label)}</p>
        <div class="hub-tiles">${tiles.map(tile).join("")}</div></div>`;
@@ -710,6 +778,56 @@ function buildHubHtml(d, v){
       <h2>${esc(d.hub_headline || "Your healing home")}</h2></div>${next}
       <button type="button" class="hub-account" onclick="showTab('account')">Account</button></div>
     ${groups.map(grp).join("")}</div>`;
+}
+// My Health Profile panel body. Renders v.health_profile.sections (curated
+// goals/dimensions/history from dashboard/health_profile.py) as label/value
+// rows. Scalars print esc(value) or an empty-state note; a "table" field's
+// value is a list of row-dicts (e.g. health_concerns, supplements) rendered
+// as a compact per-row list of "key: value" pairs — the payload doesn't carry
+// column labels, so raw field keys are used. Every interpolated value goes
+// through esc(). Includes an empty #healthSuggestions placeholder (Task 7
+// fills it) and, per scalar/scale/choice/textarea field, an Edit button wired
+// (Task 4, below) to swap the value for an input and POST the change. Table
+// fields keep their Edit button but only reveal a "coming soon" note — full
+// row add/remove editing is out of scope for Task 4.
+function healthFieldValueHtml(f){
+  if (f.type === "table") {
+    const rows = Array.isArray(f.value) ? f.value : [];
+    if (!rows.length) return `<p class="muted small">Not provided yet.</p>`;
+    return `<ul class="health-table-list">${rows.map(row => {
+      const cells = Object.keys(row || {}).map(k => `${esc(k)}: ${esc(row[k])}`).join(" &middot; ");
+      return `<li>${cells}</li>`;
+    }).join("")}</ul>`;
+  }
+  const val = f.value;
+  return (val === null || val === undefined || val === "")
+    ? `<p class="muted small">Not provided yet.</p>`
+    : `<p class="health-value">${esc(val)}</p>`;
+}
+function healthFieldHtml(f){
+  // data-value carries the current scalar so Edit can open the input pre-filled
+  // without a round-trip; table fields have no scalar value so it's omitted.
+  const valueAttr = (f.type === "table") ? "" :
+    ` data-value="${esc(f.value===null||f.value===undefined?"":f.value)}"`;
+  return `<div class="health-field" data-field-id="${esc(f.id)}" data-field-type="${esc(f.type||"")}">
+    <div class="health-field-head"><span class="health-label">${esc(f.label)}</span>
+      <button type="button" class="health-edit-btn" data-field-id="${esc(f.id)}"${valueAttr}>Edit</button></div>
+    <div class="health-field-body">${healthFieldValueHtml(f)}</div>
+  </div>`;
+}
+function healthSectionHtml(sec){
+  const fields = Array.isArray(sec.fields) ? sec.fields : [];
+  return `<div class="card health-section"><h2>${esc(sec.title)}</h2>
+    ${fields.map(healthFieldHtml).join("")}</div>`;
+}
+function buildHealthProfileHtml(v){
+  const hp = (v && v.health_profile) || {};
+  _healthProfileBlock = hp; // Task 7: cache for the suggestions queue's field-label lookups
+  const sections = Array.isArray(hp.sections) ? hp.sections : [];
+  const body = sections.length
+    ? sections.map(healthSectionHtml).join("")
+    : `<div class="card quiet"><p class="muted">Your health profile will appear here once your intake is on file.</p></div>`;
+  return `<div class="portal-health"><div id="healthSuggestions"></div>${body}</div>`;
 }
 // One Scan History row per date. memberEmail is set only for the group currently
 // being viewed (matches ?member=, or "" for "You") — clicking it reuses the same
@@ -985,6 +1103,261 @@ document.addEventListener("change", function(ev){
   }).catch(() => {
     cb.checked = !cb.checked;  // revert
     if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
+  });
+});
+
+// My Health Profile inline editing (Task 4). The health_profile payload block
+// (dashboard/health_profile.py) doesn't carry the intake form's scale option
+// range, so this small map (mirrors intake.py's _TERRAIN/_PENETRATION/_TISSUE/
+// _RESPONSE/_COMMITMENT scale definitions) bounds the "scale" edit input's
+// min/max; an unrecognized scale id falls back to today's other 1-5 scales.
+// single_choice has no options in the payload either, so per the task brief it
+// falls back to a plain text input (same branch as "text").
+const HEALTH_SCALE_MAX = { terrain: 5, penetration: 5, tissue_layer: 5, response: 5, commitment: 10 };
+
+function healthEditInputHtml(fieldId, fieldType, rawValue){
+  const val = (rawValue === null || rawValue === undefined) ? "" : rawValue;
+  if (fieldType === "textarea") return `<textarea class="health-edit-input" rows="3">${esc(val)}</textarea>`;
+  if (fieldType === "number") return `<input type="number" class="health-edit-input" value="${esc(val)}">`;
+  if (fieldType === "scale") {
+    const max = HEALTH_SCALE_MAX[fieldId] || 5;
+    return `<input type="number" class="health-edit-input" min="1" max="${max}" step="1" value="${esc(val)}">`;
+  }
+  // text, single_choice (no options in payload to build a <select> from), and
+  // any other scalar type all fall back to a plain text input.
+  return `<input type="text" class="health-edit-input" value="${esc(val)}">`;
+}
+
+function healthEditFormHtml(fieldId, fieldType, rawValue){
+  return `<div class="health-edit-row">
+    ${healthEditInputHtml(fieldId, fieldType, rawValue)}
+    <div class="health-edit-actions">
+      <button type="button" class="health-save-btn">Save</button>
+      <button type="button" class="health-cancel-btn">Cancel</button>
+    </div>
+    <div class="health-edit-msg small muted" hidden></div>
+  </div>`;
+}
+
+// Looks up one curated field's fresh {id,label,type,value} from a health_profile
+// block (e.g. the POST response) by field id, across all its sections.
+function findHealthField(hp, fieldId){
+  const sections = (hp && Array.isArray(hp.sections)) ? hp.sections : [];
+  for (const sec of sections) {
+    const fields = Array.isArray(sec.fields) ? sec.fields : [];
+    const found = fields.find(f => f.id === fieldId);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Delegated on document (fields are injected via render()'s innerHTML, so a
+// per-render listener would stack, same reasoning as the Family Plan / client-fact
+// listeners above). Handles the three button classes that only ever exist inside
+// a .health-field: the Edit button from Task 2/4's render, and the Save/Cancel
+// pair this handler injects when editing opens. Table fields (health_concerns/
+// supplements/diagnoses/medications/surgeries/allergies) are out of scope for
+// this task -- Edit just reveals a factual "coming soon" note in place, no POST.
+document.addEventListener("click", function(ev){
+  const editBtn = ev.target.closest(".health-edit-btn");
+  const saveBtn = ev.target.closest(".health-save-btn");
+  const cancelBtn = ev.target.closest(".health-cancel-btn");
+  if (!editBtn && !saveBtn && !cancelBtn) return;
+  const field = ev.target.closest(".health-field");
+  if (!field) return;
+  const body = field.querySelector(".health-field-body");
+  if (!body) return;
+  const fieldId = field.getAttribute("data-field-id") || "";
+  const fieldType = field.getAttribute("data-field-type") || "";
+
+  if (editBtn) {
+    if (fieldType === "table") {
+      body.innerHTML = `<p class="muted small">Editing this list is coming soon.</p>`;
+      return;
+    }
+    if (!body.hasAttribute("data-prev-html")) body.setAttribute("data-prev-html", body.innerHTML);
+    const rawValue = editBtn.getAttribute("data-value") || "";
+    body.innerHTML = healthEditFormHtml(fieldId, fieldType, rawValue);
+    const input = body.querySelector(".health-edit-input");
+    if (input) input.focus();
+    return;
+  }
+  if (cancelBtn) {
+    const prev = body.getAttribute("data-prev-html");
+    if (prev !== null) { body.innerHTML = prev; body.removeAttribute("data-prev-html"); }
+    return;
+  }
+  // saveBtn: POST {field_id, value} to the health-profile write-back endpoint
+  // (Task 3), then update just this field's display from the returned block.
+  const input = body.querySelector(".health-edit-input");
+  const msg = body.querySelector(".health-edit-msg");
+  if (!input) return;
+  let value = input.value;
+  if (input.type === "number") value = (value === "") ? null : Number(value);
+  saveBtn.disabled = true;
+  if (msg) { msg.hidden = false; msg.classList.remove("err"); msg.textContent = "Saving…"; }
+  fetch(`/api/portal/${encodeURIComponent(token)}/health-profile`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+    body: JSON.stringify({field_id: fieldId, value: value})
+  }).then(r => r.json()).then(res => {
+    if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
+    const fresh = findHealthField(res.health_profile, fieldId);
+    body.removeAttribute("data-prev-html");
+    body.innerHTML = healthFieldValueHtml(fresh || {type: fieldType, value: value});
+    const btn = field.querySelector(".health-edit-btn");
+    // Direct DOM API, not innerHTML -- the raw value goes in unescaped on purpose.
+    if (btn) btn.setAttribute("data-value", (fresh ? fresh.value : value) ?? "");
+  }).catch(() => {
+    saveBtn.disabled = false;
+    if (msg) { msg.hidden = false; msg.classList.add("err"); msg.textContent = "Could not save. Please try again."; }
+  });
+});
+
+// My Health Profile suggestions queue (Task 7). Pending edits proposed either
+// from a client's own chat (health_suggestions.extract_from_turn, source:'chat')
+// or by a practitioner from the console (source:'clinician') land in the same
+// review queue; the client confirms, edits, or dismisses each one here.
+
+// A field's current curated {label} by id, from the cached health_profile block
+// (set at render time in buildHealthProfileHtml, refreshed after every resolve
+// below) -- falls back to the raw field_id per the brief when not found.
+function healthFieldLabel(fieldId){
+  const f = findHealthField(_healthProfileBlock, fieldId);
+  return (f && f.label) ? f.label : fieldId;
+}
+// The live .health-field element for a given field id (not a template-string
+// attribute selector, so no id ever needs CSS-escaping).
+function findHealthFieldEl(fieldId){
+  return Array.from(document.querySelectorAll(".health-field"))
+    .find(el => el.getAttribute("data-field-id") === fieldId) || null;
+}
+// Live-updates the hub tile's pending-count badge (the .pill inside
+// [data-tile="health"]) after a resolve, without a full hub re-render.
+function updateHealthTileBadge(count){
+  const tile = document.querySelector('.hub-tile[data-tile="health"]');
+  if (!tile) return;
+  const tname = tile.querySelector(".tname");
+  let pill = tile.querySelector(".pill");
+  const n = Number(count) || 0;
+  if (n > 0) {
+    if (!pill && tname) {
+      pill = document.createElement("span");
+      pill.className = "pill";
+      tname.appendChild(document.createTextNode(" "));
+      tname.appendChild(pill);
+    }
+    if (pill) pill.textContent = String(n);
+  } else if (pill) {
+    pill.remove();
+  }
+}
+// One pending suggestion, source-aware framing per the task brief. A colon/
+// period separates the rationale from the question -- no em dashes in
+// user-facing copy. Every interpolated value goes through esc() first.
+function healthSuggestionItemHtml(s){
+  const label = esc(healthFieldLabel(s.field_id));
+  const rationale = esc(s.rationale || "");
+  const lead = (s.source === "clinician")
+    ? `Your practitioner suggests: ${rationale}. Update ${label}?`
+    : `We heard this in your conversations: ${rationale}. Update ${label}?`;
+  return `<div class="health-suggestion" data-sid="${esc(s.id)}" data-field-id="${esc(s.field_id)}">
+    <p class="health-suggestion-text">${lead}</p>
+    <p class="health-suggestion-value">Suggested: <strong>${esc(s.suggested_value)}</strong></p>
+    <div class="health-suggestion-actions">
+      <button type="button" class="health-sugg-confirm">Confirm</button>
+      <button type="button" class="health-sugg-edit">Edit</button>
+      <button type="button" class="health-sugg-dismiss">Dismiss</button>
+    </div>
+    <div class="health-suggestion-msg small muted" hidden></div>
+  </div>`;
+}
+function renderHealthSuggestions(list){
+  const host = document.getElementById("healthSuggestions");
+  if (!host) return;
+  if (!Array.isArray(list) || !list.length) { host.innerHTML = ""; return; }
+  host.innerHTML = `<div class="card health-suggestions-card"><h2>Suggested updates</h2>
+    ${list.map(healthSuggestionItemHtml).join("")}</div>`;
+}
+// GET the pending queue and render it. Called every time the health panel
+// becomes active (showTab('health'), wired above) -- no-ops quietly if the
+// panel/host isn't in the DOM (feature off) or the request fails.
+function loadHealthSuggestions(){
+  const host = document.getElementById("healthSuggestions");
+  if (!host) return;
+  fetch(`/api/portal/${encodeURIComponent(token)}/health-suggestions`, {credentials: "same-origin"})
+    .then(r => r.json())
+    .then(res => { if (res && res.ok) renderHealthSuggestions(res.suggestions); })
+    .catch(() => {});
+}
+// Delegated on document (items are injected via loadHealthSuggestions()'s
+// innerHTML, itself called from showTab(), so a per-render listener would
+// never bind reliably -- same reasoning as the Family Plan / health-field-edit
+// listeners above). Handles Confirm / Edit / Dismiss and the Save/Cancel pair
+// Edit reveals in place.
+document.addEventListener("click", function(ev){
+  const confirmBtn = ev.target.closest(".health-sugg-confirm");
+  const editBtn = ev.target.closest(".health-sugg-edit");
+  const dismissBtn = ev.target.closest(".health-sugg-dismiss");
+  const saveBtn = ev.target.closest(".health-sugg-save-btn");
+  const cancelBtn = ev.target.closest(".health-sugg-cancel-btn");
+  if (!confirmBtn && !editBtn && !dismissBtn && !saveBtn && !cancelBtn) return;
+  const item = ev.target.closest(".health-suggestion");
+  if (!item) return;
+  const actions = item.querySelector(".health-suggestion-actions");
+  const msg = item.querySelector(".health-suggestion-msg");
+  const sid = item.getAttribute("data-sid") || "";
+  const fieldId = item.getAttribute("data-field-id") || "";
+
+  if (editBtn) {
+    const valueEl = item.querySelector(".health-suggestion-value strong");
+    const rawValue = valueEl ? valueEl.textContent : "";
+    if (!item.hasAttribute("data-prev-actions")) item.setAttribute("data-prev-actions", actions.innerHTML);
+    actions.innerHTML = `<input type="text" class="health-sugg-edit-input" value="${esc(rawValue)}">
+      <button type="button" class="health-sugg-save-btn">Save</button>
+      <button type="button" class="health-sugg-cancel-btn">Cancel</button>`;
+    const input = actions.querySelector(".health-sugg-edit-input");
+    if (input) input.focus();
+    return;
+  }
+  if (cancelBtn) {
+    const prev = item.getAttribute("data-prev-actions");
+    if (prev !== null) { actions.innerHTML = prev; item.removeAttribute("data-prev-actions"); }
+    return;
+  }
+
+  let payload = null;
+  let btn = null;
+  if (confirmBtn) { payload = {action: "confirm"}; btn = confirmBtn; }
+  else if (dismissBtn) { payload = {action: "dismiss"}; btn = dismissBtn; }
+  else if (saveBtn) {
+    const input = actions.querySelector(".health-sugg-edit-input");
+    payload = {action: "edit", value: input ? input.value : ""};
+    btn = saveBtn;
+  }
+  if (!payload || !btn) return;
+
+  btn.disabled = true;
+  if (msg) { msg.hidden = false; msg.classList.remove("err"); msg.textContent = "Saving…"; }
+  fetch(`/api/portal/${encodeURIComponent(token)}/health-suggestions/${encodeURIComponent(sid)}/resolve`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(res => {
+    if (!res || !res.ok) throw new Error((res && res.error) || "save failed");
+    _healthProfileBlock = res.health_profile || _healthProfileBlock;
+    updateHealthTileBadge(res.health_profile ? res.health_profile.suggestion_count : 0);
+    const fresh = findHealthField(res.health_profile, fieldId);
+    if (fresh) {
+      const fieldEl = findHealthFieldEl(fieldId);
+      const fieldBody = fieldEl && fieldEl.querySelector(".health-field-body");
+      if (fieldBody) fieldBody.innerHTML = healthFieldValueHtml(fresh);
+      const editFieldBtn = fieldEl && fieldEl.querySelector(".health-edit-btn");
+      // Direct DOM API, not innerHTML -- the raw value goes in unescaped on purpose.
+      if (editFieldBtn) editFieldBtn.setAttribute("data-value", fresh.value ?? "");
+    }
+    item.remove();
+  }).catch(() => {
+    btn.disabled = false;
+    if (msg) { msg.hidden = false; msg.classList.add("err"); msg.textContent = "Could not save. Please try again."; }
   });
 });
 
@@ -2259,6 +2632,7 @@ function render(d, v){
       <section data-panel="history" hidden>${back}${historyHtml}</section>
       <section data-panel="orders" hidden>${back}${ordersHtml}</section>${_hub ? `
       <section data-panel="ask" hidden>${back}${_askHtml}</section>
+      ${_hub && v.health_profile && v.health_profile.enabled ? `<section data-panel="health" hidden>${back}${buildHealthProfileHtml(v)}</section>` : ""}
       <section data-panel="finder" hidden>${back}${_finderHtml || '<div class="card quiet"><p class="muted">The practitioner finder is not enabled for your portal yet.</p></div>'}</section>
       <section data-panel="bodymap" hidden>${back}${_bodymapHtml}</section>
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>

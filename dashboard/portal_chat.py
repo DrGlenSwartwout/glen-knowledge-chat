@@ -58,6 +58,10 @@ def list_messages(cx, email, limit=100):
 
 
 def record_exchange(cx, email, query, answer, client_name=None):
-    """Persist one concierge turn: the client's message + the AI answer."""
-    add_message(cx, email, CLIENT, query, author=client_name or "You")
+    """Persist one concierge turn: the client's message + the AI answer.
+    Returns the client message's row id (or None if it was a no-op), so a
+    caller can attribute a downstream extraction (e.g. health_suggestions)
+    back to the turn that produced it."""
+    client_msg_id = add_message(cx, email, CLIENT, query, author=client_name or "You")
     add_message(cx, email, ASSISTANT, answer, author="Ask Dr. Glen")
+    return client_msg_id
