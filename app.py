@@ -15215,10 +15215,13 @@ def api_practitioner_portal_data():
     # joined to the practitioner by email). Best-effort — never crash portal-data.
     try:
         from dashboard import portal_view as _pv
+        from dashboard import supplement_reviews as _sr
         _amb_email = (data.get("email") or "").strip()
         with db.connect(LOG_DB) as _cx:
             data["ambassador"] = _pv._ambassador_block(
                 _cx, _amb_email, QUIZ_URL, PUBLIC_BASE_URL)
+            data["supplement_review"] = _pv._supplement_reviews_block(
+                _cx, _amb_email, _sr.enabled())
     except Exception:
         pass
     # Cert L1 video assignment card (subsystem A beachhead). Best-effort.
@@ -25328,6 +25331,7 @@ def api_client_portal_view(token):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
     from dashboard import portal_view as _pv
+    from dashboard import supplement_reviews as _sr
     sess = request.cookies.get("rm_portal_session", "")
     with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
@@ -25340,11 +25344,124 @@ def api_client_portal_view(token):
                                    offers_enabled_keys=_enabled_offer_keys(),
                                    quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
                                    finder_enabled=_PORTAL_FINDER_ENABLED,
-                                   biofield_unlocked=_portal_biofield_unlocked(ident.email))
+                                   biofield_unlocked=_portal_biofield_unlocked(ident.email),
+                                   supplement_review_enabled=_sr.enabled())
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
     return jsonify(view)
+
+
+# ── Free product review (dark: SUPPLEMENT_REVIEW_ENABLED) ─────────────────────
+# A client submits a supplement they take; Glen's formulation-analyzer produces a
+# review that lands in their portal after his console confirm. Mirrors the
+# requested->ai_draft->confirmed biofield flow. dashboard/supplement_reviews.py.
+
+@app.route("/api/product-review/request", methods=["POST"])
+def api_product_review_request():
+    """In-portal 'request a review' — identity comes from the portal token, so no
+    email is taken from the body. 404s when the feature is dark."""
+    from dashboard import supplement_reviews as _sr
+    if not _sr.enabled():
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp
+    from dashboard import portal_identity as _pi
+    body = request.get_json(silent=True) or {}
+    token = (body.get("token") or "").strip()
+    product = (body.get("product_name") or "").strip()
+    brand = (body.get("product_brand") or "").strip()
+    if not product:
+        return jsonify({"error": "product_required"}), 400
+    sess = request.cookies.get("rm_portal_session", "")
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        ident = _pi.resolve_identity(cx, token=token, session_token=sess,
+                                     client_login_enabled=_client_login_enabled())
+        if ident is None:
+            return jsonify({"error": "unauthorized"}), 401
+        _sr.init_table(cx)
+        res = _sr.create_request(cx, ident.email, product, brand, source="portal")
+    return jsonify({"ok": True, "id": res["id"], "status": res["status"],
+                    "created": res["created"]})
+
+
+@app.route("/api/product-review/public/start", methods=["POST"])
+def api_product_review_public_start():
+    """Public opt-in from skepticalreviews.com — starts a free membership and
+    queues the review. Clones the intake honeypot + email + TOS gate; the portal
+    token is emailed out-of-band, never returned. 404s when the feature is dark."""
+    from dashboard import supplement_reviews as _sr
+    if not _sr.enabled():
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import customers as _cu, evox as _ev, client_portal as _cp
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    email = (body.get("email") or "").strip().lower()
+    product = (body.get("product_name") or "").strip()
+    brand = (body.get("product_brand") or "").strip()
+    if (body.get("company") or "").strip():          # honeypot -> silently drop bots
+        return jsonify({"ok": True})
+    if "@" not in email or "." not in email.rsplit("@", 1)[-1]:
+        return jsonify({"error": "email_required"}), 400
+    if not bool(body.get("tos_agreed")):
+        return jsonify({"error": "tos_required"}), 400
+    if not product:
+        return jsonify({"error": "product_required"}), 400
+    _init_people_table()
+    now = _hst_now()
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cu.find_or_create_by_email(cx, email=email, name=name)
+        _ev.init_evox_tables(cx)
+        _cp.init_client_portal_table(cx)
+        _sr.init_table(cx)
+        _sr.create_request(cx, email, product, brand, source="public")
+        portal_token = _ev.ensure_portal_token(cx, email, name)
+        setup_url = f"{PUBLIC_BASE_URL}/evox?token={portal_token}"
+    # SECURITY: the portal token is the MASTER credential — email it, never return it.
+    try:
+        send_evox_setup_link(email, name, setup_url)
+    except Exception:
+        app.logger.exception("product-review portal-link send failed for %s", email)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/console/product-review/draft", methods=["POST"])
+def api_console_product_review_draft():
+    """Analyzer hand-off: the offline formulation-analyzer posts its review text
+    here -> the row becomes ai_draft (never overwrites a confirmed review).
+    Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import supplement_reviews as _sr
+    body = request.get_json(silent=True) or {}
+    rid = int(body.get("id") or 0)
+    text = (body.get("review_text") or "")
+    if not rid or not text.strip():
+        return jsonify({"error": "id_and_text_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        res = _sr.set_draft(cx, rid, text)
+    return jsonify({"ok": True, "status": res["status"]})
+
+
+@app.route("/api/console/product-reviews", methods=["GET"])
+def api_console_product_reviews_list():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import supplement_reviews as _sr
+    with db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        pending = _sr.pending_queue(cx)
+    return jsonify({"ok": True, "pending": pending})
+
+
+@app.route("/console/product-reviews")
+def console_product_reviews_page():
+    resp = send_from_directory(STATIC, "console-product-reviews.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
 
 def _biofield_transition(token, new_status, tag):
@@ -40660,6 +40777,10 @@ _esa.register()
 # ── Spec 2a-1: review moderation actions (approve/reject/feature) ─────────────
 from dashboard import reviews_actions as _ra
 _ra.register()
+
+# ── Free product review: confirm/reject console actions ──────────────────────
+from dashboard import supplement_reviews_actions as _sra
+_sra.register()
 from dashboard import testimonial_invite_actions as _tia
 _tia.register()
 
