@@ -197,7 +197,8 @@ def _generate_one(client, slug, snapshot):
 
 
 def regenerate_all():
-    """Generate all 5 briefings in parallel and write each to disk. Returns a
+    """Generate all 5 briefings in parallel and persist each to the
+    intelligence_briefings DB table (via dashboard.intelligence). Returns a
     summary dict the cron handler echoes back."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY not set")
