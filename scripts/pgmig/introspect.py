@@ -1,7 +1,8 @@
 """Introspect a SQLite source: user tables and their UNIQUE index column-tuples.
-Also introspects a Postgres target schema's FK graph for topological table order."""
+Also introspects a Postgres target schema's FK graph for topological table order,
+and (for the P05 preflight cross-check) the target's own UNIQUE indexes."""
 from collections import deque
-from typing import List
+from typing import Dict, List
 
 def sqlite_tables(cx) -> List[str]:
     rows = cx.execute(
@@ -77,3 +78,51 @@ def pg_fk_order(pg_cx, schema: str) -> List[str]:
         remaining = sorted(set(tables) - set(order))
         raise RuntimeError(f"FK cycle among {remaining}")
     return order
+
+
+def pg_unique_indexes(pg_cx, schema: str) -> Dict[str, List[List[str]]]:
+    """Map table -> list of UNIQUE-index column-tuples for every unique index
+    (including ones backing a UNIQUE/PK constraint AND bare `CREATE UNIQUE
+    INDEX`) in `schema`, ordered by each index's column position.
+
+    Why pg_index/pg_class/pg_attribute rather than information_schema: a bare
+    `CREATE UNIQUE INDEX ux_foo ON t (col)` (no ADD CONSTRAINT) shows up in
+    pg_index but NOT in information_schema.table_constraints -- and this is
+    exactly the case the P05 preflight cross-check exists to catch (see
+    dedup.scan_against_targets). information_schema alone would silently miss
+    it, defeating the point of the enhancement.
+
+    `idx.indkey::int2[]` casts the raw int2vector column list so it can be
+    unnest()'d WITH ORDINALITY to preserve column order; expression indexes
+    (an indkey entry of 0, i.e. no backing column) are excluded -- they're
+    out of scope for a byte-level SQLite dedup scan, which only knows about
+    literal columns.
+    """
+    rows = pg_cx.execute(
+        "SELECT tbl.relname AS table_name, idx.indexrelid AS index_oid, "
+        "att.attname AS col_name "
+        "FROM pg_index idx "
+        "JOIN pg_class tbl ON tbl.oid = idx.indrelid "
+        "JOIN pg_namespace ns ON ns.oid = tbl.relnamespace "
+        "JOIN LATERAL unnest(idx.indkey::int2[]) WITH ORDINALITY AS ord(attnum, ordinality) ON true "
+        "JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = ord.attnum "
+        "WHERE idx.indisunique AND ns.nspname = ? AND tbl.relkind = 'r' "
+        "AND NOT (0 = ANY(idx.indkey::int2[])) "
+        "ORDER BY tbl.relname, idx.indexrelid, ord.ordinality",
+        (schema,)).fetchall()
+
+    out: Dict[str, List[List[str]]] = {}
+    current_key = None
+    current_cols: List[str] = []
+    for r in rows:
+        table, index_oid, col = r[0], r[1], r[2]
+        key = (table, index_oid)
+        if key != current_key:
+            if current_key is not None:
+                out.setdefault(current_key[0], []).append(current_cols)
+            current_key = key
+            current_cols = []
+        current_cols.append(col)
+    if current_key is not None:
+        out.setdefault(current_key[0], []).append(current_cols)
+    return out
