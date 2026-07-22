@@ -38,10 +38,11 @@
   a{ color:var(--gold); }
 </style>
 <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+<script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="wrap">
-  <div style="display:flex;justify-content:flex-end;margin-bottom:4px"><button id="theme-toggle" class="ghost" onclick="toggleTheme()">Light</button></div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:4px"><span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span></div>
   <h1>Join the Wholesale Portal</h1>
   <p class="sub">Order Functional Formulations™ at wholesale. Licensed practitioners unlock pricing right away; coaches start with the first certification module.</p>
   <div class="panel">
@@ -81,13 +82,8 @@
 <script>
 var role = null;
 var $ = function(id){ return document.getElementById(id); };
-function toggleTheme(){
-  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('rm-theme', next);
-  var b=document.getElementById('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
-}
-(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=document.getElementById('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
+// Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 document.querySelectorAll('.role').forEach(function(el){
   el.addEventListener('click', function(){
     document.querySelectorAll('.role').forEach(function(r){ r.classList.remove('sel'); });

@@ -128,9 +128,11 @@
     .explore-section { margin-top: 44px; }
   }
 </style>
+  <script src="/static/theme-mode.js"></script>
   <script src="/static/theme-toggle.js"></script>
 </head>
 <body>
+  <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode" style="position:fixed;top:14px;right:14px;z-index:9999;"></span>
   <header class="brandbar">
     <span class="brand-mark"></span>
     <span class="brand-name">DR. GLEN SWARTWOUT</span>
@@ -225,6 +227,10 @@
         items.forEach(function (el) { io.observe(el); });
       }
     })();
+  </script>
+  <script>
+    // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+    if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
   </script>
 </body>
 </html>

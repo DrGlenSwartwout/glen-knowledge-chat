@@ -83,8 +83,10 @@
   }
 </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head>
 <body>
+  <div id="theme-toggle-wrap" style="position:fixed;top:14px;right:16px;z-index:50"><span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span></div>
   <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
     <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
 
@@ -216,5 +218,6 @@
       }
     }
   </script>
+  <script>if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));</script>
 </body>
 </html>

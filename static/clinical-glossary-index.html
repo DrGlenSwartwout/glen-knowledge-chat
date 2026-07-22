@@ -23,9 +23,13 @@
     .synced{color:var(--muted);font-size:.78rem;margin-top:2rem}
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head><body>
   <div class="wrap">
-    <h1>Clinical Glossary</h1>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <h1>Clinical Glossary</h1>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    </div>
     <p class="lead">A reference to the stress patterns behind a Biofield Analysis — the organs, meridians, miasms, and biochemistry each one can involve.</p>
     <div id="g-loading" class="muted">Loading…</div>
     <div id="g-empty" class="hidden muted">The glossary is being prepared.</div>
@@ -42,6 +46,7 @@
     <div id="g-synced" class="synced"></div>
   </div>
   <script>
+    if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
     function hide(id){document.getElementById(id).classList.add('hidden');}
     fetch('/learn/glossary-data', {credentials:'same-origin'})
       .then(function(r){ return r.json(); })

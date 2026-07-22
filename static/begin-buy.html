@@ -206,9 +206,11 @@
     .buy-btn,.store-btn{ width:100%; text-align:center; }
   }
 </style>
+  <script src="/static/theme-mode.js"></script>
   <script src="/static/theme-toggle.js"></script>
 </head>
 <body>
+  <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode" style="position:fixed;top:14px;right:14px;z-index:9999;"></span>
   <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
     <span class="brand-name">Remedy&nbsp;Match &nbsp;&middot;&nbsp; Healing&nbsp;Oasis</span></div>
 
@@ -1063,6 +1065,10 @@
 <script src="/static/chat-attachments.js"></script>
 <script>
   window.__chatAttach = ChatAttach.mount({ host: '#chat-attach' });
+</script>
+<script>
+  // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+  if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 </script>
 </body>
 </html>

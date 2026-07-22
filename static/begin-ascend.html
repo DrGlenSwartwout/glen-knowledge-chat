@@ -82,9 +82,11 @@
   @media(max-width:560px){ #ascend-hero{ padding:20px; } #ascend-hero .hero-title{ font-size:18px; }
     .goal-chooser button{ font-size:12.5px; padding:8px 14px; } }
 </style>
+  <script src="/static/theme-mode.js"></script>
   <script src="/static/theme-toggle.js"></script>
 </head>
 <body>
+  <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode" style="position:fixed;top:14px;right:14px;z-index:9999;"></span>
   <div class="brandbar"><span class="brand-mark" aria-hidden="true"></span>
     <span class="brand-name">Remedy&nbsp;Match &nbsp;·&nbsp; Healing&nbsp;Oasis</span></div>
 
@@ -266,6 +268,10 @@
   });
   load(getGoal());
 })();
+</script>
+<script>
+  // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+  if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 </script>
 </body>
 </html>

@@ -70,10 +70,14 @@
     font-size:.72rem;font-weight:600;cursor:pointer;text-decoration:underline}
   #interests .tag button:hover{color:var(--ink)}
 </style>
+<script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="wrap">
-  <h1>Community</h1>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <h1>Community</h1>
+    <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+  </div>
   <p class="lede">Coaching replays, course sessions, and behind-the-scenes moments from Healing Oasis.</p>
   <div id="interests" class="card" hidden>
     <h2>Your interests</h2>
@@ -91,6 +95,10 @@
   </div>
   <div id="list"></div>
 </div>
+
+<script>
+if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
+</script>
 
 <!-- BEGIN signal-layer script -->
 <script>

@@ -664,9 +664,11 @@
   @media (max-width: 760px) { #journey-cards { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 420px) { #journey-cards { grid-template-columns: 1fr; } }
 </style>
+  <script src="/static/theme-mode.js"></script>
   <script src="/static/theme-toggle.js"></script>
 </head>
 <body>
+  <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode" style="position:fixed;top:14px;right:14px;z-index:9999;"></span>
 
   <!-- My Healing Oasis — self-serve portal link. Button stays hidden until
        /api/healing-oasis/status reports the feature is live (HEALING_OASIS_ENABLED). -->
@@ -1657,5 +1659,10 @@
 <script src="/static/mic-input.js"></script>
 <script src="/static/tts-output.js"></script>
 <script type="module" src="/static/begin/invitation-mount.js"></script>
+<script>
+  // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+  if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
+  document.addEventListener('rm-theme-change', function(){ /* no theme-dependent chart/canvas re-render on this page */ });
+</script>
 </body>
 </html>

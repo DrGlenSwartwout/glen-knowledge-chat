@@ -21,9 +21,13 @@
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head><body>
   <div class="wrap">
-    <h1>Stress Pattern Glossary</h1>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <h1>Stress Pattern Glossary</h1>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    </div>
     <p class="lead">The bioenergetic stress patterns an E4L scan can identify, and the body structures and functions each one involves.</p>
     <div id="idx-loading" class="muted">Loading…</div>
     <div id="idx-empty" class="hidden muted">The glossary is being prepared.</div>
@@ -33,6 +37,7 @@
     </div>
   </div>
   <script>
+    if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
     function hide(id){document.getElementById(id).classList.add('hidden');}
     fetch('/learn/patterns-data', {credentials:'same-origin'})
       .then(function(r){ return r.json(); })

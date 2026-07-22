@@ -57,6 +57,7 @@
       border-radius:8px; padding:10px 12px; font-size:12px; color:var(--gold); margin-top:10px; }
   </style>
   <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+  <script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -72,7 +73,7 @@
         <a href="/practitioner/portal">Wholesale</a>
         <a href="/practitioner/dropship">Drop-Ship</a>
       </div>
-      <button class="ghost" onclick="toggleTheme()" id="theme-toggle">Light</button>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
     </div>
   </div>
 
@@ -246,19 +247,8 @@
   var sfScraped = null;  // directory data offered as an opt-in starting point
 
   // ── Theme toggle ─────────────────────────────────────────────────────────────
-  function toggleTheme() {
-    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('rm-theme', next);
-    var b = document.getElementById('theme-toggle');
-    if (b) b.textContent = next === 'light' ? 'Dark' : 'Light';
-  }
-  window.toggleTheme = toggleTheme;
-  (function () {
-    var t = document.documentElement.getAttribute('data-theme');
-    var b = document.getElementById('theme-toggle');
-    if (b) b.textContent = t === 'light' ? 'Dark' : 'Light';
-  })();
+  // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+  if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 
   // ── Auth header ──────────────────────────────────────────────────────────────
   function authHeaders() {

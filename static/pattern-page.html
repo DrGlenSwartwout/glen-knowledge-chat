@@ -53,9 +53,13 @@
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head><body>
   <div class="wrap">
-    <a class="back" href="/learn/patterns">← All stress patterns</a>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <a class="back" href="/learn/patterns">← All stress patterns</a>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    </div>
     <div id="pat-loading" class="muted">Loading…</div>
     <div id="pat-notfound" class="hidden muted">We couldn't find that stress pattern. <a href="/learn/patterns">Browse the glossary</a>.</div>
     <div id="pat-body" class="hidden">
@@ -69,6 +73,7 @@
     </div>
   </div>
   <script>
+    if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
     var STYPE_LABELS = {organ:"Organs",system:"Body systems",function:"Functions",
       emotion:"Emotions",substance:"Substances",immune_cell:"Immune cells",other:"Other"};
     var STYPE_ORDER = ["organ","system","function","emotion","substance","immune_cell","other"];
