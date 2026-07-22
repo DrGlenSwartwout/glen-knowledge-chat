@@ -6108,6 +6108,9 @@ _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().low
 # Ships dark; flip to route the portal through the hub instead of the single
 # Current-Analysis scroll. Same truthy set as the finder flag.
 _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Curated read of the client's intake record ("My Health Profile" page) into
+# the client portal. Ships dark; same truthy set as the other portal flags.
+_PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -25349,6 +25352,7 @@ def api_client_portal_view(token):
                                    quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
                                    finder_enabled=_PORTAL_FINDER_ENABLED,
                                    hub_enabled=_PORTAL_HUB_ENABLED,
+                                   health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
                                    supplement_review_enabled=_sr.enabled())
     if view is None:

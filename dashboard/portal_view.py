@@ -14,6 +14,7 @@ import json
 from dashboard import affiliate_dashboard as _ad
 from dashboard import client_portal as _cp
 from dashboard import entity_refs as _er
+from dashboard import health_profile as _hp
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
 from dashboard import supplement_reviews as _sr
@@ -318,7 +319,7 @@ def _onboarding_block(cx, email):
 
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
-                    hub_enabled=False,
+                    hub_enabled=False, health_profile_enabled=False,
                     biofield_unlocked=True, supplement_review_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
@@ -352,6 +353,7 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "ambassador": _ambassador_block(cx, email, quiz_url, public_base_url),
         "practitioner_finder": _practitioner_finder_block(account["address"], finder_enabled),
         "hub_enabled": bool(hub_enabled),
+        "health_profile": _hp.build_block(cx, email, health_profile_enabled),
         "consult": _consult_block(cx, email),
         "onboarding": _onboarding_block(cx, email),
         "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
