@@ -129,7 +129,7 @@ def init_ingredients_schema(cx: sqlite3.Connection) -> None:
     # One-time backfill: promote par_level/par_level_unit out of extras JSON
     if pg:
         cx.execute("""UPDATE ingredients
-                      SET par_level = CAST(extras::jsonb ->> 'par_level' AS REAL),
+                      SET par_level = CAST(extras::jsonb ->> 'par_level' AS DOUBLE PRECISION),
                           par_level_unit = extras::jsonb ->> 'par_level_unit'
                       WHERE par_level IS NULL AND extras::jsonb ->> 'par_level' IS NOT NULL""")
     else:
