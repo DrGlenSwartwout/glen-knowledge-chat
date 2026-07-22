@@ -113,6 +113,14 @@ try:
 except Exception as _je:
     print(f"[journal] blueprint NOT registered: {_je}", flush=True)
 
+# ── MentorshipU courses blueprint (Stage 1: LMS pages + intake) ─────────────
+try:
+    from courses_blueprint import courses_bp
+    app.register_blueprint(courses_bp)
+    print("[courses] blueprint registered: /learn/<course>/<module>/<lesson>, /api/mentorship/intake/start", flush=True)
+except Exception as _ce:
+    print(f"[courses] blueprint NOT registered: {_ce}", flush=True)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 PINECONE_INDEX    = "remedy-match-llc"
 NAMESPACES        = ["clinical-qa", "mentors", "ingredients", "e4l-protocols", "consultations", "training", "business", "glen-authored-works", ""]
@@ -310,6 +318,27 @@ def _on_portal_host():
     until PORTAL_BASE_URL names a separate domain, so it is inert pre-migration."""
     ph = _portal_host()
     return bool(ph) and (request.host or "").split(":")[0].lower() == ph.lower()
+
+
+def mentorship_base():
+    """Base URL for MentorshipU course links. Defaults to PUBLIC_BASE_URL, so
+    behavior is unchanged until MENTORSHIP_BASE_URL names a distinct host."""
+    return (os.environ.get("MENTORSHIP_BASE_URL") or PUBLIC_BASE_URL).rstrip("/")
+
+
+def _mentorship_host():
+    from urllib.parse import urlparse
+    mb = os.environ.get("MENTORSHIP_BASE_URL", "")
+    return urlparse(mb).hostname or "" if mb else ""
+
+
+def _on_mentorship_host():
+    """True when THIS request arrived on the dedicated MentorshipU host (e.g.
+    mentorshipu.com). Always False until MENTORSHIP_BASE_URL names that host."""
+    mh = _mentorship_host()
+    return bool(mh) and (request.host or "").split(":")[0].lower() == mh.lower()
+
+
 GHL_MAGIC_WORKFLOW  = os.environ.get("GHL_MAGIC_LINK_WORKFLOW_ID", "")
 
 # EVOX remote-session booking (Rae's lane). Office-hours spec: "days:HH:MM-HH:MM"
@@ -591,6 +620,62 @@ def send_evox_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
     # Path 3: console fallback (development / pre-config)
     print(f"\n[evox] SETUP LINK for {to_email}: {setup_url}\n", flush=True)
     return "console-log", "no email send mechanism configured"
+
+
+def send_mentorship_setup_link(to_email: str, name: str, setup_url: str) -> tuple:
+    """Email a MentorshipU access link. Returns (sent_via, error_or_none).
+
+    SMTP when configured, else console-log fallback. Mirrors send_evox_setup_link's
+    SMTP -> console cascade (same local os.environ.get() reads for host/user/pass/
+    from/port, since those aren't module-level globals here); monkeypatchable as
+    app.send_mentorship_setup_link in tests.
+    """
+    first = (name or "").split(" ")[0] or "there"
+    subject = "Your MentorshipU access link"
+    text = (
+        f"Hi {first},\n\n"
+        "You are in. Your learning space is ready, and your progress will be "
+        "waiting for you every time you return.\n\n"
+        f"Open your courses here:\n{setup_url}\n\n"
+        "This link is yours. Keep it handy.\n\n"
+        "In good health,\nDr. Glen Swartwout"
+    )
+    html = (
+        f"<p>Hi {first},</p>"
+        "<p>You are in. Your learning space is ready, and your progress will be "
+        "waiting for you every time you return.</p>"
+        f'<p><a href="{setup_url}">Open your courses</a></p>'
+        "<p>This link is yours. Keep it handy.</p>"
+        "<p>In good health,<br>Dr. Glen Swartwout</p>"
+    )
+
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASS")
+    smtp_from = os.environ.get("SMTP_FROM", smtp_user)
+    if smtp_host and smtp_user and smtp_pass:
+        try:
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = smtp_from
+            msg["To"]      = to_email
+            msg.attach(MIMEText(text, "plain"))
+            msg.attach(MIMEText(html, "html"))
+            port = int(os.environ.get("SMTP_PORT", "587"))
+            with smtplib.SMTP(smtp_host, port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.sendmail(smtp_from, [to_email], msg.as_string())
+            return "smtp", None
+        except Exception as e:
+            print(f"[mentorship] SMTP setup-link send failed: {e}", flush=True)
+
+    # console fallback (development / pre-config, or SMTP failure above)
+    print(f"[mentorship] setup link for {to_email}: {setup_url}", flush=True)
+    return "console", None
 
 
 def send_portal_welcome_email(to_email, name, login_url):
@@ -2518,6 +2603,11 @@ def _serve_funnel_home():
 
 @app.route("/")
 def index():
+    # On the dedicated MentorshipU host (mentorshipu.com) the front door is the
+    # course catalog, not the funnel. Inert until MENTORSHIP_BASE_URL names that host.
+    if _on_mentorship_host():
+        from flask import redirect as _redirect
+        return _redirect("/learn", code=302)
     # On the dedicated portal host (myhealingoasis.com) the front door is the
     # portal sign-in, not the funnel. Inert until PORTAL_BASE_URL names that host.
     if _on_portal_host():
@@ -8371,6 +8461,11 @@ def learn_clinical_glossary_dim_data(dim):
 
 @app.route("/learn/<slug>")
 def learn_topic_page(slug):
+    if _on_mentorship_host():
+        # On the MentorshipU host this path is the course home page. The course
+        # routes were taken off courses_bp to avoid shadowing these topic pages.
+        from courses_blueprint import course_home
+        return course_home(slug)
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)
@@ -8428,6 +8523,11 @@ def learn_suggest_submit(slug):
 
 @app.route("/learn")
 def learn_index():
+    if _on_mentorship_host():
+        # On the MentorshipU host this path is the course catalog. The course
+        # routes were taken off courses_bp to avoid shadowing these topic pages.
+        from courses_blueprint import learn_home
+        return learn_home()
     from dashboard import topic_pages as _tp, topic_render as _tr
     if not TOPIC_PAGES_ENABLED:
         return ("Not found", 404)

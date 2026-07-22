@@ -37,6 +37,13 @@ export CONSOLE_SECRET="${CONSOLE_SECRET:-ci-fake-console-secret}"
 # test run. CI has none; this stops a developer's shell token leaking into a local run.
 unset DOPPLER_TOKEN
 
+# --- content lint ----------------------------------------------------------------------
+# Build-time validator for courses/ (MentorshipU LMS): catches invalid access values,
+# missing rumble_id, unresolved download urls, missing lesson files, and unparseable
+# yaml/frontmatter before the suite runs. Exits 0 when courses/ is absent or empty --
+# the content tree lands in a later task, so a fresh checkout must not fail here.
+python3 scripts/lint_courses.py || exit 1
+
 # --- the gate ------------------------------------------------------------------------
 # scripts/ci_check.py runs the WHOLE suite and compares failures against the accepted
 # baseline in tests/known_failures.txt, failing only on a NEW failure. It replaced an

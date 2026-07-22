@@ -13,6 +13,7 @@ APScheduler
 jinja2>=3.0
 psycopg2-binary
 beautifulsoup4
+html5lib
 numpy
 scikit-learn
 boto3
@@ -20,3 +21,6 @@ imageio-ffmpeg
 Pillow
 psycopg[binary]>=3.1
 psycopg_pool>=3.2
+python-frontmatter
+markdown
+PyYAML

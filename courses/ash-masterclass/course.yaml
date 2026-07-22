@@ -1,0 +1,8 @@
+title: Accelerated Self Healing MasterClass
+description: A free introductory overview of Accelerated Self Healing.
+modules:
+  - slug: 01-masterclass
+    title: MasterClass
+    lessons:
+      - 01-masterclass-1
+      - 02-masterclass-2
