@@ -4,9 +4,23 @@ from typing import List, Dict
 from scripts.pgmig import introspect
 
 def scan_collisions(cx, table: str, cols: List[str]) -> Dict:
+    """Scan `table` for rows whose (cols) key already repeats -- a would-be
+    UNIQUE-constraint collision.
+
+    NULLs are excluded from the scan: SQL treats NULL as DISTINCT from any
+    other NULL under a UNIQUE index/constraint (both SQLite and Postgres, by
+    default), so a group of rows that all share a NULL key value does NOT
+    actually collide. A row with ANY NULL key column would be excluded from
+    the UNIQUE constraint entirely, so it must also be excluded here -- else
+    the scan reports false-positive "collisions" the real cutover would never
+    hit (this hit `subscriptions.order_ref` and `todos.dedup_key` in the
+    2026-07-22 dry-run).
+    """
     collist = ", ".join(f'"{c}"' for c in cols)
+    not_null = " AND ".join(f'"{c}" IS NOT NULL' for c in cols)
     rows = cx.execute(
-        f'SELECT {collist}, COUNT(*) c FROM "{table}" GROUP BY {collist} HAVING c > 1'
+        f'SELECT {collist}, COUNT(*) c FROM "{table}" WHERE {not_null} '
+        f'GROUP BY {collist} HAVING c > 1'
     ).fetchall()
     n_groups = len(rows)
     n_excess = sum(r[-1] - 1 for r in rows)

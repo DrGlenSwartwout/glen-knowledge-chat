@@ -36,14 +36,19 @@ def test_unique_indexes_introspection(tmp_path):
     cx.close()
 
 def test_scan_db_direct_file_path(tmp_path):
-    """Test scan_db aggregation with real collision data via file-path entry point."""
+    """Test scan_db aggregation via file-path entry point. NULL-key groups
+    must NOT be reported as collisions (NULLs are distinct under UNIQUE) --
+    this is the exact false-positive shape the real dry-run hit
+    (subscriptions.order_ref: 3 NULLs; todos.dedup_key: 6 NULLs). A table
+    with only NULL-key rows under a live unique index has ZERO real
+    collisions and must produce no finding at all."""
     p = str(tmp_path / "collide.db")
     cx = sqlite3.connect(p)
     cx.executescript(
-        # Table with unique index and NULL-based collision
+        # Table with unique index and only NULL keys -- no genuine collision.
         "CREATE TABLE users (id INTEGER PRIMARY KEY, code TEXT);"
         "CREATE UNIQUE INDEX ux_users_code ON users (code);"
-        "INSERT INTO users (code) VALUES (NULL), (NULL), ('ABC');"
+        "INSERT INTO users (code) VALUES (NULL), (NULL), (NULL), ('ABC');"
         # Clean table with unique index, no collisions
         "CREATE TABLE products (id INTEGER PRIMARY KEY, sku TEXT);"
         "CREATE UNIQUE INDEX ux_products_sku ON products (sku);"
@@ -54,11 +59,63 @@ def test_scan_db_direct_file_path(tmp_path):
     # Call the file-path entry point (the aggregation function)
     findings = dedup.scan_db(p)
 
-    # Should find exactly one table with duplicates
-    assert len(findings) == 1
-    assert findings[0]["table"] == "users"
-    assert findings[0]["key_cols"] == ["code"]
-    assert findings[0]["n_groups"] == 1  # One duplicate group (the two NULLs)
-    assert findings[0]["n_excess_rows"] == 1  # Two NULLs = 1 excess row
-    # examples should contain the NULL key
-    assert any(ex["key"] == [None] for ex in findings[0]["examples"])
+    # No genuine collisions anywhere -- the 3 NULLs must NOT be reported.
+    assert findings == []
+
+
+def test_scan_collisions_excludes_null_key_groups(tmp_path):
+    """A table where the entire key repeats as NULL must report ZERO
+    collision groups -- this is the exact false-positive shape the real
+    dry-run hit (subscriptions.order_ref: 3 NULLs; todos.dedup_key: 6 NULLs)."""
+    p = str(tmp_path / "nulls.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE subscriptions (id INTEGER PRIMARY KEY, order_ref TEXT);"
+        "CREATE UNIQUE INDEX ux_subs_ref ON subscriptions (order_ref);"
+        "INSERT INTO subscriptions (order_ref) VALUES (NULL), (NULL), (NULL);"
+    )
+    cx.commit()
+    res = dedup.scan_collisions(cx, "subscriptions", ["order_ref"])
+    assert res["n_groups"] == 0
+    assert res["n_excess_rows"] == 0
+    assert res["examples"] == []
+    cx.close()
+
+
+def test_scan_collisions_still_flags_genuine_non_null_dups(tmp_path):
+    """Genuine duplicate NON-NULL keys must still be reported. (No live
+    unique index here -- a real UNIQUE index would refuse to admit these
+    duplicate non-NULL rows in the first place; this mirrors the 'dirty'
+    table pattern used elsewhere in this file for the same reason: the
+    scanner's own GROUP BY logic is what's under test, independent of
+    whether the source's index actually built.)"""
+    p = str(tmp_path / "dups.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, k TEXT);"
+        "INSERT INTO t (k) VALUES ('a'), ('a'), ('b');"
+    )
+    cx.commit()
+    res = dedup.scan_collisions(cx, "t", ["k"])
+    assert res["n_groups"] == 1
+    assert res["n_excess_rows"] == 1
+    assert res["examples"] == [{"key": ["a"], "count": 2}]
+    cx.close()
+
+
+def test_scan_collisions_mixed_nulls_and_genuine_dup(tmp_path):
+    """Mixed case: NULL-key rows coexist with a genuine non-NULL dup -- only
+    the non-NULL dup is reported."""
+    p = str(tmp_path / "mixed.db")
+    cx = sqlite3.connect(p)
+    cx.executescript(
+        "CREATE TABLE todos (id INTEGER PRIMARY KEY, dedup_key TEXT);"
+        "INSERT INTO todos (dedup_key) VALUES "
+        "(NULL), (NULL), (NULL), (NULL), (NULL), (NULL), ('same'), ('same'), ('unique');"
+    )
+    cx.commit()
+    res = dedup.scan_collisions(cx, "todos", ["dedup_key"])
+    assert res["n_groups"] == 1
+    assert res["n_excess_rows"] == 1
+    assert res["examples"] == [{"key": ["same"], "count": 2}]
+    cx.close()
