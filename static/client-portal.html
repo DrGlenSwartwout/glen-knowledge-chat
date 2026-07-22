@@ -400,6 +400,18 @@
   .hub-tile:hover,.hub-tile:focus-visible { border-color:#2f6f5e; box-shadow:0 6px 18px rgba(24,36,32,.08); outline:none; }
   .hub-tile .tname { font-weight:650; font-size:.95rem; }
   .hub-tile .tdesc { font-size:.78rem; color:var(--muted); }
+  /* Task 2: My Health Profile read-only panel. */
+  .health-section h2 { margin-top:0; }
+  .health-field { padding:.6rem 0; border-top:1px solid var(--line); }
+  .health-field:first-of-type { border-top:none; padding-top:0; }
+  .health-field-head { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+  .health-label { font-weight:650; font-size:.9rem; }
+  .health-edit-btn { font-size:.78rem; background:none; border:1px solid var(--line); border-radius:8px;
+    padding:2px 10px; color:var(--muted); cursor:pointer; font-family:inherit; }
+  .health-edit-btn:hover,.health-edit-btn:focus-visible { border-color:var(--brand); color:var(--ink); outline:none; }
+  .health-value { margin:.3rem 0 0; }
+  .health-table-list { margin:.3rem 0 0; padding-left:1.1rem; }
+  .health-table-list li { font-size:.9rem; margin:.2rem 0; }
 </style>
 </head>
 <body>
@@ -676,10 +688,18 @@ function backToHub(){
 // Journey-grouped hub landing. Each tile routes via the existing showTab() to a
 // [data-panel] section. Groups encode the healing journey. Later phases add tiles.
 function buildHubHtml(d, v){
+  // Task 2: the health tile is only meaningful (and only rendered) once the
+  // curated health_profile block is enabled — off-state must add nothing.
+  const understandTiles = [
+    ["current", "My Analysis", "Your current scan, matches and healing path"],
+  ];
+  if (v && v.health_profile && v.health_profile.enabled) {
+    const pending = v.health_profile.suggestion_count;
+    understandTiles.push(["health", "My Health Profile", "Your history, symptoms and intake",
+      (pending > 0) ? pending : undefined]);
+  }
   const groups = [
-    ["Understand", [
-      ["current", "My Analysis", "Your current scan, matches and healing path"],
-    ]],
+    ["Understand", understandTiles],
     ["Act", [
       ["finder", "Find a Practitioner", "Certified practitioners near you"],
       ["refer",  "Refer a Friend", "Share healing and earn as an Ambassador"],
@@ -695,9 +715,11 @@ function buildHubHtml(d, v){
       ["referrals","Referrals", "Who you've referred and your rewards"],
     ]],
   ];
-  const tile = ([panel,name,desc]) =>
+  // 4th tuple slot (badge) is optional so every pre-existing 3-element tile
+  // renders exactly as before; reuses the existing .pill style, no new CSS.
+  const tile = ([panel,name,desc,badge]) =>
     `<button type="button" class="hub-tile" onclick="showTab('${panel}')">
-       <span class="tname">${esc(name)}</span><span class="tdesc">${esc(desc)}</span></button>`;
+       <span class="tname">${esc(name)}${badge?` <span class="pill">${esc(badge)}</span>`:""}</span><span class="tdesc">${esc(desc)}</span></button>`;
   const grp = ([label,tiles]) =>
     `<div class="hub-grid-group"><p class="glabel">${esc(label)}</p>
        <div class="hub-tiles">${tiles.map(tile).join("")}</div></div>`;
@@ -710,6 +732,49 @@ function buildHubHtml(d, v){
       <h2>${esc(d.hub_headline || "Your healing home")}</h2></div>${next}
       <button type="button" class="hub-account" onclick="showTab('account')">Account</button></div>
     ${groups.map(grp).join("")}</div>`;
+}
+// My Health Profile panel body (Task 2, read-only). Renders v.health_profile.
+// sections (curated goals/dimensions/history from dashboard/health_profile.py)
+// as label/value rows. Scalars print esc(value) or an empty-state note; a
+// "table" field's value is a list of row-dicts (e.g. health_concerns,
+// supplements) rendered as a compact per-row list of "key: value" pairs — the
+// payload doesn't carry column labels, so raw field keys are used. Every
+// interpolated value goes through esc(). Includes an empty #healthSuggestions
+// placeholder (Task 7 fills it) and, per field, an inert Edit button carrying
+// data-field-id (wired up in Task 4) — neither does anything yet.
+function healthFieldValueHtml(f){
+  if (f.type === "table") {
+    const rows = Array.isArray(f.value) ? f.value : [];
+    if (!rows.length) return `<p class="muted small">Not provided yet.</p>`;
+    return `<ul class="health-table-list">${rows.map(row => {
+      const cells = Object.keys(row || {}).map(k => `${esc(k)}: ${esc(row[k])}`).join(" &middot; ");
+      return `<li>${cells}</li>`;
+    }).join("")}</ul>`;
+  }
+  const val = f.value;
+  return (val === null || val === undefined || val === "")
+    ? `<p class="muted small">Not provided yet.</p>`
+    : `<p class="health-value">${esc(val)}</p>`;
+}
+function healthFieldHtml(f){
+  return `<div class="health-field">
+    <div class="health-field-head"><span class="health-label">${esc(f.label)}</span>
+      <button type="button" class="health-edit-btn" data-field-id="${esc(f.id)}">Edit</button></div>
+    ${healthFieldValueHtml(f)}
+  </div>`;
+}
+function healthSectionHtml(sec){
+  const fields = Array.isArray(sec.fields) ? sec.fields : [];
+  return `<div class="card health-section"><h2>${esc(sec.title)}</h2>
+    ${fields.map(healthFieldHtml).join("")}</div>`;
+}
+function buildHealthProfileHtml(v){
+  const hp = (v && v.health_profile) || {};
+  const sections = Array.isArray(hp.sections) ? hp.sections : [];
+  const body = sections.length
+    ? sections.map(healthSectionHtml).join("")
+    : `<div class="card quiet"><p class="muted">Your health profile will appear here once your intake is on file.</p></div>`;
+  return `<div class="portal-health"><div id="healthSuggestions"></div>${body}</div>`;
 }
 // One Scan History row per date. memberEmail is set only for the group currently
 // being viewed (matches ?member=, or "" for "You") — clicking it reuses the same
@@ -2259,6 +2324,7 @@ function render(d, v){
       <section data-panel="history" hidden>${back}${historyHtml}</section>
       <section data-panel="orders" hidden>${back}${ordersHtml}</section>${_hub ? `
       <section data-panel="ask" hidden>${back}${_askHtml}</section>
+      ${_hub && v.health_profile && v.health_profile.enabled ? `<section data-panel="health" hidden>${back}${buildHealthProfileHtml(v)}</section>` : ""}
       <section data-panel="finder" hidden>${back}${_finderHtml || '<div class="card quiet"><p class="muted">The practitioner finder is not enabled for your portal yet.</p></div>'}</section>
       <section data-panel="bodymap" hidden>${back}${_bodymapHtml}</section>
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>
