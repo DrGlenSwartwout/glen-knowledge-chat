@@ -11741,6 +11741,17 @@ def me():
     })
 
 
+def _cta_valid_product(slug):
+    """True if slug is a real catalog product (superseded-resolved)."""
+    try:
+        from dashboard import products as _p
+        cat = _p.load_products()
+        s = (slug or "").strip()
+        return bool(s) and (s in cat or _p.superseded_slug(s) in cat)
+    except Exception:
+        return False
+
+
 @app.route("/api/cta-click", methods=["POST", "OPTIONS"])
 def api_cta_click():
     if request.method == "OPTIONS":
@@ -11755,6 +11766,14 @@ def api_cta_click():
                 "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
                 (ts, log_id, cta_type),
             )
+            slug = (str(data.get("slug") or "")).strip()
+            if slug and _cta_valid_product(slug):
+                erow = cx.execute("SELECT email FROM query_log WHERE id=?", (log_id,)).fetchone()
+                email = ((erow[0] if erow else "") or "").strip().lower()
+                if email:
+                    from dashboard import recommendation_events as _re
+                    _re.init_recommendation_events(cx)
+                    _re.record_click(cx, email, slug, "chat")
     except Exception:
         pass
     return jsonify({"ok": True})
