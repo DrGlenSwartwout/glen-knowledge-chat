@@ -21667,6 +21667,34 @@ def api_portal_health_suggestion_resolve(token, sid):
     return jsonify({"ok": True, "health_profile": block})
 
 
+@app.route("/api/console/client/<email>/health-suggestion", methods=["POST"])
+def api_console_client_health_suggestion(email):
+    """Practitioner proposes a health-record edit from the console. Lands as a
+    source='clinician' PENDING suggestion (health_suggestions.add_pending) —
+    the SAME approve-mechanism the client uses for chat-extracted suggestions
+    (api_portal_health_suggestion_resolve) — never a direct write into
+    intake_responses. Console-authed (the standard _console_key_ok() gate
+    shared by other /api/console/* routes), NOT portal-token-gated: the
+    practitioner is acting ON a client from the console, so the `<email>` in
+    the path is the trusted target (unlike the portal routes above, where
+    identity always comes from the token, never the path/body)."""
+    if not _PORTAL_HEALTH_PROFILE_ENABLED:
+        return ("", 404)
+    if not _console_key_ok():
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    field_id = (body.get("field_id") or "").strip()
+    from dashboard import health_profile as _hp
+    if field_id not in _hp.EDITABLE_FIELD_IDS:
+        return jsonify({"ok": False, "error": "non-editable field"}), 400
+    from dashboard import health_suggestions as _hs
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _hs.add_pending(cx, email, field_id, body.get("value"),
+                        body.get("rationale"), source="clinician")
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
 def api_portal_life_stress_selection(token):
     """Save the client's Life Stress essence SELECTION (a preference, not an order).
