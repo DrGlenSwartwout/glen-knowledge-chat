@@ -251,6 +251,8 @@ def _supplement_reviews_block(cx, email, enabled):
         return {"status": "empty", "reviews": []}
     try:
         _sr.init_table(cx)
+        if not _sr.access_enabled(cx, em):
+            return {"status": "off"}  # per-client access revoked (default is on)
         rows = _sr.list_for_email(cx, em)
     except Exception:
         return {"status": "empty", "reviews": []}
