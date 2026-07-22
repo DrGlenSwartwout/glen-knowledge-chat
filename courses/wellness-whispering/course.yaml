@@ -1,0 +1,8 @@
+title: Wellness Whispering
+description: The art of hearing and translating the body's own signals.
+modules:
+  - slug: 01-lessons
+    title: Lessons
+    lessons:
+      - 01-masterclass-1
+      - 02-do-it-yourself-healing
