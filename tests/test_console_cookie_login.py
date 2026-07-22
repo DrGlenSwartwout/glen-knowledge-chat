@@ -38,6 +38,30 @@ def test_browser_key_redirects_strips_and_sets_cookie(client):
     assert sc and "HttpOnly" in sc
 
 
+def test_authenticated_console_request_refreshes_cookie(client):
+    """Rolling expiry: an authenticated console request (cookie, no ?key=) re-issues
+    the cookie so the 12h clock resets on activity."""
+    c, _ = client
+    c.get("/console/pages?key=test-secret", headers={"Accept": "text/html"})  # jar holds cookie
+    r = c.get("/api/console/next-actions")  # cookie-authenticated, no key
+    assert r.status_code == 200
+    assert _set_cookie_header(r, "rm_console_auth") is not None
+
+
+def test_anonymous_request_is_not_refreshed(client):
+    c, _ = client
+    r = c.get("/api/console/next-actions")  # no cookie, no key → 401
+    assert r.status_code == 401
+    assert _set_cookie_header(r, "rm_console_auth") is None
+
+
+def test_non_console_path_is_not_refreshed(client):
+    c, _ = client
+    c.get("/console/pages?key=test-secret", headers={"Accept": "text/html"})  # jar holds cookie
+    r = c.get("/some-non-console-path-xyz")  # outside console/admin → no refresh header
+    assert _set_cookie_header(r, "rm_console_auth") is None
+
+
 def test_extra_query_params_survive_the_strip(client):
     c, _ = client
     r = c.get("/console/pages?tab=drafts&key=test-secret",

@@ -29723,6 +29723,7 @@ CONSOLE_SECRET = os.environ.get("CONSOLE_SECRET", os.environ.get("WEBHOOK_SECRET
 # ?key= paths are untouched, so scripts/cron and per-user owner tokens keep
 # working exactly as before.
 CONSOLE_COOKIE = "rm_console_auth"
+CONSOLE_COOKIE_MAX_AGE = 60 * 60 * 12  # 12h, rolling (refreshed on each console request)
 
 
 def _console_cookie_value():
@@ -29774,9 +29775,34 @@ def _console_browser_login():
     resp = redirect(clean, code=302)
     resp.set_cookie(
         CONSOLE_COOKIE, _console_cookie_value(),
-        max_age=60 * 60 * 12, httponly=True,
+        max_age=CONSOLE_COOKIE_MAX_AGE, httponly=True,
         secure=request.is_secure, samesite="Lax")
     return resp
+
+
+@app.after_request
+def _console_rolling_session(resp):
+    """Rolling expiry: any authenticated console request (valid login cookie, no
+    ?key= in the URL) re-issues the cookie with a fresh 12h Max-Age, so the session
+    lapses only after 12h of INACTIVITY rather than 12h flat. Scoped to console /
+    admin paths so ordinary browsing doesn't carry a Set-Cookie. The ?key= guard
+    skips the login redirect (which already set the cookie) and script callers."""
+    try:
+        path = request.path or ""
+        if not (path.startswith("/console") or path.startswith("/admin")
+                or path.startswith("/api/console") or path.startswith("/api/admin")):
+            return resp
+        if request.args.get("key"):
+            return resp
+        if _console_cookie_valid(request.cookies.get(CONSOLE_COOKIE, "")):
+            resp.set_cookie(
+                CONSOLE_COOKIE, _console_cookie_value(),
+                max_age=CONSOLE_COOKIE_MAX_AGE, httponly=True,
+                secure=request.is_secure, samesite="Lax")
+    except Exception:
+        pass
+    return resp
+
 
 def _init_todos_table():
     with db.connect(LOG_DB) as cx:
