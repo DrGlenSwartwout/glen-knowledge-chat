@@ -1646,25 +1646,48 @@ function render(d){
         }).join('')
       : '<p class="muted" style="font-size:13px">No product reviews yet.</p>';
     rc.innerHTML = '<h2>Free Product Review</h2>'
-      + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Submit a supplement and Dr. Glen will review it for you, free.</div>'
+      + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Submit a supplement for review — for yourself, or on behalf of a client.</div>'
+      + '<input id="ppr-client" placeholder="Client email (optional — blank = for yourself)" style="width:100%;padding:8px;margin-bottom:6px">'
       + '<input id="ppr-name" placeholder="Product name" style="width:100%;padding:8px;margin-bottom:6px">'
       + '<input id="ppr-brand" placeholder="Brand (optional)" style="width:100%;padding:8px">'
       + '<button type="button" id="pprBtn" style="margin-top:8px">Request a review</button>'
       + '<div class="muted" id="pprStatus" style="font-size:13px;margin-top:6px"></div>'
-      + '<h3 style="margin:14px 0 4px;font-size:14px">Your reviews</h3>' + listH;
+      + '<h3 style="margin:16px 0 4px;font-size:14px">Free-review access</h3>'
+      + '<div class="muted" style="font-size:13px;margin-bottom:6px">Clients get free reviews by default. Turn it off for one client (enter their email above) or for everyone.</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      +   '<button type="button" id="pprAccessOff">Off for this client</button>'
+      +   '<button type="button" id="pprAccessOn">On for this client</button>'
+      +   '<button type="button" id="pprAllOff">Off for ALL my clients</button>'
+      +   '<button type="button" id="pprAllOn">On for ALL my clients</button>'
+      + '</div>'
+      + '<div class="muted" id="pprAccessStatus" style="font-size:13px;margin-top:6px"></div>'
+      + '<h3 style="margin:16px 0 4px;font-size:14px">Your reviews</h3>' + listH;
+    var st = $('pprStatus');
     var pb = $('pprBtn');
     if (pb) pb.addEventListener('click', function(){
       var nm = ($('ppr-name').value || '').trim();
-      var st = $('pprStatus');
       if (!nm) { st.textContent = 'Enter a product name.'; return; }
       pb.disabled = true; st.textContent = 'Submitting...';
+      var payload = {product_name: nm, product_brand: ($('ppr-brand').value || '').trim()};
+      var ce = ($('ppr-client').value || '').trim(); if (ce) payload.client_email = ce;
       fetch('/api/practitioner/product-review/request', {method:'POST', credentials:'same-origin',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({product_name: nm, product_brand: ($('ppr-brand').value || '').trim()})})
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)})
         .then(function(r){ return r.json(); })
-        .then(function(j){ st.textContent = j.ok ? 'Got it — it will appear here after review.' : (j.error || 'Could not submit.'); if (!j.ok) pb.disabled = false; })
+        .then(function(j){ st.textContent = j.ok ? (j.client ? ('Submitted for ' + ce + '.') : 'Got it — it will appear here after review.') : (j.error || 'Could not submit.'); if (!j.ok) pb.disabled = false; })
         .catch(function(){ st.textContent = 'Could not submit.'; pb.disabled = false; });
     });
+    var ast = $('pprAccessStatus');
+    function accessOne(en){ var ce = ($('ppr-client').value || '').trim(); if (!ce) { ast.textContent = 'Enter a client email above first.'; return; }
+      ast.textContent = 'Working...';
+      fetch('/api/practitioner/product-review/access', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({client_email: ce, enabled: en})})
+        .then(function(r){ return r.json(); }).then(function(j){ ast.textContent = j.ok ? ('Free reviews ' + (j.enabled ? 'ON' : 'OFF') + ' for ' + ce + '.') : (j.error || 'Failed.'); }).catch(function(){ ast.textContent = 'Failed.'; }); }
+    function accessAll(en){ ast.textContent = 'Working...';
+      fetch('/api/practitioner/product-review/access-all', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: en})})
+        .then(function(r){ return r.json(); }).then(function(j){ ast.textContent = j.ok ? ('Free reviews ' + (j.enabled ? 'ON' : 'OFF') + ' for all ' + j.clients + ' clients.') : (j.error || 'Failed.'); }).catch(function(){ ast.textContent = 'Failed.'; }); }
+    if ($('pprAccessOff')) $('pprAccessOff').addEventListener('click', function(){ accessOne(false); });
+    if ($('pprAccessOn')) $('pprAccessOn').addEventListener('click', function(){ accessOne(true); });
+    if ($('pprAllOff')) $('pprAllOff').addEventListener('click', function(){ accessAll(false); });
+    if ($('pprAllOn')) $('pprAllOn').addEventListener('click', function(){ accessAll(true); });
   } else if (rc) {
     rc.style.display = 'none';
   }

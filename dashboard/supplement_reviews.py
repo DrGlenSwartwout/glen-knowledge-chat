@@ -60,7 +60,42 @@ def init_table(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS ix_suprev_status ON supplement_reviews(status)")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_suprev_email ON supplement_reviews(email)")
+    cx.execute("""
+        CREATE TABLE IF NOT EXISTS supplement_review_access (
+            email      TEXT PRIMARY KEY,
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            set_by     TEXT,
+            updated_at TEXT
+        )
+    """)
     cx.commit()
+
+
+def access_enabled(cx, email):
+    """Per-client access to the free product review. Default ON: a client is
+    enabled unless there is an explicit opt-out row (enabled=0). None-raising."""
+    e = _norm(email)
+    if not e:
+        return True
+    try:
+        row = cx.execute("SELECT enabled FROM supplement_review_access WHERE email=?", (e,)).fetchone()
+    except Exception:
+        return True
+    return True if row is None else bool(row[0])
+
+
+def set_access(cx, email, enabled, by=None):
+    """Grant (True) or revoke (False) a client's access to the free review. Upsert."""
+    e = _norm(email)
+    if not e:
+        return {"email": None, "enabled": None}
+    val = 1 if enabled else 0
+    cx.execute(
+        "INSERT INTO supplement_review_access (email, enabled, set_by, updated_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(email) DO UPDATE SET enabled=excluded.enabled, set_by=excluded.set_by, updated_at=excluded.updated_at",
+        (e, val, (by or ""), _now()))
+    cx.commit()
+    return {"email": e, "enabled": bool(val)}
 
 
 def create_request(cx, email, product_name, product_brand="", source="portal"):

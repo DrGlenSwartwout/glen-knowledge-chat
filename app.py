@@ -25466,8 +25466,8 @@ def console_product_reviews_page():
 
 @app.route("/api/practitioner/product-review/request", methods=["POST"])
 def api_practitioner_product_review_request():
-    """Practitioner-portal 'request a review' — identity from the practitioner
-    session (not a client portal token). 404s when the feature is dark."""
+    """Practitioner requests a review — for themselves, or (with client_email) on
+    behalf of one of their clients. 404s when the feature is dark."""
     from dashboard import supplement_reviews as _sr
     if not _sr.enabled():
         return jsonify({"error": "disabled"}), 404
@@ -25475,18 +25475,85 @@ def api_practitioner_product_review_request():
     if not pid:
         return jsonify({"error": "not signed in"}), 401
     data = _pp.portal_data(pid, include_orders=False) or {}
-    email = (data.get("email") or "").strip().lower()
-    if not email:
+    prac_email = (data.get("email") or "").strip().lower()
+    if not prac_email:
         return jsonify({"error": "no_email"}), 400
     body = request.get_json(silent=True) or {}
     product = (body.get("product_name") or "").strip()
     brand = (body.get("product_brand") or "").strip()
+    client_email = (body.get("client_email") or "").strip().lower()
     if not product:
         return jsonify({"error": "product_required"}), 400
+    target = client_email or prac_email
+    source = ("practitioner:" + prac_email) if client_email else "portal"
     with _db_lock, db.connect(LOG_DB) as cx:
         _sr.init_table(cx)
-        res = _sr.create_request(cx, email, product, brand, source="portal")
-    return jsonify({"ok": True, "status": res["status"], "created": res["created"]})
+        if client_email:
+            from dashboard import customers as _cu
+            _cu.find_or_create_by_email(cx, email=client_email, name="")  # start a lead if new
+        res = _sr.create_request(cx, target, product, brand, source=source)
+    return jsonify({"ok": True, "status": res["status"], "created": res["created"],
+                    "client": bool(client_email)})
+
+
+@app.route("/api/practitioner/product-review/access", methods=["POST"])
+def api_practitioner_product_review_access():
+    """Practitioner turns a single client's free-review access on/off (default on)."""
+    from dashboard import supplement_reviews as _sr
+    if not _sr.enabled():
+        return jsonify({"error": "disabled"}), 404
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "not signed in"}), 401
+    data = _pp.portal_data(pid, include_orders=False) or {}
+    prac_email = (data.get("email") or "").strip().lower()
+    body = request.get_json(silent=True) or {}
+    client_email = (body.get("client_email") or "").strip().lower()
+    if not client_email:
+        return jsonify({"error": "client_email_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        res = _sr.set_access(cx, client_email, bool(body.get("enabled")),
+                             by="practitioner:" + prac_email)
+    return jsonify({"ok": True, "email": res["email"], "enabled": res["enabled"]})
+
+
+@app.route("/api/practitioner/product-review/access-all", methods=["POST"])
+def api_practitioner_product_review_access_all():
+    """Practitioner turns free-review access on/off for ALL their consented clients."""
+    from dashboard import supplement_reviews as _sr
+    from dashboard import continuity_view as _cv
+    if not _sr.enabled():
+        return jsonify({"error": "disabled"}), 404
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "not signed in"}), 401
+    data = _pp.portal_data(pid, include_orders=False) or {}
+    prac_email = (data.get("email") or "").strip().lower()
+    enabled = bool((request.get_json(silent=True) or {}).get("enabled"))
+    n = 0
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        for r in _cv.roster(cx, pid):
+            _sr.set_access(cx, r["email"], enabled, by="practitioner-all:" + prac_email)
+            n += 1
+    return jsonify({"ok": True, "enabled": enabled, "clients": n})
+
+
+@app.route("/api/console/product-review/access", methods=["POST"])
+def api_console_product_review_access():
+    """Owner/console override of a client's free-review access."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import supplement_reviews as _sr
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "email_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        res = _sr.set_access(cx, email, bool(body.get("enabled")), by="console")
+    return jsonify({"ok": True, "email": res["email"], "enabled": res["enabled"]})
 
 
 @app.route("/product-review")
