@@ -210,6 +210,97 @@ def test_create_schema_drop_first_gives_a_clean_rerun(monkeypatch, tmp_path):
     assert not r2["skipped"]
 
 
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_preserves_default_literal_containing_word_references(monkeypatch, tmp_path):
+    """FIX A: the column-level REFERENCES-strip must be span-aware -- it must
+    not reach into a quoted DEFAULT literal that happens to contain the word
+    "references" and chew through the rest of it."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_fix_a.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, "
+        "note TEXT DEFAULT 'references parent stuff');"
+    )
+    cx.commit()
+    cx.close()
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+    assert not report["skipped"]
+
+    with db.connect(src) as cx2:
+        row = cx2.execute(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_schema=? AND table_name='t' AND column_name='note'",
+            (schema,)).fetchone()
+        assert row is not None
+        assert "references parent stuff" in row[0]
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_column_named_real_and_is_real_deal_literal_survive(monkeypatch, tmp_path):
+    """FIX B: the REAL->DOUBLE PRECISION rewrite must be type-position-only --
+    a column literally named `real` must keep its name and declared type, and
+    a DEFAULT literal containing the word "real" must be untouched."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_fix_b.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        'CREATE TABLE t (id INTEGER PRIMARY KEY, "real" INTEGER, '
+        "status TEXT DEFAULT 'is real deal');"
+    )
+    cx.commit()
+    cx.close()
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+    assert not report["skipped"]
+
+    with db.connect(src) as cx2:
+        cols = {r[0]: r for r in cx2.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema=? AND table_name='t'", (schema,)).fetchall()}
+        assert "real" in cols
+        assert cols["real"][1] == "integer"
+
+        default_row = cx2.execute(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_schema=? AND table_name='t' AND column_name='status'",
+            (schema,)).fetchone()
+        assert default_row is not None
+        assert "is real deal" in default_row[0]
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_percent_literal_not_double_escaped(monkeypatch, tmp_path):
+    """FIX C: the schema-create DDL carries no bound params, so it must be
+    translated once and executed without a second pass through the psycopg
+    '%'->'%%' escape -- a `DEFAULT '100%'` must land as single-percent."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_fix_c.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, pat TEXT DEFAULT '100%', "
+        "CHECK (pat LIKE 'A%'));"
+    )
+    cx.commit()
+    cx.close()
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+    assert not report["skipped"]
+
+    with db.connect(src) as cx2:
+        row = cx2.execute(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_schema=? AND table_name='t' AND column_name='pat'",
+            (schema,)).fetchone()
+        assert row is not None
+        assert "100%" in row[0]
+        assert "100%%" not in row[0]
+
+
 def test_create_schema_asserts_postgres_backend(monkeypatch, tmp_path):
     """Unguarded (no PG skip-mark): the backend assert must fire before any
     PG connection is attempted, so this runs green in the SQLite-only harness."""

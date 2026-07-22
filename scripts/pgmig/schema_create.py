@@ -4,16 +4,27 @@ creates only the ~97 tables the app touches at import time -- 129 of prod's 226
 tables are created lazily at runtime and would otherwise be missing entirely).
 
 Pipeline for each table's DDL (`translate_ddl`):
-  1. `dashboard.pgcompat.translate_sql` -- the mechanical idioms already used on
-     every live query/DDL (AUTOINCREMENT -> IDENTITY, datetime('now'), etc).
-  2. DDL-only `REAL` -> `DOUBLE PRECISION` -- safe HERE (CREATE TABLE text has no
-     data literals), unlike the conservative runtime query-translation path.
+  1. `dashboard.pgcompat._translate_ddl_idioms` -- the mechanical IDIOM
+     translations only (AUTOINCREMENT -> IDENTITY, datetime('now'), etc). This
+     is deliberately NOT `pgcompat.translate_sql`: that also does the psycopg
+     PARAMETER-layer escaping (`%` -> `%%`, `?` -> `%s`), which is correct for
+     a query executed WITH bound params but wrong here -- this DDL is executed
+     with NO params, so escaping a literal `%` (e.g. a `DEFAULT '100%'`) would
+     corrupt it (see `create_schema`, which executes the final DDL on the raw
+     connection for the same reason -- never through the param-escaping path).
+  2. DDL-only, TYPE-POSITION-only `REAL` -> `DOUBLE PRECISION` -- applied to
+     just the leading type token of each column's post-name text (see
+     `_translate_real_type`), so a column literally NAMED `real` or a string
+     literal containing the word "real" is never touched.
   3. Force every column named in `text_cols` to `TEXT` -- data-driven widening
      for SQLite's loose typing (an INTEGER-declared column that actually holds
      non-integer data, e.g. `testimonial_tokens` holding UUID strings).
   4. Strip FK constraints entirely (column-level `REFERENCES ...` and
      table-level `FOREIGN KEY (...) REFERENCES ...`) -- see the design-decision
-     note on `create_schema` for why.
+     note on `create_schema` for why. The column-level strip is SPAN-AWARE
+     (via `pgcompat._scan_sql_spans`): it only rewrites the REFERENCES keyword
+     in "code" spans, never inside a quoted string literal, so a `DEFAULT
+     'references parent stuff'` value survives intact.
 
 Read-only on SQLite throughout (source opened `mode=ro`); all Postgres access
 goes through `dashboard.db` (whose connection's search_path is already the
@@ -24,15 +35,6 @@ import sqlite3
 from typing import Dict, List, Optional, Set, Tuple
 
 from dashboard import db, pgcompat
-
-# ---------------------------------------------------------------------------
-# translate_ddl and its helpers
-# ---------------------------------------------------------------------------
-
-# DDL-only: safe because this runs solely on CREATE TABLE/INDEX text pulled from
-# sqlite_master, never on a data literal (unlike the runtime query-translation
-# path in pgcompat.translate_sql, which must stay conservative around values).
-_RE_REAL = re.compile(r"(?i)\bREAL\b")
 
 # A leading identifier token -- double-quoted, backtick-quoted, bracket-quoted,
 # or bare -- capturing any leading whitespace along with it, plus everything
@@ -64,8 +66,43 @@ _RE_INLINE_REFERENCES = re.compile(
 )
 
 # The leading type token of a column's `rest` (e.g. "INTEGER", "VARCHAR(50)") --
-# used to force-override a loose-int column's declared type to TEXT.
+# used to force-override a loose-int column's declared type to TEXT, and (below)
+# to detect a REAL type in TYPE POSITION only.
 _RE_LEADING_TYPE = re.compile(r'^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?')
+
+
+def _strip_inline_references(rest: str) -> str:
+    """Apply `_RE_INLINE_REFERENCES` to `rest` SPAN-AWARE: only within its
+    quote/comment-aware "code" spans (`pgcompat._scan_sql_spans`), never
+    inside a single-quoted string literal or a comment. Without this, a
+    column def like `note TEXT DEFAULT 'references parent stuff'` has its
+    DEFAULT literal corrupted -- the naive whole-string regex sees the word
+    "references" inside the quotes and strips through the rest of the
+    literal. A column-level REFERENCES clause is always plain code (it
+    never contains a single-quoted literal itself), so it is always fully
+    contained in one "code" span and this is a safe, lossless split-apply."""
+    out = []
+    for kind, start, end in pgcompat._scan_sql_spans(rest):
+        piece = rest[start:end]
+        if kind == "code":
+            piece = _RE_INLINE_REFERENCES.sub("", piece)
+        out.append(piece)
+    return "".join(out)
+
+
+def _translate_real_type(rest: str) -> str:
+    """If the leading TYPE token of a column's `rest` is exactly REAL
+    (case-insensitive), rewrite it to DOUBLE PRECISION. TYPE-POSITION only:
+    `rest` is everything AFTER the column name has already been peeled off
+    by `_RE_LEADING_NAME`, and only its leading token (the declared type) is
+    ever inspected -- so a column literally named `real` (whose "real" text
+    lives in the name token, not `rest`) and a later DEFAULT/literal
+    containing the word "real" (e.g. `DEFAULT 'is real deal'`, which sits
+    well past the leading type token) are both left untouched."""
+    m = _RE_LEADING_TYPE.match(rest)
+    if not m or (m.group(2) or "").upper() != "REAL":
+        return rest
+    return rest[: m.start(2)] + "DOUBLE PRECISION" + rest[m.end(2):]
 
 
 def _logical_name(token: str) -> str:
@@ -211,11 +248,18 @@ def _force_text_type(rest: str) -> str:
 
 def translate_ddl(table: str, sqlite_sql: str, *, text_cols: Optional[Set[str]] = None) -> str:
     """Turn one SQLite `CREATE TABLE` statement into Postgres DDL. Pure
-    (no I/O). See module docstring for the 4-step pipeline."""
+    (no I/O). See module docstring for the 4-step pipeline.
+
+    Uses `pgcompat._translate_ddl_idioms` -- the IDIOM translations only, NOT
+    the full `pgcompat.translate_sql` -- because this DDL is executed with no
+    bound params (see `create_schema`); running it through `translate_sql`
+    would additionally escape every literal `%` as `%%` (the psycopg
+    parameter-layer escape), corrupting e.g. a `DEFAULT '100%'` into
+    `DEFAULT '100%%'`.
+    """
     text_cols_lower = {c.lower() for c in (text_cols or ())}
 
-    sql = pgcompat.translate_sql(sqlite_sql)
-    sql = _RE_REAL.sub("DOUBLE PRECISION", sql)
+    sql = pgcompat._translate_ddl_idioms(sqlite_sql)
 
     open_idx, close_idx = _find_column_list_span(sql)
     prefix = sql[: open_idx + 1]
@@ -238,7 +282,8 @@ def translate_ddl(table: str, sqlite_sql: str, *, text_cols: Optional[Set[str]] 
             new_items.append(item)  # defensive: unparseable item, pass through
             continue
         name_token, rest = m.group(1), m.group(2)
-        rest = _RE_INLINE_REFERENCES.sub("", rest)  # strip column-level FK
+        rest = _strip_inline_references(rest)  # strip column-level FK, span-aware
+        rest = _translate_real_type(rest)      # REAL -> DOUBLE PRECISION, type-position-only
         if _logical_name(name_token).lower() in text_cols_lower:
             rest = _force_text_type(rest)
         new_items.append(name_token + rest)
@@ -273,6 +318,21 @@ def loose_int_text_cols(sqlite_cx, table: str) -> Set[str]:
 # ---------------------------------------------------------------------------
 # create_schema
 # ---------------------------------------------------------------------------
+
+def _execute_ddl(pg_cx, sql: str) -> None:
+    """Execute already-translated, param-free DDL directly on the raw
+    psycopg connection underlying `pg_cx` (a `dashboard.db._PgConn`),
+    bypassing `db._PgCursor.execute` -- which calls `pgcompat.translate_sql`
+    AGAIN. `translate_ddl` already did the one-and-only idiom translation
+    (see its docstring); running the result through `translate_sql` a
+    second time would re-apply the psycopg `%`->`%%` parameter-escape,
+    corrupting any literal `%` that survived into the DDL (e.g. a `DEFAULT
+    '100%'` becoming `DEFAULT '100%%'` in Postgres). This DDL is executed
+    with no bound params, so it must go through that escaping layer exactly
+    zero times, not twice."""
+    cur = pg_cx._conn.cursor()
+    cur.execute(sql)
+
 
 def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
     """Build the full Postgres schema for `sqlite_path` from the source
@@ -325,7 +385,7 @@ def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
                 text_cols = loose_int_text_cols(sqlite_cx, table)
                 pg_sql = translate_ddl(table, sqlite_sql, text_cols=text_cols)
                 try:
-                    pg_cx.execute(pg_sql)
+                    _execute_ddl(pg_cx, pg_sql)
                 except Exception as exc:
                     report["skipped"].append({"table": table, "reason": str(exc)})
                     continue
@@ -339,9 +399,12 @@ def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
                 "WHERE type='index' AND sql IS NOT NULL ORDER BY name"
             ).fetchall()
             for idx_name, tbl_name, idx_sql in index_rows:
-                pg_idx_sql = pgcompat.translate_sql(idx_sql)
+                # Idiom-only (not translate_sql) + raw-connection execute, same
+                # reasoning as the table DDL above: no bound params here either,
+                # so no param-escaping pass, and no double translation.
+                pg_idx_sql = pgcompat._translate_ddl_idioms(idx_sql)
                 try:
-                    pg_cx.execute(pg_idx_sql)
+                    _execute_ddl(pg_cx, pg_idx_sql)
                     report["indexes_created"] += 1
                 except Exception as exc:
                     report["skipped"].append(
