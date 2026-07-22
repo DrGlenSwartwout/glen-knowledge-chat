@@ -25416,7 +25416,7 @@ def api_product_review_public_start():
     now = _hst_now()
     with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _cu.find_or_create_by_email(cx, email=email, name=name)
+        _cu.find_or_create_by_email(cx, email=email, name=name, source="product-review")
         _ev.init_evox_tables(cx)
         _cp.init_client_portal_table(cx)
         _sr.init_table(cx)
@@ -25495,7 +25495,7 @@ def api_practitioner_product_review_request():
         _sr.init_table(cx)
         if client_email:
             from dashboard import customers as _cu
-            _cu.find_or_create_by_email(cx, email=client_email, name="")  # start a lead if new
+            _cu.find_or_create_by_email(cx, email=client_email, name="", source="product-review")  # first-touch lead
         res = _sr.create_request(cx, target, product, brand, source=source)
     return jsonify({"ok": True, "status": res["status"], "created": res["created"],
                     "client": bool(client_email)})
@@ -25559,6 +25559,23 @@ def api_console_product_review_access():
         _sr.init_table(cx)
         res = _sr.set_access(cx, email, bool(body.get("enabled")), by="console")
     return jsonify({"ok": True, "email": res["email"], "enabled": res["enabled"]})
+
+
+@app.route("/api/console/product-review/new-clients", methods=["GET"])
+def api_console_product_review_new_clients():
+    """Clients whose FIRST touch was a product review (people.source='product-review')
+    — the public opt-in or a practitioner submitting on a new client's behalf."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        total = cx.execute(
+            "SELECT COUNT(*) FROM people WHERE source='product-review'").fetchone()[0]
+        rows = cx.execute(
+            "SELECT email, name, created_at FROM people WHERE source='product-review' "
+            "ORDER BY created_at DESC LIMIT 200").fetchall()
+    clients = [{"email": r["email"], "name": r["name"], "created_at": r["created_at"]} for r in rows]
+    return jsonify({"ok": True, "total": total, "clients": clients})
 
 
 @app.route("/product-review")
