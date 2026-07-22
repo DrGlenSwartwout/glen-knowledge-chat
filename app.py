@@ -29322,6 +29322,42 @@ def groovekart_webhook():
     return jsonify({"ok": True, "ghl": ghl_result, "affiliate_credited": credited}), 200
 
 
+@app.route("/webhook/ghl-click", methods=["POST"])
+def ghl_click_webhook():
+    """GHL newsletter product-link click -> `newsletter` recommendation event.
+
+    Glen's newsletter is sent from GoHighLevel using Trigger Links; a
+    'Trigger Link Clicked' workflow fires a GHL Outbound Webhook here. GHL's payload
+    carries the full contact record (email) plus CUSTOM DATA we set per workflow
+    (`product_slug`, optional `source`). We validate the slug against the live catalog
+    and record ONE engagement click. Auth: shared secret via ?key= (GHL outbound
+    webhooks can't send custom headers) or X-Webhook-Secret header. Always 200 on an
+    authed call so GHL does not retry-storm; 401 only on a bad/missing secret."""
+    if WEBHOOK_SECRET:
+        incoming = request.args.get("key") or request.headers.get("X-Webhook-Secret", "")
+        if incoming != WEBHOOK_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    _record_webhook_debug("ghl-click", request.get_data(as_text=True),
+                          headers=str(dict(request.headers)))
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
+        email = (data.get("email") or contact.get("email") or "").strip().lower()
+        slug_raw = (data.get("product_slug") or data.get("slug") or "").strip()
+        source = (data.get("source") or "newsletter").strip().lower()
+        resolved = _rec_valid_slug(slug_raw)
+        if email and resolved and source in _EMAIL_LINK_SOURCES:
+            from dashboard import (recommendation_events as _re,
+                                   recommendation_sources as _rs)
+            if _rs.known_source(source):
+                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                    _re.init_recommendation_events(cx)
+                    _re.record_click(cx, email, resolved, source)
+    except Exception:
+        pass
+    return jsonify({"ok": True}), 200
+
+
 @app.route("/webhook/stripe", methods=["POST"])
 def webhook_stripe():
     """Stripe webhook: create the $1-trial membership on checkout.session.completed,
