@@ -15,7 +15,9 @@ Pipeline for each table's DDL (`translate_ddl`):
   2. DDL-only, TYPE-POSITION-only `REAL` -> `DOUBLE PRECISION` -- applied to
      just the leading type token of each column's post-name text (see
      `_translate_real_type`), so a column literally NAMED `real` or a string
-     literal containing the word "real" is never touched.
+     literal containing the word "real" is never touched. Same TYPE-POSITION
+     treatment for `BLOB` -> `BYTEA` (see `_translate_blob_type`) -- Postgres
+     has no BLOB type; BYTEA is its binary-string equivalent.
   3. Force every column named in `text_cols` to `TEXT` -- data-driven widening
      for SQLite's loose typing (an INTEGER-declared column that actually holds
      non-integer data, e.g. `testimonial_tokens` holding UUID strings).
@@ -180,6 +182,23 @@ def _translate_real_type(rest: str) -> str:
     if not m or (m.group(2) or "").upper() != "REAL":
         return rest
     return rest[: m.start(2)] + "DOUBLE PRECISION" + rest[m.end(2):]
+
+
+def _translate_blob_type(rest: str) -> str:
+    """If the leading TYPE token of a column's `rest` is exactly BLOB
+    (case-insensitive), rewrite it to BYTEA -- Postgres has no BLOB type;
+    BYTEA is its binary-string equivalent. TYPE-POSITION only, mirroring
+    `_translate_real_type`: `rest` is everything AFTER the column name has
+    already been peeled off by `_RE_LEADING_NAME`, and only its leading
+    token (the declared type) is ever inspected -- so a column literally
+    named `blob` (whose "blob" text lives in the name token, not `rest`)
+    and a later DEFAULT/literal containing the word "blob" (e.g. `DEFAULT
+    'has blob word'`, which sits well past the leading type token) are both
+    left untouched."""
+    m = _RE_LEADING_TYPE.match(rest)
+    if not m or (m.group(2) or "").upper() != "BLOB":
+        return rest
+    return rest[: m.start(2)] + "BYTEA" + rest[m.end(2):]
 
 
 def _logical_name(token: str) -> str:
@@ -368,6 +387,7 @@ def translate_ddl(table: str, sqlite_sql: str, *, text_cols: Optional[Set[str]] 
         name_token, rest = m.group(1), m.group(2)
         rest = _strip_inline_references(rest)  # strip column-level FK, span-aware
         rest = _translate_real_type(rest)      # REAL -> DOUBLE PRECISION, type-position-only
+        rest = _translate_blob_type(rest)      # BLOB -> BYTEA, type-position-only
         if _logical_name(name_token).lower() in text_cols_lower:
             rest = _force_text_type(rest)
         # BUG A: quote a bare reserved-word column name (e.g. `end`) so the
