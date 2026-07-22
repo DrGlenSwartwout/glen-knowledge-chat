@@ -157,3 +157,87 @@ def test_no_console_secret_means_no_valid_cookie(monkeypatch):
     assert appmod._console_cookie_value() == ""
     assert not appmod._console_cookie_valid("")
     assert not appmod._console_cookie_valid("anything")
+
+
+# ── Owner-token cookie login (Rae): same clean URL-strip as the master secret,
+#    but the cookie carries the revocable token and never escalates to master. ──
+
+_RAE = "rae-owner-token-abc123"
+
+
+def _seed_owner_token(appmod, token=_RAE, scope="workspace:rae"):
+    appmod._init_workspace_schema()
+    with appmod.db.connect(appmod.LOG_DB) as cx:
+        cx.execute(
+            "INSERT INTO workspace_users (name, display_name, scope) VALUES ('rae','Rae',?) "
+            "ON CONFLICT(name) DO UPDATE SET scope=excluded.scope", (scope,))
+        uid = cx.execute("SELECT id FROM workspace_users WHERE name='rae'").fetchone()[0]
+        cx.execute("INSERT INTO access_tokens (token, user_id) VALUES (?,?)", (token, uid))
+        cx.commit()
+
+
+def test_owner_token_precondition(client):
+    # Sanity: the seeded token resolves to the OWNER role (else the rest is moot).
+    c, appmod = client
+    _seed_owner_token(appmod)
+    assert appmod._owner_token_ok(_RAE) is True
+
+
+def test_owner_token_browser_login_strips_and_sets_cookie(client):
+    c, appmod = client
+    _seed_owner_token(appmod)
+    r = c.get("/console/pages?key=" + _RAE, headers={"Accept": "text/html"})
+    assert r.status_code == 302
+    assert "key=" not in r.headers["Location"]
+    sc = _set_cookie_header(r, "rm_console_auth")
+    assert sc and "HttpOnly" in sc
+    # cookie carries the TOKEN itself (not the master HMAC)
+    assert _RAE in sc
+
+
+def test_owner_cookie_authenticates_without_key(client):
+    c, appmod = client
+    _seed_owner_token(appmod)
+    c.get("/console/pages?key=" + _RAE, headers={"Accept": "text/html"})  # jar holds cookie
+    r = c.get("/api/console/next-actions")  # no key in URL — cookie authenticates
+    assert r.status_code == 200
+
+
+def test_owner_cookie_never_escalates_to_master(client):
+    # An owner-token cookie must resolve to the token, never the master secret.
+    c, appmod = client
+    _seed_owner_token(appmod)
+    from flask import request
+    with appmod.app.test_request_context(
+            "/console", headers={"Cookie": "rm_console_auth=" + _RAE}):
+        assert appmod._present_console_key() == _RAE
+        assert appmod._present_console_key() != appmod.CONSOLE_SECRET
+
+
+def test_owner_cookie_is_refreshed_rolling(client):
+    c, appmod = client
+    _seed_owner_token(appmod)
+    c.get("/console/pages?key=" + _RAE, headers={"Accept": "text/html"})
+    r = c.get("/api/console/next-actions")
+    assert r.status_code == 200
+    assert _set_cookie_header(r, "rm_console_auth") is not None
+
+
+def test_revoked_owner_token_cookie_is_rejected(client):
+    c, appmod = client
+    _seed_owner_token(appmod)
+    with appmod.db.connect(appmod.LOG_DB) as cx:
+        cx.execute("UPDATE access_tokens SET revoked_at=datetime('now') WHERE token=?", (_RAE,))
+        cx.commit()
+    from flask import request
+    with appmod.app.test_request_context(
+            "/console", headers={"Cookie": "rm_console_auth=" + _RAE}):
+        assert appmod._present_console_key() == ""
+
+
+def test_scoped_va_token_is_not_cookie_logged_in(client):
+    # A VA-scoped token (Shaira) is not an OWNER token → no strip, no cookie.
+    c, appmod = client
+    _seed_owner_token(appmod, token="va-token-xyz", scope="workspace:shaira")
+    r = c.get("/console/pages?key=va-token-xyz", headers={"Accept": "text/html"})
+    assert _set_cookie_header(r, "rm_console_auth") is None
