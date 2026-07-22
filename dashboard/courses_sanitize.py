@@ -20,8 +20,13 @@ ALLOWED_TAGS = {
     "blockquote", "img", "div", "iframe",
 }
 
-# Per-tag attribute allow-list. Any tag not listed here that survives the
-# tag allow-list keeps NO attributes at all (id/class/style/data-*/on* all
+# SECURITY BOUNDARY: this per-tag attribute allow-list (together with
+# ALLOWED_TAGS above) is the entire defense against stored XSS in lesson
+# bodies. Never add a script-capable attribute (event handlers like
+# on*, `srcdoc`, `style`, or SVG/`xlink:href`-style attrs) or a
+# RAWTEXT-capable tag (script/style/textarea/title/xmp/noembed/noframes)
+# to either allow-list. Any tag not listed here that survives the tag
+# allow-list keeps NO attributes at all (id/class/style/data-*/on* all
 # stripped).
 ALLOWED_ATTRS = {
     "a": {"href"},
@@ -103,7 +108,13 @@ def sanitize_html(html: str) -> str:
     if not html:
         return ""
 
-    soup = BeautifulSoup(html, "html.parser")
+    # html5lib does browser-faithful HTML5 tree construction (same algorithm
+    # real browsers use), so what we parse and filter here matches what a
+    # browser will actually build from the same markup — closing the
+    # mutation-XSS gap where a lenient/divergent parser (e.g. stdlib
+    # html.parser) lets a payload slip through the allow-list only to be
+    # reinterpreted differently by the rendering browser.
+    soup = BeautifulSoup(html, "html5lib")
 
     # 1. Nuke script/style tags and their contents, anywhere in the tree.
     for tag in soup.find_all(ALWAYS_STRIP_WITH_CONTENTS):

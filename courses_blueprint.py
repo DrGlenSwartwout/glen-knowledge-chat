@@ -8,6 +8,11 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, request, jsonify, redirect, make_response, render_template_string, abort
 
+try:
+    from markupsafe import escape
+except ImportError:  # pragma: no cover - Flask always pulls markupsafe in
+    from html import escape
+
 from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
@@ -196,13 +201,17 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     if not ca.is_visible(lesson.access, level):
         state = ca.lock_state(lesson.access, level)
         msg = "Register free to watch this lesson." if state == "locked_register" else "This lesson is for paid members."
-        body = f'<p><a href="/learn/{course.slug}">← {course.title}</a></p><h1>{lesson.title}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>'
+        body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
+                f'<h1>{escape(lesson.title)}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>')
         return render_template_string(_PAGE, title=lesson.title, body=body), 403
     safe_body = sanitize_html(lesson.body_md)
-    dls = "".join(f'<li><a href="{d.get("url","")}">{d.get("label","Download")}</a></li>' for d in lesson.downloads)
+    dls = "".join(
+        f'<li><a href="{escape(d.get("url",""))}">{escape(d.get("label","Download"))}</a></li>'
+        for d in lesson.downloads
+    )
     dls = f"<h3>Resources</h3><ul>{dls}</ul>" if dls else ""
-    body = (f'<p><a href="/learn/{course.slug}">← {course.title}</a></p>'
-            f'<h1>{lesson.title}</h1><div>{safe_body}</div>{dls}')
+    body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
+            f'<h1>{escape(lesson.title)}</h1><div>{safe_body}</div>{dls}')
     return render_template_string(_PAGE, title=lesson.title, body=body)
 
 

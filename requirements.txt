@@ -13,6 +13,7 @@ APScheduler
 jinja2>=3.0
 psycopg2-binary
 beautifulsoup4
+html5lib
 numpy
 scikit-learn
 boto3

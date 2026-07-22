@@ -69,6 +69,26 @@ def test_member_lesson_body_has_script_stripped(client, tmp_path):
     assert b"Welcome transcript" in r.data
 
 
+def test_lesson_title_is_escaped_in_page(client, tmp_path):
+    # PB-imported lesson titles are now free text and flow straight into an
+    # f-string body rendered with {{ body|safe }} -- the title itself must
+    # never become a live tag, only escaped text.
+    c, appmod = client
+    from dashboard import course_tokens
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        course_tokens.init_course_tokens_table(cx)
+        token = course_tokens.mint_course_token(cx, "t@example.com", "T")
+    lesson_path = tmp_path / "courses" / "ash-intro" / "01-intro" / "02-welcome.md"
+    lesson_path.write_text(
+        "---\ntitle: <script>alert(document.cookie)</script>\naccess: member\ndownloads: []\n---\n"
+        "<p>Welcome transcript here.</p>\n"
+    )
+    r = c.get(f"/learn/ash-intro/01-intro/02-welcome?token={token}", base_url=_MHOST)
+    assert r.status_code == 200
+    assert b"<script>alert(document.cookie)</script>" not in r.data
+    assert b"&lt;script&gt;alert(document.cookie)&lt;/script&gt;" in r.data
+
+
 def test_intake_start_ok(client):
     c, _ = client
     r = c.post("/api/mentorship/intake/start", base_url=_MHOST,
