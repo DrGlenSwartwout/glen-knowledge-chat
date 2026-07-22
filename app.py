@@ -21583,6 +21583,90 @@ def api_portal_health_profile(token):
     return jsonify({"ok": True, "health_profile": block})
 
 
+def _decode_suggested_value(raw):
+    """`health_suggestions.add_pending` stores plain strings as-is and JSON-encodes
+    everything else (see its docstring), so decode symmetrically: a JSON-parseable
+    token (e.g. '3', '3.5', 'true') comes back as its real type; anything else
+    (an ordinary string like 'improving') is used verbatim. `intake.save_self_edit`
+    -> `intake_public.merge_answers` still coerces scale fields to int, so this
+    only needs to undo the encoding, not fully validate the type."""
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+
+
+@app.route("/api/portal/<token>/health-suggestions", methods=["GET"])
+def api_portal_health_suggestions(token):
+    """The client's pending health-record suggestions (portal "My Health Profile"
+    review queue) — surfaced from portal chat extraction or a clinician's console
+    observation (health_suggestions.add_pending, source='chat'|'clinician').
+    Identity comes from the portal TOKEN, never any email in the request."""
+    if not _PORTAL_HEALTH_PROFILE_ENABLED:
+        return ("", 404)
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        from dashboard import health_suggestions as _hs
+        suggestions = _hs.list_pending(cx, email)
+    return jsonify({"ok": True, "suggestions": suggestions})
+
+
+@app.route("/api/portal/<token>/health-suggestions/<int:sid>/resolve", methods=["POST"])
+def api_portal_health_suggestion_resolve(token, sid):
+    """Client resolves one of their own pending health-record suggestions.
+    Identity + ownership come from the portal TOKEN, never the body — a sid that
+    doesn't belong to this email's pending queue 404s and nothing is written.
+    body: {action: 'confirm'|'edit'|'dismiss', value?}
+      - confirm: writes the suggestion's own `suggested_value` into intake_responses
+        via intake.save_self_edit, then health_suggestions.resolve(...,'confirmed').
+      - edit: writes the supplied `value` instead, then resolve(...,'edited'). The
+        suggestion's field_id is re-validated against EDITABLE_FIELD_IDS (defense
+        in depth alongside health_suggestions.extract_from_turn's filter).
+      - dismiss: resolve(...,'dismissed') only — no record write.
+    Returns the refreshed health_profile block for a live re-render."""
+    if not _PORTAL_HEALTH_PROFILE_ENABLED:
+        return ("", 404)
+    body = request.get_json(silent=True) or {}
+    action = (body.get("action") or "").strip()
+    if action not in ("confirm", "edit", "dismiss"):
+        return jsonify({"ok": False, "error": "unknown action"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import intake as _intake
+        from dashboard import health_profile as _hp
+        from dashboard import health_suggestions as _hs
+        _intake.init_intake_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        pending = _hs.list_pending(cx, email)
+        match = next((s for s in pending if s["id"] == sid), None)
+        if not match:
+            return jsonify({"ok": False, "error": "unknown suggestion"}), 404
+        if action == "confirm":
+            field_id = match["field_id"]
+            if field_id not in _hp.EDITABLE_FIELD_IDS:
+                return jsonify({"ok": False, "error": "non-editable field"}), 400
+            value = _decode_suggested_value(match["suggested_value"])
+            _intake.save_self_edit(cx, email, {field_id: value}, _hst_now().isoformat())
+            _hs.resolve(cx, sid, email, "confirmed")
+        elif action == "edit":
+            field_id = match["field_id"]
+            if field_id not in _hp.EDITABLE_FIELD_IDS:
+                return jsonify({"ok": False, "error": "non-editable field"}), 400
+            _intake.save_self_edit(cx, email, {field_id: body.get("value")}, _hst_now().isoformat())
+            _hs.resolve(cx, sid, email, "edited")
+        else:  # dismiss
+            _hs.resolve(cx, sid, email, "dismissed")
+        block = _hp.build_block(cx, email, True)
+    return jsonify({"ok": True, "health_profile": block})
+
+
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
 def api_portal_life_stress_selection(token):
     """Save the client's Life Stress essence SELECTION (a preference, not an order).
