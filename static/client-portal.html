@@ -2009,6 +2009,31 @@ function render(d, v){
     }
   }
 
+  // Free product review — request a review + your reviews (text shown once confirmed).
+  if(v && v.supplement_review && v.supplement_review.status !== "off"){
+    const spr = v.supplement_review;
+    const rvs = spr.reviews || [];
+    const BADGE = {confirmed:"Ready", ai_draft:"In review", requested:"Received", rejected:"Declined"};
+    const listHtml = rvs.length
+      ? rvs.map(r=>{
+          const label = esc(r.product_name)+(r.product_brand?(" · "+esc(r.product_brand)):"");
+          const body = (r.status==="confirmed" && r.review)?`<p class="small" style="margin:.3rem 0 .6rem">${esc(r.review)}</p>`:"";
+          return `<div class="kv"><span class="k">${label}</span><span class="v">${esc(BADGE[r.status]||r.status)}</span></div>${body}`;
+        }).join("")
+      : `<p class="muted small">No product reviews yet.</p>`;
+    html += `<div class="card quiet"><h2>Free Product Review</h2>
+      <p class="muted">Taking a supplement you're not sure about? Submit it and Dr. Glen will review it for you, free.</p>
+      <div style="margin:.5rem 0">
+        <input id="pr-name" placeholder="Product name" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem">
+        <input id="pr-brand" placeholder="Brand (optional)" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem">
+        <button class="btn full" id="prSubmitBtn" style="margin-top:.5rem">Request a review</button>
+        <p class="small" id="prStatus" style="margin-top:.4rem"></p>
+      </div>
+      <h3 style="margin:.8rem 0 .3rem;font-size:.9rem">Your reviews</h3>
+      ${listHtml}
+    </div>`;
+  }
+
   // Task 9: client-authored share header, shown above the public sample portal
   // once approved. Rendered unconditionally (like the other client-editable
   // cards below) — the write route itself gates on PUBLIC_SURFACE_ENABLED,
@@ -2284,6 +2309,24 @@ function render(d, v){
 
   const sabtn = document.getElementById("socialAddBtn");
   if(sabtn) sabtn.addEventListener("click", addSocial);
+
+  const prbtn = document.getElementById("prSubmitBtn");
+  if(prbtn) prbtn.addEventListener("click", async ()=>{
+    const nameEl = document.getElementById("pr-name");
+    const brandEl = document.getElementById("pr-brand");
+    const st = document.getElementById("prStatus");
+    const product_name = (nameEl.value||"").trim();
+    if(!product_name){ if(st) st.textContent = "Enter a product name."; return; }
+    prbtn.disabled = true; if(st) st.textContent = "Submitting...";
+    try{
+      const r = await fetch("/api/product-review/request", {method:"POST",
+        headers:{"Content-Type":"application/json"}, credentials:"same-origin",
+        body: JSON.stringify({token: token, product_name, product_brand:(brandEl.value||"").trim()})});
+      const j = await r.json();
+      if(r.ok && j.ok){ if(st) st.textContent = "Got it — Dr. Glen will review it and it'll appear here."; nameEl.value=""; brandEl.value=""; }
+      else { if(st) st.textContent = j.error || "Could not submit."; prbtn.disabled=false; }
+    }catch(e){ if(st) st.textContent = "Could not submit."; prbtn.disabled=false; }
+  });
 
   // Task 9: save the client-authored share header. Always lands as pending —
   // even editing an already-approved header sends it back for re-review.

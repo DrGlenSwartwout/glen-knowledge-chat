@@ -25464,6 +25464,31 @@ def console_product_reviews_page():
     return resp
 
 
+@app.route("/api/practitioner/product-review/request", methods=["POST"])
+def api_practitioner_product_review_request():
+    """Practitioner-portal 'request a review' — identity from the practitioner
+    session (not a client portal token). 404s when the feature is dark."""
+    from dashboard import supplement_reviews as _sr
+    if not _sr.enabled():
+        return jsonify({"error": "disabled"}), 404
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"error": "not signed in"}), 401
+    data = _pp.portal_data(pid, include_orders=False) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "no_email"}), 400
+    body = request.get_json(silent=True) or {}
+    product = (body.get("product_name") or "").strip()
+    brand = (body.get("product_brand") or "").strip()
+    if not product:
+        return jsonify({"error": "product_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _sr.init_table(cx)
+        res = _sr.create_request(cx, email, product, brand, source="portal")
+    return jsonify({"ok": True, "status": res["status"], "created": res["created"]})
+
+
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi

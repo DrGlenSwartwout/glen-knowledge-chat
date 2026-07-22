@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Product Reviews — Console</title>
+<style>
+  :root{--bg:#0f1613;--card:#16211c;--card2:#1d2b24;--line:#2a3d33;--ink:#eaf2ec;--muted:#93a89b;--gold:#e2b654;--err:#e07a7a}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:24px}
+  h1{font-size:1.3rem;font-weight:600;margin:0 0 .3rem} .muted{color:var(--muted)} .small{font-size:.85rem}
+  .wrap{max-width:820px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0}
+  .row{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .badge{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:100px;border:1px solid var(--line);color:var(--muted)}
+  .badge.draft{color:var(--gold);border-color:var(--gold)}
+  textarea{width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical;margin-top:8px}
+  button{background:var(--gold);color:#0f1613;border:0;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer;margin-top:8px}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line)}
+  button:disabled{opacity:.5;cursor:default}
+  .status{font-size:.85rem;color:var(--muted);margin-top:6px;min-height:1.1em}
+  .rev{white-space:pre-wrap;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px;font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Free Product Reviews</h1>
+  <p class="muted small">Client-submitted supplements awaiting a review. Paste Dr. Glen's review on a <b>requested</b> item to create the draft; <b>confirm</b> a draft to publish it to the client's portal.</p>
+  <div id="list"></div>
+  <p class="muted small" id="empty" hidden>Nothing pending. All caught up.</p>
+</div>
+<script>
+const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function load(){
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  let j;
+  try{ const r = await fetch("/api/console/product-reviews", {credentials:"same-origin"}); j = await r.json(); }
+  catch(e){ list.innerHTML = '<p class="err">Could not load.</p>'; return; }
+  const rows = (j && j.pending) || [];
+  document.getElementById("empty").hidden = rows.length > 0;
+  rows.forEach(row=>{
+    const brand = row.product_brand ? (" · " + esc(row.product_brand)) : "";
+    const isDraft = row.status === "ai_draft";
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="row">
+        <div><b>${esc(row.product_name)}</b>${brand}<div class="muted small">${esc(row.email)} · ${esc(row.source||"")} · ${esc(row.requested_at||"")}</div></div>
+        <span class="badge ${isDraft?"draft":""}">${isDraft?"draft":"requested"}</span>
+      </div>
+      ${isDraft
+        ? `<div class="rev">${esc(row.review_text||"")}</div>
+           <button data-act="confirm" data-id="${row.id}">Confirm & publish</button>
+           <button class="ghost" data-act="reject" data-id="${row.id}">Reject</button>`
+        : `<textarea id="draft-${row.id}" rows="6" placeholder="Paste Dr. Glen's review for this product..."></textarea>
+           <button data-act="draft" data-id="${row.id}">Save as draft</button>
+           <button class="ghost" data-act="reject" data-id="${row.id}">Reject</button>`}
+      <div class="status" id="st-${row.id}"></div>`;
+    list.appendChild(card);
+  });
+  list.querySelectorAll("button[data-act]").forEach(b=>b.addEventListener("click", ()=>act(b)));
+}
+async function act(btn){
+  const id = btn.dataset.id, kind = btn.dataset.act;
+  const st = document.getElementById("st-"+id);
+  st.textContent = "Working...";
+  try{
+    let r, j;
+    if(kind === "draft"){
+      const text = (document.getElementById("draft-"+id).value||"").trim();
+      if(!text){ st.textContent = "Paste the review first."; return; }
+      r = await fetch("/api/console/product-review/draft", {method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify({id: Number(id), review_text: text})});
+      j = await r.json();
+      st.textContent = (r.ok && j.ok) ? "Draft saved." : (j.error || "Failed.");
+    } else {
+      const key = kind === "confirm" ? "product_review.confirm" : "product_review.reject";
+      r = await fetch("/api/action/"+key, {method:"POST", credentials:"same-origin",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify({id: Number(id)})});
+      j = await r.json();
+      st.textContent = (r.ok && (j.status==="done" || j.ok)) ? (kind+"ed.") : (j.error || "Failed.");
+    }
+    if(r.ok) setTimeout(load, 600);
+  }catch(e){ st.textContent = "Failed."; }
+}
+load();
+</script>
+</body>
+</html>
