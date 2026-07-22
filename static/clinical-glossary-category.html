@@ -47,9 +47,13 @@
     .muted{color:var(--muted)} .hidden{display:none}
   </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head><body>
   <div class="wrap">
-    <a class="back" href="/learn/glossary">← Clinical Glossary</a>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <a class="back" href="/learn/glossary">← Clinical Glossary</a>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    </div>
     <div id="c-loading" class="muted">Loading…</div>
     <div id="c-notfound" class="hidden muted">We couldn't find that section. <a href="/learn/glossary">Back to the glossary</a>.</div>
     <div id="c-body" class="hidden">
@@ -61,6 +65,7 @@
     </div>
   </div>
   <script>
+    if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
     function show(id){document.getElementById(id).classList.remove('hidden');}
     function hide(id){document.getElementById(id).classList.add('hidden');}
     var dim = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');

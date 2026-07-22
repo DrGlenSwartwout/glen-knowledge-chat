@@ -261,7 +261,7 @@
   if (!effKey) {
     bar += '<span class="op-nav-key-warn">no ?key — paste &amp; reload</span>';
   }
-  bar += '<button type="button" class="op-nav-theme" id="op-nav-theme" title="Light / Dark" aria-label="Toggle light or dark theme">☀</button>';
+  bar += '<span class="op-nav-theme" id="op-nav-theme" role="group" aria-label="Theme mode"></span>';
   bar += '<span class="op-nav-search-wrap">'
     + '<span class="op-nav-mode-toggle" id="op-nav-mode">'
     +   '<button type="button" data-mode="pages">Pages</button>'
@@ -339,26 +339,20 @@
     })
     .catch(function () { /* owner-safe: full bar. A VA is already narrowed by the cached 'shaira' profile applied above. */ });
 
-  // Wire the light/dark toggle. Reflects the active theme, persists to localStorage,
-  // and live-syncs across same-origin documents via the 'storage' event.
+  // Mount the shared Light/Dark/Auto (diurnal) control into the nav. theme-mode.js
+  // owns data-theme + persistence + cross-tab sync; load it if the page hasn't.
   (function () {
-    var themeBtn = document.getElementById('op-nav-theme');
-    if (!themeBtn) return;
-    function relabelTheme() {
-      themeBtn.textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☾' : '☀';
+    var host = document.getElementById('op-nav-theme');
+    if (!host) return;
+    function mount() { if (window.RMTheme) { window.RMTheme.mountToggle(host); return true; } return false; }
+    if (mount()) return;
+    if (!document.querySelector('script[src="/static/theme-mode.js"]')) {
+      var s = document.createElement('script');
+      s.src = '/static/theme-mode.js'; s.onload = mount;
+      document.body.appendChild(s);
+    } else {
+      var tries = 0, iv = setInterval(function () { if (mount() || ++tries > 50) clearInterval(iv); }, 50);
     }
-    relabelTheme();
-    themeBtn.addEventListener('click', function () {
-      var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-      rmApplyTheme(next);
-      try { localStorage.setItem('rm-theme', next); } catch (e) {}
-      relabelTheme();
-    });
-    window.addEventListener('storage', function (e) {
-      if (e.key !== 'rm-theme') return;
-      rmApplyTheme(e.newValue);
-      relabelTheme();
-    });
   })();
 
   // ---------------------------------------------------------------------------

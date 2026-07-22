@@ -584,11 +584,13 @@
   :root[data-theme="light"] button.secondary { background: var(--panel-2); border: 1px solid var(--hair); }
 </style>
   <script src="/static/theme-toggle.js"></script>
+  <script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="app">
   <div class="head">
     <h1>Vocal Tone Analyzer</h1>
+    <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
     <select id="refPicker" title="Cosmic Octave reference">
       <option value="172.06">172.06 Hz · Earth Day</option>
       <option value="136.10">136.10 Hz · OM / Earth Year</option>
@@ -727,6 +729,7 @@
 </div>
 
 <script>
+if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 // ---------- Configuration ----------
 const FREQ_MIN = 60;
 const FREQ_MAX = 600;

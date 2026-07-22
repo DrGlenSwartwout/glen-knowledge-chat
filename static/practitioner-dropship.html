@@ -46,6 +46,7 @@
     .billing-note{ font-size:13px; color:var(--muted); margin-top:8px; border-left:3px solid var(--border); padding-left:10px; }
   </style>
   <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+  <script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -59,7 +60,7 @@
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <a href="/practitioner/portal" style="color:var(--gold);font-size:13px">Wholesale portal</a>
-      <button class="ghost" onclick="toggleTheme()" id="theme-toggle" style="white-space:nowrap">Light</button>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
     </div>
   </div>
 
@@ -166,13 +167,8 @@ var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
 var cartData = [];  // [{slug, qty, unit_cents, line_cents}]
 var quoteLoaded = false;
 
-function toggleTheme(){
-  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('rm-theme', next);
-  var b=$('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
-}
-(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=$('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
+// Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
 
 function setMsg(text, isErr){
   var el = $('msg'); el.textContent = text;
