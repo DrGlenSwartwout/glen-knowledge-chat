@@ -679,6 +679,7 @@ function buildHubHtml(d, v){
   const groups = [
     ["Understand", [
       ["current", "My Analysis", "Your current scan, matches and healing path"],
+      ["remedies", "My Remedies", "Your ranked matches and the stack you take"],
     ]],
     ["Act", [
       ["finder", "Find a Practitioner", "Certified practitioners near you"],
@@ -800,6 +801,77 @@ function buildOrdersHtml(d){
     body = `<div class="card"><h2>Orders &amp; Invoices</h2><p class="muted">No invoices yet.</p></div>`;
   }
   return body;
+}
+// My Remedies panel body: two sections built from Task 3's v.remedies payload.
+// "Top recommended for you" lists the ranked matches (v.remedies.ranked), each
+// with an "Add to my Oasis / order" button carrying data-oasis-add so a later
+// task can wire the actual add-to-cart call. "What you take from other
+// companies" lists the client's self-reported stack (v.remedies.external),
+// each with a client-friendly status pill, a Request a review button (shown
+// only while status is "listed"), the review text once confirmed, and an
+// upgrade pointer when the server has one. This function renders markup and
+// data-hooks only — no fetch/POST here; that lands in Task 5/6.
+function buildRemediesHtml(v){
+  const rem = (v && v.remedies) || {};
+  const ranked = Array.isArray(rem.ranked) ? rem.ranked : [];
+  const external = Array.isArray(rem.external) ? rem.external : [];
+  const STATUS_PILL = {listed:"On your list", requested:"Review in progress", ai_draft:"Review in progress", confirmed:"Reviewed"};
+
+  const rankedRows = ranked.length
+    ? ranked.map(r=>{
+        const meta = [r.source, r.reason].filter(Boolean).map(esc).join(" &middot; ");
+        return `<div class="remitem" data-product-key="${esc(r.product_key)}">
+          <div class="remitem-top">
+            <span class="nm-wrap"><a class="nm" href="${esc(r.url||"#")}" target="_blank" rel="noopener">${esc(r.name||r.product_key||"")}</a>${meta?`<span class="prov">${meta}</span>`:""}</span>
+          </div>
+          <div class="remitem-bot">
+            <button type="button" class="btn" data-oasis-add="${esc(r.product_key)}">Add to my Oasis / order</button>
+          </div>
+        </div>`;
+      }).join("")
+    : `<p class="muted small">Your ranked matches will appear here once your scan is analyzed.</p>`;
+
+  const externalRows = external.length
+    ? external.map(e=>{
+        const label = (e.product_brand ? `${esc(e.product_brand)} &middot; ` : "") + esc(e.product_name||"");
+        const pillText = STATUS_PILL[e.status] || esc(e.status||"");
+        const meta = [];
+        if(e.reason) meta.push(esc(e.reason));
+        if(e.importance!=null && e.importance!=="") meta.push(`Importance ${esc(e.importance)}/10`);
+        const metaLine = meta.length ? `<p class="small muted" style="margin:.2rem 0">${meta.join(" &middot; ")}</p>` : "";
+        const reviewLine = (e.status === "confirmed" && e.review)
+          ? `<p class="small" style="margin:.3rem 0">${esc(e.review)}</p>`
+          : "";
+        const up = e.upgrade;
+        const upgradeLine = up
+          ? `<p class="small" style="margin:.3rem 0">A stronger option: <a href="${esc(up.url||"#")}" target="_blank" rel="noopener">${esc(up.name||"")}</a>${up.reason?`. ${esc(up.reason)}`:""}</p>`
+          : "";
+        const reqBtn = (e.status === "listed")
+          ? `<div class="remitem-bot"><button type="button" class="btn" data-request-review="${esc(e.product_key||"")}">Request a review</button></div>`
+          : "";
+        return `<div class="remitem" data-product-key="${esc(e.product_key||"")}">
+          <div class="remitem-top">
+            <span class="nm-wrap"><span class="nm">${label}</span></span>
+            <span class="pill">${pillText}</span>
+          </div>
+          ${metaLine}${reviewLine}${upgradeLine}${reqBtn}
+        </div>`;
+      }).join("")
+    : `<p class="muted small">Nothing added yet.</p>`;
+
+  const addForm = `<div class="card quiet" id="ext-add-card" style="margin-top:.7rem">
+    <h3 style="margin:.2rem 0 .5rem;font-size:.9rem">Add a product you take</h3>
+    <input id="ext-brand" placeholder="Brand" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit">
+    <input id="ext-product" placeholder="Product name" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit">
+    <textarea id="ext-reason" rows="2" placeholder="Why are you taking it?" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit;resize:vertical"></textarea>
+    <label class="small muted" for="ext-importance">Importance to you (1 to 10)</label>
+    <input id="ext-importance" type="number" min="1" max="10" step="1" placeholder="1 to 10" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin:.3rem 0 .5rem;font-family:inherit">
+    <button type="button" class="btn full" id="ext-add-btn">Add to my stack</button>
+    <p class="small muted" id="ext-add-status" style="margin-top:.4rem"></p>
+  </div>`;
+
+  return `<div class="card"><h2>Top recommended for you</h2><div>${rankedRows}</div></div>
+    <div class="card"><h2>What you take from other companies</h2><div>${externalRows}</div>${addForm}</div>`;
 }
 
 // The biofield scan the page is currently viewing (null = newest, server default).
@@ -2264,7 +2336,8 @@ function render(d, v){
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>
       <section data-panel="account" hidden>${back}${_accountHtml}</section>
       <section data-panel="refer" hidden>${back}${_referHtml || '<div class="card quiet"><p class="muted">Ambassador program details will appear here.</p></div>'}</section>
-      <section data-panel="referrals" hidden>${back}${_referralsHtml}</section>` : ""}`;
+      <section data-panel="referrals" hidden>${back}${_referralsHtml}</section>
+      ${_hub && v.remedies && v.remedies.enabled ? `<section data-panel="remedies" hidden>${back}${buildRemediesHtml(v)}</section>` : ""}` : ""}`;
   }
 
   app.innerHTML = html;
