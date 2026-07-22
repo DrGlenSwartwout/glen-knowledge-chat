@@ -40512,7 +40512,7 @@ def _earned_reorder_slugs(cx, email):
 
 def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
                            discount_cents_in=None, points_redeem_cents_in=None,
-                           adjustment_cents_in=None):
+                           adjustment_cents_in=None, shipping_override_cents_in=None):
     """Shared server-authoritative pricing for the in-house order builder AND the
     console invoice editor. Honors per-line unit_cents overrides; FF capsules get a
     volume rate — the order-wide mix/match rate for a paid member, the same-SKU
@@ -40645,6 +40645,13 @@ def _price_inhouse_invoice(lines_in, *, email, pickup, ship,
     except Exception as e:
         print(f"[inhouse-price] pricing fell back: {e!r}", flush=True)
         shipping_cents, get_cents = 0, 0
+    # Owner-set manual shipping fee (Edit Invoice / order builder): when supplied, it
+    # REPLACES the geometry-computed shipping — for products whose box dims aren't in the
+    # catalog, or to match a hand-quoted rate. Non-negative; the address is still validated
+    # and GET still computed above. A pickup order forces $0 regardless (the editor hides
+    # the field under pickup, so this only guards a stray value).
+    if shipping_override_cents_in not in (None, "") and not pickup:
+        shipping_cents = max(0, int(shipping_override_cents_in))
     discount_cents = (max(0, int(discount_cents_in))
                       if discount_cents_in not in (None, "") else 0)
     # Manual adjustment is SIGNED: negative = credit (lowers total), positive =
@@ -40725,7 +40732,7 @@ def _harvest_line_note_snippets(cx, items):
 
 def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_in=None,
                                  adjustment_cents_in=None, invoice_note=None,
-                                 address_override=None):
+                                 address_override=None, shipping_override_cents_in=None):
     """Reprice an order's line items at the current pricing (membership-aware) and
     persist the invoice. Shared by the manual invoice editor (/api/orders/<oid>/edit)
     and the one-click grant-and-reprice button. Carries the order's existing points +
@@ -40754,6 +40761,7 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
         lines_in, email=email, pickup=pickup, ship=ship,
         discount_cents_in=discount_cents_in,
         adjustment_cents_in=adjustment_cents_in,
+        shipping_override_cents_in=shipping_override_cents_in,
         points_redeem_cents_in=None)
     if priced is None:
         return None, None
@@ -40826,6 +40834,7 @@ def api_orders_edit(oid):
                 cx, order, lines_in, pickup=pickup,
                 discount_cents_in=body.get("discount_cents"),
                 adjustment_cents_in=body.get("adjustment_cents"),
+                shipping_override_cents_in=body.get("shipping_cents"),
                 invoice_note=body.get("invoice_note"),
                 address_override=(_addr_in if isinstance(_addr_in, dict) else None))
         except CheckoutError as e:
@@ -41002,6 +41011,7 @@ def api_orders_manual():
             lines_in, email=customer.get("email"), pickup=pickup, ship=ship,
             discount_cents_in=body.get("discount_cents"),
             adjustment_cents_in=body.get("adjustment_cents"),
+            shipping_override_cents_in=body.get("shipping_cents"),
             points_redeem_cents_in=body.get("points_redeem_cents"))
     except CheckoutError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
