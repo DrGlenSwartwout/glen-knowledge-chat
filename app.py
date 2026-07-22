@@ -6104,6 +6104,10 @@ _REVIEWS_VIDEO = os.environ.get("REVIEWS_VIDEO", "").strip().lower() in ("1", "t
 # Embed the existing /practitioner-finder as a card in the client portal (dark
 # until flipped). Prefill is built from the client's stored address in portal_view.
 _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Journey-grouped hub landing for the client portal (banner + tile grid).
+# Ships dark; flip to route the portal through the hub instead of the single
+# Current-Analysis scroll. Same truthy set as the finder flag.
+_PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -25344,6 +25348,7 @@ def api_client_portal_view(token):
                                    offers_enabled_keys=_enabled_offer_keys(),
                                    quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
                                    finder_enabled=_PORTAL_FINDER_ENABLED,
+                                   hub_enabled=_PORTAL_HUB_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
                                    supplement_review_enabled=_sr.enabled())
     if view is None:
