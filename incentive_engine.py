@@ -639,6 +639,17 @@ def _record_send(
         cx.commit()
 
 
+def _tracked_product_url(email, slug, source="email"):
+    """Build the app-owned tracked-redirect URL for an email/newsletter product
+    link. Mints a durable per-recipient token (no PII in the URL) and points at
+    /r/<token>/<source>/<slug>, which records the click then 302s to the product."""
+    from dashboard import email_click_tokens as _ect
+    with _sqlite3.connect(LOG_DB) as cx:
+        _ect.init_email_click_tokens(cx)
+        token = _ect.token_for(cx, email)
+    return f"{_public_base()}/r/{token}/{source}/{slug}"
+
+
 def _process_one_user(user, config, audience="client", is_beta=False,
                       dry_run=False) -> str:
     """Engagement-gate, generate, send, and record one user's Personal email.
@@ -674,9 +685,10 @@ def _process_one_user(user, config, audience="client", is_beta=False,
             or "(no source text fetched)"
         )
 
+    _slug = "terrain-restore"
     product = {
         "name": "Terrain Restore",
-        "url":  "https://truly.vip/terrain-restore",
+        "url":  _tracked_product_url(user["email"], _slug, "email"),
         "code": config.get("beta_shared_code", "BETA5"),
     }
     email = generate_personal_email(

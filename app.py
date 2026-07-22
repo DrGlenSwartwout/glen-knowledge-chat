@@ -7454,6 +7454,47 @@ def begin_product_page(slug):
     return resp
 
 
+def _rec_valid_slug(slug):
+    """Return the catalog-resolved, sellable slug for `slug`, or None. Routes through
+    _get_product so it follows supersession and rejects retired (inactive) products —
+    matching the funnel (product page, checkout) and carrying the survivor slug forward
+    for attribution, instead of validating on raw catalog membership."""
+    try:
+        p = _get_product((slug or "").strip())
+        return p["slug"] if p else None
+    except Exception:
+        return None
+
+
+_EMAIL_LINK_SOURCES = ("email", "newsletter")
+
+
+@app.route("/r/<token>/<source>/<slug>", methods=["GET"])
+def email_click_redirect(token, source, slug):
+    """Tracked redirect for product links in Glen's emails/newsletters. Resolves the
+    opaque per-recipient token -> email (never PII in the URL), records ONE engagement
+    click for the given source, then 302s to the product page. ALWAYS redirects — the
+    click is never blocked by a recording failure. Identity is server-resolved from the
+    token only; source is an allowlist; slug is catalog-validated."""
+    resolved = _rec_valid_slug(slug)
+    dest = f"/begin/product/{resolved}" if resolved else "/"
+    try:
+        src = (source or "").strip().lower()
+        if resolved and src in _EMAIL_LINK_SOURCES:
+            from dashboard import (email_click_tokens as _ect,
+                                   recommendation_events as _re,
+                                   recommendation_sources as _rs)
+            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                _ect.init_email_click_tokens(cx)
+                _re.init_recommendation_events(cx)
+                email = _ect.email_for(cx, token)
+                if email and _rs.known_source(src):
+                    _re.record_click(cx, email, resolved, src)
+    except Exception:
+        pass
+    return redirect(dest, code=302)
+
+
 @app.route("/begin/product-data/<slug>")
 def begin_product_data(slug):
     p = _get_product(slug)
