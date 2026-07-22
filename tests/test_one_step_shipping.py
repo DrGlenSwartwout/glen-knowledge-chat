@@ -27,20 +27,28 @@ def test_single_one_step_rates_medium(tmp_path):
     assert isinstance(q["shipping_cents"], int) and q["shipping_cents"] > 0
 
 
-def test_bulk_one_step_uses_large(tmp_path):
+def test_two_one_step_needs_a_large(tmp_path):
+    # The whole point of the M=1/L=2 cap: two tubs won't tile into one Medium.
+    q = quote({"one-step": 2}, db_path=_db(tmp_path))
+    assert q["box_sizes"] == ["L"], q
+    assert isinstance(q["shipping_cents"], int) and q["shipping_cents"] > 0
+
+
+def test_three_one_step_split_large_plus_medium(tmp_path):
+    # Cap L=2 forces the split: two in a Large, the third in a Medium.
     q = quote({"one-step": 3}, db_path=_db(tmp_path))
-    assert "L" in q["box_sizes"], q            # bulk spills into a Large box
+    assert sorted(q["box_sizes"]) == ["L", "M"], q
     assert q["shipping_cents"] is not None
 
 
-def test_real_diameter_would_be_unshippable(tmp_path):
-    # Guards the proxy's reason for existing: at the true Ø140 the tub fits no box.
+def test_real_diameter_breaks_bulk_geometry(tmp_path):
+    # The proxy Ø120 still earns its keep for 3+ (the multi-box geometric split): at the
+    # true Ø140 the tub fits no box, so a 3-unit order can't be packed at all.
     db = _db(tmp_path)
     with sqlite3.connect(db) as cx:
         cx.execute("UPDATE bottle_types SET diameter_mm=140 WHERE name='one-step'")
         cx.commit()
-    q = quote({"one-step": 1}, db_path=db)
-    assert q["shipping_cents"] is None
+    assert quote({"one-step": 3}, db_path=db)["shipping_cents"] is None
 
 
 def test_product_catalog_maps_one_step_bottle_type():
@@ -57,11 +65,16 @@ def test_backfills_onto_existing_catalog(tmp_path):
     db = str(tmp_path / "chat_log.db")
     with sqlite3.connect(db) as cx:
         init_shipping_schema(cx)
-        cx.execute("DELETE FROM bottle_types WHERE name='one-step'")
+        cx.execute("DELETE FROM bottle_types WHERE name='one-step'")  # cascades caps
         cx.commit()
     with sqlite3.connect(db) as cx:
         init_shipping_schema(cx)
         row = cx.execute(
             "SELECT diameter_mm, height_mm FROM bottle_types WHERE name='one-step'"
         ).fetchone()
+        caps = dict(cx.execute(
+            "SELECT bc.box_size, bc.qty FROM box_capacity bc "
+            "JOIN bottle_types bt ON bt.id=bc.bottle_type_id WHERE bt.name='one-step'"
+        ).fetchall())
     assert row == (120, 190)
+    assert caps == {"M": 1, "L": 2}          # caps backfilled alongside the dims

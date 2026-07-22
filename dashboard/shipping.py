@@ -176,10 +176,11 @@ _STANDARD_BOTTLES = [
     ("nightlight", "Therapeutic / Biocompatible nightlight — 5 x 5 x 6 cm → USPS Medium", 50, 60),
     # One Step meal-replacement tub. Real tub ~Ø140 x H190 mm; per Glen it ships USPS
     # Medium (single) / Large (bulk) and needs no packing wrap. A true Ø140 exceeds every
-    # box interior and would rate as None, so this is a SHIPPING PROXY: Ø120 resolves one
-    # unit to Medium and larger loads to Large. (Two proxied units tile into one Medium —
-    # rare for a tub; use the Edit-Invoice manual shipping override for such an order.)
-    ("one-step", "One Step tub — ~Ø140 x H190 real; per Glen USPS Medium (1) / Large (bulk), no packing — proxy Ø120", 120, 190),
+    # box interior and would rate as None, so this is a SHIPPING PROXY: Ø120 lets the 3+
+    # multi-box geometry place units. The 1-vs-2 box choice is pinned by an explicit
+    # capacity cap seeded below (Medium=1, Large=2) — geometry alone would tile two into
+    # one Medium, but two tubs need a Large.
+    ("one-step", "One Step tub — ~Ø140 x H190 real; per Glen USPS Medium (1) / Large (2), no packing — proxy Ø120 + cap M=1/L=2", 120, 190),
     # Cello refill pack: a 30-cap cellophane pouch (no rigid bottle), approximated as a
     # tight bounding cylinder — packs smaller than the "30 Caps" rigid bottle (Ø51x90) it
     # replaces for refill-format lines. NOT YET created in prod; Rae must add this row
@@ -334,6 +335,21 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
                 "VALUES (?, ?, ?, ?)",
                 (name, notes, d_mm, h_mm),
             )
+
+    # One Step capacity caps (Glen 2026-07-22). The tub is bulky, not a tight cylinder:
+    # pure geometry would tile TWO into one Medium. Cap it — Medium holds 1, Large holds 2
+    # — so 1 unit -> Medium and 2 -> a single Large. The proxy dims above still drive the
+    # 3+ multi-box split (geometry then re-split under these caps). Runs on fresh AND
+    # existing catalogs (the row exists via the seed or the backfill above); insert-or-
+    # ignore so a later manual /admin/shipping tweak is never clobbered.
+    _os = cx.execute("SELECT id FROM bottle_types WHERE name='one-step'").fetchone()
+    if _os:
+        _osid = _os[0]
+        for _bs, _q in (("M", 1), ("L", 2)):
+            insert_or_ignore(cx, "box_capacity",
+                             ["bottle_type_id", "box_size", "qty"],
+                             [_osid, _bs, _q],
+                             conflict_cols=["bottle_type_id", "box_size"])
 
     # First-run seed: only if the table is empty
     has_any = cx.execute("SELECT 1 FROM usps_rates LIMIT 1").fetchone()
