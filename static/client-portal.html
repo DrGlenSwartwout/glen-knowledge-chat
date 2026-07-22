@@ -2197,14 +2197,19 @@ function render(d, v){
   // Task 7: wrap everything above into the Current Analysis panel and add the
   // Scan History / Orders & Invoices panels + tab bar. Flag off => html is used
   // as-is, exactly as before this task (no tab bar, no behavior change).
-  if (d.scan_history_enabled) {
+  // Task 4: under the hub, the grid IS the nav, so the old tab bar must not
+  // also render; only the [data-panel] wrappers are needed in that case.
+  const _wrapPanels = d.scan_history_enabled || (v && v.hub_enabled);
+  const _showOldTabs = d.scan_history_enabled && !(v && v.hub_enabled);
+  if (_wrapPanels) {
     const historyHtml = buildScanHistoryHtml(d);
     const ordersHtml = buildOrdersHtml(d);
-    html = `<div class="tabbar" id="portalTabs">
+    const tabbar = _showOldTabs ? `<div class="tabbar" id="portalTabs">
         <button type="button" class="tab is-active" data-tab="current" onclick="showTab('current')">Current Analysis</button>
         <button type="button" class="tab" data-tab="history" onclick="showTab('history')">Scan History</button>
         <button type="button" class="tab" data-tab="orders" onclick="showTab('orders')">Orders &amp; Invoices</button>
-      </div>
+      </div>` : "";
+    html = `${tabbar}
       <section data-panel="current">${html}</section>
       <section data-panel="history" hidden>${historyHtml}</section>
       <section data-panel="orders" hidden>${ordersHtml}</section>`;
@@ -2213,6 +2218,14 @@ function render(d, v){
   app.innerHTML = hubHtml + html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
+
+  // Task 4: under the hub, initialize which panel is visible on load (tiles
+  // drive navigation instead of the old tab bar). Restores the client's last
+  // viewed panel if we have one, else defaults to Current Analysis.
+  if (v && v.hub_enabled) {
+    let _last = null; try { _last = sessionStorage.getItem('rm_portal_tab'); } catch(e){}
+    showTab(_last || 'current');
+  }
 
   initOnboardingCard();
   initCoachesCard();
