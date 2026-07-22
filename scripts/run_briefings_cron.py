@@ -3,9 +3,9 @@
 
 Runs on Render's cron worker. Posts to /cron/regenerate-briefings on the web
 service, which gathers live stats, asks Claude to compose all 5 briefings,
-and writes them to /data/intelligence/. The cron container itself stays
-stdlib-only — all heavy lifting (Anthropic call, persistent disk write)
-happens inside the web container where the disk and ANTHROPIC_API_KEY live.
+and persists them via the intelligence_briefings DB table. The cron container
+itself stays stdlib-only — all heavy lifting (Anthropic call, DB write)
+happens inside the web container where the DB and ANTHROPIC_API_KEY live.
 
 Required env vars on the cron service:
   WEB_URL       — base URL of the web service (no trailing slash)

@@ -5,18 +5,19 @@
 - clients-pipeline  — client-message backlog, GHL pipeline, ScoreApp intake
 - signals-patterns  — cross-system anomalies + the meta-pattern + content/video/ads
 
-Each briefing is stored under DATA_DIR/intelligence/{slug}.md. The dashboard
-renders the markdown in the Intelligence row (Shaira-Daily is a separate feed).
+Each briefing is stored as a row in the intelligence_briefings DB table (via
+dashboard.db). The dashboard renders the markdown in the Intelligence row
+(Shaira-Daily is a separate feed).
 """
 
 import os
 import re
 import json
-from pathlib import Path
 from datetime import datetime, timezone
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/tmp")) / "intelligence"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+from dashboard import db
+
+_TABLE = "intelligence_briefings"
 
 VALID_SLUGS = {
     "money-cash",
@@ -25,32 +26,58 @@ VALID_SLUGS = {
 }
 
 
-def _slug_path(slug):
+def _default_db_path():
+    # Mirror app.LOG_DB / gmail_token.default_db_path: DATA_DIR persistent disk
+    # on Render (/data), repo root in local dev.
+    from pathlib import Path
+    root = os.environ.get("DATA_DIR") or str(Path(__file__).resolve().parent.parent)
+    return str(Path(root) / "chat_log.db")
+
+
+def _ensure_table(cx):
+    cx.execute(
+        f"CREATE TABLE IF NOT EXISTS {_TABLE} ("
+        "slug TEXT PRIMARY KEY, markdown TEXT, links_json TEXT, updated_at TEXT NOT NULL)"
+    )
+
+
+def _check_slug(slug):
     if slug not in VALID_SLUGS:
         raise ValueError(f"Unknown slug: {slug}. Valid: {sorted(VALID_SLUGS)}")
-    return DATA_DIR / f"{slug}.md"
 
 
-def _links_path(slug):
-    if slug not in VALID_SLUGS:
-        raise ValueError(f"Unknown slug: {slug}. Valid: {sorted(VALID_SLUGS)}")
-    return DATA_DIR / f"{slug}.links.json"
-
-
-def write_links(slug, links):
+def write_links(slug, links, db_path=None):
     """Persist the link registry (ref -> {type, display, url}) for a briefing."""
-    p = _links_path(slug)
-    p.write_text(json.dumps(links or {}))
+    _check_slug(slug)
+    ts = datetime.now(timezone.utc).isoformat()
+    payload = json.dumps(links or {})
+    with db.connect(db_path or _default_db_path(), timeout=10) as cx:
+        _ensure_table(cx)
+        cx.execute(
+            f"INSERT INTO {_TABLE} (slug, links_json, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(slug) DO UPDATE SET links_json=excluded.links_json, updated_at=excluded.updated_at",
+            (slug, payload, ts),
+        )
+        cx.commit()
     return {"slug": slug, "links": len(links or {})}
 
 
-def read_links(slug):
+def read_links(slug, db_path=None):
     """Return the link registry for a briefing, or {} if absent/unreadable."""
-    p = _links_path(slug)
-    if not p.exists():
+    _check_slug(slug)
+    try:
+        with db.connect(db_path or _default_db_path(), timeout=10) as cx:
+            row = cx.execute(
+                f"SELECT links_json FROM {_TABLE} WHERE slug=?", (slug,)
+            ).fetchone()
+    except db.OperationalError as e:
+        if "no such table" in str(e).lower() or "does not exist" in str(e).lower():
+            return {}
+        raise
+    if not row or not row[0]:
         return {}
     try:
-        return json.loads(p.read_text())
+        return json.loads(row[0])
     except Exception:
         return {}
 
@@ -127,37 +154,47 @@ def actions_first(md):
     return "\n".join(rest[:insert_at] + [""] + section + [""] + rest[insert_at:])
 
 
-def read_briefing(slug):
+def read_briefing(slug, db_path=None):
     """Return the latest briefing markdown for slug, plus metadata."""
-    p = _slug_path(slug)
-    if not p.exists():
-        return {
-            "slug": slug,
-            "empty": True,
-            "message": f"No {slug} briefing yet. First run pending.",
-        }
-    stat = p.stat()
-    return {
-        "slug": slug,
-        "empty": False,
-        "markdown": p.read_text(),
-        "links": read_links(slug),
-        "generated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-        "bytes": stat.st_size,
-    }
+    _check_slug(slug)
+    try:
+        with db.connect(db_path or _default_db_path(), timeout=10) as cx:
+            row = cx.execute(
+                f"SELECT markdown, links_json, updated_at FROM {_TABLE} WHERE slug=?", (slug,)
+            ).fetchone()
+    except db.OperationalError as e:
+        if "no such table" in str(e).lower() or "does not exist" in str(e).lower():
+            row = None
+        else:
+            raise
+    if not row or row[0] is None:
+        return {"slug": slug, "empty": True,
+                "message": f"No {slug} briefing yet. First run pending."}
+    md = row[0]
+    try:
+        links = json.loads(row[1]) if row[1] else {}
+    except Exception:
+        links = {}
+    return {"slug": slug, "empty": False, "markdown": md, "links": links,
+            "generated_at": row[2], "bytes": len(md)}
 
 
-def write_briefing(slug, markdown_bytes):
-    """Persist a briefing markdown payload uploaded by the Mac runner."""
-    p = _slug_path(slug)
+def write_briefing(slug, markdown_bytes, db_path=None):
+    """Persist a briefing markdown payload (upserts the row's markdown; leaves links intact)."""
+    _check_slug(slug)
     text = markdown_bytes.decode("utf-8") if isinstance(markdown_bytes, bytes) else markdown_bytes
-    p.write_text(text)
-    return {"slug": slug, "saved": True, "path": str(p), "bytes": len(text)}
+    ts = datetime.now(timezone.utc).isoformat()
+    with db.connect(db_path or _default_db_path(), timeout=10) as cx:
+        _ensure_table(cx)
+        cx.execute(
+            f"INSERT INTO {_TABLE} (slug, markdown, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(slug) DO UPDATE SET markdown=excluded.markdown, updated_at=excluded.updated_at",
+            (slug, text, ts),
+        )
+        cx.commit()
+    return {"slug": slug, "saved": True, "bytes": len(text)}
 
 
-def list_all():
+def list_all(db_path=None):
     """Index of all briefings with their freshness."""
-    out = {}
-    for slug in sorted(VALID_SLUGS):
-        out[slug] = read_briefing(slug)
-    return out
+    return {slug: read_briefing(slug, db_path=db_path) for slug in sorted(VALID_SLUGS)}
