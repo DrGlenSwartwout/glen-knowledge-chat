@@ -255,6 +255,10 @@
     font-size:.92rem;font-weight:600;cursor:pointer;
     padding:9px 6px;margin:0 10px -1px 0;font-family:inherit}
   .tab.is-active{color:var(--brand);border-bottom-color:var(--brand)}
+  .hub-back { display:inline-flex; align-items:center; gap:.3rem; margin:0 0 .8rem;
+    background:transparent; border:1px solid var(--line); color:var(--brand);
+    border-radius:999px; padding:.35rem .8rem; font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; }
+  .hub-back:hover,.hub-back:focus-visible { border-color:var(--brand); outline:none; }
   .histgroup{margin:0 0 1.1rem}
   .histgroup:last-child{margin-bottom:0}
   .histgroup-label{font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.03em;
@@ -375,6 +379,27 @@
   .intake-consent input{margin-top:.25rem}
   .intake-sublabel{display:block;font-weight:600;font-size:.85rem;margin:.4rem 0 .25rem}
   .intake-err{border:1px solid var(--err) !important;border-radius:8px;box-shadow:0 0 0 1px var(--err)}
+
+  .portal-hub { margin: 0 0 1.25rem; }
+  .hub-banner { display:flex; gap:1rem; align-items:center; flex-wrap:wrap;
+    background:var(--brand-soft,#e5efea); border:1px solid var(--line); border-radius:14px; padding:1rem 1.15rem; }
+  .hub-banner .where { flex:1; min-width:12rem; }
+  .hub-banner .eyebrow { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); font-weight:700; }
+  .hub-banner h2 { font-size:1.15rem; margin:.15rem 0 .2rem; }
+  .hub-banner .next { background:#f6ecd2; border:1px solid var(--line); border-radius:10px; padding:.6rem .75rem; max-width:16rem; color:#1E2A2A; }
+  .hub-account { align-self:flex-start; background:transparent; border:1px solid var(--line); border-radius:999px;
+    padding:.3rem .8rem; font:inherit; font-size:.8rem; color:var(--muted); cursor:pointer; }
+  .hub-account:hover,.hub-account:focus-visible { border-color:var(--brand); color:var(--brand); outline:none; }
+  .hub-grid-group { margin-top:1rem; }
+  .hub-grid-group .glabel { font-size:.68rem; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); font-weight:700; margin:.1rem 0 .5rem; }
+  .hub-tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:.7rem; }
+  @media (max-width:760px){ .hub-tiles { grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:480px){ .hub-tiles { grid-template-columns:1fr; } }
+  .hub-tile { text-align:left; cursor:pointer; background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:.8rem; min-height:5.5rem; display:flex; flex-direction:column; gap:.35rem; font:inherit; color:var(--ink); }
+  .hub-tile:hover,.hub-tile:focus-visible { border-color:#2f6f5e; box-shadow:0 6px 18px rgba(24,36,32,.08); outline:none; }
+  .hub-tile .tname { font-weight:650; font-size:.95rem; }
+  .hub-tile .tdesc { font-size:.78rem; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -636,11 +661,55 @@ function terrainBanner(d, kind){
 // runs in global scope. Remembers the last-viewed tab in sessionStorage so a
 // household member switch (a full page nav) can land back on the same tab.
 function showTab(name){
+  if(!document.querySelector('[data-panel="'+name+'"]')){ name = document.querySelector('[data-panel="hub"]') ? 'hub' : 'current'; }
   document.querySelectorAll('#portalTabs .tab').forEach(b =>
     b.classList.toggle('is-active', b.dataset.tab === name));
   document.querySelectorAll('[data-panel]').forEach(p =>
     p.hidden = (p.dataset.panel !== name));
   try{ sessionStorage.setItem('rm_portal_tab', name); }catch(e){}
+}
+// A small control placed at the top of every non-hub panel so the client can
+// return to the hub landing. Uses the hardened showTab (falls back safely).
+function backToHub(){
+  return `<button type="button" class="hub-back" onclick="showTab('hub')">‹ Back to hub</button>`;
+}
+// Journey-grouped hub landing. Each tile routes via the existing showTab() to a
+// [data-panel] section. Groups encode the healing journey. Later phases add tiles.
+function buildHubHtml(d, v){
+  const groups = [
+    ["Understand", [
+      ["current", "My Analysis", "Your current scan, matches and healing path"],
+    ]],
+    ["Act", [
+      ["finder", "Find a Practitioner", "Certified practitioners near you"],
+      ["refer",  "Refer a Friend", "Share healing and earn as an Ambassador"],
+    ]],
+    ["Learn & Ask", [
+      ["ask",     "Ask Dr. Glen", "Chat about your terrain and remedies"],
+      ["bodymap", "Body Map", "Your systems, personalized"],
+      ["classes", "MasterClasses", "Free courses and teachings"],
+    ]],
+    ["Track", [
+      ["history", "Scan History", "Every scan over time"],
+      ["orders",  "Orders & Invoices", "Receipts and anything unpaid"],
+      ["referrals","Referrals", "Who you've referred and your rewards"],
+    ]],
+  ];
+  const tile = ([panel,name,desc]) =>
+    `<button type="button" class="hub-tile" onclick="showTab('${panel}')">
+       <span class="tname">${esc(name)}</span><span class="tdesc">${esc(desc)}</span></button>`;
+  const grp = ([label,tiles]) =>
+    `<div class="hub-grid-group"><p class="glabel">${esc(label)}</p>
+       <div class="hub-tiles">${tiles.map(tile).join("")}</div></div>`;
+  const next = (d.next_step_label)
+    ? `<div class="next"><div class="eyebrow">Your next step</div><div>${esc(d.next_step_label)}</div></div>`
+    : "";
+  return `<div class="portal-hub">
+    <div class="hub-banner"><div class="where">
+      <div class="eyebrow">Where you are</div>
+      <h2>${esc(d.hub_headline || "Your healing home")}</h2></div>${next}
+      <button type="button" class="hub-account" onclick="showTab('account')">Account</button></div>
+    ${groups.map(grp).join("")}</div>`;
 }
 // One Scan History row per date. memberEmail is set only for the group currently
 // being viewed (matches ?member=, or "" for "You") — clicking it reuses the same
@@ -1130,6 +1199,8 @@ function wireRecommendationsCard(){
 
 function render(d, v){
   d = d || {};
+  // Hub landing (flagged). Prepended above existing cards; panels below unchanged.
+  let hubHtml = (v && v.hub_enabled) ? buildHubHtml(d, v) : "";
   const recSections = (_recoPayload && Array.isArray(_recoPayload.sections)) ? _recoPayload.sections : [];
   // Premium element backdrop: key the Glendalf scene off the member's deficient
   // element (null when not a paid member / not yet computed -> plain portal).
@@ -1265,9 +1336,16 @@ function render(d, v){
     </div>`;
   }
 
+  // Hub drill-in: compute the hub flag early and declare per-panel accumulators.
+  // Under the hub, each secondary card routes into its own [data-panel] section
+  // (below) instead of the single scroll; without the hub, every card still
+  // appends to `html` exactly as before (off-state byte-identical).
+  const _hub = !!(v && v.hub_enabled);
+  let _askHtml="", _finderHtml="", _bodymapHtml="", _classesHtml="", _accountHtml="", _referHtml="", _referralsHtml="";
+
   // "Ask Dr. Glen" concierge chat — promoted to the TOP of the portal (first card
   // below the hero) so it's the first thing the client sees. Always shown.
-  html += `<div class="card" id="chatCard">
+  const _askCard = `<div class="card" id="chatCard">
     <h2>Ask Dr. Glen</h2>
     <p class="muted small" style="margin:.3rem 0 .7rem">Questions about your healing path, remedies, or how to feel better? Ask here.</p>
     <div id="chatMsgs" class="chat-msgs"></div>
@@ -1276,6 +1354,7 @@ function render(d, v){
       <button class="btn" id="chatSend">Send</button>
     </div>
   </div>`;
+  if (_hub) { _askHtml += _askCard; } else { html += _askCard; }
 
   // Practitioner Finder — embed the existing /practitioner-finder, auto-located to
   // the client (zip or city + country) so results load without typing. Flag-gated.
@@ -1284,31 +1363,35 @@ function render(d, v){
     const q = pf.location
       ? ("?location=" + encodeURIComponent(pf.location) + "&country=" + encodeURIComponent(pf.country || "US"))
       : "";
-    html += `<div class="card quiet"><h2>Find a Practitioner Near You</h2>
+    const _finderCard = `<div class="card quiet"><h2>Find a Practitioner Near You</h2>
       <p class="muted small" style="margin:.3rem 0 .7rem">Search certified practitioners by your city or zip — all specialties, worldwide.</p>
       <iframe src="/practitioner-finder${q}" title="Practitioner Finder" loading="lazy"
         style="width:100%;min-height:640px;height:80vh;border:0;border-radius:12px"></iframe>
     </div>`;
+    if (_hub) { _finderHtml += _finderCard; } else { html += _finderCard; }
   }
 
-  html += `<div class="card quiet"><h2>Your Body Map</h2>
+  const _bodymapCard = `<div class="card quiet"><h2>Your Body Map</h2>
     <p class="muted small" style="margin:.3rem 0 .7rem">See your findings mapped onto a photo of your own face, or explore the full atlas of reflex maps — iris, sclera, ear, hands, feet and more.</p>
     <a class="btn full" href="/portal/${encodeURIComponent(seg)}/bodymap">Open your Body Map</a></div>`;
+  if (_hub) { _bodymapHtml += _bodymapCard; } else { html += _bodymapCard; }
 
-  html += `<div class="card quiet"><h2>Free MasterClasses</h2>
+  const _classesCard = `<div class="card quiet"><h2>Free MasterClasses</h2>
     <p class="muted small" style="margin:.3rem 0 .7rem">Watch Dr. Glen's free MasterClasses on Accelerated Self Healing and Wellness Whispering, with full videos and chaptered transcripts, at no cost.</p>
     <a class="btn full" href="https://courses.mentorshipu.com/learn">Explore free MasterClasses</a></div>`;
+  if (_hub) { _classesHtml += _classesCard; } else { html += _classesCard; }
 
   // Account snapshot — always shown when we have an identity.
   if(v && v.account){
     const a = v.account;
     const addr = a.address||{};
     const cityline = [addr.city, addr.state, addr.zip].filter(Boolean).join(", ");
-    html += `<div class="card quiet"><h2>Your account</h2>
+    const _accountCard = `<div class="card quiet"><h2>Your account</h2>
       <div class="kv"><span class="k">Email</span><span class="v">${esc(a.email||"")}</span></div>
       ${cityline?`<div class="kv"><span class="k">Location</span><span class="v">${esc(cityline)}</span></div>`:""}
       ${a.points_cents?`<div class="kv"><span class="k">Reward points</span><span class="v">${esc(money(a.points_cents))}</span></div>`:""}
     </div>`;
+    if (_hub) { _accountHtml += _accountCard; } else { html += _accountCard; }
   }
 
   if(d.video && d.video.url){
@@ -1987,7 +2070,7 @@ function render(d, v){
             `<span class="v muted small">${esc(s.points||0)} pts · ${esc(s.views||0)} views · ${esc(s.likes||0)} likes · ${esc(s.shares||0)} shares</span></div>`
           ).join("")
         : `<p class="muted small">No social shares yet.</p>`;
-      html += `<div class="card quiet"><h2>Your Ambassador links</h2>
+      const _ambCard = `<div class="card quiet"><h2>Your Ambassador links</h2>
         <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
         <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
         ${statsHtml}
@@ -2003,12 +2086,20 @@ function render(d, v){
           <p class="small err" id="socialErr" hidden></p>
         </div>
       </div>`;
+      if (_hub) { _referHtml += _ambCard; } else { html += _ambCard; }
+      // Referrals panel: reuse the same "Recent referrals" data as its own card.
+      // Invite links stay in the refer panel and are not duplicated here.
+      if (recentList.length) {
+        _referralsHtml += `<div class="card quiet"><h2>Recent referrals</h2>${recentHtml}</div>`;
+      }
     } else if(amb.status === "pending"){
-      html += `<div class="card quiet"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
+      const _ambCard = `<div class="card quiet"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
+      if (_hub) { _referHtml += _ambCard; } else { html += _ambCard; }
     } else {
-      html += `<div class="card quiet"><h2>Become an Ambassador</h2>
+      const _ambCard = `<div class="card quiet"><h2>Become an Ambassador</h2>
         <p class="muted">Earn rewards by sharing.</p>
         <a class="btn full" href="${esc(amb.signup_url)}" target="_blank" rel="noopener">Become an Ambassador</a></div>`;
+      if (_hub) { _referHtml += _ambCard; } else { html += _ambCard; }
     }
   }
 
@@ -2042,7 +2133,7 @@ function render(d, v){
   // cards below) — the write route itself gates on PUBLIC_SURFACE_ENABLED,
   // returning a bare 404 when the feature is off, same as every other
   // public-surface route.
-  html += `<div class="card" id="share-header-card">
+  const _shareCard = `<div class="card" id="share-header-card">
     <h2>Your share page</h2>
     <p class="muted">Add your first name and a line in your own words. It appears
       above the sample portal when someone opens your link.
@@ -2055,6 +2146,7 @@ function render(d, v){
     <button class="btn full" type="button" id="sh-save" style="margin-top:.5rem">Save</button>
     <p class="small muted" id="sh-status" style="margin-top:.4rem"></p>
   </div>`;
+  if (_hub) { _referHtml += _shareCard; } else { html += _shareCard; }
 
   // Notification preference: lets a client see and change their opt status,
   // so anyone who unsubscribed via the email link can re-subscribe here.
@@ -2142,22 +2234,44 @@ function render(d, v){
   // Task 7: wrap everything above into the Current Analysis panel and add the
   // Scan History / Orders & Invoices panels + tab bar. Flag off => html is used
   // as-is, exactly as before this task (no tab bar, no behavior change).
-  if (d.scan_history_enabled) {
+  // Task 4: under the hub, the grid IS the nav, so the old tab bar must not
+  // also render; only the [data-panel] wrappers are needed in that case.
+  // `_hub` is declared once, early (before the first secondary card).
+  if (_hub && !_referralsHtml) {
+    _referralsHtml = `<div class="card quiet"><p class="muted">Your referrals will appear here once someone joins.</p></div>`;
+  }
+  const _wrapPanels = d.scan_history_enabled || _hub;
+  const _showOldTabs = d.scan_history_enabled && !_hub;
+  if (_wrapPanels) {
     const historyHtml = buildScanHistoryHtml(d);
     const ordersHtml = buildOrdersHtml(d);
-    html = `<div class="tabbar" id="portalTabs">
+    const tabbar = _showOldTabs ? `<div class="tabbar" id="portalTabs">
         <button type="button" class="tab is-active" data-tab="current" onclick="showTab('current')">Current Analysis</button>
         <button type="button" class="tab" data-tab="history" onclick="showTab('history')">Scan History</button>
         <button type="button" class="tab" data-tab="orders" onclick="showTab('orders')">Orders &amp; Invoices</button>
-      </div>
-      <section data-panel="current">${html}</section>
-      <section data-panel="history" hidden>${historyHtml}</section>
-      <section data-panel="orders" hidden>${ordersHtml}</section>`;
+      </div>` : "";
+    // Under the hub, the grid becomes its own default panel and every other
+    // panel carries a Back-to-hub control. Without the hub, behavior is unchanged.
+    const hubPanel = _hub ? `<section data-panel="hub">${hubHtml}</section>` : "";
+    const back = _hub ? backToHub() : "";
+    html = `${tabbar}${hubPanel}
+      <section data-panel="current"${_hub ? " hidden" : ""}>${back}${html}</section>
+      <section data-panel="history" hidden>${back}${historyHtml}</section>
+      <section data-panel="orders" hidden>${back}${ordersHtml}</section>${_hub ? `
+      <section data-panel="ask" hidden>${back}${_askHtml}</section>
+      <section data-panel="finder" hidden>${back}${_finderHtml || '<div class="card quiet"><p class="muted">The practitioner finder is not enabled for your portal yet.</p></div>'}</section>
+      <section data-panel="bodymap" hidden>${back}${_bodymapHtml}</section>
+      <section data-panel="classes" hidden>${back}${_classesHtml}</section>
+      <section data-panel="account" hidden>${back}${_accountHtml}</section>
+      <section data-panel="refer" hidden>${back}${_referHtml || '<div class="card quiet"><p class="muted">Ambassador program details will appear here.</p></div>'}</section>
+      <section data-panel="referrals" hidden>${back}${_referralsHtml}</section>` : ""}`;
   }
 
   app.innerHTML = html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
+
+  if (_hub) { showTab('hub'); }
 
   initOnboardingCard();
   initCoachesCard();

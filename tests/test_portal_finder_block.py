@@ -7,12 +7,22 @@ def test_prefers_zip_over_city():
 
 
 def test_falls_back_to_city_when_no_zip():
+    # zip present but empty string
     b = _practitioner_finder_block({"zip": "", "city": "Berlin", "country": "DE"}, enabled=True)
     assert b == {"enabled": True, "location": "Berlin", "country": "DE"}
+
+    # zip key absent entirely
+    b2 = _practitioner_finder_block({"city": "Hilo", "country": "US"}, enabled=True)
+    assert b2 == {"enabled": True, "location": "Hilo", "country": "US"}
 
 
 def test_empty_location_and_default_country_when_no_address():
     b = _practitioner_finder_block({}, enabled=True)
+    assert b == {"enabled": True, "location": "", "country": "US"}
+
+
+def test_absent_address_none_empty_location_defaults_us():
+    b = _practitioner_finder_block(None, True)
     assert b == {"enabled": True, "location": "", "country": "US"}
 
 
