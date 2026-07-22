@@ -154,7 +154,7 @@ def learn_home():
     level = _member_level()
     items = []
     for course in cc.list_courses():
-        items.append(f'<li><a href="/learn/{course.slug}">{course.title}</a>: {course.description}</li>')
+        items.append(f'<li><a href="/learn/{course.slug}">{escape(course.title)}</a>: {escape(course.description)}</li>')
     cta = "" if level else '<p><a href="/learn#register">Register free to unlock member lessons</a></p>'
     form = "" if level else _REGISTER_FORM
     body = f"<h1>MentorshipU</h1><ul>{''.join(items)}</ul>{cta}{form}"
@@ -169,17 +169,17 @@ def course_home(course_slug):
         return render_template_string(_PAGE, title="Not found", body="<h1>Course not found</h1>"), 404
     rows = []
     for m in course.modules:
-        rows.append(f"<h3>{m.title}</h3><ul>")
+        rows.append(f"<h3>{escape(m.title)}</h3><ul>")
         for l in m.lessons:
             state = ca.lock_state(l.access, level)
             if state == "open":
-                rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{l.title}</a></li>')
+                rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{escape(l.title)}</a></li>')
             elif state == "locked_register":
-                rows.append(f'<li>{l.title} <a href="/learn#register">(register free)</a></li>')
+                rows.append(f'<li>{escape(l.title)} <a href="/learn#register">(register free)</a></li>')
             else:
-                rows.append(f"<li>{l.title} (members-only, upgrade coming soon)</li>")
+                rows.append(f"<li>{escape(l.title)} (members-only, upgrade coming soon)</li>")
         rows.append("</ul>")
-    body = f'<p><a href="/learn">← All courses</a></p><h1>{course.title}</h1><p>{course.description}</p>{"".join(rows)}'
+    body = f'<p><a href="/learn">← All courses</a></p><h1>{escape(course.title)}</h1><p>{escape(course.description)}</p>{"".join(rows)}'
     return render_template_string(_PAGE, title=course.title, body=body)
 
 
