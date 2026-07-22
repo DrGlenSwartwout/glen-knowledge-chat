@@ -1,0 +1,221 @@
+"""Build the PG schema straight from a SOURCE SQLite's own sqlite_master DDL
+(P05.5 Task 1) -- completeness (every table, not just the ~97 `import app`
+creates at import time), REAL/loose-int widening, and FK-strip.
+
+Pure `translate_ddl` unit tests run everywhere (no DB). `create_schema`
+integration tests are skip-guarded on PG_DSN (local Postgres `migtest`).
+"""
+import os
+import re
+import sqlite3
+
+import pytest
+
+from scripts.pgmig import schema_create
+from dashboard import db
+from dashboard.dbschema import schema_for_path
+
+pg = bool(os.environ.get("PG_DSN"))
+
+
+# ---------------------------------------------------------------------------
+# Pure translate_ddl tests -- no DB involved.
+# ---------------------------------------------------------------------------
+
+def test_translate_ddl_real_to_double_precision():
+    sql = "CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, price REAL)"
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+    assert "DOUBLE PRECISION" in out
+    assert not re.search(r"(?i)\bREAL\b", out)
+    # AUTOINCREMENT still goes through the shipped pgcompat mechanical idiom.
+    assert "GENERATED ALWAYS AS IDENTITY" in out
+
+
+def test_translate_ddl_widens_named_text_cols():
+    sql = "CREATE TABLE t (id INTEGER PRIMARY KEY, ext_ref INTEGER, name TEXT)"
+    out = schema_create.translate_ddl("t", sql, text_cols={"ext_ref"})
+    assert out == "CREATE TABLE t (id INTEGER PRIMARY KEY, ext_ref TEXT, name TEXT)"
+
+
+def test_translate_ddl_strips_fk_but_preserves_a_column_named_references():
+    """The FK-strip pass must not mangle a column literally named
+    (a variant of) "references" -- it only removes the REFERENCES keyword
+    when it appears as an actual constraint, never as a column identifier."""
+    sql = (
+        'CREATE TABLE t (\n'
+        '  id INTEGER PRIMARY KEY,\n'
+        '  parent_id INTEGER REFERENCES parent(id) ON DELETE CASCADE,\n'
+        '  "references" TEXT,\n'
+        '  FOREIGN KEY (parent_id) REFERENCES parent(id)\n'
+        ')'
+    )
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+
+    # The real column, still present and unmangled (quoting preserved).
+    assert '"references" TEXT' in out
+    # The table-level FK constraint is gone entirely.
+    assert "FOREIGN KEY" not in out.upper()
+    # The column-level REFERENCES clause (pointing at "parent") is gone,
+    # including its ON DELETE clause -- but this must NOT be satisfied merely
+    # by matching the surviving quoted column name, hence anchoring on
+    # "REFERENCES parent".
+    assert not re.search(r"(?i)\bREFERENCES\s+parent\b", out)
+    assert "ON DELETE CASCADE" not in out.upper()
+    # parent_id column itself survives (just de-FK'd).
+    assert re.search(r"(?i)\bparent_id\s+INTEGER\b", out)
+
+
+def test_translate_ddl_strips_fk_with_named_constraint():
+    sql = (
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, a_id INTEGER, "
+        "CONSTRAINT fk_a FOREIGN KEY (a_id) REFERENCES a(id))"
+    )
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+    assert "FOREIGN KEY" not in out.upper()
+    assert "fk_a" not in out
+    assert "a_id INTEGER" in out
+
+
+def test_translate_ddl_keeps_non_fk_table_constraints():
+    sql = (
+        "CREATE TABLE t (id INTEGER PRIMARY KEY, a TEXT, b TEXT, "
+        "UNIQUE (a, b), CHECK (a <> b))"
+    )
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+    assert "UNIQUE (a, b)" in out
+    assert "CHECK (a <> b)" in out
+
+
+# ---------------------------------------------------------------------------
+# loose_int_text_cols -- read-only against a plain sqlite3 connection.
+# ---------------------------------------------------------------------------
+
+def test_loose_int_text_cols_detects_uuid_in_integer_column(tmp_path):
+    src = str(tmp_path / "loose.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE testimonial_tokens (id INTEGER PRIMARY KEY, token INTEGER, ok INTEGER);"
+    )
+    cx.executescript(
+        "INSERT INTO testimonial_tokens (id, token, ok) VALUES "
+        "(1, '123e4567-e89b-12d3-a456-426614174000', 1), (2, 7, 0);"
+    )
+    cx.commit()
+
+    cols = schema_create.loose_int_text_cols(cx, "testimonial_tokens")
+    assert cols == {"token"}
+    cx.close()
+
+
+def test_loose_int_text_cols_clean_integer_table_widens_nothing(tmp_path):
+    src = str(tmp_path / "clean.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER);")
+    cx.executescript("INSERT INTO t (id, n) VALUES (1, 5), (2, NULL);")
+    cx.commit()
+
+    assert schema_create.loose_int_text_cols(cx, "t") == set()
+    cx.close()
+
+
+# ---------------------------------------------------------------------------
+# create_schema -- PG integration, skip-guarded.
+# ---------------------------------------------------------------------------
+
+def _mk_synthetic_source(path):
+    """widget: autoincrement PK + REAL col + an INTEGER col holding a UUID.
+    gadget: FK to widget. Plus a non-auto UNIQUE index on gadget.name."""
+    cx = sqlite3.connect(path)
+    cx.executescript(
+        "CREATE TABLE widget ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  price REAL,"
+        "  ext_ref INTEGER"
+        ");"
+        "CREATE TABLE gadget ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  widget_id INTEGER REFERENCES widget(id),"
+        "  name TEXT"
+        ");"
+        "CREATE INDEX idx_gadget_widget ON gadget(widget_id);"
+    )
+    cx.executescript(
+        "INSERT INTO widget (id, price, ext_ref) VALUES "
+        "(1, 3.14159265358979, '123e4567-e89b-12d3-a456-426614174000');"
+        "INSERT INTO gadget (id, widget_id, name) VALUES (1, 1, 'g1');"
+    )
+    cx.commit()
+    cx.close()
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_builds_all_tables_widens_and_strips_fk(monkeypatch, tmp_path):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_ddl_test.db")
+    _mk_synthetic_source(src)
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+
+    assert report["tables_created"] == 2
+    assert report["indexes_created"] >= 1
+    assert ("widget", "ext_ref") in report["widened_cols"]
+    assert not report["skipped"]
+
+    with db.connect(src) as cx:
+        tables = {r[0] for r in cx.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema=? AND table_type='BASE TABLE'", (schema,)).fetchall()}
+        assert {"widget", "gadget"} <= tables
+
+        cols = {r[0]: r for r in cx.execute(
+            "SELECT column_name, data_type, is_identity FROM information_schema.columns "
+            "WHERE table_schema=? AND table_name='widget'", (schema,)).fetchall()}
+        assert cols["id"][2] == "YES"  # is_identity
+        assert cols["price"][1] == "double precision"
+        assert cols["ext_ref"][1] == "text"
+
+        fk_count = cx.execute(
+            "SELECT count(*) FROM information_schema.table_constraints "
+            "WHERE table_schema=? AND constraint_type='FOREIGN KEY'", (schema,)).fetchone()[0]
+        assert fk_count == 0
+
+        # Round-trip: a fresh insert (no explicit id -- identity autogenerates)
+        # carries a high-precision float and a UUID string through cleanly.
+        uuid_val = "9c858901-8a57-4791-81fe-4c455b099bc9"
+        float_val = 2.718281828459045
+        cx.execute(
+            'INSERT INTO widget (price, ext_ref) VALUES (?, ?)', (float_val, uuid_val))
+        cx.commit()
+        row = cx.execute(
+            'SELECT price, ext_ref FROM widget WHERE ext_ref=?', (uuid_val,)).fetchone()
+        assert row is not None
+        assert row[0] == float_val
+        assert row[1] == uuid_val
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_drop_first_gives_a_clean_rerun(monkeypatch, tmp_path):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_ddl_rerun.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE t (id INTEGER PRIMARY KEY, n REAL);")
+    cx.commit()
+    cx.close()
+
+    r1 = schema_create.create_schema(src, drop_first=True)
+    assert r1["tables_created"] == 1
+    r2 = schema_create.create_schema(src, drop_first=True)
+    assert r2["tables_created"] == 1
+    assert not r2["skipped"]
+
+
+def test_create_schema_asserts_postgres_backend(monkeypatch, tmp_path):
+    """Unguarded (no PG skip-mark): the backend assert must fire before any
+    PG connection is attempted, so this runs green in the SQLite-only harness."""
+    monkeypatch.delenv("DB_BACKEND", raising=False)
+    src = str(tmp_path / "pgmig_ddl_backend_guard.db")
+    sqlite3.connect(src).close()
+
+    with pytest.raises(RuntimeError, match="postgres"):
+        schema_create.create_schema(src)
