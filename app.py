@@ -21546,6 +21546,41 @@ def api_portal_client_fact(token):
     return jsonify({"ok": True, "support_program": _support_program_for(email)})
 
 
+@app.route("/api/portal/<token>/health-profile", methods=["POST"])
+def api_portal_health_profile(token):
+    """Client self-edit write-back into their own intake_responses row (the
+    portal "My Health Profile" edit surface). Identity comes from the portal
+    TOKEN, never the body. Only health_profile.EDITABLE_FIELD_IDS may be
+    written (the 5 clinical dimensions + goals/history — never identity or
+    the `terms` consent field). A submitted intake keeps status=='submitted'
+    (intake.save_self_edit merges in place; it never resets to draft or
+    wipes unedited answers). Returns the refreshed curated block for a live
+    re-render."""
+    if not _PORTAL_HEALTH_PROFILE_ENABLED:
+        return ("", 404)
+    body = request.get_json(silent=True) or {}
+    if "answers" in body:
+        partial = body.get("answers") or {}
+    else:
+        field_id = (body.get("field_id") or "").strip()
+        partial = {field_id: body.get("value")} if field_id else {}
+    from dashboard import health_profile as _hp
+    bad = [k for k in partial if k not in _hp.EDITABLE_FIELD_IDS]
+    if bad:
+        return jsonify({"ok": False, "error": "non-editable field", "fields": bad}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        from dashboard import intake as _intake
+        _intake.init_intake_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "unknown token"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _intake.save_self_edit(cx, email, partial)
+        block = _hp.build_block(cx, email, True)
+    return jsonify({"ok": True, "health_profile": block})
+
+
 @app.route("/api/portal/<token>/life-stress/selection", methods=["POST"])
 def api_portal_life_stress_selection(token):
     """Save the client's Life Stress essence SELECTION (a preference, not an order).

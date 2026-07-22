@@ -6,6 +6,7 @@ Response shape: answers is a dict field_id -> value. Scalars for text/number/
 scale/single_choice; a list of row-dicts for `table` fields; `terms` is
 {"agreed": bool, "signature": str, "date": str}."""
 import json
+from datetime import datetime, timezone
 
 # --- scale option builders (labels are Glen's exact PB wording) ---
 def _scale(pairs):
@@ -262,6 +263,37 @@ def import_response(cx, email, answers, now, source="practice-better"):
             return
     payload = {**(answers or {}), "_imported": source}
     _upsert(cx, email, payload, "submitted", now, now)
+
+
+def save_self_edit(cx, email, partial_answers):
+    """Client self-edit write-back (portal "My Health Profile" edit). Merges
+    ONLY the client-editable fields (health_profile.EDITABLE_FIELD_IDS) into
+    the existing row's answers, using intake_public.merge_answers for the
+    same whitelist/coercion the funnel intake uses. GUARD: never resets a
+    submitted row to draft, never wipes unedited answers (merge, not
+    replace). Starts a fresh draft row if the client has no intake yet.
+    Stamps `self_edited_at` in the answers so a submitted row visibly carries
+    a post-submission edit. Returns the updated answers dict.
+
+    Lazy imports (health_profile imports this module at module load time,
+    so importing it back at module scope here would be a cycle)."""
+    from dashboard import health_profile as _hp
+    from dashboard import intake_public as _ip
+
+    email = (email or "").strip().lower()
+    now = datetime.now(timezone.utc).isoformat()
+    existing = get_response(cx, email)
+    current = (existing or {}).get("answers") or {}
+    status = (existing or {}).get("status") or "draft"
+    submitted_at = (existing or {}).get("submitted_at")
+
+    whitelisted = {k: v for k, v in (partial_answers or {}).items()
+                   if k in _hp.EDITABLE_FIELD_IDS}
+    merged = _ip.merge_answers(current, whitelisted)
+    merged["self_edited_at"] = now
+
+    _upsert(cx, email, merged, status, now, submitted_at)
+    return merged
 
 
 def list_submitted(cx):
