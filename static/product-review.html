@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Free Product Review — Ill to Well</title>
+<style>
+  :root{--bg:#0a1710;--card:#12271d;--card2:#173026;--line:#25452f;--ink:#f4edd8;--muted:#9db0a1;--gold:#e2b654}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,sans-serif}
+  .wrap{max-width:560px;margin:0 auto;padding:48px 22px}
+  h1{font-weight:300;font-size:2rem;margin:0 0 .4rem} h1 em{color:var(--gold);font-style:italic}
+  .lead{color:var(--muted);margin:0 0 1.6rem}
+  label{display:block;font-size:.85rem;color:var(--muted);margin:.9rem 0 .3rem}
+  input{width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:11px 12px;font:inherit}
+  .hp{position:absolute;left:-9999px}
+  .tos{display:flex;gap:.5rem;align-items:flex-start;margin:1.1rem 0;font-size:.9rem;color:var(--muted)}
+  .tos input{width:auto;margin-top:.25rem}
+  button{width:100%;background:var(--gold);color:#0a1710;border:0;border-radius:100px;padding:13px;font-weight:600;font-size:1rem;cursor:pointer;margin-top:1rem}
+  button:disabled{opacity:.5;cursor:default}
+  .status{margin-top:1rem;min-height:1.2em;color:var(--muted)}
+  .done{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin-top:1rem}
+  a{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Get your supplements <em>reviewed</em>, free</h1>
+  <p class="lead">Not sure what's really in that supplement you're taking? Tell us what it is and Dr. Glen Swartwout will review it for you. We'll set up your free membership and post the review to your private portal.</p>
+  <form id="prForm">
+    <input class="hp" type="text" id="company" name="company" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <label for="name">Your name</label>
+    <input id="name" autocomplete="name">
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="email" required>
+    <label for="product">Product name</label>
+    <input id="product" required>
+    <label for="brand">Brand (optional)</label>
+    <input id="brand">
+    <label class="tos"><input type="checkbox" id="tos"><span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms</a> and to receive my review and related emails.</span></label>
+    <button type="submit" id="submit">Request my free review</button>
+    <div class="status" id="status"></div>
+  </form>
+</div>
+<script>
+document.getElementById("prForm").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const st = document.getElementById("status");
+  const btn = document.getElementById("submit");
+  const email = (document.getElementById("email").value||"").trim();
+  const product = (document.getElementById("product").value||"").trim();
+  if(!email || !product){ st.textContent = "Email and product name are required."; return; }
+  if(!document.getElementById("tos").checked){ st.textContent = "Please agree to the terms."; return; }
+  btn.disabled = true; st.textContent = "Submitting...";
+  try{
+    const r = await fetch("/api/product-review/public/start", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        name: (document.getElementById("name").value||"").trim(),
+        email, product_name: product,
+        product_brand: (document.getElementById("brand").value||"").trim(),
+        tos_agreed: true,
+        company: (document.getElementById("company").value||"")
+      })});
+    const j = await r.json();
+    if(r.ok && j.ok){
+      document.getElementById("prForm").outerHTML =
+        '<div class="done"><h2 style="margin:0 0 .4rem;font-weight:400">You’re all set.</h2>'+
+        '<p style="margin:0;color:var(--muted)">Check your email for your private portal link. Your review will appear there once Dr. Glen has completed it.</p></div>';
+    } else {
+      st.textContent = (j.error === "tos_required") ? "Please agree to the terms."
+        : (j.error === "email_required") ? "Please enter a valid email."
+        : "Sorry, we couldn't submit that right now.";
+      btn.disabled = false;
+    }
+  }catch(err){ st.textContent = "Sorry, we couldn't submit that right now."; btn.disabled = false; }
+});
+</script>
+</body>
+</html>

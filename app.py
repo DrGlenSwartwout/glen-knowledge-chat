@@ -25489,6 +25489,19 @@ def api_practitioner_product_review_request():
     return jsonify({"ok": True, "status": res["status"], "created": res["created"]})
 
 
+@app.route("/product-review")
+def product_review_intake_page():
+    """Public product-review opt-in (linked from skepticalreviews.com). While the
+    feature is dark it redirects to /begin, preserving today's funnel behavior;
+    once live it serves the intake form that posts to public/start."""
+    from dashboard import supplement_reviews as _sr
+    if not _sr.enabled():
+        return redirect("/begin")
+    resp = send_from_directory(STATIC, "product-review.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi

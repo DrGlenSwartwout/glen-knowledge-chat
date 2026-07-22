@@ -87,3 +87,16 @@ def test_console_draft_requires_secret(monkeypatch, tmp_path):
     r = app.app.test_client().post("/api/console/product-review/draft",
                                    json={"id": 1, "review_text": "x"})
     assert r.status_code == 401
+
+
+def test_intake_page_serves_when_live(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)  # flag on
+    r = app.app.test_client().get("/product-review")
+    assert r.status_code == 200 and b"reviewed" in r.data.lower()
+
+
+def test_intake_page_redirects_to_begin_when_dark(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setenv("SUPPLEMENT_REVIEW_ENABLED", "")
+    r = app.app.test_client().get("/product-review")
+    assert r.status_code in (301, 302) and "/begin" in r.headers.get("Location", "")
