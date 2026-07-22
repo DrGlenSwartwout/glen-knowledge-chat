@@ -63,6 +63,48 @@ app = Flask(__name__, static_folder=str(STATIC))
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_BYTES", str(250 * 1024 * 1024)))
 CORS(app)
 
+# ── MAINTENANCE_MODE write-freeze (P06 SQLite→Postgres cutover) ──────────────
+# During the copy→flip window, prod writes must be blocked or they'd land in
+# SQLite after the migration snapshot and be lost. 457 POST routes exist, so
+# this MUST be a single global hook, not per-route. Flag-off (unset/default)
+# is a zero-behavior-change no-op — read fresh from os.environ every request
+# (not cached at import) so a Doppler value + deploy, or a live toggle, takes
+# effect immediately.
+_MAINTENANCE_MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+_MAINTENANCE_TRUTHY = {"1", "true", "yes", "on"}
+# EXEMPT: the operator's console/admin surface (every route under these
+# prefixes is itself gated by CONSOLE_SECRET / an owner token — see
+# require_console_key / _console_key_ok / _check_console_auth below), so the
+# cutover operator can still run the migration tool and act during the freeze.
+# Do NOT add normal money/order/portal/checkout prefixes here — those writes
+# are exactly what MAINTENANCE_MODE exists to freeze.
+_MAINTENANCE_EXEMPT_PREFIXES = ("/admin", "/console", "/api/admin", "/api/console")
+
+
+def _maintenance_mode_on():
+    return os.environ.get("MAINTENANCE_MODE", "").strip().lower() in _MAINTENANCE_TRUTHY
+
+
+def _maintenance_exempt_path(path):
+    if path == "/" or path == "/healthz" or path.startswith("/healthz/"):
+        return True
+    return any(path == p or path.startswith(p + "/") for p in _MAINTENANCE_EXEMPT_PREFIXES)
+
+
+@app.before_request
+def _maintenance_mode_gate():
+    if request.method not in _MAINTENANCE_MUTATING_METHODS:
+        return None  # GET/HEAD/OPTIONS always pass — reads + health checks keep serving
+    if not _maintenance_mode_on():
+        return None
+    if _maintenance_exempt_path(request.path):
+        return None
+    return jsonify({
+        "maintenance": True,
+        "message": "Prod is in a brief maintenance window for a data migration. "
+                   "Writes are paused — please try again shortly.",
+    }), 503
+
 # ── Voice Journal blueprint (T2 — Whisper + Haiku + ada-002 + pgvector) ──────
 try:
     from journal_blueprint import journal_bp
