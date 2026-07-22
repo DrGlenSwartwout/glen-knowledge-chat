@@ -11766,18 +11766,22 @@ def api_cta_click():
                 "INSERT INTO cta_clicks (ts, log_id, cta_type) VALUES (?, ?, ?)",
                 (ts, log_id, cta_type),
             )
-            slug = (str(data.get("slug") or "")).strip().lower()   # lowercase for stable product_key
-            if slug and _cta_valid_product(slug):
-                sid = (request.cookies.get("amg_session") or "").strip()
-                erow = cx.execute("SELECT email, session_id FROM query_log WHERE id=?", (log_id,)).fetchone()
-                email = ((erow[0] if erow else "") or "").strip().lower()
-                row_sid = ((erow[1] if erow else "") or "").strip()
-                # Only attribute when the caller's session owns this log row — a bare
-                # log_id must not let anyone write a chat event against someone else's email.
-                if email and sid and row_sid == sid:
-                    from dashboard import recommendation_events as _re
-                    _re.init_recommendation_events(cx)
-                    _re.record_click(cx, email, slug, "chat")
+            try:
+                slug = (str(data.get("slug") or "")).strip().lower()   # lowercase for stable product_key
+                if slug and _cta_valid_product(slug):
+                    sid = (request.cookies.get("amg_session") or "").strip()
+                    erow = cx.execute("SELECT email, session_id FROM query_log WHERE id=?", (log_id,)).fetchone()
+                    email = ((erow[0] if erow else "") or "").strip().lower()
+                    row_sid = ((erow[1] if erow else "") or "").strip()
+                    # Only attribute when the caller's session owns this log row — a bare
+                    # log_id must not let anyone write a chat event against someone else's email.
+                    if email and sid and row_sid == sid:
+                        from dashboard import recommendation_events as _re
+                        _re.init_recommendation_events(cx)
+                        _re.record_click(cx, email, slug, "chat")
+            except Exception:
+                # Attribution is best-effort; it must never roll back the cta_clicks insert above.
+                pass
     except Exception:
         pass
     return jsonify({"ok": True})

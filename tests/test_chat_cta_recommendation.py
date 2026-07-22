@@ -65,3 +65,24 @@ def test_invalid_slug_records_nothing(tmp_path, monkeypatch):
     c.post("/api/cta-click", json={"log_id": 1, "cta_type": "page", "slug": "junk-slug"})
     cx = sqlite3.connect(db)
     assert re.list_events(cx, "a@b.com") == []
+
+
+def test_attribution_failure_does_not_roll_back_cta_click(tmp_path, monkeypatch):
+    """If the chat-attribution block raises, the cta_clicks insert (which shares
+    the same db.connect transaction) must still commit — attribution is
+    best-effort and must never roll back the base click record."""
+    db = _seed(tmp_path, monkeypatch, email="a@b.com", session_id="S1")
+
+    def _boom(slug):
+        raise RuntimeError("simulated attribution failure")
+    monkeypatch.setattr(app_module, "_cta_valid_product", _boom, raising=False)
+
+    c = app_module.app.test_client()
+    c.set_cookie("amg_session", "S1")
+    r = c.post("/api/cta-click", json={"log_id": 1, "cta_type": "page", "slug": "neuro-magnesium"})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    cx = sqlite3.connect(db)
+    n = cx.execute("SELECT COUNT(*) FROM cta_clicks").fetchone()[0]
+    assert n == 1
