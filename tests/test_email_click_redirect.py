@@ -67,3 +67,12 @@ def test_newsletter_source_is_allowed(tmp_path, monkeypatch):
     c.get(f"/r/{token}/newsletter/terrain-restore")
     cx = sqlite3.connect(db)
     assert any(e["source_key"] == "newsletter" for e in re.list_events(cx, "a@b.com"))
+
+
+def test_rec_valid_slug_routes_through_real_resolver():
+    import app as app_module
+    # active, unsuperseded slug resolves to itself
+    assert app_module._rec_valid_slug("terrain-restore") == "terrain-restore"
+    # a slug that is not a sellable product resolves to None
+    assert app_module._rec_valid_slug("definitely-not-a-real-slug-xyz") is None
+    assert app_module._rec_valid_slug("") is None

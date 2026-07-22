@@ -7455,17 +7455,13 @@ def begin_product_page(slug):
 
 
 def _rec_valid_slug(slug):
-    """Return the catalog-resolved slug for `slug`, or None if not a product."""
+    """Return the catalog-resolved, sellable slug for `slug`, or None. Routes through
+    _get_product so it follows supersession and rejects retired (inactive) products —
+    matching the funnel (product page, checkout) and carrying the survivor slug forward
+    for attribution, instead of validating on raw catalog membership."""
     try:
-        from dashboard import products as _p
-        cat = _p.load_products()
-        s = (slug or "").strip()
-        if not s:
-            return None
-        if s in cat:
-            return s
-        r = _p.superseded_slug(s)
-        return r if r in cat else None
+        p = _get_product((slug or "").strip())
+        return p["slug"] if p else None
     except Exception:
         return None
 
