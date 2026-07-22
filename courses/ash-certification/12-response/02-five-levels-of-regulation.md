@@ -1,7 +1,0 @@
----
-access: member
-downloads: []
-title: Five Levels of Regulation
----
-
-<p><br/></p><h2>Level 1: Blocked Regulation</h2><p><br/></p><p><span><iframe allowfullscreen="" frameborder="0" height="360" src="https://www.youtube.com/embed/lptaJJhIKmM?&amp;wmode=opaque" width="640"></iframe></span><br/></p><h2><br/></h2><h2>Level 2: Negative Regulation</h2><p><br/></p><p><span><iframe allowfullscreen="" frameborder="0" height="360" src="https://www.youtube.com/embed/Jt3bfArV_xM?&amp;wmode=opaque" width="640"></iframe></span><br/></p><p><br/></p><h2>Level 3: Mixed Regulation</h2><p><br/></p><p><span><iframe allowfullscreen="" frameborder="0" height="360" src="https://www.youtube.com/embed/Upl-YLfJARY?&amp;wmode=opaque" width="640"></iframe></span><br/></p><p><br/></p><h2>Level 4: Positive Regulation</h2><p><br/></p><p><span><iframe allowfullscreen="" frameborder="0" height="360" src="https://www.youtube.com/embed/6tVJfeDPCfY?&amp;wmode=opaque" width="640"></iframe></span><br/></p><p><br/></p><h2>Level 5: Optimum Regulation</h2><p><br/></p><p><span><iframe allowfullscreen="" frameborder="0" height="360" src="https://www.youtube.com/embed/3kAO21IgebQ?&amp;wmode=opaque" width="640"></iframe></span><br/></p><p><br/></p>
