@@ -21876,13 +21876,29 @@ def api_portal_chat(token):
             pass
         # Persist the turn to the durable portal chat thread (remembered across
         # sessions; Dr. Glen can reply into it from the console).
+        _client_msg_id = None
         try:
             from dashboard import portal_chat as _pchat
             with _db_lock, db.connect(LOG_DB) as _pcx:
-                _pchat.record_exchange(_pcx, email, query, answer,
+                _client_msg_id = _pchat.record_exchange(_pcx, email, query, answer,
                                        client_name=(portal.get("name") or "You"))
         except Exception as e:
             print(f"[portal-chat] persist failed: {e!r}", flush=True)
+        # Extract candidate health-record edits from the turn and queue them as
+        # pending suggestions for the client to review (My Health Profile). Best
+        # effort and flag-gated; must never break the chat stream.
+        if _PORTAL_HEALTH_PROFILE_ENABLED:
+            try:
+                from dashboard import health_suggestions as _hs
+                candidates = _hs.extract_from_turn(query, answer)
+                if candidates:
+                    with _db_lock, db.connect(LOG_DB) as _hcx:
+                        for cand in candidates:
+                            _hs.add_pending(_hcx, email, cand.get("field_id"),
+                                            cand.get("value"), cand.get("rationale"),
+                                            source="chat", source_msg_id=_client_msg_id)
+            except Exception as e:
+                print(f"[health-suggestions] extract failed: {e!r}", flush=True)
         # Triage: flag messages that need Dr. Glen's attention -> console + email him.
         try:
             import threading as _t2
