@@ -96,6 +96,10 @@ PROD_BOTTLE_NAMES = frozenset({
     "book", "nasal-clip", "denas",
     # Created in prod 2026-07-11 (id 24) for the two nightlight SKUs (5 x 5 x 6 cm each).
     "nightlight",
+    # One Step tub. Unlike the rows above (hand-created via /admin/shipping), this one is
+    # backfilled into prod's bottle_types by init_shipping_schema on deploy — the same
+    # code-guaranteed ensure-insert used for 30ml — so prod knows it without a manual step.
+    "one-step",
 })
 
 # Types the catalog needs that prod's library lacks. Empty: the last four were created.
@@ -170,6 +174,12 @@ _STANDARD_BOTTLES = [
     # (50 - 5 margin = 45 mm), so a single unit bounds to USPS Medium; 2-3 still fit one
     # Medium. Created in prod 2026-07-11 (id 24). Shared by both nightlight SKUs.
     ("nightlight", "Therapeutic / Biocompatible nightlight — 5 x 5 x 6 cm → USPS Medium", 50, 60),
+    # One Step meal-replacement tub. Real tub ~Ø140 x H190 mm; per Glen it ships USPS
+    # Medium (single) / Large (bulk) and needs no packing wrap. A true Ø140 exceeds every
+    # box interior and would rate as None, so this is a SHIPPING PROXY: Ø120 resolves one
+    # unit to Medium and larger loads to Large. (Two proxied units tile into one Medium —
+    # rare for a tub; use the Edit-Invoice manual shipping override for such an order.)
+    ("one-step", "One Step tub — ~Ø140 x H190 real; per Glen USPS Medium (1) / Large (bulk), no packing — proxy Ø120", 120, 190),
     # Cello refill pack: a 30-cap cellophane pouch (no rigid bottle), approximated as a
     # tight bounding cylinder — packs smaller than the "30 Caps" rigid bottle (Ø51x90) it
     # replaces for refill-format lines. NOT YET created in prod; Rae must add this row
@@ -283,6 +293,11 @@ def init_shipping_schema(cx: sqlite3.Connection) -> None:
     if have and "30ml" not in have:
         cx.execute("INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
                    "VALUES ('30ml', '30 ml dropper (infoceutical)', 40, 110)")
+    # Same backfill for the One Step tub, so prod's existing catalog rates it after deploy
+    # without a manual /admin/shipping step (dims + rationale: see _STANDARD_BOTTLES).
+    if have and "one-step" not in have:
+        cx.execute("INSERT INTO bottle_types (name, notes, diameter_mm, height_mm) "
+                   "VALUES ('one-step', 'One Step tub — proxy Ø120 x H190 → USPS Medium (1) / Large (bulk)', 120, 190)")
 
     if pg:
         cx.execute("""

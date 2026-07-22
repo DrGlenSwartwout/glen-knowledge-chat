@@ -72,7 +72,8 @@ def _spy_pricer(appmod, monkeypatch, captured):
     caller is a paid member at that moment, then returns a valid priced dict so persistence
     still runs."""
     def spy(lines_in, *, email, pickup, ship, discount_cents_in=None,
-            adjustment_cents_in=None, points_redeem_cents_in=None):
+            adjustment_cents_in=None, points_redeem_cents_in=None,
+            shipping_override_cents_in=None):
         captured["lines"] = lines_in
         captured["email"] = email
         captured["is_paid_member"] = appmod._is_paid_member(email)

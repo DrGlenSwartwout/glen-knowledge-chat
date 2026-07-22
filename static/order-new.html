@@ -122,6 +122,7 @@
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
       <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
       <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
+      <div id="o-shipping-wrap"><label>Shipping $ (blank = auto)</label><input id="o-shipping" type="number" step="0.01" placeholder="auto"></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> <span id="pickup-label">Pickup (no shipping)</span></label></div>
     <div id="pickup-default-wrap" style="display:none;margin-top:6px;margin-left:22px">
@@ -188,7 +189,9 @@ let LAST_ORDER = null;     // {order_id, external_ref, totals}
 const EDIT_OID = new URLSearchParams(location.search).get("edit_order");  // edit mode if set
 let POINTS_BAL = 0;        // selected customer's redeemable points balance (cents)
 let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
-let SHIP_CENTS = null;     // last quoted shipping (cents) from the Price-shipping button; null = not quoted yet
+// Shipping fee lives in the #o-shipping input (blank = auto-compute on save). The
+// Price-shipping button fills it with a live quote the owner can then hand-edit.
+function _shipOverrideCents(){ const v=$("o-shipping").value.trim(); return v!=="" ? Math.max(0, Math.round(parseFloat(v)*100)) : null; }
 let previewTimer = null;
 let PAY_ROWS = {};         // payments ledger rows keyed by id, for lookup from inline handlers (avoids interpolating free text into onclick)
 let MEMBERSHIP_TIER = 'month';  // resolved from the offer endpoint's offered_tiers[0]; there is no page-global default
@@ -255,7 +258,6 @@ function addLine(){
   const unit_cents = edited ? Math.round(parseFloat(ovRaw)*100) : (p.price_cents||0);
   LINES.push({slug, name:p.name, qty, unit_cents, edited, note:"", format:'bottle', source:'self'});
   $("prod-qty").value=1; $("prod-unit").value="";
-  SHIP_CENTS=null;   // new line changes packing -> require a reprice
   renderLines();
 }
 // ── shipping visibility ──
@@ -277,6 +279,9 @@ function syncShippingUI(){
   // An order with nothing to ship represents no fulfillment decision, so it
   // cannot teach us one — hide the client default entirely.
   $("pickup-default-wrap").style.display = (phys && $("c-email").value.trim()) ? "block" : "none";
+  // The manual Shipping fee only applies to a real shipment: hide it when there's
+  // nothing to ship or the order is pickup (both force $0).
+  const shw = $("o-shipping-wrap"); if (shw) shw.style.display = (phys && !pk.checked) ? "" : "none";
 }
 // Pre-select the payment-method dropdown to `m`, tolerating legacy stored labels
 // ("Credit card" / "Stripe" / "card" all mean the automated Stripe option). A blank
@@ -343,8 +348,8 @@ function renderLines(){
   recalc();
   syncShippingUI();
 }
-function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else if(f==='format') LINES[i].format=v; else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } SHIP_CENTS=null; renderLines(); }
-function rmLine(i){ LINES.splice(i,1); SHIP_CENTS=null; renderLines(); }
+function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else if(f==='format') LINES[i].format=v; else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } renderLines(); }
+function rmLine(i){ LINES.splice(i,1); renderLines(); }
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
 function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; if((l.format||'bottle')!=='bottle') b.format=l.format; b.source = l.source || 'self'; return b; }); }
@@ -475,15 +480,16 @@ function recalc(){
   // Keep the "Set total" field PRE-shipping — it drives the adjustment link, which is
   // computed before shipping. Never overwrite it while it's being typed.
   if (document.activeElement !== $("o-total")) $("o-total").value = (preShip/100).toFixed(2);
-  // Shipping: 0 for pickup / nothing-to-ship; the quoted amount once Price-shipping
-  // has run; otherwise still "+ shipping" (computed on save).
+  // Shipping: 0 for pickup / nothing-to-ship; the value typed into (or quoted into) the
+  // Shipping field; otherwise still "+ shipping" (auto-computed on save).
   const pickup = $("pickup").checked, noShip = !hasShippableLine();
+  const ovr = _shipOverrideCents();
   let shipCents = 0, shipSuffix = "";
   const tship = $("t-ship"), btn = $("ship-quote-btn");
   if (pickup || noShip){ if (tship) tship.textContent = dollars(0); }
-  else if (SHIP_CENTS !== null){ shipCents = SHIP_CENTS; if (tship) tship.textContent = dollars(SHIP_CENTS); }
-  else { shipSuffix = " + shipping"; if (tship) tship.textContent = "computed on create"; }
-  if (btn){ btn.textContent = (SHIP_CENTS !== null) ? "Reprice shipping" : "Price shipping";
+  else if (ovr !== null){ shipCents = ovr; if (tship) tship.textContent = dollars(ovr); }
+  else { shipSuffix = " + shipping"; if (tship) tship.textContent = "computed on save"; }
+  if (btn){ btn.textContent = (ovr !== null) ? "Reprice shipping" : "Price shipping";
             btn.style.display = (pickup || noShip) ? "none" : ""; }
   $("t-total").textContent = dollars(preShip + shipCents) + shipSuffix;
 }
@@ -492,7 +498,6 @@ function recalc(){
 function addrFromForm(){ return { address1:$("a-addr1").value.trim(), address2:$("a-addr2").value.trim(),
   city:$("a-city").value.trim(), state:$("a-state").value.trim(), zip:$("a-zip").value.trim(),
   country:($("a-country").value.trim()||"US") }; }
-function resetShipQuote(){ if (SHIP_CENTS !== null){ SHIP_CENTS = null; recalc(); } }
 async function priceShipping(){
   if (!LINES.length){ toast("Add a line item first","error"); return; }
   const btn=$("ship-quote-btn"); if(btn) btn.disabled=true;
@@ -502,8 +507,11 @@ async function priceShipping(){
         email:$("c-email").value.trim(), name:$("c-name").value.trim()})});
     const j=await r.json();
     if(!j.ok){ toast(j.error||"Could not price shipping","error"); return; }
-    SHIP_CENTS = Number(j.shipping_cents)||0; recalc();
-    toast(j.pickup ? "Pickup — no shipping" : "Shipping priced: "+dollars(SHIP_CENTS));
+    // Drop the live quote into the editable Shipping field — the owner can keep it or
+    // hand-adjust. Pickup returns $0 and the field stays blank (hidden anyway).
+    const q = Number(j.shipping_cents)||0;
+    $("o-shipping").value = j.pickup ? "" : (q/100).toFixed(2); recalc();
+    toast(j.pickup ? "Pickup — no shipping" : "Shipping priced: "+dollars(q));
   }catch(e){ toast(e.message,"error"); }
   finally{ if(btn) btn.disabled=false; }
 }
@@ -520,10 +528,8 @@ function onTotalInput(){
 $("o-discount").addEventListener("input", recalc);
 $("o-points").addEventListener("input", recalc);
 $("o-adjust").addEventListener("input", recalc);
-// A changed ship-to or pickup state invalidates any quoted shipping — clear it so the
-// operator reprices rather than saving against a stale rate.
-["a-addr1","a-addr2","a-city","a-state","a-zip","a-country"].forEach(id=>{ const el=$(id); if(el) el.addEventListener("input", resetShipQuote); });
-$("pickup").addEventListener("change", ()=>{ resetShipQuote(); syncShippingUI(); recalc(); });
+$("o-shipping").addEventListener("input", recalc);
+$("pickup").addEventListener("change", ()=>{ syncShippingUI(); recalc(); });
 $("o-total").addEventListener("input", onTotalInput);
 // Membership gates volume pricing, so re-price when the customer email changes.
 // Typing/pasting an email directly (bypassing cust-search → pickPerson) must still
@@ -572,6 +578,10 @@ async function loadOrderForEdit(oid){
             note:l.note||"", format:(l.format||'bottle'), source:(l.source||'self')}));
   if (o.discount_cents) $("o-discount").value = (o.discount_cents/100).toFixed(2);
   if (o.adjustment_cents) $("o-adjust").value = (o.adjustment_cents/100).toFixed(2);  // signed
+  // Prefill the shipping fee from the stored order so it's visible and STICKY — editing
+  // an invoice must not silently recompute away a shipping fee Glen set by hand. Clear the
+  // field (or click Reprice shipping) to fall back to auto-computed shipping.
+  if (o.channel!=="pickup" && o.shipping_cents) $("o-shipping").value = (o.shipping_cents/100).toFixed(2);
   if (o.channel==="pickup") $("pickup").checked = true;
   if (o.invoice_note) $("o-note").value = o.invoice_note;
   setMethod(o.pay_method);          // restore this order's own recorded method (edit mode)
@@ -642,6 +652,8 @@ async function editInvoice(){
   if (aRaw!=="") body.adjustment_cents = Math.round(parseFloat(aRaw)*100);   // signed
   const pRaw=$("o-points").value.trim();
   if (pRaw!=="") body.points_redeem_cents = Math.round(parseFloat(pRaw)*100);
+  const sRaw=$("o-shipping").value.trim();
+  if (sRaw!=="") body.shipping_cents = Math.max(0, Math.round(parseFloat(sRaw)*100));   // blank = auto-compute
   try{
     const r = await fetch("/api/orders/"+encodeURIComponent(EDIT_OID)+"/edit", {method:"POST", headers:HEADERS, body:JSON.stringify(body)});
     const j = await r.json();
@@ -697,6 +709,8 @@ async function createInvoice(){
   if (aRaw!=="") body.adjustment_cents = Math.round(parseFloat(aRaw)*100);   // signed
   const pRaw=$("o-points").value.trim();
   if (pRaw!=="") body.points_redeem_cents = Math.round(parseFloat(pRaw)*100);
+  const sRaw=$("o-shipping").value.trim();
+  if (sRaw!=="") body.shipping_cents = Math.max(0, Math.round(parseFloat(sRaw)*100));   // blank = auto-compute
   try{
     const r = await fetch("/api/orders/manual", {method:"POST", headers:HEADERS, body:JSON.stringify(body)});
     const j = await r.json();
