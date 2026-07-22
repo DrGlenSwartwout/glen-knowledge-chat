@@ -1,10 +1,28 @@
 #!/usr/bin/env python3
-"""Operator CLI for the P05 SQLite -> Postgres migration tool.
+"""Operator CLI for the P05/P05.5 SQLite -> Postgres migration tool.
 
+    migrate_sqlite_to_pg.py create-schema <sqlite_path> [--drop]
     migrate_sqlite_to_pg.py preflight <sqlite_path>
     migrate_sqlite_to_pg.py copy <sqlite_path> [--truncate]
     migrate_sqlite_to_pg.py verify <sqlite_path>
-    migrate_sqlite_to_pg.py full <sqlite_path> [--force] [--truncate]
+    migrate_sqlite_to_pg.py full <sqlite_path> [--force] [--truncate] [--no-schema]
+
+`create-schema` (P05.5 Task 5) builds the ENTIRE Postgres schema directly
+from the source SQLite's own `sqlite_master` DDL (scripts.pgmig.schema_create
+.create_schema) -- every user table, faithfully typed (REAL -> DOUBLE
+PRECISION, data-driven loose-int -> TEXT widening), FK-free. This is what
+makes the tool self-contained: no `import app` step (which only ever
+creates the ~97 import-time tables, and carries an unrelated hazard against
+a live prod DB -- see the P05.5 plan). `--drop` drops+recreates the target
+schema first for a clean re-run; without it, `create-schema` adds to
+whatever schema already exists (re-running it un-dropped against a schema
+with existing tables will error on the `CREATE TABLE` collisions -- that's
+intentional, so a repeat run doesn't silently no-op).
+
+`full` now runs `create-schema` (`drop_first=True`, i.e. a FRESH schema
+every run) FIRST, then the existing preflight -> copy -> verify. Pass
+`--no-schema` to skip this and use whatever schema already exists at the
+target (e.g. the operator pre-created/customized it by hand).
 
 `preflight` scans the SQLite source for rows that would violate a UNIQUE
 constraint on the Postgres side, using TWO sources of unique-key knowledge:
@@ -22,11 +40,12 @@ rows at cutover. Both scans are always attempted for preflight/full; (2) is
 skipped (with a printed note, not a silent no-op) only when PG isn't
 configured at all -- `preflight` itself never requires Postgres.
 
-`copy`/`verify`/`full` assume the Postgres target schema and its tables
-already exist (schema creation is a separate step -- see the P05 task
-brief); they operate on the schema `dashboard.dbschema.schema_for_path`
-derives from `sqlite_path`'s basename, via the shipped `dashboard.db`
-adapter.
+`copy`/`verify` assume the Postgres target schema and its tables already
+exist (`full` builds it itself via `create-schema`, unless `--no-schema`;
+standalone `copy`/`verify` still expect the operator to have run
+`create-schema` -- or `full --no-schema` -- first). All four operate on the
+schema `dashboard.dbschema.schema_for_path` derives from `sqlite_path`'s
+basename, via the shipped `dashboard.db` adapter.
 
 Exit codes:
     0   success (clean preflight / copy+verify OK / verify all-ok)
@@ -42,6 +61,16 @@ Exit codes:
         cross-check that couldn't run must never look like a clean
         preflight, since it's the exact check the P06 cutover gate relies
         on. `full` aborts on this (like a dirty preflight) unless --force.
+    6   schema creation reported an error: `create_schema` raised, OR its
+        report's "skipped" list is non-empty (a table/index that could not
+        be created -- e.g. a DDL statement Postgres rejected). A partially
+        built schema is unsafe to copy into, so `create-schema` and `full`
+        (unless --no-schema) both treat ANY skipped entry as a hard failure,
+        not a soft warning -- the whole point of building the schema from
+        source DDL is completeness (every prod table, faithfully typed); a
+        silently-incomplete schema would reintroduce the exact defect this
+        redesign exists to fix. `full` aborts on this before preflight ever
+        runs (no partial-schema copy attempt).
 """
 import argparse
 import os
@@ -56,6 +85,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.pgmig import copy as copy_mod
 from scripts.pgmig import dedup
 from scripts.pgmig import introspect
+from scripts.pgmig import schema_create
 from scripts.pgmig import verify as verify_mod
 from dashboard import db as db_mod
 
@@ -65,6 +95,7 @@ EXIT_ENV = 2
 EXIT_PREFLIGHT_DIRTY = 3
 EXIT_VERIFY_MISMATCH = 4
 EXIT_PREFLIGHT_INCOMPLETE = 5
+EXIT_SCHEMA_ERRORS = 6
 
 
 class PgTargetCrossCheckError(Exception):
@@ -234,6 +265,52 @@ def _print_checksum_summary(results: List[Dict], out: TextIO) -> bool:
     return ok
 
 
+def _print_schema_summary(report: Dict, out: TextIO) -> int:
+    """Prints the `schema_create.create_schema` report -- PROMINENTLY
+    surfacing `widened_cols` (every INTEGER-declared column that was force-
+    widened to TEXT because its source data isn't actually all-integer, e.g.
+    `testimonial_tokens` holding UUIDs) so the operator reviews each one --
+    and any `skipped` entries. Returns EXIT_OK on a clean build, else
+    EXIT_SCHEMA_ERRORS (see that constant's docstring in the module-level
+    exit-code table for why ANY skipped entry is a hard failure here)."""
+    print("SCHEMA CREATE:", file=out)
+    print(f"  tables_created={report['tables_created']}  "
+          f"indexes_created={report['indexes_created']}", file=out)
+    widened = report.get("widened_cols") or []
+    if widened:
+        print(f"  WIDENED COLUMNS ({len(widened)}) -- INTEGER-declared but "
+              "holding non-integer data, force-typed TEXT -- REVIEW EACH ONE:",
+              file=out)
+        for table, col in widened:
+            print(f"    - {table}.{col}", file=out)
+    else:
+        print("  widened_cols: none", file=out)
+
+    skipped = report.get("skipped") or []
+    if skipped:
+        print(f"  SKIPPED ({len(skipped)}) -- schema is INCOMPLETE:", file=out)
+        for s in skipped:
+            print(f"    - {s}", file=out)
+        print("SCHEMA CREATE FAILED: one or more tables/indexes were skipped above "
+              "-- the target schema is incomplete; do not proceed to copy.", file=out)
+        return EXIT_SCHEMA_ERRORS
+
+    print("SCHEMA CREATE OK.", file=out)
+    return EXIT_OK
+
+
+def cmd_create_schema(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
+    out = out or sys.stdout
+    if not _require_pg_env(out):
+        return EXIT_ENV
+    try:
+        report = schema_create.create_schema(args.sqlite_path, drop_first=args.drop)
+    except Exception as exc:
+        print(f"SCHEMA CREATE FAILED: {exc}", file=out)
+        return EXIT_SCHEMA_ERRORS
+    return _print_schema_summary(report, out)
+
+
 def cmd_preflight(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     out = out or sys.stdout
     _findings, code = _run_preflight(args.sqlite_path, out)
@@ -264,6 +341,28 @@ def cmd_full(args: argparse.Namespace, out: Optional[TextIO] = None) -> int:
     out = out or sys.stdout
     if not _require_pg_env(out):
         return EXIT_ENV
+
+    if getattr(args, "no_schema", False):
+        print("--no-schema set: skipping schema creation (assuming the target "
+              "schema already exists).", file=out)
+    else:
+        # Fresh schema every `full` run, built from the SOURCE SQLite's own
+        # DDL -- this is what makes `full` self-contained (no `import app`
+        # step). drop_first=True: `full`'s whole point is a clean end-to-end
+        # run, so any prior schema at this target is replaced, not appended
+        # to (an un-dropped re-run would just error on CREATE TABLE
+        # collisions -- see create-schema's own docstring/help text).
+        try:
+            schema_report = schema_create.create_schema(args.sqlite_path, drop_first=True)
+        except Exception as exc:
+            print(f"SCHEMA CREATE FAILED: {exc}", file=out)
+            return EXIT_SCHEMA_ERRORS
+        schema_code = _print_schema_summary(schema_report, out)
+        if schema_code != EXIT_OK:
+            print("ABORTING: schema creation reported errors above -- "
+                  "not attempting preflight/copy against an incomplete schema.",
+                  file=out)
+            return schema_code
 
     _findings, preflight_code = _run_preflight(args.sqlite_path, out)
     if preflight_code != EXIT_OK:
@@ -304,6 +403,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="command", required=True)
 
+    cs = sub.add_parser(
+        "create-schema",
+        help="Build the Postgres schema from the source SQLite's own DDL (all tables).")
+    cs.add_argument("sqlite_path")
+    cs.add_argument("--drop", action="store_true",
+                     help="DROP the target schema (CASCADE) and recreate it fresh before building.")
+    cs.set_defaults(func=cmd_create_schema)
+
     pf = sub.add_parser("preflight",
                          help="Dedup-scan the sqlite source (+ PG-target cross-check if configured).")
     pf.add_argument("sqlite_path")
@@ -323,16 +430,22 @@ def build_parser() -> argparse.ArgumentParser:
                           "parity can't see. Failing digest -> exit 4, same as a count mismatch.")
     vf.set_defaults(func=cmd_verify)
 
-    fl = sub.add_parser("full", help="preflight -> copy -> verify, in one run.")
+    fl = sub.add_parser(
+        "full", help="create-schema -> preflight -> copy -> verify, in one self-contained run.")
     fl.add_argument("sqlite_path")
     fl.add_argument("--force", action="store_true",
                      help="Proceed past a dirty preflight instead of aborting.")
     fl.add_argument("--truncate", action="store_true",
-                     help="TRUNCATE every target table (child-to-parent) before copying.")
+                     help="TRUNCATE every target table (child-to-parent) before copying. "
+                          "Redundant when the schema step runs (a fresh schema is already "
+                          "empty) but still honored, e.g. alongside --no-schema.")
     fl.add_argument("--checksum", action="store_true",
                      help="Also run a content-checksum parity check after row-count verify -- "
                           "catches corruption same-count row-count parity can't see. Failing "
                           "digest -> exit 4, same as a count mismatch.")
+    fl.add_argument("--no-schema", action="store_true", dest="no_schema",
+                     help="Skip the create-schema step; use whatever Postgres schema already "
+                          "exists at the target (e.g. pre-created/customized by the operator).")
     fl.set_defaults(func=cmd_full)
 
     return p
