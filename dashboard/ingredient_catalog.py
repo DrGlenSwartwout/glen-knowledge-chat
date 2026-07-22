@@ -99,10 +99,10 @@ def init_ingredients_schema(cx: sqlite3.Connection) -> None:
               ingredient_id INTEGER REFERENCES ingredients(id),
               supplier_id INTEGER REFERENCES suppliers(id),
               supplier_name TEXT, sku TEXT,
-              price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
+              price_per_unit DOUBLE PRECISION, unit_size DOUBLE PRECISION, unit_type TEXT, shipping_quote DOUBLE PRECISION,
               extras TEXT,
               preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
-              minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
+              minimum_order DOUBLE PRECISION, minimum_order_unit TEXT, notes TEXT,
               created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
             )""")
     else:
@@ -113,17 +113,17 @@ def init_ingredients_schema(cx: sqlite3.Connection) -> None:
               ingredient_id INTEGER REFERENCES ingredients(id),
               supplier_id INTEGER REFERENCES suppliers(id),
               supplier_name TEXT, sku TEXT,
-              price_per_unit REAL, unit_size REAL, unit_type TEXT, shipping_quote REAL,
+              price_per_unit DOUBLE PRECISION, unit_size DOUBLE PRECISION, unit_type TEXT, shipping_quote DOUBLE PRECISION,
               extras TEXT,
               preferred INTEGER DEFAULT 0, lead_time_days INTEGER,
-              minimum_order REAL, minimum_order_unit TEXT, notes TEXT,
+              minimum_order DOUBLE PRECISION, minimum_order_unit TEXT, notes TEXT,
               created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
             )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ingsrc_fmp ON ingredient_sources(fmp_id) WHERE fmp_id IS NOT NULL")
     cx.execute("CREATE INDEX IF NOT EXISTS idx_ingsrc_ing ON ingredient_sources(ingredient_id)")
     # Override-protection columns (idempotent — safe on existing DBs)
     _add_col(cx, "ingredients", "overrides", "TEXT")
-    _add_col(cx, "ingredients", "par_level", "REAL")
+    _add_col(cx, "ingredients", "par_level", "DOUBLE PRECISION")
     _add_col(cx, "ingredients", "par_level_unit", "TEXT")
     _add_col(cx, "ingredient_sources", "overrides", "TEXT")
     # One-time backfill: promote par_level/par_level_unit out of extras JSON

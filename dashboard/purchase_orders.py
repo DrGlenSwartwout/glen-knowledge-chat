@@ -18,7 +18,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
               fmp_id TEXT, supplier_id INTEGER REFERENCES suppliers(id),
               supplier_name TEXT, vendor_po_no TEXT, po_date TEXT, status TEXT,
-              tax REAL, shipping_amount REAL, shipper TEXT, tracking_number TEXT,
+              tax DOUBLE PRECISION, shipping_amount DOUBLE PRECISION, shipper TEXT, tracking_number TEXT,
               due_date TEXT, posted_date TEXT, qb_id TEXT,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
@@ -29,7 +29,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               fmp_id TEXT, supplier_id INTEGER REFERENCES suppliers(id),
               supplier_name TEXT, vendor_po_no TEXT, po_date TEXT, status TEXT,
-              tax REAL, shipping_amount REAL, shipper TEXT, tracking_number TEXT,
+              tax DOUBLE PRECISION, shipping_amount DOUBLE PRECISION, shipper TEXT, tracking_number TEXT,
               due_date TEXT, posted_date TEXT, qb_id TEXT,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
@@ -44,7 +44,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               ingredient_id INTEGER REFERENCES ingredients(id),
               material_id INTEGER REFERENCES materials(id),
               fmp_product_id TEXT, sku TEXT,
-              qty REAL, qty_unit TEXT, qty_left REAL, cost REAL,
+              qty DOUBLE PRECISION, qty_unit TEXT, qty_left DOUBLE PRECISION, cost DOUBLE PRECISION,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
             )""")
@@ -57,7 +57,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               ingredient_id INTEGER REFERENCES ingredients(id),
               material_id INTEGER REFERENCES materials(id),
               fmp_product_id TEXT, sku TEXT,
-              qty REAL, qty_unit TEXT, qty_left REAL, cost REAL,
+              qty DOUBLE PRECISION, qty_unit TEXT, qty_left DOUBLE PRECISION, cost DOUBLE PRECISION,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
             )""")
@@ -69,7 +69,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
               fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
               po_item_id INTEGER REFERENCES po_items(id),
-              qty_received REAL, received_size TEXT, extras TEXT,
+              qty_received DOUBLE PRECISION, received_size TEXT, extras TEXT,
               created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
             )""")
     else:
@@ -78,7 +78,7 @@ def init_purchase_orders_schema(cx: sqlite3.Connection) -> None:
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               fmp_id TEXT, po_id INTEGER REFERENCES purchase_orders(id),
               po_item_id INTEGER REFERENCES po_items(id),
-              qty_received REAL, received_size TEXT, extras TEXT,
+              qty_received DOUBLE PRECISION, received_size TEXT, extras TEXT,
               created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
             )""")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_porec_fmp ON po_receiving(fmp_id) WHERE fmp_id IS NOT NULL")

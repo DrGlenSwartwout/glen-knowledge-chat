@@ -12246,7 +12246,7 @@ def _init_referral_tables():
                 affiliate_slug  TEXT,
                 conversion_type TEXT,
                 detail          TEXT,
-                order_value     REAL,
+                order_value     DOUBLE PRECISION,
                 source          TEXT,
                 raw_json        TEXT
             )
@@ -12524,7 +12524,7 @@ def init_membership_tables(cx):
           email           TEXT NOT NULL,
           query_text      TEXT NOT NULL,
           ai_response     TEXT,
-          ai_confidence   REAL,
+          ai_confidence   DOUBLE PRECISION,
           flag_reason     TEXT,
           status          TEXT NOT NULL DEFAULT 'pending',
           glen_reply_url  TEXT,
@@ -30800,7 +30800,7 @@ def _init_rae_feedback_table():
                 event_type       TEXT NOT NULL,  -- 'laugh', 'speech', 'greeting_played'
                 greeting_index   INTEGER DEFAULT -1,
                 greeting_style   TEXT DEFAULT '',
-                amplitude_peak   REAL DEFAULT 0,
+                amplitude_peak   DOUBLE PRECISION DEFAULT 0,
                 duration_ms      INTEGER DEFAULT 0,
                 transcript       TEXT DEFAULT '',
                 notes            TEXT DEFAULT ''

@@ -30,7 +30,7 @@ def init_table(cx):
         "CREATE TABLE IF NOT EXISTS testimonial_invite_candidates ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE, name TEXT, "
         "quote TEXT DEFAULT '', source TEXT DEFAULT '', kind TEXT DEFAULT 'general', "
-        "confidence REAL DEFAULT 0, status TEXT DEFAULT 'pending', "
+        "confidence DOUBLE PRECISION DEFAULT 0, status TEXT DEFAULT 'pending', "
         "detected_at TEXT, decided_at TEXT, decided_by TEXT, sent_at TEXT)")
     cx.commit()
 
