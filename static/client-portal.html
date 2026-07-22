@@ -255,6 +255,10 @@
     font-size:.92rem;font-weight:600;cursor:pointer;
     padding:9px 6px;margin:0 10px -1px 0;font-family:inherit}
   .tab.is-active{color:var(--brand);border-bottom-color:var(--brand)}
+  .hub-back { display:inline-flex; align-items:center; gap:.3rem; margin:0 0 .8rem;
+    background:transparent; border:1px solid var(--line); color:var(--brand);
+    border-radius:999px; padding:.35rem .8rem; font:inherit; font-size:.82rem; font-weight:600; cursor:pointer; }
+  .hub-back:hover,.hub-back:focus-visible { border-color:var(--brand); outline:none; }
   .histgroup{margin:0 0 1.1rem}
   .histgroup:last-child{margin-bottom:0}
   .histgroup-label{font-size:.78rem;font-weight:700;color:var(--muted);letter-spacing:.03em;
@@ -660,6 +664,11 @@ function showTab(name){
   document.querySelectorAll('[data-panel]').forEach(p =>
     p.hidden = (p.dataset.panel !== name));
   try{ sessionStorage.setItem('rm_portal_tab', name); }catch(e){}
+}
+// A small control placed at the top of every non-hub panel so the client can
+// return to the hub landing. Uses the hardened showTab (falls back safely).
+function backToHub(){
+  return `<button type="button" class="hub-back" onclick="showTab('hub')">‹ Back to hub</button>`;
 }
 // Journey-grouped hub landing. Each tile routes via the existing showTab() to a
 // [data-panel] section. Groups encode the healing journey. Later phases add tiles.
@@ -2199,8 +2208,9 @@ function render(d, v){
   // as-is, exactly as before this task (no tab bar, no behavior change).
   // Task 4: under the hub, the grid IS the nav, so the old tab bar must not
   // also render; only the [data-panel] wrappers are needed in that case.
-  const _wrapPanels = d.scan_history_enabled || (v && v.hub_enabled);
-  const _showOldTabs = d.scan_history_enabled && !(v && v.hub_enabled);
+  const _hub = !!(v && v.hub_enabled);
+  const _wrapPanels = d.scan_history_enabled || _hub;
+  const _showOldTabs = d.scan_history_enabled && !_hub;
   if (_wrapPanels) {
     const historyHtml = buildScanHistoryHtml(d);
     const ordersHtml = buildOrdersHtml(d);
@@ -2209,23 +2219,21 @@ function render(d, v){
         <button type="button" class="tab" data-tab="history" onclick="showTab('history')">Scan History</button>
         <button type="button" class="tab" data-tab="orders" onclick="showTab('orders')">Orders &amp; Invoices</button>
       </div>` : "";
-    html = `${tabbar}
-      <section data-panel="current">${html}</section>
-      <section data-panel="history" hidden>${historyHtml}</section>
-      <section data-panel="orders" hidden>${ordersHtml}</section>`;
+    // Under the hub, the grid becomes its own default panel and every other
+    // panel carries a Back-to-hub control. Without the hub, behavior is unchanged.
+    const hubPanel = _hub ? `<section data-panel="hub">${hubHtml}</section>` : "";
+    const back = _hub ? backToHub() : "";
+    html = `${tabbar}${hubPanel}
+      <section data-panel="current"${_hub ? " hidden" : ""}>${back}${html}</section>
+      <section data-panel="history" hidden>${back}${historyHtml}</section>
+      <section data-panel="orders" hidden>${back}${ordersHtml}</section>`;
   }
 
-  app.innerHTML = hubHtml + html;
+  app.innerHTML = html;
   document.getElementById("loading").hidden = true;
   app.hidden = false;
 
-  // Task 4: under the hub, initialize which panel is visible on load (tiles
-  // drive navigation instead of the old tab bar). Restores the client's last
-  // viewed panel if we have one, else defaults to Current Analysis.
-  if (v && v.hub_enabled) {
-    let _last = null; try { _last = sessionStorage.getItem('rm_portal_tab'); } catch(e){}
-    showTab(_last || 'current');
-  }
+  if (_hub) { showTab('hub'); }
 
   initOnboardingCard();
   initCoachesCard();
