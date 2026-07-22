@@ -1,0 +1,67 @@
+"""One Step tub shipping.
+
+One Step (slug `one-step`) is a ~Ø140 x H190 mm meal-replacement tub. A true Ø140
+exceeds every flat-rate box interior and rates as None (unshippable), which is why the
+product had no bottle_type and could not be auto-rated. It now maps to a dedicated
+`one-step` bottle type (shipping proxy Ø120 x H190) that resolves a single unit to USPS
+Medium and bulk loads to Large — per Glen, who confirmed it ships Medium/Large with no
+packing wrap.
+"""
+import json
+import sqlite3
+from pathlib import Path
+
+from dashboard.shipping import init_shipping_schema, quote, resolve_bottle_type
+
+
+def _db(tmp_path):
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+    return db
+
+
+def test_single_one_step_rates_medium(tmp_path):
+    q = quote({"one-step": 1}, db_path=_db(tmp_path))
+    assert q["box_sizes"] == ["M"], q
+    assert isinstance(q["shipping_cents"], int) and q["shipping_cents"] > 0
+
+
+def test_bulk_one_step_uses_large(tmp_path):
+    q = quote({"one-step": 3}, db_path=_db(tmp_path))
+    assert "L" in q["box_sizes"], q            # bulk spills into a Large box
+    assert q["shipping_cents"] is not None
+
+
+def test_real_diameter_would_be_unshippable(tmp_path):
+    # Guards the proxy's reason for existing: at the true Ø140 the tub fits no box.
+    db = _db(tmp_path)
+    with sqlite3.connect(db) as cx:
+        cx.execute("UPDATE bottle_types SET diameter_mm=140 WHERE name='one-step'")
+        cx.commit()
+    q = quote({"one-step": 1}, db_path=db)
+    assert q["shipping_cents"] is None
+
+
+def test_product_catalog_maps_one_step_bottle_type():
+    # The shipped catalog must carry the bottle_type so _price_cart resolves it.
+    data = json.loads((Path(__file__).resolve().parent.parent / "data" / "products.json").read_text())
+    assert data["products"]["one-step"].get("bottle_type") == "one-step"
+    # And the resolver honors that product field (no per-slug override needed).
+    assert resolve_bottle_type("one-step", {"slug": "one-step", "bottle_type": "one-step"}) == "one-step"
+
+
+def test_backfills_onto_existing_catalog(tmp_path):
+    # Simulate a legacy (non-empty) prod catalog missing the one-step row, then re-init:
+    # the targeted backfill must add it (mirrors the 30ml ensure-insert).
+    db = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+        cx.execute("DELETE FROM bottle_types WHERE name='one-step'")
+        cx.commit()
+    with sqlite3.connect(db) as cx:
+        init_shipping_schema(cx)
+        row = cx.execute(
+            "SELECT diameter_mm, height_mm FROM bottle_types WHERE name='one-step'"
+        ).fetchone()
+    assert row == (120, 190)

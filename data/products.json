@@ -6550,6 +6550,7 @@
     },
     "one-step": {
       "name": "One Step",
+      "bottle_type": "one-step",
       "price_cents": 9997,
       "pinecone_title": "One Step",
       "url": "https://remedymatch.com/remedies/304-one-step",

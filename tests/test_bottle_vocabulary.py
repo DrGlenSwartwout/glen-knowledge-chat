@@ -29,13 +29,17 @@ def test_prod_library_is_recorded_verbatim():
     book/device batch add; 'nightlight' (id 24) was created 2026-07-11 for the two
     nightlight SKUs. Before each was created the catalog referenced bottles prod
     did not have,
-    and those products silently fell back to the qty rule."""
+    and those products silently fell back to the qty rule.
+
+    'one-step' is the one exception to "hand-created in prod": like '30ml', it is
+    backfilled into prod's bottle_types by init_shipping_schema's ensure-insert on
+    deploy, so it is code-guaranteed rather than created via /admin/shipping."""
     assert PROD_BOTTLE_NAMES == frozenset({
         "30 Caps", "120 caps", "180 caps", "360 caps", "30 g", "120 g",
         "30ml", "Dropper 5 mL", "Dropper 30 mL", "Dropper 50 mL",
         "100ml", "15ml", "30roll", "handcradle", "toothbrush",
         "harmony-laser", "dowsing-rods", "own-box",
-        "book", "nasal-clip", "denas", "nightlight"})
+        "book", "nasal-clip", "denas", "nightlight", "one-step"})
 
 
 def test_every_catalog_baseline_speaks_a_name_prod_knows():
