@@ -70,6 +70,83 @@ _RE_INLINE_REFERENCES = re.compile(
 # to detect a REAL type in TYPE POSITION only.
 _RE_LEADING_TYPE = re.compile(r'^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?')
 
+# Postgres reserved key words (a reasonably complete SQL:2016/PG "reserved" or
+# "reserved (can be function or type name)" superset -- see BUG A in the
+# P05.5 live dry-run findings: prod's `calendar_events.end` column is a bare
+# lowercase SQLite identifier that happens to be a PG RESERVED word, so the
+# translated DDL's unquoted `end TEXT NOT NULL` fails with a PG syntax error.
+# SQLite column names are always lowercase here, so double-quoting a name
+# ONLY when it's in this set is fully transparent for every non-reserved
+# column (quoting a lowercase identifier is a no-op to Postgres's own
+# case-folding) and fixes the reserved ones.
+_PG_RESERVED_WORDS = frozenset({
+    "all", "analyse", "analyze", "and", "any", "array", "as", "asc",
+    "asymmetric", "authorization", "binary", "both", "case", "cast",
+    "check", "collate", "collation", "column", "concurrently", "constraint",
+    "create", "cross", "current_catalog", "current_date", "current_role",
+    "current_schema", "current_time", "current_timestamp", "current_user",
+    "default", "deferrable", "desc", "distinct", "do", "else", "end",
+    "except", "false", "fetch", "for", "foreign", "freeze", "from", "full",
+    "grant", "group", "having", "ilike", "in", "initially", "inner",
+    "intersect", "into", "is", "isnull", "join", "lateral", "leading",
+    "left", "like", "limit", "localtime", "localtimestamp", "natural",
+    "not", "notnull", "null", "offset", "on", "only", "or", "order",
+    "outer", "overlaps", "placing", "primary", "references", "returning",
+    "right", "select", "session_user", "similar", "some", "symmetric",
+    "table", "tablesample", "then", "to", "trailing", "true", "union",
+    "unique", "user", "using", "variadic", "verbose", "when", "where",
+    "window", "with",
+})
+
+
+def _quote_if_reserved(name_token: str) -> str:
+    """If `name_token` (a leading-whitespace-plus-identifier token, as
+    peeled off by `_RE_LEADING_NAME`) is a BARE (unquoted) identifier whose
+    lowercase form is a PG reserved word, double-quote it -- preserving its
+    (already-lowercase, per SQLite) casing, so the quoting is invisible
+    except for making the reserved word a legal PG identifier. An
+    already-quoted token (double/backtick/bracket) is left untouched (it's
+    either already safe, or some other pass's concern)."""
+    stripped = name_token.strip()
+    if not stripped or stripped[0] in ('"', "`", "["):
+        return name_token
+    if stripped.lower() in _PG_RESERVED_WORDS:
+        leading_ws = name_token[: len(name_token) - len(name_token.lstrip())]
+        return leading_ws + '"' + stripped.lower() + '"'
+    return name_token
+
+
+def _quote_reserved_leading_ident(item: str) -> str:
+    """Like `_quote_if_reserved`, but for a column-list ITEM that may carry
+    trailing text after the identifier (an index column's `DESC`/`COLLATE`/
+    opclass, or nothing at all for a plain table-constraint column ref).
+    Only the leading identifier is ever inspected/rewritten; everything
+    after it is passed through byte-for-byte."""
+    m = _RE_LEADING_NAME.match(item)
+    if not m:
+        return item
+    name_token, rest = m.group(1), m.group(2)
+    return _quote_if_reserved(name_token) + rest
+
+
+def _quote_reserved_in_paren_column_list(sql_or_item: str) -> str:
+    """Find the first top-level `(...)` in `sql_or_item` (a full `CREATE
+    INDEX ...` statement, or a table-level `PRIMARY KEY (...)`/`UNIQUE (...)`
+    constraint item) and double-quote any bare reserved-word column name in
+    its comma-separated list, leaving everything else (table name, ASC/DESC,
+    whitespace, the exact comma positions) byte-for-byte unchanged. If no
+    parenthesized list is found (defensive -- shouldn't happen for these
+    callers), the input is returned untouched."""
+    try:
+        open_idx, close_idx = _find_column_list_span(sql_or_item)
+    except ValueError:
+        return sql_or_item
+    prefix = sql_or_item[: open_idx + 1]
+    content = sql_or_item[open_idx + 1 : close_idx]
+    suffix = sql_or_item[close_idx:]
+    items = [_quote_reserved_leading_ident(it) for it in _split_top_level(content)]
+    return prefix + ",".join(items) + suffix
+
 
 def _strip_inline_references(rest: str) -> str:
     """Apply `_RE_INLINE_REFERENCES` to `rest` SPAN-AWARE: only within its
@@ -274,6 +351,13 @@ def translate_ddl(table: str, sqlite_sql: str, *, text_cols: Optional[Set[str]] 
         if kind is not None:
             if kind == "FOREIGN KEY":
                 continue  # strip the whole table-level FK constraint
+            if kind in ("PRIMARY KEY", "UNIQUE"):
+                # BUG A: quote any reserved-word column name inside the
+                # constraint's own column list too (e.g. `PRIMARY KEY (end)`)
+                # -- CHECK is deliberately excluded: its parens wrap an
+                # arbitrary boolean expression, not a plain column list, so
+                # blindly quoting tokens there would be unsafe.
+                item = _quote_reserved_in_paren_column_list(item)
             new_items.append(item)  # PRIMARY KEY / UNIQUE / CHECK: keep as-is
             continue
 
@@ -286,6 +370,11 @@ def translate_ddl(table: str, sqlite_sql: str, *, text_cols: Optional[Set[str]] 
         rest = _translate_real_type(rest)      # REAL -> DOUBLE PRECISION, type-position-only
         if _logical_name(name_token).lower() in text_cols_lower:
             rest = _force_text_type(rest)
+        # BUG A: quote a bare reserved-word column name (e.g. `end`) so the
+        # CREATE TABLE column definition is valid PG DDL. Must happen last,
+        # after `_logical_name` lookups above (which strip quoting for their
+        # own case-insensitive comparison against text_cols).
+        name_token = _quote_if_reserved(name_token)
         new_items.append(name_token + rest)
 
     return prefix + ", ".join(x.strip() for x in new_items) + suffix
@@ -332,6 +421,41 @@ def _execute_ddl(pg_cx, sql: str) -> None:
     zero times, not twice."""
     cur = pg_cx._conn.cursor()
     cur.execute(sql)
+
+
+_DDL_SAVEPOINT = "pgmig_ddl"
+
+
+def _execute_ddl_isolated(pg_cx, sql: str) -> None:
+    """Run one CREATE TABLE/INDEX statement inside its own SAVEPOINT so a
+    genuine per-statement failure (bad DDL, a reserved word slipping through,
+    a type this port doesn't handle yet, ...) rolls back ONLY that one
+    statement, not the whole `create_schema` transaction.
+
+    BUG B (live dry-run finding): without this, all `_execute_ddl` calls in
+    `create_schema` shared ONE open Postgres transaction. The first failing
+    CREATE (e.g. the unquoted `calendar_events.end` column from BUG A) left
+    that transaction in Postgres's "aborted" state, and Postgres refuses
+    every subsequent command on an aborted transaction with 'current
+    transaction is aborted, commands ignored until end of transaction
+    block' -- a cascade that has NOTHING to do with those later tables'
+    own (valid) DDL, yet skipped every one of them. A SAVEPOINT taken
+    before each statement and released on success -- or rolled back to (and
+    then released, so the name can be reused by the next statement) on
+    failure -- returns the surrounding transaction to a clean, usable state
+    after any single statement's error, exactly the pattern `copy.py`'s
+    `copy_table` already uses per-row for the same reason.
+
+    Re-raises the ORIGINAL exception so callers' `skipped` entries carry the
+    real per-table/per-index error, never the aborted-transaction noise."""
+    pg_cx.execute(f"SAVEPOINT {_DDL_SAVEPOINT}")
+    try:
+        _execute_ddl(pg_cx, sql)
+    except Exception:
+        pg_cx.execute(f"ROLLBACK TO SAVEPOINT {_DDL_SAVEPOINT}")
+        pg_cx.execute(f"RELEASE SAVEPOINT {_DDL_SAVEPOINT}")
+        raise
+    pg_cx.execute(f"RELEASE SAVEPOINT {_DDL_SAVEPOINT}")
 
 
 def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
@@ -385,7 +509,7 @@ def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
                 text_cols = loose_int_text_cols(sqlite_cx, table)
                 pg_sql = translate_ddl(table, sqlite_sql, text_cols=text_cols)
                 try:
-                    _execute_ddl(pg_cx, pg_sql)
+                    _execute_ddl_isolated(pg_cx, pg_sql)
                 except Exception as exc:
                     report["skipped"].append({"table": table, "reason": str(exc)})
                     continue
@@ -403,8 +527,13 @@ def create_schema(sqlite_path: str, *, drop_first: bool = False) -> Dict:
                 # reasoning as the table DDL above: no bound params here either,
                 # so no param-escaping pass, and no double translation.
                 pg_idx_sql = pgcompat._translate_ddl_idioms(idx_sql)
+                # BUG A: an index on a reserved-word column (e.g. `CREATE
+                # INDEX ... ON calendar_events(end)`) needs the SAME quoting
+                # as the CREATE TABLE column definition -- otherwise the
+                # CREATE TABLE succeeds but this CREATE INDEX still fails.
+                pg_idx_sql = _quote_reserved_in_paren_column_list(pg_idx_sql)
                 try:
-                    _execute_ddl(pg_cx, pg_idx_sql)
+                    _execute_ddl_isolated(pg_cx, pg_idx_sql)
                     report["indexes_created"] += 1
                 except Exception as exc:
                     report["skipped"].append(

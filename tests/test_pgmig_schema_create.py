@@ -88,6 +88,50 @@ def test_translate_ddl_keeps_non_fk_table_constraints():
 
 
 # ---------------------------------------------------------------------------
+# BUG A (live dry-run finding): reserved-word column identifiers.
+# ---------------------------------------------------------------------------
+
+def test_translate_ddl_quotes_reserved_word_column():
+    """prod's real `calendar_events` shape: `end` is a PG RESERVED word,
+    `start` is NOT -- only `end` should come out quoted."""
+    sql = (
+        "CREATE TABLE calendar_events ("
+        "id INTEGER PRIMARY KEY, start TEXT NOT NULL, end TEXT NOT NULL)"
+    )
+    out = schema_create.translate_ddl("calendar_events", sql, text_cols=set())
+    assert '"end" TEXT NOT NULL' in out
+    assert re.search(r"(?<!\")\bstart\b TEXT NOT NULL", out)
+    assert not re.search(r'"start"', out)
+
+
+def test_translate_ddl_quoting_reserved_word_is_case_preserving_and_idempotent():
+    # An already-quoted reserved word must not be double-quoted.
+    sql = 'CREATE TABLE t (id INTEGER PRIMARY KEY, "end" TEXT)'
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+    assert '"end" TEXT' in out
+    assert '""end""' not in out
+
+
+def test_translate_ddl_quotes_reserved_word_in_primary_key_constraint():
+    sql = "CREATE TABLE t (end TEXT, val TEXT, PRIMARY KEY (end))"
+    out = schema_create.translate_ddl("t", sql, text_cols=set())
+    assert '"end" TEXT' in out
+    assert 'PRIMARY KEY ("end")' in out
+
+
+def test_quote_reserved_in_paren_column_list_quotes_index_column():
+    sql = "CREATE INDEX idx_ce_end ON calendar_events(end)"
+    out = schema_create._quote_reserved_in_paren_column_list(sql)
+    assert out == 'CREATE INDEX idx_ce_end ON calendar_events("end")'
+
+
+def test_quote_reserved_in_paren_column_list_leaves_non_reserved_untouched():
+    sql = "CREATE INDEX idx ON t(start, name)"
+    out = schema_create._quote_reserved_in_paren_column_list(sql)
+    assert out == sql
+
+
+# ---------------------------------------------------------------------------
 # loose_int_text_cols -- read-only against a plain sqlite3 connection.
 # ---------------------------------------------------------------------------
 
@@ -300,6 +344,103 @@ def test_create_schema_percent_literal_not_double_escaped(monkeypatch, tmp_path)
         assert row is not None
         assert "100%" in row[0]
         assert "100%%" not in row[0]
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_reserved_word_column_and_index_round_trip(monkeypatch, tmp_path):
+    """BUG A, end to end (live dry-run finding): a table shaped like prod's
+    real `calendar_events` -- a column literally named `end` (PG reserved)
+    with an index on it, plus another reserved word (`order`) as a second
+    column -- must CREATE cleanly (table + index), and a value written to
+    the `end` column must round-trip through `copy_all`'s INSERT too,
+    proving CREATE TABLE, CREATE INDEX, and the INSERT column list all
+    quote the reserved name consistently."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_reserved_word.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE calendar_events ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  start TEXT NOT NULL,"
+        "  end TEXT NOT NULL,"
+        '  "order" INTEGER'
+        ");"
+        "CREATE INDEX idx_ce_end ON calendar_events(end);"
+    )
+    cx.executescript(
+        "INSERT INTO calendar_events (id, start, end, \"order\") VALUES "
+        "(1, '2026-07-21T09:00:00', '2026-07-21T10:00:00', 3);"
+    )
+    cx.commit()
+    cx.close()
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+    assert not report["skipped"]
+    assert report["tables_created"] == 1
+    assert report["indexes_created"] == 1
+
+    from scripts.pgmig import copy as copy_mod
+    results = copy_mod.copy_all(src)
+    assert not copy_mod.any_errors(results)
+    ce_result = next(r for r in results if r["table"] == "calendar_events")
+    assert ce_result["inserted"] == 1
+    assert not ce_result.get("errors")
+
+    with db.connect(src) as cx2:
+        tables = {r[0] for r in cx2.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema=? AND table_type='BASE TABLE'", (schema,)).fetchall()}
+        assert "calendar_events" in tables
+
+        idx_names = {r[0] for r in cx2.execute(
+            "SELECT indexname FROM pg_indexes WHERE schemaname=? AND tablename='calendar_events'",
+            (schema,)).fetchall()}
+        assert "idx_ce_end" in idx_names
+
+        row = cx2.execute(
+            'SELECT "end", "order" FROM calendar_events WHERE id=1').fetchone()
+        assert row is not None
+        assert row[0] == "2026-07-21T10:00:00"
+        assert row[1] == 3
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_create_schema_bad_table_does_not_cascade_others(monkeypatch, tmp_path):
+    """BUG B, end to end (live dry-run finding): when the MIDDLE table of
+    three fails its CREATE with a genuine PG error (an unrecognized type --
+    valid, dynamically-typed SQLite but not a real PG type), the other two
+    valid tables must still get created, and the bad table's `skipped`
+    reason must be its own real error -- never Postgres's generic
+    'current transaction is aborted' cascade text that a shared,
+    un-isolated transaction would otherwise produce for every table after
+    the failure point."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_cascade.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE aaa_first (id INTEGER PRIMARY KEY, name TEXT);"
+        "CREATE TABLE mmm_bad (id INTEGER PRIMARY KEY, bad_col NOTAREALTYPEXYZ);"
+        "CREATE TABLE zzz_last (id INTEGER PRIMARY KEY, name TEXT);"
+    )
+    cx.commit()
+    cx.close()
+    schema = schema_for_path(src)
+
+    report = schema_create.create_schema(src, drop_first=True)
+
+    assert report["tables_created"] == 2
+    assert len(report["skipped"]) == 1
+    bad = report["skipped"][0]
+    assert bad["table"] == "mmm_bad"
+    assert "current transaction is aborted" not in bad["reason"].lower()
+
+    with db.connect(src) as cx2:
+        tables = {r[0] for r in cx2.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema=? AND table_type='BASE TABLE'", (schema,)).fetchall()}
+        assert {"aaa_first", "zzz_last"} <= tables
+        assert "mmm_bad" not in tables
 
 
 def test_create_schema_asserts_postgres_backend(monkeypatch, tmp_path):
