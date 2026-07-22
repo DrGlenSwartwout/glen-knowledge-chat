@@ -9,7 +9,11 @@ Follows the tests/test_cert_portal_routes.py fixture pattern: swap LOG_DB to
 a tmp sqlite file so tests never touch the dev db, and use app.test_client().
 """
 import os
+# Dummy keys so `import app` (which constructs OpenAI + Pinecone clients at import)
+# succeeds under a secretless CI without doppler. The clients are constructed but
+# never called by the health-profile endpoint under test (DB-only write path).
 os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
+os.environ.setdefault("PINECONE_API_KEY", "pc-dummy")
 
 import sqlite3
 import pytest
