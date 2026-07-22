@@ -369,3 +369,105 @@ def test_copy_all_asserts_postgres_backend(monkeypatch, tmp_path):
 
     with pytest.raises(RuntimeError, match="postgres"):
         copy.copy_all(src)
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_copy_all_sanitizes_nul_bytes_in_text_and_checksum_stays_ok(monkeypatch, tmp_path):
+    """The exact fmp_client_addresses scenario found by the live 226-table
+    dry-run: a TEXT column holds a NUL (0x00) byte (SQLite allows it; the
+    row is UTF-16-sourced FMP data). Postgres TEXT/VARCHAR CANNOT hold NUL --
+    an unsanitized insert raises "PostgreSQL text fields cannot contain NUL
+    (0x00) bytes". copy_all must:
+      1. succeed (no row error) -- the row lands as a normal insert, not
+         via the per-row error-fallback branch.
+      2. strip the NUL from the value actually stored in Postgres.
+      3. count the row in the table's `nul_sanitized` result.
+      4. still pass `verify.checksum_table` -- the checksum's own value
+         normalization must strip NUL the same way, so a faithfully
+         sanitized row doesn't false-positive as corrupted content.
+    """
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_nul_text.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE fmp_client_addresses (id INTEGER PRIMARY KEY, addr TEXT);")
+    # sqlite3 lets a TEXT column hold an embedded NUL byte.
+    cx.execute("INSERT INTO fmp_client_addresses (id, addr) VALUES (1, ?)", ("2\x000\x000\x001 Ave",))
+    cx.execute("INSERT INTO fmp_client_addresses (id, addr) VALUES (2, ?)", ("clean row, no nul",))
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS fmp_client_addresses CASCADE")
+        pcx.execute("CREATE TABLE fmp_client_addresses (id BIGINT PRIMARY KEY, addr TEXT)")
+        pcx.commit()
+
+    res = copy.copy_all(src)
+    by_table = {r["table"]: r for r in res}
+    row = by_table["fmp_client_addresses"]
+
+    # 1. Success, not a row error.
+    assert row["source_rows"] == 2
+    assert row["inserted"] == 2
+    assert "errors" not in row
+    # 3. Counted: exactly the one NUL-bearing row.
+    assert row["nul_sanitized"] == 1
+
+    # 2. The value actually stored in Postgres has the NUL stripped.
+    with db.connect(src) as pcx:
+        stored = pcx.execute(
+            'SELECT addr FROM "fmp_client_addresses" WHERE id = 1'
+        ).fetchone()[0]
+        assert stored == "2001 Ave"
+        assert "\x00" not in stored
+
+    # Row-count parity still holds.
+    assert verify.all_ok(verify.parity(src))
+
+    # 4. Content-checksum parity must ALSO report OK -- proves the
+    # checksum's normalization strips NUL the same way the copy step did.
+    sqlite_cx = sqlite3.connect(src)
+    pg_cx = db.connect(src)
+    try:
+        cksum = verify.checksum_table(sqlite_cx, pg_cx, "fmp_client_addresses")
+    finally:
+        sqlite_cx.close()
+        pg_cx.close()
+    assert cksum["ok"] is True, cksum
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_copy_all_does_not_strip_nul_from_bytea_column(monkeypatch, tmp_path):
+    """Only `str` values are NUL-sanitized -- a BYTEA/bytes column may
+    legitimately contain a 0x00 byte (it's binary data, not text) and must
+    be preserved untouched. This proves the `isinstance(v, str)` guard in
+    `copy._sanitize_row` does not also strip NUL from bytes."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_nul_bytea.db")
+    cx = sqlite3.connect(src)
+    cx.executescript("CREATE TABLE blob_widget (id INTEGER PRIMARY KEY, payload BLOB);")
+    cx.execute("INSERT INTO blob_widget (id, payload) VALUES (1, ?)", (b"a\x00b\x00c",))
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS blob_widget CASCADE")
+        pcx.execute("CREATE TABLE blob_widget (id BIGINT PRIMARY KEY, payload BYTEA)")
+        pcx.commit()
+
+    res = copy.copy_all(src)
+    by_table = {r["table"]: r for r in res}
+    row = by_table["blob_widget"]
+    assert row["source_rows"] == 1
+    assert row["inserted"] == 1
+    assert "errors" not in row
+    # The bytes value contained 0x00, but it's not a str -- must not count
+    # as nul_sanitized, and must not be stripped.
+    assert row["nul_sanitized"] == 0
+
+    with db.connect(src) as pcx:
+        stored = pcx.execute(
+            'SELECT payload FROM "blob_widget" WHERE id = 1'
+        ).fetchone()[0]
+        assert bytes(stored) == b"a\x00b\x00c"
+
+    assert verify.all_ok(verify.parity(src))

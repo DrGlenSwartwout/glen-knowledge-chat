@@ -213,18 +213,34 @@ def _run_preflight(sqlite_path: str, out: TextIO) -> Tuple[List[Dict], int]:
 
 
 def _print_copy_summary(results: List[Dict], out: TextIO) -> bool:
-    """Prints the per-table copy summary; returns True if any row errored."""
+    """Prints the per-table copy summary; returns True if any row errored.
+
+    Also PROMINENTLY surfaces any NUL-byte sanitization (`nul_sanitized` in
+    a table's result dict, set by `copy.copy_table` when a str value's
+    embedded 0x00 bytes were stripped so the row could insert into
+    Postgres, which cannot hold NUL in TEXT/VARCHAR) -- this is a data
+    transformation the operator must never see silently."""
     print("COPY SUMMARY:", file=out)
+    any_nul_sanitized = False
     for r in sorted(results, key=lambda r: r["table"]):
         line = (f"  - {r['table']}: source_rows={r['source_rows']} "
                 f"inserted={r['inserted']} conflicts={r['conflicts']}")
         if r.get("note"):
             line += f"  ({r['note']})"
         print(line, file=out)
+        if r.get("nul_sanitized"):
+            any_nul_sanitized = True
+            print(f"    !! NUL bytes stripped from {r['nul_sanitized']} row(s) in "
+                  f"{r['table']} (Postgres TEXT cannot hold 0x00 -- source had "
+                  "embedded NUL bytes, now removed).", file=out)
         if r.get("errors"):
             print(f"    !! {len(r['errors'])} ROW ERROR(S) in {r['table']}:", file=out)
             for e in r["errors"][:5]:
                 print(f"       row={e['row']} error={e['error']}", file=out)
+    if any_nul_sanitized:
+        print("NOTE: NUL (0x00) bytes were stripped from one or more tables' text "
+              "values above -- review before relying on exact byte-for-byte content.",
+              file=out)
     failed = copy_mod.any_errors(results)
     print("COPY FAILED: one or more rows produced errors (see above)." if failed
           else "COPY OK.", file=out)

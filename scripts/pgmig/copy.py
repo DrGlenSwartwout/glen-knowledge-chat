@@ -14,18 +14,57 @@ from dashboard.dbschema import schema_for_path
 from scripts.pgmig import introspect
 
 
+def _sanitize_row(row) -> tuple:
+    """Strip embedded NUL (0x00) bytes from every STRING value in `row`.
+
+    Postgres TEXT/VARCHAR columns cannot contain a NUL byte (insert raises
+    "PostgreSQL text fields cannot contain NUL (0x00) bytes"); SQLite has no
+    such restriction, so prod data pulled through a lossy encoding (e.g.
+    UTF-16-sourced FMP text landing in a SQLite TEXT column) can carry one.
+    Only `str` values are touched -- a `bytes`/`bytearray`/`memoryview` value
+    (BYTEA) may legitimately contain a 0x00 byte and must be passed through
+    unchanged; int/float/None/etc. are untouched too (NUL cannot occur in
+    them). Returns (sanitized_row_tuple, had_nul: bool) so the caller can
+    count how many rows were actually touched.
+    """
+    had_nul = False
+    out = []
+    for v in row:
+        if isinstance(v, str) and "\x00" in v:
+            v = v.replace("\x00", "")
+            had_nul = True
+        out.append(v)
+    return tuple(out), had_nul
+
+
 def copy_table(sqlite_cx, pg_cx, table: str) -> Dict:
     """Copy every row of `table` from `sqlite_cx` into `pg_cx`'s current
-    schema. Returns {"table","source_rows","inserted","conflicts"} and,
-    if any individual row failed to insert (not just an ON CONFLICT skip),
-    an "errors" list of {"row","error"} so the whole table isn't aborted
-    over one bad row."""
+    schema. Returns {"table","source_rows","inserted","conflicts",
+    "nul_sanitized"} and, if any individual row failed to insert (not just
+    an ON CONFLICT skip), an "errors" list of {"row","error"} so the whole
+    table isn't aborted over one bad row.
+
+    `nul_sanitized` counts the rows in which at least one string value had
+    embedded NUL (0x00) bytes stripped before insert (see `_sanitize_row`) --
+    a data transformation the operator must never see silently, hence it's
+    counted here and surfaced prominently by the CLI (`_print_copy_summary`)
+    whenever it's non-zero."""
     cols = [d[0] for d in sqlite_cx.execute(f'SELECT * FROM "{table}" LIMIT 0').description]
     rows = sqlite_cx.execute(f'SELECT * FROM "{table}"').fetchall()
     source_rows = len(rows)
-    result = {"table": table, "source_rows": source_rows, "inserted": 0, "conflicts": 0}
+    result = {"table": table, "source_rows": source_rows, "inserted": 0,
+              "conflicts": 0, "nul_sanitized": 0}
     if source_rows == 0:
         return result
+
+    sanitized_rows = []
+    nul_sanitized = 0
+    for r in rows:
+        sanitized, had_nul = _sanitize_row(tuple(r))
+        sanitized_rows.append(sanitized)
+        if had_nul:
+            nul_sanitized += 1
+    result["nul_sanitized"] = nul_sanitized
 
     collist = ", ".join(f'"{c}"' for c in cols)
     placeholders = ", ".join("?" for _ in cols)
@@ -34,7 +73,7 @@ def copy_table(sqlite_cx, pg_cx, table: str) -> Dict:
     inserted = 0
     errors: List[Dict] = []
     try:
-        cur = pg_cx.executemany(sql, [tuple(r) for r in rows])
+        cur = pg_cx.executemany(sql, sanitized_rows)
         inserted = cur.rowcount or 0
     except Exception:
         # One bad row aborts the whole batch on Postgres (the transaction goes
@@ -53,7 +92,7 @@ def copy_table(sqlite_cx, pg_cx, table: str) -> Dict:
         # SAVEPOINT per row isolates each row: a failure rolls back ONLY to that
         # row's savepoint, leaving previously-released (successful) rows intact
         # and still pending commit at the end of copy_table/copy_all.
-        for row in rows:
+        for row in sanitized_rows:
             try:
                 pg_cx.execute("SAVEPOINT pgmig_row")
                 r = pg_cx.execute(sql, tuple(row))
