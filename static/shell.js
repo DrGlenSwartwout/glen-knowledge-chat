@@ -101,8 +101,14 @@
       walletBtn.onclick = function () { wp.classList.toggle("open"); };
     }
 
-    // Light/Dark/Auto toggle — rendered and owned by theme-mode.js.
-    if (window.RMTheme) window.RMTheme.mountToggle(bar);
+    // Light/Dark/Auto toggle — rendered and owned by theme-mode.js. The ribbon owns
+    // it here, so drop any page-level #themeToggle floater to avoid a duplicate (the
+    // site-wide diurnal rollout adds one on pages that lack the ribbon).
+    if (window.RMTheme) {
+      window.RMTheme.mountToggle(bar);
+      var _stray = document.getElementById("themeToggle");
+      if (_stray) _stray.remove();
+    }
 
     document.body.appendChild(bar);
     document.body.classList.add("js-shell-on");
