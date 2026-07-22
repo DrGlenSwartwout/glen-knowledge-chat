@@ -12,7 +12,9 @@ cutover. See those functions' docstrings for the normalization rules that
 make the digest identical across backends.
 """
 import hashlib
+import math
 import sqlite3
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -79,8 +81,13 @@ def all_ok(results: List[Dict]) -> bool:
 #     paths converge on the same "1"/"0" string.
 #   - int -> str(v). Identical on both backends for integer-affinity
 #     columns.
-#   - float -> if the value is integral (5.0), render as "5" so it matches
-#     an INTEGER-column int 5 that a loosely-typed SQLite column might hold
+#   - float -> non-finite values (NaN/+Inf/-Inf) are checked FIRST via
+#     `math.isfinite` and rendered as a fixed, distinct sentinel
+#     ("\x00NAN" / "\x00INF+" / "\x00INF-") -- `v == int(v)` below would
+#     otherwise call `int(v)`, which raises OverflowError/ValueError for
+#     those values and crashed the whole checksum run. Otherwise: if the
+#     value is integral (5.0), render as "5" so it matches an
+#     INTEGER-column int 5 that a loosely-typed SQLite column might hold
 #     for the same logical value; otherwise repr(v) (Python's shortest
 #     round-trip text form, so the same float value strified the same way
 #     regardless of driver).
@@ -91,14 +98,38 @@ def all_ok(results: List[Dict]) -> bool:
 #     "5".
 #   - bytes/bytearray/memoryview (BLOB / bytea) -> a "\x00BYTES:" prefix
 #     (so it can never collide with a text value) + lowercase hex.
-#   - datetime.date/datetime.datetime/datetime.time -> str(v). For
-#     datetime, Python's str() renders "YYYY-MM-DD HH:MM:SS[.ffffff]" (space
-#     separator, no fractional part when microsecond==0) -- the same form
-#     SQLite TEXT-affinity timestamp columns are conventionally stored in
-#     (e.g. via `datetime('now')`), so a Postgres TIMESTAMP column's
-#     datetime object and a SQLite TEXT column's stored string normalize
-#     to the same text for the same logical instant.
-#   - anything else -> str(v) (e.g. an already-str value, used as-is).
+#   - datetime.datetime -> a single CANONICAL rendering, regardless of
+#     which backend produced the object: if tz-aware, convert to UTC first
+#     (`astimezone(timezone.utc)`); naive values are left as-is (assumed
+#     already the intended wall-clock/UTC instant); then render with a
+#     fixed `strftime("%Y-%m-%dT%H:%M:%S.%f")` (always 6 fractional digits,
+#     so precision/format never depends on whether the driver happened to
+#     omit a zero microsecond). This is what makes a Postgres TIMESTAMP
+#     column's `datetime` object converge with a SQLite TEXT column's ISO
+#     string for the SAME logical instant (see the str-branch below) --
+#     fixing the false-positive where a faithful copy was reported
+#     ok=False just because str(datetime) uses a space separator while the
+#     app's ISO strings use "T"/"Z".
+#   - str -> first TRY to parse it as an ISO-8601 *datetime* (must contain
+#     an explicit time component -- a "T" or a space -- so plain DATE-only
+#     strings like "2026-07-10" are left alone, since those correspond to
+#     `datetime.date` objects on the Postgres side, not `datetime`, and are
+#     out of scope for this fix). A trailing "Z" is treated as "+00:00"
+#     before calling `datetime.fromisoformat`; both "T" and space
+#     separators are accepted (fromisoformat handles both). If it parses,
+#     render it through the SAME canonical datetime rendering above. If it
+#     does NOT parse (any ValueError), the string is returned UNCHANGED.
+#     Because the exact same normalize() function runs on BOTH backends'
+#     readback, this is safe even for a column that merely looks
+#     date-like: a plain text value that coincidentally parses as a
+#     datetime is transformed IDENTICALLY on both sides (still matches,
+#     no new false positive), while two genuinely different instants still
+#     render to different canonical strings (no over-normalization masking
+#     real corruption).
+#   - datetime.date/datetime.time (not datetime.datetime) -> str(v),
+#     unchanged from before -- out of scope for this fix.
+#   - anything else -> str(v) (e.g. an already-str value that didn't parse
+#     as a datetime, used as-is).
 #
 # Per-row hashing: the row's normalized values are joined with "\x1f" (ASCII
 # Unit Separator -- vanishingly unlikely to appear in real column data) and
@@ -116,6 +147,37 @@ def all_ok(results: List[Dict]) -> bool:
 _NULL_SENTINEL = "\x00NULL"
 _ROW_SEP = "\x1f"
 _AGG_MOD = 1 << 128
+_NAN_SENTINEL = "\x00NAN"
+_INF_POS_SENTINEL = "\x00INF+"
+_INF_NEG_SENTINEL = "\x00INF-"
+_DATETIME_FMT = "%Y-%m-%dT%H:%M:%S.%f"
+
+
+def _canonical_datetime(dt: datetime) -> str:
+    """Single canonical rendering for a `datetime` used on BOTH backends
+    (see the module docstring's normalization-rules comment). tz-aware
+    values are converted to UTC first; naive values are left as-is."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime(_DATETIME_FMT)
+
+
+def _try_parse_iso_datetime(s: str) -> Optional[datetime]:
+    """Try to parse `s` as an ISO-8601 *datetime* (must carry an explicit
+    time component). Returns None (never raises) if it isn't one -- see
+    the module docstring's normalization-rules comment for the reasoning."""
+    text = s.strip()
+    if "T" not in text and " " not in text:
+        # No time separator at all -- this is not a datetime string (could
+        # be a plain DATE-only string, or unrelated text). Leave it alone.
+        return None
+    candidate = text
+    if candidate.endswith(("Z", "z")):
+        candidate = candidate[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
 
 
 def _normalize_value(v) -> str:
@@ -126,6 +188,10 @@ def _normalize_value(v) -> str:
     if isinstance(v, int):
         return str(v)
     if isinstance(v, float):
+        if not math.isfinite(v):
+            if math.isnan(v):
+                return _NAN_SENTINEL
+            return _INF_POS_SENTINEL if v > 0 else _INF_NEG_SENTINEL
         if v == int(v) and abs(v) < 1e15:
             return str(int(v))
         return repr(v)
@@ -133,6 +199,13 @@ def _normalize_value(v) -> str:
         return format(v.normalize(), "f")
     if isinstance(v, (bytes, bytearray, memoryview)):
         return "\x00BYTES:" + bytes(v).hex()
+    if isinstance(v, datetime):
+        return _canonical_datetime(v)
+    if isinstance(v, str):
+        parsed = _try_parse_iso_datetime(v)
+        if parsed is not None:
+            return _canonical_datetime(parsed)
+        return v
     return str(v)
 
 

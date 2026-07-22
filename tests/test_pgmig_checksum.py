@@ -9,8 +9,10 @@ parity for the same table would still say ok=True); a column-set mismatch
 
 Skip-guarded on PG_DSN, mirroring test_pgmig_copy_verify.py.
 """
+import math
 import os
 import sqlite3
+from datetime import datetime, timezone
 
 import pytest
 
@@ -180,6 +182,119 @@ def test_checksum_table_null_vs_value_not_confused(monkeypatch, tmp_path):
         pg_cx.close()
 
     assert result["ok"] is False
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_checksum_table_timestamp_faithful_copy_is_ok(monkeypatch, tmp_path):
+    """Regression test for the datetime false-positive: a real Postgres
+    TIMESTAMP column (readback -> Python `datetime`) vs the SQLite source
+    storing the app's ISO-8601 string ('...T...Z') for the SAME instant.
+    Before the fix, str(datetime) ("2026-07-10 22:14:03", space separator)
+    never equalled the ISO string ("2026-07-10T22:14:03Z"), so a faithful
+    copy was wrongly reported ok=False. Must now converge to ok=True."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_cksum_ts_ok.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE evt (id INTEGER PRIMARY KEY, happened_at TEXT);"
+    )
+    cx.execute("INSERT INTO evt (id, happened_at) VALUES (1, '2026-07-10T22:14:03Z')")
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS evt CASCADE")
+        pcx.execute("CREATE TABLE evt (id BIGINT PRIMARY KEY, happened_at TIMESTAMP)")
+        # A naive datetime representing the SAME UTC instant as the SQLite
+        # ISO string above -- this is how a real "TIMESTAMP WITHOUT TIME
+        # ZONE" column ends up holding a UTC instant (psycopg would convert
+        # an aware value to the session timezone and drop tzinfo, which is
+        # not what either side intends here).
+        pcx.execute("INSERT INTO evt (id, happened_at) VALUES (1, ?)",
+                     (datetime(2026, 7, 10, 22, 14, 3),))
+        pcx.commit()
+
+    sqlite_cx = sqlite3.connect(src)
+    pg_cx = db.connect(src)
+    try:
+        result = verify.checksum_table(sqlite_cx, pg_cx, "evt")
+    finally:
+        sqlite_cx.close()
+        pg_cx.close()
+
+    assert result["ok"] is True
+    assert result["sqlite_digest"] == result["pg_digest"]
+
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_checksum_table_timestamp_different_instants_still_mismatch(monkeypatch, tmp_path):
+    """Sanity companion to the faithful-copy test above: the datetime
+    canonicalization must not OVER-normalize -- two genuinely different
+    instants must still produce different digests (ok=False)."""
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    src = str(tmp_path / "pgmig_cksum_ts_bad.db")
+    cx = sqlite3.connect(src)
+    cx.executescript(
+        "CREATE TABLE evt (id INTEGER PRIMARY KEY, happened_at TEXT);"
+    )
+    cx.execute("INSERT INTO evt (id, happened_at) VALUES (1, '2026-07-10T22:14:03Z')")
+    cx.commit()
+    cx.close()
+
+    with db.connect(src) as pcx:
+        pcx.execute("DROP TABLE IF EXISTS evt CASCADE")
+        pcx.execute("CREATE TABLE evt (id BIGINT PRIMARY KEY, happened_at TIMESTAMP)")
+        # A DIFFERENT instant (one second later) -- must NOT match.
+        pcx.execute("INSERT INTO evt (id, happened_at) VALUES (1, ?)",
+                     (datetime(2026, 7, 10, 22, 14, 4),))
+        pcx.commit()
+
+    sqlite_cx = sqlite3.connect(src)
+    pg_cx = db.connect(src)
+    try:
+        result = verify.checksum_table(sqlite_cx, pg_cx, "evt")
+    finally:
+        sqlite_cx.close()
+        pg_cx.close()
+
+    assert result["ok"] is False
+    assert result["sqlite_digest"] != result["pg_digest"]
+
+
+def test_normalize_value_datetime_and_iso_string_converge():
+    """Pure-Python unit test (no PG needed): `_normalize_value` must map a
+    tz-aware `datetime` and its equivalent ISO-8601 'Z' string to the
+    IDENTICAL canonical output."""
+    dt = datetime(2026, 7, 10, 22, 14, 3, tzinfo=timezone.utc)
+    iso = "2026-07-10T22:14:03Z"
+    assert verify._normalize_value(dt) == verify._normalize_value(iso)
+    # And it should also converge with the "+00:00" spelling of the same instant.
+    assert verify._normalize_value(dt) == verify._normalize_value("2026-07-10T22:14:03+00:00")
+
+
+def test_normalize_value_non_date_string_unchanged():
+    """A string that does not parse as an ISO-8601 datetime must be
+    returned UNCHANGED (no accidental transformation of ordinary text)."""
+    assert verify._normalize_value("just some text") == "just some text"
+    assert verify._normalize_value("SKU-12345") == "SKU-12345"
+    # Date-only (no time component) is out of scope for this fix -- left as-is.
+    assert verify._normalize_value("2026-07-10") == "2026-07-10"
+
+
+def test_normalize_value_nan_inf_do_not_raise():
+    """A non-finite float must normalize to a fixed sentinel instead of
+    crashing (the old `v == int(v)` branch raised on NaN/Inf)."""
+    nan_out = verify._normalize_value(float("nan"))
+    pos_inf_out = verify._normalize_value(float("inf"))
+    neg_inf_out = verify._normalize_value(float("-inf"))
+
+    assert nan_out != pos_inf_out != neg_inf_out
+    assert nan_out != neg_inf_out
+    # All distinct from ordinary numeric/text renderings.
+    assert nan_out not in ("nan", "inf", "-inf")
+    # Deterministic and comparable (no exception raised above already proves
+    # this, but assert idempotence too).
+    assert verify._normalize_value(float("nan")) == nan_out
 
 
 @pytest.mark.skipif(not pg, reason="PG_DSN not set")
