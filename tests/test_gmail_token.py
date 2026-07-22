@@ -161,3 +161,36 @@ def test_self_heal_write_failure_is_best_effort(tmp_path, monkeypatch):
     loaded = gt.load_gmail_credentials(db, name="inbox_gmail", scopes=SCOPES)
     assert loaded.source == "file"
     assert loaded.creds.refresh_token == "1//refresh"
+
+
+import os
+
+pg = bool(os.environ.get("PG_DSN"))
+
+def test_db_token_roundtrip_sqlite(tmp_path):
+    dbp = str(tmp_path / "chat_log.db")
+    # missing table -> None, no raise
+    assert gt._read_db_token(dbp, "inbox_gmail") is None
+    gt._write_db_token(dbp, "inbox_gmail", '{"token":"abc"}')
+    assert gt._read_db_token(dbp, "inbox_gmail") == '{"token":"abc"}'
+
+@pytest.mark.skipif(not pg, reason="PG_DSN not set")
+def test_db_token_roundtrip_postgres(monkeypatch):
+    monkeypatch.setenv("DB_BACKEND", "postgres")
+    from dashboard import db
+    with db.connect("/data/chat_log.db") as cx:
+        cx.execute("DROP TABLE IF EXISTS oauth_tokens")
+        cx.commit()
+    # missing table tolerated -> None (UndefinedTable, not a crash)
+    assert gt._read_db_token("/data/chat_log.db", "t1_gmail") is None
+    gt._write_db_token("/data/chat_log.db", "t1_gmail", '{"token":"xyz"}')
+    assert gt._read_db_token("/data/chat_log.db", "t1_gmail") == '{"token":"xyz"}'
+
+
+def test_admin_upload_writes_db_row(tmp_path):
+    dbp = str(tmp_path / "chat_log.db")
+    payload = {"token": "t", "refresh_token": "r", "client_id": "c", "client_secret": "s"}
+    import json as _json
+    gt._write_db_token(dbp, "inbox_gmail", _json.dumps(payload))
+    got = _json.loads(gt._read_db_token(dbp, "inbox_gmail"))
+    assert got["refresh_token"] == "r"

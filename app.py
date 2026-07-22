@@ -5595,10 +5595,10 @@ def qbo_query():
     QBO?" without guessing.
 
     Why it must run here and not from a laptop: Intuit ROTATES the refresh token
-    on every use, and the replacement is cached to /data/qb_refresh_token on the
-    Render disk. Refreshing off-prod mints a token prod can never read and
-    silently invalidates the live one — i.e. it breaks accounting sync. Keeping
-    the call on prod keeps rotation where the cache is.
+    on every use, and the replacement is persisted to the oauth_tokens DB row
+    (name="qbo_refresh") on the prod database. Refreshing off-prod mints a token
+    prod can never read and silently invalidates the live one — i.e. it breaks
+    accounting sync. Keeping the call on prod keeps rotation where the store is.
 
     Read-only by construction, belt and braces:
       - QBO's /query API executes SELECT only; it has no write verbs.
@@ -5639,9 +5639,9 @@ def qbo_void_payment(txn_id):
     'Voided'); qbo_billing.void_payment issues operation=delete. The row leaves the
     register and survives only in QBO's Audit Log. Irreversible -- hence confirmed.
 
-    Must run on prod: Intuit rotates the refresh token per use and caches the
-    replacement to /data/qb_refresh_token on the Render disk. Same reasoning as
-    /api/qbo/query.
+    Must run on prod: Intuit rotates the refresh token per use and persists the
+    replacement to the oauth_tokens DB row (name="qbo_refresh") on the prod
+    database. Same reasoning as /api/qbo/query.
     """
     if not _qbo_auth_ok():
         return jsonify({"error": "Unauthorized"}), 401
@@ -35741,14 +35741,14 @@ def admin_upload_gmail_token():
         for required in ("token", "refresh_token", "client_id", "client_secret"):
             if required not in token_json:
                 return fail(f"token JSON missing field: {required}", status=400)
-        target = os.environ.get("GMAIL_TOKEN_PATH", "/data/google-token.json")
-        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        # De-disked: persist to the oauth_tokens DB row the reply-watcher reads,
+        # not the /data disk file. name="inbox_gmail" matches load_gmail_credentials'
+        # default and the /api/tokens/inbox_gmail PUT.
         import json as _json
-        with open(target, "w") as f:
-            _json.dump(token_json, f)
-        os.chmod(target, 0o600)
+        from dashboard import gmail_token as _gt
+        _gt._write_db_token(str(LOG_DB), "inbox_gmail", _json.dumps(token_json))
         return ok({
-            "saved_to": target,
+            "saved_to": "oauth_tokens[inbox_gmail]",
             "scopes": token_json.get("scopes", []),
             "client_id_suffix": token_json.get("client_id", "")[-12:],
         })
