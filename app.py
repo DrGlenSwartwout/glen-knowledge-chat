@@ -25578,6 +25578,38 @@ def api_console_product_review_new_clients():
     return jsonify({"ok": True, "total": total, "clients": clients})
 
 
+@app.route("/api/console/reformulation-roadmap", methods=["GET"])
+def api_console_reformulation_roadmap():
+    """Latest cached roadmap + the deterministic product-submission frequency."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import reformulation_roadmap as _rr
+    with db.connect(LOG_DB) as cx:
+        _rr.init_table(cx)
+        latest = _rr.latest(cx)
+        freq = _rr.frequency(cx)
+    return jsonify({"ok": True, "latest": latest, "frequency": freq})
+
+
+@app.route("/api/console/reformulation-roadmap/generate", methods=["POST"])
+def api_console_reformulation_roadmap_generate():
+    """Run the LLM synthesis over the review corpus and cache the ranked roadmap."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import reformulation_roadmap as _rr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        out = _rr.generate(cx, _cl)
+    return jsonify({"ok": True, **out})
+
+
+@app.route("/console/reformulation-roadmap")
+def console_reformulation_roadmap_page():
+    resp = send_from_directory(STATIC, "console-reformulation-roadmap.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.route("/product-review")
 def product_review_intake_page():
     """Public product-review opt-in (linked from skepticalreviews.com). While the

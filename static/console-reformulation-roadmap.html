@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reformulation Roadmap — Console</title>
+<style>
+  :root{--bg:#0f1613;--card:#16211c;--card2:#1d2b24;--line:#2a3d33;--ink:#eaf2ec;--muted:#93a89b;--gold:#e2b654}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:24px}
+  .wrap{max-width:900px;margin:0 auto}
+  h1{font-size:1.35rem;font-weight:600;margin:0 0 .3rem} h2{font-size:1.05rem;margin:1.4rem 0 .5rem} .muted{color:var(--muted)} .small{font-size:.85rem}
+  button{background:var(--gold);color:#0f1613;border:0;border-radius:8px;padding:9px 18px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  table{width:100%;border-collapse:collapse;margin-top:8px} th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);font-size:.9rem}
+  th{color:var(--muted);font-weight:500}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .pri{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 9px;border-radius:100px;border:1px solid var(--gold);color:var(--gold);margin-left:8px}
+  .wk{color:var(--muted);font-size:.88rem;margin:6px 0}
+  .op{margin-top:6px}
+  .status{color:var(--muted);font-size:.85rem;margin-top:8px;min-height:1.1em}
+  .empty{color:var(--muted);font-style:italic;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Reformulation Roadmap</h1>
+  <p class="muted small">Built from the free product reviews people submit. Frequency is live; the ranked roadmap is an AI synthesis of the analyzer's critiques — regenerate it as more reviews come in.</p>
+  <button id="gen">Generate / regenerate roadmap</button>
+  <span class="status" id="status"></span>
+
+  <h2>Ranked opportunities</h2>
+  <div id="roadmap"></div>
+
+  <h2>Most-submitted products</h2>
+  <div id="freq"></div>
+</div>
+<script>
+const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function renderRoadmap(latest){
+  const el = document.getElementById("roadmap");
+  const rm = (latest && latest.roadmap) || [];
+  if(!rm.length){ el.innerHTML = '<p class="empty">No roadmap yet. Once reviews are analyzed, click Generate.</p>'; return; }
+  el.innerHTML = rm.map(r=>{
+    const wk = (r.common_weaknesses||[]).map(esc).join("; ");
+    return `<div class="card"><b>${esc(r.category||"")}</b>`
+      + `<span class="pri">priority ${esc(r.priority||"")}</span>`
+      + ` <span class="muted small">· ${esc(r.submission_count||0)} submissions</span>`
+      + (wk?`<div class="wk">Falls short: ${wk}</div>`:"")
+      + (r.reformulation_opportunity?`<div class="op"><b>Opportunity:</b> ${esc(r.reformulation_opportunity)}</div>`:"")
+      + `</div>`;
+  }).join("");
+  if(latest.generated_at) document.getElementById("status").textContent =
+    "Roadmap from " + esc(latest.n_reviews) + " reviewed submissions · generated " + esc(latest.generated_at) + " UTC";
+}
+function renderFreq(freq){
+  const el = document.getElementById("freq");
+  if(!freq || !freq.length){ el.innerHTML = '<p class="empty">No submissions yet.</p>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Product</th><th>Brand</th><th>Submissions</th></tr></thead><tbody>'
+    + freq.map(f=>`<tr><td>${esc(f.product_name)}</td><td>${esc(f.product_brand||"")}</td><td>${esc(f.count)}</td></tr>`).join("")
+    + '</tbody></table>';
+}
+async function load(){
+  try{
+    const r = await fetch("/api/console/reformulation-roadmap", {credentials:"same-origin"});
+    const j = await r.json();
+    renderRoadmap(j.latest || {}); renderFreq(j.frequency || []);
+  }catch(e){ document.getElementById("status").textContent = "Could not load."; }
+}
+document.getElementById("gen").addEventListener("click", async ()=>{
+  const b = document.getElementById("gen"), st = document.getElementById("status");
+  b.disabled = true; st.textContent = "Analyzing the review corpus... (this can take a moment)";
+  try{
+    const r = await fetch("/api/console/reformulation-roadmap/generate", {method:"POST", credentials:"same-origin"});
+    const j = await r.json();
+    if(r.ok && j.ok){ renderRoadmap(j); if(!(j.roadmap||[]).length) st.textContent = "No reviewed submissions yet to build from."; }
+    else st.textContent = j.error || "Generation failed.";
+  }catch(e){ st.textContent = "Generation failed."; }
+  b.disabled = false; load();
+});
+load();
+</script>
+</body>
+</html>
