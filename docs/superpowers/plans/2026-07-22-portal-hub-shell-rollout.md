@@ -57,11 +57,19 @@ and confirm:
 - [ ] Tap **Ask Dr. Glen** → chat panel; confirm the chat input actually works (init found `#chatCard`/`#chatMsgs` inside the now-hidden-until-shown panel).
 - [ ] Tap **Body Map**, **MasterClasses**, **Account** → each shows its panel + Back to hub.
 - [ ] Tap **Refer a Friend** (ambassador links / become-ambassador) and **Referrals** (activity list) → both panels render; ambassador form + share-page controls still work.
+- [ ] Tap **Account** (top-bar link in the hub) → account panel shows + Back to hub.
+- [ ] **No duplicate scan-history / receipts** in the My Analysis (current) panel when the hub is on (see deferred item below — this is the known gap to watch).
 - [ ] Both flags on together → hub grid present, NO old tab bar (no double-nav).
 - [ ] Dark mode: tiles, banner, and the `.next` chip are all readable.
+- [ ] Runtime (not just parse): confirm the nested `${_hub ? \`…panels…\` : ""}` actually renders real DOM in a browser, and that the Ask-Dr.-Glen chat + ambassador/share-page form handlers bind correctly even though their panels start `hidden`.
 
 ## Deferred (documented, not lost)
 
+- **NOT DELIVERED from Phase-1's plan: "remove the two duplicate cards."** This
+  step was intentionally deferred (see below), so the scan-history teaser and the
+  History-&-receipts card still render under the hub. Do not mark that plan step
+  complete. It is the one gap between the plan's Phase-1 text and what shipped, and
+  it is safe (it protects OFF-state byte-identity and the request-analysis path).
 - **Legacy duplicate-card suppression + request-analysis handling.** The inline
   "Scan history" block carries the request-analysis action; the legacy
   history/receipts and unpaid-invoice inline cards render only when
@@ -85,3 +93,7 @@ and confirm:
   always present under hub). Harmless.
 - The `.hub-banner .next` chip uses a fixed gold background; readable in dark but
   brighter than the themed surfaces. Optional.
+- Under the hub, the **notification-preferences and scan-preferences** cards still
+  land in the My Analysis (current) panel rather than the Account panel (only the
+  account snapshot was migrated). Move them into `data-panel="account"` in a
+  follow-up so Account holds all settings, per the spec.
