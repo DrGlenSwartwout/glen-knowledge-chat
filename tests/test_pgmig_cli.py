@@ -197,3 +197,46 @@ def test_full_nonzero_when_copy_has_errors(monkeypatch, tmp_path, capsys):
     out = capsys.readouterr().out
     assert code != 0
     assert "error" in out.lower()
+
+
+# --- Direct-invocation regression guard (the absolute `scripts.pgmig` imports
+# fail with ModuleNotFoundError when the script is run as `python3
+# scripts/migrate_sqlite_to_pg.py ...` without the repo root on sys.path; the
+# CLI bootstraps sys.path itself. pytest's conftest hid this, so guard it via a
+# real subprocess run, not an in-process import.) -----------------------------
+import os as _os
+import subprocess as _sp
+import sys as _sys
+import sqlite3 as _sqlite3
+
+_REPO_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+_CLI = _os.path.join(_REPO_ROOT, "scripts", "migrate_sqlite_to_pg.py")
+
+
+def test_cli_runs_as_direct_subprocess_clean(tmp_path):
+    dbp = str(tmp_path / "clean.db")
+    cx = _sqlite3.connect(dbp)
+    cx.executescript("CREATE TABLE u (k TEXT); CREATE UNIQUE INDEX ux ON u(k);"
+                     "INSERT INTO u(k) VALUES ('a'),('b');")
+    cx.commit(); cx.close()
+    env = dict(_os.environ); env.pop("DB_BACKEND", None); env.pop("PG_DSN", None)
+    r = _sp.run([_sys.executable, _CLI, "preflight", dbp],
+                capture_output=True, text=True, cwd=_REPO_ROOT, env=env)
+    assert "ModuleNotFoundError" not in r.stderr, r.stderr
+    assert r.returncode == 0, (r.returncode, r.stdout, r.stderr)
+    assert "PREFLIGHT CLEAN" in r.stdout
+
+
+def test_cli_runs_as_direct_subprocess_dirty_exit3(tmp_path):
+    dbp = str(tmp_path / "dirty.db")
+    cx = _sqlite3.connect(dbp)
+    # duplicate NULL keys collide under a unique index (NULLs group in GROUP BY)
+    cx.executescript("CREATE TABLE d (k TEXT); CREATE UNIQUE INDEX ux ON d(k);"
+                     "INSERT INTO d(k) VALUES (NULL),(NULL),('a');")
+    cx.commit(); cx.close()
+    env = dict(_os.environ); env.pop("DB_BACKEND", None); env.pop("PG_DSN", None)
+    r = _sp.run([_sys.executable, _CLI, "preflight", dbp],
+                capture_output=True, text=True, cwd=_REPO_ROOT, env=env)
+    assert "ModuleNotFoundError" not in r.stderr, r.stderr
+    assert r.returncode == 3, (r.returncode, r.stdout, r.stderr)
+    assert "d" in r.stdout

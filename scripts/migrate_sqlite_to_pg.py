@@ -44,8 +44,14 @@ Exit codes:
         on. `full` aborts on this (like a dirty preflight) unless --force.
 """
 import argparse
+import os
 import sys
 from typing import Dict, List, Optional, TextIO, Tuple
+
+# Allow direct invocation (`python3 scripts/migrate_sqlite_to_pg.py ...`): put the
+# repo root on sys.path so the absolute `scripts.pgmig` / `dashboard` imports below
+# resolve. Under pytest the rootdir conftest already handles this; a bare run does not.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scripts.pgmig import copy as copy_mod
 from scripts.pgmig import dedup
