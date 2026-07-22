@@ -31,7 +31,7 @@ def init_table(cx):
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           user_id TEXT,
           recorded_at TEXT,
-          duration_seconds REAL,
+          duration_seconds DOUBLE PRECISION,
           transcript TEXT,
           dominant_element TEXT,
           dominant_treasure TEXT,

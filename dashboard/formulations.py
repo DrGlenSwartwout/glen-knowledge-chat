@@ -38,7 +38,7 @@ def init_formulations_schema(cx: sqlite3.Connection) -> None:
               fmp_id TEXT,
               formulation_id INTEGER REFERENCES formulations(id),
               ingredient_id INTEGER REFERENCES ingredients(id),
-              ingredient_name TEXT, dose REAL, dose_unit TEXT, raw_text TEXT,
+              ingredient_name TEXT, dose DOUBLE PRECISION, dose_unit TEXT, raw_text TEXT,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
             )""")
@@ -49,7 +49,7 @@ def init_formulations_schema(cx: sqlite3.Connection) -> None:
               fmp_id TEXT,
               formulation_id INTEGER REFERENCES formulations(id),
               ingredient_id INTEGER REFERENCES ingredients(id),
-              ingredient_name TEXT, dose REAL, dose_unit TEXT, raw_text TEXT,
+              ingredient_name TEXT, dose DOUBLE PRECISION, dose_unit TEXT, raw_text TEXT,
               extras TEXT, notes TEXT,
               created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
             )""")

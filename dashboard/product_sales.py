@@ -15,7 +15,7 @@ def init_product_sales_table(cx):
             product_slug   TEXT,
             product_name   TEXT,
             period         TEXT NOT NULL,
-            units          REAL NOT NULL DEFAULT 0,
+            units          DOUBLE PRECISION NOT NULL DEFAULT 0,
             revenue_cents  INTEGER NOT NULL DEFAULT 0,
             source         TEXT NOT NULL DEFAULT 'fmp'
         )""")

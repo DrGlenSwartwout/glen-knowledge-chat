@@ -32,8 +32,8 @@ def init_materials_schema(cx: sqlite3.Connection) -> None:
                   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                   fmp_id TEXT, {link},
                   supplier_id INTEGER REFERENCES suppliers(id),
-                  supplier_name TEXT, sku TEXT, price REAL,
-                  purchase_size REAL, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
+                  supplier_name TEXT, sku TEXT, price DOUBLE PRECISION,
+                  purchase_size DOUBLE PRECISION, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
                   extras TEXT, preferred INTEGER DEFAULT 0, notes TEXT,
                   created_at TEXT DEFAULT (now()::text), updated_at TEXT DEFAULT (now()::text)
                 )""")
@@ -43,8 +43,8 @@ def init_materials_schema(cx: sqlite3.Connection) -> None:
                   id INTEGER PRIMARY KEY AUTOINCREMENT,
                   fmp_id TEXT, {link},
                   supplier_id INTEGER REFERENCES suppliers(id),
-                  supplier_name TEXT, sku TEXT, price REAL,
-                  purchase_size REAL, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
+                  supplier_name TEXT, sku TEXT, price DOUBLE PRECISION,
+                  purchase_size DOUBLE PRECISION, purchase_size_unit TEXT, mfg TEXT, contact TEXT, product_link TEXT,
                   extras TEXT, preferred INTEGER DEFAULT 0, notes TEXT,
                   created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
                 )""")

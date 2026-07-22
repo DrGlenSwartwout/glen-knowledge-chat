@@ -18,7 +18,7 @@ def init_tables(cx):
         min_age INTEGER, max_age INTEGER)""")
     cx.execute("""CREATE TABLE IF NOT EXISTS e4l_formulation_map(
         id INTEGER PRIMARY KEY AUTOINCREMENT, item_code TEXT, finding_pattern TEXT,
-        score_min REAL, formulation_id INTEGER, priority INTEGER,
+        score_min DOUBLE PRECISION, formulation_id INTEGER, priority INTEGER,
         other_therapies TEXT, notes TEXT, source TEXT)""")
     cx.commit()
 

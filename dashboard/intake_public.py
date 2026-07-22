@@ -27,7 +27,7 @@ def init_intake_sessions_table(cx):
         " email TEXT NOT NULL,"
         " name TEXT,"
         " created_at TEXT NOT NULL,"
-        " expires_at REAL NOT NULL)")          # epoch seconds — tz-proof compare
+        " expires_at DOUBLE PRECISION NOT NULL)")          # epoch seconds — tz-proof compare
 
 
 def create_session(cx, email, name, now):
