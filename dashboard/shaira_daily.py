@@ -10,6 +10,8 @@ import json
 import sqlite3
 from datetime import datetime, timezone, timedelta
 
+from dashboard import db
+
 # Diplomatic stuck-language Shaira tends to use instead of saying "I'm stuck"
 # (from memory project_shaira_coordination.md).
 STUCK_PHRASES = [
@@ -36,7 +38,7 @@ def gather_metrics(db_path, owner="shaira", window_hours=24):
     cutoff3d = (now - timedelta(days=3)).isoformat()
     cutoff7d = (now - timedelta(days=7)).isoformat()
 
-    with sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         cx.row_factory = sqlite3.Row
 
         sessions = cx.execute(
@@ -251,7 +253,7 @@ def generate_and_store(db_path, cl, owner="shaira"):
     metrics = gather_metrics(db_path, owner)
     md = compose_report(metrics, cl)
     date_tag = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    with sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         cx.execute("""
             INSERT INTO daily_reports (owner, report_date, report_md, metrics_json)
             VALUES (?,?,?,?)
@@ -271,7 +273,7 @@ def generate_and_store(db_path, cl, owner="shaira"):
 
 def latest_report(db_path, owner="shaira"):
     """Most recent stored report, shaped for the dashboard 'briefing' renderer."""
-    with sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT report_date, report_md, created_at FROM daily_reports "
