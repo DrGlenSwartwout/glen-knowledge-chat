@@ -29742,27 +29742,42 @@ def _console_cookie_valid(val):
 
 def _present_console_key():
     """The console key this request presents: the X-Console-Key header, the
-    ?key= query arg, or — for a browser that logged in — a valid signed cookie
-    (returns CONSOLE_SECRET so the existing `== CONSOLE_SECRET` checks pass)."""
+    ?key= query arg, or — for a browser that logged in — a valid login cookie.
+    A master-secret cookie returns CONSOLE_SECRET (so the existing
+    `== CONSOLE_SECRET` checks pass); an OWNER-token cookie returns that token
+    itself (so `_owner_token_ok` passes) and NEVER escalates to the master
+    secret."""
     k = request.headers.get("X-Console-Key", "") or request.args.get("key", "")
     if k:
         return k
-    if _console_cookie_valid(request.cookies.get(CONSOLE_COOKIE, "")):
-        return CONSOLE_SECRET
+    ck = request.cookies.get(CONSOLE_COOKIE, "")
+    if not ck:
+        return ""
+    if _console_cookie_valid(ck):
+        return CONSOLE_SECRET       # master-secret login cookie
+    if _owner_token_ok(ck):
+        return ck                   # OWNER-token login cookie → the token itself
     return ""
 
 
 @app.before_request
 def _console_browser_login():
-    """Turn a browser's ?key=<master secret> on a /console or /admin page into a
-    cookie + a clean URL. Only fires for HTML GET navigations presenting the
-    master secret; API calls, XHR/fetch, and owner-token URLs fall through
-    untouched so their scriptable ?key= behavior is preserved."""
+    """Turn a browser's ?key=<master secret OR owner token> on a /console or
+    /admin page into a login cookie + a clean URL. Fires only for HTML GET
+    navigations presenting the master secret or a valid OWNER token (e.g. Rae);
+    API calls, XHR/fetch, scoped (VA) tokens, and invalid keys fall through
+    untouched so their scriptable ?key= behavior is preserved. The master secret
+    is stored as its HMAC (never the secret itself); an owner token is stored as
+    itself (httponly), so that cookie authenticates only as that revocable token
+    and never escalates to the master secret."""
     if request.method != "GET":
         return None
     key = request.args.get("key", "")
-    if not key or key != CONSOLE_SECRET:
-        return None  # no key, or an owner/invalid key → leave the route's gate in charge
+    if not key:
+        return None
+    is_master = (key == CONSOLE_SECRET)
+    if not is_master and not _owner_token_ok(key):
+        return None  # scoped/invalid key → leave the route's gate in charge
     path = request.path or ""
     if not (path == "/console" or path.startswith("/console/")
             or path == "/admin" or path.startswith("/admin/")):
@@ -29773,8 +29788,9 @@ def _console_browser_login():
     rest = [(k, v) for k, v in request.args.items(multi=True) if k != "key"]
     clean = path + (("?" + urlencode(rest)) if rest else "")
     resp = redirect(clean, code=302)
+    cookie_val = _console_cookie_value() if is_master else key
     resp.set_cookie(
-        CONSOLE_COOKIE, _console_cookie_value(),
+        CONSOLE_COOKIE, cookie_val,
         max_age=CONSOLE_COOKIE_MAX_AGE, httponly=True,
         secure=request.is_secure, samesite="Lax")
     return resp
@@ -29794,9 +29810,12 @@ def _console_rolling_session(resp):
             return resp
         if request.args.get("key"):
             return resp
-        if _console_cookie_valid(request.cookies.get(CONSOLE_COOKIE, "")):
+        ck = request.cookies.get(CONSOLE_COOKIE, "")
+        # Re-issue the SAME cookie value (master HMAC or the owner token) so the
+        # rolling window covers owner-token sessions (e.g. Rae) too.
+        if ck and (_console_cookie_valid(ck) or _owner_token_ok(ck)):
             resp.set_cookie(
-                CONSOLE_COOKIE, _console_cookie_value(),
+                CONSOLE_COOKIE, ck,
                 max_age=CONSOLE_COOKIE_MAX_AGE, httponly=True,
                 secure=request.is_secure, samesite="Lax")
     except Exception:
