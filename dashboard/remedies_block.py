@@ -58,7 +58,7 @@ def _build_ranked(cx, email, top_n=5):
                 "name": prod.get("name") or pk,
                 "url": prod.get("url") or "",
                 "source": sec.get("source"),
-                "reason": prod.get("operator_note") or prod.get("client_note") or "",
+                "reason": prod.get("client_note") or "",
             })
             if len(ranked) >= top_n:
                 return ranked
