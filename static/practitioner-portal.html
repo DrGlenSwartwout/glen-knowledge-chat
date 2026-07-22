@@ -132,6 +132,7 @@
   }
 </style>
 <script>(function(){var t=localStorage.getItem('rm-theme');if(t)document.documentElement.setAttribute('data-theme',t);})();</script>
+<script src="/static/theme-mode.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -140,7 +141,7 @@
       <img id="brand-logo" src="" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,.08)">
       <div><h1>Practitioner Portal</h1><div class="muted" id="who">Loading…</div></div>
     </div>
-    <button id="theme-toggle" class="ghost" onclick="toggleTheme()" style="white-space:nowrap">Light</button>
+    <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
   </div>
   <!-- Ask Dr. Glen + Assignment: persistent ABOVE the tabs so they stay visible on
        every tab (answers product/condition questions AND suggests Functional
@@ -448,14 +449,9 @@ var TOKEN = new URLSearchParams(location.search).get('token') || '';
 var UNLOCKED = false;  // set in render(): true = resale-approved/licensed (wholesale, tax-exempt)
 var $ = function(id){ return document.getElementById(id); };
 var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
-function toggleTheme(){
-  var next = document.documentElement.getAttribute('data-theme')==='light' ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('rm-theme', next);
-  var b=document.getElementById('theme-toggle'); if(b) b.textContent = next==='light' ? 'Dark' : 'Light';
-  if(typeof renderPartnerCharts==='function') renderPartnerCharts();
-}
-(function(){ var t=document.documentElement.getAttribute('data-theme'); var b=document.getElementById('theme-toggle'); if(b) b.textContent = t==='light' ? 'Dark' : 'Light'; })();
+// Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
+if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
+document.addEventListener('rm-theme-change', function(){ if (typeof renderPartnerCharts==='function') renderPartnerCharts(); });
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function linkify(s){
   return s.replace(/((?:https?:\/\/|www\.)[^\s<]+|\b[a-z0-9-]+\.(?:com|org|net|io|vip|co)(?:\/[^\s<]*)?)/gi, function(m){
