@@ -378,21 +378,21 @@
 
   .portal-hub { margin: 0 0 1.25rem; }
   .hub-banner { display:flex; gap:1rem; align-items:center; flex-wrap:wrap;
-    background:var(--brand-soft,#e5efea); border:1px solid #cdd9d2; border-radius:14px; padding:1rem 1.15rem; }
+    background:var(--brand-soft,#e5efea); border:1px solid var(--line); border-radius:14px; padding:1rem 1.15rem; }
   .hub-banner .where { flex:1; min-width:12rem; }
-  .hub-banner .eyebrow { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:#2f6f5e; font-weight:700; }
+  .hub-banner .eyebrow { font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--brand); font-weight:700; }
   .hub-banner h2 { font-size:1.15rem; margin:.15rem 0 .2rem; }
-  .hub-banner .next { background:#f6ecd2; border:1px solid #cdd9d2; border-radius:10px; padding:.6rem .75rem; max-width:16rem; }
+  .hub-banner .next { background:#f6ecd2; border:1px solid var(--line); border-radius:10px; padding:.6rem .75rem; max-width:16rem; color:#1E2A2A; }
   .hub-grid-group { margin-top:1rem; }
-  .hub-grid-group .glabel { font-size:.68rem; letter-spacing:.11em; text-transform:uppercase; color:#7c8a83; font-weight:700; margin:.1rem 0 .5rem; }
+  .hub-grid-group .glabel { font-size:.68rem; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); font-weight:700; margin:.1rem 0 .5rem; }
   .hub-tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:.7rem; }
   @media (max-width:760px){ .hub-tiles { grid-template-columns:repeat(2,1fr); } }
   @media (max-width:480px){ .hub-tiles { grid-template-columns:1fr; } }
-  .hub-tile { text-align:left; cursor:pointer; background:#fff; border:1px solid #dde6e0; border-radius:12px;
-    padding:.8rem; min-height:5.5rem; display:flex; flex-direction:column; gap:.35rem; font:inherit; color:inherit; }
+  .hub-tile { text-align:left; cursor:pointer; background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:.8rem; min-height:5.5rem; display:flex; flex-direction:column; gap:.35rem; font:inherit; color:var(--ink); }
   .hub-tile:hover,.hub-tile:focus-visible { border-color:#2f6f5e; box-shadow:0 6px 18px rgba(24,36,32,.08); outline:none; }
   .hub-tile .tname { font-weight:650; font-size:.95rem; }
-  .hub-tile .tdesc { font-size:.78rem; color:#7c8a83; }
+  .hub-tile .tdesc { font-size:.78rem; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -654,6 +654,7 @@ function terrainBanner(d, kind){
 // runs in global scope. Remembers the last-viewed tab in sessionStorage so a
 // household member switch (a full page nav) can land back on the same tab.
 function showTab(name){
+  if(!document.querySelector('[data-panel="'+name+'"]')){ name = 'current'; }
   document.querySelectorAll('#portalTabs .tab').forEach(b =>
     b.classList.toggle('is-active', b.dataset.tab === name));
   document.querySelectorAll('[data-panel]').forEach(p =>
