@@ -26504,19 +26504,36 @@ def client_login_verify():
         return ("Not found", 404)
     from dashboard import portal_identity as _pi
     token = (request.args.get("token") or request.form.get("token") or "").strip()
+    sess_cookie = request.cookies.get("rm_portal_session", "")
     if request.method == "GET":
         with _db_lock, db.connect(LOG_DB) as cx:
             live = _pi.validate_client_magic_link(cx, token) if token else None
-        if not live:
-            return _redir("/portal/login?error=link")
-        return _confirm_post_page(
+            if not live:
+                # A dead/absent token isn't necessarily a dead session -- Back
+                # button can restore this page after a real sign-in already
+                # happened. Fall back to the same check /portal/me trusts
+                # before treating this as an error.
+                ident = _pi.identity_from_session(cx, sess_cookie) if sess_cookie else None
+                if ident:
+                    return _redir("/portal/me")
+                return _redir("/portal/login?error=link")
+        resp = _mkresp(_confirm_post_page(
             "/portal/login-verify", title="Sign in",
             heading="Welcome back",
             blurb="Continue to open your healing home.",
-            button="Continue", hidden={"token": token})
+            button="Continue", hidden={"token": token}))
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
     with _db_lock, db.connect(LOG_DB) as cx:
         pid = _pi.consume_client_magic_link(cx, token) if token else None
         if not pid:
+            # Same Back-button case on the POST side: the token this form
+            # carried may have already been consumed by an earlier submit
+            # that already signed the browser in.
+            ident = _pi.identity_from_session(cx, sess_cookie) if sess_cookie else None
+            if ident:
+                return _redir("/portal/me")
             return _redir("/portal/login?error=link")
         sess = _pi.create_client_session(cx, pid, "")
     resp = _mkresp(_redir("/portal/me"))
