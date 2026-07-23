@@ -18,6 +18,7 @@ from dashboard import health_profile as _hp
 from dashboard import oasis_block as _ob
 from dashboard import portal_biofield_reports as _pbr
 from dashboard import portal_offers as _po
+from dashboard import remedies_block as _rb
 from dashboard import supplement_reviews as _sr
 
 
@@ -321,6 +322,7 @@ def _onboarding_block(cx, email):
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
                     hub_enabled=False, health_profile_enabled=False,
+                    remedies_enabled=False,
                     biofield_unlocked=True, supplement_review_enabled=False,
                     oasis_enabled=False, terrain_phase=None):
     import sqlite3
@@ -359,5 +361,6 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "consult": _consult_block(cx, email),
         "onboarding": _onboarding_block(cx, email),
         "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
+        "remedies": _rb.build_block(cx, email, remedies_enabled),
         "oasis": _ob.build_block(cx, email, oasis_enabled, terrain_phase),
     }

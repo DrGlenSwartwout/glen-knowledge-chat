@@ -746,11 +746,18 @@ function backToHub(){
 // Journey-grouped hub landing. Each tile routes via the existing showTab() to a
 // [data-panel] section. Groups encode the healing journey. Later phases add tiles.
 function buildHubHtml(d, v){
-  // Task 2: the health tile is only meaningful (and only rendered) once the
-  // curated health_profile block is enabled — off-state must add nothing.
   const understandTiles = [
     ["current", "My Analysis", "Your current scan, matches and healing path"],
   ];
+  // Gated on the flag: the "remedies" [data-panel] section itself only renders
+  // when v.remedies.enabled (see the panel wrap below), so the tile must not
+  // be offered when that's off — otherwise it's a dead/bouncing tile (showTab
+  // falls back to hub when the target panel doesn't exist in the DOM).
+  if(v && v.remedies && v.remedies.enabled){
+    understandTiles.push(["remedies", "My Remedies", "Your ranked matches and the stack you take"]);
+  }
+  // Task 2: the health tile is only meaningful (and only rendered) once the
+  // curated health_profile block is enabled — off-state must add nothing.
   if (v && v.health_profile && v.health_profile.enabled) {
     const pending = v.health_profile.suggestion_count;
     understandTiles.push(["health", "My Health Profile", "Your history, symptoms and intake",
@@ -1190,6 +1197,96 @@ function buildOrdersHtml(d){
     body = `<div class="card"><h2>Orders &amp; Invoices</h2><p class="muted">No invoices yet.</p></div>`;
   }
   return body;
+}
+// My Remedies panel body: two sections built from Task 3's v.remedies payload.
+// "Top recommended for you" lists the ranked matches (v.remedies.ranked), each
+// with an "Add to my Oasis / order" button carrying data-oasis-add, wired by
+// the delegated click handler in render() (wireRemediesPanel). "What you take
+// from other companies" lists the client's self-reported stack
+// (v.remedies.external), each with a client-friendly status pill, a Request a
+// review button (shown only while status is "listed", carrying the row's
+// name+brand — the endpoint reads name/brand, not product_key), an Edit
+// affordance that reveals reason/importance inputs, a Remove control (listed
+// rows only — never a row with a review in progress or confirmed), the review
+// text once confirmed, and an upgrade pointer when the server has one. This
+// function renders markup and data-hooks only — the fetch/POST wiring lives in
+// render()'s wireRemediesPanel, via delegation on the panel container so a
+// redraw after any action never orphans its own listeners.
+function buildRemediesHtml(v){
+  const rem = (v && v.remedies) || {};
+  const ranked = Array.isArray(rem.ranked) ? rem.ranked : [];
+  const external = Array.isArray(rem.external) ? rem.external : [];
+  const STATUS_PILL = {listed:"On your list", requested:"Review in progress", ai_draft:"Review in progress", confirmed:"Reviewed"};
+
+  const rankedRows = ranked.length
+    ? ranked.map(r=>{
+        const meta = [r.source, r.reason].filter(Boolean).map(esc).join(" &middot; ");
+        return `<div class="remitem" data-product-key="${esc(r.product_key)}">
+          <div class="remitem-top">
+            <span class="nm-wrap"><a class="nm" href="${esc(r.url||"#")}" target="_blank" rel="noopener">${esc(r.name||r.product_key||"")}</a>${meta?`<span class="prov">${meta}</span>`:""}</span>
+          </div>
+          <div class="remitem-bot">
+            <button type="button" class="btn" data-oasis-add="${esc(r.product_key)}">Add to my Oasis / order</button>
+          </div>
+        </div>`;
+      }).join("")
+    : `<p class="muted small">Your ranked matches will appear here once your scan is analyzed.</p>`;
+
+  const externalRows = external.length
+    ? external.map(e=>{
+        const label = (e.product_brand ? `${esc(e.product_brand)} &middot; ` : "") + esc(e.product_name||"");
+        const pillText = STATUS_PILL[e.status] || esc(e.status||"");
+        const meta = [];
+        if(e.reason) meta.push(esc(e.reason));
+        if(e.importance!=null && e.importance!=="") meta.push(`Importance ${esc(e.importance)}/10`);
+        const metaLine = meta.length ? `<p class="small muted" style="margin:.2rem 0">${meta.join(" &middot; ")}</p>` : "";
+        const reviewLine = (e.status === "confirmed" && e.review)
+          ? `<p class="small" style="margin:.3rem 0">${esc(e.review)}</p>`
+          : "";
+        const up = e.upgrade;
+        const upgradeLine = up
+          ? `<p class="small" style="margin:.3rem 0">A stronger option: <a href="${esc(up.url||"#")}" target="_blank" rel="noopener">${esc(up.name||"")}</a>${up.reason?`. ${esc(up.reason)}`:""}</p>`
+          : "";
+        const isListed = e.status === "listed";
+        const actionBtns = [];
+        if(isListed){
+          actionBtns.push(`<button type="button" class="btn" data-req-name="${esc(e.product_name||"")}" data-req-brand="${esc(e.product_brand||"")}">Request a review</button>`);
+        }
+        actionBtns.push(`<button type="button" class="btn ghost small" data-remedy-edit="${esc(e.product_key||"")}">Edit</button>`);
+        if(isListed){
+          actionBtns.push(`<button type="button" class="btn ghost small" data-remedy-remove="${esc(e.product_key||"")}">Remove</button>`);
+        }
+        const actionsLine = actionBtns.length ? `<div class="remitem-bot">${actionBtns.join("")}</div>` : "";
+        const editArea = `<div class="remitem-edit" hidden style="margin:.4rem 0">
+          <label class="small muted">Why are you taking it?</label>
+          <textarea data-edit-reason rows="2" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin:.2rem 0;font-family:inherit;resize:vertical">${esc(e.reason||"")}</textarea>
+          <label class="small muted">Importance to you (1 to 10)</label>
+          <input data-edit-importance type="number" min="1" max="10" step="1" value="${e.importance!=null?esc(e.importance):""}" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin:.2rem 0 .4rem;font-family:inherit">
+          <button type="button" class="btn" data-remedy-save="${esc(e.product_key||"")}">Save</button>
+        </div>`;
+        return `<div class="remitem" data-product-key="${esc(e.product_key||"")}">
+          <div class="remitem-top">
+            <span class="nm-wrap"><span class="nm">${label}</span></span>
+            <span class="pill">${pillText}</span>
+          </div>
+          ${metaLine}${reviewLine}${upgradeLine}${actionsLine}${editArea}
+        </div>`;
+      }).join("")
+    : `<p class="muted small">Nothing added yet.</p>`;
+
+  const addForm = `<div class="card quiet" id="ext-add-card" style="margin-top:.7rem">
+    <h3 style="margin:.2rem 0 .5rem;font-size:.9rem">Add a product you take</h3>
+    <input id="ext-brand" placeholder="Brand" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit">
+    <input id="ext-product" placeholder="Product name" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit">
+    <textarea id="ext-reason" rows="2" placeholder="Why are you taking it?" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem;font-family:inherit;resize:vertical"></textarea>
+    <label class="small muted" for="ext-importance">Importance to you (1 to 10)</label>
+    <input id="ext-importance" type="number" min="1" max="10" step="1" placeholder="1 to 10" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin:.3rem 0 .5rem;font-family:inherit">
+    <button type="button" class="btn full" id="ext-add-btn">Add to my stack</button>
+    <p class="small muted" id="ext-add-status" style="margin-top:.4rem"></p>
+  </div>`;
+
+  return `<div class="card"><h2>Top recommended for you</h2><div>${rankedRows}</div></div>
+    <div class="card"><h2>What you take from other companies</h2><div>${externalRows}</div>${addForm}</div>`;
 }
 
 // The biofield scan the page is currently viewing (null = newest, server default).
@@ -2911,7 +3008,8 @@ function render(d, v){
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>
       <section data-panel="account" hidden>${back}${_accountHtml}</section>
       <section data-panel="refer" hidden>${back}${_referHtml || '<div class="card quiet"><p class="muted">Ambassador program details will appear here.</p></div>'}</section>
-      <section data-panel="referrals" hidden>${back}${_referralsHtml}</section>` : ""}`;
+      <section data-panel="referrals" hidden>${back}${_referralsHtml}</section>
+      ${_hub && v.remedies && v.remedies.enabled ? `<section data-panel="remedies" hidden>${back}${buildRemediesHtml(v)}</section>` : ""}` : ""}`;
   }
 
   app.innerHTML = html;
@@ -2972,6 +3070,149 @@ function render(d, v){
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
 
   wireRecommendationsCard();
+
+  // My Remedies panel: every action (ranked "Add to my Oasis / order" hand-off,
+  // plus the external-stack add/request-review/remove/edit actions) is wired
+  // via ONE delegated click listener on the panel container, not per-element
+  // bindings. That matters here specifically because add/request-review/
+  // remove/meta all return the FULL refreshed remedies block (dashboard/
+  // remedies_block.build_block — {enabled, ranked, external}) and this
+  // handler redraws the panel from it (v.remedies = <response>; panel.innerHTML
+  // = backToHub() + buildRemediesHtml(v)); a per-element binding would be
+  // orphaned by that redraw, so delegation is used for every action here,
+  // including the ranked-row hand-off, to keep the pattern consistent.
+  (function wireRemediesPanel(){
+    const panel = document.querySelector('[data-panel="remedies"]');
+    if(!panel) return;
+    const setAddStatus = (msg) => {
+      const s = panel.querySelector("#ext-add-status");
+      if(s) s.textContent = msg || "";
+    };
+    const redraw = () => { panel.innerHTML = backToHub() + buildRemediesHtml(v); };
+    panel.addEventListener("click", async (ev) => {
+      // Ranked row hand-off: data-oasis-add carries a real catalog slug
+      // (ranked items' product_key IS the slug — see
+      // dashboard/remedies_block.py _build_ranked). Idempotent on the
+      // server, so a repeat click is harmless.
+      const oasisBtn = ev.target.closest("[data-oasis-add]");
+      if(oasisBtn){
+        if(oasisBtn.disabled) return;
+        const slug = oasisBtn.getAttribute("data-oasis-add");
+        oasisBtn.disabled = true;
+        const label = oasisBtn.textContent;
+        try{
+          const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/to-oasis`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({slug})
+          });
+          const j = await r.json();
+          if(j.ok){ oasisBtn.textContent = "Added to your Oasis"; return; }
+          oasisBtn.disabled = false; oasisBtn.textContent = label;
+        }catch(e){ oasisBtn.disabled = false; oasisBtn.textContent = label; }
+        return;
+      }
+
+      // Add form: "Add to my stack".
+      const addBtn = ev.target.closest("#ext-add-btn");
+      if(addBtn){
+        if(addBtn.disabled) return;
+        const product = (panel.querySelector("#ext-product")?.value || "").trim();
+        const brand = (panel.querySelector("#ext-brand")?.value || "").trim();
+        const reason = (panel.querySelector("#ext-reason")?.value || "").trim();
+        const impRaw = (panel.querySelector("#ext-importance")?.value || "").trim();
+        const importance = impRaw ? (parseInt(impRaw, 10) || null) : null;
+        if(!product){ setAddStatus("Please enter a product name before adding."); return; }
+        addBtn.disabled = true;
+        setAddStatus("Adding…");
+        try{
+          const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/add`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({product_name: product, product_brand: brand || null, reason: reason || null, importance})
+          });
+          if(r.ok){ v.remedies = await r.json(); redraw(); return; }
+          setAddStatus("Something went wrong. Please try again.");
+          addBtn.disabled = false;
+        }catch(e){ setAddStatus("Something went wrong. Please try again."); addBtn.disabled = false; }
+        return;
+      }
+
+      // Request a review: carries the row's name + brand — the endpoint
+      // reads product_name/product_brand, not product_key.
+      const reqBtn = ev.target.closest("[data-req-name]");
+      if(reqBtn){
+        if(reqBtn.disabled) return;
+        reqBtn.disabled = true;
+        const label = reqBtn.textContent;
+        reqBtn.textContent = "Requesting…";
+        try{
+          const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/request-review`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              product_name: reqBtn.getAttribute("data-req-name") || "",
+              product_brand: reqBtn.getAttribute("data-req-brand") || ""
+            })
+          });
+          if(r.ok){ v.remedies = await r.json(); redraw(); return; }
+          reqBtn.disabled = false; reqBtn.textContent = label;
+        }catch(e){ reqBtn.disabled = false; reqBtn.textContent = label; }
+        return;
+      }
+
+      // Remove a still-listed row (never a row with a review in progress or
+      // confirmed — buildRemediesHtml only emits this control for "listed").
+      const rmBtn = ev.target.closest("[data-remedy-remove]");
+      if(rmBtn){
+        if(rmBtn.disabled) return;
+        rmBtn.disabled = true;
+        const label = rmBtn.textContent;
+        rmBtn.textContent = "Removing…";
+        try{
+          const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/remove`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({product_key: rmBtn.getAttribute("data-remedy-remove") || ""})
+          });
+          if(r.ok){ v.remedies = await r.json(); redraw(); return; }
+          rmBtn.disabled = false; rmBtn.textContent = label;
+        }catch(e){ rmBtn.disabled = false; rmBtn.textContent = label; }
+        return;
+      }
+
+      // Edit reveal: toggles the row's inline reason/importance inputs.
+      const editBtn = ev.target.closest("[data-remedy-edit]");
+      if(editBtn){
+        const row = editBtn.closest(".remitem");
+        const editArea = row && row.querySelector(".remitem-edit");
+        if(editArea) editArea.hidden = !editArea.hidden;
+        return;
+      }
+
+      // Save: always sends BOTH reason and importance (the endpoint replaces
+      // both wholesale, so omitting one would null it out).
+      const saveBtn = ev.target.closest("[data-remedy-save]");
+      if(saveBtn){
+        if(saveBtn.disabled) return;
+        const pk = saveBtn.getAttribute("data-remedy-save") || "";
+        const row = saveBtn.closest(".remitem");
+        const reasonInput = row && row.querySelector("[data-edit-reason]");
+        const impInput = row && row.querySelector("[data-edit-importance]");
+        const reason = (reasonInput && reasonInput.value || "").trim();
+        const impRaw = (impInput && impInput.value || "").trim();
+        const importance = impRaw ? (parseInt(impRaw, 10) || null) : null;
+        saveBtn.disabled = true;
+        const label = saveBtn.textContent;
+        saveBtn.textContent = "Saving…";
+        try{
+          const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/meta`, {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({product_key: pk, reason, importance})
+          });
+          if(r.ok){ v.remedies = await r.json(); redraw(); return; }
+          saveBtn.disabled = false; saveBtn.textContent = label;
+        }catch(e){ saveBtn.disabled = false; saveBtn.textContent = label; }
+        return;
+      }
+    });
+  })();
 
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));

@@ -6108,6 +6108,10 @@ _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().low
 # Ships dark; flip to route the portal through the hub instead of the single
 # Current-Analysis scroll. Same truthy set as the finder flag.
 _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# "My Remedies" client-portal tile (ranked recommendations + external supplement
+# stack, dashboard/remedies_block.py). Ships dark; same truthy set as the other
+# portal flags.
+_PORTAL_REMEDIES_ENABLED = os.environ.get("PORTAL_REMEDIES_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Curated read of the client's intake record ("My Health Profile" page) into
 # the client portal. Ships dark; same truthy set as the other portal flags.
 _PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -20148,6 +20152,148 @@ def api_portal_rec_section(token):
     return jsonify({"ok": True})
 
 
+def _remedies_coerce_importance(value):
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _remedies_product_key(name, brand):
+    """Stable dedupe key for an external product: delegates to
+    dashboard.supplement_reviews.product_key, the single source of truth for
+    this normalization (kept as its own function here so existing call sites
+    in app.py are unaffected)."""
+    from dashboard import supplement_reviews as _sr
+    return _sr.product_key(name, brand)
+
+
+@app.route("/api/portal/<token>/remedies/add", methods=["POST"])
+def api_portal_remedies_add(token):
+    """Client adds a supplement to their externally-maintained stack. Token-authed:
+    identity comes ONLY from the portal token, never the request body."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
+    data = request.get_json(silent=True) or {}
+    name = (data.get("product_name") or "").strip()
+    brand = (data.get("product_brand") or "").strip()
+    reason = (data.get("reason") or "").strip()
+    importance = _remedies_coerce_importance(data.get("importance"))
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _sr.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _sr.add_listed(cx, email, name, product_brand=brand, reason=reason, importance=importance)
+        block = _rb.build_block(cx, email, True)
+    return jsonify(block)
+
+
+@app.route("/api/portal/<token>/remedies/meta", methods=["POST"])
+def api_portal_remedies_meta(token):
+    """Client updates the reason/importance on an existing external-stack row.
+    set_meta() full-replaces both fields, so the field the client did NOT send
+    is loaded from the current row and passed through unchanged. Token-authed."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
+    data = request.get_json(silent=True) or {}
+    pk = (data.get("product_key") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _sr.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        current = next((r for r in _sr.list_for_email(cx, email)
+                         if _remedies_product_key(r.get("product_name"), r.get("product_brand")) == pk), None)
+        cur_reason = (current or {}).get("reason")
+        cur_importance = (current or {}).get("importance")
+        reason = data["reason"] if "reason" in data else cur_reason
+        importance = _remedies_coerce_importance(data["importance"]) if "importance" in data else cur_importance
+        _sr.set_meta(cx, email, pk, reason=reason, importance=importance)
+        block = _rb.build_block(cx, email, True)
+    return jsonify(block)
+
+
+@app.route("/api/portal/<token>/remedies/remove", methods=["POST"])
+def api_portal_remedies_remove(token):
+    """Client removes a still-listed/requested row from their external stack.
+    Never removes an ai_draft/confirmed review (dashboard.supplement_reviews.remove
+    refuses that). Token-authed."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
+    data = request.get_json(silent=True) or {}
+    pk = (data.get("product_key") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _sr.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _sr.remove(cx, email, pk)
+        block = _rb.build_block(cx, email, True)
+    return jsonify(block)
+
+
+@app.route("/api/portal/<token>/remedies/request-review", methods=["POST"])
+def api_portal_remedies_request_review(token):
+    """Client requests Dr. Glen's free product review on a supplement (promotes
+    a 'listed' row to 'requested', feeding the console approval + analyzer
+    pipeline). Token-authed."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
+    data = request.get_json(silent=True) or {}
+    name = (data.get("product_name") or "").strip()
+    brand = (data.get("product_brand") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _sr.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _sr.create_request(cx, email, name, product_brand=brand, source="portal")
+        block = _rb.build_block(cx, email, True)
+    return jsonify(block)
+
+
+@app.route("/api/portal/<token>/remedies/to-oasis", methods=["POST"])
+def api_portal_remedies_to_oasis(token):
+    """Client hands off a ranked My Remedies match into their Healing Oasis
+    wishlist ("Add to my Oasis / order"). Token-authed: identity comes ONLY
+    from the portal token, never the request body. Idempotent: ensures the
+    slug is present on the wishlist, never toggles an already-present slug
+    off. Records a best-effort engagement event; a failure there never
+    fails the request."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, wishlist as _wl, recommendation_events as _re
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _wl.init_wishlist_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if email and slug:
+            owner = _wl.resolve_owner(email, None)
+            if slug not in _wl.slugs_for(cx, owner):
+                _wl.toggle(cx, owner, slug)
+            try:
+                _re.init_recommendation_events(cx)
+                _re.record_click(cx, email, slug, "my-remedies")
+            except Exception:
+                pass
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/program", methods=["GET"])
 def api_portal_program(token):
     """Personalized membership program blocks for the program page."""
@@ -25640,6 +25786,7 @@ def api_client_portal_view(token):
                                    health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
                                    supplement_review_enabled=_sr.enabled(),
+                                   remedies_enabled=_PORTAL_REMEDIES_ENABLED,
                                    oasis_enabled=_PORTAL_OASIS_ENABLED,
                                    terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email))
     if view is None:
