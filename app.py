@@ -21621,6 +21621,88 @@ def api_portal_health_profile(token):
     return jsonify({"ok": True, "health_profile": block})
 
 
+@app.route("/api/portal/<token>/oasis/tool/add", methods=["POST"])
+def api_portal_oasis_tool_add(token):
+    """Client self-reports an external tool they already own (the My Healing
+    Oasis "Build Out" card's own add-a-tool form). Identity comes from the
+    portal TOKEN, never the body. When the tool carries a slug matching a
+    hero-family prefix (see dashboard/oasis_block._normalize_owned_for_roadmap),
+    that hero drops out of the returned roadmap. Returns the refreshed oasis
+    block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    brand = (body.get("brand") or "").strip()
+    slug = (body.get("slug") or "").strip() or None
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _ot.add(cx, email, name, brand, slug)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
+@app.route("/api/portal/<token>/oasis/tool/remove", methods=["POST"])
+def api_portal_oasis_tool_remove(token):
+    """Client removes a self-reported external tool from their My Healing
+    Oasis "Build Out" card. Identity comes from the portal TOKEN, never the
+    body. Returns the refreshed oasis block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    tool_id = body.get("tool_id")
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _ot.remove(cx, email, tool_id)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
+@app.route("/api/portal/<token>/oasis/roadmap/want", methods=["POST"])
+def api_portal_oasis_roadmap_want(token):
+    """Client adds one roadmap recommendation to their wishlist from the My
+    Healing Oasis "Build Out" card. Identity comes from the portal TOKEN,
+    never the body. This is an ensure-present ADD, never a toggle: a slug
+    already on the wishlist is left alone (idempotent) -- matches the
+    shared handoff surface My Remedies uses. Returns the refreshed oasis
+    block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    from dashboard import wishlist as _wl
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        _wl.init_wishlist_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if slug:
+            owner = _wl.resolve_owner(email, None)
+            if owner and slug not in _wl.slugs_for(cx, owner):
+                _wl.toggle(cx, owner, slug)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
 def _decode_suggested_value(raw):
     """`health_suggestions.add_pending` stores plain strings as-is and JSON-encodes
     everything else (see its docstring), so decode symmetrically: a JSON-parseable
