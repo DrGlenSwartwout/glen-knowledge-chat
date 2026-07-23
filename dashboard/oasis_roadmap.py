@@ -133,10 +133,11 @@ TERRAIN_TOOLS = {
 # no terrain phase is on file. Glen: extend as more broadly-useful tools are confirmed.
 GENERAL_TOOLS = [
     {
-        "slug": "own-box",
-        "name": "OWN Box",
-        "why": "A low-cost daily EMF-mitigation tool with broad applicability "
-               "across every client's protocol.",
+        "slug": "emf-free-headset",
+        "name": "EMF Free Headset",
+        "why": "A low-cost daily EMF-mitigation tool -- air tubes conduct sound "
+               "instead of a wire antenna against the head -- with broad "
+               "applicability across every client's protocol.",
         "tier": "general",
     },
     {
