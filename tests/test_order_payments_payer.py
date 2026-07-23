@@ -17,3 +17,19 @@ def test_add_payment_stamps_payer():
     cx = _cx()
     row = op.add_payment(cx, 1, 5000, "Zelle", payer_email="steve@x.com")
     assert row["payer_email"] == "steve@x.com"
+
+def test_money_view_attributes_to_payer():
+    cx = _cx()
+    op.add_payment(cx, 1, 5000, "Zelle", payer_email="steve@x.com")
+    op.add_payment(cx, 1, 2000, "Zelle")  # self-paid, payer NULL
+    cx.row_factory = sqlite3.Row
+    rows = op.ledger_rows_for_payments_view(cx)
+    emails = sorted(r["email"] for r in rows)
+    assert emails == ["michael@x.com", "steve@x.com"]
+
+def test_refund_inherits_payer():
+    cx = _cx()
+    pay = op.add_payment(cx, 1, 5000, "Zelle", payer_email="steve@x.com")
+    op.add_refund(cx, 1, 5000, "Zelle", refunds_payment_id=pay["id"])
+    ref = cx.execute("SELECT payer_email FROM order_payments WHERE kind='refund'").fetchone()
+    assert ref[0] == "steve@x.com"

@@ -72,7 +72,7 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
     rows = cx.execute(
         "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, op.source AS op_source, "
         "op.external_ref AS op_ref, op.paid_at, op.created_at, "
-        "o.email, o.name, o.channel "
+        "COALESCE(op.payer_email, o.email) AS email, o.name, o.channel "
         "FROM order_payments op JOIN orders o ON o.id = op.order_id "
         # Non-Stripe rows (manual payments + refunds) PLUS Stripe REFUNDS. A card
         # refund is source='stripe' but has NO row in the Stripe charge ledger
@@ -312,11 +312,15 @@ def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
     if src_pay and src_pay.get("source") == "stripe" and src_pay.get("external_ref"):
         sr = stripe_pay.refund(src_pay["external_ref"], amount_cents=amt)
         external_ref = sr.get("id")
+    parent_payer = None
+    if refunds_payment_id is not None:
+        _p = _row(cx, refunds_payment_id)
+        parent_payer = (_p or {}).get("payer_email")
     try:
         row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
                       source=("stripe" if external_ref else "manual"),
                       external_ref=external_ref, refunds_payment_id=refunds_payment_id,
-                      paid_at=None, note=note, actor=actor)
+                      paid_at=None, note=note, actor=actor, payer_email=parent_payer)
     except Exception:
         if external_ref:
             # Stripe already moved the money — this row is the only trace of it.
