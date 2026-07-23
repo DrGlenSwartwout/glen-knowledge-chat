@@ -125,6 +125,21 @@ def test_dosed_supplement_included():
     assert [i["slug"] for i in items] == ["neuro-mag"]
 
 
+def test_is_device_includes_vendor_shipped_device():
+    """A vendor-drop-shipped device (Kloud PEMF / NES miHealth) has
+    is_shippable() False but IS a device we sell -- it must count as a device
+    (else it vanishes from "Tools you own with us")."""
+    kloud = {"name": "Kloud PEMF Maxi", "bottle_type": "own-box", "vendor_shipped": True}
+    assert rep.is_device(kloud) is True
+
+
+def test_is_device_excludes_supplement_and_service():
+    assert rep.is_device({"name": "Neuro-Mag", "bottle_type": "120 caps"}) is False
+    assert rep.is_device({"name": "Biofield Analysis", "info_only": True,
+                          "service": True}) is False
+    assert rep.is_device("just a string") is False
+
+
 def test_unset_bottle_type_supplement_included():
     cx = _cx()
     cat = dict(_CAT)

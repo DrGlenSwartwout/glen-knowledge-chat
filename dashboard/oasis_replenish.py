@@ -101,20 +101,23 @@ def is_device(product) -> bool:
     services/consults (info_only), digital ebooks, and print books, none of
     which are a "tool you own." An unset/blank bottle_type (a plain
     supplement, or a service/consult with no bottle_type at all) is never a
-    device. Same non-dict / is_shippable-raises fail-CLOSED philosophy as
-    `_is_consumable`: a malformed or unrecognized entry is excluded rather
-    than guessed to be a device."""
+    device. A physical device counts whether it ships from us OR is
+    drop-shipped by a vendor -- the Kloud PEMF mats and NES miHealth are
+    `vendor_shipped` (so `is_shippable` is False for them) yet are exactly
+    the devices this card should list, so `vendor_shipped` is included, not
+    excluded. Fail-CLOSED on a malformed/raising entry."""
     if not isinstance(product, dict):
         return False
-    try:
-        if not is_shippable(product):
-            return False
-    except Exception:
-        return False
     bottle_type = (product.get("bottle_type") or "").strip().lower()
-    if not bottle_type:
-        return False  # unset/blank bottle_type is never a device
-    return bottle_type in _DEVICE_BOTTLE_TYPES
+    if not bottle_type or bottle_type not in _DEVICE_BOTTLE_TYPES:
+        return False  # the device bottle_type is the authoritative signal
+    # A device counts if it ships from us OR is vendor-drop-shipped. Guard so a
+    # (hypothetical) service/digital entry carrying a device bottle_type is still
+    # excluded, but a real vendor_shipped device (Kloud/NES) is kept.
+    try:
+        return bool(is_shippable(product)) or bool(product.get("vendor_shipped"))
+    except Exception:
+        return bool(product.get("vendor_shipped"))
 
 
 def _as_date(value):
