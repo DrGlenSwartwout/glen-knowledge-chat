@@ -8,8 +8,10 @@ def _app(tmp_path, monkeypatch):
         sys.path.insert(0, str(repo))
     import app as appmod
     importlib.reload(appmod)
+    # redirect the served asset dir to tmp_path so stubs never touch the real static/ tree
+    monkeypatch.setattr(appmod, "STATIC", str(tmp_path))
     # ensure the pilot asset dir exists with tiny stand-in files for the test
-    d = Path(appmod.STATIC) / "ebooks" / "healing-glaucoma-starter"
+    d = Path(tmp_path) / "ebooks" / "healing-glaucoma-starter"
     d.mkdir(parents=True, exist_ok=True)
     (d / "starter.pdf").write_bytes(b"%PDF-1.4 test")
     (d / "starter.mp3").write_bytes(b"ID3 test")
