@@ -6115,6 +6115,10 @@ _PORTAL_REMEDIES_ENABLED = os.environ.get("PORTAL_REMEDIES_ENABLED", "").strip()
 # Curated read of the client's intake record ("My Health Profile" page) into
 # the client portal. Ships dark; same truthy set as the other portal flags.
 _PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# "My Healing Oasis" tile (replenish + owned devices/tools + recommendation
+# roadmap) in the client portal. Ships dark; same truthy set as the other
+# portal flags. See dashboard/oasis_block.py.
+_PORTAL_OASIS_ENABLED = os.environ.get("PORTAL_OASIS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -13199,6 +13203,40 @@ def _portal_biofield_unlocked(email):
         return False
     except Exception:
         return False
+
+
+# Positional phase(1-5) -> oasis roadmap key. dashboard/terrain_phase.py's
+# PHASE_NAMES use a DIFFERENT client-facing R-name set (Terrain Revive/Repair/
+# Renew/Refresh/Relief) than the oasis roadmap's keys (energize/rejuvenate/
+# regenerate/cleanse/balance) -- but both share the same depleted->excess
+# ordering (see terrain_phase.py's module docstring), so map by POSITION
+# (index), never by guessing a name-to-name correspondence.
+# Glen to confirm phase 1 == Energize.
+_OASIS_TERRAIN_PHASE_KEYS = ["energize", "rejuvenate", "regenerate", "cleanse", "balance"]
+
+
+def _resolve_oasis_terrain_phase(cx, email):
+    """The client's current terrain phase, resolved to one of
+    dashboard/oasis_roadmap.py's lowercase keys (or None when unknown).
+    Sourced from the client's latest published Biofield report
+    (portal_biofield_reports.latest_report) -- its content carries the scan's
+    BSI phase number, the same reading dashboard/biofield_portal_publish.py
+    stamps onto the report and the portal's biofield block already renders
+    (dashboard/biofield_report_present.py's terrain banner). Fails closed to
+    None on any error or missing data -- the roadmap then degrades to hero +
+    general tools only, which is safe."""
+    try:
+        from dashboard import portal_biofield_reports as _pbr
+        from dashboard import terrain_phase as _tp
+        rep = _pbr.latest_report(cx, email)
+        if not rep:
+            return None
+        num = _tp.phase_num((rep.get("content") or {}).get("phase"))
+        if num is None:
+            return None
+        return _OASIS_TERRAIN_PHASE_KEYS[num - 1]
+    except Exception:
+        return None
 
 
 def _biofield_audit_row(email, confirmed, scan_date, source, name=""):
@@ -21729,6 +21767,88 @@ def api_portal_health_profile(token):
     return jsonify({"ok": True, "health_profile": block})
 
 
+@app.route("/api/portal/<token>/oasis/tool/add", methods=["POST"])
+def api_portal_oasis_tool_add(token):
+    """Client self-reports an external tool they already own (the My Healing
+    Oasis "Build Out" card's own add-a-tool form). Identity comes from the
+    portal TOKEN, never the body. When the tool carries a slug matching a
+    hero-family prefix (see dashboard/oasis_block._normalize_owned_for_roadmap),
+    that hero drops out of the returned roadmap. Returns the refreshed oasis
+    block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    brand = (body.get("brand") or "").strip()
+    slug = (body.get("slug") or "").strip() or None
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _ot.add(cx, email, name, brand, slug)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
+@app.route("/api/portal/<token>/oasis/tool/remove", methods=["POST"])
+def api_portal_oasis_tool_remove(token):
+    """Client removes a self-reported external tool from their My Healing
+    Oasis "Build Out" card. Identity comes from the portal TOKEN, never the
+    body. Returns the refreshed oasis block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    tool_id = body.get("tool_id")
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        _ot.remove(cx, email, tool_id)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
+@app.route("/api/portal/<token>/oasis/roadmap/want", methods=["POST"])
+def api_portal_oasis_roadmap_want(token):
+    """Client adds one roadmap recommendation to their wishlist from the My
+    Healing Oasis "Build Out" card. Identity comes from the portal TOKEN,
+    never the body. This is an ensure-present ADD, never a toggle: a slug
+    already on the wishlist is left alone (idempotent) -- matches the
+    shared handoff surface My Remedies uses. Returns the refreshed oasis
+    block for a live re-render."""
+    if not _PORTAL_OASIS_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    body = request.get_json(silent=True) or {}
+    slug = (body.get("slug") or "").strip()
+    from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
+    from dashboard import wishlist as _wl
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ot.init_table(cx)
+        _wl.init_wishlist_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if slug:
+            owner = _wl.resolve_owner(email, None)
+            if owner and slug not in _wl.slugs_for(cx, owner):
+                _wl.toggle(cx, owner, slug)
+        terrain_phase = _resolve_oasis_terrain_phase(cx, email)
+        return jsonify(_obk.build_block(cx, email, True, terrain_phase))
+
+
 def _decode_suggested_value(raw):
     """`health_suggestions.add_pending` stores plain strings as-is and JSON-encodes
     everything else (see its docstring), so decode symmetrically: a JSON-parseable
@@ -25666,7 +25786,9 @@ def api_client_portal_view(token):
                                    health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
                                    supplement_review_enabled=_sr.enabled(),
-                                   remedies_enabled=_PORTAL_REMEDIES_ENABLED)
+                                   remedies_enabled=_PORTAL_REMEDIES_ENABLED,
+                                   oasis_enabled=_PORTAL_OASIS_ENABLED,
+                                   terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email))
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method

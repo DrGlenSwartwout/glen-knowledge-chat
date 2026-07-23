@@ -484,6 +484,13 @@ let _recoPayload = null; // My Recommendations (2b-ii) payload, set in load() be
 // field's label and refresh the record display. Set in buildHealthProfileHtml()
 // (render time) and re-set from each resolve response (server's fresh block).
 let _healthProfileBlock = null;
+// Task 6: the full portal view object `v` (render(d,v)'s second param), cached
+// so the Oasis tool-add/remove/roadmap-want handlers below -- delegated on
+// document, so they run OUTSIDE render(d,v)'s scope -- can still call
+// buildOasisHtml(v) to re-render the panel after a POST. Set at render time
+// (see the oasis <section> below) and re-pointed at each fresh block after
+// every action (v.oasis = <response>).
+let _oasisView = null;
 const $ = (h)=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
 const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 // Time-of-day remedy schedule (same shape the printed report uses: {slots, entries}).
@@ -724,6 +731,13 @@ function showTab(name){
   // #healthSuggestions isn't in the DOM (panel disabled/absent).
   if (name === 'health') loadHealthSuggestions();
 }
+// Task 5: local in-panel toggle for the Oasis panel's two modes (Replenish /
+// Build Out). Scoped to [data-oasis-mode] so it never touches the real
+// showTab()/[data-panel] state or the top-level #portalTabs tab bar.
+function oasisShowMode(mode){
+  document.querySelectorAll('.oasis-mode').forEach(el => { el.hidden = (el.dataset.oasisMode !== mode); });
+  document.querySelectorAll('.tab[data-oasis-mode]').forEach(b => { b.classList.toggle('is-active', b.dataset.oasisMode === mode); });
+}
 // A small control placed at the top of every non-hub panel so the client can
 // return to the hub landing. Uses the hardened showTab (falls back safely).
 function backToHub(){
@@ -749,12 +763,20 @@ function buildHubHtml(d, v){
     understandTiles.push(["health", "My Health Profile", "Your history, symptoms and intake",
       (pending > 0) ? pending : undefined]);
   }
+  // Task 5: the My Healing Oasis tile is only meaningful (and only rendered)
+  // once v.oasis.enabled is true -- off-state must add nothing (mirrors the
+  // Health Profile gating above; an ungated tile here would dead-end/bounce).
+  const actTiles = [];
+  if (v && v.oasis && v.oasis.enabled) {
+    actTiles.push(["oasis", "My Healing Oasis", "Your remedies to reorder and tools to build out"]);
+  }
+  actTiles.push(
+    ["finder", "Find a Practitioner", "Certified practitioners near you"],
+    ["refer",  "Refer a Friend", "Share healing and earn as an Ambassador"],
+  );
   const groups = [
     ["Understand", understandTiles],
-    ["Act", [
-      ["finder", "Find a Practitioner", "Certified practitioners near you"],
-      ["refer",  "Refer a Friend", "Share healing and earn as an Ambassador"],
-    ]],
+    ["Act", actTiles],
     ["Learn & Ask", [
       ["ask",     "Ask Dr. Glen", "Chat about your terrain and remedies"],
       ["bodymap", "Body Map", "Your systems, personalized"],
@@ -836,6 +858,256 @@ function buildHealthProfileHtml(v){
     : `<div class="card quiet"><p class="muted">Your health profile will appear here once your intake is on file.</p></div>`;
   return `<div class="portal-health"><div id="healthSuggestions"></div>${body}</div>`;
 }
+// ── Task 5: My Healing Oasis panel (render-only). Consumes v.oasis (Task 4's
+// shape: {enabled, replenish[], build_out:{owned_from_us[], owned_external[],
+// roadmap[]}}). Two sub-modes toggled by a small in-panel tab bar (mirrors the
+// top-level .tabbar/.tab pattern, just scoped to [data-oasis-mode] via
+// oasisShowMode() below so it never touches the real showTab()/[data-panel]
+// state). Every interpolated value goes through esc(). The Reorder / Remove /
+// Add-tool / Add-to-wishlist controls only carry their data-oasis-* hooks and
+// ids here -- Task 6 wires the fetch/POST behavior behind them. ──
+function oasisReplenishRowHtml(item){
+  const low = item.running_low
+    ? ` <span class="pill" style="color:var(--err)">Running low</span>` : "";
+  const last = item.last_ordered
+    ? `<span class="muted small">Last ordered ${esc(fmtDate(item.last_ordered))}</span>`
+    : `<span class="muted small">Not ordered yet</span>`;
+  const name = item.url
+    ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.name)}</a>`
+    : esc(item.name);
+  return `<div class="reitem">
+    <span class="nm">${name}${low}<br>${last}</span>
+    <button type="button" class="btn" data-oasis-reorder="${esc(item.slug)}">Reorder</button>
+  </div>`;
+}
+function buildOasisReplenishHtml(oasis){
+  const items = Array.isArray(oasis && oasis.replenish) ? oasis.replenish : [];
+  const body = items.length
+    ? items.map(oasisReplenishRowHtml).join("")
+    : `<p class="muted small">Nothing to reorder yet.</p>`;
+  return `<div class="card"><h2>Replenish</h2>${body}</div>`;
+}
+function oasisOwnedFromUsRowHtml(item){
+  const name = item.url
+    ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.name)}</a>`
+    : esc(item.name);
+  return `<div class="reitem"><span class="nm">${name}</span></div>`;
+}
+function oasisOwnedExternalRowHtml(item){
+  const brand = item.brand ? ` <span class="muted small">${esc(item.brand)}</span>` : "";
+  return `<div class="reitem">
+    <span class="nm">${esc(item.name)}${brand}</span>
+    <button type="button" class="btn" data-oasis-tool-remove="${esc(item.id)}">Remove</button>
+  </div>`;
+}
+// hero-tier roadmap items are visually emphasized (a "Best fit" pill + a
+// brand-colored left rule, both from existing CSS vars) and, per the brief,
+// simply rendered in payload order -- Task 4 already sorts hero above
+// terrain/general, so no client-side re-sort is needed.
+function oasisRoadmapRowHtml(item){
+  const isHero = item.tier === "hero";
+  const label = isHero ? `<span class="pill">Best fit</span> ` : "";
+  const why = item.why ? `<p class="muted small" style="margin:.3rem 0 0">${esc(item.why)}</p>` : "";
+  const style = isHero ? ` style="border-left:3px solid var(--brand);padding-left:8px;display:block"` : ` style="display:block"`;
+  return `<div class="reitem"${style}>
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+      <span class="nm">${label}${esc(item.name)}</span>
+      <button type="button" class="btn" data-oasis-roadmap-want="${esc(item.slug)}">Add to wishlist</button>
+    </div>${why}
+  </div>`;
+}
+// Task 7: one "wanted" row -- a wishlist slug (added either from this tile's
+// own "Add to wishlist" roadmap action, or from My Remedies' "Add to my
+// Oasis" -- both write the same shared wishlist store) resolved to name/url
+// by the server. Render-only, no action buttons here (removing from the
+// wishlist isn't in scope for this task).
+function oasisWantedRowHtml(item){
+  const name = item.url
+    ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.name)}</a>`
+    : esc(item.name);
+  return `<div class="reitem"><span class="nm">${name}</span></div>`;
+}
+function buildOasisBuildOutHtml(oasis){
+  const b = (oasis && oasis.build_out) || {};
+  const ownedUs = Array.isArray(b.owned_from_us) ? b.owned_from_us : [];
+  const ownedExt = Array.isArray(b.owned_external) ? b.owned_external : [];
+  const roadmap = Array.isArray(b.roadmap) ? b.roadmap : [];
+  const wanted = Array.isArray(b.wanted) ? b.wanted : [];
+  const ownedUsHtml = ownedUs.length
+    ? ownedUs.map(oasisOwnedFromUsRowHtml).join("")
+    : `<p class="muted small">Nothing here yet.</p>`;
+  const ownedExtHtml = ownedExt.length
+    ? ownedExt.map(oasisOwnedExternalRowHtml).join("")
+    : `<p class="muted small">Nothing added yet.</p>`;
+  const roadmapHtml = roadmap.length
+    ? roadmap.map(oasisRoadmapRowHtml).join("")
+    : `<p class="muted small">Your recommendations will appear here.</p>`;
+  // Empty state stays quiet (no card at all) rather than a hollow "nothing
+  // yet" card competing with Recommended / owned above it.
+  const wantedHtml = wanted.length
+    ? `<div class="card"><h2>Wanted, added from recommendations</h2>${wanted.map(oasisWantedRowHtml).join("")}</div>`
+    : "";
+  return `<div class="card"><h2>Tools you own with us</h2>${ownedUsHtml}</div>
+    <div class="card"><h2>Tools you own elsewhere</h2>${ownedExtHtml}
+      <div style="margin-top:.6rem">
+        <p class="small muted" style="margin:.2rem 0 .4rem">Add a tool you own</p>
+        <input id="oasis-tool-name" placeholder="Tool name" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-bottom:.4rem">
+        <input id="oasis-tool-brand" placeholder="Brand (optional)" style="width:100%;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem">
+        <button type="button" class="btn full" id="oasis-tool-add-btn" style="margin-top:.5rem">Add tool</button>
+        <div id="oasis-tool-msg" class="small muted" style="margin-top:.4rem" hidden></div>
+      </div>
+    </div>
+    <div class="card"><h2>Recommended to complete your Oasis</h2>${roadmapHtml}</div>
+    ${wantedHtml}`;
+}
+function buildOasisHtml(v){
+  const oasis = (v && v.oasis) || {};
+  return `<div class="portal-oasis">
+    <div class="tabbar" style="margin-bottom:14px">
+      <button type="button" class="tab is-active" data-oasis-mode="replenish" onclick="oasisShowMode('replenish')">Replenish</button>
+      <button type="button" class="tab" data-oasis-mode="build_out" onclick="oasisShowMode('build_out')">Build Out</button>
+    </div>
+    <div class="oasis-mode" data-oasis-mode="replenish">${buildOasisReplenishHtml(oasis)}</div>
+    <div class="oasis-mode" data-oasis-mode="build_out" hidden>${buildOasisBuildOutHtml(oasis)}</div>
+  </div>`;
+}
+
+// Task 6: wires the three Build-Out actions Task 5 left inert (tool add/remove,
+// roadmap-want). Task 7 adds a fourth branch here (Replenish's "Reorder"
+// button). ONE delegated click listener on `document`, same pattern as
+// the Family Plan / client-fact / health-field listeners above -- the oasis
+// panel's whole innerHTML gets replaced after every action (see renderOasis()
+// below), so a per-element binding would be lost on the very first re-render.
+// Every fetch is token-scoped (identity comes from the TOKEN, never the body).
+function renderOasisPanel(freshBlock){
+  const panel = document.querySelector('[data-panel="oasis"]');
+  if (!panel) return null;
+  _oasisView = _oasisView || {};
+  _oasisView.oasis = freshBlock;
+  panel.innerHTML = (typeof backToHub === "function" ? backToHub() : "") + buildOasisHtml(_oasisView);
+  return panel;
+}
+document.addEventListener("click", async function(ev){
+  const addBtn = ev.target.closest("#oasis-tool-add-btn");
+  const rmBtn = ev.target.closest("[data-oasis-tool-remove]");
+  const wantBtn = ev.target.closest("[data-oasis-roadmap-want]");
+  const reorderBtn = ev.target.closest("[data-oasis-reorder]");
+  if (!addBtn && !rmBtn && !wantBtn && !reorderBtn) return;
+
+  if (reorderBtn) {
+    // Task 7: wire Replenish's "Reorder" button through the SAME existing
+    // portal checkout the "Your Remedies" per-row reorder uses (see
+    // reorderItem() above) -- add-then-confirm, never a silent charge: this
+    // posts {items:[{slug, qty:1}]} to /api/portal/<token>/checkout, which
+    // returns a live Stripe Checkout URL; the charge only happens if the
+    // client confirms on Stripe's hosted page. No new endpoint. The slug is
+    // already in the client's own purchase history (that's WHY it's in
+    // Replenish), so it's already in _portal_entitled_slugs server-side.
+    // One-shot latch: disabled immediately, before any await.
+    if (reorderBtn.disabled) return;
+    reorderBtn.disabled = true;
+    const slug = reorderBtn.getAttribute("data-oasis-reorder");
+    const label = reorderBtn.textContent; reorderBtn.textContent = "Setting up your order…";
+    const row = reorderBtn.closest(".reitem");
+    const existingMsg = row && row.querySelector(".oasis-reorder-msg");
+    if (existingMsg) existingMsg.remove();
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+        body: JSON.stringify({items: [{slug, qty: 1}]})
+      });
+      const j = await r.json();
+      if (j.stripe_url) { location.href = j.stripe_url; return; }
+      throw new Error(j.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
+    } catch (e) {
+      reorderBtn.disabled = false; reorderBtn.textContent = label;
+      if (row) {
+        const note = document.createElement("p");
+        note.className = "small err oasis-reorder-msg";
+        note.style.margin = ".3rem 0 0";
+        note.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
+        row.appendChild(note);
+      }
+    }
+    return;
+  }
+
+  if (addBtn) {
+    const panel = addBtn.closest('[data-panel="oasis"]') || document;
+    const nameEl = panel.querySelector("#oasis-tool-name");
+    const brandEl = panel.querySelector("#oasis-tool-brand");
+    const msg = panel.querySelector("#oasis-tool-msg");
+    const name = (nameEl && nameEl.value || "").trim();
+    if (!name) {
+      if (msg) { msg.hidden = false; msg.classList.add("err"); msg.textContent = "Please enter a tool name."; }
+      return;
+    }
+    addBtn.disabled = true;
+    if (msg) { msg.hidden = false; msg.classList.remove("err"); msg.textContent = "Adding…"; }
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/oasis/tool/add`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+        body: JSON.stringify({name: name, brand: (brandEl && brandEl.value || "").trim()})
+      });
+      const j = await r.json();
+      if (!r.ok || j.enabled === false) throw new Error("save failed");
+      renderOasisPanel(j);
+    } catch (e) {
+      addBtn.disabled = false;
+      if (msg) { msg.hidden = false; msg.classList.add("err"); msg.textContent = "Could not add that tool. Please try again."; }
+    }
+    return;
+  }
+
+  if (rmBtn) {
+    rmBtn.disabled = true;
+    const toolId = rmBtn.getAttribute("data-oasis-tool-remove");
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/oasis/tool/remove`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+        body: JSON.stringify({tool_id: toolId})
+      });
+      const j = await r.json();
+      if (!r.ok || j.enabled === false) throw new Error("save failed");
+      renderOasisPanel(j);
+    } catch (e) {
+      rmBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (wantBtn) {
+    wantBtn.disabled = true;
+    const slug = wantBtn.getAttribute("data-oasis-roadmap-want");
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/oasis/roadmap/want`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+        body: JSON.stringify({slug: slug})
+      });
+      const j = await r.json();
+      if (!r.ok || j.enabled === false) throw new Error("save failed");
+      const panel = renderOasisPanel(j);
+      if (panel) {
+        // Small inline confirmation next to the row that was just wishlisted --
+        // the row itself survives the re-render (wishlisting doesn't remove it
+        // from the roadmap), so find it by its data-oasis-roadmap-want value
+        // (not a template-string attribute selector, so no slug ever needs
+        // CSS-escaping -- same reasoning as findHealthFieldEl above).
+        const freshBtn = Array.from(panel.querySelectorAll("[data-oasis-roadmap-want]"))
+          .find(b => b.getAttribute("data-oasis-roadmap-want") === slug);
+        if (freshBtn && !freshBtn.parentElement.querySelector(".oasis-want-msg")) {
+          const note = document.createElement("span");
+          note.className = "muted small oasis-want-msg";
+          note.style.marginLeft = "8px";
+          note.textContent = "Added to your wishlist";
+          freshBtn.insertAdjacentElement("afterend", note);
+        }
+      }
+    } catch (e) {
+      wantBtn.disabled = false;
+    }
+  }
+});
 // One Scan History row per date. memberEmail is set only for the group currently
 // being viewed (matches ?member=, or "" for "You") — clicking it reuses the same
 // in-place reload selectScan() already uses, since the member context (the URL's
@@ -2730,6 +3002,7 @@ function render(d, v){
       <section data-panel="orders" hidden>${back}${ordersHtml}</section>${_hub ? `
       <section data-panel="ask" hidden>${back}${_askHtml}</section>
       ${_hub && v.health_profile && v.health_profile.enabled ? `<section data-panel="health" hidden>${back}${buildHealthProfileHtml(v)}</section>` : ""}
+      ${_hub && v.oasis && v.oasis.enabled ? (_oasisView = v, `<section data-panel="oasis" hidden>${back}${buildOasisHtml(v)}</section>`) : ""}
       <section data-panel="finder" hidden>${back}${_finderHtml || '<div class="card quiet"><p class="muted">The practitioner finder is not enabled for your portal yet.</p></div>'}</section>
       <section data-panel="bodymap" hidden>${back}${_bodymapHtml}</section>
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>
