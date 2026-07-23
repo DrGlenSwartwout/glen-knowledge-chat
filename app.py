@@ -20085,6 +20085,32 @@ def api_ebook_optin():
     return _cors(jsonify({"ok": True, "portal_url": portal_link(tok)}), 200)
 
 
+@app.route("/api/portal/<token>/library", methods=["GET"])
+def api_portal_library(token):
+    """The token owner's granted ebook Starters. `enabled` mirrors the hub flag so
+    the My Library tile stays dark until the flag flips; items are always computed."""
+    from dashboard import client_portal as _cp, portal_library as _lib, ebook_catalog as _cat
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        granted = _lib.list_for_email(cx, email) if email else []
+    items = []
+    for g in granted:
+        meta = _cat.get(g["slug"])
+        if not meta:
+            continue
+        items.append({
+            "slug": g["slug"], "title": meta["title"], "granted_at": g["granted_at"],
+            "pdf_url": f"/api/portal/{token}/library/{g['slug']}/pdf",
+            "audio_url": f"/api/portal/{token}/library/{g['slug']}/audio",
+        })
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
+
+
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])
 def api_portal_recommendations(token):
     """Read-only: a client's recommended-products sections, grouped by source
