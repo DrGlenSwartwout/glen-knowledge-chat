@@ -460,6 +460,10 @@
       if (host && window.RMTheme) window.RMTheme.mountToggle(host);
     })();
   </script>
+  <!-- Task 4: Onboarding tile. Sibling of #app (not nested inside it), positioned
+       ABOVE the hub so it survives render()'s poll re-renders, which fully replace
+       app.innerHTML; filled/emptied by static/js/portal-onboarding.js's own fetch + mount. -->
+  <div id="portal-onboarding-mount"></div>
   <div id="app" class="wrap" hidden></div>
   <div id="loading" class="state">Loading your healing home…</div>
   <div id="notfound" class="state" hidden>
@@ -475,6 +479,7 @@
 
 <script src="/static/entity-ref.js"></script>
 <script src="/static/js/portal-library.js"></script>
+<script src="/static/js/portal-onboarding.js"></script>
 <script>
 // The last path segment is either an emailed portal token or the literal "me"
 // (the tokenless logged-in home, authed by the rm_portal_session cookie). Tokens
