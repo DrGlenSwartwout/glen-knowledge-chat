@@ -111,9 +111,10 @@ function renderInvoices(inv){
   document.getElementById("h-invoices").textContent =
     money(inv.total_paid_cents)+" paid · "+money(inv.open_balance_cents)+" open";
   var rows=inv.orders.map(function(o){
+    var pdf=(o.id!=null)?" &middot; <a href='#' onclick='return openInvoicePdf("+o.id+")'>PDF</a>":"";
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>"+esc(o.status)+"</td><td>"+money(o.total_cents)+
       "</td><td>"+money(o.paid_cents)+"</td><td>"+money(o.balance_cents)+
-      "</td><td><a href='"+esc(o.edit_url)+"&key="+encodeURIComponent(key())+"'>edit</a></td></tr>";});
+      "</td><td><a href='"+esc(o.edit_url)+"&key="+encodeURIComponent(key())+"'>edit</a>"+pdf+"</td></tr>";});
   var fmp=(inv.fmp||[]).map(function(o){
     return "<tr><td>"+esc((o.date||"").slice(0,10))+"</td><td>FMP</td><td>"+
       (o.total!=null?money(Math.round(o.total*100)):"")+"</td><td></td><td>"+
@@ -122,6 +123,20 @@ function renderInvoices(inv){
     (rows.length||fmp.length)
     ? "<table><tr><th>Date</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th><th></th></tr>"+rows.join("")+fmp.join("")+"</table>"
     : "<p class=empty>No invoices.</p>";
+}
+// Mint a fresh invoice token for this order and open the print-ready invoice
+// (?print=1 auto-opens the Save-as-PDF dialog). Reuses the Orders board endpoint.
+// Open the tab synchronously first so the async fetch doesn't trip the popup blocker.
+function openInvoicePdf(id){
+  var w=window.open("","_blank");
+  fetch("/api/console/order/"+id+"/invoice-link",{headers:hdr()})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j&&j.ok&&j.link){ if(w){w.location=j.link;} else {location.href=j.link;} }
+      else { if(w){w.close();} alert("Could not generate invoice PDF: "+((j&&j.error)||"unknown error")); }
+    })
+    .catch(function(){ if(w){w.close();} alert("Could not generate invoice PDF."); });
+  return false;
 }
 function renderComms(cs){
   document.getElementById("h-comms").textContent = cs.length
