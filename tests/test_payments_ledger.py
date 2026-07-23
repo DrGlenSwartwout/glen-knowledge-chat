@@ -129,7 +129,9 @@ def test_ledger_rehomes_caregiver_card_payment_to_payer():
     O.set_order_stripe_pi(cx, normal, "pi_norm")
     O.set_order_payment(cx, normal, method="card", amount_cents=7000)
 
-    by_pi = {r["stripe_payment_intent"]: r for r in P.list_payments(cx)}
+    rows = P.list_payments(cx)
+    assert len(rows) == 2, f"Expected 2 payment rows, got {len(rows)}"
+    by_pi = {r["stripe_payment_intent"]: r for r in rows}
     assert by_pi["pi_cg_1"]["email"] == "steve@x.com"   # re-homed to the payer
     assert by_pi["pi_norm"]["email"] == "owner@x.com"    # unchanged (backward-compat)
 
