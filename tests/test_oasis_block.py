@@ -84,11 +84,11 @@ def test_build_out_wanted_resolves_wishlisted_slug_to_name_and_url():
     assert wanted[0]["url"] == "/begin/product/aces-eyedrops"
 
 
-def test_build_out_wanted_skips_slug_not_in_catalog():
-    """A wishlisted slug that no longer resolves to a real catalog product
-    (removed/renamed, or a roadmap "hero" shorthand like "harmony" that isn't
-    itself a catalog entry) is silently skipped rather than shown with
-    placeholder text."""
+def test_build_out_wanted_skips_slug_not_in_catalog_or_roadmap():
+    """A wishlisted slug that resolves in NEITHER the purchasable catalog NOR
+    any roadmap table (HERO_TOOLS / TERRAIN_TOOLS / GENERAL_TOOLS) -- i.e. a
+    removed/renamed product or a typo -- is silently skipped rather than
+    shown with placeholder text."""
     cx = _cx()
     wl.init_wishlist_table(cx)
     wl.toggle(cx, wl.resolve_owner("a@b.com", None), "not-a-real-slug")
@@ -99,3 +99,45 @@ def test_build_out_wanted_skips_slug_not_in_catalog():
 def test_build_out_wanted_empty_when_no_wishlist():
     blk = oasis_block.build_block(_cx(), "a@b.com", True)
     assert blk["build_out"]["wanted"] == []
+
+
+# --- Final-review Fix 1: owned_from_us is a DEVICE allowlist, not "not a
+# consumable" (that complement also includes services/consults, info_only,
+# digital ebooks, and print books). ---
+
+def test_owned_from_us_only_devices_not_services_or_books_or_consumables():
+    cx = _cx()
+    _o.upsert_order(
+        cx, source="test", external_ref="ord-devices", email="a@b.com",
+        items=[
+            {"slug": "harmony-laser", "qty": 1},       # real device (bottle_type harmony-laser)
+            {"slug": "biofield-analysis", "qty": 1},   # service/consult (info_only+service)
+            {"slug": "book-refreshing-vision", "qty": 1},  # print book (bottle_type book)
+            {"slug": "aces-eyedrops", "qty": 1},       # dosed consumable (Dropper 5 mL)
+        ],
+        total_cents=100000,
+    )
+    blk = oasis_block.build_block(cx, "a@b.com", True)
+
+    us_slugs = {d["slug"] for d in blk["build_out"]["owned_from_us"]}
+    assert us_slugs == {"harmony-laser"}
+
+    replenish_slugs = {r["slug"] for r in blk["replenish"]}
+    assert replenish_slugs == {"aces-eyedrops"}
+
+
+# --- Final-review Fix 2: wishlisting an off-catalog roadmap slug (hero/
+# terrain/general) resolves via the roadmap tables instead of no-oping. ---
+
+def test_wanted_resolves_roadmap_hero_slug_to_its_real_name():
+    from dashboard import oasis_roadmap
+
+    cx = _cx()
+    wl.init_wishlist_table(cx)
+    wl.toggle(cx, wl.resolve_owner("a@b.com", None), "harmony")
+    blk = oasis_block.build_block(cx, "a@b.com", True)
+
+    wanted = blk["build_out"]["wanted"]
+    assert len(wanted) == 1
+    hero_name = next(t["name"] for t in oasis_roadmap.HERO_TOOLS if t["slug"] == "harmony")
+    assert wanted[0] == {"slug": "harmony", "name": hero_name, "url": "/begin/product/harmony"}

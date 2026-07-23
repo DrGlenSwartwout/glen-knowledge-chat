@@ -3,9 +3,12 @@
 Composes the three sibling modules into one block:
   - replenish       -> oasis_replenish.replenish_items: owned CONSUMABLES from
                        the client's order history (restock hints).
-  - build_out.owned_from_us    -> DEVICE/TOOL products ordered from us (the
-                       non-consumables in the same order history -- ordered
-                       products where oasis_replenish._is_consumable is False).
+  - build_out.owned_from_us    -> DEVICE/TOOL products ordered from us (an
+                       explicit device allowlist, oasis_replenish.is_device --
+                       NOT simply the non-consumables, since that complement
+                       also includes services/consults, info_only, digital
+                       ebooks, and print books, none of which are "tools you
+                       own").
   - build_out.owned_external   -> owned_tools.list_for: tools the client has
                        self-reported, whether or not they map to a catalog slug.
   - build_out.roadmap -> oasis_roadmap.build_roadmap: the personalized gap list,
@@ -70,10 +73,13 @@ def _normalize_owned_for_roadmap(slugs):
 def _device_orders(cx, email):
     """Device/tool products ordered from us: the same order-read + catalog
     approach as oasis_replenish.replenish_items (same table read via
-    oasis_replenish._fetch_orders_raw, same catalog lookup), but keeping the
-    NON-consumable lines (oasis_replenish._is_consumable False) instead of the
-    consumable ones. Never raises -- a malformed order/line/catalog entry is
-    skipped, same philosophy as replenish_items."""
+    oasis_replenish._fetch_orders_raw, same catalog lookup), but keeping only
+    lines that pass oasis_replenish.is_device -- an explicit device/tool
+    bottle_type allowlist, NOT simply "not a consumable" (that complement
+    also includes services/consults, info_only, digital ebooks, and print
+    books -- a client who bought a Biofield Analysis or a book must not see
+    it under "Tools you own with us"). Never raises -- a malformed
+    order/line/catalog entry is skipped, same philosophy as replenish_items."""
     from dashboard import products as _products
     catalog = _products.load_products() or {}
 
@@ -96,7 +102,7 @@ def _device_orders(cx, email):
             if not slug:
                 continue
             product = catalog.get(slug)
-            if not isinstance(product, dict) or _rep._is_consumable(product):
+            if not _rep.is_device(product):
                 continue
             entry = agg.get(slug)
             if entry is None:
@@ -117,38 +123,77 @@ def _device_orders(cx, email):
     return items_out
 
 
+def _roadmap_name_lookup():
+    """Build a one-shot {slug: name} lookup from every roadmap table
+    (HERO_TOOLS + all TERRAIN_TOOLS phase lists + GENERAL_TOOLS). Pure, no
+    DB -- used only as a name-resolution fallback for wishlist slugs that
+    don't resolve in the purchasable catalog (the roadmap's "Add to
+    wishlist" action writes simplified/off-catalog slugs like "harmony",
+    "water-ionizer", "kloud", "red-light-panel" that never appear as a
+    dict entry in data/products.json). Never raises -- a malformed table
+    entry is skipped rather than crashing the lookup."""
+    out = {}
+    try:
+        tables = list(_roadmap.HERO_TOOLS) + list(_roadmap.GENERAL_TOOLS)
+        for phase_tools in _roadmap.TERRAIN_TOOLS.values():
+            tables.extend(phase_tools)
+        for tool in tables:
+            try:
+                slug = (tool.get("slug") or "").strip()
+                if slug and slug not in out:
+                    out[slug] = tool.get("name") or slug
+            except Exception:
+                continue
+    except Exception:
+        return {}
+    return out
+
+
 def _wanted_items(cx, email):
     """Task 7: the client's wishlist (Build Out's "roadmap-want" AND My
     Remedies' "Add to my Oasis" both land on this SAME shared wishlist store,
     see dashboard/wishlist.py), resolved to {slug, name, url} for display.
-    Mirrors oasis_replenish.replenish_items' catalog-lookup shape: a slug
-    that no longer resolves to a dict catalog entry (removed/renamed product,
-    or a non-catalog roadmap "hero" slug like "harmony") is silently skipped
-    rather than shown with placeholder text. Never raises -- any failure
-    degrades to an empty list, same philosophy as every other sub-field
-    here."""
+    Mirrors oasis_replenish.replenish_items' catalog-lookup shape: a slug is
+    first looked up in the purchasable catalog; when it does NOT resolve
+    there (removed/renamed product, or a roadmap "hero"/terrain/general
+    slug like "harmony" that is never itself a catalog dict entry), it
+    falls back to the roadmap tables (see _roadmap_name_lookup) for a
+    display name -- this is what makes clicking "Add to wishlist" on a
+    roadmap hero/terrain/general item actually surface in Wanted instead of
+    silently no-oping. Only a slug that resolves in NEITHER the catalog NOR
+    the roadmap tables is skipped. Never raises -- any failure degrades to
+    an empty list, same philosophy as every other sub-field here."""
     from dashboard import products as _products
     catalog = _products.load_products() or {}
+    roadmap_names = _roadmap_name_lookup()
     _wl.init_wishlist_table(cx)
     owner = _wl.resolve_owner(email, None)
     slugs = _wl.list_for(cx, owner)
     out = []
     for slug in slugs:
         product = catalog.get(slug)
-        if not isinstance(product, dict):
+        if isinstance(product, dict):
+            out.append({
+                "slug": slug,
+                "name": product.get("name") or slug,
+                "url": product.get("url") or f"/begin/product/{slug}",
+            })
             continue
+        roadmap_name = roadmap_names.get(slug)
+        if roadmap_name is None:
+            continue  # unknown in both catalog and roadmap -- truly skip
         out.append({
             "slug": slug,
-            "name": product.get("name") or slug,
-            "url": product.get("url") or f"/begin/product/{slug}",
+            "name": roadmap_name,
+            "url": f"/begin/product/{slug}",
         })
     return out
 
 
 def build_block(cx, email, enabled, terrain_phase=None) -> dict:
     """{"enabled": bool, "replenish": [...], "build_out": {"owned_from_us": [...],
-    "owned_external": [...], "roadmap": [...]}}. {"enabled": False} when the
-    flag is off. Every sub-field is independently guarded so one failing
+    "owned_external": [...], "roadmap": [...], "wanted": [...]}}. {"enabled": False}
+    when the flag is off. Every sub-field is independently guarded so one failing
     source degrades to [] rather than raising into the portal payload."""
     if not enabled:
         return {"enabled": False}

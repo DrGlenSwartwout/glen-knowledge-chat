@@ -40,6 +40,31 @@ _CONSUMABLE_BOTTLE_TYPES = frozenset({
     "30roll", "one-step",
 })
 
+# Real device/tool bottle_types (see dashboard/shipping.py PROD_BOTTLE_NAMES /
+# _STANDARD_BOTTLES for the full prod vocabulary this is drawn from). This is
+# the COMPLEMENT of _CONSUMABLE_BOTTLE_TYPES, NOT its inverse: "not a
+# consumable" also includes services, consults, info_only, digital ebooks,
+# and print books, none of which are "tools you own." This is an explicit
+# ALLOWLIST (fail-closed) of the actual physical device/tool bottle_types --
+# a bottle_type not listed here is treated as NOT a device, so a
+# newly-added service/book/supplement type never silently passes through as
+# "tools you own with us" copy. `book` is deliberately EXCLUDED -- a book is
+# reading material, not a tool. Normalized lower().strip() before matching.
+# Seeded 2026-07-22 from the real data/products.json bottle_type census:
+#   own-box (drop-ship devices/tools like Kloud PEMF mats, NES miHealth,
+#     water ionizers, plus wearables/tools boxed the same way),
+#   harmony-laser (Harmony Laser + cold-laser variants), denas (DENAS PCM Pro
+#   family), handcradle (ZYTO Hand Cradle / NES Scanner), nightlight
+#   (therapeutic/biocompatible nightlights), dowsing-rods, nasal-clip (NIR
+#   intranasal clip), toothbrush (wicking toothbrush).
+# Glen: extend this set when a new DEVICE/TOOL bottle_type is added to the
+# catalog (cross-ref: adding a bottle_type touches several places --
+# shipping.py PROD_BOTTLE_NAMES, _STANDARD_BOTTLES, and here).
+_DEVICE_BOTTLE_TYPES = frozenset({
+    "own-box", "harmony-laser", "denas", "handcradle",
+    "nightlight", "dowsing-rods", "nasal-clip", "toothbrush",
+})
+
 
 def _is_consumable(product) -> bool:
     """True only when the catalog entry is BOTH shippable AND a dosed
@@ -65,6 +90,31 @@ def _is_consumable(product) -> bool:
     if not bottle_type:
         return True  # unset/None bottle_type = a plain dosed supplement
     return bottle_type in _CONSUMABLE_BOTTLE_TYPES
+
+
+def is_device(product) -> bool:
+    """True only when the catalog entry is BOTH shippable AND a real
+    device/tool bottle_type (see _DEVICE_BOTTLE_TYPES).
+
+    This is the "tools you own with us" predicate -- deliberately NOT the
+    complement of `_is_consumable`, because "not a consumable" also includes
+    services/consults (info_only), digital ebooks, and print books, none of
+    which are a "tool you own." An unset/blank bottle_type (a plain
+    supplement, or a service/consult with no bottle_type at all) is never a
+    device. Same non-dict / is_shippable-raises fail-CLOSED philosophy as
+    `_is_consumable`: a malformed or unrecognized entry is excluded rather
+    than guessed to be a device."""
+    if not isinstance(product, dict):
+        return False
+    try:
+        if not is_shippable(product):
+            return False
+    except Exception:
+        return False
+    bottle_type = (product.get("bottle_type") or "").strip().lower()
+    if not bottle_type:
+        return False  # unset/blank bottle_type is never a device
+    return bottle_type in _DEVICE_BOTTLE_TYPES
 
 
 def _as_date(value):
