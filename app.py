@@ -20111,6 +20111,30 @@ def api_portal_library(token):
     return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
 
 
+@app.route("/api/portal/<token>/library/<slug>/<asset>", methods=["GET"])
+def api_portal_library_asset(token, slug, asset):
+    """Stream a granted Starter asset, token-scoped. 404 unless the token's email
+    is entitled to `slug`. `asset` is 'pdf' or 'audio' (mapped to catalog files)."""
+    if asset not in ("pdf", "audio"):
+        return Response("", status=404)
+    from dashboard import client_portal as _cp, portal_library as _lib, ebook_catalog as _cat
+    meta = _cat.get(slug)
+    if not meta:
+        return Response("", status=404)
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email or not _lib.has(cx, email, slug):
+            return Response("", status=404)
+    folder = os.path.join(STATIC, "ebooks", meta["dir"])
+    filename = meta["pdf"] if asset == "pdf" else meta["audio"]
+    resp = send_from_directory(folder, filename)
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
+
+
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])
 def api_portal_recommendations(token):
     """Read-only: a client's recommended-products sections, grouped by source
