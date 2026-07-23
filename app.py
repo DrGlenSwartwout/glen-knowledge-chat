@@ -24070,6 +24070,76 @@ def family_plan_return():
     return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
 
 
+@app.route("/api/portal/<token>/caregiver-pay", methods=["POST"])
+def api_portal_caregiver_pay(token):
+    """Payer starts a card checkout for a beneficiary's order. Gated on active
+    pay-consent AT INITIATION; metadata then carries the payer snapshot."""
+    if not _caregiver_pay_enabled():
+        return jsonify({"ok": False, "error": "disabled"}), 404
+    from dashboard import stripe_pay as _sp, household as _hh
+    data = request.get_json(silent=True) or {}
+    order_id = int(data.get("order_id") or 0)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        payer = (portal.get("email") or "").strip().lower()
+        o = cx.execute("SELECT email, total_cents FROM orders WHERE id=?", (order_id,)).fetchone()
+        if not o:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        beneficiary = (o["email"] or "").strip().lower()
+        if not _hh.can_pay(cx, payer, beneficiary):
+            return jsonify({"ok": False, "error": "not authorized"}), 403
+        amount = int(o["total_cents"] or 0)
+    base = PUBLIC_BASE_URL.rstrip("/")
+    sess = _sp.create_checkout_session(
+        amount, customer_email=payer, description=f"Payment for order #{order_id}",
+        metadata={"kind": "caregiver-pay", "order_id": str(order_id), "payer_email": payer},
+        success_url=f"{base}/caregiver-pay/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/portal/{token}")
+    return jsonify({"ok": True, "url": sess.get("url")})
+
+
+def _fulfill_caregiver_pay(session_id):
+    """Record a caregiver's card payment against the beneficiary's order, stamped
+    to the PAYER. Never raises. Idempotent via external_ref=payment_intent (the
+    same dedup add_payment already uses for every other Stripe fulfiller)."""
+    try:
+        from dashboard import stripe_pay as _sp
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "caregiver-pay":
+            return
+        if sess.get("payment_status") != "paid":
+            return
+        order_id = int(md.get("order_id") or 0)
+        payer = (md.get("payer_email") or "").strip().lower()
+        pi_id = sess.get("payment_intent")
+        if not order_id or not payer:
+            return
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _op.ensure_table(cx)
+            _op.add_payment(cx, order_id, int(sess.get("amount_total") or 0),
+                            "Credit card (Stripe)", source="stripe",
+                            external_ref=pi_id, payer_email=payer)
+            _bos_orders.set_order_payment(cx, order_id, method="card",
+                                          amount_cents=int(sess.get("amount_total") or 0))
+            if pi_id:
+                _bos_orders.set_order_stripe_pi(cx, order_id, pi_id)
+    except Exception as _e:
+        print(f"[caregiver-pay] fulfill: {_e!r}", flush=True)
+
+
+@app.route("/caregiver-pay/return", methods=["GET"])
+def caregiver_pay_return():
+    sid = request.args.get("session_id", "")
+    if sid:
+        _fulfill_caregiver_pay(sid)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
+
+
 @app.route("/api/portal/<token>/family-plan/cancel", methods=["POST"])
 def portal_family_plan_cancel(token):
     """Caregiver self-cancel. Stops covers() for the household at the next read;
@@ -30416,6 +30486,7 @@ def webhook_stripe():
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
                 _fulfill_family_plan(session_id)
+                _fulfill_caregiver_pay(session_id)   # kind == "caregiver-pay"
 
                 # Webhook-back the paid-only Sales-Receipt booking so a closed browser
                 # tab (dropped redirect) can't leave money collected with no QBO
