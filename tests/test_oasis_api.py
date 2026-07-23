@@ -132,3 +132,16 @@ def test_roadmap_want_bad_token_returns_404(client):
     c, appmod = client
     r = c.post("/api/portal/not-a-real-token/oasis/roadmap/want", json={"slug": "harmony"})
     assert r.status_code == 404
+
+
+def test_roadmap_want_surfaces_in_build_out_wanted(client):
+    """Task 7: closing the loop -- a "want" doesn't just land silently on the
+    wishlist table, it comes back resolved (name/url) in the SAME response's
+    build_out.wanted, and again on the next portal-view read."""
+    c, appmod = client
+    token = _mint_portal(appmod, "a@b.com")
+    r = c.post(f"/api/portal/{token}/oasis/roadmap/want", json={"slug": "aces-eyedrops"})
+    assert r.status_code == 200
+    body = r.get_json()
+    wanted_slugs = {w["slug"] for w in body["build_out"]["wanted"]}
+    assert "aces-eyedrops" in wanted_slugs

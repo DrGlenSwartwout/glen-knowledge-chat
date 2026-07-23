@@ -909,11 +909,23 @@ function oasisRoadmapRowHtml(item){
     </div>${why}
   </div>`;
 }
+// Task 7: one "wanted" row -- a wishlist slug (added either from this tile's
+// own "Add to wishlist" roadmap action, or from My Remedies' "Add to my
+// Oasis" -- both write the same shared wishlist store) resolved to name/url
+// by the server. Render-only, no action buttons here (removing from the
+// wishlist isn't in scope for this task).
+function oasisWantedRowHtml(item){
+  const name = item.url
+    ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.name)}</a>`
+    : esc(item.name);
+  return `<div class="reitem"><span class="nm">${name}</span></div>`;
+}
 function buildOasisBuildOutHtml(oasis){
   const b = (oasis && oasis.build_out) || {};
   const ownedUs = Array.isArray(b.owned_from_us) ? b.owned_from_us : [];
   const ownedExt = Array.isArray(b.owned_external) ? b.owned_external : [];
   const roadmap = Array.isArray(b.roadmap) ? b.roadmap : [];
+  const wanted = Array.isArray(b.wanted) ? b.wanted : [];
   const ownedUsHtml = ownedUs.length
     ? ownedUs.map(oasisOwnedFromUsRowHtml).join("")
     : `<p class="muted small">Nothing here yet.</p>`;
@@ -923,6 +935,11 @@ function buildOasisBuildOutHtml(oasis){
   const roadmapHtml = roadmap.length
     ? roadmap.map(oasisRoadmapRowHtml).join("")
     : `<p class="muted small">Your recommendations will appear here.</p>`;
+  // Empty state stays quiet (no card at all) rather than a hollow "nothing
+  // yet" card competing with Recommended / owned above it.
+  const wantedHtml = wanted.length
+    ? `<div class="card"><h2>Wanted, added from recommendations</h2>${wanted.map(oasisWantedRowHtml).join("")}</div>`
+    : "";
   return `<div class="card"><h2>Tools you own with us</h2>${ownedUsHtml}</div>
     <div class="card"><h2>Tools you own elsewhere</h2>${ownedExtHtml}
       <div style="margin-top:.6rem">
@@ -933,7 +950,8 @@ function buildOasisBuildOutHtml(oasis){
         <div id="oasis-tool-msg" class="small muted" style="margin-top:.4rem" hidden></div>
       </div>
     </div>
-    <div class="card"><h2>Recommended to complete your Oasis</h2>${roadmapHtml}</div>`;
+    <div class="card"><h2>Recommended to complete your Oasis</h2>${roadmapHtml}</div>
+    ${wantedHtml}`;
 }
 function buildOasisHtml(v){
   const oasis = (v && v.oasis) || {};
@@ -948,7 +966,8 @@ function buildOasisHtml(v){
 }
 
 // Task 6: wires the three Build-Out actions Task 5 left inert (tool add/remove,
-// roadmap-want). ONE delegated click listener on `document`, same pattern as
+// roadmap-want). Task 7 adds a fourth branch here (Replenish's "Reorder"
+// button). ONE delegated click listener on `document`, same pattern as
 // the Family Plan / client-fact / health-field listeners above -- the oasis
 // panel's whole innerHTML gets replaced after every action (see renderOasis()
 // below), so a per-element binding would be lost on the very first re-render.
@@ -965,7 +984,46 @@ document.addEventListener("click", async function(ev){
   const addBtn = ev.target.closest("#oasis-tool-add-btn");
   const rmBtn = ev.target.closest("[data-oasis-tool-remove]");
   const wantBtn = ev.target.closest("[data-oasis-roadmap-want]");
-  if (!addBtn && !rmBtn && !wantBtn) return;
+  const reorderBtn = ev.target.closest("[data-oasis-reorder]");
+  if (!addBtn && !rmBtn && !wantBtn && !reorderBtn) return;
+
+  if (reorderBtn) {
+    // Task 7: wire Replenish's "Reorder" button through the SAME existing
+    // portal checkout the "Your Remedies" per-row reorder uses (see
+    // reorderItem() above) -- add-then-confirm, never a silent charge: this
+    // posts {items:[{slug, qty:1}]} to /api/portal/<token>/checkout, which
+    // returns a live Stripe Checkout URL; the charge only happens if the
+    // client confirms on Stripe's hosted page. No new endpoint. The slug is
+    // already in the client's own purchase history (that's WHY it's in
+    // Replenish), so it's already in _portal_entitled_slugs server-side.
+    // One-shot latch: disabled immediately, before any await.
+    if (reorderBtn.disabled) return;
+    reorderBtn.disabled = true;
+    const slug = reorderBtn.getAttribute("data-oasis-reorder");
+    const label = reorderBtn.textContent; reorderBtn.textContent = "Setting up your order…";
+    const row = reorderBtn.closest(".reitem");
+    const existingMsg = row && row.querySelector(".oasis-reorder-msg");
+    if (existingMsg) existingMsg.remove();
+    try {
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/checkout`, {
+        method: "POST", headers: {"Content-Type": "application/json"}, credentials: "same-origin",
+        body: JSON.stringify({items: [{slug, qty: 1}]})
+      });
+      const j = await r.json();
+      if (j.stripe_url) { location.href = j.stripe_url; return; }
+      throw new Error(j.error || "Checkout is temporarily unavailable. Please reach out to us and we’ll help.");
+    } catch (e) {
+      reorderBtn.disabled = false; reorderBtn.textContent = label;
+      if (row) {
+        const note = document.createElement("p");
+        note.className = "small err oasis-reorder-msg";
+        note.style.margin = ".3rem 0 0";
+        note.textContent = e.message || "Something went wrong. Please reach out and we’ll help.";
+        row.appendChild(note);
+      }
+    }
+    return;
+  }
 
   if (addBtn) {
     const panel = addBtn.closest('[data-panel="oasis"]') || document;

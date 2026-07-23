@@ -1,6 +1,6 @@
 import sqlite3
 
-from dashboard import oasis_block, orders as _o, owned_tools as ot
+from dashboard import oasis_block, orders as _o, owned_tools as ot, wishlist as wl
 
 
 def _cx():
@@ -65,3 +65,37 @@ def test_harmony_consumable_slug_does_not_map_to_hero():
         {"harmony-flower-essence-in-terrain-restore"})
     assert "harmony" not in norm
     assert norm == {"harmony-flower-essence-in-terrain-restore"}
+
+
+# --- Task 7: build_out.wanted -- the shared wishlist reflection ---
+
+def test_build_out_wanted_resolves_wishlisted_slug_to_name_and_url():
+    """A slug added to the client's wishlist (whether via this tile's own
+    "Add to wishlist" roadmap action or My Remedies' "Add to my Oasis") must
+    surface, resolved to {slug, name, url}, in build_out.wanted."""
+    cx = _cx()
+    wl.init_wishlist_table(cx)
+    wl.toggle(cx, wl.resolve_owner("a@b.com", None), "aces-eyedrops")
+    blk = oasis_block.build_block(cx, "a@b.com", True)
+    wanted = blk["build_out"]["wanted"]
+    assert len(wanted) == 1
+    assert wanted[0]["slug"] == "aces-eyedrops"
+    assert wanted[0]["name"] == "ACES Eyedrops"
+    assert wanted[0]["url"] == "/begin/product/aces-eyedrops"
+
+
+def test_build_out_wanted_skips_slug_not_in_catalog():
+    """A wishlisted slug that no longer resolves to a real catalog product
+    (removed/renamed, or a roadmap "hero" shorthand like "harmony" that isn't
+    itself a catalog entry) is silently skipped rather than shown with
+    placeholder text."""
+    cx = _cx()
+    wl.init_wishlist_table(cx)
+    wl.toggle(cx, wl.resolve_owner("a@b.com", None), "not-a-real-slug")
+    blk = oasis_block.build_block(cx, "a@b.com", True)
+    assert blk["build_out"]["wanted"] == []
+
+
+def test_build_out_wanted_empty_when_no_wishlist():
+    blk = oasis_block.build_block(_cx(), "a@b.com", True)
+    assert blk["build_out"]["wanted"] == []

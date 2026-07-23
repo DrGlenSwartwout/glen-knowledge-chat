@@ -12,6 +12,11 @@ Composes the three sibling modules into one block:
                        built from the union of device slugs (ours + external),
                        normalized onto the roadmap's simplified hero-family
                        slugs (see _normalize_owned_for_roadmap below).
+  - build_out.wanted  -> _wanted_items: the client's wishlist (shared with My
+                       Remedies' "Add to my Oasis" and this tile's own
+                       "Add to wishlist" roadmap action), resolved to
+                       {slug, name, url} so the client can see what they've
+                       flagged, not just an ephemeral "Added" toast.
 
 Returns {"enabled": False} outright when the flag is off. Each sub-field is
 independently try/except guarded so one failing source degrades to an empty
@@ -22,6 +27,7 @@ import json
 from dashboard import oasis_replenish as _rep
 from dashboard import oasis_roadmap as _roadmap
 from dashboard import owned_tools as _ot
+from dashboard import wishlist as _wl
 
 # Real catalog device slugs come in families/variants that differ from the
 # roadmap's simplified hero slugs:
@@ -111,6 +117,34 @@ def _device_orders(cx, email):
     return items_out
 
 
+def _wanted_items(cx, email):
+    """Task 7: the client's wishlist (Build Out's "roadmap-want" AND My
+    Remedies' "Add to my Oasis" both land on this SAME shared wishlist store,
+    see dashboard/wishlist.py), resolved to {slug, name, url} for display.
+    Mirrors oasis_replenish.replenish_items' catalog-lookup shape: a slug
+    that no longer resolves to a dict catalog entry (removed/renamed product,
+    or a non-catalog roadmap "hero" slug like "harmony") is silently skipped
+    rather than shown with placeholder text. Never raises -- any failure
+    degrades to an empty list, same philosophy as every other sub-field
+    here."""
+    from dashboard import products as _products
+    catalog = _products.load_products() or {}
+    _wl.init_wishlist_table(cx)
+    owner = _wl.resolve_owner(email, None)
+    slugs = _wl.list_for(cx, owner)
+    out = []
+    for slug in slugs:
+        product = catalog.get(slug)
+        if not isinstance(product, dict):
+            continue
+        out.append({
+            "slug": slug,
+            "name": product.get("name") or slug,
+            "url": product.get("url") or f"/begin/product/{slug}",
+        })
+    return out
+
+
 def build_block(cx, email, enabled, terrain_phase=None) -> dict:
     """{"enabled": bool, "replenish": [...], "build_out": {"owned_from_us": [...],
     "owned_external": [...], "roadmap": [...]}}. {"enabled": False} when the
@@ -149,6 +183,11 @@ def build_block(cx, email, enabled, terrain_phase=None) -> dict:
     except Exception:
         roadmap = []
 
+    try:
+        wanted = _wanted_items(cx, email)
+    except Exception:
+        wanted = []
+
     return {
         "enabled": True,
         "replenish": replenish,
@@ -156,5 +195,6 @@ def build_block(cx, email, enabled, terrain_phase=None) -> dict:
             "owned_from_us": owned_from_us,
             "owned_external": owned_external,
             "roadmap": roadmap,
+            "wanted": wanted,
         },
     }
