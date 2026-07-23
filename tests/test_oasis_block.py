@@ -56,3 +56,12 @@ def test_normalize_owned_for_roadmap_family_map():
     norm = oasis_block._normalize_owned_for_roadmap(
         {"water-ionizer-9plate", "harmony-laser", "kloud-pemf-mini", "some-other-slug"})
     assert norm == {"water-ionizer", "harmony", "kloud", "some-other-slug"}
+
+
+def test_harmony_consumable_slug_does_not_map_to_hero():
+    # A non-device "harmony-*" consumable (self-reported via owned_tools) must NOT
+    # be mapped onto the "harmony" hero -- only "harmony-laser*" is the device.
+    norm = oasis_block._normalize_owned_for_roadmap(
+        {"harmony-flower-essence-in-terrain-restore"})
+    assert "harmony" not in norm
+    assert norm == {"harmony-flower-essence-in-terrain-restore"}

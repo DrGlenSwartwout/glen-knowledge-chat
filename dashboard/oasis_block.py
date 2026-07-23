@@ -34,7 +34,11 @@ from dashboard import owned_tools as _ot
 # Glen extends this family map as new device variants are added to the catalog.
 _DEVICE_FAMILY_PREFIXES = (
     ("water-ionizer", "water-ionizer"),
-    ("harmony", "harmony"),   # covers "harmony-laser*" and the bare "harmony" slug
+    # "harmony-laser*" only, NOT a bare "harmony" prefix -- the catalog has
+    # non-device "harmony-*" consumables (e.g. harmony-flower-essence) that a
+    # bare prefix would wrongly map onto the Harmony hero. A slug that is exactly
+    # "harmony" still passes through unchanged and equals the hero slug anyway.
+    ("harmony-laser", "harmony"),
     ("kloud", "kloud"),
 )
 
