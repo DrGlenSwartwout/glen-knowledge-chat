@@ -63,3 +63,30 @@ def test_manual_payment_rejects_unauthorized_payer(monkeypatch):
         rows = cx.execute(
             "SELECT * FROM order_payments WHERE order_id=?", (oid,)).fetchall()
     assert rows == []
+
+
+def test_manual_payment_payer_email_inert_when_flag_off(monkeypatch):
+    """Flag-off backward-compat: with CAREGIVER_PAY_ENABLED unset/false, posting a
+    payer_email must NOT error and must NOT stamp it — the money route stays
+    inert, exactly like before this feature existed."""
+    michael = f"michael-{uuid.uuid4().hex}@x.com"
+    steve = f"steve-{uuid.uuid4().hex}@x.com"
+    oid = _seed_order(michael)
+    with appmod._db_lock, appmod.db.connect(appmod.LOG_DB) as cx:
+        hh.add_member(cx, steve, michael, relationship="partner")
+        hh.set_pay_consent(cx, steve, michael, 1)
+        cx.commit()
+
+    monkeypatch.setattr(appmod, "_bos_actor",
+                         lambda: _rbac.Actor(role=_rbac.OWNER, name="owner"))
+    monkeypatch.delenv("CAREGIVER_PAY_ENABLED", raising=False)
+    client = appmod.app.test_client()
+    r = client.post(f"/api/orders/{oid}/payments",
+                     json={"amount": 50.00, "method": "Zelle", "payer_email": steve})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["ok"] is True
+
+    with appmod._db_lock, appmod.db.connect(appmod.LOG_DB) as cx:
+        row = cx.execute(
+            "SELECT payer_email FROM order_payments WHERE order_id=?", (oid,)).fetchone()
+    assert row[0] is None

@@ -24086,20 +24086,40 @@ def api_portal_caregiver_pay(token):
         if not portal:
             return jsonify({"ok": False, "error": "not found"}), 404
         payer = (portal.get("email") or "").strip().lower()
-        o = cx.execute("SELECT email, total_cents FROM orders WHERE id=?", (order_id,)).fetchone()
+        o = cx.execute("SELECT email, total_cents, pay_status, status FROM orders WHERE id=?",
+                       (order_id,)).fetchone()
         if not o:
             return jsonify({"ok": False, "error": "order not found"}), 404
         beneficiary = (o["email"] or "").strip().lower()
+        # Auth (can_pay) is checked BEFORE the already-paid/status check below so an
+        # unauthorized caller can't use this endpoint to probe an order's pay state.
         if not _hh.can_pay(cx, payer, beneficiary):
             return jsonify({"ok": False, "error": "not authorized"}), 403
+        # Already-paid / terminal-status guard — mirrors api_invoice_pay's check
+        # (app.py, api_invoice_pay) so a second checkout can't re-charge a paid order.
+        if o["pay_status"] == "paid" or o["status"] not in ("proposed", "confirmed"):
+            return jsonify({"ok": False, "error": "this order is already paid"}), 409
         amount = int(o["total_cents"] or 0)
     base = PUBLIC_BASE_URL.rstrip("/")
-    sess = _sp.create_checkout_session(
-        amount, customer_email=payer, description=f"Payment for order #{order_id}",
-        metadata={"kind": "caregiver-pay", "order_id": str(order_id), "payer_email": payer},
-        success_url=f"{base}/caregiver-pay/return?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{base}/portal/{token}")
-    return jsonify({"ok": True, "url": sess.get("url")})
+    _card_unavailable = "Card payment is temporarily unavailable — please contact us."
+    if not _STRIPE_ACTIVE:
+        return jsonify({"ok": False, "error": _card_unavailable}), 503
+    # A Stripe failure (bad key, API error, timeout) must NOT 500 the caregiver —
+    # degrade to a clean JSON error, same pattern as api_invoice_pay.
+    try:
+        sess = _sp.create_checkout_session(
+            amount, customer_email=payer, description=f"Payment for order #{order_id}",
+            metadata={"kind": "caregiver-pay", "order_id": str(order_id), "payer_email": payer},
+            success_url=f"{base}/caregiver-pay/return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/portal/{token}")
+        url = sess.get("url")
+    except Exception as e:
+        app.logger.warning(f"[caregiver-pay] stripe session failed for order {order_id}: {e!r}")
+        _alert_stripe("caregiver-pay", e)
+        url = None
+    if not url:
+        return jsonify({"ok": False, "error": _card_unavailable}), 502
+    return jsonify({"ok": True, "url": url})
 
 
 def _fulfill_caregiver_pay(session_id):

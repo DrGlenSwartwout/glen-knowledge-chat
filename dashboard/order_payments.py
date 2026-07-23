@@ -312,10 +312,9 @@ def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
     if src_pay and src_pay.get("source") == "stripe" and src_pay.get("external_ref"):
         sr = stripe_pay.refund(src_pay["external_ref"], amount_cents=amt)
         external_ref = sr.get("id")
-    parent_payer = None
-    if refunds_payment_id is not None:
-        _p = _row(cx, refunds_payment_id)
-        parent_payer = (_p or {}).get("payer_email")
+    # Reuse the row already fetched above for the Stripe-refund check instead of
+    # a second _row(cx, refunds_payment_id) query — same row, same value.
+    parent_payer = (src_pay or {}).get("payer_email")
     try:
         row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
                       source=("stripe" if external_ref else "manual"),
