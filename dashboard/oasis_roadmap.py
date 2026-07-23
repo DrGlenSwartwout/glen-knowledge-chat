@@ -5,10 +5,14 @@ Flat, all-phase recommendations for a client's Healing Oasis:
      everyone (fixed lead order: harmony-laser -> water-ionizer-15plate ->
      kloud-pemf-maxi). These sort ABOVE the secondary tail because they are
      foundational, not situational.
-  2. SECONDARY_TOOLS — an unprioritized flat tail of every other catalog
-     tool Glen recommends. Healing tools work in all phases, so there is no
-     per-terrain-phase bucketing (an earlier per-phase TERRAIN_TOOLS dict
-     was removed for this reason -- see build_roadmap's docstring).
+  2. SECONDARY_TOOLS — an unprioritized tail of every other catalog tool
+     Glen recommends, grouped by modality (see CATEGORY_ORDER) for display.
+     Healing tools work in all phases, so there is no per-terrain-phase
+     bucketing (an earlier per-phase TERRAIN_TOOLS dict was removed for
+     this reason -- see build_roadmap's docstring). `nes-mihealth`
+     intentionally appears TWICE (PEMF and Microcurrent -- Glen: it does
+     both) -- build_roadmap preserves this duplicate rather than deduping
+     secondary entries against each other.
 
 Pure module, no DB — build_roadmap() takes owned_slugs (see
 dashboard/owned_tools.owned_slugs()) and returns the client's personal gap
@@ -45,63 +49,85 @@ HERO_TOOLS = [
     },
 ]
 
-# Secondary tools: a flat, unprioritized list of every other tool Glen
-# recommends. No per-item `why` -- these are an unprioritized list, not a
-# ranked one. Glen: extend this list as more tools are confirmed.
+# Display order for secondary tool categories. Glen extends this as new
+# modalities are confirmed.
+CATEGORY_ORDER = [
+    "Light", "Water", "Air", "PEMF", "Microcurrent", "EMF", "Sound",
+    "Bioenergetic", "Detox",
+]
+
+# Secondary tools: an unprioritized list of every other tool Glen
+# recommends, grouped by modality (`category`, one of CATEGORY_ORDER) for
+# display. No per-item `why` -- these are an unprioritized list, not a
+# ranked one. `nes-mihealth` intentionally appears TWICE (PEMF and
+# Microcurrent) -- see build_roadmap, which preserves this duplicate.
+# Glen: extend this list as more tools are confirmed.
 SECONDARY_TOOLS = [
-    {"slug": "acupuncture-point-cold-laser", "name": "Acupuncture Point Cold Laser", "tier": "secondary"},
-    {"slug": "air-surface-pro-plus", "name": "Air & Surface PRO+", "tier": "secondary"},
-    {"slug": "aulterra-energy-pendant-silver-gold", "name": "Aulterra Energy Pendant Silver & Gold", "tier": "secondary"},
-    {"slug": "mithreal-silver-baseball-cap", "name": "Baseball Cap with Mithreal Silver", "tier": "secondary"},
-    {"slug": "biocompatible-nightlight", "name": "Biocompatible Nightlight", "tier": "secondary"},
-    {"slug": "bioenergetic-wellness-scanner", "name": "Bioenergetic Wellness Scanner", "tier": "secondary"},
-    {"slug": "blue-blocking-photochromic-sunglasses", "name": "Blue Blocking Photochromic Sunglasses", "tier": "secondary"},
-    {"slug": "mithreal-silver-blue-zipper-hoodie", "name": "Blue Zipper Hoodie with Mithreal Silver", "tier": "secondary"},
-    {"slug": "breath-tuning-fork-1283hz", "name": "Breath Tuning Fork 1283 Hz", "tier": "secondary"},
-    {"slug": "car-ionizer", "name": "Car Ionizer", "tier": "secondary"},
-    {"slug": "car-neutralizer-usb", "name": "Car Neutralizer USB", "tier": "secondary"},
-    {"slug": "denas-eyeglasses-electrode", "name": "DENAS Eyeglasses Electrode", "tier": "secondary"},
-    {"slug": "denas-microcurrent-eye-system", "name": "DENAS Microcurrent System for Eye Healing", "tier": "secondary"},
-    {"slug": "denas-scenar", "name": "DENAS PCM Pro (SCENAR Microcurrent)", "tier": "secondary"},
-    {"slug": "dowsing-rods", "name": "Dowsing Rods", "tier": "secondary"},
-    {"slug": "emf-free-headset", "name": "EMF Free Headset", "tier": "secondary"},
-    {"slug": "freshair-mobile-purifier", "name": "FreshAir Mobile Portable Air Purifier", "tier": "secondary"},
-    {"slug": "frosted-quartz-tuning-fork-172hz", "name": "Frosted Quartz Tuning Fork 172 Hz", "tier": "secondary"},
-    {"slug": "hair-growth-helmet", "name": "Hair Growth Helmet", "tier": "secondary"},
-    {"slug": "hypoxia-free-face-shield", "name": "Hypoxia-Free Face Shield", "tier": "secondary"},
-    {"slug": "infrared-therapy-flashlight", "name": "Infrared Therapy Flashlight", "tier": "secondary"},
-    {"slug": "wearable-ionizer", "name": "Ionizer - Wearable", "tier": "secondary"},
-    {"slug": "mithreal-silver-ivy-hat", "name": "Ivy Hat with Mithreal Silver", "tier": "secondary"},
-    {"slug": "microgen-microcurrent-generator", "name": "Microgen Wearable Microcurrent Generator", "tier": "secondary"},
-    {"slug": "mind-tuning-fork-5000hz", "name": "Mind Tuning Fork 5000 Hz", "tier": "secondary"},
-    {"slug": "miracule-water-system", "name": "Miracule Water System with Molecular Hydrogen", "tier": "secondary"},
-    {"slug": "molecular-hydrogen-bottle", "name": "Molecular Hydrogen (portable bottle)", "tier": "secondary"},
-    {"slug": "nes-mihealth", "name": "NES miHealth", "tier": "secondary"},
-    {"slug": "nes-scanner", "name": "NES Scanner", "tier": "secondary"},
-    {"slug": "nir-brain-frequency-helmet", "name": "NIR Brain Frequency Helmet", "tier": "secondary"},
-    {"slug": "nir-nasal-clip", "name": "NIR Near-Infrared Nasal Clip", "tier": "secondary"},
-    {"slug": "red-mitochondrial-therapy-630nm", "name": "Red Mitochondrial Therapy 630 nm", "tier": "secondary"},
-    {"slug": "shower-filter", "name": "Shower Filter", "tier": "secondary"},
-    {"slug": "shungite-stick-plate", "name": "Shungite Stick Plate", "tier": "secondary"},
-    {"slug": "smokey-quartz-healing-tool", "name": "Smokey Quartz Healing Tool", "tier": "secondary"},
-    {"slug": "spirit-tuning-fork-172hz", "name": "Spirit Tuning Fork 172 Hz", "tier": "secondary"},
-    {"slug": "neutralizer-3-pack", "name": "The Neutralizer 3 Pack", "tier": "secondary"},
-    {"slug": "therapeutic-nightlight", "name": "Therapeutic Nightlight", "tier": "secondary"},
-    {"slug": "tibetan-singing-bowl-172hz", "name": "Tibetan Glass Singing Bowl 172 Hz", "tier": "secondary"},
-    {"slug": "vagus-nerve-stimulation-kit", "name": "Vagus Nerve Stimulation Kit for miHealth", "tier": "secondary"},
-    {"slug": "whole-house-neutralizer", "name": "Whole House Neutralizer", "tier": "secondary"},
-    {"slug": "wicking-toothbrush", "name": "Wicking Toothbrush", "tier": "secondary"},
-    {"slug": "hand-cradle", "name": "ZYTO Hand Cradle", "tier": "secondary"},
+    # Light
+    {"slug": "acupuncture-point-cold-laser", "name": "Acupuncture Point Cold Laser", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "infrared-therapy-flashlight", "name": "Infrared Therapy Flashlight", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "red-mitochondrial-therapy-630nm", "name": "Red Mitochondrial Therapy 630 nm", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "nir-brain-frequency-helmet", "name": "NIR Brain Frequency Helmet", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "nir-nasal-clip", "name": "NIR Near-Infrared Nasal Clip", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "hair-growth-helmet", "name": "Hair Growth Helmet", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "biocompatible-nightlight", "name": "Biocompatible Nightlight", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "therapeutic-nightlight", "name": "Therapeutic Nightlight", "category": "Light", "tier": "secondary", "why": ""},
+    {"slug": "blue-blocking-photochromic-sunglasses", "name": "Blue Blocking Photochromic Sunglasses", "category": "Light", "tier": "secondary", "why": ""},
+    # Water
+    {"slug": "miracule-water-system", "name": "Miracule Water System with Molecular Hydrogen", "category": "Water", "tier": "secondary", "why": ""},
+    {"slug": "molecular-hydrogen-bottle", "name": "Molecular Hydrogen (portable bottle)", "category": "Water", "tier": "secondary", "why": ""},
+    {"slug": "shower-filter", "name": "Shower Filter", "category": "Water", "tier": "secondary", "why": ""},
+    # Air
+    {"slug": "air-surface-pro-plus", "name": "Air & Surface PRO+", "category": "Air", "tier": "secondary", "why": ""},
+    {"slug": "freshair-mobile-purifier", "name": "FreshAir Mobile Portable Air Purifier", "category": "Air", "tier": "secondary", "why": ""},
+    {"slug": "car-ionizer", "name": "Car Ionizer", "category": "Air", "tier": "secondary", "why": ""},
+    {"slug": "wearable-ionizer", "name": "Ionizer - Wearable", "category": "Air", "tier": "secondary", "why": ""},
+    # PEMF  (nes-mihealth listed here AND in Microcurrent -- intentional, see module docstring)
+    {"slug": "nes-mihealth", "name": "NES miHealth", "category": "PEMF", "tier": "secondary", "why": ""},
+    # Microcurrent
+    {"slug": "denas-scenar", "name": "DENAS PCM Pro (SCENAR Microcurrent)", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    {"slug": "denas-eyeglasses-electrode", "name": "DENAS Eyeglasses Electrode", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    {"slug": "denas-microcurrent-eye-system", "name": "DENAS Microcurrent System for Eye Healing", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    {"slug": "microgen-microcurrent-generator", "name": "Microgen Wearable Microcurrent Generator", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    {"slug": "vagus-nerve-stimulation-kit", "name": "Vagus Nerve Stimulation Kit for miHealth", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    {"slug": "nes-mihealth", "name": "NES miHealth", "category": "Microcurrent", "tier": "secondary", "why": ""},
+    # EMF
+    {"slug": "emf-free-headset", "name": "EMF Free Headset", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "neutralizer-3-pack", "name": "The Neutralizer 3 Pack", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "whole-house-neutralizer", "name": "Whole House Neutralizer", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "car-neutralizer-usb", "name": "Car Neutralizer USB", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "shungite-stick-plate", "name": "Shungite Stick Plate", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "aulterra-energy-pendant-silver-gold", "name": "Aulterra Energy Pendant Silver & Gold", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "mithreal-silver-baseball-cap", "name": "Baseball Cap with Mithreal Silver", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "mithreal-silver-blue-zipper-hoodie", "name": "Blue Zipper Hoodie with Mithreal Silver", "category": "EMF", "tier": "secondary", "why": ""},
+    {"slug": "mithreal-silver-ivy-hat", "name": "Ivy Hat with Mithreal Silver", "category": "EMF", "tier": "secondary", "why": ""},
+    # Sound
+    {"slug": "breath-tuning-fork-1283hz", "name": "Breath Tuning Fork 1283 Hz", "category": "Sound", "tier": "secondary", "why": ""},
+    {"slug": "mind-tuning-fork-5000hz", "name": "Mind Tuning Fork 5000 Hz", "category": "Sound", "tier": "secondary", "why": ""},
+    {"slug": "spirit-tuning-fork-172hz", "name": "Spirit Tuning Fork 172 Hz", "category": "Sound", "tier": "secondary", "why": ""},
+    {"slug": "frosted-quartz-tuning-fork-172hz", "name": "Frosted Quartz Tuning Fork 172 Hz", "category": "Sound", "tier": "secondary", "why": ""},
+    {"slug": "tibetan-singing-bowl-172hz", "name": "Tibetan Glass Singing Bowl 172 Hz", "category": "Sound", "tier": "secondary", "why": ""},
+    # Bioenergetic
+    {"slug": "nes-scanner", "name": "NES Scanner", "category": "Bioenergetic", "tier": "secondary", "why": ""},
+    {"slug": "bioenergetic-wellness-scanner", "name": "Bioenergetic Wellness Scanner", "category": "Bioenergetic", "tier": "secondary", "why": ""},
+    {"slug": "hand-cradle", "name": "ZYTO Hand Cradle", "category": "Bioenergetic", "tier": "secondary", "why": ""},
+    {"slug": "dowsing-rods", "name": "Dowsing Rods", "category": "Bioenergetic", "tier": "secondary", "why": ""},
+    # Detox
+    {"slug": "wicking-toothbrush", "name": "Wicking Toothbrush", "category": "Detox", "tier": "secondary", "why": ""},
 ]
 
 
 def build_roadmap(owned_slugs, terrain_phase=None):
     """Personal recommended-additions roadmap: hero tools (fixed order, not
-    owned), THEN secondary tools (list order, not owned). Deduped by slug
-    across tiers -- a slug already added by an earlier tier is not re-added
-    later. Every item keeps {slug, name, why, tier} (secondary items carry
-    why="", since SECONDARY_TOOLS is an unprioritized list with no per-item
-    rationale).
+    owned), THEN secondary tools (list/category order, not owned). Heroes
+    are deduped by slug against each other and against owned_slugs; a
+    secondary slug already used by a HERO is also skipped (none currently
+    overlap). Secondary entries are deliberately NOT deduped against each
+    other -- `nes-mihealth` intentionally appears twice (PEMF and
+    Microcurrent, see SECONDARY_TOOLS) and both copies are preserved here.
+    `owned_slugs` still filters by slug, so owning `nes-mihealth` removes
+    BOTH of its entries. Every item keeps {slug, name, why, tier}; secondary
+    items also carry `category` (one of CATEGORY_ORDER).
 
     `terrain_phase` is accepted for backward-compatible call signatures
     (callers/tests/plumbing) but is now IGNORED: Glen's direction is that
@@ -109,23 +135,22 @@ def build_roadmap(owned_slugs, terrain_phase=None):
     selection any more -- the result is identical for every phase or None.
     Pure, no DB."""
     owned_slugs = owned_slugs or set()
-    seen = set()
+    hero_seen = set()
     roadmap = []
 
     for tool in HERO_TOOLS:
         slug = tool["slug"]
-        if slug in owned_slugs or slug in seen:
+        if slug in owned_slugs or slug in hero_seen:
             continue
-        seen.add(slug)
+        hero_seen.add(slug)
         item = dict(tool)
         item.setdefault("why", "")
         roadmap.append(item)
 
     for tool in SECONDARY_TOOLS:
         slug = tool["slug"]
-        if slug in owned_slugs or slug in seen:
+        if slug in owned_slugs or slug in hero_seen:
             continue
-        seen.add(slug)
         item = dict(tool)
         item.setdefault("why", "")
         roadmap.append(item)
