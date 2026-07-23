@@ -12,8 +12,23 @@ import os
 os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
 os.environ.setdefault("PINECONE_API_KEY", "pc-dummy")
 
+import json
 import sqlite3
 import pytest
+
+
+def _repo_catalog():
+    """Repo products.json, independent of $DATA_DIR -- the roadmap-want test
+    asserts on a real wishlist slug (aces-eyedrops), so it must see the real
+    catalog, not a stripped $DATA_DIR products.json left by the full suite."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "data", "products.json")) as f:
+        return (json.load(f) or {}).get("products", {})
+
+
+@pytest.fixture(autouse=True)
+def _pin_repo_catalog(monkeypatch):
+    monkeypatch.setattr("dashboard.products.load_products", _repo_catalog)
 
 
 @pytest.fixture

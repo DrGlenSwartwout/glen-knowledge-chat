@@ -1,6 +1,27 @@
+import json
+import os
 import sqlite3
 
+import pytest
+
 from dashboard import oasis_block, orders as _o, owned_tools as ot, wishlist as wl
+
+
+def _repo_catalog():
+    """The catalog straight from the repo's own products.json, independent of
+    $DATA_DIR. These tests assert on real device/consumable/wishlist slugs
+    (water-ionizer-9plate, harmony-laser, aces-eyedrops, ...), so they must see
+    the real catalog -- not whatever stripped products.json the full suite may
+    leave $DATA_DIR pointing at (which silently emptied build_out.wanted /
+    owned_from_us and was the CI-only regression the ratchet caught)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "data", "products.json")) as f:
+        return (json.load(f) or {}).get("products", {})
+
+
+@pytest.fixture(autouse=True)
+def _pin_repo_catalog(monkeypatch):
+    monkeypatch.setattr("dashboard.products.load_products", _repo_catalog)
 
 
 def _cx():
