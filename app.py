@@ -20183,6 +20183,34 @@ def api_portal_library_asset(token, slug, asset):
     return resp
 
 
+@app.route("/api/portal/<token>/triage", methods=["GET", "POST"])
+def api_portal_triage(token):
+    """Token-gated condition triage (glaucoma pilot): POST submits a short
+    self-report, resolves it to condition program(s), and seeds their remedies
+    into recommendations under the `condition` source. GET returns the
+    client's previously stored answers for prefill. Same-origin portal
+    surface -- no CORS."""
+    from dashboard import client_portal as _cp, condition_triage as _ct
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ct.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            cond = (request.args.get("condition") or "glaucoma").strip().lower()
+            return jsonify({"ok": True, "triage": _ct.get_triage(cx, email, cond)})
+        data = request.get_json(silent=True) or request.form or {}
+        cond = (data.get("condition") or "glaucoma").strip().lower()
+        answers = {k: data.get(k) for k in
+                   ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
+                    "field_loss", "category")}
+        res = _ct.seed_from_triage(cx, email, cond, answers)
+    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
+
+
 @app.route("/api/portal/<token>/onboarding", methods=["GET"])
 def api_portal_onboarding(token):
     """Read-only 3-phase onboarding status for the portal hub tile. Anchor
