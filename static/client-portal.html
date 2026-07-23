@@ -945,10 +945,15 @@ function buildOasisRoadmapHtml(roadmap){
     const cat = item.category || "";
     (byCategory[cat] = byCategory[cat] || []).push(item);
   });
-  const secondaryHtml = OASIS_CATEGORY_ORDER.map(cat => {
+  // Known categories in their fixed order, THEN any category present in the data
+  // but absent from OASIS_CATEGORY_ORDER (e.g. a new category added to the Python
+  // SECONDARY_TOOLS without updating this list) -- so a tool can never silently
+  // vanish from the roadmap; it just renders last under its own label.
+  const extraCats = Object.keys(byCategory).filter(c => !OASIS_CATEGORY_ORDER.includes(c));
+  const secondaryHtml = OASIS_CATEGORY_ORDER.concat(extraCats).map(cat => {
     const items = byCategory[cat];
     if (!items || !items.length) return "";
-    return `<div class="hub-grid-group"><p class="glabel">${esc(cat)}</p>${items.map(oasisRoadmapRowHtml).join("")}</div>`;
+    return `<div class="hub-grid-group"><p class="glabel">${esc(cat || "Other")}</p>${items.map(oasisRoadmapRowHtml).join("")}</div>`;
   }).join("");
   return heroHtml + secondaryHtml;
 }
