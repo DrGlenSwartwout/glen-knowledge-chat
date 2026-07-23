@@ -18189,6 +18189,13 @@ def _household_sharing_enabled():
         "1", "true", "yes")
 
 
+def _caregiver_pay_enabled():
+    """Caregiver payer attribution: member-authorizes-caregiver-to-pay (Task 4).
+    Default OFF — when off, the /pay-consent endpoint is inert (200 ok, recorded:false)."""
+    return (os.environ.get("CAREGIVER_PAY_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _read_receipts_enabled():
     """Read-receipts track-open feature (Task 2). Default OFF — when off, the two
     track-open endpoints are inert (200 ok, recorded:false) and the portal/invoice
@@ -20700,6 +20707,28 @@ def api_portal_share_consent(token):
         member = (portal.get("email") or "").strip().lower()
         # token owner is the MEMBER of (caregiver -> member)
         _hh.set_share_consent(cx, caregiver, member, consent)
+    return jsonify({"ok": True, "recorded": True, "consent": consent})
+
+
+@app.route("/api/portal/<token>/pay-consent", methods=["POST"])
+def api_portal_pay_consent(token):
+    """The MEMBER authorizes a caregiver to pay their orders. Token-scoped: only
+    affects a link where the token's email is the MEMBER."""
+    if not _caregiver_pay_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    from dashboard import client_portal as _cp
+    from dashboard import household as _hh
+    data = request.get_json(silent=True) or {}
+    caregiver = (data.get("caregiver_email") or "").strip().lower()
+    consent = 1 if data.get("consent") else 0
+    scope = data.get("share_scope") if data.get("share_scope") in ("amount_only", "line_items") else None
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        member = (portal.get("email") or "").strip().lower()
+        _hh.set_pay_consent(cx, caregiver, member, consent, share_scope=scope)
     return jsonify({"ok": True, "recorded": True, "consent": consent})
 
 
