@@ -10,6 +10,7 @@ A "payment" row is an order that captured card money via Stripe. Two shapes:
 import sqlite3
 
 from dashboard import orders as O
+from dashboard import order_payments as OP
 from dashboard import payments as P
 from dashboard import stripe_alerts as SA
 
@@ -102,6 +103,37 @@ def test_ledger_newest_first():
     O.set_order_stripe_pi(cx, b, "pi_new")
     refs = [r["external_ref"] for r in P.list_payments(cx)]
     assert refs.index("cs_new") < refs.index("cs_old")  # newest (higher id) first
+
+
+def test_ledger_rehomes_caregiver_card_payment_to_payer():
+    """A caregiver's CARD payment leaves the order owned by the beneficiary
+    (Michael), but the money view must attribute it to the PAYER (Steve).
+    _fulfill_caregiver_pay records a payer-stamped order_payments row whose
+    external_ref == the order's captured PI, and stamps that PI onto the order.
+    list_payments re-homes `email` to op.payer_email via the LEFT JOIN. A normal
+    captured order with NO payer-stamped payment stays attributed to its owner —
+    pinning the backward-compat guarantee (every pre-caregiver-pay order)."""
+    cx = _cx()
+    # caregiver-paid card order: owned by Michael, PI captured on the order,
+    # payer-stamped ledger row for Steve keyed to that same PI.
+    cg = _mk_order(cx, source="funnel", external_ref="cs_cg",
+                   email="michael@x.com", total_cents=5000)
+    O.set_order_stripe_pi(cx, cg, "pi_cg_1")
+    O.set_order_payment(cx, cg, method="card", amount_cents=5000)
+    OP.ensure_table(cx)
+    OP.add_payment(cx, cg, 5000, "Credit card (Stripe)", source="stripe",
+                   external_ref="pi_cg_1", payer_email="steve@x.com")
+    # ordinary captured card order, no payer stamp -> stays attributed to owner.
+    normal = _mk_order(cx, source="funnel", external_ref="cs_norm",
+                       email="owner@x.com", total_cents=7000)
+    O.set_order_stripe_pi(cx, normal, "pi_norm")
+    O.set_order_payment(cx, normal, method="card", amount_cents=7000)
+
+    rows = P.list_payments(cx)
+    assert len(rows) == 2, f"Expected 2 payment rows, got {len(rows)}"
+    by_pi = {r["stripe_payment_intent"]: r for r in rows}
+    assert by_pi["pi_cg_1"]["email"] == "steve@x.com"   # re-homed to the payer
+    assert by_pi["pi_norm"]["email"] == "owner@x.com"    # unchanged (backward-compat)
 
 
 def test_ledger_reports_paid_status_for_captured_rows():

@@ -40,6 +40,10 @@ def ensure_table(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_order_payments_order "
                "ON order_payments(order_id)")
+    try:
+        cx.execute("ALTER TABLE order_payments ADD COLUMN payer_email TEXT")
+    except Exception:
+        pass
 
 
 def _row(cx, pid):
@@ -68,7 +72,7 @@ def ledger_rows_for_payments_view(cx, *, limit=200):
     rows = cx.execute(
         "SELECT op.id AS op_id, op.kind, op.amount_cents, op.method, op.source AS op_source, "
         "op.external_ref AS op_ref, op.paid_at, op.created_at, "
-        "o.email, o.name, o.channel "
+        "COALESCE(op.payer_email, o.email) AS email, o.name, o.channel "
         "FROM order_payments op JOIN orders o ON o.id = op.order_id "
         # Non-Stripe rows (manual payments + refunds) PLUS Stripe REFUNDS. A card
         # refund is source='stripe' but has NO row in the Stripe charge ledger
@@ -147,16 +151,16 @@ def balance(cx, order_id):
 
 
 def _insert(cx, order_id, *, kind, amount_cents, method, source, external_ref,
-            refunds_payment_id, paid_at, note, actor):
+            refunds_payment_id, paid_at, note, actor, payer_email=None):
     now = _now()
     new_id = dbwrite.insert_returning_id(
         cx,
         "INSERT INTO order_payments (order_id, kind, amount_cents, method, "
         "source, external_ref, refunds_payment_id, paid_at, note, status, "
-        "qbo_sync, created_at, updated_at, created_by) "
-        "VALUES (?,?,?,?,?,?,?,?,?,'active','pending',?,?,?)",
+        "qbo_sync, created_at, updated_at, created_by, payer_email) "
+        "VALUES (?,?,?,?,?,?,?,?,?,'active','pending',?,?,?,?)",
         (order_id, kind, int(amount_cents), method, source, external_ref,
-         refunds_payment_id, paid_at or now, note, now, now, actor))
+         refunds_payment_id, paid_at or now, note, now, now, actor, payer_email))
     cx.commit()
     return _row(cx, new_id)
 
@@ -215,7 +219,7 @@ def _push_payment(cx, pid):
 
 def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                 external_ref=None, paid_at=None, note=None, actor=None,
-                qbo_txn_id=None, skip_qbo_push=False):
+                qbo_txn_id=None, skip_qbo_push=False, payer_email=None):
     """Record a payment in the ledger. This NEVER creates a QBO payment any more.
 
     It used to push one by default. It no longer does: every payment reaches
@@ -242,7 +246,7 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
     row = _insert(cx, order_id, kind="payment", amount_cents=amount_cents,
                   method=method, source=source, external_ref=external_ref,
                   refunds_payment_id=None, paid_at=paid_at, note=note,
-                  actor=actor)
+                  actor=actor, payer_email=(payer_email or None))
     if qbo_txn_id or skip_qbo_push:
         _mark_sync(cx, row["id"], qbo_txn_id=qbo_txn_id, state="synced")
     _push_payment(cx, row["id"])
@@ -308,11 +312,14 @@ def add_refund(cx, order_id, amount_cents, method, *, refunds_payment_id=None,
     if src_pay and src_pay.get("source") == "stripe" and src_pay.get("external_ref"):
         sr = stripe_pay.refund(src_pay["external_ref"], amount_cents=amt)
         external_ref = sr.get("id")
+    # Reuse the row already fetched above for the Stripe-refund check instead of
+    # a second _row(cx, refunds_payment_id) query — same row, same value.
+    parent_payer = (src_pay or {}).get("payer_email")
     try:
         row = _insert(cx, order_id, kind="refund", amount_cents=amt, method=method,
                       source=("stripe" if external_ref else "manual"),
                       external_ref=external_ref, refunds_payment_id=refunds_payment_id,
-                      paid_at=None, note=note, actor=actor)
+                      paid_at=None, note=note, actor=actor, payer_email=parent_payer)
     except Exception:
         if external_ref:
             # Stripe already moved the money — this row is the only trace of it.
@@ -372,6 +379,15 @@ def resync(cx, payment_id):
     else:
         _push_refund(cx, payment_id)   # defined in Task 3
     return _row(cx, payment_id)
+
+
+def caregiver_payers_for(cx, order_id, owner_email):
+    """Distinct non-owner payer_emails on active payments for this order."""
+    rows = cx.execute(
+        "SELECT DISTINCT payer_email FROM order_payments WHERE order_id=? "
+        "AND kind='payment' AND status='active' AND payer_email IS NOT NULL "
+        "AND lower(payer_email) <> lower(?)", (order_id, owner_email or "")).fetchall()
+    return [r[0] for r in rows]
 
 
 def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):

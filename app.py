@@ -18190,6 +18190,13 @@ def _household_sharing_enabled():
         "1", "true", "yes")
 
 
+def _caregiver_pay_enabled():
+    """Caregiver payer attribution: member-authorizes-caregiver-to-pay (Task 4).
+    Default OFF — when off, the /pay-consent endpoint is inert (200 ok, recorded:false)."""
+    return (os.environ.get("CAREGIVER_PAY_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
 def _read_receipts_enabled():
     """Read-receipts track-open feature (Task 2). Default OFF — when off, the two
     track-open endpoints are inert (200 ok, recorded:false) and the portal/invoice
@@ -20750,6 +20757,28 @@ def api_portal_share_consent(token):
         member = (portal.get("email") or "").strip().lower()
         # token owner is the MEMBER of (caregiver -> member)
         _hh.set_share_consent(cx, caregiver, member, consent)
+    return jsonify({"ok": True, "recorded": True, "consent": consent})
+
+
+@app.route("/api/portal/<token>/pay-consent", methods=["POST"])
+def api_portal_pay_consent(token):
+    """The MEMBER authorizes a caregiver to pay their orders. Token-scoped: only
+    affects a link where the token's email is the MEMBER."""
+    if not _caregiver_pay_enabled():
+        return jsonify({"ok": True, "recorded": False, "reason": "disabled"})
+    from dashboard import client_portal as _cp
+    from dashboard import household as _hh
+    data = request.get_json(silent=True) or {}
+    caregiver = (data.get("caregiver_email") or "").strip().lower()
+    consent = 1 if data.get("consent") else 0
+    scope = data.get("share_scope") if data.get("share_scope") in ("amount_only", "line_items") else None
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        member = (portal.get("email") or "").strip().lower()
+        _hh.set_pay_consent(cx, caregiver, member, consent, share_scope=scope)
     return jsonify({"ok": True, "recorded": True, "consent": consent})
 
 
@@ -24091,6 +24120,100 @@ def family_plan_return():
     return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
 
 
+@app.route("/api/portal/<token>/caregiver-pay", methods=["POST"])
+def api_portal_caregiver_pay(token):
+    """Payer starts a card checkout for a beneficiary's order. Gated on active
+    pay-consent AT INITIATION; metadata then carries the payer snapshot."""
+    if not _caregiver_pay_enabled():
+        return jsonify({"ok": False, "error": "disabled"}), 404
+    from dashboard import stripe_pay as _sp, household as _hh
+    data = request.get_json(silent=True) or {}
+    order_id = int(data.get("order_id") or 0)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _hh.init_household_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        payer = (portal.get("email") or "").strip().lower()
+        o = cx.execute("SELECT email, total_cents, pay_status, status FROM orders WHERE id=?",
+                       (order_id,)).fetchone()
+        if not o:
+            return jsonify({"ok": False, "error": "order not found"}), 404
+        beneficiary = (o["email"] or "").strip().lower()
+        # Auth (can_pay) is checked BEFORE the already-paid/status check below so an
+        # unauthorized caller can't use this endpoint to probe an order's pay state.
+        if not _hh.can_pay(cx, payer, beneficiary):
+            return jsonify({"ok": False, "error": "not authorized"}), 403
+        # Already-paid / terminal-status guard. Must match the portal payable-orders
+        # block's own notion of payable (_caregiver_pay_block in dashboard/portal_view.py
+        # and _published_invoices_for here): payable = pay_status<>'paid' AND status NOT
+        # IN ('cancelled','delivered','done'). api_invoice_pay's proposed/confirmed
+        # whitelist is WRONG here — it would 409 legitimately payable orders (e.g.
+        # status 'open'/'new'). Only block re-charging a paid or terminal order.
+        if o["pay_status"] == "paid" or o["status"] in ("cancelled", "delivered", "done"):
+            return jsonify({"ok": False, "error": "this order is already paid"}), 409
+        amount = int(o["total_cents"] or 0)
+    base = PUBLIC_BASE_URL.rstrip("/")
+    _card_unavailable = "Card payment is temporarily unavailable — please contact us."
+    if not _STRIPE_ACTIVE:
+        return jsonify({"ok": False, "error": _card_unavailable}), 503
+    # A Stripe failure (bad key, API error, timeout) must NOT 500 the caregiver —
+    # degrade to a clean JSON error, same pattern as api_invoice_pay.
+    try:
+        sess = _sp.create_checkout_session(
+            amount, customer_email=payer, description=f"Payment for order #{order_id}",
+            metadata={"kind": "caregiver-pay", "order_id": str(order_id), "payer_email": payer},
+            success_url=f"{base}/caregiver-pay/return?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}/portal/{token}")
+        url = sess.get("url")
+    except Exception as e:
+        app.logger.warning(f"[caregiver-pay] stripe session failed for order {order_id}: {e!r}")
+        _alert_stripe("caregiver-pay", e)
+        url = None
+    if not url:
+        return jsonify({"ok": False, "error": _card_unavailable}), 502
+    return jsonify({"ok": True, "url": url})
+
+
+def _fulfill_caregiver_pay(session_id):
+    """Record a caregiver's card payment against the beneficiary's order, stamped
+    to the PAYER. Never raises. Idempotent via external_ref=payment_intent (the
+    same dedup add_payment already uses for every other Stripe fulfiller)."""
+    try:
+        from dashboard import stripe_pay as _sp
+        sess = _sp.get_session(session_id)
+        md = sess.get("metadata") or {}
+        if md.get("kind") != "caregiver-pay":
+            return
+        if sess.get("payment_status") != "paid":
+            return
+        order_id = int(md.get("order_id") or 0)
+        payer = (md.get("payer_email") or "").strip().lower()
+        pi_id = sess.get("payment_intent")
+        if not order_id or not payer:
+            return
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _op.ensure_table(cx)
+            _op.add_payment(cx, order_id, int(sess.get("amount_total") or 0),
+                            "Credit card (Stripe)", source="stripe",
+                            external_ref=pi_id, payer_email=payer)
+            _bos_orders.set_order_payment(cx, order_id, method="card",
+                                          amount_cents=int(sess.get("amount_total") or 0))
+            if pi_id:
+                _bos_orders.set_order_stripe_pi(cx, order_id, pi_id)
+    except Exception as _e:
+        print(f"[caregiver-pay] fulfill: {_e!r}", flush=True)
+
+
+@app.route("/caregiver-pay/return", methods=["GET"])
+def caregiver_pay_return():
+    sid = request.args.get("session_id", "")
+    if sid:
+        _fulfill_caregiver_pay(sid)
+    return redirect(f"{PUBLIC_BASE_URL.rstrip('/')}/")
+
+
 @app.route("/api/portal/<token>/family-plan/cancel", methods=["POST"])
 def portal_family_plan_cancel(token):
     """Caregiver self-cancel. Stops covers() for the household at the next read;
@@ -25972,7 +26095,8 @@ def api_client_portal_view(token):
                                    supplement_review_enabled=_sr.enabled(),
                                    remedies_enabled=_PORTAL_REMEDIES_ENABLED,
                                    oasis_enabled=_PORTAL_OASIS_ENABLED,
-                                   terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email))
+                                   terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email),
+                                   caregiver_pay_enabled=_caregiver_pay_enabled())
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
@@ -30436,6 +30560,7 @@ def webhook_stripe():
                 _fulfill_masterclass(session_id)
                 _fulfill_coach_sub(session_id)
                 _fulfill_family_plan(session_id)
+                _fulfill_caregiver_pay(session_id)   # kind == "caregiver-pay"
 
                 # Webhook-back the paid-only Sales-Receipt booking so a closed browser
                 # tab (dropped redirect) can't leave money collected with no QBO
@@ -42510,6 +42635,19 @@ def api_order_payments_add(oid):
     cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
+        # Optional caregiver-pay attribution (Task 7): a console operator recording
+        # a Zelle/manual payment FROM a caregiver (Steve) against a beneficiary's
+        # (Michael's) order. Only honored when the flag is on AND the payer holds
+        # active pay-consent from the order's owner — never stamped otherwise.
+        payer_email = (b.get("payer_email") or "").strip().lower() or None
+        if payer_email and _caregiver_pay_enabled():
+            from dashboard import household as _hh
+            owner = (_bos_orders.get_order(cx, oid) or {}).get("email") or ""
+            owner = owner.strip().lower()
+            if not _hh.can_pay(cx, payer_email, owner):
+                return jsonify({"ok": False, "error": "payer not authorized"}), 403
+        else:
+            payer_email = None
         row = _op.add_payment(
             cx, oid, round(float(b.get("amount") or 0) * 100),
             b.get("method") or "", source=b.get("source") or "manual",
@@ -42518,7 +42656,8 @@ def api_order_payments_add(oid):
             # Reconciling a payment that ALREADY exists in QBO: link it (or mark
             # it synced) so the ledger mirrors QBO instead of double-crediting.
             qbo_txn_id=b.get("qbo_txn_id"),
-            skip_qbo_push=bool(b.get("skip_qbo_push")))
+            skip_qbo_push=bool(b.get("skip_qbo_push")),
+            payer_email=payer_email)
         return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400

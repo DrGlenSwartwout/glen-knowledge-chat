@@ -26,9 +26,12 @@ _RECURRING_SOURCES = ("subscription", "membership")
 TRIAL_AMOUNT_CENTS = 100
 
 # An order counts as a captured Stripe payment when this predicate holds.
-_CAPTURED = ("((stripe_payment_intent IS NOT NULL AND stripe_payment_intent != '') "
-             "OR external_ref LIKE 'pi\\_%' ESCAPE '\\' "
-             "OR source IN ('subscription', 'membership'))")
+# Column-qualified so it stays unambiguous when list_payments LEFT JOINs
+# order_payments (which also has `external_ref` and `source`). Both callers read
+# FROM orders, so the `orders.` prefix resolves in each.
+_CAPTURED = ("((orders.stripe_payment_intent IS NOT NULL AND orders.stripe_payment_intent != '') "
+             "OR orders.external_ref LIKE 'pi\\_%' ESCAPE '\\' "
+             "OR orders.source IN ('subscription', 'membership'))")
 
 
 def _pi(row):
@@ -50,6 +53,21 @@ def _status(row):
     return s if s and s != "unpaid" else "paid"
 
 
+def _payer_email(row):
+    """Re-home the money-view row to the caregiver PAYER when a payer-stamped
+    order_payments row exists for this order whose external_ref matches the
+    order's captured PI (see list_payments' LEFT JOIN). Falls back to the order
+    owner (orders.email) for every ordinary order — including every order that
+    predates caregiver-pay, which has no payer-stamped payment. The joined column
+    is only present when list_payments selected it; be defensive so other callers
+    of _row_to_payment (e.g. a bare SELECT *) keep working."""
+    try:
+        payer = row["op_payer_email"]
+    except (KeyError, IndexError):
+        payer = None
+    return (payer or "").strip() or (row["email"] or "")
+
+
 def _row_to_payment(row):
     paid = int(row["paid_cents"] or 0)
     total = int(row["total_cents"] or 0)
@@ -57,7 +75,7 @@ def _row_to_payment(row):
         "id": row["id"],
         "created_at": row["created_at"],
         "paid_at": row["paid_at"],
-        "email": row["email"] or "",
+        "email": _payer_email(row),
         "name": row["name"] or "",
         "source": row["source"],
         "channel": row["channel"] or "",
@@ -71,13 +89,29 @@ def _row_to_payment(row):
 def list_payments(cx, *, source=None, limit=200):
     """Captured Stripe payments, newest first. Optional exact `source` filter
     (e.g. 'subscription', 'funnel'). Newest = most recent paid_at, falling back
-    to created_at, then id."""
-    sql = f"SELECT * FROM orders WHERE {_CAPTURED}"
+    to created_at, then id.
+
+    A caregiver's CARD payment leaves the order owned by the beneficiary, but the
+    money must show under the PAYER. _fulfill_caregiver_pay records a payer-stamped
+    order_payments row (source='stripe', kind='payment', payer_email=<caregiver>,
+    external_ref=<PI>) AND stamps that same PI onto the ORDER (set_order_stripe_pi),
+    so the order's captured PI == that ledger row's external_ref. The LEFT JOIN
+    below re-homes such a row's `email` to the payer via COALESCE(op.payer_email,
+    orders.email). Every ordinary order — including all pre-caregiver-pay orders,
+    which have no payer-stamped payment — has a NULL join and attributes to the
+    owner exactly as before."""
+    from dashboard import order_payments as _op
+    _op.ensure_table(cx)  # idempotent; the LEFT JOIN needs the table to exist
+    sql = (f"SELECT orders.*, op.payer_email AS op_payer_email FROM orders "
+           f"LEFT JOIN order_payments op ON op.order_id = orders.id "
+           f"AND op.payer_email IS NOT NULL AND op.kind='payment' AND op.status='active' "
+           f"AND op.external_ref = COALESCE(NULLIF(TRIM(orders.stripe_payment_intent),''), orders.external_ref) "
+           f"WHERE {_CAPTURED}")
     params = []
     if source:
-        sql += " AND source = ?"
+        sql += " AND orders.source = ?"
         params.append(source)
-    sql += " ORDER BY COALESCE(paid_at, created_at) DESC, id DESC LIMIT ?"
+    sql += " ORDER BY COALESCE(orders.paid_at, orders.created_at) DESC, orders.id DESC LIMIT ?"
     params.append(int(limit))
     return [_row_to_payment(r) for r in cx.execute(sql, params).fetchall()]
 

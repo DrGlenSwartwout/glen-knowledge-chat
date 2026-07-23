@@ -72,16 +72,24 @@ def _orders_block(cx, email, roles):
     try:
         import sqlite3
         from dashboard import orders as _o
+        from dashboard import order_payments as _op
         cx.row_factory = sqlite3.Row
         for o in _o.list_orders_by_email(cx, email, limit=50):
             if (o.get("status") or "") == "cancelled":
                 continue  # clients never see cancelled orders
-            items.append({
+            item = {
                 "id": o.get("id"),
                 "date": o.get("created_at", ""),
                 "total_cents": int(o.get("total_cents") or 0),
                 "status": o.get("status", ""),
-            })
+            }
+            try:
+                payers = _op.caregiver_payers_for(cx, o.get("id"), email)
+            except Exception:
+                payers = []
+            item["paid_by_caregiver"] = bool(payers)
+            item["caregiver_payers"] = payers
+            items.append(item)
     except Exception:
         items = []
     return {"visible": True, "items": items}
@@ -319,12 +327,48 @@ def _onboarding_block(cx, email):
         return {"eligible": False, "booked_start": None}
 
 
+def _caregiver_pay_block(cx, email, enabled):
+    """Orders this person may pay for household members who granted pay-consent.
+    Thin + firewall-safe: amounts/status only, line items only when the member's
+    scope allows. NEVER reads the member's clinical data."""
+    if not enabled:
+        return {"members": [], "orders": []}
+    try:
+        from dashboard import household as _hh
+        members = _hh.payable_members_for(cx, email)
+    except Exception:
+        return {"members": [], "orders": []}
+    orders = []
+    for mem in members:
+        scope = mem["pay_share_scope"]
+        try:
+            rows = cx.execute(
+                "SELECT id, total_cents, COALESCE(invoice_token,''), COALESCE(items_json,'[]') "
+                "FROM orders WHERE lower(coalesce(email,''))=? "
+                "AND coalesce(pay_status,'')<>'paid' AND coalesce(invoice_token,'')<>'' "
+                "AND coalesce(status,'') NOT IN ('cancelled','delivered','done') "
+                "ORDER BY id DESC", (mem["member_email"],)).fetchall()
+        except Exception:
+            rows = []
+        for oid, tc, tok, items in rows:
+            orders.append({
+                "order_id": oid,
+                "beneficiary_email": mem["member_email"],
+                "beneficiary_name": mem["label"] or mem["member_email"],
+                "amount_dollars": f"{(tc or 0) / 100:.2f}",
+                "token": tok,
+                "items": (items if scope == "line_items" else None),
+            })
+    return {"members": members, "orders": orders}
+
+
 def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     quiz_url="", public_base_url="", finder_enabled=False,
                     hub_enabled=False, health_profile_enabled=False,
                     remedies_enabled=False,
                     biofield_unlocked=True, supplement_review_enabled=False,
-                    oasis_enabled=False, terrain_phase=None):
+                    oasis_enabled=False, terrain_phase=None,
+                    caregiver_pay_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
     prow = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
@@ -363,4 +407,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
         "remedies": _rb.build_block(cx, email, remedies_enabled),
         "oasis": _ob.build_block(cx, email, oasis_enabled, terrain_phase),
+        "caregiver_pay": _caregiver_pay_block(cx, email, caregiver_pay_enabled),
     }
