@@ -879,6 +879,50 @@ def _send_portal_welcome(email, name, token):
         print(f"[portal-welcome] {em}: {e!r}", flush=True)
 
 
+def _send_library_ready(email, name, token, ebook_title, slug):
+    """Best-effort: send the 'your ebook is ready' portal-library email after a
+    public /api/ebook/optin grant. Suppression-aware, once-guarded PER (email,
+    ebook_slug) — deliberately a SEPARATE guard table from
+    portal_token_welcome_sent, so this dedicated library email is never
+    silently skipped just because the same address already received an
+    order-time portal welcome (and vice versa: buying later still gets the
+    order-time welcome). Network send runs in a daemon thread so the caller
+    (the public opt-in route) is never blocked; never raises."""
+    em = (email or "").strip().lower()
+    if not em or not token or not slug:
+        return
+    try:
+        from dashboard import email_suppression as _es
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _es.init_table(cx)
+            if _es.is_suppressed(cx, em):
+                return
+            # Dedicated once-guard, keyed by (email, ebook_slug) so each ebook
+            # sends once per lead regardless of any unrelated portal-welcome
+            # guard. INSERT happens synchronously, BEFORE the threaded send,
+            # mirroring _send_portal_welcome's guard-then-thread ordering.
+            cx.execute("CREATE TABLE IF NOT EXISTS ebook_library_welcome_sent ("
+                       "email TEXT, ebook_slug TEXT, sent_at TEXT, "
+                       "PRIMARY KEY(email, ebook_slug))")
+            cur = cx.execute(
+                "INSERT OR IGNORE INTO ebook_library_welcome_sent "
+                "(email, ebook_slug, sent_at) VALUES (?, ?, ?)",
+                (em, slug, datetime.now(timezone.utc).isoformat()))
+            if cur.rowcount == 0:   # this ebook already sent to this email
+                return
+        url = portal_link(token)
+        title = ebook_title or "ebook"
+        body = (f"Aloha {name or ''},\n\nYour {title} is waiting for you in your library:\n\n"
+                f"{url}\n\nYou can read it or listen to it right inside, whenever it suits you. "
+                f"Reply anytime with questions.\n\nWith aloha,\nDr. Glen & Rae")
+        import threading
+        threading.Thread(target=_send_full_report_email,
+                         args=(em, name, f"Your {title} is ready \U0001f33a", body),
+                         daemon=True).start()
+    except Exception as e:
+        print(f"[library-ready] {em}/{slug}: {e!r}", flush=True)
+
+
 def _link_resend_generic(purpose, url_template, ttl):
     """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
     def handler(email, extra):
@@ -20047,6 +20091,96 @@ def api_client_portal(token):
         except Exception as _e:
             print(f"[data-sharing/payload] {_e!r}", flush=True)
     return jsonify(payload)
+
+
+def _cors(resp, status):
+    resp.status_code = status
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+@app.route("/api/ebook/optin", methods=["POST", "OPTIONS"])
+def api_ebook_optin():
+    """Public, cross-site free-ebook opt-in. Provisions the caller's stable portal,
+    grants the ebook to their email, and emails the 'library ready' portal link.
+    The ebook is read/listened INSIDE the portal (see /api/portal/<t>/library)."""
+    if request.method == "OPTIONS":
+        resp = app.make_default_options_response()
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    slug = (data.get("ebook_slug") or "").strip()
+    source_site = (data.get("source_site") or "").strip()
+    name = (data.get("name") or "").strip()
+    from dashboard import ebook_catalog as _cat
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return _cors(jsonify({"ok": False, "error": "valid email required"}), 400)
+    meta = _cat.get(slug)
+    if not meta:
+        return _cors(jsonify({"ok": False, "error": "unknown ebook"}), 400)
+    from dashboard import client_portal as _cp, portal_library as _lib
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        tok = _cp.ensure_token(cx, email, name)
+        _lib.grant(cx, email, slug, source_site)
+    # once-guarded (per email+slug), threaded, never raises. This is the SOLE
+    # delivery of the portal link — it must never be echoed in the response
+    # below (unauthenticated caller, any email typed in = live bearer token).
+    _send_library_ready(email, name, tok, meta["title"], slug)
+    return _cors(jsonify({"ok": True}), 200)
+
+
+@app.route("/api/portal/<token>/library", methods=["GET"])
+def api_portal_library(token):
+    """The token owner's granted ebook Starters. `enabled` mirrors the hub flag so
+    the My Library tile stays dark until the flag flips; items are always computed."""
+    from dashboard import client_portal as _cp, portal_library as _lib, ebook_catalog as _cat
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        granted = _lib.list_for_email(cx, email) if email else []
+    items = []
+    for g in granted:
+        meta = _cat.get(g["slug"])
+        if not meta:
+            continue
+        items.append({
+            "slug": g["slug"], "title": meta["title"], "granted_at": g["granted_at"],
+            "pdf_url": f"/api/portal/{token}/library/{g['slug']}/pdf",
+            "audio_url": f"/api/portal/{token}/library/{g['slug']}/audio",
+        })
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
+
+
+@app.route("/api/portal/<token>/library/<slug>/<asset>", methods=["GET"])
+def api_portal_library_asset(token, slug, asset):
+    """Stream a granted Starter asset, token-scoped. 404 unless the token's email
+    is entitled to `slug`. `asset` is 'pdf' or 'audio' (mapped to catalog files)."""
+    if asset not in ("pdf", "audio"):
+        return Response("", status=404)
+    from dashboard import client_portal as _cp, portal_library as _lib, ebook_catalog as _cat
+    meta = _cat.get(slug)
+    if not meta:
+        return Response("", status=404)
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email or not _lib.has(cx, email, slug):
+            return Response("", status=404)
+    folder = os.path.join(STATIC, "ebooks", meta["dir"])
+    filename = meta["pdf"] if asset == "pdf" else meta["audio"]
+    resp = send_from_directory(folder, filename)
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])

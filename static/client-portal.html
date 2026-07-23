@@ -468,8 +468,13 @@
   </div>
   <!-- Print/PDF surface: filled on demand by printReport(); shown only when printing. -->
   <div id="print-root" aria-hidden="true"></div>
+  <!-- Task 7: My Library tile. Sibling of #app (not nested inside it) so it
+       survives render()'s poll re-renders, which fully replace app.innerHTML;
+       filled/emptied by static/js/portal-library.js's own fetch + mount. -->
+  <div id="portal-library-mount"></div>
 
 <script src="/static/entity-ref.js"></script>
+<script src="/static/js/portal-library.js"></script>
 <script>
 // The last path segment is either an emailed portal token or the literal "me"
 // (the tokenless logged-in home, authed by the rm_portal_session cookie). Tokens
