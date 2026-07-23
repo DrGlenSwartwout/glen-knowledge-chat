@@ -6152,6 +6152,7 @@ _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().low
 # Ships dark; flip to route the portal through the hub instead of the single
 # Current-Analysis scroll. Same truthy set as the finder flag.
 _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+_PORTAL_ONBOARDING_ENABLED = os.environ.get("PORTAL_ONBOARDING_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # "My Remedies" client-portal tile (ranked recommendations + external supplement
 # stack, dashboard/remedies_block.py). Ships dark; same truthy set as the other
 # portal flags.
@@ -20181,6 +20182,55 @@ def api_portal_library_asset(token, slug, asset):
     resp = send_from_directory(folder, filename)
     resp.headers["Cache-Control"] = "private, no-store"
     return resp
+
+
+@app.route("/api/portal/<token>/triage", methods=["GET", "POST"])
+def api_portal_triage(token):
+    """Token-gated condition triage (glaucoma pilot): POST submits a short
+    self-report, resolves it to condition program(s), and seeds their remedies
+    into recommendations under the `condition` source. GET returns the
+    client's previously stored answers for prefill. Same-origin portal
+    surface -- no CORS."""
+    from dashboard import client_portal as _cp, condition_triage as _ct
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _cp.init_client_portal_table(cx)
+        _ct.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            cond = (request.args.get("condition") or "glaucoma").strip().lower()
+            return jsonify({"ok": True, "triage": _ct.get_triage(cx, email, cond)})
+        data = request.get_json(silent=True) or request.form or {}
+        cond = (data.get("condition") or "glaucoma").strip().lower()
+        answers = {k: data.get(k) for k in
+                   ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
+                    "field_loss", "category")}
+        res = _ct.seed_from_triage(cx, email, cond, answers)
+    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
+
+
+@app.route("/api/portal/<token>/onboarding", methods=["GET"])
+def api_portal_onboarding(token):
+    """Read-only 3-phase onboarding status for the portal hub tile. Anchor
+    hrefs (e.g. '#photo') are rewritten to '/portal/<token>#photo' so the
+    tile can link straight into the token's own portal page."""
+    from dashboard import client_portal as _cp, portal_onboarding as _ob
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        status = _ob.build_status(cx, email)
+    for ph in status.get("phases", []):
+        for st in ph.get("steps", []):
+            h = st.get("href") or ""
+            if h.startswith("#"):
+                st["href"] = f"/portal/{token}{h}"
+    return jsonify({"enabled": _PORTAL_ONBOARDING_ENABLED, "status": status})
 
 
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])

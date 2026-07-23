@@ -9,6 +9,7 @@ CATALOG = {
         "dir": "healing-glaucoma-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "condition": "glaucoma",
     },
 }
 

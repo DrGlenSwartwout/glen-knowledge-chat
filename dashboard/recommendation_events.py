@@ -50,6 +50,24 @@ def record_event(cx, email, product_key, source_key, *, occurred_at, origin_ref,
     return cur.rowcount == 1
 
 
+def clear_events(cx, email, source_key, origin_ref=None, commit=True):
+    """Delete a client's events for one source_key (optionally scoped to one
+    origin_ref). Enables replace-on-retriage: a later re-triage clears the
+    prior condition-seeded rows before re-seeding. Returns rows deleted."""
+    e = (email or "").strip().lower()
+    if origin_ref is None:
+        cur = cx.execute(
+            "DELETE FROM recommendation_events WHERE client_email=? AND source_key=?",
+            (e, source_key))
+    else:
+        cur = cx.execute(
+            "DELETE FROM recommendation_events WHERE client_email=? AND source_key=? AND origin_ref=?",
+            (e, source_key, str(origin_ref)))
+    if commit:
+        cx.commit()
+    return cur.rowcount
+
+
 def list_events(cx, email):
     e = (email or "").strip().lower()
     rows = cx.execute(

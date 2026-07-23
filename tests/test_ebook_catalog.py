@@ -15,3 +15,8 @@ def test_unknown_slug_is_none():
 
 def test_all_contains_pilot():
     assert any(e["slug"] == "healing-glaucoma-starter" for e in cat.all())
+
+
+def test_pilot_has_condition_field():
+    e = cat.get("healing-glaucoma-starter")
+    assert e["condition"] == "glaucoma"
