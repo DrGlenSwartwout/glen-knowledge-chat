@@ -63,6 +63,18 @@ def init_household_tables(cx):
             cx.execute(f"ALTER TABLE household_members ADD COLUMN {_col} TEXT DEFAULT {_default}")
         except Exception:
             pass
+
+    # caregiver-pay columns (additive). pay_consent default 0 (money is more
+    # sensitive than view: an adult must opt IN). pay_share_scope gates what the
+    # payer sees of a payable order.
+    try:
+        cx.execute("ALTER TABLE household_members ADD COLUMN pay_consent INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        cx.execute("ALTER TABLE household_members ADD COLUMN pay_share_scope TEXT DEFAULT 'amount_only'")
+    except Exception:
+        pass
     cx.commit()
 
     cx.execute("""
@@ -146,6 +158,43 @@ def viewable_members_for(cx, primary_email):
         "WHERE primary_email=? AND share_consent=1 ORDER BY created_at, id",
         (_norm(primary_email),)).fetchall()
     return [{"email": r[0], "label": r[1] or "", "relationship": r[2] or ""} for r in rows]
+
+
+def can_pay(cx, payer_email, member_email):
+    """True iff the member granted this payer pay-consent. Self-pay never qualifies."""
+    p, m = _norm(payer_email), _norm(member_email)
+    if not p or not m or p == m:
+        return False
+    return cx.execute(
+        "SELECT 1 FROM household_members WHERE primary_email=? AND member_email=? "
+        "AND pay_consent=1 LIMIT 1", (p, m)).fetchone() is not None
+
+
+def payable_members_for(cx, payer_email):
+    """Members who granted this payer pay-consent, with each one's share scope."""
+    rows = cx.execute(
+        "SELECT member_email, label, COALESCE(pay_share_scope,'amount_only') "
+        "FROM household_members WHERE primary_email=? AND pay_consent=1 "
+        "ORDER BY created_at, id", (_norm(payer_email),)).fetchall()
+    return [{"member_email": r[0], "label": r[1] or "",
+             "pay_share_scope": r[2] or "amount_only"} for r in rows]
+
+
+def set_pay_consent(cx, primary_email, member_email, consent, share_scope=None):
+    """MEMBER-controlled. Optionally set the share scope in the same write.
+    Self-pay (payer==member) is rejected — you never authorize paying your own orders."""
+    p, m = _norm(primary_email), _norm(member_email)
+    if p == m:
+        return
+    if share_scope in ("amount_only", "line_items"):
+        cx.execute("UPDATE household_members SET pay_consent=?, pay_share_scope=? "
+                   "WHERE primary_email=? AND member_email=?",
+                   (1 if consent else 0, share_scope, p, m))
+    else:
+        cx.execute("UPDATE household_members SET pay_consent=? "
+                   "WHERE primary_email=? AND member_email=?",
+                   (1 if consent else 0, p, m))
+    cx.commit()
 
 
 def cc_recipients_for(cx, member_email):
