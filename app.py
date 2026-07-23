@@ -20049,6 +20049,42 @@ def api_client_portal(token):
     return jsonify(payload)
 
 
+def _cors(resp, status):
+    resp.status_code = status
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+@app.route("/api/ebook/optin", methods=["POST", "OPTIONS"])
+def api_ebook_optin():
+    """Public, cross-site free-ebook opt-in. Provisions the caller's stable portal,
+    grants the ebook to their email, and emails the 'library ready' portal link.
+    The ebook is read/listened INSIDE the portal (see /api/portal/<t>/library)."""
+    if request.method == "OPTIONS":
+        resp = app.make_default_options_response()
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        return resp
+    data = request.get_json(silent=True) or request.form or {}
+    email = (data.get("email") or "").strip().lower()
+    slug = (data.get("ebook_slug") or "").strip()
+    source_site = (data.get("source_site") or "").strip()
+    name = (data.get("name") or "").strip()
+    from dashboard import ebook_catalog as _cat
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return _cors(jsonify({"ok": False, "error": "valid email required"}), 400)
+    if not _cat.get(slug):
+        return _cors(jsonify({"ok": False, "error": "unknown ebook"}), 400)
+    from dashboard import client_portal as _cp, portal_library as _lib
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        _lib.init_table(cx)
+        tok = _cp.ensure_token(cx, email, name)
+        _lib.grant(cx, email, slug, source_site)
+    _send_portal_welcome(email, name, tok)   # once-guarded, threaded, never raises
+    return _cors(jsonify({"ok": True, "portal_url": portal_link(tok)}), 200)
+
+
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])
 def api_portal_recommendations(token):
     """Read-only: a client's recommended-products sections, grouped by source
