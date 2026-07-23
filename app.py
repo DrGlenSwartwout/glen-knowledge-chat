@@ -6152,6 +6152,7 @@ _PORTAL_FINDER_ENABLED = os.environ.get("PORTAL_FINDER_ENABLED", "").strip().low
 # Ships dark; flip to route the portal through the hub instead of the single
 # Current-Analysis scroll. Same truthy set as the finder flag.
 _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+_PORTAL_ONBOARDING_ENABLED = os.environ.get("PORTAL_ONBOARDING_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # "My Remedies" client-portal tile (ranked recommendations + external supplement
 # stack, dashboard/remedies_block.py). Ships dark; same truthy set as the other
 # portal flags.
@@ -20229,7 +20230,7 @@ def api_portal_onboarding(token):
             h = st.get("href") or ""
             if h.startswith("#"):
                 st["href"] = f"/portal/{token}{h}"
-    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "status": status})
+    return jsonify({"enabled": _PORTAL_ONBOARDING_ENABLED, "status": status})
 
 
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])

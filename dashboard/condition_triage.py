@@ -61,6 +61,13 @@ def resolve_programs(condition, answers):
     return [_E] if field_loss else [_E, _N]         # not sure -> field-loss tiebreak
 
 
+def _safe_int(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def upsert_triage(cx, email, condition, answers, resolved):
     email = (email or "").strip().lower()
     condition = (condition or "").strip().lower()
@@ -71,7 +78,7 @@ def upsert_triage(cx, email, condition, answers, resolved):
         " meds_names, field_loss, category, resolved_programs, updated_at)"
         " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (email, condition, str(a.get("iop_od") or ""), str(a.get("iop_os") or ""),
-         1 if a.get("on_meds") else 0, int(a.get("med_count") or 0),
+         1 if a.get("on_meds") else 0, _safe_int(a.get("med_count"), 0),
          (a.get("meds_names") or "").strip(), 1 if a.get("field_loss") else 0,
          (a.get("category") or "").strip(), json.dumps(resolved), _now()))
     cx.commit()
@@ -94,6 +101,7 @@ def seed_from_triage(cx, email, condition, answers):
     replacing any prior condition-sourced rows) the resolved programs' items
     into recommendation_events under source_key="condition", origin_ref=condition."""
     from dashboard import recommendation_events as _re, condition_programs as _cp
+    from dashboard.related_products import DO_NOT_RECOMMEND
     init_table(cx)
     email = (email or "").strip().lower()
     condition = (condition or "").strip().lower()
@@ -108,6 +116,8 @@ def seed_from_triage(cx, email, condition, answers):
         for it in _cp.resolve_program_items(prog, audience="client"):
             slug = (it or {}).get("slug")
             if not slug or slug in seen:
+                continue
+            if slug in DO_NOT_RECOMMEND:
                 continue
             seen.add(slug)
             _re.record_event(cx, email, slug, "condition",

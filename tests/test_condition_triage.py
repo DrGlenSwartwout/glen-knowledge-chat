@@ -76,3 +76,34 @@ def test_seed_from_triage_writes_and_replaces_on_retriage():
     stored = ct.get_triage(cx, "a@x.com", "glaucoma")
     assert stored["resolved_programs"] == [N]
     assert stored["iop_od"] == "17"
+
+
+def test_seed_from_triage_skips_do_not_recommend_slugs():
+    """Defensive filter: even if a program's items_json somehow contains a
+    do-not-recommend slug, seed_from_triage must never record it."""
+    from dashboard.related_products import DO_NOT_RECOMMEND
+    dnr_slug = next(iter(DO_NOT_RECOMMEND))
+    cx = _cx()
+    cp.upsert(cx, "glaucoma-normal-iop", "Glaucoma - Normal IOP", False,
+              [{"slug": dnr_slug, "name": "DNR item"},
+               {"slug": "neuroprotect", "name": "Neuroprotect"}])
+
+    result = ct.seed_from_triage(cx, "b@x.com", "glaucoma", {"category": "normal"})
+
+    assert dnr_slug not in result["seeded"]
+    assert "neuroprotect" in result["seeded"]
+    prods = {p["product_key"] for p in re_events.product_sources(cx, "b@x.com")}
+    assert dnr_slug not in prods
+    assert "neuroprotect" in prods
+
+
+def test_non_numeric_med_count_does_not_raise_and_stores_zero():
+    """int(med_count) must be guarded -- a non-numeric string (e.g. free-text
+    entry) must not raise ValueError; it should be stored as 0."""
+    cx = _cx()
+    _seed_fake_programs(cx)
+    result = ct.seed_from_triage(cx, "c@x.com", "glaucoma",
+                                  {"iop_od": 25, "med_count": "two"})
+    assert result["programs"] == [E]
+    stored = ct.get_triage(cx, "c@x.com", "glaucoma")
+    assert stored["med_count"] == 0
