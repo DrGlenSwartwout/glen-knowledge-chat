@@ -1,162 +1,113 @@
 """My Healing Oasis — recommended-additions roadmap.
 
-Analysis-ordered, hero-tool-led recommendations for a client's Healing Oasis:
-  1. HERO_TOOLS  — the near-universal tools Glen recommends to almost everyone
-     (fixed lead order: harmony -> water-ionizer -> kloud). These sort ABOVE
-     terrain-specific and general items because they are foundational, not
-     situational.
-  2. TERRAIN_TOOLS — gap tools keyed by the client's current 5 R terrain phase
-     (energize/rejuvenate/regenerate/cleanse/balance, matching
-     dashboard/terrain_phase.py's Energize->Balance ordering).
-  3. A general low-cost-high-leverage tail for clients with no terrain phase
-     on file, or once hero + terrain recommendations are exhausted/owned.
+Flat, all-phase recommendations for a client's Healing Oasis:
+  1. HERO_TOOLS     — the near-universal tools Glen recommends to almost
+     everyone (fixed lead order: harmony-laser -> water-ionizer-15plate ->
+     kloud-pemf-maxi). These sort ABOVE the secondary tail because they are
+     foundational, not situational.
+  2. SECONDARY_TOOLS — an unprioritized flat tail of every other catalog
+     tool Glen recommends. Healing tools work in all phases, so there is no
+     per-terrain-phase bucketing (an earlier per-phase TERRAIN_TOOLS dict
+     was removed for this reason -- see build_roadmap's docstring).
 
 Pure module, no DB — build_roadmap() takes owned_slugs (see
 dashboard/owned_tools.owned_slugs()) and returns the client's personal gap
-list. Glen is expected to extend HERO_TOOLS / TERRAIN_TOOLS / GENERAL_TOOLS
-as his product line and recommendations grow.
+list. Glen is expected to extend HERO_TOOLS / SECONDARY_TOOLS as his
+product line and recommendations grow.
 """
 
 # The three near-universal tools, in FIXED lead order. Order is significant:
-# it is the order clients see them in when none are owned yet.
+# it is the order clients see them in when none are owned yet. Slugs are
+# the real catalog SKUs (see data/products.json), not simplified aliases.
+# Glen extends this list as more near-universal tools are confirmed.
 HERO_TOOLS = [
     {
-        "slug": "harmony",
+        "slug": "harmony-laser",
         "name": "Harmony Laser",
         "why": "Low-level laser therapy Glen recommends to nearly every client for "
-               "cellular energy and pain/inflammation support, regardless of terrain phase.",
+               "cellular energy and pain/inflammation, in every terrain phase.",
         "tier": "hero",
     },
     {
-        "slug": "water-ionizer",
-        "name": "Water Ionizer",
-        "why": "Alkaline, antioxidant-rich, micro-clustered water is a daily-use "
-               "foundation Glen recommends across every terrain phase.",
+        "slug": "water-ionizer-15plate",
+        "name": "Water Ionizer (15-Plate)",
+        "why": "15 plates for maximum molecular hydrogen; a daily-use foundation for "
+               "every phase (9-plate and 5-plate options available).",
         "tier": "hero",
     },
     {
-        "slug": "kloud",
-        "name": "Kloud PEMF Mat",
-        "why": "Pulsed electromagnetic field therapy supports circulation, recovery, "
-               "and cellular voltage for nearly every client's protocol.",
+        "slug": "kloud-pemf-maxi",
+        "name": "Kloud PEMF Mat (Maxi)",
+        "why": "Pulsed electromagnetic field therapy with a setting for each phase, "
+               "supporting circulation, recovery, and cellular voltage for nearly "
+               "every client (Mini option available).",
         "tier": "hero",
     },
 ]
 
-# Gap tools per 5 R terrain phase. Ordered highest-leverage-first within each phase.
-# Keys match dashboard/terrain_phase.py's Energize -> Balance spectrum.
-# Glen: extend each phase's list as more terrain-specific tools are confirmed.
-TERRAIN_TOOLS = {
-    "energize": [
-        {
-            "slug": "red-light-panel",
-            "name": "Red Light Therapy Panel",
-            "why": "Mitochondrial photobiomodulation to rebuild energy reserves in a "
-                   "depleted, catabolic terrain.",
-            "tier": "terrain",
-        },
-        {
-            "slug": "grounding-mat",
-            "name": "Grounding Mat",
-            "why": "Restores the body's electrical baseline, supporting recharge in "
-                   "an energize-phase terrain.",
-            "tier": "terrain",
-        },
-    ],
-    "rejuvenate": [
-        {
-            "slug": "infrared-sauna",
-            "name": "Infrared Sauna",
-            "why": "Gentle deep-tissue heat supports circulation and tissue repair "
-                   "as the terrain moves from depletion toward rejuvenation.",
-            "tier": "terrain",
-        },
-        {
-            "slug": "vibration-plate",
-            "name": "Whole-Body Vibration Plate",
-            "why": "Low-impact lymphatic and circulatory stimulation to support "
-                   "rejuvenation without overtaxing a still-fragile terrain.",
-            "tier": "terrain",
-        },
-    ],
-    "regenerate": [
-        {
-            "slug": "denas-pcm-pro",
-            "name": "DENAS PCM Pro",
-            "why": "Neuro-adaptive electrostimulation to support tissue regeneration "
-                   "and nervous-system recalibration.",
-            "tier": "terrain",
-        },
-        {
-            "slug": "mihealth",
-            "name": "NES miHealth",
-            "why": "Bioenergetic feedback device that supports the body's own "
-                   "regenerative signaling.",
-            "tier": "terrain",
-        },
-    ],
-    "cleanse": [
-        {
-            "slug": "dry-brush",
-            "name": "Dry Skin Brush",
-            "why": "Simple daily lymphatic stimulation to support drainage during a "
-                   "cleanse-phase terrain.",
-            "tier": "terrain",
-        },
-        {
-            "slug": "far-infrared-sauna",
-            "name": "Far-Infrared Sauna",
-            "why": "Deep sweating supports elimination of stored toxins in an "
-                   "excess/cleanse terrain.",
-            "tier": "terrain",
-        },
-    ],
-    "balance": [
-        {
-            "slug": "hrv-biofeedback",
-            "name": "HRV Biofeedback Device",
-            "why": "Heart-rate-variability training helps a near-balanced terrain "
-                   "hold its gains long term.",
-            "tier": "terrain",
-        },
-        {
-            "slug": "dowsing-rods",
-            "name": "Dowsing Rods",
-            "why": "A simple, low-cost self-check tool clients in a balanced terrain "
-                   "can use to keep tracking their own field.",
-            "tier": "terrain",
-        },
-    ],
-}
-
-# General low-cost-high-leverage tail: useful regardless of terrain phase or when
-# no terrain phase is on file. Glen: extend as more broadly-useful tools are confirmed.
-GENERAL_TOOLS = [
-    {
-        "slug": "emf-free-headset",
-        "name": "EMF Free Headset",
-        "why": "A low-cost daily EMF-mitigation tool -- air tubes conduct sound "
-               "instead of a wire antenna against the head -- with broad "
-               "applicability across every client's protocol.",
-        "tier": "general",
-    },
-    {
-        "slug": "nir-intranasal-clip",
-        "name": "NIR Intranasal Light Clip",
-        "why": "Inexpensive near-infrared light therapy with wide-ranging, "
-               "low-effort daily benefit.",
-        "tier": "general",
-    },
+# Secondary tools: a flat, unprioritized list of every other tool Glen
+# recommends. No per-item `why` -- these are an unprioritized list, not a
+# ranked one. Glen: extend this list as more tools are confirmed.
+SECONDARY_TOOLS = [
+    {"slug": "acupuncture-point-cold-laser", "name": "Acupuncture Point Cold Laser", "tier": "secondary"},
+    {"slug": "air-surface-pro-plus", "name": "Air & Surface PRO+", "tier": "secondary"},
+    {"slug": "aulterra-energy-pendant-silver-gold", "name": "Aulterra Energy Pendant Silver & Gold", "tier": "secondary"},
+    {"slug": "mithreal-silver-baseball-cap", "name": "Baseball Cap with Mithreal Silver", "tier": "secondary"},
+    {"slug": "biocompatible-nightlight", "name": "Biocompatible Nightlight", "tier": "secondary"},
+    {"slug": "bioenergetic-wellness-scanner", "name": "Bioenergetic Wellness Scanner", "tier": "secondary"},
+    {"slug": "blue-blocking-photochromic-sunglasses", "name": "Blue Blocking Photochromic Sunglasses", "tier": "secondary"},
+    {"slug": "mithreal-silver-blue-zipper-hoodie", "name": "Blue Zipper Hoodie with Mithreal Silver", "tier": "secondary"},
+    {"slug": "breath-tuning-fork-1283hz", "name": "Breath Tuning Fork 1283 Hz", "tier": "secondary"},
+    {"slug": "car-ionizer", "name": "Car Ionizer", "tier": "secondary"},
+    {"slug": "car-neutralizer-usb", "name": "Car Neutralizer USB", "tier": "secondary"},
+    {"slug": "denas-eyeglasses-electrode", "name": "DENAS Eyeglasses Electrode", "tier": "secondary"},
+    {"slug": "denas-microcurrent-eye-system", "name": "DENAS Microcurrent System for Eye Healing", "tier": "secondary"},
+    {"slug": "denas-scenar", "name": "DENAS PCM Pro (SCENAR Microcurrent)", "tier": "secondary"},
+    {"slug": "dowsing-rods", "name": "Dowsing Rods", "tier": "secondary"},
+    {"slug": "emf-free-headset", "name": "EMF Free Headset", "tier": "secondary"},
+    {"slug": "freshair-mobile-purifier", "name": "FreshAir Mobile Portable Air Purifier", "tier": "secondary"},
+    {"slug": "frosted-quartz-tuning-fork-172hz", "name": "Frosted Quartz Tuning Fork 172 Hz", "tier": "secondary"},
+    {"slug": "hair-growth-helmet", "name": "Hair Growth Helmet", "tier": "secondary"},
+    {"slug": "hypoxia-free-face-shield", "name": "Hypoxia-Free Face Shield", "tier": "secondary"},
+    {"slug": "infrared-therapy-flashlight", "name": "Infrared Therapy Flashlight", "tier": "secondary"},
+    {"slug": "wearable-ionizer", "name": "Ionizer - Wearable", "tier": "secondary"},
+    {"slug": "mithreal-silver-ivy-hat", "name": "Ivy Hat with Mithreal Silver", "tier": "secondary"},
+    {"slug": "microgen-microcurrent-generator", "name": "Microgen Wearable Microcurrent Generator", "tier": "secondary"},
+    {"slug": "mind-tuning-fork-5000hz", "name": "Mind Tuning Fork 5000 Hz", "tier": "secondary"},
+    {"slug": "miracule-water-system", "name": "Miracule Water System with Molecular Hydrogen", "tier": "secondary"},
+    {"slug": "molecular-hydrogen-bottle", "name": "Molecular Hydrogen (portable bottle)", "tier": "secondary"},
+    {"slug": "nes-mihealth", "name": "NES miHealth", "tier": "secondary"},
+    {"slug": "nes-scanner", "name": "NES Scanner", "tier": "secondary"},
+    {"slug": "nir-brain-frequency-helmet", "name": "NIR Brain Frequency Helmet", "tier": "secondary"},
+    {"slug": "nir-nasal-clip", "name": "NIR Near-Infrared Nasal Clip", "tier": "secondary"},
+    {"slug": "red-mitochondrial-therapy-630nm", "name": "Red Mitochondrial Therapy 630 nm", "tier": "secondary"},
+    {"slug": "shower-filter", "name": "Shower Filter", "tier": "secondary"},
+    {"slug": "shungite-stick-plate", "name": "Shungite Stick Plate", "tier": "secondary"},
+    {"slug": "smokey-quartz-healing-tool", "name": "Smokey Quartz Healing Tool", "tier": "secondary"},
+    {"slug": "spirit-tuning-fork-172hz", "name": "Spirit Tuning Fork 172 Hz", "tier": "secondary"},
+    {"slug": "neutralizer-3-pack", "name": "The Neutralizer 3 Pack", "tier": "secondary"},
+    {"slug": "therapeutic-nightlight", "name": "Therapeutic Nightlight", "tier": "secondary"},
+    {"slug": "tibetan-singing-bowl-172hz", "name": "Tibetan Glass Singing Bowl 172 Hz", "tier": "secondary"},
+    {"slug": "vagus-nerve-stimulation-kit", "name": "Vagus Nerve Stimulation Kit for miHealth", "tier": "secondary"},
+    {"slug": "whole-house-neutralizer", "name": "Whole House Neutralizer", "tier": "secondary"},
+    {"slug": "wicking-toothbrush", "name": "Wicking Toothbrush", "tier": "secondary"},
+    {"slug": "hand-cradle", "name": "ZYTO Hand Cradle", "tier": "secondary"},
 ]
-
-_KNOWN_TERRAIN_PHASES = ("energize", "rejuvenate", "regenerate", "cleanse", "balance")
 
 
 def build_roadmap(owned_slugs, terrain_phase=None):
-    """Personal recommended-additions roadmap: hero tools (fixed order, not owned),
-    then the terrain phase's gap tools (not owned), then a general tail (not owned).
-    Deduped by slug across tiers -- a slug already added by an earlier tier is not
-    re-added later. Unknown/None terrain_phase -> hero + general only. Pure, no DB."""
+    """Personal recommended-additions roadmap: hero tools (fixed order, not
+    owned), THEN secondary tools (list order, not owned). Deduped by slug
+    across tiers -- a slug already added by an earlier tier is not re-added
+    later. Every item keeps {slug, name, why, tier} (secondary items carry
+    why="", since SECONDARY_TOOLS is an unprioritized list with no per-item
+    rationale).
+
+    `terrain_phase` is accepted for backward-compatible call signatures
+    (callers/tests/plumbing) but is now IGNORED: Glen's direction is that
+    healing tools work in all phases, so there is no per-phase tool
+    selection any more -- the result is identical for every phase or None.
+    Pure, no DB."""
     owned_slugs = owned_slugs or set()
     seen = set()
     roadmap = []
@@ -166,21 +117,17 @@ def build_roadmap(owned_slugs, terrain_phase=None):
         if slug in owned_slugs or slug in seen:
             continue
         seen.add(slug)
-        roadmap.append(dict(tool))
+        item = dict(tool)
+        item.setdefault("why", "")
+        roadmap.append(item)
 
-    if terrain_phase in _KNOWN_TERRAIN_PHASES:
-        for tool in TERRAIN_TOOLS.get(terrain_phase, []):
-            slug = tool["slug"]
-            if slug in owned_slugs or slug in seen:
-                continue
-            seen.add(slug)
-            roadmap.append(dict(tool))
-
-    for tool in GENERAL_TOOLS:
+    for tool in SECONDARY_TOOLS:
         slug = tool["slug"]
         if slug in owned_slugs or slug in seen:
             continue
         seen.add(slug)
-        roadmap.append(dict(tool))
+        item = dict(tool)
+        item.setdefault("why", "")
+        roadmap.append(item)
 
     return roadmap
