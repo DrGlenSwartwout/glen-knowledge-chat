@@ -20,11 +20,13 @@ def _product_key(name, brand):
     return _sr.product_key(name, brand)
 
 
-def _build_ranked(cx, email, top_n=5):
-    """Read-through of the SAME recommendations data the
+def _recommendation_sections(cx, email, top_n=5):
+    """The single expensive read-through of the SAME recommendations data the
     `/api/portal/<token>/recommendations` endpoint serves (product_sources ->
-    build_sections), flattened across sections and deduped by product_key,
-    truncated to the top_n. Never invents a different ranking."""
+    notes/section_state -> catalog -> build_sections). Both the ranked list
+    and the from-history (condition) list are derived from this ONE result --
+    see `_build_ranked_from_sections` / `_build_from_history_from_sections` --
+    so `build_block` no longer does this read-through twice per page load."""
     from dashboard import recommendation_events as _re
     from dashboard import recommendation_prefs as _rp
     from dashboard import portal_recommendations as _pr
@@ -41,10 +43,22 @@ def _build_ranked(cx, email, top_n=5):
         p = catalog.get(slug) or {}
         return {"name": p.get("name"), "url": p.get("url")}
 
-    sections = _pr.build_sections(ps, notes, state, resolve, top_n=top_n)
+    return _pr.build_sections(ps, notes, state, resolve, top_n=top_n)
+
+
+def _build_ranked_from_sections(sections, top_n=5):
+    """Flatten `sections` (already built by `_recommendation_sections`) across
+    non-condition sources, deduped by product_key, truncated to the top_n.
+    Never invents a different ranking."""
     seen = set()
     ranked = []
     for sec in sections:
+        if sec.get("source") == "condition":
+            # Condition-seeded (triage) remedies get their own "Suggested remedies
+            # from your history" section (see _build_from_history_from_sections)
+            # -- keep them out of the generic ranked list so they aren't shown
+            # twice.
+            continue
         for prod in (sec.get("products") or []):
             pk = prod.get("product_key")
             if not pk or pk in seen:
@@ -60,6 +74,34 @@ def _build_ranked(cx, email, top_n=5):
             if len(ranked) >= top_n:
                 return ranked
     return ranked
+
+
+def _build_from_history_from_sections(sections):
+    """Triage-seeded (condition) remedies for their own 'Suggested remedies from
+    your history' portal section -- distinct from the general 'Top recommended
+    for you' list built by `_build_ranked_from_sections` (which skips the
+    condition section). Operates on the SAME `sections` (already built by
+    `_recommendation_sections`) as `_build_ranked_from_sections`; returns ONLY
+    the products from the section whose source == "condition", deduped by
+    product_key. [] if there is no such section (e.g. no triage has ever
+    seeded this client)."""
+    seen = set()
+    out = []
+    for sec in sections:
+        if sec.get("source") != "condition":
+            continue
+        for prod in (sec.get("products") or []):
+            pk = prod.get("product_key")
+            if not pk or pk in seen:
+                continue
+            seen.add(pk)
+            out.append({
+                "product_key": pk,
+                "name": prod.get("name") or pk,
+                "url": prod.get("url") or "",
+                "reason": prod.get("client_note") or "",
+            })
+    return out
 
 
 def _build_external(cx, email):
@@ -98,19 +140,29 @@ def _build_external(cx, email):
 def build_block(cx, email, enabled):
     """Assemble the 'remedies' portal block. Dark by default: returns
     {"enabled": False} when `enabled` is False. Otherwise always returns
-    {"enabled": True, "ranked": [...], "external": [...]} — `ranked` and
-    `external` are built independently, each degrading to [] on any internal
-    error so a failure in one never breaks the other or the rest of the
-    portal payload."""
+    {"enabled": True, "ranked": [...], "external": [...], "from_history": [...]}
+    — the shared recommendations read-through (`_recommendation_sections`) runs
+    ONCE and feeds both `ranked` and `from_history`; `external` is independent.
+    Each of the three is still isolated by its own try/except and degrades to
+    [] on any internal error, so a failure building one (or the shared read
+    itself) never breaks the others or the rest of the portal payload."""
     if not enabled:
         return {"enabled": False}
     em = (email or "").strip().lower()
     try:
-        ranked = _build_ranked(cx, em)
+        sections = _recommendation_sections(cx, em)
+    except Exception:
+        sections = []
+    try:
+        ranked = _build_ranked_from_sections(sections)
     except Exception:
         ranked = []
     try:
         external = _build_external(cx, em)
     except Exception:
         external = []
-    return {"enabled": True, "ranked": ranked, "external": external}
+    try:
+        from_history = _build_from_history_from_sections(sections)
+    except Exception:
+        from_history = []
+    return {"enabled": True, "ranked": ranked, "external": external, "from_history": from_history}
