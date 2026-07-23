@@ -927,6 +927,31 @@ function oasisWantedRowHtml(item){
     : esc(item.name);
   return `<div class="reitem"><span class="nm">${name}</span></div>`;
 }
+// Secondary roadmap items are grouped by modality under a small subhead
+// (reuses the existing .hub-grid-group/.glabel pair from the hub tiles --
+// same muted uppercase label style, no new CSS). Heroes render first,
+// ungrouped, exactly as before. Order matches dashboard/oasis_roadmap.py's
+// CATEGORY_ORDER; a category with no (not-owned) items is skipped. The
+// intentional nes-mihealth duplicate (see oasis_roadmap.py) naturally
+// renders once under PEMF and once under Microcurrent.
+const OASIS_CATEGORY_ORDER = ["Light", "Water", "Air", "PEMF", "Microcurrent", "EMF", "Sound", "Bioenergetic", "Detox"];
+function buildOasisRoadmapHtml(roadmap){
+  if (!roadmap.length) return `<p class="muted small">Your recommendations will appear here.</p>`;
+  const heroes = roadmap.filter(item => item.tier === "hero");
+  const secondary = roadmap.filter(item => item.tier !== "hero");
+  const heroHtml = heroes.map(oasisRoadmapRowHtml).join("");
+  const byCategory = {};
+  secondary.forEach(item => {
+    const cat = item.category || "";
+    (byCategory[cat] = byCategory[cat] || []).push(item);
+  });
+  const secondaryHtml = OASIS_CATEGORY_ORDER.map(cat => {
+    const items = byCategory[cat];
+    if (!items || !items.length) return "";
+    return `<div class="hub-grid-group"><p class="glabel">${esc(cat)}</p>${items.map(oasisRoadmapRowHtml).join("")}</div>`;
+  }).join("");
+  return heroHtml + secondaryHtml;
+}
 function buildOasisBuildOutHtml(oasis){
   const b = (oasis && oasis.build_out) || {};
   const ownedUs = Array.isArray(b.owned_from_us) ? b.owned_from_us : [];
@@ -939,9 +964,7 @@ function buildOasisBuildOutHtml(oasis){
   const ownedExtHtml = ownedExt.length
     ? ownedExt.map(oasisOwnedExternalRowHtml).join("")
     : `<p class="muted small">Nothing added yet.</p>`;
-  const roadmapHtml = roadmap.length
-    ? roadmap.map(oasisRoadmapRowHtml).join("")
-    : `<p class="muted small">Your recommendations will appear here.</p>`;
+  const roadmapHtml = buildOasisRoadmapHtml(roadmap);
   // Empty state stays quiet (no card at all) rather than a hollow "nothing
   // yet" card competing with Recommended / owned above it.
   const wantedHtml = wanted.length

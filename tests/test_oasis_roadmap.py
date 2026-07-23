@@ -2,6 +2,8 @@ from dashboard import oasis_roadmap as orm
 
 _HERO_ORDER = ["harmony-laser", "water-ionizer-15plate", "kloud-pemf-maxi"]
 
+_REMOVED_SLUGS = ["smokey-quartz-healing-tool", "hypoxia-free-face-shield"]
+
 
 def test_hero_tools_lead_in_fixed_order():
     rm = orm.build_roadmap(owned_slugs=set())
@@ -48,3 +50,76 @@ def test_secondary_items_have_empty_why():
     rm = orm.build_roadmap(owned_slugs=set())
     secondary = [x for x in rm if x["tier"] == "secondary"]
     assert secondary and all(x["why"] == "" for x in secondary)
+
+
+# --- Groups + trim restructure (dark) -------------------------------------
+
+def test_trimmed_slugs_are_gone_from_secondary_tools():
+    slugs = [t["slug"] for t in orm.SECONDARY_TOOLS]
+    for removed in _REMOVED_SLUGS:
+        assert removed not in slugs
+
+
+def test_trimmed_slugs_are_gone_from_built_roadmap():
+    rm = orm.build_roadmap(owned_slugs=set())
+    slugs = [x["slug"] for x in rm]
+    for removed in _REMOVED_SLUGS:
+        assert removed not in slugs
+
+
+def test_every_secondary_item_has_a_valid_category():
+    assert orm.SECONDARY_TOOLS  # sanity: not accidentally emptied
+    for tool in orm.SECONDARY_TOOLS:
+        assert tool.get("category") in orm.CATEGORY_ORDER
+
+
+def test_every_built_secondary_item_carries_its_category():
+    rm = orm.build_roadmap(owned_slugs=set())
+    secondary = [x for x in rm if x["tier"] == "secondary"]
+    assert secondary
+    for item in secondary:
+        assert item.get("category") in orm.CATEGORY_ORDER
+
+
+def test_nes_mihealth_appears_exactly_twice_pemf_and_microcurrent():
+    entries = [t for t in orm.SECONDARY_TOOLS if t["slug"] == "nes-mihealth"]
+    assert len(entries) == 2
+    categories = sorted(t["category"] for t in entries)
+    assert categories == ["Microcurrent", "PEMF"]
+
+
+def test_nes_mihealth_duplicate_survives_into_built_roadmap():
+    rm = orm.build_roadmap(owned_slugs=set())
+    entries = [x for x in rm if x["slug"] == "nes-mihealth"]
+    assert len(entries) == 2
+    categories = sorted(x["category"] for x in entries)
+    assert categories == ["Microcurrent", "PEMF"]
+
+
+def test_owning_nes_mihealth_removes_both_entries():
+    rm = orm.build_roadmap(owned_slugs={"nes-mihealth"})
+    slugs = [x["slug"] for x in rm]
+    assert "nes-mihealth" not in slugs
+    assert slugs.count("nes-mihealth") == 0
+
+
+def test_unique_secondary_slug_count_is_41():
+    unique_slugs = {t["slug"] for t in orm.SECONDARY_TOOLS}
+    assert len(unique_slugs) == 41
+
+
+def test_heroes_still_lead_after_restructure():
+    rm = orm.build_roadmap(owned_slugs=set())
+    slugs = [x["slug"] for x in rm]
+    assert slugs[:3] == _HERO_ORDER
+    hero_count = sum(1 for x in rm if x["tier"] == "hero")
+    assert hero_count == 3
+    # everything after the heroes is secondary
+    assert all(x["tier"] == "secondary" for x in rm[3:])
+
+
+def test_category_order_matches_spec():
+    assert orm.CATEGORY_ORDER == [
+        "Light", "Water", "Air", "PEMF", "Microcurrent", "EMF", "Sound",
+        "Bioenergetic", "Detox",
+    ]
