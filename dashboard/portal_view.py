@@ -408,4 +408,5 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "remedies": _rb.build_block(cx, email, remedies_enabled),
         "oasis": _ob.build_block(cx, email, oasis_enabled, terrain_phase),
         "caregiver_pay": _caregiver_pay_block(cx, email, caregiver_pay_enabled),
+        "caregiver_pay_enabled": bool(caregiver_pay_enabled),
     }

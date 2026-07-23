@@ -2792,14 +2792,34 @@ function render(d, v){
     let rows = "";
     v.orders.items.slice(0,8).forEach(o=>{
       const date = (o.date||"").slice(0,10);
+      const cgPaid = (v && v.caregiver_pay_enabled && o.paid_by_caregiver)
+        ? `<span class="pill" title="${esc((o.caregiver_payers||[]).join(', '))}">Paid by caregiver</span>` : "";
       rows += `<div class="ord"><span><span class="nm">${esc(money(o.total_cents))}</span>
         <span class="od">${esc(date)}</span></span>
-        <span class="pill">${esc(o.status||"")}</span></div>`;
+        <span class="pill">${esc(o.status||"")}</span>${cgPaid}</div>`;
     });
     const revOffer = (v.supplement_review && v.supplement_review.status !== "off")
       ? `<p class="muted small" style="margin:.6rem 0 0">Taking something you're not sure about? <a href="https://illtowell.com/product-review">Get it reviewed free &rarr;</a></p>`
       : "";
     html += `<div class="card"><h2>Your orders</h2><div>${rows}</div>${revOffer}</div>`;
+  }
+
+  // Orders you're paying for (caregiver pay): orders a household member has
+  // authorized this token holder to pay. Flag-gated; the block is empty when off
+  // or when no member has granted pay-consent.
+  if(v && v.caregiver_pay_enabled && v.caregiver_pay && Array.isArray(v.caregiver_pay.orders) && v.caregiver_pay.orders.length){
+    let rows = "";
+    v.caregiver_pay.orders.forEach(o=>{
+      const items = o.items ? `<div class="muted small" style="flex-basis:100%;margin-top:.2rem">${esc(o.items)}</div>` : "";
+      rows += `<div class="ord" style="flex-wrap:wrap">
+        <span><span class="nm">$${esc(o.amount_dollars)}</span>
+        <span class="od">for ${esc(o.beneficiary_name)}</span></span>
+        <button class="btn cg-pay" data-order="${esc(String(o.order_id))}">Pay $${esc(o.amount_dollars)}</button>
+        ${items}</div>`;
+    });
+    html += `<div class="card"><h2>Orders you're paying for</h2>
+      <p class="muted small">A household member asked you to cover these. Your payment is recorded as yours; their order and health records stay theirs.</p>
+      <div>${rows}</div></div>`;
   }
 
   // Sales / upgrade (feature #2): the single next eligible ladder rung + CTA.
@@ -2987,6 +3007,26 @@ function render(d, v){
         Share my scans &amp; messages with ${esc(c.primary_email)}</label>`;
     }
     html += `<div class="card quiet"><h2 style="font-size:1rem">Sharing</h2>${rows}</div>`;
+  }
+
+  // Caregiver payments (member authorizes a caregiver to pay their orders).
+  // Flag-gated; mirrors the Sharing consent pattern. Default OFF per link.
+  if(v && v.caregiver_pay_enabled && d.household_caregivers && d.household_caregivers.length){
+    let rows = "";
+    for(const c of d.household_caregivers){
+      const ck = c.pay_consent ? "checked" : "";
+      const scope = c.pay_share_scope || "amount_only";
+      const scopeSel = c.pay_consent
+        ? `<select class="hh-payscope" data-care="${esc(c.primary_email)}" style="margin:.1rem 0 .3rem 26px;font-size:.85rem">
+             <option value="amount_only" ${scope==="amount_only"?"selected":""}>show them the amount only</option>
+             <option value="line_items" ${scope==="line_items"?"selected":""}>show them what's in the order</option>
+           </select>` : "";
+      rows += `<label style="display:flex;align-items:center;gap:8px;margin:.3rem 0">
+        <input type="checkbox" class="hh-pay" data-care="${esc(c.primary_email)}" ${ck}>
+        Let ${esc(c.primary_email)} pay for my orders</label>${scopeSel}`;
+    }
+    html += `<div class="card quiet"><h2 style="font-size:1rem">Caregiver payments</h2>${rows}
+      <p class="muted small">They can pay your open invoices, and it shows as their expense. Your order and health records stay yours. Turn this off any time.</p></div>`;
   }
   if (d.household && d.household.length && d.household_cc) {
     let rows = "";
@@ -3397,6 +3437,29 @@ function render(d, v){
     fetch(`/api/portal/${encodeURIComponent(token)}/cc-pref`, {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({member_email: el.dataset.member, cc_enabled: el.checked ? 1 : 0})})));
+
+  // Caregiver payments: member grants/revokes pay-consent (+ share scope), and
+  // a payer starts a Stripe checkout for a member's order.
+  const postPayConsent = (care, consent, scope) =>
+    fetch(`/api/portal/${encodeURIComponent(token)}/pay-consent`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({caregiver_email: care, consent: consent ? 1 : 0, share_scope: scope})});
+  app.querySelectorAll(".hh-pay").forEach(el => el.addEventListener("change", () => {
+    const sc = app.querySelector(`.hh-payscope[data-care="${CSS.escape(el.dataset.care)}"]`);
+    postPayConsent(el.dataset.care, el.checked, sc ? sc.value : undefined).then(() => load());
+  }));
+  app.querySelectorAll(".hh-payscope").forEach(el => el.addEventListener("change", () =>
+    postPayConsent(el.dataset.care, true, el.value)));
+  app.querySelectorAll(".cg-pay").forEach(el => el.addEventListener("click", () => {
+    el.disabled = true; el.textContent = "Redirecting…";
+    fetch(`/api/portal/${encodeURIComponent(token)}/caregiver-pay`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({order_id: Number(el.dataset.order)})})
+      .then(r => r.json()).then(j => {
+        if(j && j.ok && j.url){ location.href = j.url; }
+        else { el.disabled = false; el.textContent = "Try again"; }
+      }).catch(() => { el.disabled = false; el.textContent = "Try again"; });
+  }));
 
   // Task 6: qty steppers (local display only — the row's shown price already
   // reflects Task 5's server-computed per-unit price; stepping just updates
