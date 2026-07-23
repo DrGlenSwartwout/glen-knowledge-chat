@@ -66,13 +66,18 @@ def add_pending(cx, email, field_id, value, rationale, source, source_msg_id=Non
     if not e or not fid:
         return None
     val = value if isinstance(value, str) else json.dumps(value)
+    # RETURNING id (not cur.lastrowid): the Postgres adapter raises on
+    # `lastrowid`, and the translator splices ON CONFLICT DO NOTHING before a
+    # trailing RETURNING, so this yields the new id on insert and no row when the
+    # partial-unique index ignores a duplicate -- identical on SQLite and Postgres.
     cur = cx.execute(
         "INSERT OR IGNORE INTO health_suggestions "
         "(email, source, source_msg_id, field_id, suggested_value, rationale, "
-        " status, created_at) VALUES (?,?,?,?,?,?,'pending',?)",
+        " status, created_at) VALUES (?,?,?,?,?,?,'pending',?) RETURNING id",
         (e, source, source_msg_id, fid, val, rationale, _now()))
+    row = cur.fetchone()
     cx.commit()
-    return cur.lastrowid if cur.rowcount == 1 else None
+    return row[0] if row else None
 
 
 def list_pending(cx, email):
