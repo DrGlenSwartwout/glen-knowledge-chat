@@ -40,6 +40,10 @@ def ensure_table(cx):
     """)
     cx.execute("CREATE INDEX IF NOT EXISTS idx_order_payments_order "
                "ON order_payments(order_id)")
+    try:
+        cx.execute("ALTER TABLE order_payments ADD COLUMN payer_email TEXT")
+    except Exception:
+        pass
 
 
 def _row(cx, pid):
@@ -147,16 +151,16 @@ def balance(cx, order_id):
 
 
 def _insert(cx, order_id, *, kind, amount_cents, method, source, external_ref,
-            refunds_payment_id, paid_at, note, actor):
+            refunds_payment_id, paid_at, note, actor, payer_email=None):
     now = _now()
     new_id = dbwrite.insert_returning_id(
         cx,
         "INSERT INTO order_payments (order_id, kind, amount_cents, method, "
         "source, external_ref, refunds_payment_id, paid_at, note, status, "
-        "qbo_sync, created_at, updated_at, created_by) "
-        "VALUES (?,?,?,?,?,?,?,?,?,'active','pending',?,?,?)",
+        "qbo_sync, created_at, updated_at, created_by, payer_email) "
+        "VALUES (?,?,?,?,?,?,?,?,?,'active','pending',?,?,?,?)",
         (order_id, kind, int(amount_cents), method, source, external_ref,
-         refunds_payment_id, paid_at or now, note, now, now, actor))
+         refunds_payment_id, paid_at or now, note, now, now, actor, payer_email))
     cx.commit()
     return _row(cx, new_id)
 
@@ -215,7 +219,7 @@ def _push_payment(cx, pid):
 
 def add_payment(cx, order_id, amount_cents, method, *, source="manual",
                 external_ref=None, paid_at=None, note=None, actor=None,
-                qbo_txn_id=None, skip_qbo_push=False):
+                qbo_txn_id=None, skip_qbo_push=False, payer_email=None):
     """Record a payment in the ledger. This NEVER creates a QBO payment any more.
 
     It used to push one by default. It no longer does: every payment reaches
@@ -242,7 +246,7 @@ def add_payment(cx, order_id, amount_cents, method, *, source="manual",
     row = _insert(cx, order_id, kind="payment", amount_cents=amount_cents,
                   method=method, source=source, external_ref=external_ref,
                   refunds_payment_id=None, paid_at=paid_at, note=note,
-                  actor=actor)
+                  actor=actor, payer_email=(payer_email or None))
     if qbo_txn_id or skip_qbo_push:
         _mark_sync(cx, row["id"], qbo_txn_id=qbo_txn_id, state="synced")
     _push_payment(cx, row["id"])
