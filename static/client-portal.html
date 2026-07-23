@@ -2399,6 +2399,33 @@ function render(d, v){
 
   wireRecommendationsCard();
 
+  // Task 6: My Remedies ranked-row "Add to my Oasis / order" hand-off. The
+  // button's data-oasis-add carries a real catalog slug (ranked items'
+  // product_key IS the slug — see dashboard/remedies_block.py _build_ranked,
+  // which resolves it straight against the product catalog). Idempotent on
+  // the server, so a repeat click is harmless; here we just latch the button
+  // once it succeeds and show a small inline confirmation on that row.
+  app.querySelectorAll("[data-oasis-add]").forEach(b => b.addEventListener("click", async () => {
+    if(b.disabled) return;
+    const slug = b.getAttribute("data-oasis-add");
+    b.disabled = true;
+    const label = b.textContent;
+    try{
+      const r = await fetch(`/api/portal/${encodeURIComponent(token)}/remedies/to-oasis`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({slug})
+      });
+      const j = await r.json();
+      if(j.ok){
+        b.textContent = "Added to your Oasis";
+        return;
+      }
+      b.disabled = false; b.textContent = label;
+    }catch(e){
+      b.disabled = false; b.textContent = label;
+    }
+  }));
+
   const obtn = document.getElementById("offerBtn");
   if(obtn) obtn.addEventListener("click", ()=>startOffer(obtn));
 

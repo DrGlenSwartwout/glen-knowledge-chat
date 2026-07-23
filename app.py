@@ -20222,6 +20222,37 @@ def api_portal_remedies_request_review(token):
     return jsonify(block)
 
 
+@app.route("/api/portal/<token>/remedies/to-oasis", methods=["POST"])
+def api_portal_remedies_to_oasis(token):
+    """Client hands off a ranked My Remedies match into their Healing Oasis
+    wishlist ("Add to my Oasis / order"). Token-authed: identity comes ONLY
+    from the portal token, never the request body. Idempotent: ensures the
+    slug is present on the wishlist, never toggles an already-present slug
+    off. Records a best-effort engagement event; a failure there never
+    fails the request."""
+    if not _PORTAL_REMEDIES_ENABLED:
+        return jsonify({"error": "disabled"}), 404
+    from dashboard import client_portal as _cp, wishlist as _wl, recommendation_events as _re
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx); _wl.init_wishlist_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if email and slug:
+            owner = _wl.resolve_owner(email, None)
+            if slug not in _wl.slugs_for(cx, owner):
+                _wl.toggle(cx, owner, slug)
+            try:
+                _re.init_recommendation_events(cx)
+                _re.record_click(cx, email, slug, "my-remedies")
+            except Exception:
+                pass
+    return jsonify({"ok": True})
+
+
 @app.route("/api/portal/<token>/program", methods=["GET"])
 def api_portal_program(token):
     """Personalized membership program blocks for the program page."""
