@@ -20183,6 +20183,27 @@ def api_portal_library_asset(token, slug, asset):
     return resp
 
 
+@app.route("/api/portal/<token>/onboarding", methods=["GET"])
+def api_portal_onboarding(token):
+    """Read-only 3-phase onboarding status for the portal hub tile. Anchor
+    hrefs (e.g. '#photo') are rewritten to '/portal/<token>#photo' so the
+    tile can link straight into the token's own portal page."""
+    from dashboard import client_portal as _cp, portal_onboarding as _ob
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        status = _ob.build_status(cx, email)
+    for ph in status.get("phases", []):
+        for st in ph.get("steps", []):
+            h = st.get("href") or ""
+            if h.startswith("#"):
+                st["href"] = f"/portal/{token}{h}"
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "status": status})
+
+
 @app.route("/api/portal/<token>/recommendations", methods=["GET"])
 def api_portal_recommendations(token):
     """Read-only: a client's recommended-products sections, grouped by source
