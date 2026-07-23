@@ -42561,6 +42561,19 @@ def api_order_payments_add(oid):
     cx = db.connect(LOG_DB); cx.row_factory = _sqlite3.Row
     try:
         _op.ensure_table(cx)
+        # Optional caregiver-pay attribution (Task 7): a console operator recording
+        # a Zelle/manual payment FROM a caregiver (Steve) against a beneficiary's
+        # (Michael's) order. Only honored when the flag is on AND the payer holds
+        # active pay-consent from the order's owner — never stamped otherwise.
+        payer_email = (b.get("payer_email") or "").strip().lower() or None
+        if payer_email and _caregiver_pay_enabled():
+            from dashboard import household as _hh
+            owner = (_bos_orders.get_order(cx, oid) or {}).get("email") or ""
+            owner = owner.strip().lower()
+            if not _hh.can_pay(cx, payer_email, owner):
+                return jsonify({"ok": False, "error": "payer not authorized"}), 403
+        else:
+            payer_email = None
         row = _op.add_payment(
             cx, oid, round(float(b.get("amount") or 0) * 100),
             b.get("method") or "", source=b.get("source") or "manual",
@@ -42569,7 +42582,8 @@ def api_order_payments_add(oid):
             # Reconciling a payment that ALREADY exists in QBO: link it (or mark
             # it synced) so the ledger mirrors QBO instead of double-crediting.
             qbo_txn_id=b.get("qbo_txn_id"),
-            skip_qbo_push=bool(b.get("skip_qbo_push")))
+            skip_qbo_push=bool(b.get("skip_qbo_push")),
+            payer_email=payer_email)
         return jsonify({"ok": True, "row": row, "balance": _op.balance(cx, oid)})
     except ValueError as e:
         return jsonify({"ok": False, "error": str(e)}), 400
