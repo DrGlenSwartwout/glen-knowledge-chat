@@ -50,7 +50,10 @@ def test_initiate_no_consent_returns_403(monkeypatch):
 def test_initiate_with_consent_returns_checkout_url(monkeypatch):
     michael = f"michael-{uuid.uuid4().hex}@x.com"
     steve = f"steve-{uuid.uuid4().hex}@x.com"
-    oid = _seed_order(michael)
+    # 'open' is a normal payable status (pay_status<>'paid', not a terminal status).
+    # The old proposed/confirmed whitelist would 409 this; the payable-block-matched
+    # guard must ACCEPT it.
+    oid = _seed_order(michael, status="open")
     with appmod._db_lock, appmod.db.connect(appmod.LOG_DB) as cx:
         hh.add_member(cx, steve, michael, relationship="partner")
         hh.set_pay_consent(cx, steve, michael, 1)
@@ -71,6 +74,23 @@ def test_initiate_already_paid_returns_409(monkeypatch):
     michael = f"michael-{uuid.uuid4().hex}@x.com"
     steve = f"steve-{uuid.uuid4().hex}@x.com"
     oid = _seed_order(michael, pay_status="paid")
+    with appmod._db_lock, appmod.db.connect(appmod.LOG_DB) as cx:
+        hh.add_member(cx, steve, michael, relationship="partner")
+        hh.set_pay_consent(cx, steve, michael, 1)
+        cx.commit()
+    monkeypatch.setattr(appmod, "_portal_record_for", lambda cx, tok: {"email": steve})
+    client = appmod.app.test_client()
+    r = client.post("/api/portal/toksteve/caregiver-pay", json={"order_id": oid})
+    assert r.status_code == 409
+    assert r.get_json()["ok"] is False
+
+
+def test_initiate_delivered_order_returns_409(monkeypatch):
+    # A terminal-status order (delivered/cancelled/done) is NOT payable — the guard
+    # must 409 it even though pay_status is not 'paid'.
+    michael = f"michael-{uuid.uuid4().hex}@x.com"
+    steve = f"steve-{uuid.uuid4().hex}@x.com"
+    oid = _seed_order(michael, status="delivered", pay_status="unpaid")
     with appmod._db_lock, appmod.db.connect(appmod.LOG_DB) as cx:
         hh.add_member(cx, steve, michael, relationship="partner")
         hh.set_pay_consent(cx, steve, michael, 1)

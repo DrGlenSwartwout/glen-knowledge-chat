@@ -24095,9 +24095,13 @@ def api_portal_caregiver_pay(token):
         # unauthorized caller can't use this endpoint to probe an order's pay state.
         if not _hh.can_pay(cx, payer, beneficiary):
             return jsonify({"ok": False, "error": "not authorized"}), 403
-        # Already-paid / terminal-status guard — mirrors api_invoice_pay's check
-        # (app.py, api_invoice_pay) so a second checkout can't re-charge a paid order.
-        if o["pay_status"] == "paid" or o["status"] not in ("proposed", "confirmed"):
+        # Already-paid / terminal-status guard. Must match the portal payable-orders
+        # block's own notion of payable (_caregiver_pay_block in dashboard/portal_view.py
+        # and _published_invoices_for here): payable = pay_status<>'paid' AND status NOT
+        # IN ('cancelled','delivered','done'). api_invoice_pay's proposed/confirmed
+        # whitelist is WRONG here — it would 409 legitimately payable orders (e.g.
+        # status 'open'/'new'). Only block re-charging a paid or terminal order.
+        if o["pay_status"] == "paid" or o["status"] in ("cancelled", "delivered", "done"):
             return jsonify({"ok": False, "error": "this order is already paid"}), 409
         amount = int(o["total_cents"] or 0)
     base = PUBLIC_BASE_URL.rstrip("/")
