@@ -32,23 +32,22 @@ from dashboard import oasis_roadmap as _roadmap
 from dashboard import owned_tools as _ot
 from dashboard import wishlist as _wl
 
-# Real catalog device slugs come in families/variants that differ from the
-# roadmap's simplified hero slugs:
-#   roadmap "harmony"       <- real "harmony-laser" (+ variants)
-#   roadmap "water-ionizer" <- real "water-ionizer-5plate" / "-9plate" / "-15plate"
-#   roadmap "kloud"         <- real "kloud-pemf-mini" / "kloud-pemf-maxi"
+# Real catalog device slugs come in families/variants that must all collapse
+# onto the ONE real SKU the roadmap's HERO_TOOLS uses:
+#   water-ionizer* -> water-ionizer-15plate (owning any plate-count excludes it)
+#   kloud*         -> kloud-pemf-maxi (owning Mini or Maxi excludes it)
+#   harmony-laser* -> harmony-laser (the device itself; already the hero slug)
 # Prefix/startswith match so owning ANY real variant of a hero device excludes
 # that hero from the roadmap. Order matters only in that the first matching
 # prefix wins; families do not currently overlap.
 # Glen extends this family map as new device variants are added to the catalog.
 _DEVICE_FAMILY_PREFIXES = (
-    ("water-ionizer", "water-ionizer"),
+    ("water-ionizer", "water-ionizer-15plate"),
     # "harmony-laser*" only, NOT a bare "harmony" prefix -- the catalog has
     # non-device "harmony-*" consumables (e.g. harmony-flower-essence) that a
-    # bare prefix would wrongly map onto the Harmony hero. A slug that is exactly
-    # "harmony" still passes through unchanged and equals the hero slug anyway.
-    ("harmony-laser", "harmony"),
-    ("kloud", "kloud"),
+    # bare prefix would wrongly map onto the Harmony hero.
+    ("harmony-laser", "harmony-laser"),
+    ("kloud", "kloud-pemf-maxi"),
 )
 
 
@@ -125,18 +124,16 @@ def _device_orders(cx, email):
 
 def _roadmap_name_lookup():
     """Build a one-shot {slug: name} lookup from every roadmap table
-    (HERO_TOOLS + all TERRAIN_TOOLS phase lists + GENERAL_TOOLS). Pure, no
-    DB -- used only as a name-resolution fallback for wishlist slugs that
-    don't resolve in the purchasable catalog (the roadmap's "Add to
-    wishlist" action writes simplified/off-catalog slugs like "harmony",
-    "water-ionizer", "kloud", "red-light-panel" that never appear as a
-    dict entry in data/products.json). Never raises -- a malformed table
-    entry is skipped rather than crashing the lookup."""
+    (HERO_TOOLS + SECONDARY_TOOLS). Pure, no DB -- used only as a
+    name-resolution fallback for wishlist slugs that don't resolve in the
+    purchasable catalog. Every current roadmap slug IS a real catalog slug
+    (see dashboard/oasis_roadmap.py), so this fallback mainly guards a
+    roadmap table entry whose product is later removed/renamed from the
+    catalog. Never raises -- a malformed table entry is skipped rather than
+    crashing the lookup."""
     out = {}
     try:
-        tables = list(_roadmap.HERO_TOOLS) + list(_roadmap.GENERAL_TOOLS)
-        for phase_tools in _roadmap.TERRAIN_TOOLS.values():
-            tables.extend(phase_tools)
+        tables = list(_roadmap.HERO_TOOLS) + list(_roadmap.SECONDARY_TOOLS)
         for tool in tables:
             try:
                 slug = (tool.get("slug") or "").strip()

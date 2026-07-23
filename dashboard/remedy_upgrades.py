@@ -18,38 +18,49 @@ import re
 # `_normalize`), not full product names or brands.
 _UPGRADE_MAP = {
     "magnesium glycinate": {
-        "slug": "neuro-mag",
-        "reason": "Neuro-Mag pairs glycinate with taurate/threonate forms that cross "
-                   "the blood-brain barrier better for calming, sleep, and cognitive support.",
+        "slug": "focus-neuro-magnesium-powder",
+        "reason": "Focus Neuro-Magnesium pairs glycinate with taurate/threonate forms "
+                   "that cross the blood-brain barrier for calm, sleep, and cognition.",
     },
     "fish oil": {
         "slug": "wholomega",
-        "reason": "WholOmega is a whole-fish (not fractionated) omega-3 oil, preserving "
+        "reason": "WholOmega is a whole-fish (not fractionated) omega-3, preserving "
                    "the natural fatty-acid and phospholipid ratios lost in typical fish oils.",
     },
     "vitamin d": {
         "slug": "vitamin-d-syntropy",
-        "reason": "Vitamin D Synergy pairs D3 with cofactors (K2, etc.) needed for proper "
-                   "calcium routing, rather than D3 alone.",
+        "reason": "Vitamin D Synergy pairs D3 with the cofactors (K2, etc.) that route "
+                   "calcium correctly, rather than D3 alone.",
     },
     "turmeric": {
-        "slug": "curcumin",
-        "reason": "Our Curcumin extract is standardized and formulated for absorption, "
-                   "unlike raw turmeric powder which is poorly bioavailable.",
+        "slug": "curcu-guard",
+        "reason": "Curcu Guard is a standardized, absorption-formulated curcumin complex, "
+                   "unlike poorly-bioavailable raw turmeric powder.",
     },
     "coq10": {
-        "slug": "coq10",
-        "reason": "Our CoQ10 is formulated for absorption at a clinically meaningful dose.",
+        "slug": "mitochondrial-biogenesis",
+        "reason": "Mitochondrial Biogenesis pairs CoQ10 with cofactors for real "
+                   "cellular-energy support, not CoQ10 alone.",
     },
     "zinc": {
         "slug": "zinc-syntropy",
         "reason": "Zinc Synergy balances zinc with copper and other cofactors to avoid "
-                   "the copper depletion long-term single-ingredient zinc can cause.",
+                   "the copper depletion single-ingredient zinc can cause.",
     },
     "b12": {
         "slug": "sublingual-b12",
         "reason": "Sublingual B12 bypasses digestive absorption issues common with "
                    "oral B12 capsules or tablets.",
+    },
+    "probiotics": {
+        "slug": "microbiome",
+        "reason": "Microbiome is a targeted multi-strain formula rather than a "
+                   "generic single-strain probiotic.",
+    },
+    "vitamin c": {
+        "slug": "vitamin-c-syntropy",
+        "reason": "Synergy C delivers vitamin C with its synergist cofactors for "
+                   "better utilization than ascorbic acid alone.",
     },
 }
 
