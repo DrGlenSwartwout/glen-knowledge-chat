@@ -72,16 +72,24 @@ def _orders_block(cx, email, roles):
     try:
         import sqlite3
         from dashboard import orders as _o
+        from dashboard import order_payments as _op
         cx.row_factory = sqlite3.Row
         for o in _o.list_orders_by_email(cx, email, limit=50):
             if (o.get("status") or "") == "cancelled":
                 continue  # clients never see cancelled orders
-            items.append({
+            item = {
                 "id": o.get("id"),
                 "date": o.get("created_at", ""),
                 "total_cents": int(o.get("total_cents") or 0),
                 "status": o.get("status", ""),
-            })
+            }
+            try:
+                payers = _op.caregiver_payers_for(cx, o.get("id"), email)
+            except Exception:
+                payers = []
+            item["paid_by_caregiver"] = bool(payers)
+            item["caregiver_payers"] = payers
+            items.append(item)
     except Exception:
         items = []
     return {"visible": True, "items": items}

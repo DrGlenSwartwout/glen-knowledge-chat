@@ -382,6 +382,15 @@ def resync(cx, payment_id):
     return _row(cx, payment_id)
 
 
+def caregiver_payers_for(cx, order_id, owner_email):
+    """Distinct non-owner payer_emails on active payments for this order."""
+    rows = cx.execute(
+        "SELECT DISTINCT payer_email FROM order_payments WHERE order_id=? "
+        "AND kind='payment' AND status='active' AND payer_email IS NOT NULL "
+        "AND lower(payer_email) <> lower(?)", (order_id, owner_email or "")).fetchall()
+    return [r[0] for r in rows]
+
+
 def backfill_legacy_payments(cx, *, dry_run=True, skip_order_ids=None):
     """Create one source='legacy' payment row per PAID pre-ledger order so it shows
     correctly in the ledger/panel/board. Candidates: orders with paid_cents>0, source

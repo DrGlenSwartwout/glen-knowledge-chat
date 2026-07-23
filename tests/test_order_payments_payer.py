@@ -33,3 +33,9 @@ def test_refund_inherits_payer():
     op.add_refund(cx, 1, 5000, "Zelle", refunds_payment_id=pay["id"])
     ref = cx.execute("SELECT payer_email FROM order_payments WHERE kind='refund'").fetchone()
     assert ref[0] == "steve@x.com"
+
+def test_caregiver_payers_for_lists_foreign_payers():
+    cx = _cx()
+    op.add_payment(cx, 1, 3000, "Zelle", payer_email="steve@x.com")
+    op.add_payment(cx, 1, 2000, "Zelle")  # self-paid → not a caregiver payer
+    assert op.caregiver_payers_for(cx, 1, "michael@x.com") == ["steve@x.com"]
