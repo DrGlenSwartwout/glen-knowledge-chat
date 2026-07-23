@@ -34,10 +34,21 @@ def _norm(e):
     return (e or "").strip().lower()
 
 
-def _key(name, brand):
-    """Stable dedupe key for a product: case- and whitespace-insensitive name|brand."""
+def product_key(name, brand=""):
+    """Canonical stable dedupe key for a product: case- and whitespace-insensitive
+    name|brand. This is the SINGLE SOURCE OF TRUTH for this normalization —
+    dashboard.remedies_block._product_key and dashboard._remedies_product_key
+    in app.py both delegate here rather than reimplementing it, so the three
+    entry points can never drift apart."""
     raw = "%s|%s" % ((name or "").strip().lower(), (brand or "").strip().lower())
     return re.sub(r"\s+", " ", raw)
+
+
+def _key(name, brand):
+    """Stable dedupe key for a product: case- and whitespace-insensitive name|brand.
+    Delegates to product_key() (kept for backward compatibility with existing
+    call sites in this module)."""
+    return product_key(name, brand)
 
 
 def init_table(cx):

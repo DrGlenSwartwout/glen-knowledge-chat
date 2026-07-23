@@ -19,6 +19,17 @@ def test_external_hides_unconfirmed_review_text():
     assert ext["reason"] == "heart" and ext["importance"] == 6
     assert "review" not in ext or ext.get("review") in (None, "")   # ai_draft text stays hidden
 
+def test_key_helpers_agree():
+    # Guard against the name|brand normalization drifting apart again across its
+    # three copies (dashboard/supplement_reviews.py, dashboard/remedies_block.py,
+    # app.py) -- see review finding: consolidate to a single source of truth.
+    import app
+    for name, brand in [("Magnesium Glycinate", "Acme"), ("  Fish  Oil ", ""), ("X", "Y Z")]:
+        k = sr.product_key(name, brand)
+        assert sr._key(name, brand) == k
+        assert remedies_block._product_key(name, brand) == k
+        assert app._remedies_product_key(name, brand) == k
+
 def test_ranked_reason_never_leaks_operator_note(monkeypatch):
     # Drive the real _build_ranked path (through build_block) but control what
     # portal_recommendations.build_sections hands back, so we can plant a product

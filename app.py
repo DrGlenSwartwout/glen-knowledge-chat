@@ -20121,12 +20121,12 @@ def _remedies_coerce_importance(value):
 
 
 def _remedies_product_key(name, brand):
-    """Stable dedupe key for an external product: mirrors the normalization in
-    dashboard.remedies_block._product_key / dashboard.supplement_reviews._key
-    (kept independent/local rather than importing a private helper, same
-    convention as dashboard.remedy_upgrades)."""
-    raw = "%s|%s" % ((name or "").strip().lower(), (brand or "").strip().lower())
-    return re.sub(r"\s+", " ", raw)
+    """Stable dedupe key for an external product: delegates to
+    dashboard.supplement_reviews.product_key, the single source of truth for
+    this normalization (kept as its own function here so existing call sites
+    in app.py are unaffected)."""
+    from dashboard import supplement_reviews as _sr
+    return _sr.product_key(name, brand)
 
 
 @app.route("/api/portal/<token>/remedies/add", methods=["POST"])

@@ -11,16 +11,13 @@ Dark by default (PORTAL_REMEDIES_ENABLED); returns {"enabled": False} when off.
 Both sub-builds are failure-isolated — a broken recommendations read or a
 broken external-stack read degrades to an empty list rather than breaking the
 rest of the portal payload."""
-import re
-
-
 def _product_key(name, brand):
     """Stable dedupe key for an external product: case- and whitespace-
-    insensitive name|brand. Mirrors the normalization in
-    dashboard.supplement_reviews._key (kept independent/local rather than
-    importing a private helper, same convention as dashboard.remedy_upgrades)."""
-    raw = "%s|%s" % ((name or "").strip().lower(), (brand or "").strip().lower())
-    return re.sub(r"\s+", " ", raw)
+    insensitive name|brand. Delegates to dashboard.supplement_reviews.product_key,
+    the single source of truth for this normalization (kept as its own function
+    here so existing call sites in this module are unaffected)."""
+    from dashboard import supplement_reviews as _sr
+    return _sr.product_key(name, brand)
 
 
 def _build_ranked(cx, email, top_n=5):
