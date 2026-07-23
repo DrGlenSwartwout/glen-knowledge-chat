@@ -3138,8 +3138,8 @@ function render(d, v){
   // via ONE delegated click listener on the panel container, not per-element
   // bindings. That matters here specifically because add/request-review/
   // remove/meta all return the FULL refreshed remedies block (dashboard/
-  // remedies_block.build_block — {enabled, ranked, external}) and this
-  // handler redraws the panel from it (v.remedies = <response>; panel.innerHTML
+  // remedies_block.build_block — {enabled, ranked, external, from_history})
+  // and this handler redraws the panel from it (v.remedies = <response>; panel.innerHTML
   // = backToHub() + buildRemediesHtml(v)); a per-element binding would be
   // orphaned by that redraw, so delegation is used for every action here,
   // including the ranked-row hand-off, to keep the pattern consistent.

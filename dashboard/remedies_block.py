@@ -20,11 +20,13 @@ def _product_key(name, brand):
     return _sr.product_key(name, brand)
 
 
-def _build_ranked(cx, email, top_n=5):
-    """Read-through of the SAME recommendations data the
+def _recommendation_sections(cx, email, top_n=5):
+    """The single expensive read-through of the SAME recommendations data the
     `/api/portal/<token>/recommendations` endpoint serves (product_sources ->
-    build_sections), flattened across sections and deduped by product_key,
-    truncated to the top_n. Never invents a different ranking."""
+    notes/section_state -> catalog -> build_sections). Both the ranked list
+    and the from-history (condition) list are derived from this ONE result --
+    see `_build_ranked_from_sections` / `_build_from_history_from_sections` --
+    so `build_block` no longer does this read-through twice per page load."""
     from dashboard import recommendation_events as _re
     from dashboard import recommendation_prefs as _rp
     from dashboard import portal_recommendations as _pr
@@ -41,14 +43,21 @@ def _build_ranked(cx, email, top_n=5):
         p = catalog.get(slug) or {}
         return {"name": p.get("name"), "url": p.get("url")}
 
-    sections = _pr.build_sections(ps, notes, state, resolve, top_n=top_n)
+    return _pr.build_sections(ps, notes, state, resolve, top_n=top_n)
+
+
+def _build_ranked_from_sections(sections, top_n=5):
+    """Flatten `sections` (already built by `_recommendation_sections`) across
+    non-condition sources, deduped by product_key, truncated to the top_n.
+    Never invents a different ranking."""
     seen = set()
     ranked = []
     for sec in sections:
         if sec.get("source") == "condition":
             # Condition-seeded (triage) remedies get their own "Suggested remedies
-            # from your history" section (see _build_from_history) -- keep them out
-            # of the generic ranked list so they aren't shown twice.
+            # from your history" section (see _build_from_history_from_sections)
+            # -- keep them out of the generic ranked list so they aren't shown
+            # twice.
             continue
         for prod in (sec.get("products") or []):
             pk = prod.get("product_key")
@@ -67,31 +76,15 @@ def _build_ranked(cx, email, top_n=5):
     return ranked
 
 
-def _build_from_history(cx, email, top_n=10):
+def _build_from_history_from_sections(sections):
     """Triage-seeded (condition) remedies for their own 'Suggested remedies from
     your history' portal section -- distinct from the general 'Top recommended
-    for you' list built by `_build_ranked` (which now skips the condition
-    section). Same read-through of product_sources -> build_sections as
-    `_build_ranked`; returns ONLY the products from the section whose
-    source == "condition", deduped by product_key. [] if there is no such
-    section (e.g. no triage has ever seeded this client)."""
-    from dashboard import recommendation_events as _re
-    from dashboard import recommendation_prefs as _rp
-    from dashboard import portal_recommendations as _pr
-    from dashboard import products as _products
-
-    _re.init_recommendation_events(cx)
-    _rp.init_recommendation_prefs(cx)
-    ps = _re.product_sources(cx, email)
-    notes = _rp.get_notes(cx, email)
-    state = _rp.get_section_state(cx, email)
-    catalog = _products.load_products()
-
-    def resolve(slug):
-        p = catalog.get(slug) or {}
-        return {"name": p.get("name"), "url": p.get("url")}
-
-    sections = _pr.build_sections(ps, notes, state, resolve, top_n=top_n)
+    for you' list built by `_build_ranked_from_sections` (which skips the
+    condition section). Operates on the SAME `sections` (already built by
+    `_recommendation_sections`) as `_build_ranked_from_sections`; returns ONLY
+    the products from the section whose source == "condition", deduped by
+    product_key. [] if there is no such section (e.g. no triage has ever
+    seeded this client)."""
     seen = set()
     out = []
     for sec in sections:
@@ -148,14 +141,20 @@ def build_block(cx, email, enabled):
     """Assemble the 'remedies' portal block. Dark by default: returns
     {"enabled": False} when `enabled` is False. Otherwise always returns
     {"enabled": True, "ranked": [...], "external": [...], "from_history": [...]}
-    — `ranked`, `external`, and `from_history` are built independently, each
-    degrading to [] on any internal error so a failure in one never breaks
-    the others or the rest of the portal payload."""
+    — the shared recommendations read-through (`_recommendation_sections`) runs
+    ONCE and feeds both `ranked` and `from_history`; `external` is independent.
+    Each of the three is still isolated by its own try/except and degrades to
+    [] on any internal error, so a failure building one (or the shared read
+    itself) never breaks the others or the rest of the portal payload."""
     if not enabled:
         return {"enabled": False}
     em = (email or "").strip().lower()
     try:
-        ranked = _build_ranked(cx, em)
+        sections = _recommendation_sections(cx, em)
+    except Exception:
+        sections = []
+    try:
+        ranked = _build_ranked_from_sections(sections)
     except Exception:
         ranked = []
     try:
@@ -163,7 +162,7 @@ def build_block(cx, email, enabled):
     except Exception:
         external = []
     try:
-        from_history = _build_from_history(cx, em)
+        from_history = _build_from_history_from_sections(sections)
     except Exception:
         from_history = []
     return {"enabled": True, "ranked": ranked, "external": external, "from_history": from_history}
