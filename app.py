@@ -879,6 +879,50 @@ def _send_portal_welcome(email, name, token):
         print(f"[portal-welcome] {em}: {e!r}", flush=True)
 
 
+def _send_library_ready(email, name, token, ebook_title, slug):
+    """Best-effort: send the 'your ebook is ready' portal-library email after a
+    public /api/ebook/optin grant. Suppression-aware, once-guarded PER (email,
+    ebook_slug) — deliberately a SEPARATE guard table from
+    portal_token_welcome_sent, so this dedicated library email is never
+    silently skipped just because the same address already received an
+    order-time portal welcome (and vice versa: buying later still gets the
+    order-time welcome). Network send runs in a daemon thread so the caller
+    (the public opt-in route) is never blocked; never raises."""
+    em = (email or "").strip().lower()
+    if not em or not token or not slug:
+        return
+    try:
+        from dashboard import email_suppression as _es
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _es.init_table(cx)
+            if _es.is_suppressed(cx, em):
+                return
+            # Dedicated once-guard, keyed by (email, ebook_slug) so each ebook
+            # sends once per lead regardless of any unrelated portal-welcome
+            # guard. INSERT happens synchronously, BEFORE the threaded send,
+            # mirroring _send_portal_welcome's guard-then-thread ordering.
+            cx.execute("CREATE TABLE IF NOT EXISTS ebook_library_welcome_sent ("
+                       "email TEXT, ebook_slug TEXT, sent_at TEXT, "
+                       "PRIMARY KEY(email, ebook_slug))")
+            cur = cx.execute(
+                "INSERT OR IGNORE INTO ebook_library_welcome_sent "
+                "(email, ebook_slug, sent_at) VALUES (?, ?, ?)",
+                (em, slug, datetime.now(timezone.utc).isoformat()))
+            if cur.rowcount == 0:   # this ebook already sent to this email
+                return
+        url = portal_link(token)
+        title = ebook_title or "ebook"
+        body = (f"Aloha {name or ''},\n\nYour {title} is waiting for you in your library:\n\n"
+                f"{url}\n\nYou can read it or listen to it right inside, whenever it suits you. "
+                f"Reply anytime with questions.\n\nWith aloha,\nDr. Glen & Rae")
+        import threading
+        threading.Thread(target=_send_full_report_email,
+                         args=(em, name, f"Your {title} is ready \U0001f33a", body),
+                         daemon=True).start()
+    except Exception as e:
+        print(f"[library-ready] {em}/{slug}: {e!r}", flush=True)
+
+
 def _link_resend_generic(purpose, url_template, ttl):
     """Factory: mint a fresh `purpose` token (preserving extra) and email its URL."""
     def handler(email, extra):
@@ -20073,7 +20117,8 @@ def api_ebook_optin():
     from dashboard import ebook_catalog as _cat
     if "@" not in email or "." not in email.split("@")[-1]:
         return _cors(jsonify({"ok": False, "error": "valid email required"}), 400)
-    if not _cat.get(slug):
+    meta = _cat.get(slug)
+    if not meta:
         return _cors(jsonify({"ok": False, "error": "unknown ebook"}), 400)
     from dashboard import client_portal as _cp, portal_library as _lib
     with _db_lock, db.connect(LOG_DB) as cx:
@@ -20081,8 +20126,11 @@ def api_ebook_optin():
         _lib.init_table(cx)
         tok = _cp.ensure_token(cx, email, name)
         _lib.grant(cx, email, slug, source_site)
-    _send_portal_welcome(email, name, tok)   # once-guarded, threaded, never raises
-    return _cors(jsonify({"ok": True, "portal_url": portal_link(tok)}), 200)
+    # once-guarded (per email+slug), threaded, never raises. This is the SOLE
+    # delivery of the portal link — it must never be echoed in the response
+    # below (unauthenticated caller, any email typed in = live bearer token).
+    _send_library_ready(email, name, tok, meta["title"], slug)
+    return _cors(jsonify({"ok": True}), 200)
 
 
 @app.route("/api/portal/<token>/library", methods=["GET"])

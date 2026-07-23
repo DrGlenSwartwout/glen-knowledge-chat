@@ -47,3 +47,20 @@ def test_bad_asset_and_unknown_token_404(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     assert c.get(f"/api/portal/{tok}/library/healing-glaucoma-starter/exe").status_code == 404
     assert c.get("/api/portal/nope/library/healing-glaucoma-starter/pdf").status_code == 404
+
+def test_cross_client_entitlement_isolation(tmp_path, monkeypatch):
+    """A's grant must not leak to B's token — the library asset route is
+    email-keyed authorization, not merely 'any valid portal token'."""
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import client_portal as cp, portal_library as lib
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cp.init_client_portal_table(cx); lib.init_table(cx)
+    tok_a = cp.ensure_token(cx, "a@x.com", "A")
+    tok_b = cp.ensure_token(cx, "b@x.com", "B")
+    lib.grant(cx, "a@x.com", "healing-glaucoma-starter", "healingglaucoma.com")
+    cx.commit()
+    c = appmod.app.test_client()
+    r_a = c.get(f"/api/portal/{tok_a}/library/healing-glaucoma-starter/pdf")
+    assert r_a.status_code == 200 and r_a.data.startswith(b"%PDF")
+    r_b = c.get(f"/api/portal/{tok_b}/library/healing-glaucoma-starter/pdf")
+    assert r_b.status_code == 404
