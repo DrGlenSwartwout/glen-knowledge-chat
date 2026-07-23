@@ -15,6 +15,7 @@ RECOMMENDATION_SOURCES = {
     "ads":        {"label": "Ads",        "icon": "📣", "kind": "engagement"},
     "social":     {"label": "Social",     "icon": "📱", "kind": "engagement"},
     "purchased":  {"label": "Purchased",  "icon": "✅", "kind": "engagement"},
+    "condition":  {"label": "Matched from your history & symptoms", "icon": "🩺", "kind": "clinical"},
 }
 
 
