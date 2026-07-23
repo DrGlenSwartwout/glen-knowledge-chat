@@ -6111,6 +6111,10 @@ _PORTAL_HUB_ENABLED = os.environ.get("PORTAL_HUB_ENABLED", "").strip().lower() i
 # Curated read of the client's intake record ("My Health Profile" page) into
 # the client portal. Ships dark; same truthy set as the other portal flags.
 _PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# "My Healing Oasis" tile (replenish + owned devices/tools + recommendation
+# roadmap) in the client portal. Ships dark; same truthy set as the other
+# portal flags. See dashboard/oasis_block.py.
+_PORTAL_OASIS_ENABLED = os.environ.get("PORTAL_OASIS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -13195,6 +13199,40 @@ def _portal_biofield_unlocked(email):
         return False
     except Exception:
         return False
+
+
+# Positional phase(1-5) -> oasis roadmap key. dashboard/terrain_phase.py's
+# PHASE_NAMES use a DIFFERENT client-facing R-name set (Terrain Revive/Repair/
+# Renew/Refresh/Relief) than the oasis roadmap's keys (energize/rejuvenate/
+# regenerate/cleanse/balance) -- but both share the same depleted->excess
+# ordering (see terrain_phase.py's module docstring), so map by POSITION
+# (index), never by guessing a name-to-name correspondence.
+# Glen to confirm phase 1 == Energize.
+_OASIS_TERRAIN_PHASE_KEYS = ["energize", "rejuvenate", "regenerate", "cleanse", "balance"]
+
+
+def _resolve_oasis_terrain_phase(cx, email):
+    """The client's current terrain phase, resolved to one of
+    dashboard/oasis_roadmap.py's lowercase keys (or None when unknown).
+    Sourced from the client's latest published Biofield report
+    (portal_biofield_reports.latest_report) -- its content carries the scan's
+    BSI phase number, the same reading dashboard/biofield_portal_publish.py
+    stamps onto the report and the portal's biofield block already renders
+    (dashboard/biofield_report_present.py's terrain banner). Fails closed to
+    None on any error or missing data -- the roadmap then degrades to hero +
+    general tools only, which is safe."""
+    try:
+        from dashboard import portal_biofield_reports as _pbr
+        from dashboard import terrain_phase as _tp
+        rep = _pbr.latest_report(cx, email)
+        if not rep:
+            return None
+        num = _tp.phase_num((rep.get("content") or {}).get("phase"))
+        if num is None:
+            return None
+        return _OASIS_TERRAIN_PHASE_KEYS[num - 1]
+    except Exception:
+        return None
 
 
 def _biofield_audit_row(email, confirmed, scan_date, source, name=""):
@@ -25519,7 +25557,9 @@ def api_client_portal_view(token):
                                    hub_enabled=_PORTAL_HUB_ENABLED,
                                    health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
                                    biofield_unlocked=_portal_biofield_unlocked(ident.email),
-                                   supplement_review_enabled=_sr.enabled())
+                                   supplement_review_enabled=_sr.enabled(),
+                                   oasis_enabled=_PORTAL_OASIS_ENABLED,
+                                   terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email))
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
