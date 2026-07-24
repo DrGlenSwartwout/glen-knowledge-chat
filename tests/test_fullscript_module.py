@@ -15,13 +15,13 @@ SEED = {
   ],
   "focus_area_products": [
     {"focus_area_id": 9, "focus_area_name": "Nervous System",
-     "fs_product_name": "Magnesium Taurate", "rank": 0},
-    {"focus_area_id": 9, "focus_area_name": "Nervous System",
      "fs_product_name": "Pure Taurine 500mg", "rank": 1},
+    {"focus_area_id": 9, "focus_area_name": "Nervous System",
+     "fs_product_name": "Magnesium Taurate", "rank": 0},
   ],
   "focus_area_items": [
     {"focus_area_id": 9, "item_code": "ED4"},
-    {"focus_area_id": 9, "item_code": "EI1"},
+    {"focus_area_id": 14, "item_code": "EI1"},
     {"focus_area_id": 14, "item_code": "ED8"},
   ],
   "condition_products": [
@@ -118,8 +118,14 @@ def test_sync_replaces_condition_products():
 def test_focus_areas_for_items_ranked():
     cx = _cx()
     fas = fs.focus_areas_for_items(cx, ["ED4", "EI1", "ED8"])
-    assert fas[0]["focus_area_id"] == 9 and fas[0]["hits"] == 2
-    assert any(f["focus_area_id"] == 14 for f in fas)
+    # focus_area_id 14 has the higher hit count (2) but the LARGER id and was
+    # seeded AFTER focus_area_id 9 (1 hit) — so it only sorts first via the
+    # explicit "ORDER BY hits DESC" clause, not by insertion/id order.
+    assert fas[0]["focus_area_id"] == 14 and fas[0]["hits"] == 2
+    assert fas[0]["focus_area_name"] == ""  # no focus_area_products row -> COALESCE fallback
+    fa9 = next(f for f in fas if f["focus_area_id"] == 9)
+    assert fa9["hits"] == 1
+    assert fa9["focus_area_name"] == "Nervous System"
 
 
 def test_focus_areas_for_items_empty_input():
@@ -130,6 +136,13 @@ def test_focus_areas_for_items_empty_input():
 
 def test_products_for_focus_area_joined_and_ordered():
     cx = _cx()
+    # The seed inserts the rank-1 row before the rank-0 row, so insertion
+    # order is the REVERSE of the intended sort. fullscript_focus_area_products
+    # also carries a covering index on (focus_area_id, rank) that would
+    # coincidentally hand back rank order via index-scan even without an
+    # explicit ORDER BY; drop it here so this test actually exercises the
+    # query's own "ORDER BY fap.rank" clause rather than that side effect.
+    cx.execute("DROP INDEX ix_fsfai_code")
     ps = fs.products_for_focus_area(cx, 9)
     assert [p["name"] for p in ps] == ["Magnesium Taurate", "Pure Taurine 500mg"]
     assert ps[0]["best_ff"] == "Neuro Magnesium"
@@ -147,9 +160,25 @@ def test_products_for_focus_area_skips_inactive():
 def test_pins_for_client():
     cx = _cx()
     assert fs.pins_for_client(cx, "a@b.com") == []
+    # Stored email is MIXED case; query is a DIFFERENT casing (all lowercase).
+    # This only matches if the SQL-side LOWER(pin.email) runs — the query
+    # param is already lowercased in Python, so a pure Python-side .lower()
+    # on the param alone cannot make this pass.
     cx.execute("INSERT INTO fullscript_client_pins "
                "(email, fs_product_name, note, pinned_by, pinned_at) VALUES (?,?,?,?,?)",
-               ("a@b.com", "Magnesium Taurate", "start here", "glen", "2026-07-23"))
-    pins = fs.pins_for_client(cx, "A@B.com")  # case-insensitive
+               ("Mixed.Case@B.com", "Magnesium Taurate", "start here", "glen",
+                "2026-07-23"))
+    pins = fs.pins_for_client(cx, "mixed.case@b.com")
     assert len(pins) == 1
     assert pins[0]["name"] == "Magnesium Taurate" and pins[0]["note"] == "start here"
+
+
+def test_pins_for_client_skips_inactive():
+    cx = _cx()
+    cx.execute("INSERT INTO fullscript_client_pins "
+               "(email, fs_product_name, note, pinned_by, pinned_at) VALUES (?,?,?,?,?)",
+               ("a@b.com", "Pure Taurine 500mg", "note", "glen", "2026-07-23"))
+    cx.execute("UPDATE fullscript_products SET active=0 WHERE name=?",
+               ("Pure Taurine 500mg",))
+    pins = fs.pins_for_client(cx, "a@b.com")
+    assert pins == []
