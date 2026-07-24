@@ -8,12 +8,22 @@ The `blob` column is declared BYTEA, not BLOB: runtime pgcompat does NOT
 translate BLOB, so a BLOB column fails outright on Postgres (`type "blob" does
 not exist`). BYTEA is native on Postgres and round-trips bytes losslessly on
 SQLite. See test_bytea_column_round_trips_all_byte_values.
+
+`client_visible` (0/1) gates whether a document is visible to the CLIENT in
+their own portal. Glen's rule: a record a client uploads themselves is their
+own file and is visible immediately (source='portal-self'); a record Glen or
+staff uploads on the console stays staff-only until Glen explicitly marks it
+visible (POST /api/console/client-document/<id>/visibility) -- he may be
+holding a third-party record he hasn't reviewed yet. This column is enforced
+in the ROUTES (app.py), not here: get_for_email() deliberately still returns
+regardless of visibility because the console needs the full record for its
+review screen; see list_visible_for_email() for the client-facing read.
 """
 import hashlib
 from datetime import datetime, timezone
 
 _COLS = ("id", "email", "filename", "content_type", "byte_size", "sha256",
-         "source", "uploaded_at", "extract_status")
+         "source", "uploaded_at", "extract_status", "client_visible")
 
 
 def _now():
@@ -29,10 +39,30 @@ def init_table(cx):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT NOT NULL, filename TEXT, content_type TEXT,
         byte_size INTEGER, sha256 TEXT, blob BYTEA, source TEXT,
-        uploaded_at TEXT, extract_status TEXT)""")
+        uploaded_at TEXT, extract_status TEXT,
+        client_visible INTEGER NOT NULL DEFAULT 0)""")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_cdoc_email ON client_documents(email)")
     cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cdoc_email_sha "
                "ON client_documents(email, sha256)")
+    # Additive migration for tables created before client_visible existed
+    # (idiom matches dashboard/biofield_authoring.py / customers.py /
+    # coach_threads.py: unconditional ALTER inside a try/except, caught +
+    # ignored when the column already exists; pgcompat translates this to
+    # `ALTER TABLE IF EXISTS ... ADD COLUMN IF NOT EXISTS ...` on Postgres so
+    # it is a no-op there too).
+    try:
+        cx.execute("ALTER TABLE client_documents ADD COLUMN "
+                   "client_visible INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
+    # Backfill: a pre-existing self-uploaded document was always meant to be
+    # visible to its owner (put() applies this same rule going forward) --
+    # without this, every document uploaded before this migration would look
+    # staff-only. Anything else (console/unspecified source) defaults to 0,
+    # which is already correct, so this UPDATE only ever touches portal-self
+    # rows, and becomes a no-op once they're all backfilled.
+    cx.execute("UPDATE client_documents SET client_visible=1 "
+               "WHERE source='portal-self' AND client_visible=0")
     cx.commit()
 
 
@@ -43,18 +73,24 @@ def _row(cols, values):
 def put(cx, email, blob, filename, content_type, source):
     """Insert a document. Idempotent on (email, sha256): re-uploading identical
     bytes returns the existing row with deduped=True. Returns {"id", "deduped"}
-    or None when email/blob is empty."""
+    or None when email/blob is empty.
+
+    client_visible is set from `source`: a client's own self-upload
+    ('portal-self') is visible to them immediately; anything else (console,
+    email/fax intake, unspecified) is staff-only until Glen explicitly flips
+    it visible."""
     e = _norm(email)
     if not e or not blob:
         return None
     init_table(cx)
     digest = hashlib.sha256(blob).hexdigest()
+    visible = 1 if source == "portal-self" else 0
     cur = cx.execute(
         "INSERT OR IGNORE INTO client_documents"
         "(email, filename, content_type, byte_size, sha256, blob, source,"
-        " uploaded_at, extract_status) VALUES(?,?,?,?,?,?,?,?,?)",
+        " uploaded_at, extract_status, client_visible) VALUES(?,?,?,?,?,?,?,?,?,?)",
         (e, filename or "", content_type or "", len(blob), digest, blob,
-         source or "", _now(), "pending"))
+         source or "", _now(), "pending", visible))
     cx.commit()
     inserted = cur.rowcount > 0
     # Read the id back by its UNIQUE key: cur.lastrowid raises on Postgres.
@@ -67,35 +103,65 @@ def get(cx, doc_id):
     init_table(cx)
     r = cx.execute(
         "SELECT id, email, filename, content_type, byte_size, sha256, source,"
-        " uploaded_at, extract_status, blob FROM client_documents WHERE id=?",
-        (doc_id,)).fetchone()
+        " uploaded_at, extract_status, client_visible, blob FROM client_documents"
+        " WHERE id=?", (doc_id,)).fetchone()
     return _row(_COLS + ("blob",), r)
 
 
 def get_for_email(cx, doc_id, email):
     """Scoped read — the single isolation primitive. Every client-facing route
-    resolves through this so a token can only ever reach its owner's document."""
+    resolves through this so a token can only ever reach its owner's document.
+
+    Deliberately does NOT filter on client_visible: the console review screen
+    resolves through this too and needs to see a not-yet-visible document.
+    Client-facing routes must enforce visibility themselves (or use
+    list_visible_for_email below)."""
     e = _norm(email)
     if not e:
         return None
     init_table(cx)
     r = cx.execute(
         "SELECT id, email, filename, content_type, byte_size, sha256, source,"
-        " uploaded_at, extract_status, blob FROM client_documents"
+        " uploaded_at, extract_status, client_visible, blob FROM client_documents"
         " WHERE id=? AND email=?", (doc_id, e)).fetchone()
     return _row(_COLS + ("blob",), r)
 
 
 def list_for_email(cx, email):
+    """ALL documents for a client regardless of visibility -- the console's
+    view. Client-facing routes must use list_visible_for_email instead."""
     e = _norm(email)
     if not e:
         return []
     init_table(cx)
     rows = cx.execute(
         "SELECT id, email, filename, content_type, byte_size, sha256, source,"
-        " uploaded_at, extract_status FROM client_documents WHERE email=?"
-        " ORDER BY id DESC", (e,)).fetchall()
+        " uploaded_at, extract_status, client_visible FROM client_documents"
+        " WHERE email=? ORDER BY id DESC", (e,)).fetchall()
     return [_row(_COLS, r) for r in rows]
+
+
+def list_visible_for_email(cx, email):
+    """Only the client-visible documents for a client -- what the portal's
+    own document list must be built from."""
+    e = _norm(email)
+    if not e:
+        return []
+    init_table(cx)
+    rows = cx.execute(
+        "SELECT id, email, filename, content_type, byte_size, sha256, source,"
+        " uploaded_at, extract_status, client_visible FROM client_documents"
+        " WHERE email=? AND client_visible=1 ORDER BY id DESC", (e,)).fetchall()
+    return [_row(_COLS, r) for r in rows]
+
+
+def set_client_visible(cx, doc_id, visible):
+    """Flip a document's client visibility. Console-only action (see
+    api_console_client_document_visibility in app.py)."""
+    init_table(cx)
+    cx.execute("UPDATE client_documents SET client_visible=? WHERE id=?",
+               (1 if visible else 0, doc_id))
+    cx.commit()
 
 
 def set_extract_status(cx, doc_id, status):
@@ -138,7 +204,7 @@ def pending(cx, limit=20):
     init_table(cx)
     rows = cx.execute(
         "SELECT id, email, filename, content_type, byte_size, sha256, source,"
-        " uploaded_at, extract_status FROM client_documents"
+        " uploaded_at, extract_status, client_visible FROM client_documents"
         " WHERE extract_status='pending' ORDER BY id LIMIT ?", (int(limit),)
     ).fetchall()
     return [_row(_COLS, r) for r in rows]

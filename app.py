@@ -20678,6 +20678,13 @@ def api_portal_documents(token):
 
     The client sees their own file and — once Glen has approved it — the
     narrative. Extracted attributes, facts, and labs are NEVER included.
+
+    Only client_visible documents are listed here: a console-uploaded record
+    (e.g. a third-party record Glen received and hasn't reviewed yet) stays
+    staff-only until he explicitly marks it visible. Self-uploaded
+    ('portal-self') documents are visible immediately -- see
+    client_documents.put(). Uses list_visible_for_email, NOT list_for_email,
+    so this enforcement lives in exactly one place.
     """
     from dashboard import client_portal as _cp
     from dashboard import client_documents as _cd
@@ -20688,7 +20695,7 @@ def api_portal_documents(token):
         if not portal:
             return jsonify({"error": "not found"}), 404
         email = (portal.get("email") or "").strip().lower()
-        docs = _cd.list_for_email(cx, email) if email else []
+        docs = _cd.list_visible_for_email(cx, email) if email else []
         items = []
         for d in docs:
             draft = _dx.get_for_document(cx, d["id"])
@@ -20737,7 +20744,13 @@ def _doc_safe_filename(name):
 @app.route("/api/portal/<token>/documents/<int:doc_id>/file", methods=["GET"])
 def api_portal_document_file(token, doc_id):
     """Stream the token owner's OWN document. Resolved through get_for_email so
-    a token can never fetch another client's file."""
+    a token can never fetch another client's file.
+
+    A document that exists and is owned by this token but is not yet
+    client_visible (staff-only, e.g. a console upload Glen hasn't reviewed)
+    404s exactly like a document that doesn't exist at all -- the client must
+    never be able to distinguish "not found" from "found but hidden".
+    """
     from dashboard import client_portal as _cp
     from dashboard import client_documents as _cd
     with db.connect(LOG_DB) as cx:
@@ -20745,7 +20758,7 @@ def api_portal_document_file(token, doc_id):
         portal = _portal_record_for(cx, token)
         email = (portal.get("email") or "").strip().lower() if portal else ""
         doc = _cd.get_for_email(cx, doc_id, email) if email else None
-    if not doc:
+    if not doc or not doc.get("client_visible"):
         return Response("", status=404)
     ctype, disposition = _doc_response_content_type(doc["content_type"])
     resp = Response(doc["blob"], mimetype=ctype)
@@ -20907,6 +20920,9 @@ def api_console_client_documents():
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
     with db.connect(LOG_DB) as cx:
+        # list_for_email (NOT list_visible_for_email): the console review
+        # screen must keep showing every document regardless of client
+        # visibility -- that's the whole point of the staff-only gate.
         docs = _cd.list_for_email(cx, email)
         items = []
         for d in docs:
@@ -20914,10 +20930,32 @@ def api_console_client_documents():
                 "id": d["id"], "filename": d["filename"],
                 "uploaded_at": d["uploaded_at"], "source": d["source"],
                 "extract_status": d["extract_status"],
+                "client_visible": bool(d["client_visible"]),
                 "file_url": f"/admin/client-document?id={d['id']}",
                 "draft": _dx.get_for_document(cx, d["id"]),
             })
     return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/visibility", methods=["POST"])
+def api_console_client_document_visibility(doc_id):
+    """Console-only toggle: Glen decides when a staff-uploaded document
+    (e.g. a third-party record he received and read) becomes visible to the
+    client. A client's own self-upload is already visible from the moment
+    it's stored (see client_documents.put) -- this route can still flip it
+    either way; there is no restriction on which direction it's called."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    body = request.get_json(silent=True) or {}
+    visible = bool(body.get("visible"))
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cd.set_client_visible(cx, doc_id, visible)
+    return jsonify({"ok": True, "id": doc_id, "client_visible": visible})
 
 
 @app.route("/admin/client-document", methods=["GET"])

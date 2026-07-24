@@ -1,11 +1,17 @@
 // tests/test_console_documents_render.js
 // Run: node tests/test_console_documents_render.js
 const assert = require('assert');
-const { renderDocumentsHtml } = require('../static/js/console-documents.js');
+const { renderDocumentsHtml, renderDocUploadHtml } = require('../static/js/console-documents.js');
+
+// the upload control renders unconditionally (called once above the list by
+// console-client.html) and exposes a file input
+const uploadHtml = renderDocUploadHtml();
+assert.ok(/<input type=["']file["']/.test(uploadHtml));
+assert.ok(/id=["']cd-upload-btn["']/.test(uploadHtml));
 
 const ITEM = {
   id: 5, filename: 'labs.pdf', uploaded_at: '2026-07-23T00:00:00Z',
-  source: 'console', extract_status: 'drafted',
+  source: 'console', extract_status: 'drafted', client_visible: false,
   file_url: '/admin/client-document?id=5',
   draft: {
     id: 9, status: 'ai_draft', narrative_md: 'Draft narrative.',
@@ -16,6 +22,18 @@ const ITEM = {
 };
 
 const html = renderDocumentsHtml([ITEM], 'k');
+
+// per-document visibility control: labelled so the current state (staff-only
+// here, since client_visible is false) is obvious
+assert.ok(/Staff only/.test(html));
+assert.ok(html.includes('cd-toggle-visibility'));
+assert.ok(html.includes('data-doc="5"'));
+assert.ok(/Make visible to client/.test(html));
+
+const visibleItem = Object.assign({}, ITEM, { client_visible: true });
+const visibleHtml = renderDocumentsHtml([visibleItem], 'k');
+assert.ok(/Visible to client/.test(visibleHtml));
+assert.ok(/Make staff-only/.test(visibleHtml));
 
 // the raw file is reachable, with the console key attached
 assert.ok(html.includes('/admin/client-document?id=5'));

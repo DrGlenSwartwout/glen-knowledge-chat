@@ -197,9 +197,41 @@ function loadDocuments(){
     .then(function(d){
       var items=d.items||[];
       document.getElementById("h-docs").textContent=items.length?String(items.length):"";
-      document.getElementById("b-docs").innerHTML=renderDocumentsHtml(items,key());
+      document.getElementById("b-docs").innerHTML=renderDocUploadHtml()+renderDocumentsHtml(items,key());
+      wireDocUpload();
       wireDocumentActions();
     }).catch(function(){});
+}
+
+function wireDocUpload(){
+  var btn=document.getElementById("cd-upload-btn");
+  var input=document.getElementById("cd-upload-file");
+  var status=document.getElementById("cd-upload-status");
+  if(!btn||!input) return;
+  btn.addEventListener("click",function(){
+    var f=input.files&&input.files[0];
+    var email=qsEmail();
+    if(!f||!email){ if(status) status.textContent="Choose a file first."; return; }
+    btn.disabled=true;
+    if(status) status.textContent="Uploading…";
+    var fd=new FormData();
+    fd.append("email",email);
+    fd.append("file",f);
+    fetch("/api/console/client-document",{method:"POST",headers:hdr(),body:fd})
+      .then(function(r){
+        return r.json().catch(function(){ return {}; })
+          .then(function(j){ return {ok:r.ok, body:j}; });
+      })
+      .then(function(res){
+        if(res.ok && res.body && res.body.ok){ loadDocuments(); return; }
+        if(status) status.textContent=(res.body&&res.body.error)||"Upload failed. Please try again.";
+        btn.disabled=false;
+      })
+      .catch(function(){
+        if(status) status.textContent="Upload failed. Please try again.";
+        btn.disabled=false;
+      });
+  });
 }
 
 function checkedIdx(section,kind){
@@ -235,6 +267,19 @@ function wireDocumentActions(){
         method:"POST",
         headers:Object.assign({"Content-Type":"application/json"},hdr()),
         body:JSON.stringify({reviewed_by:"console"})
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+  host.querySelectorAll(".cd-toggle-visibility").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var id=btn.getAttribute("data-doc");
+      var next=btn.getAttribute("data-visible")!=="1";
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/visibility",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({visible:next})
       }).then(function(){ loadDocuments(); })
         .catch(function(){ btn.disabled=false; });
     });

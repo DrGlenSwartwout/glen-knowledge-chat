@@ -3,9 +3,17 @@
 const assert = require('assert');
 const { renderDocuments } = require('../static/js/portal-documents.js');
 
-// empty -> no tile at all
-assert.strictEqual(renderDocuments([]), '');
-assert.strictEqual(renderDocuments(null), '');
+// empty -> the tile still renders, WITH the upload control (otherwise a
+// client can never make a first upload), but no doc list.
+const empty = renderDocuments([]);
+assert.ok(empty.includes('My Records'));
+assert.ok(empty.includes('doc-upload'));
+assert.ok(/<input type=["']file["']/.test(empty));
+assert.ok(!empty.includes('doc-list'));
+
+const emptyFromNull = renderDocuments(null);
+assert.ok(emptyFromNull.includes('doc-upload'));
+assert.ok(!emptyFromNull.includes('doc-list'));
 
 // under review -> shows the file link and the review line, no narrative
 const pending = renderDocuments([{

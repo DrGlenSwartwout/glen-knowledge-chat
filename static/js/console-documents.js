@@ -19,11 +19,33 @@ function cdProposalRow(kind, idx, label, quote) {
   '</li>';
 }
 
+// The upload control for staff/console-side records (arrived by email or
+// fax). Rendered once above the document list by console-client.html --
+// kept as its own function (not folded into renderDocumentsHtml) so the
+// existing "no documents" empty-state string below is untouched.
+function renderDocUploadHtml() {
+  return '<div class="cd-upload">' +
+    '<label for="cd-upload-file">Upload a record</label> ' +
+    '<input type="file" id="cd-upload-file">' +
+    '<button type="button" id="cd-upload-btn">Upload</button>' +
+    '<span id="cd-upload-status" class="empty" role="status"></span>' +
+  '</div>';
+}
+
 function renderDocumentsHtml(items, consoleKey) {
   if (!items || !items.length) return '<p class="empty">No documents.</p>';
   return items.map(function (it) {
+    // A record Glen (or staff) uploaded on the console stays staff-only
+    // until he explicitly marks it visible; a client's own self-upload is
+    // already visible. Labelled so the current state is obvious either way.
+    var visible = !!it.client_visible;
+    var visLabel = visible ? 'Visible to client' : 'Staff only';
+    var toggleLabel = visible ? 'Make staff-only' : 'Make visible to client';
     var head = '<h3>' + cdEsc(it.filename) + ' ' +
       '<span class="pill">' + cdEsc(it.source) + '</span> ' +
+      '<span class="pill cd-visibility">' + cdEsc(visLabel) + '</span> ' +
+      '<button type="button" class="cd-toggle-visibility" data-doc="' + cdEsc(it.id) +
+        '" data-visible="' + (visible ? '1' : '0') + '">' + cdEsc(toggleLabel) + '</button> ' +
       '<a href="' + cdEsc(it.file_url) + '&key=' +
         encodeURIComponent(consoleKey || '') +
         '" target="_blank" rel="noopener">open file</a></h3>';
@@ -75,5 +97,6 @@ function renderDocumentsHtml(items, consoleKey) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderDocumentsHtml: renderDocumentsHtml };
+  module.exports = { renderDocumentsHtml: renderDocumentsHtml,
+                     renderDocUploadHtml: renderDocUploadHtml };
 }
