@@ -10857,6 +10857,110 @@ def _fulfill_masterclass(session_id):
         return {"ok": False, "reason": "error"}
 
 
+def _autoprovision_course_access(email):
+    """Mint a course token for `email` and email the /learn access link. Runs on a
+    first purchase / manual grant so buying == enrolled. Best-effort, never raises."""
+    from dashboard import course_tokens
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    try:
+        with _db_lock, db.connect(LOG_DB) as cx:
+            course_tokens.init_course_tokens_table(cx)
+            token = course_tokens.mint_course_token(cx, email, "")
+        setup_url = f"{mentorship_base()}/learn?token={token}"
+        send_mentorship_setup_link(email, "", setup_url)
+    except Exception as e:
+        print(f"[course] autoprovision failed for {email}: {e!r}", flush=True)
+
+
+def _fulfill_course_purchase(session):
+    """Grant a course entitlement from a completed Checkout Session whose
+    metadata.kind == 'course_purchase'. mode=payment => lifetime cert; mode=
+    subscription => membership through current_period_end. Then auto-provision a
+    token + access email. Idempotent (grant_* key on stripe_ref). Never raises.
+    Returns 'ok' | 'skip' | 'error'."""
+    from dashboard import course_entitlements as _ce
+    try:
+        md = (session or {}).get("metadata") or {}
+        if md.get("kind") != "course_purchase":
+            return "skip"
+        email = (md.get("email") or (session.get("customer_details") or {}).get("email") or "").strip().lower()
+        if not email:
+            return "skip"
+        mode = session.get("mode") or ("subscription" if session.get("subscription") else "payment")
+        customer = session.get("customer")
+        with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _ce.init_course_entitlements_table(cx)
+            if mode == "subscription":
+                sub_id = session.get("subscription")
+                if not sub_id:
+                    return "skip"
+                sub = stripe_pay.get_subscription(sub_id)
+                until = float(sub.get("current_period_end") or 0) or None
+                _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
+                                     stripe_ref=sub_id, customer=customer)
+            else:
+                _ce.grant_cert(cx, email, source="stripe",
+                               stripe_ref=session.get("id"), customer=customer)
+            cx.commit()
+        _autoprovision_course_access(email)
+        return "ok"
+    except Exception as e:
+        print(f"[course] fulfill purchase failed: {e!r}", flush=True)
+        return "error"
+
+
+def _course_membership_renew(invoice):
+    """On invoice.paid, extend a course membership to the subscription's new period
+    end. Identified by the subscription's metadata.kind == 'course_membership'.
+    No re-email. Never raises. Returns 'ok' | 'skip' | 'error'."""
+    from dashboard import course_entitlements as _ce
+    try:
+        sub_id = (invoice or {}).get("subscription")
+        if not sub_id:
+            return "skip"
+        sub = stripe_pay.get_subscription(sub_id)
+        sub_md = sub.get("metadata") or {}
+        if sub_md.get("kind") != "course_membership":
+            return "skip"
+        email = (sub_md.get("email") or "").strip().lower()
+        if not email:
+            return "skip"
+        until = float(sub.get("current_period_end") or 0) or None
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _ce.init_course_entitlements_table(cx)
+            _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
+                                 stripe_ref=sub_id, customer=sub.get("customer"))
+            cx.commit()
+        return "ok"
+    except Exception as e:
+        print(f"[course] membership renew failed: {e!r}", flush=True)
+        return "error"
+
+
+def _course_membership_cancel(subscription):
+    """On customer.subscription.deleted for a course membership, expire it so the
+    modules relock. Never raises. Returns 'ok' | 'skip' | 'error'."""
+    from dashboard import course_entitlements as _ce
+    try:
+        sub = subscription or {}
+        if (sub.get("metadata") or {}).get("kind") != "course_membership":
+            return "skip"
+        sub_id = sub.get("id")
+        if not sub_id:
+            return "skip"
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _ce.init_course_entitlements_table(cx)
+            _ce.expire_membership(cx, stripe_ref=sub_id)
+            cx.commit()
+        return "ok"
+    except Exception as e:
+        print(f"[course] membership cancel failed: {e!r}", flush=True)
+        return "error"
+
+
 @app.route("/begin/checkout-return")
 def begin_checkout_return():
     """Stripe retail return: verify the session, record the QBO payment, capture
@@ -30621,8 +30725,10 @@ def webhook_stripe():
         except Exception:
             return ("", 400)
     try:
-        if (event or {}).get("type") == "checkout.session.completed":
-            session_id = (((event.get("data") or {}).get("object") or {}).get("id") or "").strip()
+        etype = (event or {}).get("type")
+        obj = ((event.get("data") or {}).get("object") or {})
+        if etype == "checkout.session.completed":
+            session_id = (obj.get("id") or "").strip()
             if session_id:
                 # Each fulfiller re-fetches the session and no-ops on a non-matching
                 # kind, so calling both routes the session to the right handler (a
@@ -30698,6 +30804,11 @@ def webhook_stripe():
                                 _wcx.close()
                 except Exception as _we:
                     print(f"[stripe-webhook] paid-only book-back failed: {_we!r}", flush=True)
+            _fulfill_course_purchase(obj)          # course: reads the object (mode/metadata)
+        elif etype == "invoice.paid":
+            _course_membership_renew(obj)
+        elif etype == "customer.subscription.deleted":
+            _course_membership_cancel(obj)
         return ("", 200)
     except Exception as e:
         print(f"[webhook-stripe] {e!r}", flush=True)
