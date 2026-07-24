@@ -43,3 +43,12 @@ def test_grant_bad_input_400(appmod):
                                       json={"email": "", "months": 1},
                                       headers={"X-Console-Key": "sekret"})
     assert r.status_code == 400
+
+
+def test_grant_explicit_zero_months_rejected(appmod):
+    # An explicit months:0 must be a 400 with NO grant, not silently promoted to 1.
+    r = appmod.app.test_client().post("/console/courses/grant-membership",
+                                      json={"email": "z@x.com", "months": 0},
+                                      headers={"X-Console-Key": "sekret"})
+    assert r.status_code == 400
+    assert _level(appmod, "z@x.com", now=time.time() + 10) == 0

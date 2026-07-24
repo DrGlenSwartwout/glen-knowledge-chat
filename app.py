@@ -28292,7 +28292,10 @@ def console_courses_grant_membership():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     try:
-        months = int(data.get("months") or 1)
+        # data.get("months", 1) — absent defaults to 1; an explicit 0/negative
+        # falls through to the months<=0 guard below (do NOT `or 1`, which would
+        # silently promote an explicit 0 to a 1-month grant).
+        months = int(data.get("months", 1))
     except (TypeError, ValueError):
         months = 0
     if not email or months <= 0:
