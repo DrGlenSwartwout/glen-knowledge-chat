@@ -1,7 +1,7 @@
 # Fullscript dispensary channel
 
 **Date:** 2026-07-23
-**Status:** approved design, not yet planned
+**Status:** approved design, blocked on one open question (see Dispensary and product links)
 **Owner:** Glen
 
 ## Problem
@@ -66,6 +66,47 @@ Prod runs on Postgres since the P06 cutover. `cur.lastrowid` raises on the PG ad
 needing its new id must use `RETURNING id`. Reuse `dashboard/dbwrite.insert_or_replace` the way
 `prl_supplement.sync_from_seed` does rather than hand-rolling upserts.
 
+## Dispensary and product links
+
+### Two dispensaries exist
+
+| Dispensary | URL |
+| --- | --- |
+| Remedy Match LLC (**chosen**) | `https://us.fullscript.com/welcome/remedymatch/store-start` |
+| Susan Luscombe | `https://us.fullscript.com/welcome/sluscombe` |
+
+`https://www.healthwavehq.com/welcome/sluscombe` 302s to the second one. HealthWave is a white-label
+front on Fullscript, not a separate platform.
+
+Client links point at **Remedy Match LLC**, so margin and attribution land with the LLC. The
+dispensary slug is configuration (`FULLSCRIPT_DISPENSARY_SLUG=remedymatch`), never hardcoded and
+never baked into seed rows, so switching dispensaries later is a config change rather than a re-seed.
+
+### Open: is there a shareable product deep link?
+
+Verified 2026-07-23, unauthenticated:
+
+- `us.fullscript.com/welcome/remedymatch/store-start?product=<slug>` returns 200 but **ignores** the
+  parameter. It is a patient signup page.
+- `us.fullscript.com/welcome/remedymatch/catalog/product/<slug>` returns 404.
+- `us.fullscript.com/u/catalog/product/<node-id>` redirects to `/login`.
+
+So no publicly reachable per-product URL was found. **This blocks the per-product buy button in
+phase A** and is the one open question in this design.
+
+Glen is checking from inside the authenticated dispensary whether a shareable patient-facing product
+link exists. Resolution paths:
+
+1. **A shareable link exists.** Store it, or store `product_slug` and construct the URL at redirect
+   time from the configured dispensary slug. Phase A gets true per-product buttons. Preferred.
+2. **No shareable link.** Product rows become informational (name, brand, reason, FF equivalent) with
+   a single card-level CTA into the dispensary. The channel still delivers all four jobs; the client
+   searches once inside.
+
+Note this reframes the rejection of the treatment-plan API below. If no shareable link exists, a
+treatment plan is Fullscript's sanctioned mechanism for per-product buying, and the API becomes
+materially more valuable than first assessed. It is still out of scope for phase A.
+
 ## Data model
 
 Six tables, created by `init_tables(cx)`: the catalog, four driver tables, and `fullscript_clicks`
@@ -81,7 +122,7 @@ The curated catalog slice. One row per dispensable product.
 | `brand` | e.g. "Jarrow Formulas" |
 | `external_id` | Fullscript node id, e.g. `U3ByZWU6OlByb2R1Y3QtMTA3Njc2` |
 | `product_slug` | Fullscript product slug |
-| `url` | dispensary product URL, the only redirect destination ever used |
+| `url` | verified absolute product URL, or null when the URL is constructed from the dispensary slug at redirect time. See Dispensary and product links above. |
 | `focus_tags` | JSON array |
 | `product_type` | mirrors PRL's field |
 | `best_ff` | best Functional Formulations equivalent, nullable |
@@ -226,7 +267,7 @@ documented `catalog` OAuth scope is the path for anything that ever needs to run
 | Name | Purpose |
 | --- | --- |
 | `FULLSCRIPT_ENABLED` | master flag, off means the payload key never appears |
-| `FULLSCRIPT_DISPENSARY_URL` | fallback "browse the whole dispensary" link on the card |
+| `FULLSCRIPT_DISPENSARY_SLUG` | `remedymatch`. Every outbound URL is built from this, so switching dispensaries is a config change. |
 
 Flags are read at startup, so flipping one in Doppler needs a Render restart, and a merge plus a
 flag flip is two deploys.
