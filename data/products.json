@@ -12620,12 +12620,8 @@
       "regular_cents": 8000,
       "description": "1 drop in each eye 2 times a day or as needed",
       "inactive": true,
-<<<<<<< Updated upstream
       "superseded_by": "neuro-eye-drops-aces-gl-lite-eye-drops",
       "bottle_type": "Dropper 5 mL"
-=======
-      "superseded_by": "neuro-eye-drops-aces-gl-lite-eye-drops"
->>>>>>> Stashed changes
     },
     "clear-lens-eye-drops-aces-cat-eye-drops": {
       "name": "Clear Lens Eye Drops",
@@ -12685,12 +12681,8 @@
       "regular_cents": 8000,
       "description": "1 drop in each eye 2 times a day or as needed",
       "inactive": true,
-<<<<<<< Updated upstream
       "superseded_by": "clear-lens-eye-drops-aces-cat-eye-drops",
       "bottle_type": "Dropper 5 mL"
-=======
-      "superseded_by": "clear-lens-eye-drops-aces-cat-eye-drops"
->>>>>>> Stashed changes
     },
     "moisture-eyes-night-drops": {
       "name": "Moisture Eyes Night Drops",

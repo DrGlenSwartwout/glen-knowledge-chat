@@ -236,7 +236,6 @@ def _sellable_names(names):
     return [n for n in names if _norm_name(n) not in dep]
 
 
-<<<<<<< Updated upstream
 @functools.lru_cache(maxsize=1)
 def _active_catalog_names():
     """Normalized display names of every LIVE catalog product.
@@ -328,8 +327,6 @@ def _catalog_names_for_pool():
     return out
 
 
-=======
->>>>>>> Stashed changes
 def _best_match(spoken, names, cutoff):
     """Case-insensitive closest match: ASR lowercases, so we compare on lowercase and
     map back to the canonical-cased name. Returns None when nothing is close enough."""
@@ -384,11 +381,8 @@ def resolve_remedy_name(cx, spoken, cutoff=0.82):
         names = _sellable_names([r[0] for r in cx.execute(
             "SELECT DISTINCT product_name FROM fmp_snap_products "
             "WHERE TRIM(COALESCE(product_name,''))<>''").fetchall()])
-<<<<<<< Updated upstream
         # Live catalog names join FMP's, so a catalog-only survivor is reachable.
         names = _sellable_names(list(dict.fromkeys(names + _catalog_names_for_pool())))
-=======
->>>>>>> Stashed changes
         # whole-string fuzzy first, then a distinctive-token match for long names.
         match = _best_match(core, names, cutoff) or _token_match(core, names, cutoff)
         if match:
