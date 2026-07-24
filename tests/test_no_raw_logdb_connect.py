@@ -27,8 +27,8 @@ _ALLOWED = {
     "biofield_e4l.py": "e4l.db (read-only voice-scan store)",
     "biofield_reveal_import.py": "e4l.db",
     "fmp_biofield.py": "FileMaker snapshot db",
-    "biofield_handoff.py": "FMP snapshot db (local-only biofield_local_app)",
-    "biofield_fmp_snapshot.py": "FMP snapshot loader (fmp_snap_* tables)",
+    "biofield_handoff.py": "fmp_snap_* tables; sole caller is the local-only biofield_local_app, which never runs under DB_BACKEND=postgres",
+    "biofield_fmp_snapshot.py": "fmp_snap_* loader; sole caller is the local-only biofield_local_app, which never runs under DB_BACKEND=postgres",
     "fmp_orders.py": "__main__ CLI export tool (LOCAL_DB), not an app runtime path",
 }
 
