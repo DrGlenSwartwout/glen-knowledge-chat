@@ -18266,6 +18266,22 @@ def _prl_supplement_enabled():
         "1", "true", "yes", "on")
 
 
+def _fullscript_enabled():
+    """Default OFF. When off the portal payload never gains a `fullscript` key,
+    so responses stay byte-identical."""
+    return (os.environ.get("FULLSCRIPT_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _fullscript_dispensary_url():
+    """Attribution-safe entry point. Phase A routes every client here rather than
+    to a product deep link: whether a NEW signup from /u/catalog/product/... is
+    attached to the Remedy Match dispensary is unconfirmed, and guessing wrong
+    loses the margin. Built from a hardcoded base + config, never from a request."""
+    slug = (os.environ.get("FULLSCRIPT_DISPENSARY_SLUG", "") or "remedymatch").strip()
+    return f"https://us.fullscript.com/welcome/{slug}/store-start"
+
+
 def _portal_scan_history_enabled() -> bool:
     """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
     return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -20016,6 +20032,16 @@ def api_client_portal(token):
                 payload["prl_supplement"] = _prl_block
         except Exception as _e:
             print(f"[prl-supplement/payload] {_e!r}", flush=True)
+    # Fullscript dispensary channel (flag-gated, best-effort), sibling of the
+    # PRL Supplement card above.
+    payload["fullscript_enabled"] = _fullscript_enabled()
+    if _fullscript_enabled():
+        try:
+            _fs_block = _fullscript_for(email_for_reports, req_date or None)
+            if _fs_block:
+                payload["fullscript"] = _fs_block
+        except Exception as _e:
+            print(f"[fullscript/payload] {_e!r}", flush=True)
     # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
     # standing hand-composed program, distinct from the condition-driven
     # support_program card above and from the reco-card. email_for_reports is
@@ -21723,6 +21749,72 @@ def _prl_supplement_for(email, scan_date):
             if not fas:
                 return None
             return {"source": "derived", "prl_link": PRL_LINK, "focus_areas": fas}
+    except Exception:
+        return None
+
+
+_FULLSCRIPT_HEADINGS = {
+    "pinned": "Chosen for you",
+    "review": "Replaces something you're taking",
+    "scan": "Matched from your scan",
+    "condition": "For what you're working on",
+}
+
+
+def _fullscript_ff_view(best_ff, relation):
+    """Same shape as _prl_ff_view so both channel cards render identically."""
+    if not best_ff:
+        return None
+    try:
+        slug = _resolve_remedy_slug({"name": best_ff})
+    except Exception:
+        slug = None
+    return {"name": best_ff, "relation": relation or "consider", "slug": slug}
+
+
+def _fullscript_for(email, scan_date):
+    """The client's Fullscript channel card, or None (flag off / no candidates).
+    Best-effort: any error returns None, never raises."""
+    if not _fullscript_enabled():
+        return None
+    try:
+        from dashboard import fullscript as _fs
+        with db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            email_norm = (email or "").strip().lower()
+            sd = (scan_date or "").strip()
+            if sd:
+                rows = cx.execute(
+                    "SELECT item_code FROM scan_recommendations "
+                    "WHERE email=? AND scan_date=? ORDER BY priority_rank",
+                    (email_norm, sd)).fetchall()
+            else:
+                rows = cx.execute(
+                    "SELECT item_code FROM scan_recommendations "
+                    "WHERE email=? ORDER BY scan_date DESC, priority_rank",
+                    (email_norm,)).fetchall()
+            codes = [r["item_code"] for r in rows]
+            cands = _fs.candidates_for(cx, email_norm, item_codes=codes)
+        if not cands:
+            return None
+        groups, seen = [], {}
+        for c in cands:
+            g = seen.get(c["origin"])
+            if g is None:
+                g = {"origin": c["origin"],
+                     "heading": _FULLSCRIPT_HEADINGS.get(c["origin"], "Recommended"),
+                     "products": []}
+                seen[c["origin"]] = g
+                groups.append(g)
+            g["products"].append({
+                "name": c.get("name"),
+                "brand": c.get("brand"),
+                "product_slug": c.get("product_slug"),
+                "reason": c.get("reason") or "",
+                "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
+            })
+        return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups}
     except Exception:
         return None
 
