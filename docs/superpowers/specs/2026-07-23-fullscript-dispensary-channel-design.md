@@ -1,7 +1,7 @@
 # Fullscript dispensary channel
 
 **Date:** 2026-07-23
-**Status:** approved design, blocked on one open question (see Dispensary and product links)
+**Status:** approved design, ready to plan. One attribution question is open but has a safe default.
 **Owner:** Glen
 
 ## Problem
@@ -82,30 +82,52 @@ Client links point at **Remedy Match LLC**, so margin and attribution land with 
 dispensary slug is configuration (`FULLSCRIPT_DISPENSARY_SLUG=remedymatch`), never hardcoded and
 never baked into seed rows, so switching dispensaries later is a config change rather than a re-seed.
 
-### Open: is there a shareable product deep link?
+### Product deep links: the format, and what is proven
 
-Verified 2026-07-23, unauthenticated:
+Glen supplied a real link from inside the authenticated dispensary 2026-07-23:
 
-- `us.fullscript.com/welcome/remedymatch/store-start?product=<slug>` returns 200 but **ignores** the
-  parameter. It is a patient signup page.
-- `us.fullscript.com/welcome/remedymatch/catalog/product/<slug>` returns 404.
-- `us.fullscript.com/u/catalog/product/<node-id>` redirects to `/login`.
+```
+https://us.fullscript.com/u/catalog/product/<product-node-id>?variant=<variant-node-id>
+```
 
-So no publicly reachable per-product URL was found. **This blocks the per-product buy button in
-phase A** and is the one open question in this design.
+Both IDs are base64 Spree global IDs (`U3ByZWU6OlByb2R1Y3QtOTc0Mjc=` decodes to
+`Spree::Product-97427`).
 
-Glen is checking from inside the authenticated dispensary whether a shareable patient-facing product
-link exists. Resolution paths:
+**Proven by test:**
 
-1. **A shareable link exists.** Store it, or store `product_slug` and construct the URL at redirect
-   time from the configured dispensary slug. Phase A gets true per-product buttons. Preferred.
-2. **No shareable link.** Product rows become informational (name, brand, reason, FF equivalent) with
-   a single card-level CTA into the dispensary. The channel still delivers all four jobs; the client
-   searches once inside.
+1. **The variant parameter is optional.** `/u/catalog/product/<product-id>` on its own is a valid
+   route. This matters because variant IDs are not obtainable without an account (see below).
+2. **The login bounce preserves the destination.** A logged-out visitor gets
+   `302 → /accounts?user_return_to=%2Fu%2Fcatalog%2Fproduct%2F<id>`, so after signing in they land on
+   that exact product. A bounce to login is therefore not a dead end.
+3. **The seed can build these links with no account.** The `id` field returned by the open catalog's
+   typeahead is the same Spree global ID the dispensary URL uses. So seed rows carry working deep
+   links generated entirely from the unauthenticated catalog.
 
-Note this reframes the rejection of the treatment-plan API below. If no shareable link exists, a
-treatment plan is Fullscript's sanctioned mechanism for per-product buying, and the API becomes
-materially more valuable than first assessed. It is still out of scope for phase A.
+This unblocks the per-product buy button. `fullscript_products.external_id` holds the product node ID
+and the URL is constructed at redirect time.
+
+**Not proven, and it is the money question.** `/u/` is user-scoped, not dispensary-scoped. Whether a
+**new** client who signs up from a bare product link is attached to the Remedy Match LLC dispensary
+could not be determined from outside: the welcome page sets no server-side dispensary cookie (only
+`analytics_anonymous_id`), so attachment happens client-side or at signup. If a new signup does *not*
+attach, those orders carry no attribution and the margin is lost.
+
+Until Fullscript confirms, phase A takes the conservative route:
+
+- **Known Fullscript patients** get the product deep link.
+- **Everyone else**, first click goes to `welcome/remedymatch/store-start` to guarantee attachment.
+
+Since the app cannot tell which clients have Fullscript accounts, phase A defaults every client to
+the dispensary-scoped entry and records the click. This is deliberately the safe default; flipping to
+deep-link-first is a one-line change once attribution is confirmed.
+
+### On the catalog proxy's limits
+
+`fullscript.com/api/fs-graphql` only permits allowlisted operations. Arbitrary GraphQL (including a
+`node(id:)` lookup and a product-with-variants query) returns `HTTP 400 error`. Only the typeahead
+search the public catalog page itself issues is available. This is further reason to treat it as a
+one-time seed source and nothing more.
 
 ## Data model
 
@@ -230,7 +252,13 @@ stable and readable. `fullscript_products.name` stays the primary key so the dri
 1. Resolve client email from the **portal token only**, never from a request field.
 2. Look up the row in `fullscript_products` by `product_slug`. Unknown or inactive means 302 to `/`.
 3. Insert a `fullscript_clicks` row, failure-isolated.
-4. 302 to `row["url"]`.
+4. 302 to the destination, built from configuration and the row, never from the request:
+   - default (attribution-safe): `https://us.fullscript.com/welcome/{FULLSCRIPT_DISPENSARY_SLUG}/store-start`
+   - deep-link mode, once attribution is confirmed:
+     `https://us.fullscript.com/u/catalog/product/{row.external_id}`
+
+Both forms are constructed from a hardcoded `us.fullscript.com` base plus config, so the route has no
+attacker-reachable destination at all.
 
 **The destination is read from the database row, never from the request.** Additionally the URL is
 host-checked against a Fullscript allowlist before redirecting. Together these make the route
