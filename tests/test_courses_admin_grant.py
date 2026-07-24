@@ -1,4 +1,3 @@
-import importlib
 import sqlite3
 import time
 
@@ -7,10 +6,14 @@ import pytest
 
 @pytest.fixture
 def appmod(monkeypatch, tmp_path):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("CONSOLE_SECRET", "sekret")
+    # Do NOT importlib.reload(app): a reload with DATA_DIR set re-runs app.py's
+    # module bootstrap, which starts a BackgroundScheduler + prewarm daemon that
+    # are never shut down and leak into the rest of the suite (timing-
+    # nondeterministic bystander failures on CI). Redirect the module globals we
+    # need directly instead — the proven pattern used by tests/test_support_program_*.
     import app as m
-    importlib.reload(m)
+    monkeypatch.setattr(m, "LOG_DB", tmp_path / "chat_log.db")
+    monkeypatch.setattr(m, "CONSOLE_SECRET", "sekret")  # module global read by _console_key_ok
     monkeypatch.setattr(m, "send_mentorship_setup_link", lambda *a, **k: ("test", None))
     m.app.config["TESTING"] = True
     return m
