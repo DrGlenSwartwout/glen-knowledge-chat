@@ -12,12 +12,27 @@ td,th{border:1px solid #ccc;padding:6px;text-align:left;font-size:14px}.err{colo
 to <input id="rt" placeholder="right@email"> <button onclick="reassign()">Reassign</button>
 <span id="rerr" class="err"></span></p>
 <script>
-const KEY = new URLSearchParams(location.search).get("key") || "";
+// Auth: accept ?key= (scriptable), but persist it and fall back to the SAME
+// localStorage key the main console stores, so an already-unlocked console
+// session works here without re-pasting the key into this page's URL.
+const KEY = (function(){
+  const k = new URLSearchParams(location.search).get("key");
+  if (k) { try { localStorage.setItem("console_key", k); } catch(e){} }
+  try { return localStorage.getItem("console_key") || ""; } catch(e){ return k || ""; }
+})();
 const H = {"Content-Type":"application/json","X-Console-Key":KEY};
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 async function load(){
   const p = document.getElementById("primary").value.trim().toLowerCase();
   const r = await fetch("/api/console/household?primary_email="+encodeURIComponent(p),{headers:H});
+  if(!r.ok){
+    // Never fall through to an empty table on a failed load: an empty table is
+    // indistinguishable from "this caregiver has no members" and silently lies.
+    document.getElementById("out").innerHTML = `<p class="err">${r.status === 401
+      ? "Unauthorized. Unlock the main console (/console) and reload this page, or open this page with ?key=&lt;console key&gt;."
+      : "Load failed (HTTP " + r.status + ")."}</p>`;
+    return;
+  }
   const j = await r.json();
   let h = `<table><tr><th>Member</th><th>Label</th><th>Rel</th><th>Scan dates</th><th>Share</th><th>CC</th><th></th></tr>`;
   for(const m of (j.members||[])){
@@ -43,15 +58,27 @@ async function load(){
 }
 async function add(){
   const p=document.getElementById("primary").value.trim().toLowerCase();
-  await fetch("/api/console/household",{method:"POST",headers:H,body:JSON.stringify({
+  const r = await fetch("/api/console/household",{method:"POST",headers:H,body:JSON.stringify({
     primary_email:p, member_email:document.getElementById("me").value.trim(),
     label:document.getElementById("ml").value, relationship:document.getElementById("mrel").value})});
+  if(!r.ok){
+    // Surface the failure. Silently calling load() here made a rejected add look
+    // like a successful one that simply didn't show up.
+    document.getElementById("out").innerHTML = `<p class="err">Add failed (HTTP ${r.status})${
+      r.status === 401 ? ". Unlock the main console (/console) and reload this page." : "."}</p>`;
+    return;
+  }
   load();
 }
 async function rm(email){
   const p=document.getElementById("primary").value.trim().toLowerCase();
-  await fetch("/api/console/household",{method:"DELETE",headers:H,
+  const r = await fetch("/api/console/household",{method:"DELETE",headers:H,
     body:JSON.stringify({primary_email:p, member_email:email})});
+  if(!r.ok){
+    document.getElementById("out").innerHTML = `<p class="err">Remove failed (HTTP ${r.status})${
+      r.status === 401 ? ". Unlock the main console (/console) and reload this page." : "."}</p>`;
+    return;
+  }
   load();
 }
 async function reassign(){
