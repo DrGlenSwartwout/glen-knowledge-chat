@@ -31,7 +31,6 @@ def test_decision_table():
     assert rp(category="normal") == [N]
     assert rp(category="elevated") == [E]
     assert rp(category="not sure", field_loss=True) == [E]
-    assert ct.resolve_programs("cataract", {"iop_od": 30}) == []    # pilot: glaucoma only
 
 
 def test_single_program_conditions_resolve_with_no_triage_questions():
@@ -41,9 +40,103 @@ def test_single_program_conditions_resolve_with_no_triage_questions():
     assert ct.resolve_programs("dry-eye", {"iop_od": 30}) == ["dry-eye"]
 
 
-def test_multi_subtype_conditions_still_return_empty():
-    assert ct.resolve_programs("cataract", {}) == []
-    assert ct.resolve_programs("macular", {}) == []
+# ---------------------------------------------------------------------------
+# Cataract sub-type triage (Dr. Glen's confirmed decision table)
+# ---------------------------------------------------------------------------
+
+def rc(**a):
+    return ct.resolve_programs("cataract", a)
+
+
+def test_cataract_told_psc_over_50_returns_both():
+    assert rc(cataract_type="psc", age=51) == ["psc-cataract", "senile-cataract"]
+
+
+def test_cataract_told_psc_at_boundary_50_returns_psc_only():
+    # "age > 50" is strict -- exactly 50 stays on the psc-only side of rule 1.
+    assert rc(cataract_type="psc", age=50) == ["psc-cataract"]
+
+
+def test_cataract_told_psc_under_50_returns_psc_only():
+    assert rc(cataract_type="psc", age=49) == ["psc-cataract"]
+
+
+def test_cataract_told_psc_under_50_with_risk_flag_still_psc_only():
+    # Rule 1 does not change routing on risk flags -- only rule 3 (not sure) does.
+    assert rc(cataract_type="psc", age=40, steroids=True) == ["psc-cataract"]
+
+
+def test_cataract_told_senile_returns_senile_only():
+    assert rc(cataract_type="senile", age=70) == ["senile-cataract"]
+    assert rc(cataract_type="senile", age=30) == ["senile-cataract"]  # type told wins over age
+
+
+def test_cataract_not_sure_under_50_returns_psc():
+    assert rc(age=49) == ["psc-cataract"]
+    assert rc(cataract_type="not_sure", age=49) == ["psc-cataract"]
+
+
+def test_cataract_not_sure_boundary_50_no_risk_returns_senile():
+    assert rc(age=50) == ["senile-cataract"]
+
+
+def test_cataract_not_sure_over_50_no_risk_returns_senile():
+    assert rc(age=60) == ["senile-cataract"]
+
+
+def test_cataract_not_sure_unknown_age_no_risk_returns_senile():
+    assert rc() == ["senile-cataract"]
+
+
+def test_cataract_not_sure_over_50_with_risk_flag_returns_both():
+    # Coordinator correction: 50+/unknown age WITH any risk flag -> both.
+    assert rc(age=60, steroids=True) == ["psc-cataract", "senile-cataract"]
+    assert rc(age=60, diabetes=True) == ["psc-cataract", "senile-cataract"]
+    assert rc(age=60, inflammation=True) == ["psc-cataract", "senile-cataract"]
+    assert rc(age=60, radiation=True) == ["psc-cataract", "senile-cataract"]
+    assert rc(age=60, atopy=True) == ["psc-cataract", "senile-cataract"]
+
+
+def test_cataract_not_sure_over_50_no_risk_flags_returns_senile_only():
+    assert rc(age=60) == ["senile-cataract"]
+
+
+def test_cataract_not_sure_unknown_age_with_risk_flag_returns_both():
+    assert rc(steroids=True) == ["psc-cataract", "senile-cataract"]
+
+
+def test_cataract_not_sure_under_50_with_risk_flag_still_psc_only():
+    # Under-50 branch (rule 3) is unaffected by risk flags -- unchanged.
+    assert rc(age=40, steroids=True) == ["psc-cataract"]
+
+
+# ---------------------------------------------------------------------------
+# Macular sub-type triage (Dr. Glen's confirmed decision table)
+# ---------------------------------------------------------------------------
+
+def rm(**a):
+    return ct.resolve_programs("macular", a)
+
+
+def test_macular_wet_type_returns_wet_amd():
+    assert rm(amd_type="wet") == ["wet-amd"]
+
+
+def test_macular_injections_returns_wet_amd_even_if_dry_type_absent():
+    assert rm(injections=True) == ["wet-amd"]
+
+
+def test_macular_dry_type_returns_dry_amd():
+    assert rm(amd_type="dry") == ["dry-amd"]
+
+
+def test_macular_not_sure_with_distortion_returns_wet_amd():
+    assert rm(distortion=True) == ["wet-amd"]
+
+
+def test_macular_not_sure_without_distortion_returns_dry_amd():
+    assert rm() == ["dry-amd"]
+    assert rm(distortion=False) == ["dry-amd"]
 
 
 def _cx():
@@ -173,3 +266,76 @@ def test_non_numeric_med_count_does_not_raise_and_stores_zero():
     assert result["programs"] == [E]
     stored = ct.get_triage(cx, "c@x.com", "glaucoma")
     assert stored["med_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Brunescent modifier: threaded from the "yellow_vision" triage answer into
+# senile-cataract's client-reported "brunescent" modifier, default off.
+# ---------------------------------------------------------------------------
+
+def _seed_senile_with_brunescent_modifier(cx):
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              [{"slug": "golden-book", "name": "Golden Book"},
+               {"slug": "clarity", "name": "Clarity"}],
+              [{"when": "brunescent", "action": "add", "source": "client-reported",
+                "client_default": False,
+                "items": [{"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster"}]}])
+
+
+def test_brunescent_default_off_lens_zyme_not_seeded():
+    cx = _cx()
+    _seed_senile_with_brunescent_modifier(cx)
+    result = ct.seed_from_triage(cx, "d@x.com", "cataract",
+                                  {"cataract_type": "senile", "age": 70})
+    assert "lens-zyme" not in result["seeded"]
+    assert "golden-book" in result["seeded"]
+
+
+def test_brunescent_on_via_yellow_vision_answer_seeds_lens_zyme():
+    cx = _cx()
+    _seed_senile_with_brunescent_modifier(cx)
+    result = ct.seed_from_triage(cx, "e@x.com", "cataract",
+                                  {"cataract_type": "senile", "age": 70,
+                                   "yellow_vision": True})
+    assert "lens-zyme" in result["seeded"]
+    assert "golden-book" in result["seeded"]
+    stored = ct.get_triage(cx, "e@x.com", "cataract")
+    assert stored["yellow_vision"] is True
+
+
+def test_brunescent_default_false_when_yellow_vision_absent():
+    stored_facts = ct.resolve_client_facts("cataract", {})
+    assert stored_facts.get("brunescent") is False
+
+
+def test_resolve_client_facts_only_applies_to_cataract():
+    assert ct.resolve_client_facts("macular", {"yellow_vision": True}) == {}
+
+
+# ---------------------------------------------------------------------------
+# consult_recommended propagation: True when ANY resolved program has the flag.
+# ---------------------------------------------------------------------------
+
+def test_seed_from_triage_reports_consult_recommended_true_for_wet_amd():
+    cx = _cx()
+    cp.upsert(cx, "wet-amd", "Wet AMD", True,
+              [{"slug": "angiogenx", "name": "AngiogenX"}])
+    result = ct.seed_from_triage(cx, "f@x.com", "macular", {"amd_type": "wet"})
+    assert result["programs"] == ["wet-amd"]
+    assert result["consult_recommended"] is True
+
+
+def test_seed_from_triage_reports_consult_recommended_false_otherwise():
+    cx = _cx()
+    cp.upsert(cx, "dry-amd", "Dry AMD", False,
+              [{"slug": "wholomega", "name": "WholOmega"}])
+    result = ct.seed_from_triage(cx, "g@x.com", "macular", {"amd_type": "dry"})
+    assert result["programs"] == ["dry-amd"]
+    assert result["consult_recommended"] is False
+
+
+def test_seed_from_triage_reports_consult_recommended_false_for_glaucoma():
+    cx = _cx()
+    _seed_fake_programs(cx)
+    result = ct.seed_from_triage(cx, "h@x.com", "glaucoma", {"iop_od": 25})
+    assert result["consult_recommended"] is False

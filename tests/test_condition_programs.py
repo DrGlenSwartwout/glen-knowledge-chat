@@ -304,3 +304,86 @@ def test_migrate_dry_eye_modifiers_noop_when_program_absent(tmp_db):
     # marker recorded even though there was nothing to migrate
     cp.migrate_dry_eye_modifiers(cx)
     assert cp.get(cx, "dry-eye") is None
+
+
+# ---------------------------------------------------------------------------
+# migrate_cataract_brunescent: one-time, marker-guarded move of lens-zyme out
+# of senile-cataract's unconditional items into a client-reported "brunescent"
+# modifier. Mirrors seed_if_empty's once-ever _seed_state marker pattern.
+# ---------------------------------------------------------------------------
+
+LEGACY_SENILE_ITEMS = [
+    {"slug": "golden-book", "name": "Golden Book"},
+    {"slug": "crystalline-clarity", "name": "Crystalline Clarity"},
+    {"slug": "clarity", "name": "Clarity"},
+    {"slug": "clear-lens-eye-drops", "name": "Clear Lens Eye Drops",
+     "alts": [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]},
+    {"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster",
+     "note": "Add for brunescent cataracts"},
+]
+
+
+def test_migrate_cataract_brunescent_moves_lens_zyme_into_modifier(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    slugs = [it["slug"] for it in got["items"]]
+    assert "lens-zyme" not in slugs
+    assert slugs == ["golden-book", "crystalline-clarity", "clarity", "clear-lens-eye-drops"]
+    # every other item's content survives verbatim by slug
+    drops = next(it for it in got["items"] if it["slug"] == "clear-lens-eye-drops")
+    assert drops["alts"] == [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]
+
+    mods = got["modifiers"]
+    assert len(mods) == 1
+    m = mods[0]
+    assert m["when"] == "brunescent"
+    assert m["action"] == "add"
+    assert m["source"] == "client-reported"
+    assert m["client_default"] is False
+    assert m["items"] == [{"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster"}]
+
+
+def test_migrate_cataract_brunescent_runs_only_once(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    cp.migrate_cataract_brunescent(cx)
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    assert len(got["modifiers"]) == 1  # not duplicated by repeated calls
+
+
+def test_migrate_cataract_brunescent_never_resurrects_operator_deletion(tmp_db):
+    """Mirrors the seed_if_empty resurrection guard: once an operator has
+    edited the program (here, removing lens-zyme entirely before the
+    migration ever runs), a later call must never bring it back."""
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              [{"slug": "golden-book", "name": "Golden Book"}])  # operator already removed lens-zyme
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    assert [it["slug"] for it in got["items"]] == ["golden-book"]
+    assert got["modifiers"] == []
+
+    # Simulate a later boot: marker already recorded, so even if lens-zyme
+    # somehow reappeared in a fresh upsert, the migration must not re-fire.
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    got2 = cp.get(cx, "senile-cataract")
+    assert got2["modifiers"] == []  # migration did not run again
+    assert any(it["slug"] == "lens-zyme" for it in got2["items"])  # untouched
+
+
+def test_migrate_cataract_brunescent_noop_when_program_absent(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.migrate_cataract_brunescent(cx)  # must not raise
+    assert cp.get(cx, "senile-cataract") is None

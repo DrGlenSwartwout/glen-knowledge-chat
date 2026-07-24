@@ -130,3 +130,34 @@ def test_render_onboarding_member_thread():
     ''')
     out = subprocess.run(["node", "-e", js], cwd=".", capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node not available")
+def test_triage_success_message_adds_biofield_nudge_when_consult_recommended():
+    """Consult nudge (cataract/macular triage): the success message stays the
+    short baseline copy normally, and additionally invites a Biofield
+    Analysis with Dr. Glen when the triage response's consult_recommended
+    flag is true (e.g. a wet-AMD resolve)."""
+    js = textwrap.dedent('''
+      const fs = require('fs');
+      const src = fs.readFileSync('static/js/portal-onboarding.js','utf8');
+      const mod = {exports:{}};
+      new Function('module','exports','window', src)(mod, mod.exports, {});
+      const buildMsg = mod.exports._triageSuccessMessage;
+
+      const plain = buildMsg(false);
+      if (!/starter remedies are ready/.test(plain)) { console.error('missing baseline copy'); process.exit(1); }
+      if (/Biofield/.test(plain)) { console.error('non-consult message should not mention Biofield'); process.exit(1); }
+
+      const nudged = buildMsg(true);
+      if (!/starter remedies are ready/.test(nudged)) { console.error('nudged message dropped baseline copy'); process.exit(1); }
+      if (!/Biofield Analysis/.test(nudged)) { console.error('missing Biofield Analysis nudge'); process.exit(1); }
+      if (!/Dr\\. Glen/.test(nudged)) { console.error('missing Dr. Glen mention'); process.exit(1); }
+      const nudgeOnly = nudged.split('ready.')[1] || '';
+      if (/—/.test(nudgeOnly)) { console.error('nudge text must not use an em dash'); process.exit(1); }
+      if (/\\b[A-Z]{4,}\\b/.test(nudgeOnly)) { console.error('nudge text must not use ALL CAPS'); process.exit(1); }
+
+      console.log('ok');
+    ''')
+    out = subprocess.run(["node", "-e", js], cwd=".", capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr

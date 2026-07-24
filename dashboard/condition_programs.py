@@ -228,6 +228,49 @@ def migrate_dry_eye_modifiers(cx):
     cx.commit()
 
 
+_CATARACT_BRUNESCENT_MARKER = "cataract_brunescent_v1"
+
+
+def migrate_cataract_brunescent(cx):
+    """One-time, marker-guarded migration: moves the unconditional lens-zyme
+    item off senile-cataract's base items list into a client-reported
+    "brunescent" modifier (Dr. Glen: Lens-Zyme Brunescence Buster is for
+    brunescent cataracts specifically, not every senile cataract).
+
+    Tracked by its own persisted `_seed_state` marker (cataract_brunescent_v1),
+    mirroring seed_if_empty's once-ever pattern: it runs at most once, ever,
+    and never re-applies -- including after an operator has since edited the
+    program by hand (e.g. removed lens-zyme entirely). It must never
+    resurrect an operator's deletion. Preserves every other item's content
+    (slug/name/alts/dose/etc.) verbatim; a no-op if senile-cataract doesn't
+    exist yet (a fresh store's seed_if_empty already lands the restructured
+    shape directly)."""
+    _ensure_seed_state_table(cx)
+    already = cx.execute("SELECT 1 FROM _seed_state WHERE name=?",
+                          (_CATARACT_BRUNESCENT_MARKER,)).fetchone()
+    if already:
+        return
+    now = _now()
+    prog = get(cx, "senile-cataract")
+    if prog is not None:
+        items = prog["items"]
+        lens_zyme = next((it for it in items if (it.get("slug") or "") == "lens-zyme"), None)
+        if lens_zyme is not None:
+            remaining = [it for it in items if (it.get("slug") or "") != "lens-zyme"]
+            mods = list(prog["modifiers"] or [])
+            mods.append({
+                "when": "brunescent", "action": "add", "source": "client-reported",
+                "client_default": False,
+                "items": [{"slug": "lens-zyme",
+                           "name": lens_zyme.get("name") or "Lens-Zyme Brunescence Buster"}],
+            })
+            upsert(cx, "senile-cataract", prog["label"], prog["consult_recommended"],
+                   remaining, mods)
+    cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
+               (_CATARACT_BRUNESCENT_MARKER, now))
+    cx.commit()
+
+
 def resolve_program_items(program, audience="client", client_facts=None):
     """Apply a program's modifiers to its base items; return the resolved list.
 
