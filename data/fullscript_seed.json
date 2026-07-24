@@ -1,0 +1,139 @@
+{
+ "products": [
+  {
+   "name": "L-Theanine",
+   "brand": "Integrative Therapeutics",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjc5NjY=",
+   "product_slug": "l-theanine-100-mg-60-caps-2",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Magnesium Taurate",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtMTA3Njc2",
+   "product_slug": "magnesium-taurate",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Pure Taurine 500mg",
+   "brand": "Montiff",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjc1NjE=",
+   "product_slug": "pure-taurine-500-mg-100-caps",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "T-Relief Pain Gel",
+   "brand": "MediNatura",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNTk3ODY=",
+   "product_slug": "traumeel-gel-50-gms",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Thyrosol® Capsules",
+   "brand": "Metagenics",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODY5ODY=",
+   "product_slug": "thyrosol-capsules",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Trancor®",
+   "brand": "Metagenics",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjg4MDE=",
+   "product_slug": "trancor-120-caps",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  }
+ ],
+ "focus_area_products": [
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "Magnesium Taurate",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "Pure Taurine 500mg",
+   "rank": 1
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "T-Relief Pain Gel",
+   "rank": 2
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "Thyrosol® Capsules",
+   "rank": 3
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "Trancor®",
+   "rank": 4
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "L-Theanine",
+   "rank": 5
+  }
+ ],
+ "focus_area_items": []
+}
