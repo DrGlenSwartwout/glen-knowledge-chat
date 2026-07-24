@@ -156,4 +156,10 @@ def candidates_for(cx, email, item_codes=None):
         for p in products_for_focus_area(cx, fa["focus_area_id"]):
             offer(p, "scan", fa_name, fa_name)
 
+    # Not exercised behaviorally: only `pinned` and `scan` are wired in this
+    # phase, and the pins loop always finishes before the scan loop starts, so
+    # dict insertion order already matches priority order without this sort.
+    # It becomes load-bearing once `review` and/or `condition` are wired and
+    # can insert out of priority order. Don't delete as dead code -- see the
+    # ORIGIN_PRIORITY ordering-contract test in tests/test_fullscript_resolver.py.
     return sorted(found.values(), key=lambda c: ORIGIN_PRIORITY[c["origin"]])
