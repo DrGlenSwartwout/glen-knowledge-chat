@@ -58,3 +58,16 @@ def test_paid_level_never_raises_on_broken_cx():
         def execute(self, *a, **k):
             raise RuntimeError("db down")
     assert ce.paid_level_for(Boom(), "a@x.com") == 0
+
+
+def test_membership_null_window_not_shortened_by_finite(cx):
+    # An unlimited membership (until_epoch=None) must NOT be shortened by a later finite grant.
+    ce.grant_membership(cx, "u@x.com", until_epoch=None, source="stripe", stripe_ref="sub_u")
+    ce.grant_membership(cx, "u@x.com", until_epoch=1000.0, source="stripe", stripe_ref="sub_u")
+    assert ce.paid_level_for(cx, "u@x.com", now=5000.0) == 2  # still unlimited
+
+
+def test_membership_finite_upgraded_to_unlimited(cx):
+    ce.grant_membership(cx, "u2@x.com", until_epoch=1000.0, source="stripe", stripe_ref="sub_u2")
+    ce.grant_membership(cx, "u2@x.com", until_epoch=None, source="stripe", stripe_ref="sub_u2")
+    assert ce.paid_level_for(cx, "u2@x.com", now=5000.0) == 2  # now unlimited

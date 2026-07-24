@@ -9,6 +9,7 @@ Idempotent on (kind, stripe_ref) so a replayed Stripe webhook cannot double-gran
 from __future__ import annotations
 
 import time
+import sqlite3
 
 
 def _norm(email: str | None) -> str:
@@ -47,18 +48,37 @@ def grant_cert(cx, email: str, *, source: str, stripe_ref: str | None = None,
                        "WHERE id=?", (email, now, row[0]))
             cx.commit()
             return
-    cx.execute(
-        "INSERT INTO course_entitlements(email, kind, status, expires_at, source, "
-        "stripe_customer_id, stripe_ref, created_at, updated_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
-        (email, "cert_onetime", "active", None, source, customer, stripe_ref, now, now))
-    cx.commit()
+    try:
+        cx.execute(
+            "INSERT INTO course_entitlements(email, kind, status, expires_at, source, "
+            "stripe_customer_id, stripe_ref, created_at, updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (email, "cert_onetime", "active", None, source, customer, stripe_ref, now, now))
+        cx.commit()
+    except sqlite3.IntegrityError:
+        # A concurrent grant for the same (cert_onetime, stripe_ref) won the race; the
+        # row already exists. Roll back and ensure it is active (idempotent success,
+        # not a crash). Reachable only if two grants race the pre-SELECT; the UNIQUE
+        # partial index guarantees no duplicate row.
+        cx.rollback()
+        if stripe_ref:
+            cx.execute("UPDATE course_entitlements SET status='active', email=?, updated_at=? "
+                       "WHERE kind='cert_onetime' AND stripe_ref=?", (email, now, stripe_ref))
+            cx.commit()
+
+
+def _membership_new_expiry(cur: float | None, until_epoch: float | None) -> float | None:
+    """Extend-never-shorten with None == unlimited (+inf): stay unlimited if either
+    side is unlimited; otherwise the later of the two epochs."""
+    if cur is None or until_epoch is None:
+        return None
+    return max(cur, until_epoch)
 
 
 def grant_membership(cx, email: str, *, until_epoch: float | None, source: str,
                      stripe_ref: str | None = None, customer: str | None = None) -> None:
-    """Grant/extend a membership through until_epoch. Extend never shortens.
-    Idempotent on (membership, stripe_ref)."""
+    """Grant/extend a membership through until_epoch. Extend never shortens
+    (None == unlimited). Idempotent on (membership, stripe_ref)."""
     init_course_entitlements_table(cx)
     email, now = _norm(email), _now_iso()
     if stripe_ref:
@@ -66,18 +86,31 @@ def grant_membership(cx, email: str, *, until_epoch: float | None, source: str,
             "SELECT id, expires_at FROM course_entitlements WHERE kind='membership' AND stripe_ref=?",
             (stripe_ref,)).fetchone()
         if row:
-            cur = row[1]
-            new_exp = until_epoch if (cur is None or (until_epoch is not None and until_epoch > cur)) else cur
+            new_exp = _membership_new_expiry(row[1], until_epoch)
             cx.execute("UPDATE course_entitlements SET status='active', expires_at=?, email=?, "
                        "updated_at=? WHERE id=?", (new_exp, email, now, row[0]))
             cx.commit()
             return
-    cx.execute(
-        "INSERT INTO course_entitlements(email, kind, status, expires_at, source, "
-        "stripe_customer_id, stripe_ref, created_at, updated_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
-        (email, "membership", "active", until_epoch, source, customer, stripe_ref, now, now))
-    cx.commit()
+    try:
+        cx.execute(
+            "INSERT INTO course_entitlements(email, kind, status, expires_at, source, "
+            "stripe_customer_id, stripe_ref, created_at, updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (email, "membership", "active", until_epoch, source, customer, stripe_ref, now, now))
+        cx.commit()
+    except sqlite3.IntegrityError:
+        # Concurrent grant for the same (membership, stripe_ref) won the race; extend
+        # the now-existing row instead of crashing (idempotent, never shortens).
+        cx.rollback()
+        if stripe_ref:
+            row = cx.execute(
+                "SELECT id, expires_at FROM course_entitlements WHERE kind='membership' AND stripe_ref=?",
+                (stripe_ref,)).fetchone()
+            if row:
+                new_exp = _membership_new_expiry(row[1], until_epoch)
+                cx.execute("UPDATE course_entitlements SET status='active', expires_at=?, email=?, "
+                           "updated_at=? WHERE id=?", (new_exp, email, now, row[0]))
+                cx.commit()
 
 
 def expire_membership(cx, *, stripe_ref: str) -> None:
