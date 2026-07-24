@@ -131,8 +131,9 @@ one-time seed source and nothing more.
 
 ## Data model
 
-Six tables, created by `init_tables(cx)`: the catalog, four driver tables, and `fullscript_clicks`
-(defined under Click tracking below).
+Seven tables, created by `init_tables(cx)`: the catalog, four driver tables, `fullscript_focus_area_items`
+(the scan item-code to focus-area mapping the scan driver joins through, mirroring
+`prl_focus_area_items`), and `fullscript_clicks` (defined under Click tracking below).
 
 ### `fullscript_products`
 
