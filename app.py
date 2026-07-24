@@ -20185,6 +20185,29 @@ def api_portal_library_asset(token, slug, asset):
         if not email or not _lib.has(cx, email, slug):
             return Response("", status=404)
     folder = os.path.join(STATIC, "ebooks", meta["dir"])
+    if asset == "audio" and meta.get("audio_key"):
+        rng = request.headers.get("Range")
+        kw = {"Bucket": os.environ.get("R2_BUCKET", "rm-clips"), "Key": meta["audio_key"]}
+        if rng:
+            kw["Range"] = rng
+        try:
+            obj = _r2().get_object(**kw)
+        except Exception:
+            print(f"[library-asset] R2 fetch failed for {meta['audio_key']}, "
+                  f"falling back to local file", flush=True)
+        else:
+            headers = {
+                "Content-Type": obj.get("ContentType", "audio/mpeg"),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "private, no-store",
+            }
+            status = 200
+            if rng and obj.get("ContentRange"):
+                headers["Content-Range"] = obj["ContentRange"]
+                status = 206
+            if obj.get("ContentLength") is not None:
+                headers["Content-Length"] = str(obj["ContentLength"])
+            return Response(obj["Body"].iter_chunks(chunk_size=65536), status=status, headers=headers)
     filename = meta["pdf"] if asset == "pdf" else meta["audio"]
     resp = send_from_directory(folder, filename)
     resp.headers["Cache-Control"] = "private, no-store"

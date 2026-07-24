@@ -22,23 +22,28 @@ def test_pilot_has_condition_field():
     assert e["condition"] == "glaucoma"
 
 
-REQUIRED_KEYS = {"slug", "title", "site", "dir", "pdf", "audio", "condition"}
+REQUIRED_KEYS = {"slug", "title", "site", "dir", "pdf", "audio", "audio_key", "condition"}
 
 ALL_SLUGS = {
     "healing-glaucoma-starter": {
         "site": "healingglaucoma.com", "condition": "glaucoma",
+        "product": "healing-glaucoma",
     },
     "macular-regeneration-starter": {
         "site": "macularegeneration.com", "condition": "macular",
+        "product": "macular-regeneration",
     },
     "cataract-solutions-starter": {
         "site": "cataractlab.com", "condition": "cataract",
+        "product": "cataract-solutions",
     },
     "dry-eye-relief-starter": {
         "site": "dryeyelab.com", "condition": "dry-eye",
+        "product": "dry-eye-relief",
     },
     "refreshing-vision-starter": {
         "site": "refreshingvision.com", "condition": "vision-improvement",
+        "product": "refreshing-vision",
     },
 }
 
@@ -54,6 +59,8 @@ def test_all_five_slugs_resolve_with_required_keys_and_expected_shape():
         assert e["audio"] == "starter.mp3"
         assert e["site"] == expect["site"]
         assert e["condition"] == expect["condition"]
+        assert e["audio_key"].startswith("ebooks/")
+        assert e["audio_key"] == f"ebooks/{expect['product']}/starter/audio.mp3"
 
 
 def test_all_returns_all_five_slugs():
