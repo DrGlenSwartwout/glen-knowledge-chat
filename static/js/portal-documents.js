@@ -18,7 +18,7 @@ function renderDocUploadHtml() {
   return '<div class="doc-upload">' +
     '<label for="doc-upload-input">Upload a record</label> ' +
     '<input type="file" id="doc-upload-input" class="doc-upload-input">' +
-    '<button type="button" id="doc-upload-btn" class="doc-upload-btn">Upload</button>' +
+    '<button type="button" id="doc-upload-btn" class="doc-upload-btn btn">Upload</button>' +
     '<span id="doc-upload-status" class="doc-upload-status" role="status"></span>' +
   '</div>';
 }
@@ -40,7 +40,7 @@ function renderDocuments(items) {
       body +
     '</li>';
   }).join('');
-  return '<section class="portal-documents"><h2>My Records</h2>' +
+  return '<section class="portal-documents card"><h2>My Records</h2>' +
          renderDocUploadHtml() +
          (rows ? '<ul class="doc-list">' + rows + '</ul>'
                : '<p class="doc-empty">No records yet.</p>') +
