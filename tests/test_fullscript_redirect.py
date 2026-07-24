@@ -134,3 +134,20 @@ def test_cross_client_isolation(client):
     client.get("/fs/TOKB/mag-taurate")
     rows = _clicks(app_mod.LOG_DB)
     assert [r["email"] for r in rows] == ["b@b.com"]
+
+
+def test_recording_failure_never_blocks_the_click(client, monkeypatch):
+    """A broken click recorder must not cost the client their click. Analytics is
+    strictly less important than the person trying to reach the dispensary, so
+    the redirect has to survive record_click blowing up. Held only by code
+    inspection until this test existed."""
+    def _boom(*a, **kw):
+        raise RuntimeError("click recorder is down")
+    monkeypatch.setattr(fs, "record_click", _boom)
+
+    r = client.get("/fs/TOKA/mag-taurate")
+
+    assert r.status_code == 302
+    assert r.headers["Location"] == \
+        "https://us.fullscript.com/welcome/remedymatch/store-start"
+    assert _clicks(app_mod.LOG_DB) == [], "recorder raised, so nothing is stored"
