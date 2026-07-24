@@ -140,6 +140,27 @@ def seed_if_empty(cx, seed_dict):
     cx.commit()
 
 
+def ensure_program(cx, key, label, items, consult_recommended=False):
+    """Idempotent-ensure for a single program key, INDEPENDENT of the
+    once-ever seed_if_empty marker. Inserts the program ONLY if that key is
+    currently absent; if the row already exists (whether from the original
+    seed file, a prior ensure_program call, or an operator's console edit),
+    it is left completely untouched -- ground truth once a key exists is
+    whatever is stored, not this call's arguments. Safe to call on every
+    request/boot."""
+    if get(cx, key) is not None:
+        return
+    now = _now()
+    cx.execute("""
+        INSERT INTO condition_programs
+            (condition_key, label, consult_recommended, items_json, modifiers_json, updated_at)
+        VALUES (?,?,?,?,?,?)
+        ON CONFLICT(condition_key) DO NOTHING
+        """, (key, label or "", 1 if consult_recommended else 0,
+              json.dumps(items or []), json.dumps([]), now))
+    cx.commit()
+
+
 def resolve_program_items(program, audience="client", client_facts=None):
     """Apply a program's modifiers to its base items; return the resolved list.
 

@@ -11,6 +11,42 @@ CATALOG = {
         "audio": "starter.mp3",
         "condition": "glaucoma",
     },
+    "macular-regeneration-starter": {
+        "slug": "macular-regeneration-starter",
+        "title": "Macular Regeneration — Starter",
+        "site": "macularegeneration.com",
+        "dir": "macular-regeneration-starter",
+        "pdf": "starter.pdf",
+        "audio": "starter.mp3",
+        "condition": "macular",
+    },
+    "cataract-solutions-starter": {
+        "slug": "cataract-solutions-starter",
+        "title": "Cataract Solutions — Starter",
+        "site": "cataractlab.com",
+        "dir": "cataract-solutions-starter",
+        "pdf": "starter.pdf",
+        "audio": "starter.mp3",
+        "condition": "cataract",
+    },
+    "dry-eye-relief-starter": {
+        "slug": "dry-eye-relief-starter",
+        "title": "Dry Eye Relief — Starter",
+        "site": "dryeyelab.com",
+        "dir": "dry-eye-relief-starter",
+        "pdf": "starter.pdf",
+        "audio": "starter.mp3",
+        "condition": "dry-eye",
+    },
+    "refreshing-vision-starter": {
+        "slug": "refreshing-vision-starter",
+        "title": "Refreshing Vision — Starter",
+        "site": "refreshingvision.com",
+        "dir": "refreshing-vision-starter",
+        "pdf": "starter.pdf",
+        "audio": "starter.mp3",
+        "condition": "vision-improvement",
+    },
 }
 
 

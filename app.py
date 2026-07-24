@@ -21301,6 +21301,15 @@ def _init_support_programs_tables(cx):
     seed = _load_support_programs_seed()
     condition_programs.seed_if_empty(cx, seed.get("condition_programs") or {})
     broad_benefit.seed_if_empty(cx, seed.get("broad_benefit_slugs") or [])
+    # New programs added after prod was already seeded can never reach prod via
+    # seed_if_empty (its once-ever marker already fired) -- ensure_program is
+    # the idempotent-insert-only-if-absent path for those, and it never
+    # overwrites an operator's edit once the key exists.
+    condition_programs.ensure_program(
+        cx, "vision-improvement", "Vision Improvement",
+        [{"slug": "wholomega-120-gelcaps", "name": "WholOmega 120 gelcaps",
+          "dose": "4 times a day"},
+         {"slug": "nous-energy", "name": "Nous Energy"}])
 
 
 def _eye_program_public_view(prog):

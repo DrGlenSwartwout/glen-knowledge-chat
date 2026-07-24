@@ -34,6 +34,18 @@ def test_decision_table():
     assert ct.resolve_programs("cataract", {"iop_od": 30}) == []    # pilot: glaucoma only
 
 
+def test_single_program_conditions_resolve_with_no_triage_questions():
+    assert ct.resolve_programs("dry-eye", {}) == ["dry-eye"]
+    assert ct.resolve_programs("vision-improvement", {}) == ["vision-improvement"]
+    # answers are irrelevant for a single-program condition
+    assert ct.resolve_programs("dry-eye", {"iop_od": 30}) == ["dry-eye"]
+
+
+def test_multi_subtype_conditions_still_return_empty():
+    assert ct.resolve_programs("cataract", {}) == []
+    assert ct.resolve_programs("macular", {}) == []
+
+
 def _cx():
     cx = sqlite3.connect(":memory:")
     cx.row_factory = sqlite3.Row
