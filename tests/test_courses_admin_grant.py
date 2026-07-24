@@ -4,14 +4,11 @@ import time
 
 import pytest
 
-from tests.reload_hygiene import _quiet_reload_background_workers
-
 
 @pytest.fixture
 def appmod(monkeypatch, tmp_path):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CONSOLE_SECRET", "sekret")
-    _quiet_reload_background_workers(monkeypatch)
     import app as m
     importlib.reload(m)
     monkeypatch.setattr(m, "send_mentorship_setup_link", lambda *a, **k: ("test", None))
