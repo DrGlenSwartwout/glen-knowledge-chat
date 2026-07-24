@@ -20601,6 +20601,39 @@ def _doc_extract_status(ctype):
     return "skipped-unreadable"
 
 
+_DOC_EXTRACT_CALL_MODEL = None  # test seam: monkeypatch to avoid a live Claude call
+
+
+def _trigger_document_extraction(doc_id):
+    """Kick off extraction for one freshly-stored 'pending' document without
+    blocking the upload request -- extraction makes a Claude API call that can
+    take many seconds. Mirrors the ingredient-page background-build pattern
+    (daemon thread, started after the triggering write, never joined).
+
+    Claims the document itself (the same guarded UPDATE run_pending uses) so
+    a document that has already been picked up by the console backfill route
+    is not double-processed. Never raises into the caller: extract_document
+    already fails closed to 'failed' internally, and the try/except here is a
+    belt-and-suspenders guard against anything else (import error, claim
+    error, thread start) so a broken extraction can never surface in the
+    upload response that triggered it.
+    """
+    def _run():
+        try:
+            from dashboard import client_documents as _cd
+            from dashboard import document_extract as _de
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    return  # already claimed/processed elsewhere
+                _de.extract_document(cx, doc_id, call_model=_DOC_EXTRACT_CALL_MODEL)
+        except Exception as e:                      # noqa: BLE001 - background
+            # extraction must never raise into the request that triggered it.
+            print(f"[documents] extraction trigger failed for {doc_id}: {e!r}",
+                  flush=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _accept_document_upload(cx, email, f, source):
     """Validate + store one uploaded document. Shared by the portal and console
     routes so the two can never drift apart. Returns (body, status)."""
@@ -20615,7 +20648,10 @@ def _accept_document_upload(cx, email, f, source):
     if not res:
         return {"ok": False, "error": "could not store file"}, 400
     if not res["deduped"]:
-        _cd.set_extract_status(cx, res["id"], _doc_extract_status(ctype))
+        status = _doc_extract_status(ctype)
+        _cd.set_extract_status(cx, res["id"], status)
+        if status == "pending":
+            _trigger_document_extraction(res["id"])
     return {"ok": True, "id": res["id"], "deduped": res["deduped"]}, 200
 
 
@@ -20913,6 +20949,51 @@ def admin_client_document_file():
     safe_name = _doc_safe_filename(doc["filename"])
     resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
     return resp
+
+
+@app.route("/api/console/documents/extract-pending", methods=["POST"])
+def api_console_documents_extract_pending():
+    """Operational backstop for the inline upload trigger: runs the extractor
+    over whatever is still 'pending' (e.g. a document the inline trigger's
+    process died before starting, or one requeued below). Same claim-guarded
+    run_pending used everywhere else in this feature."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extract as _de
+    with _db_lock, db.connect(LOG_DB) as cx:
+        drafted = _de.run_pending(cx, call_model=_DOC_EXTRACT_CALL_MODEL)
+    return jsonify({"ok": True, "drafted": drafted})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/requeue", methods=["POST"])
+def api_console_client_document_requeue(doc_id):
+    """Sets a document's extract_status back to 'pending' so run_pending (or
+    the next inline trigger) picks it up again. The ONLY recovery path for a
+    document stuck in 'extracting' after a process death, and the retry path
+    for one that landed in 'failed'.
+
+    Refuses when the document's extraction has already been reviewed and
+    approved (extract_status='drafted' and the draft's own status is
+    'confirmed'): re-extracting would be pointless anyway since
+    document_extractions.put_draft leaves a confirmed row untouched, but a
+    silent no-op there would look like a successful requeue. Say so instead.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        draft = _dx.get_for_document(cx, doc_id)
+        if doc["extract_status"] == "drafted" and draft and draft["status"] == "confirmed":
+            return jsonify({"ok": False,
+                            "error": "cannot requeue: draft already confirmed"}), 409
+        _cd.set_extract_status(cx, doc_id, "pending")
+    return jsonify({"ok": True, "id": doc_id, "extract_status": "pending"})
 
 
 def _portal_current_biofield_location(cx, email, content):
