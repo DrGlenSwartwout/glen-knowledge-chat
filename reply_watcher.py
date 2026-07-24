@@ -9,8 +9,6 @@ import base64
 import json
 import re
 import sqlite3
-
-from dashboard import db, dbwrite
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -87,6 +85,7 @@ def _resolve_user_id(email: str, db_path: str) -> Optional[int]:
     Returns None if the email isn't a registered user."""
     if not email:
         return None
+    from dashboard import db
     with db.connect(db_path) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
@@ -104,6 +103,7 @@ def _record_feedback(
 ) -> int:
     """Persist one personal_email_feedback row and return its rowid."""
     now = datetime.now(timezone.utc).isoformat()
+    from dashboard import db, dbwrite
     with db.connect(db_path) as cx:
         new_id = dbwrite.insert_returning_id(
             cx,

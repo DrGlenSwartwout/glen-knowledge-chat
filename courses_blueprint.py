@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-
-from dashboard import db
 import threading
 import time as _time
 from urllib.parse import urlparse
@@ -67,6 +65,7 @@ def _db_path():
 
 
 def _connect():
+    from dashboard import db
     return db.connect(_db_path())
 
 

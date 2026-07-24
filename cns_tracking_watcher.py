@@ -40,8 +40,6 @@ import argparse
 import base64
 import os
 import sqlite3
-
-from dashboard import db
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -293,6 +291,7 @@ def main():
         userId="me", q=q, maxResults=args.max).execute()
     msg_ids = [m["id"] for m in listing.get("messages", [])]
 
+    from dashboard import db
     db_file = args.db or _db_path()
     mode = "DRY-RUN" if dry_run else ("LIVE+AUTO-SEND" if args.auto_send else "LIVE")
     print(f"{mode} | {len(msg_ids)} confirmation "
