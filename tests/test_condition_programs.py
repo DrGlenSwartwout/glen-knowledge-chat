@@ -165,3 +165,46 @@ def test_all_sorts_unknown_keys_last_by_key(tmp_db):
     rows = cp.all(cx)
     keys = [r["condition_key"] for r in rows]
     assert keys == ["wet-amd", "aaa-unknown", "zzz-unknown"]
+
+
+VISION_ITEMS = [
+    {"slug": "wholomega-120-gelcaps", "name": "WholOmega 120 gelcaps", "dose": "4 times a day"},
+    {"slug": "nous-energy", "name": "Nous Energy"},
+]
+
+
+def test_ensure_program_creates_when_absent(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    assert cp.get(cx, "vision-improvement") is None
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    got = cp.get(cx, "vision-improvement")
+    assert got is not None
+    assert got["label"] == "Vision Improvement"
+    assert got["consult_recommended"] is False
+    assert got["items"] == VISION_ITEMS
+
+
+def test_ensure_program_is_idempotent_no_duplicates(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    rows = [r for r in cp.all(cx) if r["condition_key"] == "vision-improvement"]
+    assert len(rows) == 1
+
+
+def test_ensure_program_never_overwrites_operator_edit(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    cp.upsert(cx, "vision-improvement", "Vision Improvement (edited)", True,
+              [{"slug": "operator-swap", "name": "Operator Swap"}])
+    # A later ensure_program call (e.g. on a fresh boot after this key already
+    # existed) must leave the operator's edit completely untouched.
+    cp.ensure_program(cx, "vision-improvement", "Vision Improvement", VISION_ITEMS)
+    got = cp.get(cx, "vision-improvement")
+    assert got["label"] == "Vision Improvement (edited)"
+    assert got["consult_recommended"] is True
+    assert got["items"] == [{"slug": "operator-swap", "name": "Operator Swap"}]

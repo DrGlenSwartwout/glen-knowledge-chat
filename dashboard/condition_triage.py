@@ -6,6 +6,15 @@ from datetime import datetime, timezone
 
 _N, _E = "glaucoma-normal-iop", "glaucoma-elevated-iop"
 
+# Conditions that map to exactly ONE program: no triage questions needed,
+# resolve straight to that program. Conditions needing sub-type triage that
+# hasn't been built yet (macular, cataract) are intentionally absent here and
+# still fall through to [] below.
+_SINGLE_PROGRAM = {
+    "dry-eye": "dry-eye",
+    "vision-improvement": "vision-improvement",
+}
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -32,15 +41,21 @@ def _floats(*vals):
 
 
 def resolve_programs(condition, answers):
-    """Glaucoma triage decision table (Dr. Glen's confirmed clinical rules).
-    condition != "glaucoma" -> [] (pilot: glaucoma only).
+    """Single-program conditions (see _SINGLE_PROGRAM) resolve immediately with
+    no triage questions. Otherwise: glaucoma triage decision table (Dr. Glen's
+    confirmed clinical rules); any other condition -> [] (needs sub-type
+    triage not yet built, e.g. macular, cataract).
     on_meds -> [E, N] (treated IOP masks baseline, lead with Elevated).
     Else, by higher (worse) eye IOP: <20 -> [N]; 20-21 borderline -> [E, N]
     unless field_loss -> [E]; >=22 -> [E].
     No IOP numbers given -> fall back to self-reported category, or (if "not
     sure"/absent) the field-loss tiebreak."""
-    if (condition or "").strip().lower() != "glaucoma":
-        return []                                   # pilot: glaucoma only
+    condition = (condition or "").strip().lower()
+    single = _SINGLE_PROGRAM.get(condition)
+    if single:
+        return [single]                             # single-program: no triage needed
+    if condition != "glaucoma":
+        return []                                   # pilot: glaucoma only; others need sub-type triage
     a = answers or {}
     field_loss = bool(a.get("field_loss"))
     if bool(a.get("on_meds")):

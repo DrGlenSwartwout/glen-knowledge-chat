@@ -20215,6 +20215,12 @@ def api_portal_triage(token):
         answers = {k: data.get(k) for k in
                    ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
                     "field_loss", "category")}
+        # Ensure the condition-programs store exists and every program (incl.
+        # any added after prod's once-ever seed already fired, e.g.
+        # vision-improvement) is present -- this route resolves programs by
+        # key and previously relied on other console/eye-programs routes
+        # having run first to guarantee that, which isn't true for triage.
+        _init_support_programs_tables(cx)
         res = _ct.seed_from_triage(cx, email, cond, answers)
     return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
 
@@ -21301,6 +21307,15 @@ def _init_support_programs_tables(cx):
     seed = _load_support_programs_seed()
     condition_programs.seed_if_empty(cx, seed.get("condition_programs") or {})
     broad_benefit.seed_if_empty(cx, seed.get("broad_benefit_slugs") or [])
+    # New programs added after prod was already seeded can never reach prod via
+    # seed_if_empty (its once-ever marker already fired) -- ensure_program is
+    # the idempotent-insert-only-if-absent path for those, and it never
+    # overwrites an operator's edit once the key exists.
+    condition_programs.ensure_program(
+        cx, "vision-improvement", "Vision Improvement",
+        [{"slug": "wholomega-120-gelcaps", "name": "WholOmega 120 gelcaps",
+          "dose": "4 times a day"},
+         {"slug": "nous-energy", "name": "Nous Energy"}])
 
 
 def _eye_program_public_view(prog):
