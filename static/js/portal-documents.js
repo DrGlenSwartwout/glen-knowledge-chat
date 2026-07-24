@@ -16,6 +16,12 @@ function renderDocuments(items) {
     const body = it.status === 'ready'
       ? '<p class="doc-narrative">' + escapeHtmlDoc(it.narrative_md) + '</p>'
       : '<p class="doc-pending">Received — under review</p>';
+    // file_url is server-built (token + integer document id, see
+    // api_portal_documents in app.py) and never carries client-supplied
+    // content, so entity-escaping it is enough to stop attribute breakout.
+    // escapeHtmlDoc does NOT validate the URL scheme — it would NOT stop a
+    // `javascript:` href. If this value ever starts coming from user input,
+    // add scheme validation before trusting it here.
     return '<li class="doc-item">' +
       '<a class="doc-file" href="' + escapeHtmlDoc(it.file_url) +
         '" target="_blank" rel="noopener">' + escapeHtmlDoc(it.filename) + '</a>' +

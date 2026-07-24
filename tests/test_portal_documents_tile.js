@@ -34,4 +34,24 @@ const evil = renderDocuments([{
 assert.ok(!evil.includes('<img src=x'));
 assert.ok(evil.includes('&lt;img'));
 
+// narrative_md is escaped, never injected, for a ready document
+const evilNarrative = renderDocuments([{
+  id: 4, filename: 'panel.pdf', uploaded_at: '',
+  status: 'ready', file_url: '/f',
+  narrative_md: '<script>alert(1)</script><img src=x onerror=alert(2)>'
+}]);
+assert.ok(!evilNarrative.includes('<script>alert(1)</script>'));
+assert.ok(!evilNarrative.includes('<img src=x'));
+assert.ok(evilNarrative.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+assert.ok(evilNarrative.includes('&lt;img src=x onerror=alert(2)&gt;'));
+
+// file_url is escaped so it cannot break out of the href attribute
+const evilUrl = renderDocuments([{
+  id: 5, filename: 'panel.pdf', uploaded_at: '',
+  status: 'under_review', file_url: '/f" onmouseover="alert(1)',
+  narrative_md: ''
+}]);
+assert.ok(!evilUrl.includes('href="/f" onmouseover="alert(1)"'));
+assert.ok(evilUrl.includes('href="/f&quot; onmouseover=&quot;alert(1)"'));
+
 console.log('ok - portal documents tile');
