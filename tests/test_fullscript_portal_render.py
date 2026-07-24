@@ -88,11 +88,19 @@ V = {"biofield": {"visible": True, "status": "confirmed", "blurred": False,
 D_LIGHT = dict(BASE_D, token="lighttoken", fullscript_enabled=True, fullscript=FULLSCRIPT)
 D_DARK = dict(BASE_D, token="darktoken", fullscript_enabled=False)
 D_DARK_NO_KEY = dict(BASE_D, token="nokeytoken", fullscript_enabled=True)  # d.fullscript absent
+# Flag OFF but the payload block IS present. Not reachable through today's
+# server wiring (_fullscript_for returns None when dark, so the key is never
+# set) -- which is precisely why it needs a test: without this case the
+# `d.fullscript_enabled &&` half of the gate is unpinned, and deleting it
+# leaves every other render test green. Verified: that mutation used to pass.
+D_DARK_FLAG_OFF_WITH_PAYLOAD = dict(
+    BASE_D, token="darkpayloadtoken", fullscript_enabled=False, fullscript=FULLSCRIPT)
 
 DATA_BY_TOKEN = {
     "lighttoken": D_LIGHT,
     "darktoken": D_DARK,
     "nokeytoken": D_DARK_NO_KEY,
+    "darkpayloadtoken": D_DARK_FLAG_OFF_WITH_PAYLOAD,
 }
 
 
@@ -220,6 +228,22 @@ def test_fullscript_card_absent_when_flag_on_but_no_payload(live_server):
         pg = b.new_page()
         errors, dialogs = _open(pg, live_server, "nokeytoken")
         assert pg.query_selector(".fullscript-card") is None
+        assert errors == []
+        b.close()
+
+
+def test_fullscript_card_absent_when_flag_off_even_if_payload_leaks(live_server):
+    """Pins the `d.fullscript_enabled &&` half of the render gate. The flag is the
+    kill switch: if a caching bug or a future refactor ever ships the payload
+    block while the channel is dark, the client must still render nothing.
+    Without this case, deleting the flag check from the gate breaks no test."""
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        pg = b.new_page()
+        errors, dialogs = _open(pg, live_server, "darkpayloadtoken")
+        assert pg.query_selector(".fullscript-card") is None, \
+            "flag off must suppress the card even when the payload is present"
+        assert "Matched from your scan" not in pg.content()
         assert errors == []
         b.close()
 
