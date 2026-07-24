@@ -161,6 +161,73 @@ def ensure_program(cx, key, label, items, consult_recommended=False):
     cx.commit()
 
 
+_DRY_EYE_MIGRATION_NAME = "dry_eye_modifiers_v1"
+
+
+def _find_item(items, slug):
+    for it in items or []:
+        if (it.get("slug") or "") == slug:
+            return dict(it)
+    return None
+
+
+def migrate_dry_eye_modifiers(cx):
+    """ONE-TIME, marker-guarded restructure of the `dry-eye` program for
+    stores seeded long ago (before seed_if_empty's marker fired) with the OLD
+    flat shape -- aces-eye-drops, moisturize, wholomega, and
+    moisture-eyes-night-oil all as unconditional base items. Rewrites it to
+    base items (aces-eye-drops, wholomega) + two client-reported modifiers
+    (aqueous_deficiency -> Moisturize, severe -> Moisture Eyes Night Oil),
+    via the existing `upsert`.
+
+    Tracked by its OWN `_seed_state` marker (distinct from seed_if_empty's),
+    checked first -- so this runs AT MOST ONCE EVER, exactly like
+    seed_if_empty. That is the whole point: if Glen later removes one of
+    these items via the console editor, this migration must never resurrect
+    it on a later call/boot. If the `dry-eye` program doesn't exist at all,
+    there is nothing to migrate -- the marker is still recorded so we never
+    look again.
+
+    Whatever name/alts/dose the existing moisturize and
+    moisture-eyes-night-oil items already carry (including any operator
+    customization made before this migration ever ran) is preserved verbatim
+    into the new modifier items; only the shape (base vs. modifier) changes."""
+    _ensure_seed_state_table(cx)
+    already = cx.execute("SELECT 1 FROM _seed_state WHERE name=?",
+                          (_DRY_EYE_MIGRATION_NAME,)).fetchone()
+    if already:
+        return
+    now = _now()
+    prog = get(cx, "dry-eye")
+    if prog is not None:
+        old_items = prog.get("items") or []
+        aces = _find_item(old_items, "aces-eye-drops") or {
+            "slug": "aces-eye-drops", "name": "ACES Eye Drops",
+            "alts": [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]}
+        wholomega = _find_item(old_items, "wholomega") or {
+            "slug": "wholomega", "name": "WholOmega", "dose": "4 capsules/day"}
+        moisturize = _find_item(old_items, "moisturize") or {
+            "slug": "moisturize", "name": "Moisturize"}
+        night_oil = _find_item(old_items, "moisture-eyes-night-oil") or {
+            "slug": "moisture-eyes-night-oil", "name": "Moisture Eyes Night Oil",
+            "alts": [{"slug": "moisture-eyes-night-drops",
+                      "name": "Moisture Eyes Night Drops"}]}
+        new_items = [aces, wholomega]
+        new_modifiers = [
+            {"when": "aqueous_deficiency", "action": "add",
+             "source": "client-reported", "client_default": True,
+             "items": [moisturize]},
+            {"when": "severe", "action": "add",
+             "source": "client-reported", "client_default": False,
+             "items": [night_oil]},
+        ]
+        upsert(cx, "dry-eye", prog["label"], prog["consult_recommended"],
+               new_items, new_modifiers)
+    cx.execute("INSERT OR IGNORE INTO _seed_state (name, seeded_at) VALUES (?,?)",
+               (_DRY_EYE_MIGRATION_NAME, now))
+    cx.commit()
+
+
 def resolve_program_items(program, audience="client", client_facts=None):
     """Apply a program's modifiers to its base items; return the resolved list.
 
