@@ -138,3 +138,77 @@ def test_approve_requires_the_console_key(tmp_path, monkeypatch):
 def test_approve_404s_for_a_document_with_no_draft(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     assert _approve(appmod, 4242).status_code == 404
+
+
+def test_console_review_payload_carries_quotes_and_file_url(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    r = appmod.app.test_client().get(
+        "/api/console/client-documents?email=c@x.com&key=test-secret")
+    assert r.status_code == 200
+    it = r.get_json()["items"][0]
+    assert it["id"] == doc_id
+    assert it["filename"] == "labs.pdf"
+    assert it["file_url"] == f"/admin/client-document?id={doc_id}"
+    d = it["draft"]
+    assert d["narrative_md"] == "Draft narrative."
+    assert d["attributes"][0]["source_quote"] == "q"
+    assert d["facts"][0]["fact_key"] == "on_areds2"
+    assert d["unstructured"][0]["label"] == "HbA1c"
+
+
+def test_console_review_payload_draft_is_null_when_not_extracted(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cd.put(cx, "c@x.com", b"%PDF", "raw.pdf", "application/pdf", "console")
+    cx.commit(); cx.close()
+    it = appmod.app.test_client().get(
+        "/api/console/client-documents?email=c@x.com&key=test-secret"
+    ).get_json()["items"][0]
+    assert it["draft"] is None
+
+
+def test_console_review_requires_the_console_key(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    r = appmod.app.test_client().get("/api/console/client-documents?email=c@x.com")
+    assert r.status_code == 401
+
+
+def test_console_document_file_serves_bytes_with_the_key(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    r = appmod.app.test_client().get(f"/admin/client-document?id={doc_id}&key=test-secret")
+    assert r.status_code == 200 and r.data == b"%PDF"
+
+
+def test_console_document_file_requires_the_key(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    assert appmod.app.test_client().get(
+        f"/admin/client-document?id={doc_id}").status_code == 401
+
+
+def test_console_document_html_content_type_served_as_attachment_octet_stream(
+        tmp_path, monkeypatch):
+    """Hardening: the console viewer must reuse the Task 6 allowlist, not the
+    stored (attacker-influenced) content_type, else a text/html document would
+    render inline at the app's origin with console privileges."""
+    appmod = _app(tmp_path, monkeypatch)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    doc_id = cd.put(cx, "c@x.com", b"<script>1</script>", "page.html",
+                    "text/html", "console")["id"]
+    cx.commit(); cx.close()
+    r = appmod.app.test_client().get(
+        f"/admin/client-document?id={doc_id}&key=test-secret")
+    assert r.status_code == 200
+    assert r.mimetype == "application/octet-stream"
+    assert r.headers["Content-Disposition"].startswith("attachment")
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_console_document_file_nosniff_header_present(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    r = appmod.app.test_client().get(
+        f"/admin/client-document?id={doc_id}&key=test-secret")
+    assert r.headers["X-Content-Type-Options"] == "nosniff"

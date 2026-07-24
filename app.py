@@ -20816,6 +20816,64 @@ def api_console_client_document_reject(doc_id):
     return jsonify({"ok": True, "changed": ok}), 200
 
 
+@app.route("/api/console/client-documents", methods=["GET"])
+def api_console_client_documents():
+    """Review payload for one client's documents: the file, the AI's proposals
+    with their source quotes, and the editable narrative. This is what the
+    console Documents section renders."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with db.connect(LOG_DB) as cx:
+        docs = _cd.list_for_email(cx, email)
+        items = []
+        for d in docs:
+            items.append({
+                "id": d["id"], "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"], "source": d["source"],
+                "extract_status": d["extract_status"],
+                "file_url": f"/admin/client-document?id={d['id']}",
+                "draft": _dx.get_for_document(cx, d["id"]),
+            })
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/admin/client-document", methods=["GET"])
+def admin_client_document_file():
+    """Console-gated raw document viewer (PHI). Serves the bytes for review.
+
+    Reuses the Task 6 inline-type allowlist rather than trusting the stored
+    (attacker-influenced, upload-time-supplied) content_type: this route
+    serves third-party bytes to a live console session, so an unvalidated
+    inline text/html or image/svg+xml would execute script at the app's
+    origin with console privileges.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    try:
+        doc_id = int(request.args.get("id") or 0)
+    except ValueError:
+        return jsonify({"error": "bad id"}), 400
+    with db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id) if doc_id else None
+    if not doc:
+        return jsonify({"error": "not found"}), 404
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+    return resp
+
+
 def _portal_current_biofield_location(cx, email, content):
     """The spoken anatomical `location` from the client's CURRENT biofield report
     (same report the portal picks: content.current_scan_date -> newest). '' when
