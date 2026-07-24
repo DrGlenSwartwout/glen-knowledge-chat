@@ -10914,8 +10914,10 @@ def _fulfill_course_purchase(session):
 
 def _course_membership_renew(invoice):
     """On invoice.paid, extend a course membership to the subscription's new period
-    end. Identified by the subscription's metadata.kind == 'course_membership'.
-    No re-email. Never raises. Returns 'ok' | 'skip' | 'error'."""
+    end. Identified by the subscription's metadata.kind == 'course_membership'. Email
+    comes from the subscription metadata, falling back to the email already stored on
+    the entitlement row (anonymous checkout leaves the metadata email empty). No
+    re-email. Never raises. Returns 'ok' | 'skip' | 'error'."""
     from dashboard import course_entitlements as _ce
     try:
         sub_id = (invoice or {}).get("subscription")
@@ -10925,12 +10927,14 @@ def _course_membership_renew(invoice):
         sub_md = sub.get("metadata") or {}
         if sub_md.get("kind") != "course_membership":
             return "skip"
-        email = (sub_md.get("email") or "").strip().lower()
-        if not email:
-            return "skip"
         until = float(sub.get("current_period_end") or 0) or None
         with _db_lock, db.connect(LOG_DB) as cx:
             _ce.init_course_entitlements_table(cx)
+            email = (sub_md.get("email") or "").strip().lower()
+            if not email:
+                email = (_ce.email_for_stripe_ref(cx, sub_id) or "").strip().lower()
+            if not email:
+                return "skip"
             _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
                                  stripe_ref=sub_id, customer=sub.get("customer"))
             cx.commit()
@@ -30726,7 +30730,7 @@ def webhook_stripe():
             return ("", 400)
     try:
         etype = (event or {}).get("type")
-        obj = ((event.get("data") or {}).get("object") or {})
+        obj = (((event or {}).get("data") or {}).get("object") or {})
         if etype == "checkout.session.completed":
             session_id = (obj.get("id") or "").strip()
             if session_id:

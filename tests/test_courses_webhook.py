@@ -106,3 +106,23 @@ def test_subscription_deleted_relocks(appmod, monkeypatch):
     _post_event(appmod, {"type": "customer.subscription.deleted", "data": {"object": {
         "id": "sub_9", "metadata": {"kind": "course_membership", "email": "z@x.com"}}}})
     assert _paid_level(appmod, "z@x.com", now=1) == 0
+
+
+def test_renewal_without_metadata_email_extends_existing(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    # Anonymous membership buyer: subscription metadata has kind but NO email.
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_ne", "status": "active", "current_period_end": 1000,
+        "customer": "c", "metadata": {"kind": "course_membership"}})
+    _post_event(appmod, {"type": "checkout.session.completed", "data": {"object": {
+        "id": "cs_ne", "mode": "subscription", "subscription": "sub_ne", "customer": "c",
+        "metadata": {"kind": "course_purchase", "product": "membership"},
+        "customer_details": {"email": "anon@x.com"}}}})
+    assert _paid_level(appmod, "anon@x.com", now=500) == 2      # initial grant via customer_details
+    assert _paid_level(appmod, "anon@x.com", now=1500) == 0     # expires at 1000
+    # invoice.paid renewal extends to 3000 even though sub metadata has no email
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_ne", "status": "active", "current_period_end": 3000,
+        "customer": "c", "metadata": {"kind": "course_membership"}})
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {"subscription": "sub_ne"}}})
+    assert _paid_level(appmod, "anon@x.com", now=2500) == 2     # renewed via stored-row email fallback
