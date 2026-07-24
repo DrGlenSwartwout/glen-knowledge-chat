@@ -20668,6 +20668,36 @@ def api_portal_documents(token):
     return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
 
 
+# Content types safe to render `inline` in a browser at our own origin. Anything
+# not on this list (including any image/* the upload route happens to accept,
+# e.g. image/svg+xml or image/heic) is served as attachment/octet-stream instead —
+# never let an arbitrary stored type drive inline rendering. Reused by the
+# console document viewer so the two never drift apart.
+_DOC_INLINE_TYPES = frozenset({
+    "application/pdf", "image/jpeg", "image/png", "image/webp",
+})
+
+_DOC_FILENAME_UNSAFE_RE = re.compile(r'[\x00-\x1f\x7f"\\]')
+
+
+def _doc_response_content_type(stored_content_type):
+    """(content_type, disposition) for a document response. `inline` only for
+    types on the allowlist; everything else downloads as attachment/octet-stream
+    so an attacker-controlled stored type can never render inline."""
+    ctype = (stored_content_type or "").lower()
+    if ctype in _DOC_INLINE_TYPES:
+        return ctype, "inline"
+    return "application/octet-stream", "attachment"
+
+
+def _doc_safe_filename(name):
+    """Strip CR/LF/other control chars plus '"' and '\\' from a stored filename
+    before it goes into a Content-Disposition header, so the header can never be
+    constructed into something that raises. Falls back to 'document'."""
+    cleaned = _DOC_FILENAME_UNSAFE_RE.sub("", name or "").strip()
+    return cleaned or "document"
+
+
 @app.route("/api/portal/<token>/documents/<int:doc_id>/file", methods=["GET"])
 def api_portal_document_file(token, doc_id):
     """Stream the token owner's OWN document. Resolved through get_for_email so
@@ -20681,11 +20711,12 @@ def api_portal_document_file(token, doc_id):
         doc = _cd.get_for_email(cx, doc_id, email) if email else None
     if not doc:
         return Response("", status=404)
-    resp = Response(doc["blob"],
-                    mimetype=doc["content_type"] or "application/octet-stream")
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
     resp.headers["Cache-Control"] = "private, no-store"
-    resp.headers["Content-Disposition"] = (
-        f'inline; filename="{(doc["filename"] or "document").replace(chr(34), "")}"')
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
     return resp
 
 

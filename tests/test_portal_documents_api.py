@@ -101,3 +101,60 @@ def test_enabled_false_when_hub_flag_off(tmp_path, monkeypatch):
 def test_unknown_token_404s(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     assert appmod.app.test_client().get("/api/portal/nope/documents").status_code == 404
+
+
+def _seed_with(appmod, email, filename, content_type, blob=b"bytes"):
+    from dashboard import client_portal as cp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cp.init_client_portal_table(cx)
+    tok = cp.ensure_token(cx, email, "T")
+    doc_id = cd.put(cx, email, blob, filename, content_type, "console")["id"]
+    cx.commit(); cx.close()
+    return tok, doc_id
+
+
+def test_crlf_in_filename_downloads_without_500(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok, doc_id = _seed_with(
+        appmod, "c@x.com", "evil\r\nX-Injected: yes.pdf", "application/pdf")
+    r = appmod.app.test_client().get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert r.status_code == 200
+    cd_header = r.headers["Content-Disposition"]
+    assert "\r" not in cd_header and "\n" not in cd_header
+    assert "X-Injected" not in dict(r.headers)
+
+
+def test_html_content_type_served_as_attachment_octet_stream(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok, doc_id = _seed_with(appmod, "c@x.com", "page.html", "text/html")
+    r = appmod.app.test_client().get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert r.status_code == 200
+    assert r.mimetype == "application/octet-stream"
+    assert r.headers["Content-Disposition"].startswith("attachment")
+
+
+def test_svg_content_type_not_served_inline(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok, doc_id = _seed_with(appmod, "c@x.com", "pic.svg", "image/svg+xml")
+    r = appmod.app.test_client().get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert r.status_code == 200
+    assert r.mimetype == "application/octet-stream"
+    assert r.headers["Content-Disposition"].startswith("attachment")
+
+
+def test_pdf_still_served_inline_with_own_type_and_unchanged_bytes(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok, doc_id = _seed_with(
+        appmod, "c@x.com", "labs.pdf", "application/pdf", blob=b"%PDF-1.4 real bytes")
+    r = appmod.app.test_client().get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert r.status_code == 200
+    assert r.mimetype == "application/pdf"
+    assert r.headers["Content-Disposition"].startswith("inline")
+    assert r.data == b"%PDF-1.4 real bytes"
+
+
+def test_nosniff_header_present(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok, doc_id = _seed(appmod, "c@x.com")
+    r = appmod.app.test_client().get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
