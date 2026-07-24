@@ -89,3 +89,108 @@ def test_unknown_token_404(tmp_path, monkeypatch):
         "/api/portal/nope/triage", json={"condition": "glaucoma"}).status_code == 404
     assert appmod.app.test_client().get(
         "/api/portal/nope/triage").status_code == 404
+
+
+def test_post_triage_wet_amd_reports_consult_recommended_true(tmp_path, monkeypatch):
+    from dashboard import condition_programs as cprog
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-wet@x.com")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    cprog.upsert(cx, "wet-amd", "Wet AMD", True,
+                 [{"slug": "angiogenx", "name": "AngiogenX"}])
+    cx.commit()
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "macular", "amd_type": "wet"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["programs"] == ["wet-amd"]
+    assert body["consult_recommended"] is True
+
+
+def test_post_triage_dry_amd_reports_consult_recommended_false(tmp_path, monkeypatch):
+    from dashboard import condition_programs as cprog
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-dry@x.com")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    cprog.upsert(cx, "dry-amd", "Dry AMD", False,
+                 [{"slug": "wholomega", "name": "WholOmega"}])
+    cx.commit()
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "macular", "amd_type": "dry"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["programs"] == ["dry-amd"]
+    assert body["consult_recommended"] is False
+
+
+def test_post_triage_glaucoma_reports_consult_recommended_false(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-glauc@x.com")
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage", json={"condition": "glaucoma", "iop_od": 25})
+    assert r.status_code == 200
+    assert r.get_json()["consult_recommended"] is False
+
+
+def test_post_triage_cataract_whitelist_keys_reach_the_resolver(tmp_path, monkeypatch):
+    """Every new cataract/macular answer key must survive the route's POST
+    answer whitelist -- if one is missing, the triage silently mis-resolves
+    in production despite green unit tests on resolve_programs directly."""
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-cat@x.com")
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "cataract", "cataract_type": "psc", "age": 60})
+    assert r.status_code == 200
+    body = r.get_json()
+    # age=60 (>50) + told-PSC -> BOTH programs per the decision table -- this
+    # only happens if "age" (and cataract_type) actually reached resolve_programs.
+    assert body["programs"] == ["psc-cataract", "senile-cataract"]
+
+
+def test_post_triage_cataract_not_sure_risk_flags_reach_the_resolver(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-cat2@x.com")
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "cataract", "age": 60, "steroids": True})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["programs"] == ["psc-cataract", "senile-cataract"]
+
+
+def test_post_triage_macular_whitelist_keys_reach_the_resolver(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-mac@x.com")
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "macular", "injections": True})
+    assert r.status_code == 200
+    assert r.get_json()["programs"] == ["wet-amd"]
+
+
+def test_post_triage_yellow_vision_whitelist_key_reaches_the_resolver(tmp_path, monkeypatch):
+    """yellow_vision must survive the whitelist so brunescent threads through
+    to seeding -- proven indirectly via the seeded-count including lens-zyme."""
+    from dashboard import condition_programs as cprog
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "triage-yv@x.com")
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    cprog.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+                 [{"slug": "golden-book", "name": "Golden Book"}],
+                 [{"when": "brunescent", "action": "add", "source": "client-reported",
+                   "client_default": False,
+                   "items": [{"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster"}]}])
+    cx.commit()
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/triage",
+        json={"condition": "cataract", "cataract_type": "senile", "age": 70,
+              "yellow_vision": True})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["seeded"] == 2  # golden-book + lens-zyme

@@ -229,9 +229,16 @@ def test_real_seed_content_loads_correctly_through_seed_path(app_mod, tmp_db):
 
     assert programs["wet-amd"]["consult_recommended"] is True
 
+    # lens-zyme moved from an unconditional base item to a client-reported
+    # "brunescent" modifier (see dashboard/condition_programs.py's
+    # migrate_cataract_brunescent + data/condition_programs_seed.json).
     cataract_items = programs["senile-cataract"]["items"]
-    lens_zyme = next(it for it in cataract_items if it["slug"] == "lens-zyme")
-    assert "brunescent" in lens_zyme.get("note", "").lower()
+    assert "lens-zyme" not in {it["slug"] for it in cataract_items}
+    cataract_mods = programs["senile-cataract"]["modifiers"]
+    brunescent_mod = next(m for m in cataract_mods if m["when"] == "brunescent")
+    assert brunescent_mod["source"] == "client-reported"
+    assert brunescent_mod["client_default"] is False
+    assert [it["slug"] for it in brunescent_mod["items"]] == ["lens-zyme"]
 
     # dose/alts round-trip intact
     glaucoma_items = programs["glaucoma-elevated-iop"]["items"]

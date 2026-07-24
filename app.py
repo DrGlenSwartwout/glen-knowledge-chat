@@ -20240,7 +20240,12 @@ def api_portal_triage(token):
                     "field_loss", "category",
                     # dry-eye triage facts (drive the aqueous_deficiency/
                     # severe modifiers -- see condition_triage.resolve_client_facts)
-                    "sjogrens", "not_enough_tears", "severe")}
+                    "sjogrens", "not_enough_tears", "severe",
+                    # cataract sub-type triage
+                    "cataract_type", "age", "steroids", "diabetes", "inflammation",
+                    "radiation", "atopy", "yellow_vision",
+                    # macular sub-type triage
+                    "amd_type", "injections", "distortion")}
         # Ensure the condition-programs store exists and every program (incl.
         # any added after prod's once-ever seed already fired, e.g.
         # vision-improvement) is present -- this route resolves programs by
@@ -20248,7 +20253,8 @@ def api_portal_triage(token):
         # having run first to guarantee that, which isn't true for triage.
         _init_support_programs_tables(cx)
         res = _ct.seed_from_triage(cx, email, cond, answers)
-    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
+    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"]),
+                    "consult_recommended": bool(res.get("consult_recommended"))})
 
 
 @app.route("/api/portal/<token>/onboarding", methods=["GET"])
@@ -21348,6 +21354,11 @@ def _init_support_programs_tables(cx):
     # fired and will never re-seed. Runs at most once ever -- see
     # condition_programs.migrate_dry_eye_modifiers.
     condition_programs.migrate_dry_eye_modifiers(cx)
+    # One-time, marker-guarded fix for prod rows seeded before lens-zyme moved
+    # from an unconditional senile-cataract item to a client-reported
+    # "brunescent" modifier. Safe to call on every request (run-once, never
+    # resurrects an operator's later deletion -- see its own docstring).
+    condition_programs.migrate_cataract_brunescent(cx)
 
 
 def _eye_program_public_view(prog):

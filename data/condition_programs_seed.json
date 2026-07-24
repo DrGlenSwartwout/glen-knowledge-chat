@@ -264,11 +264,20 @@
               "name": "OcuHeal Eye Drops"
             }
           ]
-        },
+        }
+      ],
+      "modifiers": [
         {
-          "slug": "lens-zyme",
-          "name": "Lens-Zyme Brunescence Buster",
-          "note": "Add for brunescent cataracts"
+          "when": "brunescent",
+          "action": "add",
+          "source": "client-reported",
+          "client_default": false,
+          "items": [
+            {
+              "slug": "lens-zyme",
+              "name": "Lens-Zyme Brunescence Buster"
+            }
+          ]
         }
       ]
     },
