@@ -229,3 +229,51 @@ def test_console_review_payload_still_shows_non_visible_documents(tmp_path, monk
     assert len(items) == 1
     assert items[0]["id"] == doc_id
     assert items[0]["client_visible"] is False
+
+
+# --- CRITICAL 2: client_visible=0 must not silently revert. Route-level
+# repro: hiding a portal-self document via the visibility route must stick
+# through subsequent, unrelated store activity -- the backfill that used to
+# run on every client_documents.init_table() call (called by every store
+# function) previously reverted exactly this. ---
+
+def test_hiding_a_portal_self_document_sticks_after_a_subsequent_store_call(
+        tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch, console_secret="s3cret")
+    tok, doc_id = _seed(appmod, "hide@x.com", source="portal-self")
+    client = appmod.app.test_client()
+
+    r = client.post(f"/api/console/client-document/{doc_id}/visibility",
+                    json={"visible": False}, headers={"X-Console-Key": "s3cret"})
+    assert r.status_code == 200
+    assert r.get_json()["client_visible"] is False
+
+    # At least one subsequent, unrelated store call -- every one of these
+    # re-runs client_documents.init_table()'s backfill. This is exactly the
+    # path that previously flipped the hide back to visible.
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cd.list_for_email(cx, "hide@x.com")
+    cx.close()
+
+    items = client.get(f"/api/portal/{tok}/documents").get_json()["items"]
+    assert items == []
+    fr = client.get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert fr.status_code == 404
+
+
+def test_reshowing_a_hidden_portal_self_document_works(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch, console_secret="s3cret")
+    tok, doc_id = _seed(appmod, "reshow@x.com", source="portal-self")
+    client = appmod.app.test_client()
+
+    client.post(f"/api/console/client-document/{doc_id}/visibility",
+               json={"visible": False}, headers={"X-Console-Key": "s3cret"})
+    r = client.post(f"/api/console/client-document/{doc_id}/visibility",
+                    json={"visible": True}, headers={"X-Console-Key": "s3cret"})
+    assert r.status_code == 200
+    assert r.get_json()["client_visible"] is True
+
+    items = client.get(f"/api/portal/{tok}/documents").get_json()["items"]
+    assert len(items) == 1 and items[0]["id"] == doc_id
+    fr = client.get(f"/api/portal/{tok}/documents/{doc_id}/file")
+    assert fr.status_code == 200

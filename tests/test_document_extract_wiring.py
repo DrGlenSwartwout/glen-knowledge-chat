@@ -258,3 +258,60 @@ def test_requeue_unknown_document_404s(tmp_path, monkeypatch):
     c = appmod.app.test_client()
     r = c.post("/api/console/client-document/999999/requeue?key=test-secret")
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# CRITICAL 1: _db_lock must never be held across the (multi-second) model
+# call. Deterministic, not timing-based: the injected call_model itself
+# tries a NON-BLOCKING acquire of the real _db_lock -- that can only
+# succeed if nothing else (i.e. the caller) is holding it at that moment.
+# ---------------------------------------------------------------------------
+
+def test_lock_not_held_during_model_call_extract_pending_route(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import client_documents as cd
+    cx = sqlite3.connect(appmod.LOG_DB)
+    res = cd.put(cx, "lock@x.com", b"%PDF-1.4 fake", "labs.pdf",
+                "application/pdf", "console")
+    cd.set_extract_status(cx, res["id"], "pending")
+    cx.close()
+
+    acquired = {}
+
+    def _call(blob, content_type):
+        got = appmod._db_lock.acquire(blocking=False)
+        acquired["ok"] = got
+        if got:
+            appmod._db_lock.release()
+        return _GOOD_PAYLOAD
+
+    monkeypatch.setattr(appmod, "_DOC_EXTRACT_CALL_MODEL", _call)
+    c = appmod.app.test_client()
+    r = c.post("/api/console/documents/extract-pending?key=test-secret")
+    assert r.status_code == 200
+    assert r.get_json()["drafted"] == 1
+    assert acquired.get("ok") is True, (
+        "call_model could not acquire _db_lock -- it was held during the "
+        "model call")
+
+
+def test_lock_not_held_during_model_call_inline_trigger(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    acquired = {}
+
+    def _call(blob, content_type):
+        got = appmod._db_lock.acquire(blocking=False)
+        acquired["ok"] = got
+        if got:
+            appmod._db_lock.release()
+        return _GOOD_PAYLOAD
+
+    monkeypatch.setattr(appmod, "_DOC_EXTRACT_CALL_MODEL", _call)
+    tok = _token(appmod, "lock2@x.com")
+    r = _upload(appmod.app.test_client(), f"/api/portal/{tok}/documents")
+    doc_id = r.get_json()["id"]
+    ok = _wait_until(lambda: _doc_status(appmod, doc_id) == "drafted")
+    assert ok, f"expected 'drafted', got {_doc_status(appmod, doc_id)!r}"
+    assert acquired.get("ok") is True, (
+        "call_model could not acquire _db_lock -- it was held during the "
+        "model call")

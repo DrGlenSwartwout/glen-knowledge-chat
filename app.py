@@ -20617,15 +20617,46 @@ def _trigger_document_extraction(doc_id):
     belt-and-suspenders guard against anything else (import error, claim
     error, thread start) so a broken extraction can never surface in the
     upload response that triggered it.
+
+    CRITICAL: `_db_lock` is the application-wide write mutex used at hundreds
+    of call sites; production runs multi-second Anthropic vision calls under
+    `gunicorn --timeout 120`. Holding the lock across the model call would
+    stall every DB-touching request in this worker for the duration of the
+    call. So the lock is acquired and released THREE separate times here --
+    claim, model call (unlocked), write -- never held across
+    call_model_for_extraction. See dashboard/document_extract.py's
+    call_model_for_extraction / write_extraction_draft split.
     """
     def _run():
+        from dashboard import client_documents as _cd
+        from dashboard import document_extract as _de
         try:
-            from dashboard import client_documents as _cd
-            from dashboard import document_extract as _de
             with _db_lock, db.connect(LOG_DB) as cx:
                 if not _cd.claim_for_extraction(cx, doc_id):
                     return  # already claimed/processed elsewhere
-                _de.extract_document(cx, doc_id, call_model=_DOC_EXTRACT_CALL_MODEL)
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                return
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+            except Exception as e:                  # noqa: BLE001 - model call
+                # Same fail-closed contract extract_document always had: a
+                # failed/malformed model call lands the document in 'failed',
+                # never wedged in 'extracting'.
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+                return
+            try:
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _de.write_extraction_draft(cx, doc_id, payload)
+            except Exception as e:                  # noqa: BLE001 - write half
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
         except Exception as e:                      # noqa: BLE001 - background
             # extraction must never raise into the request that triggered it.
             print(f"[documents] extraction trigger failed for {doc_id}: {e!r}",
@@ -20993,14 +21024,57 @@ def admin_client_document_file():
 def api_console_documents_extract_pending():
     """Operational backstop for the inline upload trigger: runs the extractor
     over whatever is still 'pending' (e.g. a document the inline trigger's
-    process died before starting, or one requeued below). Same claim-guarded
-    run_pending used everywhere else in this feature."""
+    process died before starting, or one requeued below). Uses the same
+    claim-guarded UPDATE (client_documents.claim_for_extraction) run_pending
+    itself uses.
+
+    CRITICAL: does NOT hand the whole batch to document_extract.run_pending
+    under one held `_db_lock` -- run_pending processes up to 5 documents
+    sequentially, and each one's model call takes tens of seconds, so a
+    single held lock across the whole batch would stall every DB-touching
+    request in this worker for the full multi-document run. Instead this
+    loop mirrors run_pending's claim-then-process shape itself, but takes
+    `_db_lock` three separate times PER document -- claim, model call
+    (unlocked), write -- exactly like the inline trigger in
+    _trigger_document_extraction. run_pending's own implementation (and its
+    own claim-guard tests) are untouched; this route just doesn't call it
+    under a single lock anymore.
+    """
     guard = _console_guard()
     if guard:
         return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
     from dashboard import document_extract as _de
     with _db_lock, db.connect(LOG_DB) as cx:
-        drafted = _de.run_pending(cx, call_model=_DOC_EXTRACT_CALL_MODEL)
+        candidates = _cd.pending(cx, limit=5)
+    drafted = 0
+    for cand in candidates:
+        doc_id = cand["id"]
+        try:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    continue  # another instance claimed it first
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                continue
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    if _de.write_extraction_draft(cx, doc_id, payload):
+                        drafted += 1
+            except Exception as e:                  # noqa: BLE001 - one bad
+                # document (model failure or malformed reply) must not abort
+                # the rest of the batch, and must fail closed to 'failed'.
+                print(f"[documents] extract-pending: extract failed for "
+                      f"{doc_id}: {e!r}", flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+        except Exception as e:                      # noqa: BLE001 - belt and
+            # suspenders: an unanticipated exception in the claim step must
+            # not abort the rest of the batch either.
+            print(f"[documents] extract-pending: document {doc_id} raised, "
+                  f"skipping: {e!r}", flush=True)
     return jsonify({"ok": True, "drafted": drafted})
 
 

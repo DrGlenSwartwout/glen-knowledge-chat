@@ -139,6 +139,115 @@ def _source_text_for(payload):
     return text if isinstance(text, str) else ""
 
 
+def call_model_for_extraction(blob, content_type, call_model=None):
+    """DB-free half of extraction: makes the (slow, tens-of-seconds) model
+    call and returns the validated raw payload. Takes only bytes + a
+    content type -- no `cx`, no document id -- so this can run with NO
+    database lock held.
+
+    Production runs `gunicorn --workers 2 --worker-class gevent --timeout
+    120`; the application-wide write mutex (`_db_lock` in app.py) is used at
+    hundreds of call sites. Holding it across this call would stall every
+    DB-touching request in the worker for as long as the model takes.
+    Callers (app.py) must call this OUTSIDE any lock, then take the lock
+    again only for the write half below.
+
+    Raises on any failure: a model error, a non-dict reply, or an
+    item-collection (attributes/facts/unstructured) of the wrong TYPE (a
+    dict or bare string instead of a list) -- that last case means the
+    reply's structured-extraction portion is untrustworthy as a whole and
+    is NOT salvaged (unlike a single bad ITEM inside an otherwise-valid
+    list, which verify_quotes drops individually downstream). Callers must
+    catch and route the failure to 'failed', exactly like extract_document
+    always has.
+    """
+    call = call_model or _default_call_model
+    payload = call(blob, content_type)
+    if not isinstance(payload, dict):
+        raise ValueError("model did not return an object")
+    for _key in ("attributes", "facts", "unstructured"):
+        _v = payload.get(_key)
+        if _v is not None and not isinstance(_v, list):
+            raise ValueError(f"model returned non-list '{_key}' "
+                             f"({type(_v).__name__})")
+    return payload
+
+
+def write_extraction_draft(cx, doc_id, payload, source_text=None):
+    """DB-only half of extraction: quote verification, canonicalization, the
+    draft write, and the extract_status write. Takes an already-validated
+    `payload` (see call_model_for_extraction above) plus `cx` -- no model
+    call happens in here, so this is safe to run under `_db_lock`.
+
+    Returns a small summary dict, or None if the document no longer exists.
+    Does not itself catch exceptions from the DB writes below -- callers
+    (extract_document, and app.py's split callers) are responsible for
+    routing any exception here to 'failed', exactly as extract_document
+    always has for the whole guarded region.
+    """
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+
+    doc = _cd.get(cx, doc_id)
+    if not doc:
+        return None
+
+    hay = source_text if source_text is not None else _source_text_for(payload)
+    attrs, d1 = verify_quotes(payload.get("attributes"), hay)
+    facts, d2 = verify_quotes(payload.get("facts"), hay)
+    unstruct, d3 = verify_quotes(payload.get("unstructured"), hay)
+
+    # Drop out-of-vocabulary fields, then canonicalize so Glen reviews the
+    # exact value that would be written. field/value must be strings --
+    # a non-string of either (e.g. field=None, value=123) is dropped
+    # rather than crashing canonical_tags.resolve.
+    _ct.init_tables(cx)
+    clean_attrs = []
+    for a in attrs:
+        field, value_raw = a.get("field"), a.get("value")
+        if not isinstance(field, str) or not isinstance(value_raw, str):
+            d1.append(a)
+            continue
+        field = field.strip()
+        if field not in _ct.ALL_FIELDS:
+            d1.append(a)
+            continue
+        value = _ct.resolve(cx, field, value_raw)
+        if not value:
+            d1.append(a)
+            continue
+        clean_attrs.append({"field": field, "value": value,
+                            "source_quote": a.get("source_quote", "")})
+
+    narrative = payload.get("narrative_md")
+    narrative = narrative if isinstance(narrative, str) else ""
+
+    _dx.put_draft(cx, doc_id, doc["email"], narrative, clean_attrs,
+                  facts, unstruct, _MODEL)
+
+    # FINDING 3: put_draft silently protects a 'confirmed' row -- it
+    # writes NOTHING and returns the existing id. Report that honestly
+    # instead of claiming N items were drafted when nothing was written.
+    existing = _dx.get_for_document(cx, doc_id)
+    if existing and existing.get("status") == "confirmed":
+        print(f"[documents] extract for {doc_id}: existing draft is "
+              f"confirmed -- put_draft wrote nothing; this call's "
+              f"proposed items were discarded, not reported as kept",
+              flush=True)
+        _cd.set_extract_status(cx, doc_id, "drafted")
+        return {"document_id": doc_id, "kept": 0, "dropped": 0,
+                "skipped_confirmed": True}
+
+    _cd.set_extract_status(cx, doc_id, "drafted")
+    dropped = len(d1) + len(d2) + len(d3)
+    if dropped:
+        print(f"[documents] dropped {dropped} ungrounded item(s) for {doc_id}",
+              flush=True)
+    return {"document_id": doc_id, "kept": len(clean_attrs) + len(facts)
+            + len(unstruct), "dropped": dropped}
+
+
 def extract_document(cx, doc_id, call_model=None, source_text=None):
     """Run extraction for one document and write its draft. Returns a small
     summary dict, or None when extraction failed (document marked 'failed').
@@ -148,6 +257,14 @@ def extract_document(cx, doc_id, call_model=None, source_text=None):
     regardless of the document's current extract_status; that is the
     supported path for a manual/forced re-extraction.
 
+    Composes the two halves above (call_model_for_extraction, then
+    write_extraction_draft) against the SAME `cx` for the whole call --
+    this function has no lock of its own to release, so callers that care
+    about not holding a lock across the model call (app.py, under
+    `_db_lock`) must call the two halves directly instead of this
+    composition. This function's signature and behavior are otherwise
+    unchanged: every existing caller/test keeps working exactly as before.
+
     The guarded region below covers the model call AND everything downstream
     of it (quote verification, canonicalization, draft write). A malformed
     reply -- attributes as a dict or bare string, non-string field/value/
@@ -156,83 +273,15 @@ def extract_document(cx, doc_id, call_model=None, source_text=None):
     leave the document wedged in 'extracting' forever (FINDING 2).
     """
     from dashboard import client_documents as _cd
-    from dashboard import document_extractions as _dx
-    from dashboard import canonical_tags as _ct
 
     doc = _cd.get(cx, doc_id)
     if not doc:
         return None
-    call = call_model or _default_call_model
     try:
-        payload = call(doc["blob"], doc["content_type"])
-        if not isinstance(payload, dict):
-            raise ValueError("model did not return an object")
-        # A whole item-collection of the wrong TYPE (a dict or bare string
-        # instead of a list) means the reply's structured-extraction portion
-        # is untrustworthy as a whole -- unlike a single bad ITEM inside an
-        # otherwise-valid list (handled below by verify_quotes, which drops
-        # just that item), there is nothing safe to salvage here. Fail
-        # closed rather than silently draft an empty/degraded result that
-        # would look to Glen like a clean, complete extraction.
-        for _key in ("attributes", "facts", "unstructured"):
-            _v = payload.get(_key)
-            if _v is not None and not isinstance(_v, list):
-                raise ValueError(f"model returned non-list '{_key}' "
-                                 f"({type(_v).__name__})")
-
-        hay = source_text if source_text is not None else _source_text_for(payload)
-        attrs, d1 = verify_quotes(payload.get("attributes"), hay)
-        facts, d2 = verify_quotes(payload.get("facts"), hay)
-        unstruct, d3 = verify_quotes(payload.get("unstructured"), hay)
-
-        # Drop out-of-vocabulary fields, then canonicalize so Glen reviews the
-        # exact value that would be written. field/value must be strings --
-        # a non-string of either (e.g. field=None, value=123) is dropped
-        # rather than crashing canonical_tags.resolve.
-        _ct.init_tables(cx)
-        clean_attrs = []
-        for a in attrs:
-            field, value_raw = a.get("field"), a.get("value")
-            if not isinstance(field, str) or not isinstance(value_raw, str):
-                d1.append(a)
-                continue
-            field = field.strip()
-            if field not in _ct.ALL_FIELDS:
-                d1.append(a)
-                continue
-            value = _ct.resolve(cx, field, value_raw)
-            if not value:
-                d1.append(a)
-                continue
-            clean_attrs.append({"field": field, "value": value,
-                                "source_quote": a.get("source_quote", "")})
-
-        narrative = payload.get("narrative_md")
-        narrative = narrative if isinstance(narrative, str) else ""
-
-        _dx.put_draft(cx, doc_id, doc["email"], narrative, clean_attrs,
-                      facts, unstruct, _MODEL)
-
-        # FINDING 3: put_draft silently protects a 'confirmed' row -- it
-        # writes NOTHING and returns the existing id. Report that honestly
-        # instead of claiming N items were drafted when nothing was written.
-        existing = _dx.get_for_document(cx, doc_id)
-        if existing and existing.get("status") == "confirmed":
-            print(f"[documents] extract for {doc_id}: existing draft is "
-                  f"confirmed -- put_draft wrote nothing; this call's "
-                  f"proposed items were discarded, not reported as kept",
-                  flush=True)
-            _cd.set_extract_status(cx, doc_id, "drafted")
-            return {"document_id": doc_id, "kept": 0, "dropped": 0,
-                    "skipped_confirmed": True}
-
-        _cd.set_extract_status(cx, doc_id, "drafted")
-        dropped = len(d1) + len(d2) + len(d3)
-        if dropped:
-            print(f"[documents] dropped {dropped} ungrounded item(s) for {doc_id}",
-                  flush=True)
-        return {"document_id": doc_id, "kept": len(clean_attrs) + len(facts)
-                + len(unstruct), "dropped": dropped}
+        payload = call_model_for_extraction(doc["blob"], doc["content_type"],
+                                            call_model)
+        return write_extraction_draft(cx, doc_id, payload,
+                                      source_text=source_text)
     except Exception as e:                          # noqa: BLE001 - any failure
         # A malformed reply must fail closed to 'failed', exactly like a
         # failed model call -- never leave the document wedged in

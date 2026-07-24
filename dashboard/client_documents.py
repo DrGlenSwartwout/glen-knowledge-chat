@@ -50,24 +50,51 @@ def init_table(cx):
     # ignored when the column already exists; pgcompat translates this to
     # `ALTER TABLE IF EXISTS ... ADD COLUMN IF NOT EXISTS ...` on Postgres so
     # it is a no-op there too).
+    #
+    # Deliberately NO "NOT NULL DEFAULT 0" here (unlike the CREATE TABLE
+    # above): ADD COLUMN ... DEFAULT backfills EVERY existing row to that
+    # default immediately, on both SQLite and Postgres -- which is exactly
+    # the bug this fixes. With a plain nullable ADD COLUMN, pre-existing
+    # rows come back NULL, and NULL is the only signal the backfill below is
+    # allowed to touch. A 0 written later by the visibility route
+    # (set_client_visible) is a real, explicit value, never NULL -- so once
+    # a row has been backfilled (or has always carried an explicit value,
+    # e.g. everything inserted through put()), this migration can never
+    # touch it again on any subsequent init_table() call, which is called by
+    # every store function.
     try:
         cx.execute("ALTER TABLE client_documents ADD COLUMN "
-                   "client_visible INTEGER NOT NULL DEFAULT 0")
+                   "client_visible INTEGER")
     except Exception:
         pass
-    # Backfill: a pre-existing self-uploaded document was always meant to be
-    # visible to its owner (put() applies this same rule going forward) --
-    # without this, every document uploaded before this migration would look
-    # staff-only. Anything else (console/unspecified source) defaults to 0,
-    # which is already correct, so this UPDATE only ever touches portal-self
-    # rows, and becomes a no-op once they're all backfilled.
+    # Backfill: ONLY rows left NULL by the ADD COLUMN above (i.e. rows that
+    # predate this column entirely) get a value here, by source -- a
+    # pre-existing self-uploaded document was always meant to be visible to
+    # its owner (put() applies this same rule going forward); anything else
+    # (console/unspecified source) becomes staff-only, matching put()'s
+    # default. Scoping to `IS NULL` (never `=0`) is what makes an explicit 0
+    # written by the visibility route permanent: it is a real value, not
+    # NULL, so these UPDATEs never match it again. Once every legacy row is
+    # backfilled, both UPDATEs match zero rows on every later call.
     cx.execute("UPDATE client_documents SET client_visible=1 "
-               "WHERE source='portal-self' AND client_visible=0")
+               "WHERE source='portal-self' AND client_visible IS NULL")
+    cx.execute("UPDATE client_documents SET client_visible=0 "
+               "WHERE client_visible IS NULL")
     cx.commit()
 
 
 def _row(cols, values):
-    return dict(zip(cols, values)) if values else None
+    """dict-ify one row. `client_visible` is normalized to an actual Python
+    bool -- never a raw 0/1/None -- so every reader downstream gets a proper
+    boolean and NULL (a row this session's init_table() hasn't backfilled
+    yet, or a driver returning it that way) reads as hidden (False) rather
+    than truthy-by-accident or crashing."""
+    if not values:
+        return None
+    d = dict(zip(cols, values))
+    if "client_visible" in d:
+        d["client_visible"] = bool(d["client_visible"])
+    return d
 
 
 def put(cx, email, blob, filename, content_type, source):
