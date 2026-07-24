@@ -34,6 +34,13 @@ Then review by hand, in this order:
      methylcobalamin/B12, and similar pairs). The generator will not catch
      these for you; add anything clinically relevant back to the seed by
      hand after reading the log.
+  3. Read the KEPT list too, not just the dropped one. The filter keeps a
+     product if ANY single token of the search term appears in its name, so
+     a multi-word term admits products that matched only its generic word
+     ("magnesium" out of "magnesium taurate"). That is the same kind of
+     off-target hit the filter exists to block, one word weaker. Surviving
+     the filter is not clinical endorsement -- every kept product still
+     needs your eye before a client ever sees it.
 
 focus_area_items (the E4L scan-code -> focus-area map that drives the scan
 matcher) is NOT fetched from Fullscript -- it is copied from data/prl_seed.json,
