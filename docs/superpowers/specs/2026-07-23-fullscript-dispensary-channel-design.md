@@ -273,7 +273,7 @@ stable and readable. `fullscript_products.name` stays the primary key so the dri
 Both forms are constructed from a hardcoded `us.fullscript.com` base plus config, so the route has no
 attacker-reachable destination at all.
 
-**The destination is read from the database row, never from the request.** There is no allowlist
+**The destination comes from neither the request nor the database.** There is no allowlist
 check -- the actual protection is that the destination is always built from a hardcoded
 `us.fullscript.com` base plus server-side config, and is never derived from request input or from
 any database column (product_slug, url, etc.). That makes the route structurally incapable of
