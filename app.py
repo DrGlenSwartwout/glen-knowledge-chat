@@ -20587,6 +20587,70 @@ def api_portal_photo_serve(token):
     return resp
 
 
+_DOC_MAX = 30 * 1024 * 1024
+_DOC_EXTRACTABLE = ("application/pdf",)
+
+
+def _doc_extract_status(ctype):
+    """PDFs and images go to the extractor; everything else is stored as-is.
+    Glen gets a wide range of file types — the rule is store everything,
+    extract what is readable."""
+    c = (ctype or "").lower()
+    if c in _DOC_EXTRACTABLE or c.startswith("image/"):
+        return "pending"
+    return "skipped-unreadable"
+
+
+def _accept_document_upload(cx, email, f, source):
+    """Validate + store one uploaded document. Shared by the portal and console
+    routes so the two can never drift apart. Returns (body, status)."""
+    from dashboard import client_documents as _cd
+    blob = f.read() if f else b""
+    if not blob:
+        return {"ok": False, "error": "no file uploaded"}, 400
+    if len(blob) > _DOC_MAX:
+        return {"ok": False, "error": "file too large (max 30 MB)"}, 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    res = _cd.put(cx, email, blob, getattr(f, "filename", "") or "", ctype, source)
+    if not res:
+        return {"ok": False, "error": "could not store file"}, 400
+    if not res["deduped"]:
+        _cd.set_extract_status(cx, res["id"], _doc_extract_status(ctype))
+    return {"ok": True, "id": res["id"], "deduped": res["deduped"]}, 200
+
+
+@app.route("/api/portal/<token>/documents", methods=["POST"])
+def api_portal_document_upload(token):
+    """Client self-uploads a medical record. Token-scoped: writes ONLY the
+    token owner's email, exactly as the /photo upload does."""
+    from dashboard import client_portal as _cp
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "portal-self")
+    return jsonify(body), status
+
+
+@app.route("/api/console/client-document", methods=["POST"])
+def api_console_client_document_upload():
+    """Console-side upload for records that arrive by email or fax."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "console")
+    return jsonify(body), status
+
+
 def _portal_current_biofield_location(cx, email, content):
     """The spoken anatomical `location` from the client's CURRENT biofield report
     (same report the portal picks: content.current_scan_date -> newest). '' when
