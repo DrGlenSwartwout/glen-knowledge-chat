@@ -7676,7 +7676,7 @@ def email_click_redirect(token, source, slug):
             from dashboard import (email_click_tokens as _ect,
                                    recommendation_events as _re,
                                    recommendation_sources as _rs)
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _ect.init_email_click_tokens(cx)
                 _re.init_recommendation_events(cx)
                 email = _ect.email_for(cx, token)
@@ -10170,7 +10170,7 @@ def _last_attributed_practitioner(email, *, db_path=None):
     if not e:
         return None
     cands = []  # (timestamp, pid, consent)
-    with sqlite3.connect(db_path or LOG_DB) as cx:
+    with db.connect(db_path or LOG_DB) as cx:
         try:
             r = cx.execute(
                 "SELECT granted_at, attributed_practitioner_id, practitioner_share_consent "
@@ -10222,7 +10222,7 @@ def _patient_practitioner_brand(email, *, db_path=None):
         if not inh:
             return None
         pid = inh["pid"]
-        with sqlite3.connect(db_path or LOG_DB) as cx:
+        with db.connect(db_path or LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             from dashboard import practitioner_settings as _ps
             _ps.init_settings_table(cx)
@@ -11545,7 +11545,7 @@ def _send_full_report_email(to_email: str, name: str,
     # (hard-bounced) addresses on BOTH the Gmail and SMTP-fallback paths. Fail-open.
     from dashboard import email_suppression as _es
     try:
-        with sqlite3.connect(str(LOG_DB)) as _cx:
+        with db.connect(str(LOG_DB)) as _cx:
             _es.init_table(_cx)
             if _es.is_suppressed(_cx, to_email):
                 print(f"[suppressed] skip full-report to {to_email}", flush=True)
@@ -13669,7 +13669,7 @@ def api_console_e4l_db_sync():
         with open(tmp, "wb") as f:
             f.write(blob)
         # validate it's a real e4l.db before swapping in
-        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)  # raw-sqlite-ok: uploaded e4l.db validation (read-only URI, not chat_log)
         vx.row_factory = sqlite3.Row
         counts = {}
         for t in ("e4l_items", "e4l_pattern_structures", "e4l_formulation_map",
@@ -20278,7 +20278,7 @@ def api_portal_recommendations(token):
     from dashboard import (client_portal as _cp, recommendation_events as _re,
                             recommendation_prefs as _rp, portal_recommendations as _pr,
                             products as _products)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _re.init_recommendation_events(cx)
         _rp.init_recommendation_prefs(cx)
@@ -20306,7 +20306,7 @@ def api_portal_rec_hide(token):
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
     hidden = bool(data.get("hidden"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20325,7 +20325,7 @@ def api_portal_rec_click(token):
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
     source = (data.get("source") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20347,7 +20347,7 @@ def api_portal_rec_client_note(token):
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
     note = (data.get("note") or "")[:4000]
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20363,7 +20363,7 @@ def api_portal_rec_section(token):
     data = request.get_json(silent=True) or {}
     sk = (data.get("section_key") or "").strip()
     collapsed = bool(data.get("collapsed"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20402,7 +20402,7 @@ def api_portal_remedies_add(token):
     brand = (data.get("product_brand") or "").strip()
     reason = (data.get("reason") or "").strip()
     importance = _remedies_coerce_importance(data.get("importance"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20423,7 +20423,7 @@ def api_portal_remedies_meta(token):
     from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20450,7 +20450,7 @@ def api_portal_remedies_remove(token):
     from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20472,7 +20472,7 @@ def api_portal_remedies_request_review(token):
     data = request.get_json(silent=True) or {}
     name = (data.get("product_name") or "").strip()
     brand = (data.get("product_brand") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20496,7 +20496,7 @@ def api_portal_remedies_to_oasis(token):
     from dashboard import client_portal as _cp, wishlist as _wl, recommendation_events as _re
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _wl.init_wishlist_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -22033,7 +22033,7 @@ def api_portal_oasis_tool_add(token):
     brand = (body.get("brand") or "").strip()
     slug = (body.get("slug") or "").strip() or None
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -22056,7 +22056,7 @@ def api_portal_oasis_tool_remove(token):
     body = request.get_json(silent=True) or {}
     tool_id = body.get("tool_id")
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -22083,7 +22083,7 @@ def api_portal_oasis_roadmap_want(token):
     slug = (body.get("slug") or "").strip()
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
     from dashboard import wishlist as _wl
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -30574,7 +30574,7 @@ def ghl_click_webhook():
             from dashboard import (recommendation_events as _re,
                                    recommendation_sources as _rs)
             if _rs.known_source(source):
-                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                with _db_lock, db.connect(LOG_DB) as cx:
                     _re.init_recommendation_events(cx)
                     _re.record_click(cx, email, resolved, source)
     except Exception:
@@ -37693,7 +37693,7 @@ def ingredients_import():
                 "clusters": len(cluster_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -37939,7 +37939,7 @@ def formulations_import():
                 "products_items": len(items),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38051,7 +38051,7 @@ def materials_import():
                 "product_suppliers": len(products_supplier_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38116,7 +38116,7 @@ def po_import():
                 "po_receiving": len(po_receiving_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38245,7 +38245,7 @@ def api_inventory_seed():
         return fail(f"import error: {e}")
     try:
         write = request.form.get("write", "").lower() in ("1","true","yes")
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38362,7 +38362,7 @@ def api_production_import():
         write = request.form.get("write", "").lower() in ("1","true","yes")
         cons = request.form.get("consumption", "all")
         cons_from = request.form.get("consumption_from") or None
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx); init_materials_schema(cx); init_formulations_schema(cx)
@@ -41349,7 +41349,7 @@ def console_rec_operator_note():
     if not email or not pk:
         return jsonify({"ok": False, "error": "email and product_key required"}), 400
     note = (data.get("note") or "")[:4000]
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _rp.init_recommendation_prefs(cx)
         _rp.set_operator_note(cx, email, pk, note)
     return jsonify({"ok": True})
