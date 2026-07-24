@@ -20651,6 +20651,86 @@ def api_console_client_document_upload():
     return jsonify(body), status
 
 
+def _console_guard():
+    """None when the caller is authorized, else a (body, status) tuple."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return {"ok": False, "error": "Unauthorized"}, 401
+    return None
+
+
+@app.route("/api/console/client-document/<int:doc_id>/approve", methods=["POST"])
+def api_console_client_document_approve(doc_id):
+    """The ONE gate. Writes the checked proposals to the live stores and
+    publishes the narrative to the client's portal, in a single request.
+
+    Deliberately does NOT write client_conditions: that table is the single
+    eye-condition support-program override and has its own console control.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    keep_attrs = set(body.get("attributes") or [])
+    keep_facts = set(body.get("facts") or [])
+    reviewed_by = (body.get("reviewed_by") or "console").strip()
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) so a zero-checked-items approval still
+        # leaves both live-store tables queryable afterward.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        narrative = body.get("narrative_md")
+        if narrative is None:
+            narrative = draft["narrative_md"]
+        # confirm() only flips an ai_draft, so a repeat approval writes nothing.
+        if not _dx.confirm(cx, draft["id"], narrative, reviewed_by):
+            return jsonify({"ok": True, "already": True,
+                            "status": draft["status"]}), 200
+        written = {"attributes": 0, "facts": 0}
+        for i, a in enumerate(draft["attributes"]):
+            if i not in keep_attrs:
+                continue
+            if _ct.set_attr(cx, draft["email"], a.get("field"), a.get("value"),
+                            source=f"document:{doc_id}"):
+                written["attributes"] += 1
+        for i, f in enumerate(draft["facts"]):
+            if i not in keep_facts:
+                continue
+            _cf.set_fact(cx, draft["email"], f.get("fact_key"),
+                         bool(f.get("value")))
+            written["facts"] += 1
+    return jsonify({"ok": True, "already": False, "written": written}), 200
+
+
+@app.route("/api/console/client-document/<int:doc_id>/reject", methods=["POST"])
+def api_console_client_document_reject(doc_id):
+    """Discard the AI's reading. The uploaded file itself is kept."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) -- see approve() above for why.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _dx.reject(cx, draft["id"],
+                        (body.get("reviewed_by") or "console").strip())
+    return jsonify({"ok": True, "changed": ok}), 200
+
+
 def _portal_current_biofield_location(cx, email, content):
     """The spoken anatomical `location` from the client's CURRENT biofield report
     (same report the portal picks: content.current_scan_date -> newest). '' when
