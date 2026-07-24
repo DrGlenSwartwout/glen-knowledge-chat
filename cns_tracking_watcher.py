@@ -40,6 +40,8 @@ import argparse
 import base64
 import os
 import sqlite3
+
+from dashboard import db
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -291,13 +293,13 @@ def main():
         userId="me", q=q, maxResults=args.max).execute()
     msg_ids = [m["id"] for m in listing.get("messages", [])]
 
-    db = args.db or _db_path()
+    db_file = args.db or _db_path()
     mode = "DRY-RUN" if dry_run else ("LIVE+AUTO-SEND" if args.auto_send else "LIVE")
     print(f"{mode} | {len(msg_ids)} confirmation "
-          f"email(s) in last {args.days}d | db={db}\n")
+          f"email(s) in last {args.days}d | db={db_file}\n")
 
     totals = {}
-    with sqlite3.connect(db) as cx:
+    with db.connect(db_file) as cx:
         init_tracking_schema(cx)
         for mid in msg_ids:
             msg = svc.users().messages().get(
