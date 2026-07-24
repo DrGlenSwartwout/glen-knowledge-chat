@@ -24,6 +24,9 @@ SEED = {
     {"focus_area_id": 9, "item_code": "EI1"},
     {"focus_area_id": 14, "item_code": "ED8"},
   ],
+  "condition_products": [
+    {"condition_key": "insomnia", "fs_product_name": "Magnesium Taurate", "rank": 0},
+  ],
 }
 
 
@@ -38,7 +41,10 @@ def _cx():
 def test_sync_counts_and_idempotent():
     cx = _cx()
     c = fs.sync_from_seed(cx, SEED)  # second run
-    assert c["products"] == 2 and c["focus_area_products"] == 2
+    assert c["products"] == 2
+    assert c["focus_area_products"] == 2
+    assert c["focus_area_items"] == 3
+    assert c["condition_products"] == 1
     assert cx.execute("SELECT COUNT(*) FROM fullscript_products").fetchone()[0] == 2
 
 
@@ -61,3 +67,49 @@ def test_product_columns_roundtrip():
     assert r["product_slug"] == "magnesium-taurate"
     assert r["best_ff"] == "Neuro Magnesium" and r["relation"] == "substitute"
     assert r["source"] == "seed" and r["active"] == 1
+
+
+def test_sync_never_touches_client_data_tables():
+    cx = _cx()
+    cx.execute("INSERT INTO fullscript_client_pins "
+               "(email, fs_product_name, note, pinned_by, pinned_at) "
+               "VALUES (?,?,?,?,?)",
+               ("client@example.com", "Magnesium Taurate", "note", "practitioner",
+                "2026-01-01"))
+    cx.execute("INSERT INTO fullscript_review_links "
+               "(review_id, fs_product_name, rank, created_at) VALUES (?,?,?,?)",
+               (1, "Magnesium Taurate", 0, "2026-01-01"))
+    cx.execute("INSERT INTO fullscript_clicks "
+               "(email, fs_product_name, origin, clicked_at) VALUES (?,?,?,?)",
+               ("client@example.com", "Magnesium Taurate", "portal", "2026-01-01"))
+    cx.commit()
+
+    fs.sync_from_seed(cx, {"products": [], "focus_area_products": [],
+                            "focus_area_items": []})
+
+    assert cx.execute("SELECT COUNT(*) FROM fullscript_client_pins").fetchone()[0] == 1
+    assert cx.execute("SELECT COUNT(*) FROM fullscript_review_links").fetchone()[0] == 1
+    assert cx.execute("SELECT COUNT(*) FROM fullscript_clicks").fetchone()[0] == 1
+
+
+def test_sync_replaces_condition_products():
+    cx = _cx()
+    cx.execute("INSERT INTO fullscript_condition_products "
+               "(condition_key, fs_product_name, rank) VALUES (?,?,?)",
+               ("stale_condition", "Stale Product", 0))
+    cx.commit()
+
+    c = fs.sync_from_seed(cx, {
+        "products": [], "focus_area_products": [], "focus_area_items": [],
+        "condition_products": [
+            {"condition_key": "insomnia", "fs_product_name": "Magnesium Taurate",
+             "rank": 0},
+        ],
+    })
+
+    assert c["condition_products"] == 1
+    rows = cx.execute("SELECT condition_key, fs_product_name FROM "
+                       "fullscript_condition_products").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["condition_key"] == "insomnia"
+    assert rows[0]["fs_product_name"] == "Magnesium Taurate"

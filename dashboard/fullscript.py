@@ -40,8 +40,11 @@ def init_tables(cx):
 
 
 def sync_from_seed(cx, seed):
-    """Idempotent full replace of the three reference tables. Pins, review links
-    and clicks are client data and are never touched."""
+    """Idempotent full replace of the four reference tables (fullscript_products,
+    fullscript_focus_area_products, fullscript_focus_area_items,
+    fullscript_condition_products). fullscript_client_pins,
+    fullscript_review_links and fullscript_clicks are client data and are
+    never touched."""
     cx.execute("DELETE FROM fullscript_products")
     cx.execute("DELETE FROM fullscript_focus_area_products")
     cx.execute("DELETE FROM fullscript_focus_area_items")
@@ -66,7 +69,12 @@ def sync_from_seed(cx, seed):
         cx.execute("INSERT INTO fullscript_focus_area_items "
                    "(focus_area_id, item_code) VALUES (?,?)",
                    (fi["focus_area_id"], fi["item_code"]))
+    for cp in seed.get("condition_products", []):
+        cx.execute("""INSERT INTO fullscript_condition_products
+            (condition_key, fs_product_name, rank) VALUES (?,?,?)""",
+            (cp["condition_key"], cp["fs_product_name"], cp.get("rank", 0)))
     cx.commit()
     return {"products": len(seed.get("products", [])),
             "focus_area_products": len(seed.get("focus_area_products", [])),
-            "focus_area_items": len(seed.get("focus_area_items", []))}
+            "focus_area_items": len(seed.get("focus_area_items", [])),
+            "condition_products": len(seed.get("condition_products", []))}
