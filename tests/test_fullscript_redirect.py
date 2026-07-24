@@ -136,6 +136,35 @@ def test_cross_client_isolation(client):
     assert [r["email"] for r in rows] == ["b@b.com"]
 
 
+def test_pinned_product_records_origin_pinned(client, tmp_path):
+    cx = sqlite3.connect(app_mod.LOG_DB)
+    cx.execute("INSERT INTO fullscript_client_pins "
+               "(email, fs_product_name, note, pinned_by, pinned_at) VALUES (?,?,?,?,?)",
+               ("a@b.com", "Mag Taurate", "keep", "glen", "2026-07-23"))
+    cx.commit()
+    cx.close()
+
+    r = client.get("/fs/TOKA/mag-taurate")
+
+    assert r.status_code == 302
+    rows = _clicks(app_mod.LOG_DB)
+    assert len(rows) == 1
+    assert rows[0]["fs_product_name"] == "Mag Taurate"
+    assert rows[0]["origin"] == "pinned"
+
+
+def test_non_pinned_product_records_origin_scan(client):
+    """No pin exists for this client/product, so the click must record 'scan',
+    the only other wired driver in this phase."""
+    r = client.get("/fs/TOKA/mag-taurate")
+
+    assert r.status_code == 302
+    rows = _clicks(app_mod.LOG_DB)
+    assert len(rows) == 1
+    assert rows[0]["fs_product_name"] == "Mag Taurate"
+    assert rows[0]["origin"] == "scan"
+
+
 def test_recording_failure_never_blocks_the_click(client, monkeypatch):
     """A broken click recorder must not cost the client their click. Analytics is
     strictly less important than the person trying to reach the dispensary, so

@@ -7706,8 +7706,20 @@ def fullscript_click_redirect(token, product_slug):
                 row = _fs.product_by_slug(cx, product_slug)
                 if email and row:
                     dest = _fullscript_dispensary_url()
+                    # Origin attribution: EXACT while only the `pinned` and `scan`
+                    # drivers are wired (mirrors candidates_for's Phase A1 scope) --
+                    # revisit this when `review`/`condition` land, since a product
+                    # surfaced by one of those would still be misreported as "scan"
+                    # here. A failed pins lookup must not cost the client their
+                    # click, so fall back to an empty origin rather than losing it.
+                    origin = ""
                     try:
-                        _fs.record_click(cx, email, row["name"], "")
+                        pinned_names = {p["name"] for p in _fs.pins_for_client(cx, email)}
+                        origin = "pinned" if row["name"] in pinned_names else "scan"
+                    except Exception:
+                        origin = ""
+                    try:
+                        _fs.record_click(cx, email, row["name"], origin)
                     except Exception:
                         pass
     except Exception:
@@ -20061,10 +20073,11 @@ def api_client_portal(token):
         except Exception as _e:
             print(f"[prl-supplement/payload] {_e!r}", flush=True)
     # Fullscript dispensary channel (flag-gated, best-effort), sibling of the
-    # PRL Supplement card above. The card's buy links are /fs/<token>/<slug> (Task 6),
-    # so the frontend needs this portal's own token even though every other card
-    # only needed the payload data itself.
-    payload["token"] = token
+    # PRL Supplement card above. The card's buy links are /fs/<token>/<slug> (Task 6);
+    # the frontend gets the token from its own module-level URL-derived `token`
+    # global (static/client-portal.html), not from the payload -- widening every
+    # portal response with a bearer token, even while this channel is dark, is
+    # exactly the regression this flag gate exists to prevent.
     payload["fullscript_enabled"] = _fullscript_enabled()
     if _fullscript_enabled():
         try:
@@ -21804,8 +21817,16 @@ def _fullscript_ff_view(best_ff, relation):
 
 
 def _fullscript_for(email, scan_date):
-    """The client's Fullscript channel card, or None (flag off / no candidates).
-    Best-effort: any error returns None, never raises."""
+    """The client's Fullscript channel card, or None (flag off / no scans / no
+    candidates). Best-effort: any error returns None, never raises.
+
+    Mirrors `_prl_supplement_for`'s date resolution exactly: resolve a single
+    scan date FIRST (distinct non-empty dates, most recent first; the caller's
+    `scan_date` wins if it's one of them), and only then read item codes for
+    that ONE date. Never collect item codes across every scan the client has
+    ever had -- that would let a years-old scan's item codes surface a product
+    under a "Matched from your scan" heading that names the CURRENT scan,
+    falsely attributing clinical content to a scan that never produced it."""
     if not _fullscript_enabled():
         return None
     try:
@@ -21814,17 +21835,18 @@ def _fullscript_for(email, scan_date):
             cx.row_factory = sqlite3.Row
             _fs.init_tables(cx)
             email_norm = (email or "").strip().lower()
+            dates = [r[0] for r in cx.execute(
+                "SELECT DISTINCT scan_date FROM scan_recommendations "
+                "WHERE email=? AND scan_date IS NOT NULL AND scan_date<>'' "
+                "ORDER BY scan_date DESC", (email_norm,)).fetchall()]
+            if not dates:
+                return None
             sd = (scan_date or "").strip()
-            if sd:
-                rows = cx.execute(
-                    "SELECT item_code FROM scan_recommendations "
-                    "WHERE email=? AND scan_date=? ORDER BY priority_rank",
-                    (email_norm, sd)).fetchall()
-            else:
-                rows = cx.execute(
-                    "SELECT item_code FROM scan_recommendations "
-                    "WHERE email=? ORDER BY scan_date DESC, priority_rank",
-                    (email_norm,)).fetchall()
+            picked = sd if (sd and sd in dates) else dates[0]
+            rows = cx.execute(
+                "SELECT item_code FROM scan_recommendations "
+                "WHERE email=? AND scan_date=? ORDER BY priority_rank",
+                (email_norm, picked)).fetchall()
             codes = [r["item_code"] for r in rows]
             cands = _fs.candidates_for(cx, email_norm, item_codes=codes)
         if not cands:

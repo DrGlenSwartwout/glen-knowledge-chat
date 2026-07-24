@@ -752,7 +752,11 @@ function fullscriptBodyHtml(fsData){
   // Only permit http(s) hrefs for the dispensary button; same defense-in-depth as
   // prlSupplementBodyHtml's local safeUrl above (no global safeUrl exists in this file).
   const safeUrl = u => { u = String(u||""); return /^https?:\/\//i.test(u) ? u : ""; };
-  const token = esc(fsData.token || "");
+  // Reuses the module-level `token` global (set once from the URL path near the
+  // top of this file) -- the server no longer echoes the portal token into the
+  // payload (that would widen every response with a bearer token even while this
+  // channel is dark), and static/client-portal.html already has this value.
+  const fsToken = esc(token);
   const groups = Array.isArray(fsData.groups) ? fsData.groups : [];
   let blocks = groups.map(g => {
     const items = (Array.isArray(g.products) ? g.products : []).map(p => {
@@ -760,14 +764,20 @@ function fullscriptBodyHtml(fsData){
       const ff = (p.ff && p.ff.name)
         ? `<span class="small muted"> · you also have <strong>${esc(p.ff.name)}</strong></span>` : "";
       const why = p.reason ? `<div class="small muted">${esc(p.reason)}</div>` : "";
-      return `<li><a href="/fs/${token}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}</li>`;
+      return `<li><a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}</li>`;
     }).join("");
     if(!items) return "";   // mirror can carry zero-product groups; don't render a bare heading
     return `<h3 class="small" style="margin:.2rem 0">${esc(g.heading||"")}</h3><ul>${items}</ul>`;
   }).join("");
   if(!blocks) blocks = `<p class="muted">No Fullscript matches yet.</p>`;
-  const btnHref = safeUrl(fsData.dispensary_url) || "https://us.fullscript.com/";
-  const btn = `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="margin-top:.5rem">Open my Fullscript dispensary</a>`;
+  // No unattributed fallback: a bare "https://us.fullscript.com/" link carries no
+  // dispensary attribution, so an order placed through it earns the practitioner
+  // nothing -- worse than showing no button at all. Render the CTA only when the
+  // server gave us a usable dispensary URL.
+  const btnHref = safeUrl(fsData.dispensary_url);
+  const btn = btnHref
+    ? `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="margin-top:.5rem">Open my Fullscript dispensary</a>`
+    : "";
   const micro = `<p class="small muted" style="margin-top:.4rem">Products I recommend but don't make. Ordering through my dispensary keeps everything in one place.</p>`;
   return `${blocks}${btn}${micro}`;
 }
@@ -2723,7 +2733,7 @@ function render(d, v){
   if (d.fullscript_enabled && d.fullscript) {
     html += `<div class="card fullscript-card">
       <h2>Fullscript</h2>
-      ${fullscriptBodyHtml(Object.assign({token: d.token || ""}, d.fullscript))}
+      ${fullscriptBodyHtml(d.fullscript)}
     </div>`;
   }
 

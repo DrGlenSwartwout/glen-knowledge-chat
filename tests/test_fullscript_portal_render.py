@@ -85,16 +85,23 @@ V = {"biofield": {"visible": True, "status": "confirmed", "blurred": False,
      "scan_date": "2026-07-01", "scan_dates": ["2026-07-01"],
      "layers": [{"n": 1, "title": "Surface", "meaning": "x"}]}}
 
-D_LIGHT = dict(BASE_D, token="lighttoken", fullscript_enabled=True, fullscript=FULLSCRIPT)
-D_DARK = dict(BASE_D, token="darktoken", fullscript_enabled=False)
-D_DARK_NO_KEY = dict(BASE_D, token="nokeytoken", fullscript_enabled=True)  # d.fullscript absent
+# No `token` field on any of these: the server no longer echoes the portal
+# bearer token into the payload (that widened every response, even dark ones --
+# see the app.py fix removing `payload["token"] = token`). The card's buy links
+# must come from the page's own module-level URL-derived `token` global instead,
+# so these fixtures exercise that real path -- the live_server fixture below is
+# addressed as /portal/<token>, and that IS the token the rendered links must
+# carry, proving the client reads it from the URL, not from d.token.
+D_LIGHT = dict(BASE_D, fullscript_enabled=True, fullscript=FULLSCRIPT)
+D_DARK = dict(BASE_D, fullscript_enabled=False)
+D_DARK_NO_KEY = dict(BASE_D, fullscript_enabled=True)  # d.fullscript absent
 # Flag OFF but the payload block IS present. Not reachable through today's
 # server wiring (_fullscript_for returns None when dark, so the key is never
 # set) -- which is precisely why it needs a test: without this case the
 # `d.fullscript_enabled &&` half of the gate is unpinned, and deleting it
 # leaves every other render test green. Verified: that mutation used to pass.
 D_DARK_FLAG_OFF_WITH_PAYLOAD = dict(
-    BASE_D, token="darkpayloadtoken", fullscript_enabled=False, fullscript=FULLSCRIPT)
+    BASE_D, fullscript_enabled=False, fullscript=FULLSCRIPT)
 
 DATA_BY_TOKEN = {
     "lighttoken": D_LIGHT,

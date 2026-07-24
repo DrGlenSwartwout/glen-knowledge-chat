@@ -199,8 +199,11 @@ rest: the more specific the evidence about this particular client, the higher it
 Every candidate carries its FF-equivalent view via the same `_prl_ff_view` shape, so Glen's own
 formula renders beside the third-party product in every case.
 
-Drivers are separate functions with one signature so adding a fifth later is a function plus a
-registry entry, not a resolver rewrite.
+Drivers are separate functions with one signature, but `candidates_for` invokes each one via a
+hardcoded loop (pins, then focus-area-items), not a registry it iterates -- so wiring a fifth driver
+(`condition` or `review`) means adding both the driver function AND a new loop inside `candidates_for`
+itself. Generalising that invocation into an actual registry so a new driver is purely additive is a
+candidate refactor for when the `condition` driver lands, not something already built.
 
 ## Portal surface
 
@@ -270,10 +273,12 @@ stable and readable. `fullscript_products.name` stays the primary key so the dri
 Both forms are constructed from a hardcoded `us.fullscript.com` base plus config, so the route has no
 attacker-reachable destination at all.
 
-**The destination is read from the database row, never from the request.** Additionally the URL is
-host-checked against a Fullscript allowlist before redirecting. Together these make the route
-structurally incapable of becoming an open redirect. Failure to record a click must not block the
-redirect.
+**The destination is read from the database row, never from the request.** There is no allowlist
+check -- the actual protection is that the destination is always built from a hardcoded
+`us.fullscript.com` base plus server-side config, and is never derived from request input or from
+any database column (product_slug, url, etc.). That makes the route structurally incapable of
+becoming an open redirect: there is no attacker-reachable path into `dest` for an allowlist to need
+to catch. Failure to record a click must not block the redirect.
 
 ## Seed generation
 
