@@ -20771,14 +20771,35 @@ def api_console_client_document_approve(doc_id):
         draft = _dx.get_for_document(cx, doc_id)
         if not draft:
             return jsonify({"ok": False, "error": "not found"}), 404
+        if draft["status"] != "ai_draft":
+            # Already approved (or rejected): write nothing, same idempotent
+            # response as before. Checked BEFORE any live write, so a repeat
+            # call after a successful approval never re-runs the writes below.
+            return jsonify({"ok": True, "already": True,
+                            "status": draft["status"]}), 200
         narrative = body.get("narrative_md")
         if narrative is None:
             narrative = draft["narrative_md"]
-        # confirm() only flips an ai_draft, so a repeat approval writes nothing.
-        if not _dx.confirm(cx, draft["id"], narrative, reviewed_by):
-            return jsonify({"ok": True, "already": True,
-                            "status": draft["status"]}), 200
+        # ORDER MATTERS: live writes happen BEFORE confirm(), not after.
+        # confirm(), set_attr() and set_fact() each cx.commit() independently
+        # -- there is no shared transaction for the `with db.connect(...)` to
+        # roll back -- so whichever of them runs LAST is the one a mid-loop
+        # exception leaves undone. The original plan had confirm() run
+        # FIRST: a failure partway through the write loop below (e.g. a
+        # proposed fact missing fact_key reaching set_fact(None), which
+        # raises IntegrityError on the NOT NULL column) would then leave the
+        # draft already `confirmed` -- narrative already live to the client
+        # -- with only some attributes/facts written, and confirm()'s
+        # compare-and-set (`status='ai_draft'`) means a retry can never
+        # re-open it to finish the job. Running the writes first and
+        # confirm() last means a failure here leaves the draft `ai_draft`:
+        # nothing has published, and a retry safely re-runs every write
+        # (set_attr is UNIQUE(email,field,value_norm) + INSERT OR IGNORE;
+        # set_fact is an upsert on (email,fact_key)) and then confirms. Do
+        # NOT restore the plan's confirm()-first ordering -- that reintroduces
+        # an unrecoverable partial-write state reachable by one bad proposal.
         written = {"attributes": 0, "facts": 0}
+        skipped_facts = 0
         for i, a in enumerate(draft["attributes"]):
             if i not in keep_attrs:
                 continue
@@ -20788,10 +20809,30 @@ def api_console_client_document_approve(doc_id):
         for i, f in enumerate(draft["facts"]):
             if i not in keep_facts:
                 continue
-            _cf.set_fact(cx, draft["email"], f.get("fact_key"),
-                         bool(f.get("value")))
+            fact_key = f.get("fact_key")
+            # client_facts is a controlled vocabulary (ALLOWED_CLIENT_FACT_KEYS,
+            # same gate the portal client-fact route enforces). A model-proposed
+            # key outside it -- or a malformed item with no string fact_key at
+            # all -- must never reach set_fact(): set_fact is an UPSERT, so a
+            # bad value on an in-vocabulary-shaped-but-wrong key would silently
+            # overwrite a client-reported fact that drives support-program
+            # logic, and a missing fact_key raises IntegrityError (NOT NULL)
+            # and would abort the whole approval. Skip and keep going instead.
+            if not isinstance(fact_key, str) or fact_key not in ALLOWED_CLIENT_FACT_KEYS:
+                skipped_facts += 1
+                print(f"api_console_client_document_approve: doc_id={doc_id} "
+                      f"skipped out-of-vocabulary/invalid fact_key="
+                      f"{fact_key!r}", flush=True)
+                continue
+            _cf.set_fact(cx, draft["email"], fact_key, bool(f.get("value")))
             written["facts"] += 1
-    return jsonify({"ok": True, "already": False, "written": written}), 200
+        # confirm() only flips an ai_draft, so a same-request race with a
+        # concurrent approval still resolves to the idempotent response.
+        if not _dx.confirm(cx, draft["id"], narrative, reviewed_by):
+            return jsonify({"ok": True, "already": True,
+                            "status": "confirmed"}), 200
+    return jsonify({"ok": True, "already": False, "written": written,
+                    "skipped_facts": skipped_facts}), 200
 
 
 @app.route("/api/console/client-document/<int:doc_id>/reject", methods=["POST"])

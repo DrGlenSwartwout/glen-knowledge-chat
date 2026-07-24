@@ -1,5 +1,6 @@
 import importlib, sqlite3, sys
 from pathlib import Path
+import pytest
 from dashboard import client_documents as cd
 from dashboard import document_extractions as dx
 
@@ -212,3 +213,124 @@ def test_console_document_file_nosniff_header_present(tmp_path, monkeypatch):
     r = appmod.app.test_client().get(
         f"/admin/client-document?id={doc_id}&key=test-secret")
     assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_out_of_vocabulary_fact_key_is_skipped_not_written(tmp_path, monkeypatch):
+    """A model-proposed fact_key outside ALLOWED_CLIENT_FACT_KEYS must never
+    reach client_facts -- but the rest of the approval (attributes, confirm)
+    still succeeds."""
+    appmod = _app(tmp_path, monkeypatch)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    doc_id = cd.put(cx, "c@x.com", b"%PDF", "labs.pdf", "application/pdf",
+                    "console")["id"]
+    dx.put_draft(cx, doc_id, "c@x.com", "Draft narrative.",
+                 attributes=[{"field": "conditions", "value": "Glaucoma",
+                              "source_quote": "q"}],
+                 facts=[{"fact_key": "has_melanoma", "value": True,
+                         "source_quote": "q"}],
+                 unstructured=[], model="m")
+    cx.commit(); cx.close()
+    r = _approve(appmod, doc_id, attributes=[0], facts=[0])
+    assert r.status_code == 200
+    got = r.get_json()
+    assert got["written"]["facts"] == 0
+    assert got["written"]["attributes"] == 1
+    assert got["skipped_facts"] == 1
+    from dashboard import client_facts as cf
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    assert cf.get_facts(cx, "c@x.com") == {}
+    assert dx.get_for_document(cx, doc_id)["status"] == "confirmed"
+
+
+def test_missing_fact_key_is_skipped_not_500(tmp_path, monkeypatch):
+    """A fact item with no fact_key must be skipped, never reach set_fact
+    (which would raise IntegrityError on the NOT NULL column)."""
+    appmod = _app(tmp_path, monkeypatch)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    doc_id = cd.put(cx, "c@x.com", b"%PDF", "labs.pdf", "application/pdf",
+                    "console")["id"]
+    dx.put_draft(cx, doc_id, "c@x.com", "Draft narrative.",
+                 attributes=[], facts=[{"value": True, "source_quote": "q"}],
+                 unstructured=[], model="m")
+    cx.commit(); cx.close()
+    r = _approve(appmod, doc_id, attributes=[], facts=[0])
+    assert r.status_code == 200
+    got = r.get_json()
+    assert got["written"]["facts"] == 0
+    assert got["skipped_facts"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert dx.get_for_document(cx, doc_id)["status"] == "confirmed"
+
+
+def test_a_failed_write_leaves_the_draft_ai_draft_and_narrative_not_live(
+        tmp_path, monkeypatch):
+    """Reorder-under-test: if a live write raises partway through, the draft
+    must still be ai_draft (not confirmed) -- proving writes run BEFORE
+    confirm()."""
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    from dashboard import canonical_tags as ct
+
+    def _boom(cx, email, field, value, *, source):
+        raise RuntimeError("simulated write failure")
+
+    monkeypatch.setattr(ct, "set_attr", _boom)
+    appmod.app.testing = True
+    with pytest.raises(RuntimeError):
+        _approve(appmod, doc_id)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    got = dx.get_for_document(cx, doc_id)
+    assert got["status"] == "ai_draft"
+    assert got["narrative_md"] == "Draft narrative."
+
+
+def test_retry_after_a_failed_write_completes_successfully(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    from dashboard import canonical_tags as ct
+    real_set_attr = ct.set_attr
+    calls = {"n": 0}
+
+    def _boom_once(cx, email, field, value, *, source):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated write failure")
+        return real_set_attr(cx, email, field, value, source=source)
+
+    monkeypatch.setattr(ct, "set_attr", _boom_once)
+    appmod.app.testing = True
+    with pytest.raises(RuntimeError):
+        _approve(appmod, doc_id)
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert dx.get_for_document(cx, doc_id)["status"] == "ai_draft"
+
+    monkeypatch.setattr(ct, "set_attr", real_set_attr)
+    r = _approve(appmod, doc_id)
+    assert r.status_code == 200
+    got = r.get_json()
+    assert got["written"]["attributes"] == 2
+    assert got["written"]["facts"] == 1
+    cx = sqlite3.connect(appmod.LOG_DB)
+    d = dx.get_for_document(cx, doc_id)
+    assert d["status"] == "confirmed"
+    rows = cx.execute("SELECT field FROM person_attributes "
+                      "WHERE email='c@x.com' ORDER BY field").fetchall()
+    assert [r[0] for r in rows] == ["body_systems", "conditions"]
+    from dashboard import client_facts as cf
+    cx.row_factory = sqlite3.Row
+    assert cf.get_facts(cx, "c@x.com")["on_areds2"] is True
+
+
+def test_in_vocabulary_fact_still_writes_exactly_as_before(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    doc_id = _seed(appmod)
+    r = _approve(appmod, doc_id)
+    assert r.status_code == 200
+    got = r.get_json()
+    assert got["written"]["facts"] == 1
+    assert got["skipped_facts"] == 0
+    from dashboard import client_facts as cf
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cx.row_factory = sqlite3.Row
+    assert cf.get_facts(cx, "c@x.com")["on_areds2"] is True
