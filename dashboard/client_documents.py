@@ -105,6 +105,35 @@ def set_extract_status(cx, doc_id, status):
     cx.commit()
 
 
+def claim_for_extraction(cx, doc_id):
+    """Atomically claim a pending document for extraction. Returns True iff
+    THIS call won the claim.
+
+    Production runs multiple web instances against one database, so a
+    plain SELECT-then-UPDATE (check the status, then set it) is a race: two
+    instances can both see 'pending' in the SELECT and both proceed to
+    extract the same document -- duplicate paid Claude calls and racing
+    writes into the draft store. The guard must therefore live INSIDE the
+    UPDATE's WHERE clause so it is evaluated atomically against whatever is
+    committed at the instant the UPDATE executes, not against a stale read
+    from a moment earlier. This exact class of bug (SELECT-then-act instead
+    of a WHERE-guarded statement) was already found and fixed twice
+    elsewhere in this feature (see document_extractions.put_draft and
+    portal_identity.py) -- do not "simplify" this back into a SELECT first.
+
+    Note: if a process dies mid-extraction, the document is left stuck in
+    'extracting' and needs a manual requeue (set_extract_status back to
+    'pending'). That is an accepted limitation here -- no lease/timeout
+    system is built for it.
+    """
+    init_table(cx)
+    cur = cx.execute(
+        "UPDATE client_documents SET extract_status='extracting' "
+        "WHERE id=? AND extract_status='pending'", (doc_id,))
+    cx.commit()
+    return cur.rowcount > 0
+
+
 def pending(cx, limit=20):
     init_table(cx)
     rows = cx.execute(
