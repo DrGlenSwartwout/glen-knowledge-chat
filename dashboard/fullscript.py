@@ -163,3 +163,22 @@ def candidates_for(cx, email, item_codes=None):
     # can insert out of priority order. Don't delete as dead code -- see the
     # ORIGIN_PRIORITY ordering-contract test in tests/test_fullscript_resolver.py.
     return sorted(found.values(), key=lambda c: ORIGIN_PRIORITY[c["origin"]])
+
+
+def product_by_slug(cx, product_slug):
+    """Active product row for a Fullscript product slug, or None."""
+    s = (product_slug or "").strip().lower()
+    if not s:
+        return None
+    r = cx.execute("SELECT * FROM fullscript_products "
+                   "WHERE LOWER(product_slug) = ? AND active = 1", (s,)).fetchone()
+    return dict(r) if r else None
+
+
+def record_click(cx, email, fs_product_name, origin=""):
+    from datetime import datetime, timezone
+    cx.execute("INSERT INTO fullscript_clicks "
+               "(email, fs_product_name, origin, clicked_at) VALUES (?,?,?,?)",
+               ((email or "").strip().lower(), fs_product_name, origin or "",
+                datetime.now(timezone.utc).isoformat(timespec="seconds")))
+    cx.commit()

@@ -7687,6 +7687,34 @@ def email_click_redirect(token, source, slug):
     return redirect(dest, code=302)
 
 
+@app.route("/fs/<token>/<product_slug>", methods=["GET"])
+def fullscript_click_redirect(token, product_slug):
+    """Tracked OUTBOUND redirect into Glen's Fullscript dispensary. Identity is
+    server-resolved from the portal token only. The destination is built from a
+    hardcoded base + config + the DB row and NEVER from the request, so this
+    route cannot be turned into an open redirect. A recording failure must not
+    block the redirect."""
+    dest = "/"
+    try:
+        from dashboard import fullscript as _fs
+        with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            portal = _portal_record_for(cx, token)
+            if portal:
+                email = (portal.get("email") or "").strip().lower()
+                row = _fs.product_by_slug(cx, product_slug)
+                if email and row:
+                    dest = _fullscript_dispensary_url()
+                    try:
+                        _fs.record_click(cx, email, row["name"], "")
+                    except Exception:
+                        pass
+    except Exception:
+        dest = "/"
+    return redirect(dest, code=302)
+
+
 @app.route("/begin/product-data/<slug>")
 def begin_product_data(slug):
     p = _get_product(slug)
