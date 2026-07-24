@@ -29,6 +29,9 @@ def _grant(appmod, email):
 def test_serves_pdf_and_audio_when_entitled(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     tok = _grant(appmod, "c@x.com")
+    # force the deterministic local-fallback path -- never let this test reach
+    # a real R2 client (which would otherwise be constructed with live creds).
+    monkeypatch.setattr(appmod, "_r2", lambda: _FakeR2(raise_exc=Exception("no r2 in test")))
     c = appmod.app.test_client()
     p = c.get(f"/api/portal/{tok}/library/healing-glaucoma-starter/pdf")
     assert p.status_code == 200 and p.data.startswith(b"%PDF")
@@ -159,6 +162,9 @@ def test_cross_client_entitlement_isolation(tmp_path, monkeypatch):
     """A's grant must not leak to B's token — the library asset route is
     email-keyed authorization, not merely 'any valid portal token'."""
     appmod = _app(tmp_path, monkeypatch)
+    # force the deterministic local-fallback path -- never let this test reach
+    # a real R2 client (which would otherwise be constructed with live creds).
+    monkeypatch.setattr(appmod, "_r2", lambda: _FakeR2(raise_exc=Exception("no r2 in test")))
     from dashboard import client_portal as cp, portal_library as lib
     cx = sqlite3.connect(appmod.LOG_DB)
     cp.init_client_portal_table(cx); lib.init_table(cx)
