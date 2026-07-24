@@ -11,6 +11,8 @@ value cannot silently acquire a write path later.
 import json
 from datetime import datetime, timezone
 
+from dashboard import db
+
 _COLS = ("id", "document_id", "email", "status", "narrative_md",
          "attributes_json", "facts_json", "unstructured_json", "model",
          "created_at", "reviewed_at", "reviewed_by")
@@ -65,22 +67,56 @@ def put_draft(cx, document_id, email, narrative_md, attributes, facts,
         "DELETE FROM client_document_extractions "
         "WHERE document_id=? AND status != 'confirmed'", (document_id,))
     existing = cx.execute(
-        "SELECT id FROM client_document_extractions WHERE document_id=?",
+        "SELECT id, status FROM client_document_extractions WHERE document_id=?",
         (document_id,)).fetchone()
     if existing:
-        # Only a confirmed row could have survived the guarded DELETE above.
+        existing_id, existing_status = existing
+        if existing_status == "confirmed":
+            cx.commit()
+            return existing_id
+        # A non-confirmed row survived the guarded DELETE above: a concurrent
+        # put_draft call for this SAME document_id committed its own
+        # replacement row in the gap between our DELETE and this SELECT. Both
+        # callers are extracting the same source document, so last-write-wins
+        # is fine -- but retrying here would just re-race, and returning this
+        # id while quietly dropping our own payload (with no trace) would be
+        # dishonest. Make the drop visible and hand back the row that is
+        # actually there.
+        print(f"put_draft: race on document_id={document_id} -- a concurrent "
+              f"writer's '{existing_status}' row (id={existing_id}) already "
+              f"exists; this call's payload was NOT written", flush=True)
         cx.commit()
-        return existing[0]
-    cx.execute(
-        "INSERT INTO client_document_extractions"
-        "(document_id, email, status, narrative_md, attributes_json,"
-        " facts_json, unstructured_json, model, created_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
-        (document_id, (email or "").strip().lower(), "ai_draft",
-         narrative_md or "", json.dumps(attributes or []),
-         json.dumps(facts or []), json.dumps(unstructured or []),
-         model or "", _now()))
-    cx.commit()
+        return existing_id
+    try:
+        cx.execute(
+            "INSERT INTO client_document_extractions"
+            "(document_id, email, status, narrative_md, attributes_json,"
+            " facts_json, unstructured_json, model, created_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (document_id, (email or "").strip().lower(), "ai_draft",
+             narrative_md or "", json.dumps(attributes or []),
+             json.dumps(facts or []), json.dumps(unstructured or []),
+             model or "", _now()))
+        cx.commit()
+    except db.IntegrityError:
+        # Lost the UNIQUE(document_id) race: another writer's INSERT landed
+        # between our SELECT above and this INSERT. Postgres aborts the
+        # transaction on the failed statement, so roll back before issuing
+        # any further query on this connection (see household_holds.py for
+        # the same shape). Resolve to whatever is there now instead of
+        # propagating the exception -- same last-write-wins rationale and
+        # visible-drop logging as the branch above.
+        cx.rollback()
+        row = cx.execute(
+            "SELECT id, status FROM client_document_extractions "
+            "WHERE document_id=?", (document_id,)).fetchone()
+        if row is None:
+            raise
+        print(f"put_draft: lost UNIQUE race on document_id={document_id} "
+              f"during insert -- a concurrent writer's '{row[1]}' row "
+              f"(id={row[0]}) already exists; this call's payload was NOT "
+              f"written", flush=True)
+        return row[0]
     row = cx.execute("SELECT id FROM client_document_extractions "
                      "WHERE document_id=?", (document_id,)).fetchone()
     return row[0]

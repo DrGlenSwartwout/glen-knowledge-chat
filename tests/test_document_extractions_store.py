@@ -151,6 +151,121 @@ def test_put_draft_guards_the_delete_itself_not_a_preceding_select():
             "the TOCTOU shape the fix removed")
 
 
+class _RaceInjector:
+    """Wraps a connection to inject a competing writer's fully-committed row
+    at a precise point in put_draft's own statement sequence -- simulating
+    another connection's commit landing in a specific gap, deterministically
+    and without real thread concurrency. Same technique as _SqlLog above,
+    extended to also perform an action (not just record), so it can recreate
+    the exact POST-CONDITION a genuine race leaves behind."""
+
+    def __init__(self, cx, trigger_upper_prefix, inject):
+        self._cx = cx
+        self._trigger = trigger_upper_prefix
+        self._inject = inject
+        self._fired = False
+
+    def execute(self, sql, params=()):
+        cur = self._cx.execute(sql, params)
+        if not self._fired and sql.strip().upper().startswith(self._trigger):
+            self._fired = True
+            self._inject(self._cx)
+        return cur
+
+    def commit(self):
+        self._cx.commit()
+
+    def rollback(self):
+        self._cx.rollback()
+
+
+def _insert_competing_draft(cx, document_id, narrative_md, email="racer@x.com"):
+    cx.execute(
+        "INSERT INTO client_document_extractions"
+        "(document_id, email, status, narrative_md, attributes_json,"
+        " facts_json, unstructured_json, model, created_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?)",
+        (document_id, email, "ai_draft", narrative_md, "[]", "[]", "[]",
+         "racer-model", "2020-01-01T00:00:00+00:00"))
+    cx.commit()
+
+
+def test_put_draft_defers_and_logs_when_a_non_confirmed_row_wins_the_race(capsys):
+    """Drives the non-confirmed-survivor branch (the core finding): a
+    competing writer's row appears in the gap between our guarded DELETE and
+    our own SELECT. Per spec this is last-write-wins (both writers are
+    extracting the same document) -- the call must not raise, must return the
+    id that is actually in the table (the racer's), and must NOT silently
+    discard this call's own payload while reporting success: it must log
+    that the payload was dropped.
+
+    Honest limitation: this does not exercise a genuine two-thread/two-
+    connection race -- sqlite3 in a single process has no real scheduler to
+    land a commit inside a gap. It instead injects the competing row
+    synchronously right after the guarded DELETE executes, which reproduces
+    the exact post-condition a real race leaves behind (a non-confirmed row
+    present when put_draft's own status-SELECT runs). This is the same
+    technique test_put_draft_guards_the_delete_itself_not_a_preceding_select
+    already uses for a sibling gap, extended to actually inject a row rather
+    than just observe statement order.
+    """
+    cx = _cx()
+    eid = dx.put_draft(cx, 7, "c@x.com", "draft", [], [], [], "m")
+    dx.reject(cx, eid, "glen")  # non-confirmed -> the guarded DELETE clears it
+
+    racer = _RaceInjector(
+        cx, "DELETE",
+        lambda underlying: _insert_competing_draft(underlying, 7, "racer's payload"))
+    result_id = dx.put_draft(racer, 7, "c@x.com", "our payload", [], [], [], "our-model")
+
+    logged = capsys.readouterr().out
+    assert "race" in logged.lower()
+    assert "document_id=7" in logged
+    assert "NOT written" in logged
+
+    got = dx.get_for_document(cx, 7)
+    assert got["id"] == result_id
+    assert got["narrative_md"] == "racer's payload"
+    assert got["email"] == "racer@x.com"
+    rows = cx.execute("SELECT COUNT(*) FROM client_document_extractions "
+                      "WHERE document_id=7").fetchone()
+    assert rows[0] == 1
+
+
+def test_put_draft_resolves_unique_violation_on_insert_without_raising(capsys):
+    """Drives the second required fix: a competing INSERT lands in the gap
+    between our own 'no survivor' SELECT and our own INSERT, so our INSERT
+    hits the UNIQUE(document_id) index and must not propagate as an unhandled
+    exception. Must resolve deterministically to the row that exists and log
+    that this call's payload was not written.
+
+    Honest limitation: same as above -- this recreates the post-condition of
+    a real race (a row appearing immediately before our INSERT attempts to
+    claim the same document_id) rather than a true concurrent interleaving,
+    which sqlite3 in one process cannot schedule.
+    """
+    cx = _cx()
+    # No prior row for document_id=9, so put_draft's DELETE is a no-op and its
+    # own SELECT finds nothing -- the code proceeds to the try/INSERT branch.
+    racer = _RaceInjector(
+        cx, "SELECT",
+        lambda underlying: _insert_competing_draft(underlying, 9, "racer's payload"))
+    result_id = dx.put_draft(racer, 9, "c@x.com", "our payload", [], [], [], "our-model")
+
+    logged = capsys.readouterr().out
+    assert "unique" in logged.lower() or "race" in logged.lower()
+    assert "document_id=9" in logged
+    assert "NOT written" in logged
+
+    got = dx.get_for_document(cx, 9)
+    assert got["id"] == result_id
+    assert got["narrative_md"] == "racer's payload"
+    assert got["email"] == "racer@x.com"
+    rows = cx.execute("SELECT COUNT(*) FROM client_document_extractions "
+                      "WHERE document_id=9").fetchone()
+    assert rows[0] == 1
+
+
 def test_put_draft_replaces_a_rejected_document():
     """Rejection must not permanently block re-extraction (re-queuing)."""
     cx = _cx()
