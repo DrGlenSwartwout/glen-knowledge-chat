@@ -20061,7 +20061,10 @@ def api_client_portal(token):
         except Exception as _e:
             print(f"[prl-supplement/payload] {_e!r}", flush=True)
     # Fullscript dispensary channel (flag-gated, best-effort), sibling of the
-    # PRL Supplement card above.
+    # PRL Supplement card above. The card's buy links are /fs/<token>/<slug> (Task 6),
+    # so the frontend needs this portal's own token even though every other card
+    # only needed the payload data itself.
+    payload["token"] = token
     payload["fullscript_enabled"] = _fullscript_enabled()
     if _fullscript_enabled():
         try:
