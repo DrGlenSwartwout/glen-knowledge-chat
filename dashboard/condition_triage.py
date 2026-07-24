@@ -76,6 +76,46 @@ def resolve_programs(condition, answers):
     return [_E] if field_loss else [_E, _N]         # not sure -> field-loss tiebreak
 
 
+def _dry_eye_facts(answers):
+    """The two client facts that drive the dry-eye program's modifiers
+    (see condition_programs seed: aqueous_deficiency, severe).
+
+    aqueous_deficiency defaults TRUE when unanswered (client_default: true --
+    assume aqueous tear deficiency is present unless the client says
+    otherwise), driven by either the Sjogren's-triad question ("Do you also
+    have dry mouth or vaginal dryness?", answers["sjogrens"]) or a direct
+    "not enough tears" option (answers["not_enough_tears"]). An explicit
+    "no" on the direct question (and no corroborating Sjogren's-triad "yes")
+    overrides the default to False.
+
+    severe defaults FALSE when unanswered (client_default: false -- only
+    when the client reports it), driven by answers["severe"]
+    ("Is your dry eye severe?")."""
+    a = answers or {}
+    sjogrens = bool(a.get("sjogrens"))
+    direct = a.get("not_enough_tears")
+    if sjogrens or direct is True:
+        aqueous = True
+    elif direct is False:
+        aqueous = False
+    else:
+        aqueous = True  # unanswered -> assume present (client_default: true)
+    return {"aqueous_deficiency": aqueous, "severe": bool(a.get("severe"))}
+
+
+def resolve_client_facts(condition, answers):
+    """client_facts dict (for condition_programs.resolve_program_items'
+    client_facts= kwarg) implied by a condition's triage answers. Only
+    dry-eye has client-reported modifiers today; every other condition
+    returns {} (resolve_program_items then simply applies no client-reported
+    modifier, which is a no-op for programs -- like glaucoma's -- that don't
+    define any)."""
+    condition = (condition or "").strip().lower()
+    if condition == "dry-eye":
+        return _dry_eye_facts(answers)
+    return {}
+
+
 def _safe_int(v, default=0):
     try:
         return int(v)
@@ -121,6 +161,7 @@ def seed_from_triage(cx, email, condition, answers):
     email = (email or "").strip().lower()
     condition = (condition or "").strip().lower()
     keys = resolve_programs(condition, answers)
+    facts = resolve_client_facts(condition, answers)
     upsert_triage(cx, email, condition, answers, keys)
     _re.clear_events(cx, email, "condition", condition)          # replace prior seed
     seeded, seen = [], set()
@@ -128,7 +169,7 @@ def seed_from_triage(cx, email, condition, answers):
         prog = _cp.get(cx, k)
         if not prog:
             continue
-        for it in _cp.resolve_program_items(prog, audience="client"):
+        for it in _cp.resolve_program_items(prog, audience="client", client_facts=facts):
             slug = (it or {}).get("slug")
             if not slug or slug in seen:
                 continue

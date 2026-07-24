@@ -315,21 +315,39 @@
           ]
         },
         {
-          "slug": "moisturize",
-          "name": "Moisturize"
-        },
-        {
           "slug": "wholomega",
           "name": "WholOmega",
           "dose": "4 capsules/day"
+        }
+      ],
+      "modifiers": [
+        {
+          "when": "aqueous_deficiency",
+          "action": "add",
+          "source": "client-reported",
+          "client_default": true,
+          "items": [
+            {
+              "slug": "moisturize",
+              "name": "Moisturize"
+            }
+          ]
         },
         {
-          "slug": "moisture-eyes-night-oil",
-          "name": "Moisture Eyes Night Oil",
-          "alts": [
+          "when": "severe",
+          "action": "add",
+          "source": "client-reported",
+          "client_default": false,
+          "items": [
             {
-              "slug": "moisture-eyes-night-drops",
-              "name": "Moisture Eyes Night Drops"
+              "slug": "moisture-eyes-night-oil",
+              "name": "Moisture Eyes Night Oil",
+              "alts": [
+                {
+                  "slug": "moisture-eyes-night-drops",
+                  "name": "Moisture Eyes Night Drops"
+                }
+              ]
             }
           ]
         }

@@ -208,3 +208,99 @@ def test_ensure_program_never_overwrites_operator_edit(tmp_db):
     assert got["label"] == "Vision Improvement (edited)"
     assert got["consult_recommended"] is True
     assert got["items"] == [{"slug": "operator-swap", "name": "Operator Swap"}]
+
+
+# ---------------------------------------------------------------------------
+# migrate_dry_eye_modifiers: one-time, marker-guarded restructure for stores
+# seeded long ago with the OLD flat dry-eye shape (moisturize and
+# moisture-eyes-night-oil as unconditional base items).
+# ---------------------------------------------------------------------------
+
+OLD_DRY_EYE_ITEMS = [
+    {"slug": "aces-eye-drops", "name": "ACES Eye Drops",
+     "alts": [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]},
+    {"slug": "moisturize", "name": "Moisturize"},
+    {"slug": "wholomega", "name": "WholOmega", "dose": "4 capsules/day"},
+    {"slug": "moisture-eyes-night-oil", "name": "Moisture Eyes Night Oil",
+     "alts": [{"slug": "moisture-eyes-night-drops", "name": "Moisture Eyes Night Drops"}]},
+]
+
+
+def _seed_old_shape_dry_eye(cx):
+    cp.init_table(cx)
+    cp.upsert(cx, "dry-eye", "Dry Eye", False, OLD_DRY_EYE_ITEMS)
+
+
+def test_migrate_dry_eye_modifiers_rewrites_old_shape_to_base_plus_modifiers(tmp_db):
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+
+    cp.migrate_dry_eye_modifiers(cx)
+
+    got = cp.get(cx, "dry-eye")
+    assert [it["slug"] for it in got["items"]] == ["aces-eye-drops", "wholomega"]
+    aces = got["items"][0]
+    assert aces["alts"] == [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]
+    wholomega = got["items"][1]
+    assert wholomega["dose"] == "4 capsules/day"
+
+    mods = {m["when"]: m for m in got["modifiers"]}
+    assert set(mods) == {"aqueous_deficiency", "severe"}
+
+    aq = mods["aqueous_deficiency"]
+    assert aq["action"] == "add"
+    assert aq["source"] == "client-reported"
+    assert aq["client_default"] is True
+    assert aq["items"] == [{"slug": "moisturize", "name": "Moisturize"}]
+
+    sev = mods["severe"]
+    assert sev["action"] == "add"
+    assert sev["source"] == "client-reported"
+    assert sev["client_default"] is False
+    assert sev["items"] == [
+        {"slug": "moisture-eyes-night-oil", "name": "Moisture Eyes Night Oil",
+         "alts": [{"slug": "moisture-eyes-night-drops", "name": "Moisture Eyes Night Drops"}]},
+    ]
+
+
+def test_migrate_dry_eye_modifiers_second_call_is_noop(tmp_db):
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+    cp.migrate_dry_eye_modifiers(cx)
+    first = cp.get(cx, "dry-eye")
+
+    cp.migrate_dry_eye_modifiers(cx)
+    second = cp.get(cx, "dry-eye")
+    assert second["items"] == first["items"]
+    assert second["modifiers"] == first["modifiers"]
+    assert second["updated_at"] == first["updated_at"]  # upsert never re-ran
+
+
+def test_migrate_dry_eye_modifiers_marker_holds_after_operator_edit(tmp_db):
+    """Prove the migration runs AT MOST ONCE EVER: once an operator deletes an
+    item via the console editor (upsert), a later migration call must NEVER
+    resurrect it."""
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+    cp.migrate_dry_eye_modifiers(cx)
+
+    # Operator deletes the severe modifier's item entirely via the console.
+    edited = cp.get(cx, "dry-eye")
+    cp.upsert(cx, "dry-eye", edited["label"], edited["consult_recommended"],
+              edited["items"], modifiers=[m for m in edited["modifiers"]
+                                          if m["when"] != "severe"])
+
+    cp.migrate_dry_eye_modifiers(cx)  # third call overall
+
+    got = cp.get(cx, "dry-eye")
+    assert {m["when"] for m in got["modifiers"]} == {"aqueous_deficiency"}
+
+
+def test_migrate_dry_eye_modifiers_noop_when_program_absent(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.migrate_dry_eye_modifiers(cx)  # must not raise
+    assert cp.get(cx, "dry-eye") is None
+    # marker recorded even though there was nothing to migrate
+    cp.migrate_dry_eye_modifiers(cx)
+    assert cp.get(cx, "dry-eye") is None

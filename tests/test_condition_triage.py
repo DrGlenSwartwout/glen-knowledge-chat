@@ -109,6 +109,60 @@ def test_seed_from_triage_skips_do_not_recommend_slugs():
     assert "neuroprotect" in prods
 
 
+def _seed_dry_eye_program(cx):
+    cp.upsert(cx, "dry-eye", "Dry Eye", False,
+              [{"slug": "aces-eye-drops", "name": "ACES Eye Drops"},
+               {"slug": "wholomega", "name": "WholOmega", "dose": "4 capsules/day"}],
+              modifiers=[
+                  {"when": "aqueous_deficiency", "action": "add",
+                   "source": "client-reported", "client_default": True,
+                   "items": [{"slug": "moisturize", "name": "Moisturize"}]},
+                  {"when": "severe", "action": "add",
+                   "source": "client-reported", "client_default": False,
+                   "items": [{"slug": "moisture-eyes-night-oil",
+                              "name": "Moisture Eyes Night Oil"}]},
+              ])
+
+
+def test_dry_eye_triage_seeds_moisturize_when_sjogrens_reported():
+    cx = _cx()
+    _seed_dry_eye_program(cx)
+    result = ct.seed_from_triage(cx, "de-a@x.com", "dry-eye", {"sjogrens": True})
+    assert result["programs"] == ["dry-eye"]
+    assert "moisturize" in result["seeded"]
+    assert "moisture-eyes-night-oil" not in result["seeded"]
+
+
+def test_dry_eye_triage_seeds_moisturize_by_default_when_unanswered():
+    cx = _cx()
+    _seed_dry_eye_program(cx)
+    result = ct.seed_from_triage(cx, "de-b@x.com", "dry-eye", {})
+    assert "moisturize" in result["seeded"]
+
+
+def test_dry_eye_triage_explicit_no_aqueous_answer_skips_moisturize():
+    cx = _cx()
+    _seed_dry_eye_program(cx)
+    result = ct.seed_from_triage(cx, "de-c@x.com", "dry-eye",
+                                  {"not_enough_tears": False})
+    assert "moisturize" not in result["seeded"]
+
+
+def test_dry_eye_triage_severe_seeds_night_oil():
+    cx = _cx()
+    _seed_dry_eye_program(cx)
+    result = ct.seed_from_triage(cx, "de-d@x.com", "dry-eye", {"severe": True})
+    assert "moisture-eyes-night-oil" in result["seeded"]
+    assert "moisturize" in result["seeded"]  # default true, unanswered
+
+
+def test_dry_eye_triage_without_severe_skips_night_oil():
+    cx = _cx()
+    _seed_dry_eye_program(cx)
+    result = ct.seed_from_triage(cx, "de-e@x.com", "dry-eye", {})
+    assert "moisture-eyes-night-oil" not in result["seeded"]
+
+
 def test_non_numeric_med_count_does_not_raise_and_stores_zero():
     """int(med_count) must be guarded -- a non-numeric string (e.g. free-text
     entry) must not raise ValueError; it should be stored as 0."""

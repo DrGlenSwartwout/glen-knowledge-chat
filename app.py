@@ -20237,7 +20237,10 @@ def api_portal_triage(token):
         cond = (data.get("condition") or "glaucoma").strip().lower()
         answers = {k: data.get(k) for k in
                    ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
-                    "field_loss", "category")}
+                    "field_loss", "category",
+                    # dry-eye triage facts (drive the aqueous_deficiency/
+                    # severe modifiers -- see condition_triage.resolve_client_facts)
+                    "sjogrens", "not_enough_tears", "severe")}
         # Ensure the condition-programs store exists and every program (incl.
         # any added after prod's once-ever seed already fired, e.g.
         # vision-improvement) is present -- this route resolves programs by
@@ -21339,6 +21342,12 @@ def _init_support_programs_tables(cx):
         [{"slug": "wholomega-120-gelcaps", "name": "WholOmega 120 gelcaps",
           "dose": "4 times a day"},
          {"slug": "nous-energy", "name": "Nous Energy"}])
+    # One-time, marker-guarded restructure of dry-eye into base items + the
+    # aqueous_deficiency/severe modifiers, for stores seeded long ago (before
+    # this shape existed) where seed_if_empty's once-ever marker already
+    # fired and will never re-seed. Runs at most once ever -- see
+    # condition_programs.migrate_dry_eye_modifiers.
+    condition_programs.migrate_dry_eye_modifiers(cx)
 
 
 def _eye_program_public_view(prog):
