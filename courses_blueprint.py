@@ -145,6 +145,22 @@ _REGISTER_FORM = """
 """
 
 
+def _enroll_panel(course):
+    return (
+        '<div class="enroll">'
+        '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
+        'at your own pace, for life.</p>'
+        '<p>'
+        '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button> '
+        '<button type="button" onclick="muCheckout(\'membership\')">Join monthly, $99 a month</button>'
+        '</p>'
+        '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
+        'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'
+        '.then(function(r){return r.json()}).then(function(d){'
+        'if(d.url){location.href=d.url}else{alert(d.error||"Checkout is not available right now.")}})}'
+        '</script></div>')
+
+
 def learn_home():
     # Following an emailed link sets the member cookie, then redirects clean.
     token = request.args.get("token")
@@ -169,6 +185,7 @@ def course_home(course_slug):
     except FileNotFoundError:
         return render_template_string(_PAGE, title="Not found", body="<h1>Course not found</h1>"), 404
     rows = []
+    has_locked_paid = False
     for m in course.modules:
         rows.append(f"<h3>{escape(m.title)}</h3><ul>")
         for l in m.lessons:
@@ -177,10 +194,13 @@ def course_home(course_slug):
                 rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{escape(l.title)}</a></li>')
             elif state == "locked_register":
                 rows.append(f'<li>{escape(l.title)} <a href="/learn#register">(register free)</a></li>')
-            else:
-                rows.append(f"<li>{escape(l.title)} (members-only, upgrade coming soon)</li>")
+            else:  # locked_upgrade
+                rows.append(f"<li>{escape(l.title)} (certification module)</li>")
+                has_locked_paid = True
         rows.append("</ul>")
     body = f'<p><a href="/learn">← All courses</a></p><h1>{escape(course.title)}</h1><p>{escape(course.description)}</p>{"".join(rows)}'
+    if has_locked_paid:
+        body += _enroll_panel(course)
     return render_template_string(_PAGE, title=course.title, body=body)
 
 
@@ -201,9 +221,13 @@ def lesson_page(course_slug, module_slug, lesson_slug):
         return render_template_string(_PAGE, title="Not found", body="<h1>Lesson not found</h1>"), 404
     if not ca.is_visible(lesson.access, level):
         state = ca.lock_state(lesson.access, level)
-        msg = "Register free to watch this lesson." if state == "locked_register" else "This lesson is for paid members."
-        body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
-                f'<h1>{escape(lesson.title)}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>')
+        head = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
+                f'<h1>{escape(lesson.title)}</h1>')
+        if state == "locked_upgrade":
+            body = head + _enroll_panel(course)
+        else:
+            body = head + ('<p>Register free to watch this lesson.</p>'
+                            '<p><a href="/learn#register">Register</a></p>')
         return render_template_string(_PAGE, title=lesson.title, body=body), 403
     safe_body = sanitize_html(lesson.body_md)
     dls = "".join(

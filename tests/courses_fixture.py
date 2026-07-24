@@ -2,7 +2,7 @@ import os
 
 
 def write_sample_course(root):
-    """Write an 'ash-intro' course: public out-takes + one member lesson.
+    """Write an 'ash-intro' course: public out-takes + one member lesson + one paid lesson.
 
     Stage 1.5 content model: lesson bodies are sanitized HTML (Rumble/YouTube
     embeds + formatting + transcript interwoven) instead of markdown + a
@@ -10,6 +10,7 @@ def write_sample_course(root):
     """
     base = os.path.join(root, "ash-intro")
     os.makedirs(os.path.join(base, "01-intro"), exist_ok=True)
+    os.makedirs(os.path.join(base, "03-pro"), exist_ok=True)
     with open(os.path.join(base, "course.yaml"), "w") as f:
         f.write(
             "title: ASH Intro\n"
@@ -20,6 +21,10 @@ def write_sample_course(root):
             "    lessons:\n"
             "      - 01-out-takes\n"
             "      - 02-welcome\n"
+            "  - slug: 03-pro\n"
+            "    title: Advanced Practice\n"
+            "    lessons:\n"
+            "      - 01-advanced\n"
         )
     with open(os.path.join(base, "01-intro", "01-out-takes.md"), "w") as f:
         f.write(
@@ -36,5 +41,14 @@ def write_sample_course(root):
             '<iframe src="https://www.youtube.com/embed/v2efgh" width="640" height="360" '
             'frameborder="0" allowfullscreen></iframe>\n'
             "<p>Welcome transcript here.</p>\n"
+        )
+    with open(os.path.join(base, "03-pro", "01-advanced.md"), "w") as f:
+        f.write(
+            "---\ntitle: Advanced Technique\naccess: paid\ndownloads: []\n---\n"
+            '<h2>Advanced Technique</h2>\n'
+            '<iframe src="https://rumble.com/embed/v3ijkl/" width="640" height="360" '
+            'frameborder="0" allowfullscreen></iframe>\n'
+            "<p>Advanced transcript here.</p>\n"
+            "<script>alert(1)</script>\n"
         )
     return root

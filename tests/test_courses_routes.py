@@ -268,3 +268,36 @@ def test_checkout_not_available_when_price_unset(client, monkeypatch):
     monkeypatch.delenv("STRIPE_CERT_PRICE_ID", raising=False)
     r = c.post("/api/courses/checkout", json={"product": "onetime"}, base_url=_MHOST)
     assert r.status_code == 503
+
+
+def _seed_token(appmod, email, cert=False):
+    import sqlite3
+    from dashboard import course_tokens, course_entitlements as ce
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        course_tokens.init_course_tokens_table(cx)
+        ce.init_course_entitlements_table(cx)
+        tok = course_tokens.mint_course_token(cx, email, "T")
+        if cert:
+            ce.grant_cert(cx, email, source="stripe", stripe_ref="cs_seed")
+    return tok
+
+
+_PAID_URL = "/learn/ash-intro/03-pro/01-advanced"  # fixture course slug + the paid module added in tests/courses_fixture.py
+
+
+def test_paid_lesson_shows_enroll_panel_to_free_member(client, monkeypatch):
+    c, appmod = client
+    tok = _seed_token(appmod, "free@x.com", cert=False)
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    assert "Get the full certification" in r.get_data(as_text=True)
+    assert "$2,997" in r.get_data(as_text=True)
+    assert "<script>alert(1)</script>" not in r.get_data(as_text=True)  # no lesson body leaked
+
+
+def test_paid_lesson_opens_for_level_2(client, monkeypatch):
+    c, appmod = client
+    tok = _seed_token(appmod, "paid@x.com", cert=True)
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 200
+    assert "Get the full certification" not in r.get_data(as_text=True)
