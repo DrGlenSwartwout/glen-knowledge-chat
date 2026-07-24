@@ -18,6 +18,16 @@ SEED = {
      "external_id": "P9", "best_ff": None, "relation": None, "focus_tags": [],
      "ff_alts": [], "product_type": "supplement", "url": None,
      "source": "seed", "active": 0},
+    # Hostile-but-active row: this slug has no slash, so it genuinely matches
+    # Flask's <product_slug> segment and the lookup SUCCEEDS -- the
+    # destination-assignment line in fullscript_click_redirect is reached with
+    # attacker-controlled data sitting in both product_slug and url. If the
+    # route ever assigned the destination from the row instead of from the
+    # hardcoded dispensary builder, this is what would leak.
+    {"name": "Poisoned Row", "brand": "X", "product_slug": "javascript:alert(1)",
+     "external_id": "P66", "best_ff": None, "relation": None, "focus_tags": [],
+     "ff_alts": [], "product_type": "supplement", "url": "https://evil.example.com/pwn",
+     "source": "seed", "active": 1},
   ],
   "focus_area_products": [], "focus_area_items": [],
 }
@@ -76,6 +86,27 @@ def test_inactive_product_goes_home(client):
     r = client.get("/fs/TOKA/retired-thing")
     assert r.status_code == 302 and r.headers["Location"] == "/"
     assert _clicks(app_mod.LOG_DB) == []
+
+
+def test_poisoned_row_does_not_steer_the_redirect(client):
+    """A row that is hostile in every field a redirect could plausibly read from
+    -- product_slug containing a javascript: payload, url pointing at an
+    attacker host -- must still send the client to the real dispensary. This
+    row is active and its slug matches the route cleanly (no slash), so the
+    lookup SUCCEEDS and the destination-assignment line in
+    fullscript_click_redirect is genuinely reached with poisoned data in hand.
+    That's what makes this test able to fail: unlike a slug that never matches
+    any row, this one does, so a mutation that assigns `dest` from the row's
+    product_slug or url is exercised, not skipped."""
+    r = client.get("/fs/TOKA/javascript:alert(1)")
+    assert r.status_code == 302
+    assert r.headers["Location"] == \
+        "https://us.fullscript.com/welcome/remedymatch/store-start"
+    assert "evil.example.com" not in r.headers["Location"]
+    assert "javascript:" not in r.headers["Location"]
+    rows = _clicks(app_mod.LOG_DB)
+    assert len(rows) == 1
+    assert rows[0]["fs_product_name"] == "Poisoned Row"
 
 
 def test_destination_never_comes_from_the_request(client):
