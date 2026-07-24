@@ -6,7 +6,7 @@ def test_load_course_parses_structure(tmp_path):
     write_sample_course(str(tmp_path))
     course = cc.load_course("ash-intro", root=str(tmp_path))
     assert course.title == "ASH Intro"
-    assert len(course.modules) == 1
+    assert len(course.modules) == 2
     lessons = course.modules[0].lessons
     assert [l.slug for l in lessons] == ["01-out-takes", "02-welcome"]
     assert lessons[0].access == "public"
@@ -15,6 +15,15 @@ def test_load_course_parses_structure(tmp_path):
     assert lessons[1].access == "member"
     assert "Welcome transcript" in lessons[1].body_md
     assert "youtube.com/embed/v2efgh" in lessons[1].body_md
+
+    pro_module = course.modules[1]
+    assert pro_module.slug == "03-pro"
+    assert pro_module.title == "Advanced Practice"
+    pro_lessons = pro_module.lessons
+    assert [l.slug for l in pro_lessons] == ["01-advanced"]
+    assert pro_lessons[0].access == "paid"
+    assert "Advanced transcript" in pro_lessons[0].body_md
+    assert "rumble.com/embed/v3ijkl" in pro_lessons[0].body_md
 
 
 def test_list_courses_finds_course_dirs(tmp_path):
