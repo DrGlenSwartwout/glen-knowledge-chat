@@ -33,6 +33,12 @@ def test_render_onboarding_emits_phases_done_and_link():
         console.error('missing heal link anchor'); process.exit(1);
       }
       if (!/coming soon/.test(html)) { console.error('missing soon badge'); process.exit(1); }
+      if (!/<span class="ob-mark ob-mark-done">\\u2713<\\/span>/.test(html)) {
+        console.error('done step missing ob-mark-done class'); process.exit(1);
+      }
+      if (!/<span class="ob-mark ob-mark-open">\\u25cb<\\/span>/.test(html)) {
+        console.error('open step missing ob-mark-open class'); process.exit(1);
+      }
       console.log('ok');
     ''')
     out = subprocess.run(["node", "-e", js], cwd=".", capture_output=True, text=True)

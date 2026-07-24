@@ -467,15 +467,14 @@
   .ob-step a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
   .ob-step a:hover,.ob-step a:focus-visible{color:var(--brand);border-bottom-color:var(--brand)}
   /* Fixed width keeps ✓ / ○ / • aligned into a column regardless of glyph width.
-     NOTE: the mark's state (done/open/resource) is only conveyed by which glyph
-     is in the text node -- there is no state class/data-attr on the span (see
-     portal-onboarding.js renderOnboarding()) and CSS has no content-matching
-     selector, so per-state color (done=brand vs open/resource=muted) can't be
-     targeted purely by CSS. Using the brand accent uniformly (same convention
-     as .node/.badge elsewhere in this file, which don't vary color by state
-     either) rather than leaving it unstyled. */
+     Per-state color: portal-onboarding.js renderOnboarding() adds a state
+     modifier class (ob-mark-done / ob-mark-open / ob-mark-resource) alongside
+     ob-mark, so done vs pending/resource marks can be colored distinctly. */
   .ob-mark{display:inline-block;width:1.15em;flex:0 0 auto;text-align:center;
-    color:var(--brand);font-weight:700}
+    font-weight:700}
+  .ob-mark-done{color:var(--brand)}
+  .ob-mark-open{color:var(--muted)}
+  .ob-mark-resource{color:var(--muted)}
   .ob-member-thread{color:var(--muted);font-size:.85rem;margin:.7rem 0 0}
   .ob-member-thread a{color:var(--brand);font-weight:600;text-decoration:none}
   .ob-member-thread a:hover,.ob-member-thread a:focus-visible{text-decoration:underline}
