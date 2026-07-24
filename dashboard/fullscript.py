@@ -121,3 +121,39 @@ def pins_for_client(cx, email):
         WHERE LOWER(pin.email) = ? AND p.active = 1
         ORDER BY pin.pinned_at""", (e,)).fetchall()
     return [dict(r) for r in rows]
+
+
+# Lower number wins. A pin is an explicit clinical decision, so it outranks
+# anything derived; after that, the more client-specific the evidence the higher.
+ORIGIN_PRIORITY = {"pinned": 0, "review": 1, "scan": 2, "condition": 3}
+
+
+def candidates_for(cx, email, item_codes=None):
+    """Union the drivers, dedupe by product name keeping the highest-priority
+    origin, then sort by that priority. Phase A1 wires the pinned and scan
+    drivers; review and condition land in later phases and slot in here."""
+    found = {}
+
+    def offer(prod, origin, reason, focus_area_name=None):
+        name = prod.get("name")
+        if not name:
+            return
+        prior = found.get(name)
+        if prior and ORIGIN_PRIORITY[prior["origin"]] <= ORIGIN_PRIORITY[origin]:
+            return
+        c = dict(prod)
+        c["origin"] = origin
+        c["reason"] = reason or ""
+        c["focus_area_name"] = focus_area_name
+        c.pop("note", None)
+        found[name] = c
+
+    for p in pins_for_client(cx, email):
+        offer(p, "pinned", p.get("note") or "")
+
+    for fa in focus_areas_for_items(cx, item_codes):
+        fa_name = fa.get("focus_area_name") or ""
+        for p in products_for_focus_area(cx, fa["focus_area_id"]):
+            offer(p, "scan", fa_name, fa_name)
+
+    return sorted(found.values(), key=lambda c: ORIGIN_PRIORITY[c["origin"]])
