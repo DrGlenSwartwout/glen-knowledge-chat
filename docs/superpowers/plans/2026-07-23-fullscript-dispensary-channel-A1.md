@@ -175,8 +175,12 @@ def init_tables(cx):
 
 
 def sync_from_seed(cx, seed):
-    """Idempotent full replace of the three reference tables. Pins, review links
-    and clicks are client data and are never touched."""
+    """Idempotent full replace of the four reference tables (products,
+    focus_area_products, focus_area_items, condition_products). Pins, review
+    links and clicks are client data and are never touched.
+
+    Every reference table that is DELETEd here must also be repopulated here.
+    A delete without a matching loop is silent, permanent data loss."""
     cx.execute("DELETE FROM fullscript_products")
     cx.execute("DELETE FROM fullscript_focus_area_products")
     cx.execute("DELETE FROM fullscript_focus_area_items")
@@ -201,16 +205,62 @@ def sync_from_seed(cx, seed):
         cx.execute("INSERT INTO fullscript_focus_area_items "
                    "(focus_area_id, item_code) VALUES (?,?)",
                    (fi["focus_area_id"], fi["item_code"]))
+    for cp in seed.get("condition_products", []):
+        cx.execute("INSERT INTO fullscript_condition_products "
+                   "(condition_key, fs_product_name, rank) VALUES (?,?,?)",
+                   (cp["condition_key"], cp["fs_product_name"], cp.get("rank", 0)))
     cx.commit()
     return {"products": len(seed.get("products", [])),
             "focus_area_products": len(seed.get("focus_area_products", [])),
-            "focus_area_items": len(seed.get("focus_area_items", []))}
+            "focus_area_items": len(seed.get("focus_area_items", [])),
+            "condition_products": len(seed.get("condition_products", []))}
+```
+
+- [ ] **Step 3c: Pin the invariants with regression tests**
+
+Append to `tests/test_fullscript_module.py`:
+
+```python
+def test_sync_never_touches_client_data():
+    """Reference tables are replaced; client data is not. A stray DELETE on a
+    client-data table would be silent, permanent loss, so pin it."""
+    cx = _cx()
+    cx.execute("INSERT INTO fullscript_client_pins "
+               "(email, fs_product_name, note, pinned_by, pinned_at) VALUES (?,?,?,?,?)",
+               ("a@b.com", "Magnesium Taurate", "n", "glen", "2026-07-23"))
+    cx.execute("INSERT INTO fullscript_review_links "
+               "(review_id, fs_product_name, rank, created_at) VALUES (?,?,?,?)",
+               (1, "Magnesium Taurate", 0, "2026-07-23"))
+    cx.execute("INSERT INTO fullscript_clicks "
+               "(email, fs_product_name, origin, clicked_at) VALUES (?,?,?,?)",
+               ("a@b.com", "Magnesium Taurate", "scan", "2026-07-23"))
+    cx.commit()
+    fs.sync_from_seed(cx, SEED)
+    for t in ("fullscript_client_pins", "fullscript_review_links", "fullscript_clicks"):
+        assert cx.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] == 1, t
+
+
+def test_condition_products_are_replaced_not_preserved():
+    """condition_products is seed-sourced reference data: a sync replaces it."""
+    cx = _cx()
+    cx.execute("INSERT INTO fullscript_condition_products "
+               "(condition_key, fs_product_name, rank) VALUES (?,?,?)",
+               ("glaucoma", "OLD", 0))
+    cx.commit()
+    seed = dict(SEED)
+    seed["condition_products"] = [
+        {"condition_key": "glaucoma", "fs_product_name": "Magnesium Taurate", "rank": 0}]
+    out = fs.sync_from_seed(cx, seed)
+    assert out["condition_products"] == 1
+    rows = [r[0] for r in cx.execute(
+        "SELECT fs_product_name FROM fullscript_condition_products").fetchall()]
+    assert rows == ["Magnesium Taurate"], "stale row must not survive"
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd ~/deploy-chat && python -m pytest tests/test_fullscript_module.py -v`
-Expected: PASS, 3 tests
+Expected: PASS, 5 tests
 
 - [ ] **Step 5: Commit**
 

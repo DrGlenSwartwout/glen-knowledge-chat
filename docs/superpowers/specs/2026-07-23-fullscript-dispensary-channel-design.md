@@ -166,6 +166,15 @@ row are the same shape.
 | `fullscript_client_pins` | operator | `email`, `fs_product_name`, `note`, `pinned_by`, `pinned_at` |
 | `fullscript_review_links` | supplement review | `review_id`, `fs_product_name`, `rank`, `created_at` |
 
+**Reference data vs client data.** `fullscript_products`, `fullscript_focus_area_products`,
+`fullscript_focus_area_items` and `fullscript_condition_products` are **seed-sourced reference data**:
+authored in the seed file, version-controlled, and full-replaced by `sync_from_seed`. Condition-to-product
+mappings belong here rather than in the console (decided 2026-07-23) because they are a global curated
+mapping, not per-client state. `fullscript_client_pins`, `fullscript_review_links` and
+`fullscript_clicks` are **client data** and are never touched by a sync. Every reference table a sync
+DELETEs must also be repopulated in the same function; a delete without a matching loop is silent,
+permanent data loss.
+
 `fullscript_focus_area_products` mirrors `prl_focus_area_products` exactly. `fullscript_condition_products`
 keys on the same condition keys that drive Eye Support Programs.
 
