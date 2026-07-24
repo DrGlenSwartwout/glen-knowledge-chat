@@ -21,6 +21,7 @@ These apply to every task. Values are copied verbatim from the spec.
 - **Size cap: 30 MB.** Over-cap is a 400, never a truncated store.
 - **Accepted for extraction:** `application/pdf` and `image/*`. Everything else is stored with `extract_status='skipped-unreadable'`.
 - **The portal never shows the client extracted attributes, facts, or labs** — only their own file and, after approval, the narrative.
+- **The fabrication guard verifies quotes against the model's `document_text` transcription, never against its narrative.** Checking a model's quotes against its own summary is self-validating and therefore vacuous. A missing transcription must FAIL CLOSED (empty haystack → every item dropped → empty draft), never fail open.
 - **Running tests:** run *targeted* test files during development (`python3 -m pytest tests/test_x.py -v`). Do **not** run a bare full suite from a shell carrying real credentials — it sends real email. For the full gate use `bash ci/run-tests.sh`, which ratchets against `tests/known_failures.txt` and fails only on a NEW failure.
 
 ---
@@ -32,6 +33,7 @@ These apply to every task. Values are copied verbatim from the spec.
 - `dashboard/document_extractions.py` — AI draft persistence. No HTTP, no AI.
 - `dashboard/document_extract.py` — the Claude call + fabrication guard. No HTTP, no persistence beyond calling the two stores.
 - `static/js/portal-documents.js` — the My Records tile.
+- `static/js/console-documents.js` — the console review section renderer.
 - Tests: `tests/test_client_documents_store.py`, `tests/test_document_extractions_store.py`, `tests/test_document_upload_routes.py`, `tests/test_document_extract.py`, `tests/test_document_approve.py`, `tests/test_portal_documents_api.py`
 
 **Modify:**
@@ -866,6 +868,51 @@ def test_extract_drops_an_ungrounded_attribute_from_the_draft():
     assert "lupus" not in [v.lower() for v in vals]
 
 
+def test_production_path_verifies_against_the_models_transcription():
+    """No source_text injected — the real call path. Quotes are checked against
+    the model's `document_text`, NOT its narrative."""
+    cx = _cx()
+    doc_id = _doc(cx)
+    payload = {"document_text": SOURCE, "narrative_md": "n",
+               "facts": [], "unstructured": [],
+               "attributes": [
+                   {"field": "conditions", "value": "glaucoma",
+                    "source_quote": "Assessment: glaucoma"},
+                   {"field": "conditions", "value": "lupus",
+                    "source_quote": "Assessment: lupus"}]}
+    out = de.extract_document(cx, doc_id, call_model=_fake_model(payload))
+    assert out["dropped"] == 1
+    vals = [a["value"] for a in dx.get_for_document(cx, doc_id)["attributes"]]
+    assert [v.lower() for v in vals] == ["glaucoma"]
+
+
+def test_narrative_alone_cannot_validate_a_quote():
+    """The guard must not be self-validating: a diagnosis invented into the
+    narrative, absent from the transcription, is still dropped."""
+    cx = _cx()
+    doc_id = _doc(cx)
+    payload = {"document_text": "Routine visit. Nothing remarkable.",
+               "narrative_md": "Assessment: lupus was noted.",
+               "facts": [], "unstructured": [],
+               "attributes": [{"field": "conditions", "value": "lupus",
+                               "source_quote": "Assessment: lupus"}]}
+    de.extract_document(cx, doc_id, call_model=_fake_model(payload))
+    assert dx.get_for_document(cx, doc_id)["attributes"] == []
+
+
+def test_missing_transcription_fails_closed():
+    """A model that omits document_text yields an EMPTY draft, never an
+    unchecked one."""
+    cx = _cx()
+    doc_id = _doc(cx)
+    payload = {"narrative_md": "n", "facts": [], "unstructured": [],
+               "attributes": [{"field": "conditions", "value": "glaucoma",
+                               "source_quote": "Assessment: glaucoma"}]}
+    out = de.extract_document(cx, doc_id, call_model=_fake_model(payload))
+    assert out["dropped"] == 1
+    assert dx.get_for_document(cx, doc_id)["attributes"] == []
+
+
 def test_extract_canonicalizes_attribute_values_before_drafting():
     """Glen reviews the canonical form he will actually be approving."""
     cx = _cx()
@@ -956,6 +1003,9 @@ _PROMPT = (
     "actually states. Never infer, never generalize, never add a diagnosis that "
     "is not written down.\n\n"
     "Return STRICT JSON with these keys:\n"
+    '  "document_text": a VERBATIM transcription of all text in the document, '
+    "exactly as written. This is what every source_quote is checked against, so "
+    "a quote that is not present here is discarded.\n"
     '  "narrative_md": a warm, plain-language summary for the patient '
     "(2-4 short paragraphs, markdown, no headings). Explain what the document "
     "says in everyday words. Do not give advice or recommend treatment.\n"
@@ -1014,12 +1064,20 @@ def _default_call_model(blob, content_type):
 
 
 def _source_text_for(payload):
-    """The text the guard checks quotes against. The model echoes what it read
-    via the quotes themselves, so the union of quotes plus the narrative is not
-    a valid haystack — that would make the guard vacuous. Callers pass the real
-    document text; when absent we fall back to the narrative only, which is
-    strictly conservative (it drops more, never fewer)."""
-    return payload.get("narrative_md") or ""
+    """The haystack the guard checks quotes against: the model's VERBATIM
+    transcription of the document.
+
+    Deliberately NOT the narrative. Checking the model's quotes against the
+    model's own summary would make the guard vacuous — an invented diagnosis
+    mentioned in the narrative would validate itself. Verifying against a
+    separate transcription field means a fabricated quote must also be
+    fabricated into the transcription, a meaningfully higher bar.
+
+    Missing transcription returns "" and the guard FAILS CLOSED: with an empty
+    haystack every quote fails and every item is dropped, so a model that omits
+    the field yields an empty draft rather than an unchecked one.
+    """
+    return payload.get("document_text") or ""
 
 
 def extract_document(cx, doc_id, call_model=None, source_text=None):
@@ -1087,7 +1145,7 @@ def run_pending(cx, limit=5, call_model=None):
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest tests/test_document_extract.py -v`
-Expected: PASS (10 tests)
+Expected: PASS (13 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1824,6 +1882,274 @@ Expected: PASS (14 tests)
 ```bash
 git add app.py tests/test_document_approve.py
 git commit -m "feat(documents): console review payload + gated raw-document viewer"
+```
+
+---
+
+### Task 8b: Console Documents review section (the screen Glen actually uses)
+
+**Files:**
+- Modify: `static/console-client.html` — add a `Documents` `<details>` section beside the existing `sec-recs` (line ~53) and a `renderDocuments` function in the inline `<script>`.
+- Test: `tests/test_console_documents_render.js`
+
+**Interfaces:**
+- Consumes: `GET /api/console/client-documents?email=` (Task 8), `POST /api/console/client-document/<id>/approve` and `/reject` (Task 5).
+- Produces: `renderDocumentsHtml(items, consoleKey) -> string`, defined in the inline script and also exported for the node test via a guarded `module.exports` in a small companion file.
+
+**Why this task exists:** without it nothing can be approved, so no facts are ever written and no client ever sees a narrative. The endpoints from Tasks 5 and 8 are inert until this ships.
+
+**Page conventions to follow** (read `static/console-client.html` before writing):
+- Sections are `<details id="sec-X"><summary>Name <span class="head-note" id="h-X"></span></summary><div class="sec-body" id="b-X"></div></details>`.
+- `esc(s)` escapes text, `escAttr(s)` escapes attribute values, `key()` returns the console key, `hdr()` returns `{"X-Console-Key": key()}`, `qsEmail()` returns the current client's email.
+- Section renderers write `innerHTML` into their `#b-X` host.
+
+- [ ] **Step 1: Write the failing test**
+
+```javascript
+// tests/test_console_documents_render.js
+// Run: node tests/test_console_documents_render.js
+const assert = require('assert');
+const { renderDocumentsHtml } = require('../static/js/console-documents.js');
+
+const ITEM = {
+  id: 5, filename: 'labs.pdf', uploaded_at: '2026-07-23T00:00:00Z',
+  source: 'console', extract_status: 'drafted',
+  file_url: '/admin/client-document?id=5',
+  draft: {
+    id: 9, status: 'ai_draft', narrative_md: 'Draft narrative.',
+    attributes: [{ field: 'conditions', value: 'Glaucoma', source_quote: 'Assessment: glaucoma' }],
+    facts: [{ fact_key: 'on_areds2', value: true, source_quote: 'taking AREDS2' }],
+    unstructured: [{ label: 'HbA1c', value: '6.4', source_quote: 'HbA1c 6.4' }]
+  }
+};
+
+const html = renderDocumentsHtml([ITEM], 'k');
+
+// the raw file is reachable, with the console key attached
+assert.ok(html.includes('/admin/client-document?id=5'));
+// proposals render as PRE-CHECKED boxes carrying their index
+assert.ok(/type=['"]checkbox['"][^>]*checked/.test(html));
+assert.ok(html.includes('data-kind="attributes"'));
+assert.ok(html.includes('data-idx="0"'));
+// every proposal shows its source quote so an invention is visible at a glance
+assert.ok(html.includes('Assessment: glaucoma'));
+assert.ok(html.includes('taking AREDS2'));
+// labs are shown but marked as not stored structurally
+assert.ok(html.includes('HbA1c'));
+assert.ok(/not stored/i.test(html));
+// the narrative is editable
+assert.ok(html.includes('<textarea'));
+assert.ok(html.includes('Draft narrative.'));
+// both actions are present
+assert.ok(/Approve/.test(html) && /Reject/.test(html));
+
+// a confirmed draft shows as reviewed, with no approve button
+const done = renderDocumentsHtml([Object.assign({}, ITEM, {
+  draft: Object.assign({}, ITEM.draft, { status: 'confirmed' })
+})], 'k');
+assert.ok(/Approved/i.test(done));
+assert.ok(!/>Approve</.test(done));
+
+// a document with no draft yet says so and offers no checkboxes
+const raw = renderDocumentsHtml([{
+  id: 6, filename: 'raw.pdf', uploaded_at: '', source: 'console',
+  extract_status: 'pending', file_url: '/admin/client-document?id=6', draft: null
+}], 'k');
+assert.ok(/awaiting extraction/i.test(raw));
+assert.ok(!raw.includes('type="checkbox"'));
+
+// empty state
+assert.strictEqual(renderDocumentsHtml([], 'k'), '<p class="muted">No documents.</p>');
+
+// filenames and quotes are escaped, never injected
+const evil = renderDocumentsHtml([{
+  id: 7, filename: '<img src=x onerror=alert(1)>', uploaded_at: '', source: 'console',
+  extract_status: 'drafted', file_url: '/f', draft: {
+    id: 1, status: 'ai_draft', narrative_md: '', attributes: [], facts: [],
+    unstructured: []
+  }
+}], 'k');
+assert.ok(!evil.includes('<img src=x'));
+assert.ok(evil.includes('&lt;img'));
+
+console.log('ok - console documents review render');
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `node tests/test_console_documents_render.js`
+Expected: FAIL — `Cannot find module '../static/js/console-documents.js'`
+
+- [ ] **Step 3: Write the implementation**
+
+Create `static/js/console-documents.js`:
+
+```javascript
+// static/js/console-documents.js
+// Console Documents review section: the ONE screen where Glen turns an AI draft
+// into live clinical data. Renders the raw file, every proposal beside the
+// verbatim quote it came from, and the editable narrative.
+//
+// Loaded as a plain script on the console page (it defines globals) and also
+// exported for the node render test.
+function cdEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+function cdProposalRow(kind, idx, label, quote) {
+  return '<li class="cd-prop">' +
+    '<label><input type="checkbox" checked data-kind="' + kind + '" ' +
+      'data-idx="' + idx + '"> ' + cdEsc(label) + '</label>' +
+    '<blockquote class="cd-quote">' + cdEsc(quote) + '</blockquote>' +
+  '</li>';
+}
+
+function renderDocumentsHtml(items, consoleKey) {
+  if (!items || !items.length) return '<p class="muted">No documents.</p>';
+  return items.map(function (it) {
+    var head = '<h3>' + cdEsc(it.filename) + ' ' +
+      '<span class="pill">' + cdEsc(it.source) + '</span> ' +
+      '<a href="' + cdEsc(it.file_url) + '&key=' +
+        encodeURIComponent(consoleKey || '') +
+        '" target="_blank" rel="noopener">open file</a></h3>';
+
+    var d = it.draft;
+    if (!d) {
+      return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
+        '<p class="muted">Awaiting extraction (' +
+        cdEsc(it.extract_status) + ').</p></section>';
+    }
+    if (d.status !== 'ai_draft') {
+      return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
+        '<p class="muted">' +
+        (d.status === 'confirmed' ? 'Approved' : 'Rejected') +
+        (d.reviewed_by ? ' by ' + cdEsc(d.reviewed_by) : '') +
+        '.</p></section>';
+    }
+
+    var attrs = (d.attributes || []).map(function (a, i) {
+      return cdProposalRow('attributes', i, a.field + ': ' + a.value,
+                           a.source_quote);
+    }).join('');
+    var facts = (d.facts || []).map(function (f, i) {
+      return cdProposalRow('facts', i,
+                           f.fact_key + ' = ' + (f.value ? 'yes' : 'no'),
+                           f.source_quote);
+    }).join('');
+    var labs = (d.unstructured || []).map(function (u) {
+      return '<li>' + cdEsc(u.label) + ': ' + cdEsc(u.value) +
+        '<blockquote class="cd-quote">' + cdEsc(u.source_quote) +
+        '</blockquote></li>';
+    }).join('');
+
+    return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
+      (attrs ? '<h4>Proposed attributes</h4><ul class="cd-props">' + attrs + '</ul>' : '') +
+      (facts ? '<h4>Proposed facts</h4><ul class="cd-props">' + facts + '</ul>' : '') +
+      (labs ? '<h4>Labs and medications <span class="muted">(not stored ' +
+              'structurally — reference only)</span></h4><ul class="cd-labs">' +
+              labs + '</ul>' : '') +
+      '<h4>Client narrative</h4>' +
+      '<textarea class="cd-narrative" rows="8">' + cdEsc(d.narrative_md) +
+        '</textarea>' +
+      '<p class="cd-actions">' +
+        '<button class="cd-approve" data-doc="' + it.id + '">Approve</button> ' +
+        '<button class="cd-reject" data-doc="' + it.id + '">Reject</button>' +
+      '</p>' +
+    '</section>';
+  }).join('');
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { renderDocumentsHtml: renderDocumentsHtml };
+}
+```
+
+In `static/console-client.html`, add the section after the `sec-recs` `<details>` (line ~53):
+
+```html
+    <details id="sec-docs"><summary>Documents <span class="head-note" id="h-docs"></span></summary>
+      <div class="sec-body" id="b-docs"></div></details>
+```
+
+add the script tag beside the other page scripts (after line 31's `op-nav.js`):
+
+```html
+  <script src="/static/js/console-documents.js"></script>
+```
+
+and add to the inline `<script>`, wiring fetch, render, and the two actions:
+
+```javascript
+function loadDocuments(){
+  var email=qsEmail(); if(!email) return;
+  fetch("/api/console/client-documents?email="+encodeURIComponent(email),{headers:hdr()})
+    .then(function(r){ return r.ok?r.json():{items:[]}; })
+    .then(function(d){
+      var items=d.items||[];
+      document.getElementById("h-docs").textContent=items.length?String(items.length):"";
+      document.getElementById("b-docs").innerHTML=renderDocumentsHtml(items,key());
+      wireDocumentActions();
+    }).catch(function(){});
+}
+
+function checkedIdx(section,kind){
+  return Array.prototype.slice.call(
+    section.querySelectorAll('input[data-kind="'+kind+'"]:checked')
+  ).map(function(el){ return parseInt(el.getAttribute("data-idx"),10); });
+}
+
+function wireDocumentActions(){
+  var host=document.getElementById("b-docs");
+  host.querySelectorAll(".cd-approve").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var sec=btn.closest(".cd-doc"), id=btn.getAttribute("data-doc");
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/approve",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({
+          narrative_md: sec.querySelector(".cd-narrative").value,
+          attributes: checkedIdx(sec,"attributes"),
+          facts: checkedIdx(sec,"facts"),
+          reviewed_by: "console"
+        })
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+  host.querySelectorAll(".cd-reject").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var id=btn.getAttribute("data-doc");
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/reject",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({reviewed_by:"console"})
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+}
+```
+
+Call `loadDocuments();` from the page's existing `load(email)` function, alongside the other section loaders.
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `node tests/test_console_documents_render.js`
+Expected: `ok - console documents review render`
+
+- [ ] **Step 5: Verify the section renders in a real browser**
+
+Start the app locally and open `/console/client?email=<a seeded client>&key=<console key>`. Confirm: the Documents section appears, the file link opens the PDF, checkboxes are pre-checked with quotes beneath them, editing the narrative and clicking Approve flips the section to "Approved", and a reload still shows it approved. A green node test is not evidence that the page renders — check the real page.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add static/js/console-documents.js static/console-client.html tests/test_console_documents_render.js
+git commit -m "feat(documents): console Documents review section"
 ```
 
 ---
