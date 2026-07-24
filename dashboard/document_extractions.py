@@ -51,13 +51,26 @@ def put_draft(cx, document_id, email, narrative_md, attributes, facts,
     re-extraction of a rejected document is the normal re-queue path.
     """
     init_table(cx)
+    # The status guard lives INSIDE the DELETE's WHERE clause, not in a
+    # preceding SELECT. SELECT-then-DELETE is a classic TOCTOU race: on
+    # another connection, confirm() can commit in the gap between the two
+    # statements, so the status this code saw is stale by the time the
+    # DELETE runs -- and an unconditional DELETE would then wipe out a row
+    # that is now confirmed and irrecoverable (no history table). A single
+    # statement's WHERE clause is instead evaluated atomically against
+    # whatever is committed at the instant the DELETE executes, so there is
+    # no window for another connection's commit to land in between the check
+    # and the act. Do not "simplify" this back into SELECT-then-DELETE.
+    cx.execute(
+        "DELETE FROM client_document_extractions "
+        "WHERE document_id=? AND status != 'confirmed'", (document_id,))
     existing = cx.execute(
-        "SELECT id, status FROM client_document_extractions "
-        "WHERE document_id=?", (document_id,)).fetchone()
-    if existing and existing[1] == "confirmed":
+        "SELECT id FROM client_document_extractions WHERE document_id=?",
+        (document_id,)).fetchone()
+    if existing:
+        # Only a confirmed row could have survived the guarded DELETE above.
+        cx.commit()
         return existing[0]
-    cx.execute("DELETE FROM client_document_extractions WHERE document_id=?",
-               (document_id,))
     cx.execute(
         "INSERT INTO client_document_extractions"
         "(document_id, email, status, narrative_md, attributes_json,"

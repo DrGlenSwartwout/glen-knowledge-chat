@@ -93,6 +93,64 @@ def test_put_draft_does_not_touch_a_confirmed_document():
     assert rows[0] == 1
 
 
+class _SqlLog:
+    """Wraps a connection to record the SQL text of every execute() call, in
+    order, so a test can assert on statement SEQUENCING and CONTENT. This is
+    how the TOCTOU regression (a status check split into a SELECT that runs
+    BEFORE a separate DELETE) can be caught, even though a genuine two-
+    connection race is not reproducible deterministically in one process --
+    see the test docstring below."""
+
+    def __init__(self, cx):
+        self._cx = cx
+        self.statements = []
+
+    def execute(self, sql, params=()):
+        self.statements.append(sql)
+        return self._cx.execute(sql, params)
+
+    def commit(self):
+        self._cx.commit()
+
+
+def test_put_draft_guards_the_delete_itself_not_a_preceding_select():
+    """Regression guard for the TOCTOU fix: the status check must live in the
+    DELETE statement's own WHERE clause, not in a SELECT that runs before it.
+
+    Honest limitation: a genuine concurrent interleaving -- another
+    connection's confirm() committing in the gap between a status-SELECT and
+    the DELETE -- cannot be reproduced deterministically with sqlite3 in a
+    single test process. Both connections execute fully sequentially here (no
+    real thread scheduler to land a commit inside a gap), so a true race
+    cannot be forced. What this test verifies instead is the structural
+    property that makes that race impossible BY CONSTRUCTION: no statement
+    reads `status` for this document_id before the guarded DELETE runs, so
+    there is no gap left to interleave into. That is a meaningfully different
+    (and passing) assertion from "the confirmed row is untouched" (already
+    covered by test_put_draft_does_not_touch_a_confirmed_document) -- this
+    test would FAIL if a future edit reintroduced a status-SELECT ahead of
+    the DELETE, even if that edit still happened to pass the behavioral test
+    on today's single-threaded, non-racing test harness.
+    """
+    cx = _cx()
+    dx.put_draft(cx, 7, "c@x.com", "draft", [], [], [], "m")
+
+    log = _SqlLog(cx)
+    dx.put_draft(log, 7, "c@x.com", "new draft", [], [], [], "m2")
+
+    delete_idx = next(i for i, s in enumerate(log.statements)
+                       if s.strip().upper().startswith("DELETE"))
+    delete_sql = log.statements[delete_idx].upper()
+    assert "STATUS" in delete_sql
+    assert "CONFIRMED" in delete_sql
+
+    for s in log.statements[:delete_idx]:
+        assert not (s.strip().upper().startswith("SELECT")
+                    and "STATUS" in s.upper()), (
+            "a SELECT of status ran before the guarded DELETE -- this is "
+            "the TOCTOU shape the fix removed")
+
+
 def test_put_draft_replaces_a_rejected_document():
     """Rejection must not permanently block re-extraction (re-queuing)."""
     cx = _cx()
