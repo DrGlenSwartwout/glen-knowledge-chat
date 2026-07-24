@@ -20635,6 +20635,60 @@ def api_portal_document_upload(token):
     return jsonify(body), status
 
 
+@app.route("/api/portal/<token>/documents", methods=["GET"])
+def api_portal_documents(token):
+    """The token owner's uploaded records. `enabled` mirrors the hub flag so the
+    My Records tile stays dark until the flag flips.
+
+    The client sees their own file and — once Glen has approved it — the
+    narrative. Extracted attributes, facts, and labs are NEVER included.
+    """
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        docs = _cd.list_for_email(cx, email) if email else []
+        items = []
+        for d in docs:
+            draft = _dx.get_for_document(cx, d["id"])
+            ready = bool(draft and draft["status"] == "confirmed")
+            items.append({
+                "id": d["id"],
+                "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"],
+                "status": "ready" if ready else "under_review",
+                "file_url": f"/api/portal/{token}/documents/{d['id']}/file",
+                "narrative_md": draft["narrative_md"] if ready else "",
+            })
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
+
+
+@app.route("/api/portal/<token>/documents/<int:doc_id>/file", methods=["GET"])
+def api_portal_document_file(token, doc_id):
+    """Stream the token owner's OWN document. Resolved through get_for_email so
+    a token can never fetch another client's file."""
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        doc = _cd.get_for_email(cx, doc_id, email) if email else None
+    if not doc:
+        return Response("", status=404)
+    resp = Response(doc["blob"],
+                    mimetype=doc["content_type"] or "application/octet-stream")
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="{(doc["filename"] or "document").replace(chr(34), "")}"')
+    return resp
+
+
 @app.route("/api/console/client-document", methods=["POST"])
 def api_console_client_document_upload():
     """Console-side upload for records that arrive by email or fax."""
