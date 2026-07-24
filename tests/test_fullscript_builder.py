@@ -5,6 +5,7 @@ flag, and the byte-identical guarantee that the payload key is absent when off.
 import sqlite3
 
 import app as app_mod
+from dashboard import client_portal as cp
 from dashboard import fullscript as fs
 
 SEED = {
@@ -73,3 +74,41 @@ def test_never_raises_on_bad_db(monkeypatch):
     monkeypatch.setattr(app_mod, "LOG_DB", "/nonexistent/dir/nope.db")
     monkeypatch.setenv("FULLSCRIPT_ENABLED", "1")
     assert app_mod._fullscript_for("a@b.com", None) is None
+
+
+def test_flag_off_payload_has_no_fullscript_key(monkeypatch, tmp_path):
+    """The byte-identical guarantee: with the flag unset, the portal payload must
+    not gain a `fullscript` key at all. A present-but-null key is a regression."""
+    monkeypatch.setattr(app_mod, "LOG_DB", _db(tmp_path))
+    monkeypatch.delenv("FULLSCRIPT_ENABLED", raising=False)
+    payload = {}
+    payload["fullscript_enabled"] = app_mod._fullscript_enabled()
+    if app_mod._fullscript_enabled():
+        blk = app_mod._fullscript_for("a@b.com", None)
+        if blk:
+            payload["fullscript"] = blk
+    assert payload["fullscript_enabled"] is False
+    assert "fullscript" not in payload
+
+
+def test_flag_off_real_endpoint_payload_has_no_fullscript_key(monkeypatch, tmp_path):
+    """Stronger sibling of the guard above: the guard above calls
+    `_fullscript_enabled`/`_fullscript_for` directly, mirroring the endpoint's
+    logic rather than exercising it, so a regression written only into the
+    endpoint's own payload-assembly code (e.g. `payload["fullscript"] = None`
+    added unconditionally, ahead of the flag check) would slip past it. This
+    test drives the real `GET /api/portal/<token>` route end-to-end and would
+    catch that regression.
+    """
+    db_path = str(tmp_path / "endpoint.db")
+    monkeypatch.setattr(app_mod, "LOG_DB", db_path)
+    monkeypatch.delenv("FULLSCRIPT_ENABLED", raising=False)
+    with sqlite3.connect(db_path) as cx:
+        cx.row_factory = sqlite3.Row
+        cp.init_client_portal_table(cx)
+        token, _pid = cp.upsert_portal(cx, "a@b.com", "Test Client", {})
+    app_mod.app.config["TESTING"] = True
+    client = app_mod.app.test_client()
+    j = client.get(f"/api/portal/{token}").get_json()
+    assert j.get("fullscript_enabled") is False
+    assert "fullscript" not in j
