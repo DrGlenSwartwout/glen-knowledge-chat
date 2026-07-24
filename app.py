@@ -20215,6 +20215,12 @@ def api_portal_triage(token):
         answers = {k: data.get(k) for k in
                    ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
                     "field_loss", "category")}
+        # Ensure the condition-programs store exists and every program (incl.
+        # any added after prod's once-ever seed already fired, e.g.
+        # vision-improvement) is present -- this route resolves programs by
+        # key and previously relied on other console/eye-programs routes
+        # having run first to guarantee that, which isn't true for triage.
+        _init_support_programs_tables(cx)
         res = _ct.seed_from_triage(cx, email, cond, answers)
     return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
 
