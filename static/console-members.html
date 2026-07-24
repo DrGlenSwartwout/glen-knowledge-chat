@@ -56,7 +56,13 @@
   </div>
 </main>
 <script>
-const KEY = new URLSearchParams(location.search).get("key") || "";
+// Auth: accept ?key= (scriptable), but persist it and fall back to the SAME
+// localStorage key the main console stores (see console-client.html).
+const KEY = (function(){
+  const k = new URLSearchParams(location.search).get("key");
+  if (k) { try { localStorage.setItem("console_key", k); } catch(e){} }
+  try { return localStorage.getItem("console_key") || ""; } catch(e){ return k || ""; }
+})();
 const H = {"X-Console-Key": KEY};
 function esc(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function money(cents){return "$" + (Math.round(cents||0)/100).toFixed(2);}
