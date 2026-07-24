@@ -69,3 +69,41 @@ def test_put_draft_replaces_a_prior_draft_for_the_same_document():
     rows = cx.execute("SELECT COUNT(*) FROM client_document_extractions "
                       "WHERE document_id=7").fetchone()
     assert rows[0] == 1
+
+
+def test_put_draft_does_not_touch_a_confirmed_document():
+    """A confirmed narrative is live in the client's portal and has no
+    history table -- re-extraction must leave it completely alone."""
+    cx = _cx()
+    eid = dx.put_draft(cx, 7, "c@x.com", "draft", [], [], [], "m")
+    dx.confirm(cx, eid, "approved narrative", "glen")
+
+    new_id = dx.put_draft(cx, 7, "c@x.com", "re-extracted text",
+                           [{"field": "x"}], [{"fact_key": "y"}],
+                           [{"label": "z"}], "m2")
+
+    assert new_id == eid
+    got = dx.get_for_document(cx, 7)
+    assert got["status"] == "confirmed"
+    assert got["narrative_md"] == "approved narrative"
+    assert got["reviewed_by"] == "glen"
+    assert got["reviewed_at"]
+    rows = cx.execute("SELECT COUNT(*) FROM client_document_extractions "
+                      "WHERE document_id=7").fetchone()
+    assert rows[0] == 1
+
+
+def test_put_draft_replaces_a_rejected_document():
+    """Rejection must not permanently block re-extraction (re-queuing)."""
+    cx = _cx()
+    eid = dx.put_draft(cx, 7, "c@x.com", "draft", [], [], [], "m")
+    dx.reject(cx, eid, "glen")
+
+    dx.put_draft(cx, 7, "c@x.com", "re-extracted text", [], [], [], "m2")
+
+    got = dx.get_for_document(cx, 7)
+    assert got["status"] == "ai_draft"
+    assert got["narrative_md"] == "re-extracted text"
+    rows = cx.execute("SELECT COUNT(*) FROM client_document_extractions "
+                      "WHERE document_id=7").fetchone()
+    assert rows[0] == 1

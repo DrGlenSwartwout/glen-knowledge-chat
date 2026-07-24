@@ -42,8 +42,20 @@ def _loads(s):
 
 def put_draft(cx, document_id, email, narrative_md, attributes, facts,
               unstructured, model):
-    """Write (or replace) the single draft for `document_id`. Returns its id."""
+    """Write (or replace) the single draft for `document_id`. Returns its id.
+
+    A `confirmed` row is an approved narrative a client may be actively
+    reading in their portal, with no history table to recover it from if
+    overwritten -- so it is left completely untouched and its existing id
+    is returned. `ai_draft` and `rejected` rows are replaced as before;
+    re-extraction of a rejected document is the normal re-queue path.
+    """
     init_table(cx)
+    existing = cx.execute(
+        "SELECT id, status FROM client_document_extractions "
+        "WHERE document_id=?", (document_id,)).fetchone()
+    if existing and existing[1] == "confirmed":
+        return existing[0]
     cx.execute("DELETE FROM client_document_extractions WHERE document_id=?",
                (document_id,))
     cx.execute(
