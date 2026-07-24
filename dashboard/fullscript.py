@@ -78,3 +78,46 @@ def sync_from_seed(cx, seed):
             "focus_area_products": len(seed.get("focus_area_products", [])),
             "focus_area_items": len(seed.get("focus_area_items", [])),
             "condition_products": len(seed.get("condition_products", []))}
+
+
+_PRODUCT_COLS = ("p.name AS name, p.brand AS brand, p.product_slug AS product_slug, "
+                 "p.external_id AS external_id, p.best_ff AS best_ff, "
+                 "p.relation AS relation")
+
+
+def focus_areas_for_items(cx, item_codes):
+    """Focus areas whose infoceuticals include any of item_codes, ranked by hit count."""
+    codes = [c for c in (item_codes or []) if c]
+    if not codes:
+        return []
+    q = ("SELECT i.focus_area_id, COALESCE(n.focus_area_name, '') AS focus_area_name, "
+         "COUNT(*) AS hits FROM fullscript_focus_area_items i "
+         "LEFT JOIN (SELECT DISTINCT focus_area_id, focus_area_name "
+         "           FROM fullscript_focus_area_products) n "
+         "  ON n.focus_area_id = i.focus_area_id "
+         f"WHERE i.item_code IN ({','.join('?' * len(codes))}) "
+         "GROUP BY i.focus_area_id ORDER BY hits DESC, i.focus_area_id")
+    return [dict(r) for r in cx.execute(q, codes).fetchall()]
+
+
+def products_for_focus_area(cx, focus_area_id):
+    rows = cx.execute(f"""
+        SELECT {_PRODUCT_COLS}
+        FROM fullscript_focus_area_products fap
+        JOIN fullscript_products p ON p.name = fap.fs_product_name
+        WHERE fap.focus_area_id = ? AND p.active = 1
+        ORDER BY fap.rank""", (focus_area_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def pins_for_client(cx, email):
+    e = (email or "").strip().lower()
+    if not e:
+        return []
+    rows = cx.execute(f"""
+        SELECT {_PRODUCT_COLS}, pin.note AS note
+        FROM fullscript_client_pins pin
+        JOIN fullscript_products p ON p.name = pin.fs_product_name
+        WHERE LOWER(pin.email) = ? AND p.active = 1
+        ORDER BY pin.pinned_at""", (e,)).fetchall()
+    return [dict(r) for r in rows]

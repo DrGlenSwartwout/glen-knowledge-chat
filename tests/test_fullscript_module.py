@@ -113,3 +113,43 @@ def test_sync_replaces_condition_products():
     assert len(rows) == 1
     assert rows[0]["condition_key"] == "insomnia"
     assert rows[0]["fs_product_name"] == "Magnesium Taurate"
+
+
+def test_focus_areas_for_items_ranked():
+    cx = _cx()
+    fas = fs.focus_areas_for_items(cx, ["ED4", "EI1", "ED8"])
+    assert fas[0]["focus_area_id"] == 9 and fas[0]["hits"] == 2
+    assert any(f["focus_area_id"] == 14 for f in fas)
+
+
+def test_focus_areas_for_items_empty_input():
+    cx = _cx()
+    assert fs.focus_areas_for_items(cx, []) == []
+    assert fs.focus_areas_for_items(cx, None) == []
+
+
+def test_products_for_focus_area_joined_and_ordered():
+    cx = _cx()
+    ps = fs.products_for_focus_area(cx, 9)
+    assert [p["name"] for p in ps] == ["Magnesium Taurate", "Pure Taurine 500mg"]
+    assert ps[0]["best_ff"] == "Neuro Magnesium"
+    assert ps[0]["external_id"] == "U3ByZWU6OlByb2R1Y3QtMTA3Njc2"
+
+
+def test_products_for_focus_area_skips_inactive():
+    cx = _cx()
+    cx.execute("UPDATE fullscript_products SET active=0 WHERE name=?",
+               ("Pure Taurine 500mg",))
+    ps = fs.products_for_focus_area(cx, 9)
+    assert [p["name"] for p in ps] == ["Magnesium Taurate"]
+
+
+def test_pins_for_client():
+    cx = _cx()
+    assert fs.pins_for_client(cx, "a@b.com") == []
+    cx.execute("INSERT INTO fullscript_client_pins "
+               "(email, fs_product_name, note, pinned_by, pinned_at) VALUES (?,?,?,?,?)",
+               ("a@b.com", "Magnesium Taurate", "start here", "glen", "2026-07-23"))
+    pins = fs.pins_for_client(cx, "A@B.com")  # case-insensitive
+    assert len(pins) == 1
+    assert pins[0]["name"] == "Magnesium Taurate" and pins[0]["note"] == "start here"
