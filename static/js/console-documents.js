@@ -20,7 +20,7 @@ function cdProposalRow(kind, idx, label, quote) {
 }
 
 function renderDocumentsHtml(items, consoleKey) {
-  if (!items || !items.length) return '<p class="muted">No documents.</p>';
+  if (!items || !items.length) return '<p class="empty">No documents.</p>';
   return items.map(function (it) {
     var head = '<h3>' + cdEsc(it.filename) + ' ' +
       '<span class="pill">' + cdEsc(it.source) + '</span> ' +
@@ -30,13 +30,13 @@ function renderDocumentsHtml(items, consoleKey) {
 
     var d = it.draft;
     if (!d) {
-      return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
-        '<p class="muted">Awaiting extraction (' +
+      return '<section class="cd-doc" data-doc="' + cdEsc(it.id) + '">' + head +
+        '<p class="empty">Awaiting extraction (' +
         cdEsc(it.extract_status) + ').</p></section>';
     }
     if (d.status !== 'ai_draft') {
-      return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
-        '<p class="muted">' +
+      return '<section class="cd-doc" data-doc="' + cdEsc(it.id) + '">' + head +
+        '<p class="empty">' +
         (d.status === 'confirmed' ? 'Approved' : 'Rejected') +
         (d.reviewed_by ? ' by ' + cdEsc(d.reviewed_by) : '') +
         '.</p></section>';
@@ -57,18 +57,18 @@ function renderDocumentsHtml(items, consoleKey) {
         '</blockquote></li>';
     }).join('');
 
-    return '<section class="cd-doc" data-doc="' + it.id + '">' + head +
+    return '<section class="cd-doc" data-doc="' + cdEsc(it.id) + '">' + head +
       (attrs ? '<h4>Proposed attributes</h4><ul class="cd-props">' + attrs + '</ul>' : '') +
       (facts ? '<h4>Proposed facts</h4><ul class="cd-props">' + facts + '</ul>' : '') +
-      (labs ? '<h4>Labs and medications <span class="muted">(not stored ' +
+      (labs ? '<h4>Labs and medications <span class="empty">(not stored ' +
               'structurally — reference only)</span></h4><ul class="cd-labs">' +
               labs + '</ul>' : '') +
       '<h4>Client narrative</h4>' +
       '<textarea class="cd-narrative" rows="8">' + cdEsc(d.narrative_md) +
         '</textarea>' +
       '<p class="cd-actions">' +
-        '<button class="cd-approve" data-doc="' + it.id + '">Approve</button> ' +
-        '<button class="cd-reject" data-doc="' + it.id + '">Reject</button>' +
+        '<button class="cd-approve" data-doc="' + cdEsc(it.id) + '">Approve</button> ' +
+        '<button class="cd-reject" data-doc="' + cdEsc(it.id) + '">Reject</button>' +
       '</p>' +
     '</section>';
   }).join('');

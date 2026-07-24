@@ -51,7 +51,7 @@ assert.ok(/awaiting extraction/i.test(raw));
 assert.ok(!raw.includes('type="checkbox"'));
 
 // empty state
-assert.strictEqual(renderDocumentsHtml([], 'k'), '<p class="muted">No documents.</p>');
+assert.strictEqual(renderDocumentsHtml([], 'k'), '<p class="empty">No documents.</p>');
 
 // filenames and quotes are escaped, never injected
 const evil = renderDocumentsHtml([{
