@@ -72,6 +72,32 @@ def test_verify_quotes_keeps_a_legitimate_short_multi_token_quote():
     assert len(kept) == 1 and dropped == []
 
 
+# --- pin BOTH halves of _quote_is_substantial independently: mutating either
+# the length floor or the token-count floor alone must turn one of these red.
+# ---
+
+def test_verify_quotes_drops_a_short_but_multi_token_quote_below_the_length_floor():
+    """Reviewer's concrete repro: 2 alphanumeric tokens, genuinely present in
+    the haystack, but under _MIN_QUOTE_LEN once normalized. Only the LENGTH
+    floor rejects this -- it has plenty of tokens. Would be kept if
+    _MIN_QUOTE_LEN were relaxed from 8 to 1."""
+    haystack = "The patient is a 64 year old female."
+    kept, dropped = de.verify_quotes(
+        [{"value": "X", "source_quote": "is a"}], haystack)
+    assert kept == [] and len(dropped) == 1
+
+
+def test_verify_quotes_drops_a_long_but_single_token_quote_below_the_token_floor():
+    """A quote of 8+ normalized characters, genuinely present in the
+    haystack, but with only ONE whitespace-separated alphanumeric token.
+    Only the TOKEN-COUNT floor rejects this -- it easily clears the length
+    floor. Would be kept if the token-count comparison were relaxed from
+    >= 2 to >= 1."""
+    kept, dropped = de.verify_quotes(
+        [{"value": "X", "source_quote": "glaucoma."}], SOURCE)
+    assert kept == [] and len(dropped) == 1
+
+
 def test_extract_drops_a_trivially_short_quote_end_to_end():
     """The exact FINDING 1 repro: a '.' source_quote must not let a
     fabricated diagnosis survive into the draft Glen reviews."""

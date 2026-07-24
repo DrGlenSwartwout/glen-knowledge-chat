@@ -39,8 +39,11 @@ _PROMPT = (
     '  "unstructured": [{"label": str, "value": str, "source_quote": str}] '
     "for lab results with numeric values and medications.\n\n"
     "EVERY item MUST include a source_quote copied VERBATIM from the document. "
-    "An item without a verbatim quote will be discarded. No markdown fences, no "
-    "prose outside the JSON."
+    "An item without a verbatim quote will be discarded. Each source_quote must "
+    "be a complete phrase or the whole line the finding appears on -- long "
+    "enough to stand on its own -- never a bare single word or number (e.g. "
+    "not just \"Glaucoma\" or \"6.4\"); quotes shorter than that will be "
+    "discarded. No markdown fences, no prose outside the JSON."
 )
 
 
