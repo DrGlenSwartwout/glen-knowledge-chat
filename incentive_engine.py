@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from dashboard import db
+
 
 ANTI_STALE_DAYS = 30
 HIGH_AFFINITY_DAYS = 14
@@ -322,7 +324,7 @@ def update_personalization_from_reply(
     """Boost the user's topic + product affinity based on what they
     mentioned in their reply. Replies are stronger signals than clicks
     because the user invested effort to write."""
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = _sqlite3.Row
         row = cx.execute(
             "SELECT topic_engagement_history, product_affinity "
@@ -560,7 +562,7 @@ def _list_beta_cohort_users() -> list:
         return []
 
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         # Ensure each cohort email has a user row (idempotent via UNIQUE
         # constraint on email).
         for email in cohort_emails:
@@ -582,7 +584,7 @@ def _list_beta_cohort_users() -> list:
 
 
 def _load_user_state(user_id: int) -> dict:
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = _sqlite3.Row
         row = cx.execute(
             "SELECT * FROM personal_email_state WHERE user_id = ?",
@@ -601,7 +603,7 @@ def _record_send(
     body: str,
 ) -> None:
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.execute(
             """INSERT INTO personal_email_sends
                (user_id, sent_at, channel, topic, product_name,
@@ -644,7 +646,7 @@ def _tracked_product_url(email, slug, source="email"):
     link. Mints a durable per-recipient token (no PII in the URL) and points at
     /r/<token>/<source>/<slug>, which records the click then 302s to the product."""
     from dashboard import email_click_tokens as _ect
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _ect.init_email_click_tokens(cx)
         token = _ect.token_for(cx, email)
     return f"{_public_base()}/r/{token}/{source}/{slug}"
@@ -749,7 +751,7 @@ def _list_segment_cohort(segment_tags=("type:client", "consent:opted-in"),
     Returns full cohort by default; the orchestrator caps SENDS, not cohort, so
     the ramp introduces new recipients over successive runs."""
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = _sqlite3.Row
         clauses = " AND ".join(["tags LIKE ?"] * len(segment_tags))
         args = [f'%"{t}"%' for t in segment_tags]
@@ -818,7 +820,7 @@ def revoke_consent(email: str) -> bool:
     if not email:
         return False
     now = datetime.now(timezone.utc).isoformat()
-    with _sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         cx.row_factory = _sqlite3.Row
         row = cx.execute("SELECT id, tags FROM people WHERE email=?", (email,)).fetchone()
         if row:
