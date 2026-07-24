@@ -17,6 +17,7 @@ from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
 from dashboard import course_tokens
+from dashboard import stripe_pay
 from dashboard.courses_sanitize import sanitize_html
 
 courses_bp = Blueprint("courses", __name__)
@@ -245,3 +246,47 @@ def mentorship_intake_start():
     except Exception:
         appmod.app.logger.exception("mentorship setup link email failed")
     return jsonify({"ok": True})
+
+
+def _stripe_active() -> bool:
+    return os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+_COURSE_PRICE_ENV = {"onetime": "STRIPE_CERT_PRICE_ID", "membership": "STRIPE_MEMBERSHIP_PRICE_ID"}
+
+
+@courses_bp.route("/api/courses/checkout", methods=["POST"])
+def courses_checkout():
+    import app as appmod  # late import: only for mentorship_base()
+    data = request.get_json(silent=True) or {}
+    product = (data.get("product") or "").strip().lower()
+    if product not in _COURSE_PRICE_ENV:
+        return jsonify({"error": "unknown product"}), 400
+    price_id = os.environ.get(_COURSE_PRICE_ENV[product], "").strip()
+    if not (_stripe_active() and price_id):
+        return jsonify({"error": "not available"}), 503
+
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        token = request.args.get("token") or request.cookies.get("mu_token")
+        if token:
+            cx = _connect()
+            try:
+                email = (course_tokens.resolve_course_token(cx, token) or "").strip().lower()
+            finally:
+                cx.close()
+
+    base = appmod.mentorship_base()
+    mode = "payment" if product == "onetime" else "subscription"
+    metadata = {"kind": "course_purchase", "email": email or None, "product": product}
+    sub_md = {"kind": "course_membership", "email": email or None} if mode == "subscription" else None
+    try:
+        sess = stripe_pay.create_price_checkout_session(
+            price_id, mode=mode, customer_email=(email or None), metadata=metadata,
+            subscription_metadata=sub_md,
+            success_url=f"{base}/learn/ash-certification?enrolled=1",
+            cancel_url=f"{base}/learn/ash-certification")
+    except Exception:
+        appmod.app.logger.exception("courses checkout failed")
+        return jsonify({"error": "checkout failed"}), 502
+    return jsonify({"url": sess.get("url")})

@@ -221,3 +221,50 @@ def test_learn_register_dead_link_is_gone_everywhere(client):
     assert r.status_code == 403
     assert b"/learn/register" not in r.data
     assert b"/learn#register" in r.data
+
+
+def _stripe_on(monkeypatch, appmod):
+    monkeypatch.setenv("STRIPE_ACTIVE", "1")
+    monkeypatch.setenv("STRIPE_CERT_PRICE_ID", "price_cert")
+    monkeypatch.setenv("STRIPE_MEMBERSHIP_PRICE_ID", "price_mem")
+
+
+def test_checkout_onetime_returns_url(client, monkeypatch):
+    c, appmod = client
+    _stripe_on(monkeypatch, appmod)
+    from dashboard import stripe_pay
+    captured = {}
+    monkeypatch.setattr(stripe_pay, "create_price_checkout_session",
+                        lambda price_id, **k: captured.update(price_id=price_id, mode=k["mode"]) or
+                        {"id": "cs_1", "url": "https://stripe/cs_1"})
+    r = c.post("/api/courses/checkout", json={"product": "onetime", "email": "a@x.com"}, base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["url"] == "https://stripe/cs_1"
+    assert captured["price_id"] == "price_cert" and captured["mode"] == "payment"
+
+
+def test_checkout_membership_uses_subscription_mode(client, monkeypatch):
+    c, appmod = client
+    _stripe_on(monkeypatch, appmod)
+    from dashboard import stripe_pay
+    captured = {}
+    monkeypatch.setattr(stripe_pay, "create_price_checkout_session",
+                        lambda price_id, **k: captured.update(price_id=price_id, mode=k["mode"]) or
+                        {"id": "cs_2", "url": "https://stripe/cs_2"})
+    r = c.post("/api/courses/checkout", json={"product": "membership"}, base_url=_MHOST)
+    assert r.status_code == 200
+    assert captured["price_id"] == "price_mem" and captured["mode"] == "subscription"
+
+
+def test_checkout_unknown_product_400(client, monkeypatch):
+    c, appmod = client
+    _stripe_on(monkeypatch, appmod)
+    r = c.post("/api/courses/checkout", json={"product": "bogus"}, base_url=_MHOST)
+    assert r.status_code == 400
+
+
+def test_checkout_not_available_when_price_unset(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("STRIPE_ACTIVE", "1")
+    monkeypatch.delenv("STRIPE_CERT_PRICE_ID", raising=False)
+    r = c.post("/api/courses/checkout", json={"product": "onetime"}, base_url=_MHOST)
+    assert r.status_code == 503
