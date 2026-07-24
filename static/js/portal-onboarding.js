@@ -6,12 +6,13 @@ function renderOnboarding(status) {
   const phases = status.phases.map(function (ph) {
     const steps = (ph.steps || []).map(function (st) {
       const mark = st.done === true ? '✓' : (st.done === false ? '○' : '•');
+      const markClass = st.done === true ? 'ob-mark-done' : (st.done === false ? 'ob-mark-open' : 'ob-mark-resource');
       var label = escapeHtml(st.label);
       if (st.soon) label += ' (coming soon)';
       var text = st.href
         ? '<a href="' + st.href + '">' + label + '</a>'
         : label;
-      return '<li class="ob-step"><span class="ob-mark">' + mark + '</span> ' + text + '</li>';
+      return '<li class="ob-step"><span class="ob-mark ' + markClass + '">' + mark + '</span> ' + text + '</li>';
     }).join('');
     var extra = '';
     if (ph.key === 'match') {

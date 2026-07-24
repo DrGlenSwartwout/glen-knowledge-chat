@@ -445,6 +445,77 @@
   .health-sugg-edit-input { flex:1 1 12rem; min-width:8rem; font:inherit; font-size:.9rem; padding:.35rem .5rem;
     border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
   .health-suggestion-msg { flex-basis:100%; margin:.3rem 0 0; }
+
+  /* Task 4: "My Onboarding" tile (static/js/portal-onboarding.js). The mount
+     (#portal-onboarding-mount) is a sibling of #app, OUTSIDE .wrap, so it gets
+     none of .wrap's max-width/centering/gutter for free -- reproduce that here
+     (box-sizing + width:100% capped at .wrap's 648px) so the tile lines up
+     with every card below it, full-bleed-with-gutter on mobile just like .wrap. */
+  .portal-onboarding{box-sizing:border-box;width:100%;max-width:648px;margin:22px auto 0;
+    padding:20px 22px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+    box-shadow:0 1px 0 rgba(255,255,255,.02) inset, 0 10px 26px -18px rgba(0,0,0,.55)}
+  .portal-onboarding .ob-phase{margin:0 0 1.1rem}
+  .portal-onboarding .ob-phase:last-child{margin-bottom:0}
+  /* No separate tile-level heading exists in the markup -- each phase's own h3
+     is the only heading emitted, so it does double duty. Keep it quieter than
+     a normal .card h2 (1.14rem) per the "phase title, quieter than the tile
+     heading" intent. */
+  .ob-phase h3{font-family:"Raleway",sans-serif;font-size:1rem;font-weight:600;
+    color:var(--ink);margin:0 0 .55rem;letter-spacing:.005em}
+  .ob-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.35rem}
+  .ob-step{display:flex;align-items:baseline;gap:.5rem;font-size:.92rem;line-height:1.5;color:var(--ink)}
+  .ob-step a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
+  .ob-step a:hover,.ob-step a:focus-visible{color:var(--brand);border-bottom-color:var(--brand)}
+  /* Fixed width keeps ✓ / ○ / • aligned into a column regardless of glyph width.
+     Per-state color: portal-onboarding.js renderOnboarding() adds a state
+     modifier class (ob-mark-done / ob-mark-open / ob-mark-resource) alongside
+     ob-mark, so done vs pending/resource marks can be colored distinctly. */
+  .ob-mark{display:inline-block;width:1.15em;flex:0 0 auto;text-align:center;
+    font-weight:700}
+  .ob-mark-done{color:var(--brand)}
+  .ob-mark-open{color:var(--muted)}
+  .ob-mark-resource{color:var(--muted)}
+  .ob-member-thread{color:var(--muted);font-size:.85rem;margin:.7rem 0 0}
+  .ob-member-thread a{color:var(--brand);font-weight:600;text-decoration:none}
+  .ob-member-thread a:hover,.ob-member-thread a:focus-visible{text-decoration:underline}
+  /* Task 6: compact glaucoma-pilot triage form, shown inline under the Match phase. */
+  .ob-triage-form{margin:.9rem 0 0;padding-top:.9rem;border-top:1px dashed var(--line)}
+  .ob-triage-intro{color:var(--muted);font-size:.85rem;margin:0 0 .7rem}
+  .ob-triage-row{display:flex;gap:.7rem;flex-wrap:wrap;margin:0 0 .7rem}
+  .ob-triage-field{display:flex;flex-direction:column;gap:.3rem;font-size:.85rem;
+    font-weight:600;color:var(--ink);flex:1 1 8rem;min-width:0}
+  .ob-triage-field input{width:100%;background:var(--card2);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
+    font-family:inherit;box-sizing:border-box}
+  .ob-triage-field input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+  .ob-triage-check{display:flex;align-items:center;gap:.5rem;font-size:.9rem;
+    font-weight:400;color:var(--ink);margin:0 0 .6rem}
+  .ob-triage-check input{margin:0}
+  .ob-med-count{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.4rem;
+    font-size:.85rem;color:var(--muted);margin:0 0 .6rem}
+  .ob-med-count-input{background:var(--card2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:4px 8px;font-size:.85rem;font-family:inherit;box-sizing:border-box}
+  .ob-triage-submit{display:inline-block;background:var(--btn-bg);color:var(--btn-fg);
+    border:0;cursor:pointer;font-family:"Raleway",sans-serif;font-size:.92rem;font-weight:600;
+    letter-spacing:.01em;border-radius:10px;padding:9px 18px;margin:.2rem 0 .7rem;
+    box-shadow:0 8px 20px -12px rgba(0,0,0,.55);transition:filter .18s ease,transform .12s ease}
+  .ob-triage-submit:hover{filter:brightness(1.06)}
+  .ob-triage-submit:active{transform:translateY(1px)}
+  .ob-triage-submit:focus-visible{outline:2px solid var(--btn-bg);outline-offset:3px}
+  .ob-triage-fallback{color:var(--muted);font-size:.82rem;margin:0 0 .5rem}
+  .ob-triage-cat{background:transparent;border:1px solid var(--line);color:var(--ink);
+    border-radius:999px;padding:3px 11px;font-size:.8rem;font-weight:600;cursor:pointer;
+    font-family:inherit;margin-right:.3rem}
+  .ob-triage-cat:hover,.ob-triage-cat:focus-visible{border-color:var(--brand);color:var(--brand);outline:none}
+  .ob-triage-msg{font-size:.85rem;margin:.3rem 0 0;min-height:1.1em}
+  .ob-triage-msg.ob-triage-ok{color:var(--ok)}
+  .ob-triage-msg.ob-triage-err{color:var(--err)}
+  @media (max-width:480px){
+    .portal-onboarding{padding:16px 16px}
+    .ob-triage-row{flex-direction:column;gap:.6rem}
+    .ob-triage-field{flex:1 1 100%}
+    .ob-med-count{display:flex}
+  }
 </style>
 </head>
 <body>
