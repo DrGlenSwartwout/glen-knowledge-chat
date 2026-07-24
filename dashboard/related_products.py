@@ -6,7 +6,6 @@ from urllib.parse import urlsplit as _urlsplit
 
 DO_NOT_RECOMMEND = frozenset({
     "electrolyte-mineral-manna",
-    "water-ionizer-5plate", "water-ionizer-9plate", "water-ionizer-15plate",
     "fungifuge",
 })
 
