@@ -28284,6 +28284,27 @@ def _console_key_ok():
     return key == CONSOLE_SECRET or _owner_token_ok(key)
 
 
+@app.route("/console/courses/grant-membership", methods=["POST"])
+def console_courses_grant_membership():
+    if CONSOLE_SECRET and not _console_key_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import course_entitlements as _ce
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    try:
+        months = int(data.get("months") or 1)
+    except (TypeError, ValueError):
+        months = 0
+    if not email or months <= 0:
+        return jsonify({"error": "bad request"}), 400
+    until = time.time() + months * 30 * 86400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _ce.grant_membership(cx, email, until_epoch=until, source="manual")
+        cx.commit()
+    _autoprovision_course_access(email)
+    return jsonify({"ok": True, "email": email, "until_epoch": until})
+
+
 def _send_practitioner_invite(email, name, pid):
     """Mint a 7-day practitioner magic link and email it. Returns True on send."""
     magic = _pp.create_magic_link_token(pid, email, ttl_min=7 * 24 * 60)
