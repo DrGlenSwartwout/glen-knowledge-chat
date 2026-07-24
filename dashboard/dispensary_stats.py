@@ -7,6 +7,7 @@ empty result), matching the portal_view.py convention.
 import json
 import os
 import sqlite3
+from dashboard import db
 from pathlib import Path
 
 _DATA = Path(__file__).resolve().parent.parent / "data"
@@ -108,7 +109,7 @@ def patient_portal_items(practitioner_email, *, practitioner_id=None, db_path=No
     em = (practitioner_email or "").strip().lower()
     emails = set()
     try:
-        with sqlite3.connect(_log_db(db_path)) as cx:
+        with db.connect(_log_db(db_path)) as cx:
             if em:
                 try:
                     for (e,) in cx.execute(
@@ -157,7 +158,7 @@ def dispense_stats(practitioner_id, *, practitioner_email=None, db_path=None, ca
     Never raises."""
     dispensed, dropshipped = {}, {}
     try:
-        with sqlite3.connect(_log_db(db_path)) as cx:
+        with db.connect(_log_db(db_path)) as cx:
             try:  # each channel degrades independently (a missing table zeroes only its own)
                 w = [r[0] for r in cx.execute(
                     "SELECT invoice_id FROM wholesale_orders WHERE practitioner_id=?", (str(practitioner_id),))]

@@ -462,7 +462,7 @@ def build_personal_note_for_user(user_state: dict) -> str:
 
 def _init_test_state(db_path: str, rows: list) -> None:
     """Test helper — seed users + personal_email_state rows."""
-    with _sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         cx.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY,

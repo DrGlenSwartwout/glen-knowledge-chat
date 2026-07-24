@@ -13669,7 +13669,7 @@ def api_console_e4l_db_sync():
         with open(tmp, "wb") as f:
             f.write(blob)
         # validate it's a real e4l.db before swapping in
-        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)  # raw-sqlite-ok: uploaded e4l.db validation (read-only URI, not chat_log)
         vx.row_factory = sqlite3.Row
         counts = {}
         for t in ("e4l_items", "e4l_pattern_structures", "e4l_formulation_map",

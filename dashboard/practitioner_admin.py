@@ -12,6 +12,7 @@ tokens, and the geocoder where possible.
 from __future__ import annotations
 
 import sqlite3
+from dashboard import db
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
@@ -63,7 +64,7 @@ def aggregate_activity(db_path: str) -> dict:
     Returns {pid: {orders, spent_cents, last_order, disp_count, disp_credit_cents,
     disp_bottles}}. A practitioner with no activity is simply absent."""
     out: dict = {}
-    with sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         pp._ensure_orders_table(cx)
         pp._ensure_dispensary_table(cx)
         for pid, n, spent, last in cx.execute(
