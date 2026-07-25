@@ -481,12 +481,33 @@
   /* Task 6: compact glaucoma-pilot triage form, shown inline under the Match phase. */
   .ob-triage-form{margin:.9rem 0 0;padding-top:.9rem;border-top:1px dashed var(--line)}
   .ob-triage-intro{color:var(--muted);font-size:.85rem;margin:0 0 .7rem}
+  .ob-condition-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.45rem .8rem;margin:0 0 .8rem}
+  .ob-condition-choice{display:flex;align-items:flex-start;gap:.45rem;font-size:.9rem;
+    line-height:1.35;color:var(--ink)}
+  .ob-condition-choice input{margin-top:.15rem}
+  .ob-condition-detail{margin:.8rem 0;padding:.8rem;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px}
+  .ob-condition-detail[hidden]{display:none}
+  .ob-followup-title{font-weight:600;font-size:.9rem;margin:0 0 .65rem;color:var(--ink)}
+  .ob-history-section+.ob-history-section{margin-top:1rem;padding-top:1rem;
+    border-top:1px dashed var(--line)}
+  .ob-product-history{margin:0 0 .65rem}
+  .ob-product-detail{margin:.35rem 0 .75rem 1.45rem}
+  .ob-product-detail[hidden]{display:none}
   .ob-triage-row{display:flex;gap:.7rem;flex-wrap:wrap;margin:0 0 .7rem}
   .ob-triage-field{display:flex;flex-direction:column;gap:.3rem;font-size:.85rem;
     font-weight:600;color:var(--ink);flex:1 1 8rem;min-width:0}
   .ob-triage-field input{width:100%;background:var(--card2);color:var(--ink);
     border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
     font-family:inherit;box-sizing:border-box}
+  .ob-triage-field select{width:100%;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
+    font-family:inherit;box-sizing:border-box}
+  .ob-triage-field textarea{width:100%;resize:vertical;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
+    font-family:inherit;box-sizing:border-box}
+  .ob-inline-field{max-width:15rem;margin:0 0 .65rem}
   .ob-triage-field input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
   .ob-triage-check{display:flex;align-items:center;gap:.5rem;font-size:.9rem;
     font-weight:400;color:var(--ink);margin:0 0 .6rem}
@@ -513,6 +534,7 @@
   @media (max-width:480px){
     .portal-onboarding{padding:16px 16px}
     .ob-triage-row{flex-direction:column;gap:.6rem}
+    .ob-condition-list{grid-template-columns:1fr}
     .ob-triage-field{flex:1 1 100%}
     .ob-med-count{display:flex}
   }

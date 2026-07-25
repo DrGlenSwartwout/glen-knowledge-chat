@@ -16,11 +16,11 @@ function renderOnboarding(status) {
     }).join('');
     var extra = '';
     if (ph.key === 'match') {
-      // Task 6: the compact glaucoma-pilot triage form, shown only until the
-      // "history" step is done (i.e. no condition-sourced recs seeded yet).
+      // Ask about every condition with an authored protocol until at least one
+      // condition-sourced recommendation has been saved.
       var historyStep = _stepByKey(ph.steps, 'history');
       if (historyStep && historyStep.done === false) {
-        extra += renderTriageForm();
+        extra += renderTriageForm(status);
       }
       // Task 6 / P1.T3 fast-follow: surface status.member as a quiet inline
       // thread near Match/Heal -- not a checklist item.
@@ -39,36 +39,164 @@ function _stepByKey(steps, key) {
   return null;
 }
 
-// Compact glaucoma-pilot self-report (Plan 2 Task 6). Pure markup only --
+// Condition-history checklist with condition-specific follow-ups. Pure markup --
 // submit is wired via a delegated listener in the browser-init block below so
 // this function (and renderOnboarding) stays side-effect-free / DOM-free and
 // unit-testable under plain Node. All labels/text here are fixed copy (no
 // server-provided strings), so nothing needs escaping.
-function renderTriageForm() {
+function renderTriageForm(status) {
+  status = status || {};
+  var conditionSection = '';
+  if (!status.history_conditions_done) {
+    conditionSection =
+      '<div class="ob-history-section" data-history-section="conditions">' +
+        '<p class="ob-triage-intro">Do you have any of these eye or vision issues? Check all that apply.</p>' +
+        '<div class="ob-condition-list">' +
+          _conditionChoice('glaucoma', 'Glaucoma') +
+          _conditionChoice('cataract', 'Cataracts') +
+          _conditionChoice('macular', 'Macular degeneration') +
+          _conditionChoice('dry-eye', 'Dry eye') +
+          _conditionChoice('retinitis-pigmentosa', 'Retinitis pigmentosa') +
+          _conditionChoice('diabetic-retinopathy', 'Diabetic retinopathy') +
+          _conditionChoice('vision-improvement', 'Reduced vision or vision you want to improve') +
+          _conditionChoice('other', 'Other') +
+        '</div>' +
+        _glaucomaFollowup() + _cataractFollowup() +
+        _macularFollowup() + _dryEyeFollowup() +
+        '<div class="ob-condition-detail" data-condition-detail="other" hidden>' +
+          '<p class="ob-followup-title">Tell us what else is going on</p>' +
+          '<label class="ob-triage-field">Other eye or vision issue' +
+            '<textarea name="other_condition" rows="3"></textarea></label>' +
+        '</div>' +
+      '</div>';
+  }
+  var productSection = '';
+  if (!status.history_products_done) {
+    productSection =
+      '<div class="ob-history-section" data-history-section="products">' +
+        '<p class="ob-followup-title">What are you currently taking?</p>' +
+        '<p class="ob-triage-intro">Check each category that applies. Include the brand and product names so we can review them for analysis and possible supportive remedies.</p>' +
+        _productHistoryChoice('prescriptions', 'Prescription medications') +
+        _productHistoryChoice('otc', 'Over-the-counter drugs') +
+        _productHistoryChoice('supplements', 'Supplements') +
+      '</div>';
+  }
+  var extendedSection = '';
+  if (!status.history_extended_done) {
+    extendedSection =
+      '<div class="ob-history-section" data-history-section="extended">' +
+        '<p class="ob-followup-title">More about your health history</p>' +
+        '<p class="ob-triage-intro">Check every category that applies and add the requested details.</p>' +
+        _extendedHistoryChoice('surgeries', 'Hospitalizations or surgeries',
+          'List each procedure or hospitalization, the reason, and your age at the time.') +
+        _extendedHistoryChoice('physical_trauma', 'Physical trauma or injuries',
+          'Describe what happened, body areas affected, your age, and any lasting effects.') +
+        _extendedHistoryChoice('psychoemotional_trauma', 'Psychoemotional trauma or major stress',
+          'Describe what happened, your approximate age or year, and any lasting effects.') +
+        _extendedHistoryChoice('toxins', 'Toxin or environmental exposures',
+          'List the substance, source, duration, approximate dates, and any reaction.') +
+        _extendedHistoryChoice('vaccinations', 'COVID or other vaccinations',
+          'List the vaccine, brand, date, and any reactions or changes afterward.') +
+        _extendedHistoryChoice('family_history', 'Family health history',
+          'List the parent or grandparent, condition, maternal or paternal side, and age at onset.') +
+        _extendedHistoryChoice('diagnoses', 'Other current or past medical diagnoses',
+          'List the diagnosis, whether it is current or past, and your age at onset.') +
+        _extendedHistoryChoice('allergies', 'Food or environmental allergies or sensitivities',
+          'List each food or environmental sensitivity and the reaction it causes.') +
+        _extendedHistoryChoice('dental', 'Dental issues, amalgams, or root canals',
+          'List the issue or procedure, tooth if known, reason, and approximate date.') +
+        _extendedHistoryChoice('sleep', 'Trouble falling asleep, staying asleep, or waking frequently',
+          'Describe the sleep pattern, frequency, and how long it has been happening.') +
+      '</div>';
+  }
   return '' +
-    '<form class="ob-triage-form" data-condition="glaucoma">' +
-      '<p class="ob-triage-intro">A couple of quick questions about your eye pressure get you starter remedies today.</p>' +
-      '<div class="ob-triage-row">' +
-        '<label class="ob-triage-field">OD (right eye) IOP' +
-          '<input type="number" step="0.1" min="0" max="60" name="iop_od" class="ob-iop-od" placeholder="e.g. 18"></label>' +
-        '<label class="ob-triage-field">OS (left eye) IOP' +
-          '<input type="number" step="0.1" min="0" max="60" name="iop_os" class="ob-iop-os" placeholder="e.g. 18"></label>' +
-      '</div>' +
-      '<label class="ob-triage-check">' +
-        '<input type="checkbox" name="on_meds" class="ob-on-meds"> On IOP-lowering medication' +
-      '</label>' +
-      '<span class="ob-med-count">(if yes, how many? ' +
-        '<input type="number" min="0" max="20" name="med_count" class="ob-med-count-input" style="width:3em"></span>' +
-      '<label class="ob-triage-check">' +
-        '<input type="checkbox" name="field_loss" class="ob-field-loss"> Peripheral vision loss' +
-      '</label>' +
+    '<form class="ob-triage-form">' +
+      conditionSection +
+      productSection +
+      extendedSection +
       '<button type="submit" class="ob-triage-submit">Show my starter remedies</button>' +
-      '<p class="ob-triage-fallback">Not sure? Pick a category: ' +
-        '<button type="button" class="ob-triage-cat" data-category="normal">Normal</button> ' +
-        '<button type="button" class="ob-triage-cat" data-category="elevated">Elevated</button>' +
-      '</p>' +
       '<p class="ob-triage-msg" aria-live="polite"></p>' +
     '</form>';
+}
+
+function _extendedHistoryChoice(kind, label, prompt) {
+  return '<div class="ob-product-history">' +
+    '<label class="ob-triage-check"><input type="checkbox" name="' + kind +
+      '_yes" data-extended-kind="' + kind + '"> ' + label + '</label>' +
+    '<label class="ob-triage-field ob-product-detail" data-extended-detail="' + kind +
+      '" hidden>' + prompt +
+      '<textarea name="' + kind + '_text" rows="4" placeholder="One event or item per line"></textarea></label>' +
+  '</div>';
+}
+
+function _productHistoryChoice(kind, label) {
+  return '<div class="ob-product-history">' +
+    '<label class="ob-triage-check"><input type="checkbox" name="' + kind +
+      '_yes" data-product-kind="' + kind + '"> ' + label + '</label>' +
+    '<label class="ob-triage-field ob-product-detail" data-product-detail="' + kind +
+      '" hidden>Brand and product names' +
+      '<textarea name="' + kind + '_text" rows="3" placeholder="One product per line"></textarea></label>' +
+  '</div>';
+}
+
+function _conditionChoice(value, label) {
+  return '<label class="ob-condition-choice"><input type="checkbox" name="conditions" value="' +
+    value + '"> ' + label + '</label>';
+}
+
+function _detailCheck(name, label) {
+  return '<label class="ob-triage-check"><input type="checkbox" name="' +
+    name + '"> ' + label + '</label>';
+}
+
+function _glaucomaFollowup() {
+  return '<div class="ob-condition-detail" data-condition-detail="glaucoma" hidden>' +
+    '<p class="ob-followup-title">A few details about your glaucoma</p>' +
+    '<label class="ob-triage-field">What type or pressure pattern were you told you have?' +
+      '<select name="category"><option value="">Not sure</option><option value="elevated">Elevated-pressure glaucoma</option><option value="normal">Normal-tension glaucoma</option></select></label>' +
+    '<div class="ob-triage-row">' +
+      '<label class="ob-triage-field">Right eye pressure (OD)<input type="number" step="0.1" min="0" max="60" name="iop_od" placeholder="e.g. 18"></label>' +
+      '<label class="ob-triage-field">Left eye pressure (OS)<input type="number" step="0.1" min="0" max="60" name="iop_os" placeholder="e.g. 18"></label>' +
+    '</div>' +
+    _detailCheck('on_meds', 'I use eye-pressure-lowering medication') +
+    '<label class="ob-triage-field ob-inline-field">If yes, how many medications?<input type="number" min="0" max="20" name="med_count"></label>' +
+    _detailCheck('field_loss', 'I have peripheral vision loss') +
+  '</div>';
+}
+
+function _cataractFollowup() {
+  return '<div class="ob-condition-detail" data-condition-detail="cataract" hidden>' +
+    '<p class="ob-followup-title">A few details about your cataracts</p>' +
+    '<label class="ob-triage-field">What type were you told you have?' +
+      '<select name="cataract_type"><option value="">Not sure</option><option value="senile">Age-related / nuclear</option><option value="psc">Posterior subcapsular (PSC)</option></select></label>' +
+    '<label class="ob-triage-field ob-inline-field">Your age<input type="number" min="0" max="120" name="age"></label>' +
+    _detailCheck('steroids', 'Current or past steroid use') +
+    _detailCheck('diabetes', 'Diabetes') +
+    _detailCheck('inflammation', 'Chronic inflammation') +
+    _detailCheck('radiation', 'Radiation exposure or treatment') +
+    _detailCheck('atopy', 'Allergies, asthma, or eczema') +
+    _detailCheck('yellow_vision', 'Vision seems more yellow or less blue') +
+  '</div>';
+}
+
+function _macularFollowup() {
+  return '<div class="ob-condition-detail" data-condition-detail="macular" hidden>' +
+    '<p class="ob-followup-title">A few details about your macular degeneration</p>' +
+    '<label class="ob-triage-field">What type were you told you have?' +
+      '<select name="amd_type"><option value="">Not sure</option><option value="dry">Dry</option><option value="wet">Wet</option></select></label>' +
+    _detailCheck('injections', 'I receive eye injections for it') +
+    _detailCheck('distortion', 'Straight lines look bent, wavy, or distorted') +
+  '</div>';
+}
+
+function _dryEyeFollowup() {
+  return '<div class="ob-condition-detail" data-condition-detail="dry-eye" hidden>' +
+    '<p class="ob-followup-title">A few details about your dry eye</p>' +
+    '<label class="ob-triage-field">Do your eyes make enough tears?' +
+      '<select name="not_enough_tears"><option value="">Not sure</option><option value="false">Yes</option><option value="true">No</option></select></label>' +
+    _detailCheck('sjogrens', 'I also have dry mouth or vaginal dryness') +
+    _detailCheck('severe', 'My dry eye is severe') +
+  '</div>';
 }
 
 // Task 6 / P1.T3 fast-follow: status.member was computed but never rendered.
@@ -125,49 +253,73 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       return isNaN(n) ? undefined : n;
     }
 
-    // Builds the JSON payload from the form's live DOM values and POSTs it.
-    // CRITICAL: on_meds / field_loss go over the wire as real JSON booleans
-    // (checkbox.checked), never strings -- the server does
-    // bool(answers.get("on_meds")), so a string like "false" would be truthy.
-    function submitTriage(form, extra) {
-      var msg = form.querySelector('.ob-triage-msg');
-      var payload = {condition: form.getAttribute('data-condition') || 'glaucoma'};
-      var iopOd = _num((form.querySelector('.ob-iop-od') || {}).value);
-      var iopOs = _num((form.querySelector('.ob-iop-os') || {}).value);
-      if (iopOd !== undefined) payload.iop_od = iopOd;
-      if (iopOs !== undefined) payload.iop_os = iopOs;
-      var onMeds = !!(form.querySelector('.ob-on-meds') || {}).checked;
-      var fieldLoss = !!(form.querySelector('.ob-field-loss') || {}).checked;
-      payload.on_meds = onMeds;
-      payload.field_loss = fieldLoss;
-      if (onMeds) {
-        var medCount = _num((form.querySelector('.ob-med-count-input') || {}).value);
-        if (medCount !== undefined) payload.med_count = medCount;
-      }
-      if (extra) { for (var k in extra) { if (extra.hasOwnProperty(k)) payload[k] = extra[k]; } }
-      if (msg) { msg.textContent = 'Saving…'; msg.className = 'ob-triage-msg'; }
-      fetch('/api/portal/' + token + '/triage', {
+    function conditionPayload(form, condition) {
+      var detail = form.querySelector('[data-condition-detail="' + condition + '"]');
+      var payload = {condition: condition};
+      if (!detail) return payload;
+      Array.prototype.forEach.call(detail.querySelectorAll('input,select,textarea'), function (field) {
+        var value;
+        if (field.type === 'checkbox') {
+          value = field.checked;
+        } else if (field.type === 'number') {
+          value = _num(field.value);
+        } else if (field.name === 'not_enough_tears') {
+          value = field.value === '' ? undefined : field.value === 'true';
+        } else {
+          value = field.value || undefined;
+        }
+        if (value !== undefined) payload[field.name] = value;
+      });
+      return payload;
+    }
+
+    function submitCondition(form, condition) {
+      return fetch('/api/portal/' + token + '/triage', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(conditionPayload(form, condition))
+      })
+        .then(function (r) {
+          return r.ok ? r.json() : Promise.reject(new Error('bad response'));
+        });
+    }
+
+    function submitProducts(form) {
+      var payload = {};
+      ['prescriptions', 'otc', 'supplements'].forEach(function (kind) {
+        var yes = form.querySelector('input[name="' + kind + '_yes"]');
+        var text = form.querySelector('textarea[name="' + kind + '_text"]');
+        payload[kind + '_yes'] = !!(yes && yes.checked);
+        payload[kind + '_text'] = text ? text.value.trim() : '';
+      });
+      return fetch('/api/portal/' + token + '/health-history/products', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(payload)
-      })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('bad response')); })
-        .then(function (body) {
-          if (msg) {
-            msg.textContent = _triageSuccessMessage(body && body.consult_recommended);
-            msg.className = 'ob-triage-msg ob-triage-ok';
-          }
-          // Brief pause so the success message is actually seen before the
-          // tile re-renders (the history step flips to done and the form
-          // disappears once the new status comes back).
-          setTimeout(loadAndRender, 900);
-        })
-        .catch(function () {
-          if (msg) {
-            msg.textContent = 'Something went wrong — please try again.';
-            msg.className = 'ob-triage-msg ob-triage-err';
-          }
-        });
+      }).then(function (r) {
+        return r.ok ? r.json() : Promise.reject(new Error('bad response'));
+      });
+    }
+
+    function submitExtendedHistory(form) {
+      var payload = {};
+      [
+        'surgeries', 'physical_trauma', 'psychoemotional_trauma', 'toxins',
+        'vaccinations', 'family_history', 'diagnoses', 'allergies', 'dental',
+        'sleep'
+      ].forEach(function (kind) {
+        var yes = form.querySelector('input[name="' + kind + '_yes"]');
+        var text = form.querySelector('textarea[name="' + kind + '_text"]');
+        payload[kind + '_yes'] = !!(yes && yes.checked);
+        payload[kind + '_text'] = text ? text.value.trim() : '';
+      });
+      return fetch('/api/portal/' + token + '/health-history/extended', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      }).then(function (r) {
+        return r.ok ? r.json() : Promise.reject(new Error('bad response'));
+      });
     }
 
     // Delegated listeners: the tile's innerHTML is replaced wholesale on every
@@ -177,14 +329,103 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       var form = e.target && e.target.closest ? e.target.closest('.ob-triage-form') : null;
       if (!form) return;
       e.preventDefault();
-      submitTriage(form);
+      var selected = Array.prototype.map.call(
+        form.querySelectorAll('input[name="conditions"]:checked'),
+        function (el) { return el.value; }
+      );
+      var msg = form.querySelector('.ob-triage-msg');
+      var conditionsRequired = !!form.querySelector(
+        '[data-history-section="conditions"]');
+      if (conditionsRequired && !selected.length) {
+        msg.textContent = 'Please check at least one issue.';
+        msg.className = 'ob-triage-msg ob-triage-err';
+        return;
+      }
+      var missingProduct = null;
+      ['prescriptions', 'otc', 'supplements'].some(function (kind) {
+        var yes = form.querySelector('input[name="' + kind + '_yes"]');
+        var text = form.querySelector('textarea[name="' + kind + '_text"]');
+        if (yes && yes.checked && (!text || !text.value.trim())) {
+          missingProduct = kind;
+          return true;
+        }
+        return false;
+      });
+      if (missingProduct) {
+        msg.textContent = 'Please enter the brand and product names for each checked category.';
+        msg.className = 'ob-triage-msg ob-triage-err';
+        return;
+      }
+      var missingExtended = null;
+      Array.prototype.some.call(
+        form.querySelectorAll('input[data-extended-kind]'),
+        function (yes) {
+          var kind = yes.getAttribute('data-extended-kind');
+          var text = form.querySelector('textarea[name="' + kind + '_text"]');
+          if (yes.checked && (!text || !text.value.trim())) {
+            missingExtended = kind;
+            return true;
+          }
+          return false;
+        }
+      );
+      if (missingExtended) {
+        msg.textContent = 'Please add the requested details for each checked history category.';
+        msg.className = 'ob-triage-msg ob-triage-err';
+        return;
+      }
+      var otherText = form.querySelector(
+        '[data-condition-detail="other"] textarea[name="other_condition"]');
+      if (selected.indexOf('other') !== -1 &&
+          (!otherText || !otherText.value.trim())) {
+        msg.textContent = 'Please tell us what the other issue is.';
+        msg.className = 'ob-triage-msg ob-triage-err';
+        return;
+      }
+      msg.textContent = 'Saving…';
+      msg.className = 'ob-triage-msg';
+      var consult = false;
+      selected.reduce(function (chain, condition) {
+        return chain.then(function () {
+          return submitCondition(form, condition).then(function (body) {
+            consult = consult || !!(body && body.consult_recommended);
+          });
+        });
+      }, Promise.resolve()).then(function () {
+        return form.querySelector('[data-history-section="products"]')
+          ? submitProducts(form) : null;
+      }).then(function () {
+        return form.querySelector('[data-history-section="extended"]')
+          ? submitExtendedHistory(form) : null;
+      }).then(function () {
+        msg.textContent = _triageSuccessMessage(consult);
+        msg.className = 'ob-triage-msg ob-triage-ok';
+        setTimeout(loadAndRender, 900);
+      }).catch(function () {
+        msg.textContent = 'Something went wrong — please try again.';
+        msg.className = 'ob-triage-msg ob-triage-err';
+      });
     });
-    mount.addEventListener('click', function (e) {
-      var btn = e.target && e.target.closest ? e.target.closest('.ob-triage-cat') : null;
-      if (!btn) return;
-      var form = btn.closest('.ob-triage-form');
-      if (!form) return;
-      submitTriage(form, {category: btn.getAttribute('data-category')});
+    mount.addEventListener('change', function (e) {
+      var checkbox = e.target;
+      if (!checkbox) return;
+      if (checkbox.name === 'conditions') {
+        var detail = mount.querySelector(
+          '[data-condition-detail="' + checkbox.value + '"]');
+        if (detail) detail.hidden = !checkbox.checked;
+      }
+      if (checkbox.getAttribute('data-product-kind')) {
+        var productDetail = mount.querySelector(
+          '[data-product-detail="' +
+          checkbox.getAttribute('data-product-kind') + '"]');
+        if (productDetail) productDetail.hidden = !checkbox.checked;
+      }
+      if (checkbox.getAttribute('data-extended-kind')) {
+        var extendedDetail = mount.querySelector(
+          '[data-extended-detail="' +
+          checkbox.getAttribute('data-extended-kind') + '"]');
+        if (extendedDetail) extendedDetail.hidden = !checkbox.checked;
+      }
     });
 
     loadAndRender();

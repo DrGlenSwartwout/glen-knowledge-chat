@@ -20316,7 +20316,9 @@ def api_portal_triage(token):
                     "cataract_type", "age", "steroids", "diabetes", "inflammation",
                     "radiation", "atopy", "yellow_vision",
                     # macular sub-type triage
-                    "amd_type", "injections", "distortion")}
+                    "amd_type", "injections", "distortion",
+                    # free-text history item when no authored protocol fits
+                    "other_condition")}
         # Ensure the condition-programs store exists and every program (incl.
         # any added after prod's once-ever seed already fired, e.g.
         # vision-improvement) is present -- this route resolves programs by
@@ -20326,6 +20328,60 @@ def api_portal_triage(token):
         res = _ct.seed_from_triage(cx, email, cond, answers)
     return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"]),
                     "consult_recommended": bool(res.get("consult_recommended"))})
+
+
+@app.route("/api/portal/<token>/health-history/products", methods=["GET", "POST"])
+def api_portal_health_history_products(token):
+    """Token-gated current prescription, OTC-drug, and supplement history."""
+    from dashboard import client_portal as _cp, portal_health_history as _hh
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            return jsonify({"ok": True, "history": _hh.get(cx, email)})
+        data = request.get_json(silent=True) or {}
+        clean = {}
+        for kind in _hh.KINDS:
+            yes = data.get(kind + "_yes") is True
+            text = str(data.get(kind + "_text") or "").strip()[:4000]
+            if yes and not text:
+                return jsonify({
+                    "error": f"Brand and product names are required for {kind}."
+                }), 400
+            clean[kind + "_yes"] = yes
+            clean[kind + "_text"] = text
+        _hh.save(cx, email, clean)
+        return jsonify({"ok": True, "history": _hh.get(cx, email)})
+
+
+@app.route("/api/portal/<token>/health-history/extended", methods=["GET", "POST"])
+def api_portal_health_history_extended(token):
+    """Token-gated personal, exposure, trauma, and family history."""
+    from dashboard import client_portal as _cp, portal_extended_history as _eh
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            return jsonify({"ok": True, "history": _eh.get(cx, email)})
+        data = request.get_json(silent=True) or {}
+        clean = {}
+        for category in _eh.CATEGORIES:
+            yes = data.get(category + "_yes") is True
+            text = str(data.get(category + "_text") or "").strip()[:6000]
+            if yes and not text:
+                return jsonify({
+                    "error": f"Details are required for {category}."
+                }), 400
+            clean[category + "_yes"] = yes
+            clean[category + "_text"] = text
+        _eh.save(cx, email, clean)
+        return jsonify({"ok": True, "history": _eh.get(cx, email)})
 
 
 @app.route("/api/portal/<token>/onboarding", methods=["GET"])

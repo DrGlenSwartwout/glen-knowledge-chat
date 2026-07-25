@@ -3,7 +3,8 @@ import sqlite3
 import uuid
 from dashboard import portal_onboarding as ob
 from dashboard import (client_scans, intake, client_photos, portal_biofield_reports,
-                        recommendation_events)
+                        recommendation_events, condition_triage,
+                        portal_health_history, portal_extended_history)
 
 
 def _cx():
@@ -43,6 +44,41 @@ def test_scan_match_flips_done_on_biofield_source():
     match = {st["key"]: st["done"] for st in s["phases"][1]["steps"]}
     assert match["scan_match"] is True
     assert match["history"] is False
+
+
+def test_history_requires_conditions_and_current_products_sections():
+    cx = _cx()
+    condition_triage.init_table(cx)
+    condition_triage.seed_from_triage(
+        cx, "other@x.com", "other", {"other_condition": "Uveitis"})
+    s = ob.build_status(cx, "other@x.com")
+    match = {st["key"]: st["done"] for st in s["phases"][1]["steps"]}
+    assert s["history_conditions_done"] is True
+    assert s["history_products_done"] is False
+    assert match["history"] is False
+
+    portal_health_history.save(cx, "other@x.com", {
+        "prescriptions_yes": False,
+        "otc_yes": False,
+        "supplements_yes": True,
+        "supplements_text": "Brand X Product Y",
+    })
+    s = ob.build_status(cx, "other@x.com")
+    match = {st["key"]: st["done"] for st in s["phases"][1]["steps"]}
+    assert s["history_products_done"] is True
+    assert s["history_extended_done"] is False
+    assert match["history"] is False
+
+    portal_extended_history.save(cx, "other@x.com", {
+        "surgeries_yes": True,
+        "surgeries_text": "Appendectomy; age 12",
+        "family_history_yes": True,
+        "family_history_text": "Maternal grandmother; diabetes",
+    })
+    s = ob.build_status(cx, "other@x.com")
+    match = {st["key"]: st["done"] for st in s["phases"][1]["steps"]}
+    assert s["history_extended_done"] is True
+    assert match["history"] is True
 
 
 def test_member_true_when_membership_grant_owned():
