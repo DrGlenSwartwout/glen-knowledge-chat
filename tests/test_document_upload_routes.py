@@ -13,6 +13,14 @@ def _app(tmp_path, monkeypatch):
         sys.path.insert(0, str(repo))
     import app as appmod
     importlib.reload(appmod)
+    # These tests verify the SYNCHRONOUS upload/storage contract (validation,
+    # scoping, dedup, the stored extract_status). The upload also fires a
+    # fire-and-forget daemon thread that immediately moves an extractable doc
+    # pending -> extracting -> failed, which makes 'pending' a transient state
+    # and races any assertion on it. Stub the trigger so the stored status is
+    # deterministic; the trigger's real behavior is covered by
+    # tests/test_document_extract_wiring.py.
+    monkeypatch.setattr(appmod, "_trigger_document_extraction", lambda *a, **k: None)
     return appmod
 
 
