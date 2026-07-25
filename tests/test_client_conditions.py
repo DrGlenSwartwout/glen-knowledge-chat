@@ -276,3 +276,36 @@ def test_detect_tags_degrades_when_canonical_read_raises(app_mod, tmp_db, monkey
     with sqlite3.connect(tmp_db) as cx:
         out = app_mod._condition_detect_tags(cx, "jane@example.com")   # must not raise
     assert out == ["Wet AMD"]
+
+
+# --- CTI-2 Task 2: resolver wired to canonical-aware detection input -------
+
+def test_resolver_override_still_wins_over_canonical(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        from dashboard import client_conditions as _cc
+        _cc.init_table(cx)
+        _cc.set(cx, "jane@example.com", "dry-eye", "glen")
+    assert app_mod._client_condition_for("jane@example.com") == "dry-eye"
+
+
+def test_resolver_canonical_drives_program_when_no_override(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["ocular hypertension"])
+    assert app_mod._client_condition_for("jane@example.com") == "glaucoma-elevated-iop"
+
+
+def test_resolver_canonical_outranks_conflicting_people_tag(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", tags=["pb:dry-amd"])
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    assert app_mod._client_condition_for("jane@example.com") == "wet-amd"
+
+
+def test_resolver_ambiguous_canonical_condition_returns_none(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["glaucoma"])
+    assert app_mod._client_condition_for("jane@example.com") is None
+
+
+def test_resolver_people_only_unchanged_regression(app_mod, tmp_db):
+    # No canonical row at all -> behaves exactly as before.
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"])
+    assert app_mod._client_condition_for("jane@example.com") == "wet-amd"

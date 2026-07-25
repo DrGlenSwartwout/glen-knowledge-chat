@@ -21600,8 +21600,8 @@ def _condition_detect_tags(cx, email):
 def _client_condition_for(email):
     """Resolve a client's eye-condition support-program key: the operator
     override (dashboard/client_conditions.py) wins; otherwise auto-detect from
-    the client's `people.conditions` + `people.tags`. Best-effort -- any error
-    returns None, never raises."""
+    the client's canonical conditions + `people.conditions` + `people.tags`.
+    Best-effort -- any error returns None, never raises."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -21613,20 +21613,7 @@ def _client_condition_for(email):
             override = _cc.get(cx, email)
             if override:
                 return override
-            row = cx.execute(
-                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-                (email,)).fetchone()
-            if not row:
-                return None
-            tags = []
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
-            return _condition_key_from_tags(tags)
+            return _condition_key_from_tags(_condition_detect_tags(cx, email))
     except Exception:
         return None
 
