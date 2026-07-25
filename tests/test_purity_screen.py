@@ -88,3 +88,46 @@ def test_magnesium_stearate_is_still_flagged_red():
     out = ps.screen_label(["Vitamin C"], ["Magnesium Stearate"], AL)
     assert out["color"] == "red"
     assert out["red_hits"] == ["Magnesium Stearate"]
+
+
+# --- Hyphen + negation regression tests (final-review findings) ------------
+
+def test_hyphenated_stearate_is_still_flagged_red():
+    # Bug 1 (false negative, the unsafe direction): a hyphen instead of a
+    # space must not let a real red excipient slip through as green.
+    out = ps.screen_label(["Vitamin C"], ["Magnesium-Stearate"], AL)
+    assert out["color"] == "red"
+    assert out["red_hits"] == ["Magnesium-Stearate"]
+
+
+def test_hyphenated_aluminum_lake_is_still_flagged_red():
+    # The hyphen-collapse fix must not break the existing word-boundary
+    # protection -- "aluminum-lake" IS an aluminum lake dye and stays red.
+    out = ps.screen_label(["Vitamin C"], ["Aluminum-Lake"], AL)
+    assert out["color"] == "red"
+    assert out["red_hits"] == ["Aluminum-Lake"]
+
+
+def test_absence_declarations_are_green_not_red():
+    # Bug 2 (false positives, stat-inflating): marketing phrasings that
+    # DECLARE ABSENCE of an excipient must not be flagged as containing it.
+    for wording in ["Gelatin-Free Capsule", "non-gelatin", "Non-Hydrogenated Palm Oil"]:
+        out = ps.screen_label(["Vitamin C"], ["Cellulose", wording], AL)
+        assert out["color"] == "green", wording
+        assert out["red_hits"] == [], wording
+
+
+def test_negation_stripping_does_not_over_correct_real_hits():
+    # Positive controls: negation stripping must be conservative enough that
+    # real excipients (no negation language present) still flag correctly.
+    for wording, expected_color in [
+        ("Magnesium Stearate", "red"),
+        ("Gelatin", "red"),
+        ("Hydrogenated Soybean Oil", "red"),
+        ("Aluminum Lake", "red"),
+        ("Oat Flakes", "green"),
+        ("Calcium Silicate", "green"),
+        ("Silicon Dioxide", "yellow"),
+    ]:
+        out = ps.screen_label(["Vitamin C"], [wording], AL)
+        assert out["color"] == expected_color, wording
