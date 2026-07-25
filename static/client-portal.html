@@ -741,6 +741,46 @@ function prlSupplementBodyHtml(sp){
   const micro = `<p class="small muted" style="margin-top:.4rem">Budget-friendly option — order these directly from PRL, or use your matched formulas above.</p>`;
   return `${blocks}${btn}${micro}`;
 }
+// Fullscript dispensary card body (Task 7): third-party products Glen recommends
+// but does not formulate, grouped by why they surfaced (mirrors prlSupplementBodyHtml's
+// focus-area grouping above). Flag-gated server-side (FULLSCRIPT_ENABLED) — see
+// d.fullscript_enabled at the card block below. Every buy link goes through
+// /fs/<token>/<slug> (never fullscript.com directly) so the click is recorded and
+// the destination is chosen server-side.
+function fullscriptBodyHtml(fsData){
+  fsData = fsData || {};
+  // Only permit http(s) hrefs for the dispensary button; same defense-in-depth as
+  // prlSupplementBodyHtml's local safeUrl above (no global safeUrl exists in this file).
+  const safeUrl = u => { u = String(u||""); return /^https?:\/\//i.test(u) ? u : ""; };
+  // Reuses the module-level `token` global (set once from the URL path near the
+  // top of this file) -- the server no longer echoes the portal token into the
+  // payload (that would widen every response with a bearer token even while this
+  // channel is dark), and static/client-portal.html already has this value.
+  const fsToken = esc(token);
+  const groups = Array.isArray(fsData.groups) ? fsData.groups : [];
+  let blocks = groups.map(g => {
+    const items = (Array.isArray(g.products) ? g.products : []).map(p => {
+      const brand = p.brand ? `<span class="small muted"> — ${esc(p.brand)}</span>` : "";
+      const ff = (p.ff && p.ff.name)
+        ? `<span class="small muted"> · you also have <strong>${esc(p.ff.name)}</strong></span>` : "";
+      const why = p.reason ? `<div class="small muted">${esc(p.reason)}</div>` : "";
+      return `<li><a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}</li>`;
+    }).join("");
+    if(!items) return "";   // mirror can carry zero-product groups; don't render a bare heading
+    return `<h3 class="small" style="margin:.2rem 0">${esc(g.heading||"")}</h3><ul>${items}</ul>`;
+  }).join("");
+  if(!blocks) blocks = `<p class="muted">No Fullscript matches yet.</p>`;
+  // No unattributed fallback: a bare "https://us.fullscript.com/" link carries no
+  // dispensary attribution, so an order placed through it earns the practitioner
+  // nothing -- worse than showing no button at all. Render the CTA only when the
+  // server gave us a usable dispensary URL.
+  const btnHref = safeUrl(fsData.dispensary_url);
+  const btn = btnHref
+    ? `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="margin-top:.5rem">Open my Fullscript dispensary</a>`
+    : "";
+  const micro = `<p class="small muted" style="margin-top:.4rem">Products I recommend but don't make. Ordering through my dispensary keeps everything in one place.</p>`;
+  return `${blocks}${btn}${micro}`;
+}
 // Practitioner-composed program card body (Task 5): a standing program your
 // practitioner hand-composed for you (distinct from the condition support-program
 // above and from the one-shot reco-card below). Reuses supportProgramBodyHtml for
@@ -2683,6 +2723,17 @@ function render(d, v){
     html += `<div class="card prl-supplement-card">
       <h2>Premier Research Labs options</h2>
       ${prlSupplementBodyHtml(d.prl_supplement)}
+    </div>`;
+  }
+
+  // Fullscript card (Task 7, flag-gated server-side): a third-party dispensary
+  // channel, present only when FULLSCRIPT_ENABLED is on and this client's scan
+  // resolved to at least one candidate. Sibling of the PRL card above — same
+  // grouped-list idiom, distinct product source.
+  if (d.fullscript_enabled && d.fullscript) {
+    html += `<div class="card fullscript-card">
+      <h2>Fullscript</h2>
+      ${fullscriptBodyHtml(d.fullscript)}
     </div>`;
   }
 
