@@ -8,6 +8,7 @@ Contract for `other_ingredients`:
   []   -> the product is known to list no other ingredients -> 'green'.
   list -> screened item by item.
 """
+import re
 
 
 def _normalize(name):
@@ -21,7 +22,8 @@ def _normalize(name):
 def _hits(normalized_item, entries):
     for e in entries:
         for alias in e["aliases"]:
-            if alias in normalized_item:
+            pattern = r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])"
+            if re.search(pattern, normalized_item):
                 return True
     return False
 

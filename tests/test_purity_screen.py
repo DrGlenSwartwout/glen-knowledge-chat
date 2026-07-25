@@ -47,3 +47,44 @@ def test_empty_list_is_green_but_none_is_unrated():
 def test_version_is_echoed():
     out = ps.screen_label(None, ["Cellulose"], AL)
     assert out["avoidlist_version"] == AL["version"]
+
+
+# --- Word-boundary regression tests (substring false-positive bug) ---------
+
+def test_flakes_words_are_not_flagged_by_the_lake_alias():
+    # "lake" (from FD&C "aluminum lake" dyes) must not match inside "flakes".
+    for wording in ["Oat Flakes", "Rice Flakes", "Potato Flakes"]:
+        out = ps.screen_label(["Vitamin C"], ["Cellulose", wording], AL)
+        assert out["color"] == "green", wording
+        assert out["red_hits"] == [], wording
+
+
+def test_calcium_silicate_is_not_flagged_by_the_silica_alias():
+    # "silica" must not match inside "silicate" -- calcium silicate is a
+    # distinct anticaking agent, not silicon dioxide.
+    out = ps.screen_label(["Vitamin C"], ["Calcium Silicate"], AL)
+    assert out["color"] == "green"
+    assert out["yellow_hits"] == []
+
+
+def test_aluminum_lake_dye_is_still_flagged_red():
+    # Positive control: word-boundary matching must still catch real hits.
+    for wording in ["Aluminum Lake", "FD&C Yellow 5 Aluminum Lake"]:
+        out = ps.screen_label(["Vitamin C"], ["Cellulose", wording], AL)
+        assert out["color"] == "red", wording
+        assert out["red_hits"], wording
+
+
+def test_bare_silica_is_still_flagged_yellow():
+    # Positive control: unqualified "Silica" and "Silicon Dioxide" still hit.
+    for wording in ["Silica", "Silicon Dioxide"]:
+        out = ps.screen_label(["Vitamin C"], [wording], AL)
+        assert out["color"] == "yellow", wording
+        assert out["yellow_hits"] == [wording], wording
+
+
+def test_magnesium_stearate_is_still_flagged_red():
+    # Positive control: multi-word alias still matches on word boundaries.
+    out = ps.screen_label(["Vitamin C"], ["Magnesium Stearate"], AL)
+    assert out["color"] == "red"
+    assert out["red_hits"] == ["Magnesium Stearate"]
