@@ -2160,10 +2160,33 @@ function renderEyeVisionReport(report){
   if(!report) return "";
   const open = !!report.open;
   const findings = Array.isArray(report.findings) ? report.findings : [];
+  const list = (label, values) => Array.isArray(values) && values.length
+    ? `<p class="small" style="margin:.35rem 0"><strong>${esc(label)}:</strong> ${values.map(esc).join("; ")}</p>`
+    : "";
+  const relationshipHtml = rel => {
+    const eav = (rel.eav_points || []).map(p=>[p.code, p.name].filter(Boolean).join(" — "));
+    const energetic = (rel.energetic_relationships || []).map(r=>
+      `${r.type || "relationship"}: ${(r.names || []).join(", ")}`);
+    const clinical = [
+      list("Related symptoms or issues", rel.symptom_context),
+      list("Related clinical contexts", rel.condition_context)
+    ].join("");
+    return `<div style="margin:.65rem 0;padding:.65rem;border-left:3px solid var(--line)">
+      <strong>${esc(rel.label || rel.mapped_from || "Mapped relationship")}</strong>
+      ${list("Structure / function", rel.structure_function)}
+      ${list("Innervation / regulation", rel.innervation_regulation)}
+      ${list("EAV point", eav)}
+      ${list("Meridian / energetic vessel", energetic)}
+      ${list("Information relationships", rel.information_relationships)}
+      ${clinical ? `<details style="margin-top:.4rem"><summary>Related clinical context (not a diagnosis)</summary>${clinical}</details>` : ""}
+    </div>`;
+  };
   const rows = findings.map(f=>`<div style="padding:.8rem 0;border-top:1px solid var(--line)">
       <strong>${esc(f.name || "E4L pattern")}</strong>
       <p style="margin:.35rem 0">${esc(f.client_text || "")}</p>
       ${f.history_context ? `<p class="muted small" style="margin:.35rem 0">${esc(f.history_context)}</p>` : ""}
+      ${(f.integrated_relationships || []).map(relationshipHtml).join("")}
+      ${f.clinical_context_usage ? `<p class="muted small" style="margin:.35rem 0">${esc(f.clinical_context_usage)}</p>` : ""}
     </div>`).join("");
   const limitations = (Array.isArray(report.limitations) ? report.limitations : [])
     .map(item=>`<li>${esc(item)}</li>`).join("");

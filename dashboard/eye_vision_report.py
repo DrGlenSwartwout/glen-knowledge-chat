@@ -29,6 +29,141 @@ LIMITATIONS = [
     "It does not replace an eye examination or other appropriate clinical assessment.",
     "Remedies, products, protocols, dosing, and support suggestions are outside this phase.",
 ]
+CLINICAL_CONTEXT_USAGE = (
+    "Related symptoms and conditions organize reported history only. "
+    "They are not scan findings or diagnostic conclusions."
+)
+RELATIONSHIP_MAP = {
+    "eye": {
+        "label": "Eye and visual system",
+        "structure_function": [
+            "Integrates the optical surface, anterior and posterior segments, retina, "
+            "optic pathway, and ocular-motor system",
+            "Supports image formation, light regulation, visual signal transmission, "
+            "alignment, fixation, and tracking",
+        ],
+        "innervation_regulation": [
+            "CN II for visual input; CN III, IV, and VI for eye movement",
+            "CN V/VII and autonomic regulation for surface protection, pupil, "
+            "accommodation, tears, and circulation",
+        ],
+        "eav_points": [
+            {"code": "OR-1–OR-13", "name": "Segment-specific orbital EAV points"},
+            {"code": "NRD-1a / NRD-3a",
+             "name": "Autonomic and parasympathetic regulatory points"},
+        ],
+        "energetic_relationships": [
+            {"type": "classical meridians",
+             "names": ["Liver", "Gall Bladder", "Bladder", "Heart",
+                       "Small Intestine", "Lung", "Large Intestine",
+                       "Stomach", "Spleen/Pancreas", "Kidney"]},
+            {"type": "EAV vessels",
+             "names": ["Endocrine/Triple Warmer", "Circulation", "Nerve",
+                       "Connective Tissue", "Lymph"]},
+        ],
+        "information_relationships": [
+            "Optical input through the cornea, pupil, lens, vitreous, and retina",
+            "Retinal and optic-pathway signaling into thalamic and cortical processing",
+            "Motor feedback through fixation, saccade, pursuit, vergence, vestibular, "
+            "and proprioceptive integration",
+        ],
+        "symptom_context": [
+            "blur or fluctuating vision", "glare or light sensitivity", "eye strain",
+            "double vision or tracking difficulty", "dryness, redness, or discomfort",
+            "flashes, floaters, distortion, or field change",
+        ],
+        "condition_context": [
+            "ocular-surface and tear-film disorders", "corneal or lens disorders",
+            "retinal, macular, or optic-nerve disorders", "uveal or vascular disorders",
+            "ocular-motor, binocular-vision, or visual-processing disorders",
+        ],
+    },
+    "retina": {
+        "label": "Retina",
+        "structure_function": ["Phototransduction",
+                               "Central and peripheral visual input"],
+        "innervation_regulation": ["CN II"],
+        "eav_points": [{"code": "OR-5", "name": "Retina"}],
+        "energetic_relationships": [
+            {"type": "classical meridian", "names": ["Small Intestine"]},
+            {"type": "EAV vessel", "names": ["Endocrine/Triple Warmer"]},
+        ],
+        "information_relationships": [
+            "Light absorption and phototransduction",
+            "Retinal signal transmission into the optic pathway",
+            "Photoenergetic and circadian signaling into autonomic/endocrine regulation",
+        ],
+        "symptom_context": [
+            "flashes", "floaters", "field loss", "night-vision difficulty",
+            "distorted or reduced vision",
+        ],
+        "condition_context": [
+            "retinal tear or detachment", "retinopathy", "retinal vascular disorders",
+            "inherited retinal degeneration",
+        ],
+    },
+    "optic nerve": {
+        "label": "Optic nerve",
+        "structure_function": [
+            "Transmission of retinal signals into the central visual pathway"],
+        "innervation_regulation": ["CN II"],
+        "eav_points": [{"code": "Temporal reflex point", "name": "Optic nerve"}],
+        "energetic_relationships": [
+            {"type": "classical meridians", "names": ["Liver", "Kidney"]}],
+        "information_relationships": [
+            "Carries retinal information toward the optic chiasm, thalamus, and cortex",
+            "Participates in the afferent pupil-light pathway",
+        ],
+        "symptom_context": [
+            "reduced acuity", "color desaturation", "contrast loss",
+            "relative afferent pupil change", "visual-field loss",
+        ],
+        "condition_context": [
+            "glaucoma", "optic neuritis",
+            "ischemic, compressive, toxic, or nutritional optic neuropathy",
+        ],
+    },
+    "vision": {
+        "label": "Visual pathway and processing",
+        "structure_function": [
+            "Transforms retinal input into visual perception, spatial orientation, "
+            "learning, and visually guided action",
+            "Coordinates attention with fixation, saccades, pursuit, and vergence",
+        ],
+        "innervation_regulation": [
+            "CN II; thalamic, cortical, brain-stem, cerebellar, autonomic, and "
+            "ocular-motor regulation"],
+        "eav_points": [
+            {"code": "Composite",
+             "name": "Retina, optic pathway, autonomic, and ocular-motor points"}],
+        "energetic_relationships": [
+            {"type": "EAV vessels", "names": ["Endocrine/Triple Warmer", "Nerve"]},
+            {"type": "classical meridians",
+             "names": ["Bladder", "Gall Bladder", "Liver"]},
+        ],
+        "information_relationships": [
+            "Retina to optic nerve, chiasm, thalamus, visual and association cortex",
+            "Bidirectional visual, eye-movement, vestibular, and motor feedback",
+            "Light input linked with hypothalamic, circadian, autonomic, and "
+            "endocrine regulation",
+        ],
+        "symptom_context": [
+            "visual-processing fatigue", "poor tracking or reading fluency",
+            "spatial-orientation or visual-perceptual difficulty", "light sensitivity",
+            "unstable gaze or visually triggered dizziness",
+        ],
+        "condition_context": [
+            "visual-processing or visual-perceptual disorders",
+            "ocular-motor and binocular-vision disorders",
+            "migraine or visual-vestibular contexts",
+            "central neurologic visual-pathway disorders",
+        ],
+    },
+}
+RELATIONSHIP_ALIASES = {
+    "eyes": "eye", "retinal": "retina",
+    "visual pathway": "vision", "visual processing": "vision",
+}
 
 
 def _norm(value):
@@ -37,6 +172,22 @@ def _norm(value):
 
 def _is_ocular(value):
     return _norm(value) in OCULAR_STRUCTURES
+
+
+def _relationship_layers(structures):
+    out, seen = [], set()
+    for structure in structures:
+        key = RELATIONSHIP_ALIASES.get(_norm(structure), _norm(structure))
+        if key in seen or key not in RELATIONSHIP_MAP:
+            continue
+        seen.add(key)
+        out.append({"mapped_from": structure, **RELATIONSHIP_MAP[key]})
+    return out
+
+
+def _pattern_label(category):
+    return ("informational stress/rejuvenator pattern"
+            if _norm(category) in {"er", "mr"} else "Infoceutical pattern")
 
 
 def _flatten_strings(value):
@@ -126,13 +277,14 @@ def _finding(pattern, mappings, history):
     direct = any(bool(m.get("is_primary")) for m in ocular)
     code = str(pattern.get("code") or "").strip()
     name = str(pattern.get("name") or code or "E4L pattern").strip()
+    pattern_label = _pattern_label(pattern.get("category"))
     seed = code + "|" + "|".join(sorted(_norm(v) for v in structures))
     if direct:
-        body = (f"The scan prioritized the {name} Infoceutical pattern, which "
+        body = (f"The scan prioritized the {name} {pattern_label}, which "
                 f"the E4L catalog maps directly to {', '.join(structures)}.")
         classification = "direct_ocular"
     else:
-        body = (f"The broader {name} Infoceutical pattern includes an E4L "
+        body = (f"The broader {name} {pattern_label} includes an E4L "
                 f"catalog relationship with {', '.join(structures)}.")
         classification = "associated_ocular"
     history_context = None
@@ -150,6 +302,8 @@ def _finding(pattern, mappings, history):
         "ocular_structures": structures,
         "client_text": body,
         "history_context": history_context,
+        "integrated_relationships": _relationship_layers(structures),
+        "clinical_context_usage": CLINICAL_CONTEXT_USAGE,
     }
 
 

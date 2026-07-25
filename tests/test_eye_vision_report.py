@@ -45,6 +45,12 @@ def test_history_opens_by_default_and_saved_preference_wins(tmp_path):
     assert block["open"] is True
     assert block["default_open"] is True
     assert block["findings"][0]["classification"] == "direct_ocular"
+    relationship = block["findings"][0]["integrated_relationships"][0]
+    assert relationship["label"] == "Eye and visual system"
+    assert relationship["eav_points"]
+    assert relationship["information_relationships"]
+    assert relationship["symptom_context"]
+    assert relationship["condition_context"]
     assert "diagnose" in block["findings"][0]["history_context"]
     saved_closed = report.build_portal_block(
         cx, "a@example.com", "2026-07-25", saved_collapsed=True,
