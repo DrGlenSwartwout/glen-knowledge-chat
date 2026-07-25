@@ -2235,6 +2235,14 @@ function render(d, v){
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
 
+  if (d.linked_practitioner_account) {
+    html += `<div class="card quiet">
+      <h2>Your practitioner account</h2>
+      <p class="muted small">Manage certification, qualifications, clients, and practitioner ordering.</p>
+      <a class="btn full" href="/portal/${encodeURIComponent(seg)}/practitioner-account">Open Practitioner Portal</a>
+    </div>`;
+  }
+
   // Program-page entry card: links to the personalized membership program page.
   // Flag-gated server-side (payload.program_page is only truthy-enabled when
   // PORTAL_PROGRAM_PAGE_ENABLED is on), so no extra client-side flag check needed.

@@ -15368,6 +15368,43 @@ def api_practitioner_portal_data():
     return jsonify({"ok": True, **data})
 
 
+@app.route("/practitioner/client-account", methods=["GET"])
+def practitioner_to_client_account():
+    """Reciprocal account bridge from a practitioner session to their own
+    email-matched client portal. Provision the client side on first use."""
+    token = (request.args.get("token") or "").strip()
+    pid = _pp.practitioner_id_from_session(token) if token else None
+    if not pid:
+        return redirect("/practitioner")
+    pdata = _pp.portal_data(pid)
+    if not pdata:
+        return redirect("/practitioner")
+    email = (pdata.get("email") or "").strip().lower()
+    name = (pdata.get("name") or "").strip()
+    from dashboard import client_portal as _cp
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if not _cp.get_portal_content_by_email(cx, email):
+            _cp.upsert_portal(cx, email, name, {})
+        link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+    return redirect(link or "/portal/login")
+
+
+@app.route("/api/practitioner/qualifications", methods=["POST"])
+def api_practitioner_qualifications():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    try:
+        saved = _pp.save_qualification(pid, request.get_json(silent=True) or {})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"[practitioner-qualification] save failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Could not save qualification details."}), 500
+    return jsonify({"ok": True, "qualification": saved})
+
+
 @app.route("/api/practitioner/pricing", methods=["POST"])
 def api_practitioner_pricing():
     pid = _practitioner_session_pid()
@@ -19624,6 +19661,26 @@ def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
 
 
+@app.route("/portal/<token>/practitioner-account")
+def client_to_practitioner_account(token):
+    """Reciprocal account bridge: a valid client portal may open the practitioner
+    account carrying the same email. The bridge mints a fresh scoped practitioner
+    session; it never exposes or reuses the client's durable portal token."""
+    with db.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return redirect("/portal/login")
+    email = (portal.get("email") or "").strip().lower()
+    try:
+        pid = _pp.find_practitioner_id_by_email(email)
+    except Exception:
+        pid = None
+    if not pid:
+        return redirect("/practitioner/register")
+    session = _pp.create_session_token(pid)
+    return redirect(f"/practitioner/portal?token={session}&linked=client")
+
+
 @app.route("/portal/<token>/bodymap")
 def client_portal_bodymap_page(token):
     """Personalized Body Map for a client: the same /body-map page, which detects
@@ -20169,6 +20226,14 @@ def api_client_portal(token):
                 }
         except Exception as _e:
             print(f"[data-sharing/payload] {_e!r}", flush=True)
+    # Reciprocal account bridge. Presence only: the actual transition is a
+    # server-authorized redirect above, so no practitioner session is exposed here.
+    try:
+        primary_email = (portal.get("email") or "").strip().lower()
+        payload["linked_practitioner_account"] = bool(
+            _pp.find_practitioner_id_by_email(primary_email))
+    except Exception:
+        payload["linked_practitioner_account"] = False
     return jsonify(payload)
 
 

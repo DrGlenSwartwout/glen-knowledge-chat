@@ -860,6 +860,7 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
             "wallet_balance_cents, wholesale_unlocked_at, application_status, "
             "application_submitted_at, approval_notes, resale_license_number, credentials "
+            ", qualification_type, certification_details, qualification_completed_at "
             "FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
@@ -888,6 +889,10 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
                                      if row["application_submitted_at"] else None),
         "approval_notes": row["approval_notes"],
         "resale_license_number": row["resale_license_number"],
+        "credentials": row["credentials"],
+        "qualification_type": row["qualification_type"],
+        "certification_details": row["certification_details"],
+        "qualification_completed": row["qualification_completed_at"] is not None,
         "cart": items,
         "quote": quote,
     }
@@ -923,3 +928,41 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         data["pricing_config"] = {}
     data["pricing_ceilings"] = _ppx.ceilings({})
     return data
+
+
+def save_qualification(practitioner_id, payload: dict) -> dict:
+    """Persist the qualification gate completed by a linked practitioner.
+
+    The practitioner keeps their existing portal role. Qualification type records
+    which evidence they supplied; the corresponding identifying detail is required.
+    """
+    kind = str(payload.get("qualification_type") or "").strip().lower()
+    if kind not in ("licensed", "coach_certification", "resale"):
+        raise ValueError("Choose licensed practitioner, coach certification, or resale certificate.")
+    credentials = str(payload.get("credentials") or "").strip() or None
+    license_state = str(payload.get("license_state") or "").strip().upper() or None
+    license_number = str(payload.get("license_number") or "").strip() or None
+    resale_number = str(payload.get("resale_license_number") or "").strip() or None
+    cert_details = str(payload.get("certification_details") or "").strip() or None
+    if kind == "licensed" and not license_number:
+        raise ValueError("License number is required.")
+    if kind == "coach_certification" and not cert_details:
+        raise ValueError("Coach certification details are required.")
+    if kind == "resale" and not resale_number:
+        raise ValueError("Resale certificate number is required.")
+    from db_supabase import supabase_cursor
+    with supabase_cursor() as cur:
+        cur.execute(
+            "UPDATE practitioners SET qualification_type=%s, "
+            "credentials=COALESCE(%s, credentials), license_state=%s, license_number=%s, "
+            "resale_license_number=%s, certification_details=%s, "
+            "qualification_completed_at=now(), updated_at=now() WHERE id=%s "
+            "RETURNING qualification_type, credentials, license_state, license_number, "
+            "resale_license_number, certification_details, qualification_completed_at",
+            (kind, credentials, license_state, license_number, resale_number,
+             cert_details, str(practitioner_id)),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise ValueError("Practitioner account not found.")
+    return dict(row)
