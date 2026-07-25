@@ -6,3 +6,7 @@ ALTER TABLE practitioners
   ADD COLUMN IF NOT EXISTS certification_details text;
 ALTER TABLE practitioners
   ADD COLUMN IF NOT EXISTS qualification_completed_at timestamptz;
+ALTER TABLE practitioners
+  ADD COLUMN IF NOT EXISTS manual_approval_requested_at timestamptz;
+ALTER TABLE practitioners
+  ADD COLUMN IF NOT EXISTS manual_approval_note text;

@@ -860,7 +860,8 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
             "SELECT id, name, practice_name, email, portal_role, modules_completed, "
             "wallet_balance_cents, wholesale_unlocked_at, application_status, "
             "application_submitted_at, approval_notes, resale_license_number, credentials "
-            ", qualification_type, certification_details, qualification_completed_at "
+            ", qualification_type, certification_details, qualification_completed_at, "
+            "manual_approval_requested_at, manual_approval_note "
             "FROM practitioners WHERE id=%s",
             (str(practitioner_id),),
         )
@@ -893,6 +894,8 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         "qualification_type": row["qualification_type"],
         "certification_details": row["certification_details"],
         "qualification_completed": row["qualification_completed_at"] is not None,
+        "manual_approval_requested": row["manual_approval_requested_at"] is not None,
+        "manual_approval_note": row["manual_approval_note"],
         "cart": items,
         "quote": quote,
     }
@@ -944,23 +947,32 @@ def save_qualification(practitioner_id, payload: dict) -> dict:
     license_number = str(payload.get("license_number") or "").strip() or None
     resale_number = str(payload.get("resale_license_number") or "").strip() or None
     cert_details = str(payload.get("certification_details") or "").strip() or None
+    manual_requested = bool(payload.get("manual_approval_requested"))
+    manual_note = str(payload.get("manual_approval_note") or "").strip() or None
     if kind == "licensed" and not license_number:
         raise ValueError("License number is required.")
     if kind == "coach_certification" and not cert_details:
         raise ValueError("Coach certification details are required.")
     if kind == "resale" and not resale_number:
         raise ValueError("Resale certificate number is required.")
+    if manual_requested and not manual_note:
+        raise ValueError("Please explain what you would like manually reviewed.")
     from db_supabase import supabase_cursor
     with supabase_cursor() as cur:
         cur.execute(
             "UPDATE practitioners SET qualification_type=%s, "
             "credentials=COALESCE(%s, credentials), license_state=%s, license_number=%s, "
             "resale_license_number=%s, certification_details=%s, "
-            "qualification_completed_at=now(), updated_at=now() WHERE id=%s "
+            "qualification_completed_at=now(), "
+            "manual_approval_requested_at=CASE WHEN %s THEN now() ELSE NULL END, "
+            "manual_approval_note=CASE WHEN %s THEN %s ELSE NULL END, "
+            "updated_at=now() WHERE id=%s "
             "RETURNING qualification_type, credentials, license_state, license_number, "
-            "resale_license_number, certification_details, qualification_completed_at",
+            "resale_license_number, certification_details, qualification_completed_at, "
+            "manual_approval_requested_at, manual_approval_note",
             (kind, credentials, license_state, license_number, resale_number,
-             cert_details, str(practitioner_id)),
+             cert_details, manual_requested, manual_requested, manual_note,
+             str(practitioner_id)),
         )
         row = cur.fetchone()
     if not row:
