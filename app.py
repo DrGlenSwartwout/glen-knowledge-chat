@@ -21477,13 +21477,21 @@ def _portal_bodymap_data(cx, email, content, system="face"):
         system = "face"
     VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
     THEME = cfg.get("theme") or set()
+    slot_side = RESOLVE_SIDE if RESOLVE_SIDE in ("left", "right", "foot") else ""
     out = {"system": system, "view": VIEW, "has_photo": False,
+           "slot_side": slot_side, "slot_transform": None,
            "findings": [], "lit_zones": [], "count": 0}
     email = (email or "").strip().lower()
     if not email:
         return out
     try:
-        out["has_photo"] = bool(_cph.has(cx, email))
+        from dashboard import body_map_photos as _bmp
+        rec = _bmp.get(cx, email, system, slot_side)
+        if rec:
+            out["has_photo"] = True
+            out["slot_transform"] = rec["transform"]
+        elif system == "face" and _cph.has(cx, email):
+            out["has_photo"] = True            # client_photos portrait fallback (no transform)
     except Exception:
         pass
     findings_out, lit, seen = [], [], set()
