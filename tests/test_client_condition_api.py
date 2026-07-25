@@ -39,6 +39,58 @@ def _seed_person(db, email, conditions=None, tags=None):
         cx.commit()
 
 
+from dashboard import canonical_tags as _ct_api
+
+
+def _seed_canonical(db, email, conditions):
+    with sqlite3.connect(db) as cx:
+        for v in conditions:
+            _ct_api.set_attr(cx, email, "conditions", v, source="test")
+        cx.commit()
+
+
+def test_get_resolved_is_canonical_aware(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["ocular hypertension"])
+    r = app_mod.app.test_client().get(
+        "/api/console/client-condition?email=jane@example.com", headers=HDRS)
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["resolved"] == "glaucoma-elevated-iop"
+    assert body["auto_detected"] == "glaucoma-elevated-iop"
+    assert "ocular hypertension" in body["tags"]
+
+
+def test_get_resolved_matches_resolver_across_cases(app_mod, tmp_db):
+    # override case
+    _seed_canonical(tmp_db, "a@x.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        from dashboard import client_conditions as _cc
+        _cc.init_table(cx)
+        _cc.set(cx, "a@x.com", "dry-eye", "glen")
+    # canonical-only case
+    _seed_canonical(tmp_db, "b@x.com", ["ocular hypertension"])
+    # people-only case
+    _seed_person(tmp_db, "c@x.com", conditions=["Wet AMD"])
+    client = app_mod.app.test_client()
+    for email in ("a@x.com", "b@x.com", "c@x.com"):
+        body = client.get(f"/api/console/client-condition?email={email}",
+                          headers=HDRS).get_json()
+        assert body["resolved"] == app_mod._client_condition_for(email)
+
+
+def test_get_override_still_wins_in_api(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        from dashboard import client_conditions as _cc
+        _cc.init_table(cx)
+        _cc.set(cx, "jane@example.com", "dry-eye", "glen")
+    body = app_mod.app.test_client().get(
+        "/api/console/client-condition?email=jane@example.com",
+        headers=HDRS).get_json()
+    assert body["resolved"] == "dry-eye"
+    assert body["override"] == "dry-eye"
+
+
 # ---------------------------------------------------------------------------
 # GET /api/console/client-condition
 # ---------------------------------------------------------------------------

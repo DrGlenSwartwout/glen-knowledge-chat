@@ -9,6 +9,7 @@ CATALOG = {
         "dir": "healing-glaucoma-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "audio_key": "ebooks/healing-glaucoma/starter/audio.mp3",
         "condition": "glaucoma",
     },
     "macular-regeneration-starter": {
@@ -18,6 +19,7 @@ CATALOG = {
         "dir": "macular-regeneration-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "audio_key": "ebooks/macular-regeneration/starter/audio.mp3",
         "condition": "macular",
     },
     "cataract-solutions-starter": {
@@ -27,6 +29,7 @@ CATALOG = {
         "dir": "cataract-solutions-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "audio_key": "ebooks/cataract-solutions/starter/audio.mp3",
         "condition": "cataract",
     },
     "dry-eye-relief-starter": {
@@ -36,6 +39,7 @@ CATALOG = {
         "dir": "dry-eye-relief-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "audio_key": "ebooks/dry-eye-relief/starter/audio.mp3",
         "condition": "dry-eye",
     },
     "refreshing-vision-starter": {
@@ -45,6 +49,7 @@ CATALOG = {
         "dir": "refreshing-vision-starter",
         "pdf": "starter.pdf",
         "audio": "starter.mp3",
+        "audio_key": "ebooks/refreshing-vision/starter/audio.mp3",
         "condition": "vision-improvement",
     },
 }

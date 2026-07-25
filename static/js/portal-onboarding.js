@@ -86,7 +86,21 @@ function escapeHtml(s) {
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
 }
-if (typeof module !== 'undefined' && module.exports) { module.exports = { renderOnboarding: renderOnboarding }; }
+
+// Consult nudge (Cataract/Macular triage task): when the triage response
+// says consult_recommended (e.g. a wet-AMD resolve), the success message
+// additionally invites a Biofield Analysis with Dr. Glen. Kept as a pure,
+// DOM-free helper so it's unit-testable under plain Node like renderOnboarding.
+function _triageSuccessMessage(consultRecommended) {
+  var msg = 'Thanks — your starter remedies are ready.';
+  if (consultRecommended) {
+    msg += ' Given what you shared, a Biofield Analysis with Dr. Glen would help us take a closer look.';
+  }
+  return msg;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { renderOnboarding: renderOnboarding, _triageSuccessMessage: _triageSuccessMessage };
+}
 
 // Browser: fetch + mount. Token is the last path segment of /portal/<token>.
 // Hides (empties) the mount when the flag is off.
@@ -138,9 +152,9 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         body: JSON.stringify(payload)
       })
         .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('bad response')); })
-        .then(function () {
+        .then(function (body) {
           if (msg) {
-            msg.textContent = 'Thanks — your starter remedies are ready.';
+            msg.textContent = _triageSuccessMessage(body && body.consult_recommended);
             msg.className = 'ob-triage-msg ob-triage-ok';
           }
           // Brief pause so the success message is actually seen before the

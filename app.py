@@ -12,6 +12,7 @@ except ImportError:
     pass
 
 import os
+import sys
 import re
 import json
 import uuid
@@ -7676,7 +7677,7 @@ def email_click_redirect(token, source, slug):
             from dashboard import (email_click_tokens as _ect,
                                    recommendation_events as _re,
                                    recommendation_sources as _rs)
-            with _db_lock, sqlite3.connect(LOG_DB) as cx:
+            with _db_lock, db.connect(LOG_DB) as cx:
                 _ect.init_email_click_tokens(cx)
                 _re.init_recommendation_events(cx)
                 email = _ect.email_for(cx, token)
@@ -7684,6 +7685,46 @@ def email_click_redirect(token, source, slug):
                     _re.record_click(cx, email, resolved, src)
     except Exception:
         pass
+    return redirect(dest, code=302)
+
+
+@app.route("/fs/<token>/<product_slug>", methods=["GET"])
+def fullscript_click_redirect(token, product_slug):
+    """Tracked OUTBOUND redirect into Glen's Fullscript dispensary. Identity is
+    server-resolved from the portal token only. The destination is built from a
+    hardcoded base + config + the DB row and NEVER from the request, so this
+    route cannot be turned into an open redirect. A recording failure must not
+    block the redirect."""
+    dest = "/"
+    try:
+        from dashboard import fullscript as _fs
+        with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            portal = _portal_record_for(cx, token)
+            if portal:
+                email = (portal.get("email") or "").strip().lower()
+                row = _fs.product_by_slug(cx, product_slug)
+                if email and row:
+                    dest = _fullscript_dispensary_url()
+                    # Origin attribution: EXACT while only the `pinned` and `scan`
+                    # drivers are wired (mirrors candidates_for's Phase A1 scope) --
+                    # revisit this when `review`/`condition` land, since a product
+                    # surfaced by one of those would still be misreported as "scan"
+                    # here. A failed pins lookup must not cost the client their
+                    # click, so fall back to an empty origin rather than losing it.
+                    origin = ""
+                    try:
+                        pinned_names = {p["name"] for p in _fs.pins_for_client(cx, email)}
+                        origin = "pinned" if row["name"] in pinned_names else "scan"
+                    except Exception:
+                        origin = ""
+                    try:
+                        _fs.record_click(cx, email, row["name"], origin)
+                    except Exception:
+                        pass
+    except Exception:
+        dest = "/"
     return redirect(dest, code=302)
 
 
@@ -10170,7 +10211,7 @@ def _last_attributed_practitioner(email, *, db_path=None):
     if not e:
         return None
     cands = []  # (timestamp, pid, consent)
-    with sqlite3.connect(db_path or LOG_DB) as cx:
+    with db.connect(db_path or LOG_DB) as cx:
         try:
             r = cx.execute(
                 "SELECT granted_at, attributed_practitioner_id, practitioner_share_consent "
@@ -10222,7 +10263,7 @@ def _patient_practitioner_brand(email, *, db_path=None):
         if not inh:
             return None
         pid = inh["pid"]
-        with sqlite3.connect(db_path or LOG_DB) as cx:
+        with db.connect(db_path or LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             from dashboard import practitioner_settings as _ps
             _ps.init_settings_table(cx)
@@ -11545,7 +11586,7 @@ def _send_full_report_email(to_email: str, name: str,
     # (hard-bounced) addresses on BOTH the Gmail and SMTP-fallback paths. Fail-open.
     from dashboard import email_suppression as _es
     try:
-        with sqlite3.connect(str(LOG_DB)) as _cx:
+        with db.connect(str(LOG_DB)) as _cx:
             _es.init_table(_cx)
             if _es.is_suppressed(_cx, to_email):
                 print(f"[suppressed] skip full-report to {to_email}", flush=True)
@@ -13669,7 +13710,7 @@ def api_console_e4l_db_sync():
         with open(tmp, "wb") as f:
             f.write(blob)
         # validate it's a real e4l.db before swapping in
-        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+        vx = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)  # raw-sqlite-ok: uploaded e4l.db validation (read-only URI, not chat_log)
         vx.row_factory = sqlite3.Row
         counts = {}
         for t in ("e4l_items", "e4l_pattern_structures", "e4l_formulation_map",
@@ -18266,6 +18307,22 @@ def _prl_supplement_enabled():
         "1", "true", "yes", "on")
 
 
+def _fullscript_enabled():
+    """Default OFF. When off the portal payload never gains a `fullscript` key,
+    so responses stay byte-identical."""
+    return (os.environ.get("FULLSCRIPT_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _fullscript_dispensary_url():
+    """Attribution-safe entry point. Phase A routes every client here rather than
+    to a product deep link: whether a NEW signup from /u/catalog/product/... is
+    attached to the Remedy Match dispensary is unconfirmed, and guessing wrong
+    loses the margin. Built from a hardcoded base + config, never from a request."""
+    slug = (os.environ.get("FULLSCRIPT_DISPENSARY_SLUG", "") or "remedymatch").strip()
+    return f"https://us.fullscript.com/welcome/{slug}/store-start"
+
+
 def _portal_scan_history_enabled() -> bool:
     """Three-tab portal history UI + prefs endpoints. Default OFF — payload byte-identical when off."""
     return os.environ.get("PORTAL_SCAN_HISTORY_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
@@ -20016,6 +20073,20 @@ def api_client_portal(token):
                 payload["prl_supplement"] = _prl_block
         except Exception as _e:
             print(f"[prl-supplement/payload] {_e!r}", flush=True)
+    # Fullscript dispensary channel (flag-gated, best-effort), sibling of the
+    # PRL Supplement card above. The card's buy links are /fs/<token>/<slug> (Task 6);
+    # the frontend gets the token from its own module-level URL-derived `token`
+    # global (static/client-portal.html), not from the payload -- widening every
+    # portal response with a bearer token, even while this channel is dark, is
+    # exactly the regression this flag gate exists to prevent.
+    payload["fullscript_enabled"] = _fullscript_enabled()
+    if _fullscript_enabled():
+        try:
+            _fs_block = _fullscript_for(email_for_reports, req_date or None)
+            if _fs_block:
+                payload["fullscript"] = _fs_block
+        except Exception as _e:
+            print(f"[fullscript/payload] {_e!r}", flush=True)
     # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
     # standing hand-composed program, distinct from the condition-driven
     # support_program card above and from the reco-card. email_for_reports is
@@ -20185,6 +20256,29 @@ def api_portal_library_asset(token, slug, asset):
         if not email or not _lib.has(cx, email, slug):
             return Response("", status=404)
     folder = os.path.join(STATIC, "ebooks", meta["dir"])
+    if asset == "audio" and meta.get("audio_key"):
+        rng = request.headers.get("Range")
+        kw = {"Bucket": os.environ.get("R2_BUCKET", "rm-clips"), "Key": meta["audio_key"]}
+        if rng:
+            kw["Range"] = rng
+        try:
+            obj = _r2().get_object(**kw)
+        except Exception:
+            print(f"[library-asset] R2 fetch failed for {meta['audio_key']}, "
+                  f"falling back to local file", flush=True)
+        else:
+            headers = {
+                "Content-Type": obj.get("ContentType", "audio/mpeg"),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "private, no-store",
+            }
+            status = 200
+            if rng and obj.get("ContentRange"):
+                headers["Content-Range"] = obj["ContentRange"]
+                status = 206
+            if obj.get("ContentLength") is not None:
+                headers["Content-Length"] = str(obj["ContentLength"])
+            return Response(obj["Body"].iter_chunks(chunk_size=65536), status=status, headers=headers)
     filename = meta["pdf"] if asset == "pdf" else meta["audio"]
     resp = send_from_directory(folder, filename)
     resp.headers["Cache-Control"] = "private, no-store"
@@ -20214,7 +20308,15 @@ def api_portal_triage(token):
         cond = (data.get("condition") or "glaucoma").strip().lower()
         answers = {k: data.get(k) for k in
                    ("iop_od", "iop_os", "on_meds", "med_count", "meds_names",
-                    "field_loss", "category")}
+                    "field_loss", "category",
+                    # dry-eye triage facts (drive the aqueous_deficiency/
+                    # severe modifiers -- see condition_triage.resolve_client_facts)
+                    "sjogrens", "not_enough_tears", "severe",
+                    # cataract sub-type triage
+                    "cataract_type", "age", "steroids", "diabetes", "inflammation",
+                    "radiation", "atopy", "yellow_vision",
+                    # macular sub-type triage
+                    "amd_type", "injections", "distortion")}
         # Ensure the condition-programs store exists and every program (incl.
         # any added after prod's once-ever seed already fired, e.g.
         # vision-improvement) is present -- this route resolves programs by
@@ -20222,7 +20324,8 @@ def api_portal_triage(token):
         # having run first to guarantee that, which isn't true for triage.
         _init_support_programs_tables(cx)
         res = _ct.seed_from_triage(cx, email, cond, answers)
-    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"])})
+    return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"]),
+                    "consult_recommended": bool(res.get("consult_recommended"))})
 
 
 @app.route("/api/portal/<token>/onboarding", methods=["GET"])
@@ -20255,7 +20358,7 @@ def api_portal_recommendations(token):
     from dashboard import (client_portal as _cp, recommendation_events as _re,
                             recommendation_prefs as _rp, portal_recommendations as _pr,
                             products as _products)
-    with sqlite3.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         _re.init_recommendation_events(cx)
         _rp.init_recommendation_prefs(cx)
@@ -20283,7 +20386,7 @@ def api_portal_rec_hide(token):
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
     hidden = bool(data.get("hidden"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20302,7 +20405,7 @@ def api_portal_rec_click(token):
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
     source = (data.get("source") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _re.init_recommendation_events(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20324,7 +20427,7 @@ def api_portal_rec_client_note(token):
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
     note = (data.get("note") or "")[:4000]
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20340,7 +20443,7 @@ def api_portal_rec_section(token):
     data = request.get_json(silent=True) or {}
     sk = (data.get("section_key") or "").strip()
     collapsed = bool(data.get("collapsed"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _rp.init_recommendation_prefs(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20379,7 +20482,7 @@ def api_portal_remedies_add(token):
     brand = (data.get("product_brand") or "").strip()
     reason = (data.get("reason") or "").strip()
     importance = _remedies_coerce_importance(data.get("importance"))
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20400,7 +20503,7 @@ def api_portal_remedies_meta(token):
     from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20427,7 +20530,7 @@ def api_portal_remedies_remove(token):
     from dashboard import client_portal as _cp, supplement_reviews as _sr, remedies_block as _rb
     data = request.get_json(silent=True) or {}
     pk = (data.get("product_key") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20449,7 +20552,7 @@ def api_portal_remedies_request_review(token):
     data = request.get_json(silent=True) or {}
     name = (data.get("product_name") or "").strip()
     brand = (data.get("product_brand") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _sr.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -20473,7 +20576,7 @@ def api_portal_remedies_to_oasis(token):
     from dashboard import client_portal as _cp, wishlist as _wl, recommendation_events as _re
     data = request.get_json(silent=True) or {}
     slug = (data.get("slug") or "").strip()
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx); _wl.init_wishlist_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
@@ -21837,6 +21940,17 @@ def _init_support_programs_tables(cx):
         [{"slug": "wholomega-120-gelcaps", "name": "WholOmega 120 gelcaps",
           "dose": "4 times a day"},
          {"slug": "nous-energy", "name": "Nous Energy"}])
+    # One-time, marker-guarded restructure of dry-eye into base items + the
+    # aqueous_deficiency/severe modifiers, for stores seeded long ago (before
+    # this shape existed) where seed_if_empty's once-ever marker already
+    # fired and will never re-seed. Runs at most once ever -- see
+    # condition_programs.migrate_dry_eye_modifiers.
+    condition_programs.migrate_dry_eye_modifiers(cx)
+    # One-time, marker-guarded fix for prod rows seeded before lens-zyme moved
+    # from an unconditional senile-cataract item to a client-reported
+    # "brunescent" modifier. Safe to call on every request (run-once, never
+    # resurrects an operator's later deletion -- see its own docstring).
+    condition_programs.migrate_cataract_brunescent(cx)
 
 
 def _eye_program_public_view(prog):
@@ -22030,11 +22144,56 @@ def _condition_key_from_tags(tags):
     return None
 
 
+def _condition_detect_tags(cx, email):
+    """Ordered auto-detect input for a client's eye-condition support program:
+    canonical conditions first (person_attributes -- Glen-approved and
+    vocabulary-canonical), then people.conditions, then people.tags.
+
+    This is ONLY the detection input for `_condition_key_from_tags`; the operator
+    override is applied by the caller, ABOVE this. Order is load-bearing: the
+    matcher returns the first unambiguous hit, so canonical conditions must lead.
+
+    Best-effort: a canonical read failure degrades to the people-only input and
+    never raises, and this function never reads or writes people.tags as a
+    canonical target -- it only reads it as existing detection input.
+    """
+    email = (email or "").strip().lower()
+    tags = []
+    if not email:
+        return tags
+    # Canonical conditions first, so they outrank people-derived hits.
+    try:
+        from dashboard import canonical_tags as _ct
+        for v in (_ct.get_person(cx, email).get("conditions") or []):
+            if str(v).strip():
+                tags.append(str(v))
+    except Exception:
+        pass
+    # Then people.conditions, then people.tags -- unchanged order and semantics.
+    # Positional indexing (row[0]=conditions, row[1]=tags) so this does not
+    # depend on cx.row_factory (get_person mutates and restores it).
+    try:
+        row = cx.execute(
+            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+            (email,)).fetchone()
+    except Exception:
+        row = None
+    if row:
+        for cell in (row[0], row[1]):
+            try:
+                v = json.loads(cell or "[]")
+            except Exception:
+                v = []
+            if isinstance(v, list):
+                tags.extend(str(x) for x in v)
+    return tags
+
+
 def _client_condition_for(email):
     """Resolve a client's eye-condition support-program key: the operator
     override (dashboard/client_conditions.py) wins; otherwise auto-detect from
-    the client's `people.conditions` + `people.tags`. Best-effort -- any error
-    returns None, never raises."""
+    the client's canonical conditions + `people.conditions` + `people.tags`.
+    Best-effort -- any error returns None, never raises."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -22046,20 +22205,7 @@ def _client_condition_for(email):
             override = _cc.get(cx, email)
             if override:
                 return override
-            row = cx.execute(
-                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-                (email,)).fetchone()
-            if not row:
-                return None
-            tags = []
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
-            return _condition_key_from_tags(tags)
+            return _condition_key_from_tags(_condition_detect_tags(cx, email))
     except Exception:
         return None
 
@@ -22221,6 +22367,81 @@ def _prl_supplement_for(email, scan_date):
             if not fas:
                 return None
             return {"source": "derived", "prl_link": PRL_LINK, "focus_areas": fas}
+    except Exception:
+        return None
+
+
+_FULLSCRIPT_HEADINGS = {
+    "pinned": "Chosen for you",
+    "review": "Replaces something you're taking",
+    "scan": "Matched from your scan",
+    "condition": "For what you're working on",
+}
+
+
+def _fullscript_ff_view(best_ff, relation):
+    """Same shape as _prl_ff_view so both channel cards render identically."""
+    if not best_ff:
+        return None
+    try:
+        slug = _resolve_remedy_slug({"name": best_ff})
+    except Exception:
+        slug = None
+    return {"name": best_ff, "relation": relation or "consider", "slug": slug}
+
+
+def _fullscript_for(email, scan_date):
+    """The client's Fullscript channel card, or None (flag off / no scans / no
+    candidates). Best-effort: any error returns None, never raises.
+
+    Mirrors `_prl_supplement_for`'s date resolution exactly: resolve a single
+    scan date FIRST (distinct non-empty dates, most recent first; the caller's
+    `scan_date` wins if it's one of them), and only then read item codes for
+    that ONE date. Never collect item codes across every scan the client has
+    ever had -- that would let a years-old scan's item codes surface a product
+    under a "Matched from your scan" heading that names the CURRENT scan,
+    falsely attributing clinical content to a scan that never produced it."""
+    if not _fullscript_enabled():
+        return None
+    try:
+        from dashboard import fullscript as _fs
+        with db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            email_norm = (email or "").strip().lower()
+            dates = [r[0] for r in cx.execute(
+                "SELECT DISTINCT scan_date FROM scan_recommendations "
+                "WHERE email=? AND scan_date IS NOT NULL AND scan_date<>'' "
+                "ORDER BY scan_date DESC", (email_norm,)).fetchall()]
+            if not dates:
+                return None
+            sd = (scan_date or "").strip()
+            picked = sd if (sd and sd in dates) else dates[0]
+            rows = cx.execute(
+                "SELECT item_code FROM scan_recommendations "
+                "WHERE email=? AND scan_date=? ORDER BY priority_rank",
+                (email_norm, picked)).fetchall()
+            codes = [r["item_code"] for r in rows]
+            cands = _fs.candidates_for(cx, email_norm, item_codes=codes)
+        if not cands:
+            return None
+        groups, seen = [], {}
+        for c in cands:
+            g = seen.get(c["origin"])
+            if g is None:
+                g = {"origin": c["origin"],
+                     "heading": _FULLSCRIPT_HEADINGS.get(c["origin"], "Recommended"),
+                     "products": []}
+                seen[c["origin"]] = g
+                groups.append(g)
+            g["products"].append({
+                "name": c.get("name"),
+                "brand": c.get("brand"),
+                "product_slug": c.get("product_slug"),
+                "reason": c.get("reason") or "",
+                "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
+            })
+        return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups}
     except Exception:
         return None
 
@@ -22531,7 +22752,7 @@ def api_portal_oasis_tool_add(token):
     brand = (body.get("brand") or "").strip()
     slug = (body.get("slug") or "").strip() or None
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -22554,7 +22775,7 @@ def api_portal_oasis_tool_remove(token):
     body = request.get_json(silent=True) or {}
     tool_id = body.get("tool_id")
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -22581,7 +22802,7 @@ def api_portal_oasis_roadmap_want(token):
     slug = (body.get("slug") or "").strip()
     from dashboard import client_portal as _cp, owned_tools as _ot, oasis_block as _obk
     from dashboard import wishlist as _wl
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _ot.init_table(cx)
@@ -22841,22 +23062,11 @@ def api_console_client_condition_get():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_conditions as _cc
-    tags = []
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         override = _cc.get(cx, email)
-        row = cx.execute(
-            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-            (email,)).fetchone()
-        if row:
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
+        tags = _condition_detect_tags(cx, email)
     auto_detected = _condition_key_from_tags(tags)
     resolved = override or auto_detected
     return jsonify({"email": email, "resolved": resolved, "override": override,
@@ -31072,7 +31282,7 @@ def ghl_click_webhook():
             from dashboard import (recommendation_events as _re,
                                    recommendation_sources as _rs)
             if _rs.known_source(source):
-                with _db_lock, sqlite3.connect(LOG_DB) as cx:
+                with _db_lock, db.connect(LOG_DB) as cx:
                     _re.init_recommendation_events(cx)
                     _re.record_click(cx, email, resolved, source)
     except Exception:
@@ -36658,8 +36868,12 @@ def _start_scheduler():
     except Exception as e:
         print(f"[CRON] Scheduler failed to start: {e}")
 
-# Only start scheduler on Render (DATA_DIR is set), not in local dev
-if os.environ.get("DATA_DIR"):
+# Only start scheduler on Render (DATA_DIR is set), not in local dev, and NEVER under
+# pytest: a test that importlib.reload()s this module with DATA_DIR set would otherwise
+# spawn a BackgroundScheduler that is never shut down, leaking interval jobs that connect
+# to later tests' DBs and make the suite timing-nondeterministic. Prod has no pytest in
+# sys.modules, so this is a no-op there.
+if os.environ.get("DATA_DIR") and "pytest" not in sys.modules:
     _start_scheduler()
 
 
@@ -38191,7 +38405,7 @@ def ingredients_import():
                 "clusters": len(cluster_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38437,7 +38651,7 @@ def formulations_import():
                 "products_items": len(items),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38549,7 +38763,7 @@ def materials_import():
                 "product_suppliers": len(products_supplier_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38614,7 +38828,7 @@ def po_import():
                 "po_receiving": len(po_receiving_rows),
             })
 
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38743,7 +38957,7 @@ def api_inventory_seed():
         return fail(f"import error: {e}")
     try:
         write = request.form.get("write", "").lower() in ("1","true","yes")
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx)
@@ -38860,7 +39074,7 @@ def api_production_import():
         write = request.form.get("write", "").lower() in ("1","true","yes")
         cons = request.form.get("consumption", "all")
         cons_from = request.form.get("consumption_from") or None
-        cx = sqlite3.connect(str(LOG_DB))
+        cx = db.connect(str(LOG_DB))
         cx.row_factory = sqlite3.Row
         try:
             init_ingredients_schema(cx); init_materials_schema(cx); init_formulations_schema(cx)
@@ -40068,7 +40282,11 @@ def _prewarm_caches():
             print(f"[prewarm] money.qb_banks failed: {e}")
     threading.Thread(target=_warm, daemon=True, name="prewarm-money").start()
 
-_prewarm_caches()
+# Never under pytest: a reloaded app must not leak the prewarm-money daemon thread into
+# the rest of the suite (it connects to whatever LOG_DB later tests point at, causing
+# nondeterministic cross-test interference). Prod has no pytest in sys.modules.
+if "pytest" not in sys.modules:
+    _prewarm_caches()
 
 
 # ── Membership admin routes (Slice 2) ─────────────────────────────────────────
@@ -41847,7 +42065,7 @@ def console_rec_operator_note():
     if not email or not pk:
         return jsonify({"ok": False, "error": "email and product_key required"}), 400
     note = (data.get("note") or "")[:4000]
-    with _db_lock, sqlite3.connect(LOG_DB) as cx:
+    with _db_lock, db.connect(LOG_DB) as cx:
         _rp.init_recommendation_prefs(cx)
         _rp.set_operator_note(cx, email, pk, note)
     return jsonify({"ok": True})

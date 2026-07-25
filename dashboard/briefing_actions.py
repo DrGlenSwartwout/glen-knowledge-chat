@@ -11,6 +11,7 @@ import hashlib
 import os
 import re
 import sqlite3
+from dashboard import db
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -21,7 +22,7 @@ _ACTION_RE = re.compile(r"^\s*(?:[-*]\s*)?\[(?:HIGH|MED|LOW)\]\s*(.+?)\s*$", re.
 
 
 def _conn():
-    cx = sqlite3.connect(str(_DB), timeout=5)
+    cx = db.connect(str(_DB), timeout=5)
     cx.execute("""
         CREATE TABLE IF NOT EXISTS briefing_actions (
             slug          TEXT NOT NULL,

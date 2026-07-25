@@ -25,6 +25,7 @@ from dashboard import practitioner_pricing as _pp
 from dashboard import pricing as _pricing
 from dashboard import qbo_billing as qb
 from dashboard import wallet
+from dashboard import db
 
 # Resolve LOG_DB the same way practitioner_portal.py does — respects DATA_DIR in prod.
 _LOG_DB = str(
@@ -154,7 +155,7 @@ def _practitioner_price_cents(pid: str, slug: str, retail: int) -> int:
     settings = _settings()
     map_floor = int(settings.get("map_default_cents", 6700))
     try:
-        cx = sqlite3.connect(_LOG_DB)
+        cx = db.connect(_LOG_DB)
         cx.row_factory = sqlite3.Row
         _ps.init_settings_table(cx)
         try:

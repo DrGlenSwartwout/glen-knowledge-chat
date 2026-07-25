@@ -208,3 +208,182 @@ def test_ensure_program_never_overwrites_operator_edit(tmp_db):
     assert got["label"] == "Vision Improvement (edited)"
     assert got["consult_recommended"] is True
     assert got["items"] == [{"slug": "operator-swap", "name": "Operator Swap"}]
+
+
+# ---------------------------------------------------------------------------
+# migrate_dry_eye_modifiers: one-time, marker-guarded restructure for stores
+# seeded long ago with the OLD flat dry-eye shape (moisturize and
+# moisture-eyes-night-oil as unconditional base items).
+# ---------------------------------------------------------------------------
+
+OLD_DRY_EYE_ITEMS = [
+    {"slug": "aces-eye-drops", "name": "ACES Eye Drops",
+     "alts": [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]},
+    {"slug": "moisturize", "name": "Moisturize"},
+    {"slug": "wholomega", "name": "WholOmega", "dose": "4 capsules/day"},
+    {"slug": "moisture-eyes-night-oil", "name": "Moisture Eyes Night Oil",
+     "alts": [{"slug": "moisture-eyes-night-drops", "name": "Moisture Eyes Night Drops"}]},
+]
+
+
+def _seed_old_shape_dry_eye(cx):
+    cp.init_table(cx)
+    cp.upsert(cx, "dry-eye", "Dry Eye", False, OLD_DRY_EYE_ITEMS)
+
+
+def test_migrate_dry_eye_modifiers_rewrites_old_shape_to_base_plus_modifiers(tmp_db):
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+
+    cp.migrate_dry_eye_modifiers(cx)
+
+    got = cp.get(cx, "dry-eye")
+    assert [it["slug"] for it in got["items"]] == ["aces-eye-drops", "wholomega"]
+    aces = got["items"][0]
+    assert aces["alts"] == [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]
+    wholomega = got["items"][1]
+    assert wholomega["dose"] == "4 capsules/day"
+
+    mods = {m["when"]: m for m in got["modifiers"]}
+    assert set(mods) == {"aqueous_deficiency", "severe"}
+
+    aq = mods["aqueous_deficiency"]
+    assert aq["action"] == "add"
+    assert aq["source"] == "client-reported"
+    assert aq["client_default"] is True
+    assert aq["items"] == [{"slug": "moisturize", "name": "Moisturize"}]
+
+    sev = mods["severe"]
+    assert sev["action"] == "add"
+    assert sev["source"] == "client-reported"
+    assert sev["client_default"] is False
+    assert sev["items"] == [
+        {"slug": "moisture-eyes-night-oil", "name": "Moisture Eyes Night Oil",
+         "alts": [{"slug": "moisture-eyes-night-drops", "name": "Moisture Eyes Night Drops"}]},
+    ]
+
+
+def test_migrate_dry_eye_modifiers_second_call_is_noop(tmp_db):
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+    cp.migrate_dry_eye_modifiers(cx)
+    first = cp.get(cx, "dry-eye")
+
+    cp.migrate_dry_eye_modifiers(cx)
+    second = cp.get(cx, "dry-eye")
+    assert second["items"] == first["items"]
+    assert second["modifiers"] == first["modifiers"]
+    assert second["updated_at"] == first["updated_at"]  # upsert never re-ran
+
+
+def test_migrate_dry_eye_modifiers_marker_holds_after_operator_edit(tmp_db):
+    """Prove the migration runs AT MOST ONCE EVER: once an operator deletes an
+    item via the console editor (upsert), a later migration call must NEVER
+    resurrect it."""
+    cx = _cx(tmp_db)
+    _seed_old_shape_dry_eye(cx)
+    cp.migrate_dry_eye_modifiers(cx)
+
+    # Operator deletes the severe modifier's item entirely via the console.
+    edited = cp.get(cx, "dry-eye")
+    cp.upsert(cx, "dry-eye", edited["label"], edited["consult_recommended"],
+              edited["items"], modifiers=[m for m in edited["modifiers"]
+                                          if m["when"] != "severe"])
+
+    cp.migrate_dry_eye_modifiers(cx)  # third call overall
+
+    got = cp.get(cx, "dry-eye")
+    assert {m["when"] for m in got["modifiers"]} == {"aqueous_deficiency"}
+
+
+def test_migrate_dry_eye_modifiers_noop_when_program_absent(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.migrate_dry_eye_modifiers(cx)  # must not raise
+    assert cp.get(cx, "dry-eye") is None
+    # marker recorded even though there was nothing to migrate
+    cp.migrate_dry_eye_modifiers(cx)
+    assert cp.get(cx, "dry-eye") is None
+
+
+# ---------------------------------------------------------------------------
+# migrate_cataract_brunescent: one-time, marker-guarded move of lens-zyme out
+# of senile-cataract's unconditional items into a client-reported "brunescent"
+# modifier. Mirrors seed_if_empty's once-ever _seed_state marker pattern.
+# ---------------------------------------------------------------------------
+
+LEGACY_SENILE_ITEMS = [
+    {"slug": "golden-book", "name": "Golden Book"},
+    {"slug": "crystalline-clarity", "name": "Crystalline Clarity"},
+    {"slug": "clarity", "name": "Clarity"},
+    {"slug": "clear-lens-eye-drops", "name": "Clear Lens Eye Drops",
+     "alts": [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]},
+    {"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster",
+     "note": "Add for brunescent cataracts"},
+]
+
+
+def test_migrate_cataract_brunescent_moves_lens_zyme_into_modifier(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    slugs = [it["slug"] for it in got["items"]]
+    assert "lens-zyme" not in slugs
+    assert slugs == ["golden-book", "crystalline-clarity", "clarity", "clear-lens-eye-drops"]
+    # every other item's content survives verbatim by slug
+    drops = next(it for it in got["items"] if it["slug"] == "clear-lens-eye-drops")
+    assert drops["alts"] == [{"slug": "ocuheal-eye-drops", "name": "OcuHeal Eye Drops"}]
+
+    mods = got["modifiers"]
+    assert len(mods) == 1
+    m = mods[0]
+    assert m["when"] == "brunescent"
+    assert m["action"] == "add"
+    assert m["source"] == "client-reported"
+    assert m["client_default"] is False
+    assert m["items"] == [{"slug": "lens-zyme", "name": "Lens-Zyme Brunescence Buster"}]
+
+
+def test_migrate_cataract_brunescent_runs_only_once(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    cp.migrate_cataract_brunescent(cx)
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    assert len(got["modifiers"]) == 1  # not duplicated by repeated calls
+
+
+def test_migrate_cataract_brunescent_never_resurrects_operator_deletion(tmp_db):
+    """Mirrors the seed_if_empty resurrection guard: once an operator has
+    edited the program (here, removing lens-zyme entirely before the
+    migration ever runs), a later call must never bring it back."""
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              [{"slug": "golden-book", "name": "Golden Book"}])  # operator already removed lens-zyme
+    cp.migrate_cataract_brunescent(cx)
+    got = cp.get(cx, "senile-cataract")
+    assert [it["slug"] for it in got["items"]] == ["golden-book"]
+    assert got["modifiers"] == []
+
+    # Simulate a later boot: marker already recorded, so even if lens-zyme
+    # somehow reappeared in a fresh upsert, the migration must not re-fire.
+    cp.upsert(cx, "senile-cataract", "Senile (Age-Related) Cataract", False,
+              LEGACY_SENILE_ITEMS)
+    cp.migrate_cataract_brunescent(cx)
+    got2 = cp.get(cx, "senile-cataract")
+    assert got2["modifiers"] == []  # migration did not run again
+    assert any(it["slug"] == "lens-zyme" for it in got2["items"])  # untouched
+
+
+def test_migrate_cataract_brunescent_noop_when_program_absent(tmp_db):
+    cx = _cx(tmp_db)
+    cp.init_table(cx)
+    cp.migrate_cataract_brunescent(cx)  # must not raise
+    assert cp.get(cx, "senile-cataract") is None

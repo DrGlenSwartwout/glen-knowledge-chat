@@ -107,8 +107,9 @@ def _inhouse_open_rows(qbo_ids):
     table, shaped as AR rows. Never raises (returns [] on any DB error) so the
     QBO receivables never go dark because of a local-read hiccup."""
     import sqlite3
+    from dashboard import db
     try:
-        cx = sqlite3.connect(str(_log_db_path()))
+        cx = db.connect(str(_log_db_path()))
     except Exception:
         return []
     try:

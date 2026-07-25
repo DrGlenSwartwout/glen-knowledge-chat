@@ -13,6 +13,7 @@ import json
 import os
 import secrets
 import sqlite3
+from dashboard import db
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -50,7 +51,7 @@ def _ensure_auth_tokens(cx) -> None:
 
 
 def init_cart_table(db_path: Optional[str] = None) -> None:
-    with sqlite3.connect(db_path or _db_path()) as cx:
+    with db.connect(db_path or _db_path()) as cx:
         cx.execute(
             "CREATE TABLE IF NOT EXISTS wholesale_cart ("
             "practitioner_id TEXT NOT NULL, slug TEXT NOT NULL, qty INTEGER NOT NULL "
@@ -67,7 +68,7 @@ def cart_set(practitioner_id, slug, qty, *, db_path=None, now=None) -> None:
     p = db_path or _db_path()
     init_cart_table(p)
     ts = (now or datetime.now(timezone.utc)).isoformat()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         if int(qty) <= 0:
             cx.execute("DELETE FROM wholesale_cart WHERE practitioner_id=? AND slug=?",
                        (str(practitioner_id), slug))
@@ -84,7 +85,7 @@ def cart_set(practitioner_id, slug, qty, *, db_path=None, now=None) -> None:
 def cart_items(practitioner_id, *, db_path=None) -> List[dict]:
     p = db_path or _db_path()
     init_cart_table(p)
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         rows = cx.execute(
             "SELECT slug, qty FROM wholesale_cart WHERE practitioner_id=? ORDER BY slug",
             (str(practitioner_id),),
@@ -95,7 +96,7 @@ def cart_items(practitioner_id, *, db_path=None) -> List[dict]:
 def cart_clear(practitioner_id, *, db_path=None) -> None:
     p = db_path or _db_path()
     init_cart_table(p)
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         cx.execute("DELETE FROM wholesale_cart WHERE practitioner_id=?", (str(practitioner_id),))
         cx.commit()
 
@@ -120,7 +121,7 @@ def record_order(practitioner_id, *, invoice_id, doc_number=None, total_cents=0,
         return
     p = db_path or _db_path()
     ts = (now or datetime.now(timezone.utc)).isoformat()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_orders_table(cx)
         cx.execute(
             "INSERT INTO wholesale_orders "
@@ -139,7 +140,7 @@ def delete_order(invoice_id, *, db_path=None) -> int:
     if not invoice_id:
         return 0
     p = db_path or _db_path()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_orders_table(cx)
         cur = cx.execute("DELETE FROM wholesale_orders WHERE invoice_id=?",
                          (str(invoice_id),))
@@ -149,7 +150,7 @@ def delete_order(invoice_id, *, db_path=None) -> int:
 
 def order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
     p = db_path or _db_path()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_orders_table(cx)
         rows = cx.execute(
             "SELECT invoice_id, doc_number, total_cents, credit_cents, created_at "
@@ -179,7 +180,7 @@ def record_dispensary_order(practitioner_id, *, invoice_id, customer_email=None,
         return
     p = db_path or _db_path()
     ts = (now or datetime.now(timezone.utc)).isoformat()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_dispensary_table(cx)
         cx.execute(
             "INSERT INTO dispensary_orders "
@@ -193,7 +194,7 @@ def record_dispensary_order(practitioner_id, *, invoice_id, customer_email=None,
 
 def dispensary_order_history(practitioner_id, *, limit=20, db_path=None) -> List[dict]:
     p = db_path or _db_path()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_dispensary_table(cx)
         rows = cx.execute(
             "SELECT invoice_id, customer_email, bottles, credit_earned_cents, created_at "
@@ -212,7 +213,7 @@ def client_belongs_to_practitioner(practitioner_id, email, *, db_path=None) -> b
     if not practitioner_id or not em:
         return False
     p = db_path or _db_path()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_dispensary_table(cx)
         row = cx.execute(
             "SELECT 1 FROM dispensary_orders "
@@ -231,7 +232,7 @@ def search_clients(practitioner_id, q, *, limit=8, db_path=None) -> List[dict]:
         return []
     like = f"%{qq}%"
     p = db_path or _db_path()
-    with sqlite3.connect(p) as cx:
+    with db.connect(p) as cx:
         _ensure_dispensary_table(cx)
         rows = cx.execute(
             "SELECT DISTINCT d.customer_email AS email, COALESCE(pe.name,'') AS name "
@@ -369,7 +370,7 @@ def assist_cross_sell(slug, *, catalog=None, pairings=None) -> List[dict]:
 def _insert_token(tok, purpose, extra, ttl_seconds, now=None, db_path=None) -> None:
     n = _utcnow(now)
     exp = n + timedelta(seconds=ttl_seconds)
-    with sqlite3.connect(db_path or _db_path()) as cx:
+    with db.connect(db_path or _db_path()) as cx:
         _ensure_auth_tokens(cx)
         cx.execute(
             "INSERT INTO auth_tokens (token_hash, email, purpose, extra, created_at, expires_at) "
@@ -401,7 +402,7 @@ def create_session_token(practitioner_id, *, now=None, db_path=None) -> str:
 def _valid_token_row(token, purpose, *, now=None, db_path=None):
     if not token:
         return None
-    with sqlite3.connect(db_path or _db_path()) as cx:
+    with db.connect(db_path or _db_path()) as cx:
         _ensure_auth_tokens(cx)
         row = cx.execute(
             "SELECT extra, expires_at, consumed_at FROM auth_tokens "
@@ -438,7 +439,7 @@ def consume_magic_link(token, *, now=None, db_path=None) -> Optional[str]:
     extra = _valid_token_row(token, "practitioner_magic_link", now=now, db_path=db_path)
     if extra is None:
         return None
-    with sqlite3.connect(db_path or _db_path()) as cx:
+    with db.connect(db_path or _db_path()) as cx:
         cur = cx.execute(
             "UPDATE auth_tokens SET consumed_at=? "
             "WHERE token_hash=? AND consumed_at IS NULL",
@@ -916,7 +917,7 @@ def portal_data(practitioner_id, *, db_path=None, include_orders=False) -> Optio
         data["recommended_ffs"] = []
     from dashboard import practitioner_pricing as _ppx
     try:
-        with sqlite3.connect(db_path or _db_path()) as _pcx:
+        with db.connect(db_path or _db_path()) as _pcx:
             data["pricing_config"] = _ppx.get_config(_pcx, practitioner_id)
     except Exception:
         data["pricing_config"] = {}

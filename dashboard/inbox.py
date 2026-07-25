@@ -358,6 +358,7 @@ def get_thread_attachments(thread_id: str, max_bytes: int = 25 * 1024 * 1024) ->
 # Stored in chat_log.db so the same hide list applies to every device.
 
 import sqlite3 as _sqlite3
+from dashboard import db
 from pathlib import Path as _Path
 
 
@@ -391,7 +392,7 @@ def hide_sender(sender: str) -> dict:
     addr = _normalize_sender_email(sender)
     if not addr or "@" not in addr:
         raise ValueError(f"invalid sender: {sender!r}")
-    with _sqlite3.connect(_db_path()) as cx:
+    with db.connect(_db_path()) as cx:
         _init_hidden_senders_table(cx)
         cx.execute(
             "INSERT OR IGNORE INTO inbox_hidden_senders (sender_email) VALUES (?)",
@@ -403,7 +404,7 @@ def hide_sender(sender: str) -> dict:
 
 def unhide_sender(sender: str) -> dict:
     addr = _normalize_sender_email(sender)
-    with _sqlite3.connect(_db_path()) as cx:
+    with db.connect(_db_path()) as cx:
         _init_hidden_senders_table(cx)
         cx.execute("DELETE FROM inbox_hidden_senders WHERE sender_email = ?", (addr,))
         cx.commit()
@@ -411,7 +412,7 @@ def unhide_sender(sender: str) -> dict:
 
 
 def list_hidden_senders() -> list:
-    with _sqlite3.connect(_db_path()) as cx:
+    with db.connect(_db_path()) as cx:
         _init_hidden_senders_table(cx)
         rows = cx.execute(
             "SELECT sender_email, hidden_at FROM inbox_hidden_senders ORDER BY hidden_at DESC"
@@ -633,7 +634,7 @@ def send_email(to_email: str, subject: str, body: str, from_name: Optional[str] 
         return {"skipped": "pytest"}
     from dashboard import email_suppression as _es
     try:
-        with _sqlite3.connect(_db_path()) as _cx:
+        with db.connect(_db_path()) as _cx:
             _es.init_table(_cx)
             if _es.is_suppressed(_cx, to_email):
                 print(f"[suppressed] skip send to {to_email}", flush=True)
@@ -672,7 +673,7 @@ def send_bulk(to_email: str, subject: str, body: str, from_name: Optional[str] =
         print(f"[send_bulk] skip undeliverable {to_email!r}", flush=True)
         return {"skipped": "undeliverable"}
     try:
-        with _sqlite3.connect(_db_path()) as _cx:
+        with db.connect(_db_path()) as _cx:
             from dashboard import email_suppression as _es
             _es.init_table(_cx)
             if _es.is_suppressed(_cx, to_email):

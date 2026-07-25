@@ -1,0 +1,136 @@
+{
+ "products": [
+  {
+   "name": "L-Theanine",
+   "brand": "Integrative Therapeutics",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjc5NjY=",
+   "product_slug": "l-theanine-100-mg-60-caps-2",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Magnesium Taurate",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtMTA3Njc2",
+   "product_slug": "magnesium-taurate",
+   "url": null,
+   "focus_tags": [
+    "Nervous System"
+   ],
+   "product_type": "supplement",
+   "best_ff": null,
+   "relation": null,
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  }
+ ],
+ "focus_area_products": [
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "Magnesium Taurate",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 9,
+   "focus_area_name": "Nervous System",
+   "fs_product_name": "L-Theanine",
+   "rank": 1
+  }
+ ],
+ "focus_area_items": [
+  {
+   "focus_area_id": 9,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET4"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES2"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 9,
+   "item_code": "ES15"
+  }
+ ]
+}

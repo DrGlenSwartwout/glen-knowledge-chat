@@ -22,7 +22,8 @@ def _default_db_path() -> str:
 
 
 def _connect(db_path: Optional[str] = None) -> sqlite3.Connection:
-    cx = sqlite3.connect(db_path or _default_db_path())
+    from dashboard import db
+    cx = db.connect(db_path or _default_db_path())
     cx.row_factory = sqlite3.Row
     cx.execute("PRAGMA foreign_keys = ON")
     return cx

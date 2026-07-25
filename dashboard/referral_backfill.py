@@ -6,6 +6,7 @@ without Supabase and callable both from the CLI script and an in-web console end
 Attribution only — writes NO reward, stamps NO rewarded_at. Idempotent (referee PK).
 """
 import sqlite3
+from dashboard import db
 
 from dashboard import referrals as rf
 
@@ -16,7 +17,7 @@ def backfill(db_path, email_for_pid, *, dry_run=False):
     kind='dispensary_portal' redemption (order_ref = MIN invoice_id for the pair).
     Returns {written, skipped, unresolved}. dry_run counts would-writes, writes nothing."""
     written = skipped = unresolved = 0
-    with sqlite3.connect(db_path) as cx:
+    with db.connect(db_path) as cx:
         rf.init_tables(cx)
         pairs = cx.execute(
             "SELECT practitioner_id, lower(customer_email) AS email, MIN(invoice_id) AS ref "

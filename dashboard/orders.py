@@ -6,6 +6,8 @@ on import (see Task 2)."""
 import json
 import os
 import sqlite3
+
+from dashboard import db
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -306,8 +308,8 @@ def attention_orders(limit=20):
     """Open orders needing attention (status not terminal), newest first, as a
     minimal subset for the briefing snapshot. Self-connects to chat_log.db
     (mirrors briefing_actions._DB). Best-effort: callers wrap in _safe."""
-    db = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))) / "chat_log.db"
-    cx = sqlite3.connect(str(db), timeout=5)
+    _dbp = Path(os.environ.get("DATA_DIR", str(Path(__file__).resolve().parent.parent))) / "chat_log.db"
+    cx = db.connect(str(_dbp), timeout=5)
     try:
         cx.row_factory = sqlite3.Row
         out = []
