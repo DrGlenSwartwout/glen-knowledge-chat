@@ -27484,7 +27484,7 @@ def client_login_request():
                         email, row[1] or "", "Your Remedy Match sign-in link",
                         "Aloha,\n\nClick to sign in to your healing home:\n"
                         f"{portal_base()}/portal/login-verify?token={magic}\n\n"
-                        "This link expires in 15 minutes.")
+                        f"This link expires in {_pi.CLIENT_MAGIC_TTL_LABEL}.")
                 except Exception as e:
                     print(f"[client-login] email failed: {e!r}", flush=True)
     # No account enumeration: same response whether or not the email exists.

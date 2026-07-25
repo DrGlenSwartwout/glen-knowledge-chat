@@ -129,7 +129,8 @@ def create_client_session(cx, person_id, email="", *, ttl_days=CLIENT_SESSION_TT
 
 
 _MAGIC_PURPOSE = "client_magic_link"
-CLIENT_MAGIC_TTL_MIN = 15
+CLIENT_MAGIC_TTL_MIN = 24 * 60
+CLIENT_MAGIC_TTL_LABEL = "24 hours"
 
 
 def create_client_magic_link(cx, person_id, email="", *, ttl_min=CLIENT_MAGIC_TTL_MIN) -> str:
