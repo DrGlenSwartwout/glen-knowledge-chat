@@ -20690,6 +20690,193 @@ def api_portal_photo_serve(token):
     return resp
 
 
+def _bodymap_valid_system(system):
+    """True if `system` is a real Body Map system id (guards junk slots)."""
+    import bodymap_store as _bm
+    try:
+        return (system or "").strip() in {s["id"] for s in _bm.system_catalog()}
+    except Exception:
+        return False
+
+
+def _accept_bodymap_photo(cx, email, system, side, f, source):
+    """Validate + store one slot photo. Shared by the portal and console routes."""
+    from dashboard import body_map_photos as _bmp
+    system = (system or "").strip()
+    if not _bodymap_valid_system(system):
+        return {"ok": False, "error": "unknown system"}, 400
+    blob = f.read() if f else b""
+    if not blob:
+        return {"ok": False, "error": "no image uploaded"}, 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    if ctype not in _PHOTO_TYPES:
+        return {"ok": False, "error": "use a JPG, PNG, or WEBP image"}, 400
+    if len(blob) > _PHOTO_MAX:
+        return {"ok": False, "error": "image too large (max 5 MB)"}, 400
+    _bmp.put(cx, email, system, side, blob, ctype, source)
+    return {"ok": True}, 200
+
+
+def _serve_bodymap_photo(rec, filename="photo"):
+    """A stored slot photo -> hardened Response (allowlist + nosniff)."""
+    ctype, disp = _doc_response_content_type(rec["content_type"])
+    resp = Response(rec["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Disposition"] = f'{disp}; filename="{_doc_safe_filename(filename)}"'
+    return resp
+
+
+@app.route("/api/portal/<token>/bodymap-photo", methods=["POST"])
+def api_portal_bodymap_photo_upload(token):
+    """Client self-uploads a Body Map slot photo (token-scoped)."""
+    from dashboard import client_portal as _cp
+    system = request.args.get("system", "")
+    side = request.args.get("side", "")
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        body, status = _accept_bodymap_photo(cx, email, system, side,
+                                             request.files.get("photo"), "portal-self")
+    return jsonify(body), status
+
+
+@app.route("/api/portal/<token>/bodymap-photo", methods=["GET"])
+def api_portal_bodymap_photo_serve(token):
+    """Serve the token owner's slot photo. system=face with no slot row falls
+    back to the client_photos identity portrait (today's behavior)."""
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    from dashboard import client_photos as _cph
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        rec = _bmp.get(cx, email, system, side) if email else None
+        if not rec and system == "face" and email:
+            rec = _cph.get(cx, email)   # {blob, content_type} identity-portrait fallback
+    if not rec:
+        return Response("", status=404)
+    return _serve_bodymap_photo(rec)
+
+
+@app.route("/api/console/bodymap-photo", methods=["POST"])
+def api_console_bodymap_photo_upload():
+    """Console-side slot photo upload (for later curation)."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    email = (request.form.get("email") or "").strip().lower()
+    system = request.form.get("system", "") or request.args.get("system", "")
+    side = request.form.get("side", "") or request.args.get("side", "")
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        body, status = _accept_bodymap_photo(cx, email, system, side,
+                                             request.files.get("photo"), "console")
+    return jsonify(body), status
+
+
+@app.route("/api/console/bodymap-photo", methods=["GET"])
+def api_console_bodymap_photo_serve():
+    """Console-gated slot photo viewer."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        rec = _bmp.get(cx, email, system, side) if email else None
+    if not rec:
+        return Response("", status=404)
+    return _serve_bodymap_photo(rec)
+
+
+@app.route("/api/portal/<token>/bodymap-transform", methods=["PUT"])
+def api_portal_bodymap_transform_set(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "unknown system"}), 400
+    t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/portal/<token>/bodymap-transform", methods=["GET"])
+def api_portal_bodymap_transform_get(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
+@app.route("/api/console/bodymap-transform", methods=["PUT"])
+def api_console_bodymap_transform_set():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not email or not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "email and valid system required"}), 400
+    t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/console/bodymap-transform", methods=["GET"])
+def api_console_bodymap_transform_get():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
 _DOC_MAX = 30 * 1024 * 1024
 _DOC_EXTRACTABLE = ("application/pdf",)
 
@@ -21290,13 +21477,21 @@ def _portal_bodymap_data(cx, email, content, system="face"):
         system = "face"
     VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
     THEME = cfg.get("theme") or set()
+    slot_side = RESOLVE_SIDE if RESOLVE_SIDE in ("left", "right", "foot") else ""
     out = {"system": system, "view": VIEW, "has_photo": False,
+           "slot_side": slot_side, "slot_transform": None,
            "findings": [], "lit_zones": [], "count": 0}
     email = (email or "").strip().lower()
     if not email:
         return out
     try:
-        out["has_photo"] = bool(_cph.has(cx, email))
+        from dashboard import body_map_photos as _bmp
+        out["slot_transform"] = _bmp.get_transform(cx, email, system, slot_side)
+        rec = _bmp.get(cx, email, system, slot_side)   # photo bytes present?
+        if rec:
+            out["has_photo"] = True
+        elif system == "face" and _cph.has(cx, email):
+            out["has_photo"] = True            # client_photos portrait fallback
     except Exception:
         pass
     findings_out, lit, seen = [], [], set()
