@@ -227,3 +227,52 @@ def test_client_condition_for_unknown_email_returns_none(app_mod):
 
 def test_client_condition_for_empty_email_returns_none(app_mod):
     assert app_mod._client_condition_for("") is None
+
+
+# --- CTI-2: canonical conditions in the detection input --------------------
+from dashboard import canonical_tags as _ct_seed
+
+
+def _seed_canonical(db, email, conditions):
+    with sqlite3.connect(db) as cx:
+        for v in conditions:
+            _ct_seed.set_attr(cx, email, "conditions", v, source="test")
+        cx.commit()
+
+
+def test_detect_tags_puts_canonical_conditions_first(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", conditions=["dry amd"], tags=["pb:dry-eye"])
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out[0] == "wet amd"                       # canonical is first
+    assert "dry amd" in out and "pb:dry-eye" in out  # people data still present
+
+
+def test_detect_tags_people_only_when_no_canonical(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"], tags=["x"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out == ["Wet AMD", "x"]
+
+
+def test_detect_tags_canonical_only_when_no_people_row(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["ocular hypertension"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out == ["ocular hypertension"]
+
+
+def test_detect_tags_empty_when_nothing(app_mod, tmp_db):
+    with sqlite3.connect(tmp_db) as cx:
+        assert app_mod._condition_detect_tags(cx, "nobody@x.com") == []
+
+
+def test_detect_tags_degrades_when_canonical_read_raises(app_mod, tmp_db, monkeypatch):
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"])
+    from dashboard import canonical_tags
+    monkeypatch.setattr(canonical_tags, "get_person",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")   # must not raise
+    assert out == ["Wet AMD"]
