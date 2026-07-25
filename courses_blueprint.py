@@ -66,7 +66,8 @@ def _db_path():
 
 
 def _connect():
-    return sqlite3.connect(_db_path())
+    from dashboard import db
+    return db.connect(_db_path())
 
 
 def _member_level():
