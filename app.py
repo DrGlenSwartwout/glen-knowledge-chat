@@ -12,6 +12,7 @@ except ImportError:
     pass
 
 import os
+import sys
 import re
 import json
 import uuid
@@ -36180,8 +36181,12 @@ def _start_scheduler():
     except Exception as e:
         print(f"[CRON] Scheduler failed to start: {e}")
 
-# Only start scheduler on Render (DATA_DIR is set), not in local dev
-if os.environ.get("DATA_DIR"):
+# Only start scheduler on Render (DATA_DIR is set), not in local dev, and NEVER under
+# pytest: a test that importlib.reload()s this module with DATA_DIR set would otherwise
+# spawn a BackgroundScheduler that is never shut down, leaking interval jobs that connect
+# to later tests' DBs and make the suite timing-nondeterministic. Prod has no pytest in
+# sys.modules, so this is a no-op there.
+if os.environ.get("DATA_DIR") and "pytest" not in sys.modules:
     _start_scheduler()
 
 
@@ -39590,7 +39595,11 @@ def _prewarm_caches():
             print(f"[prewarm] money.qb_banks failed: {e}")
     threading.Thread(target=_warm, daemon=True, name="prewarm-money").start()
 
-_prewarm_caches()
+# Never under pytest: a reloaded app must not leak the prewarm-money daemon thread into
+# the rest of the suite (it connects to whatever LOG_DB later tests point at, causing
+# nondeterministic cross-test interference). Prod has no pytest in sys.modules.
+if "pytest" not in sys.modules:
+    _prewarm_caches()
 
 
 # ── Membership admin routes (Slice 2) ─────────────────────────────────────────
