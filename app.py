@@ -20801,6 +20801,78 @@ def api_console_bodymap_photo_serve():
     return _serve_bodymap_photo(rec)
 
 
+@app.route("/api/portal/<token>/bodymap-transform", methods=["PUT"])
+def api_portal_bodymap_transform_set(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "unknown system"}), 400
+    t = request.get_json(silent=True)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/portal/<token>/bodymap-transform", methods=["GET"])
+def api_portal_bodymap_transform_get(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
+@app.route("/api/console/bodymap-transform", methods=["PUT"])
+def api_console_bodymap_transform_set():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not email or not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "email and valid system required"}), 400
+    t = request.get_json(silent=True)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/console/bodymap-transform", methods=["GET"])
+def api_console_bodymap_transform_get():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
 _DOC_MAX = 30 * 1024 * 1024
 _DOC_EXTRACTABLE = ("application/pdf",)
 
