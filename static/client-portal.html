@@ -2156,6 +2156,57 @@ function wireRecommendationsCard(){
   });
 }
 
+function renderEyeVisionReport(report){
+  if(!report) return "";
+  const open = !!report.open;
+  const findings = Array.isArray(report.findings) ? report.findings : [];
+  const rows = findings.map(f=>`<div style="padding:.8rem 0;border-top:1px solid var(--line)">
+      <strong>${esc(f.name || "E4L pattern")}</strong>
+      <p style="margin:.35rem 0">${esc(f.client_text || "")}</p>
+      ${f.history_context ? `<p class="muted small" style="margin:.35rem 0">${esc(f.history_context)}</p>` : ""}
+    </div>`).join("");
+  const limitations = (Array.isArray(report.limitations) ? report.limitations : [])
+    .map(item=>`<li>${esc(item)}</li>`).join("");
+  return `<div class="card" id="eyeVisionReport">
+    <div id="eyeVisionReportToggle" role="button" tabindex="0"
+      aria-expanded="${open ? "true" : "false"}"
+      style="display:flex;align-items:center;gap:10px;cursor:pointer">
+      <h2 style="margin:0;flex:1">${esc(report.title || "Your Eye & Vision Pattern Report")}</h2>
+      <span class="muted" data-eye-chevron>${open ? "▾" : "▸"}</span>
+    </div>
+    <div id="eyeVisionReportBody"${open ? "" : " hidden"} style="margin-top:.8rem">
+      <p>${esc(report.intro || "")}</p>
+      ${report.scan_date ? `<p class="muted small">E4L scan: ${esc(report.scan_date)}</p>` : ""}
+      ${rows || `<p class="muted">${esc(report.empty_state || "No eye- or vision-mapped patterns were found.")}</p>`}
+      ${limitations ? `<details style="margin-top:.8rem"><summary>Important context</summary><ul class="muted small">${limitations}</ul></details>` : ""}
+    </div>
+  </div>`;
+}
+
+function wireEyeVisionReport(){
+  const toggle = document.getElementById("eyeVisionReportToggle");
+  const body = document.getElementById("eyeVisionReportBody");
+  if(!toggle || !body) return;
+  const flip = ()=>{
+    const open = body.hidden;
+    body.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    const chevron = toggle.querySelector("[data-eye-chevron]");
+    if(chevron) chevron.textContent = open ? "▾" : "▸";
+    const member = new URLSearchParams(location.search).get("member");
+    const url = `/api/portal/${encodeURIComponent(token)}/eye-vision-report/state`
+      + (member ? `?member=${encodeURIComponent(member)}` : "");
+    fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({open:open})}).catch(()=>{});
+  };
+  toggle.addEventListener("click", flip);
+  toggle.addEventListener("keydown", e=>{
+    if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){
+      e.preventDefault(); flip();
+    }
+  });
+}
+
 function render(d, v){
   d = d || {};
   // Hub landing (flagged). Prepended above existing cards; panels below unchanged.
@@ -2242,6 +2293,8 @@ function render(d, v){
       <a class="btn full" href="/portal/${encodeURIComponent(seg)}/practitioner-account">Open Practitioner Portal</a>
     </div>`;
   }
+
+  html += renderEyeVisionReport(d.eye_vision_report);
 
   // Program-page entry card: links to the personalized membership program page.
   // Flag-gated server-side (payload.program_page is only truthy-enabled when
@@ -3346,6 +3399,7 @@ function render(d, v){
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
 
   wireRecommendationsCard();
+  wireEyeVisionReport();
 
   // My Remedies panel: every action (ranked "Add to my Oasis / order" hand-off,
   // plus the external-stack add/request-review/remove/edit actions) is wired

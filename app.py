@@ -20234,6 +20234,21 @@ def api_client_portal(token):
             _pp.find_practitioner_id_by_email(primary_email))
     except Exception:
         payload["linked_practitioner_account"] = False
+    # Focused Eye & Vision E4L report. A saved client preference wins; otherwise
+    # it starts open only when the displayed member has eye/vision history.
+    if email_for_reports:
+        try:
+            from dashboard import eye_vision_report as _evr
+            from dashboard import recommendation_prefs as _rp_evr
+            with db.connect(LOG_DB) as _cx_evr:
+                _rp_evr.init_recommendation_prefs(_cx_evr)
+                _section_state = _rp_evr.get_section_state(_cx_evr, email_for_reports)
+                _saved = _section_state.get(_evr.SECTION_KEY)
+                payload["eye_vision_report"] = _evr.build_portal_block(
+                    _cx_evr, email_for_reports, _dt.date.today().isoformat(),
+                    saved_collapsed=_saved)
+        except Exception as _e:
+            print(f"[eye-vision-report/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -20571,6 +20586,32 @@ def api_portal_rec_section(token):
             return jsonify({"ok": False, "error": "not found"}), 404
         _rp.set_section_state(cx, (portal.get("email") or "").strip().lower(), sk, collapsed)
     return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/eye-vision-report/state", methods=["POST"])
+def api_portal_eye_vision_state(token):
+    """Persist the displayed client's Eye & Vision section open/closed state."""
+    from dashboard import recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get("open"), bool):
+        return jsonify({"ok": False, "error": "open must be boolean"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                _hh.init_household_tables(cx)
+                member = (request.args.get("member") or "").strip().lower()
+                if member and _hh.can_view(cx, email, member):
+                    email = member
+            except Exception:
+                pass
+        _rp.init_recommendation_prefs(cx)
+        _rp.set_section_state(cx, email, "eye_vision_report", not data["open"])
+    return jsonify({"ok": True, "open": data["open"]})
 
 
 def _remedies_coerce_importance(value):
