@@ -22395,22 +22395,11 @@ def api_console_client_condition_get():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_conditions as _cc
-    tags = []
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         override = _cc.get(cx, email)
-        row = cx.execute(
-            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-            (email,)).fetchone()
-        if row:
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
+        tags = _condition_detect_tags(cx, email)
     auto_detected = _condition_key_from_tags(tags)
     resolved = override or auto_detected
     return jsonify({"email": email, "resolved": resolved, "override": override,
