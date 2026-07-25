@@ -21486,12 +21486,12 @@ def _portal_bodymap_data(cx, email, content, system="face"):
         return out
     try:
         from dashboard import body_map_photos as _bmp
-        rec = _bmp.get(cx, email, system, slot_side)
+        out["slot_transform"] = _bmp.get_transform(cx, email, system, slot_side)
+        rec = _bmp.get(cx, email, system, slot_side)   # photo bytes present?
         if rec:
             out["has_photo"] = True
-            out["slot_transform"] = rec["transform"]
         elif system == "face" and _cph.has(cx, email):
-            out["has_photo"] = True            # client_photos portrait fallback (no transform)
+            out["has_photo"] = True            # client_photos portrait fallback
     except Exception:
         pass
     findings_out, lit, seen = [], [], set()

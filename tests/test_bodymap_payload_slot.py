@@ -50,3 +50,23 @@ def test_payload_no_photo_no_slot(tmp_path, monkeypatch):
     cx = sqlite3.connect(appmod.LOG_DB)
     out = appmod._portal_bodymap_data(cx, "c@x.com", {}, system="hand")
     assert out["has_photo"] is False and out["slot_transform"] is None
+
+
+def test_payload_fallback_face_reports_transform_only_row(tmp_path, monkeypatch):
+    """The bug: a fallback-face client (client_photos portrait, no body_map_photos
+    photo bytes) aligns their face. The browser PUTs the transform, which persists
+    as a transform-only body_map_photos row (image_blob NULL). The payload must
+    still surface it -- has_photo True (via the portrait fallback) AND
+    slot_transform == the saved transform -- so the JS applies it and skips
+    re-detect. Before the fix (rec["transform"] from the blob-gated `get()`),
+    slot_transform stayed None because get() returns None for a blob-less row."""
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import client_photos as cph
+    from dashboard import body_map_photos as bmp
+    cx = sqlite3.connect(appmod.LOG_DB)
+    cph.put(cx, "c@x.com", b"PORTRAIT", "image/jpeg", source="fmp")
+    bmp.set_transform(cx, "c@x.com", "face", "", {"mx": 1.3, "my": 1.1, "tx": 12, "ty": -4})
+    cx.commit()
+    out = appmod._portal_bodymap_data(cx, "c@x.com", {}, system="face")
+    assert out["has_photo"] is True
+    assert out["slot_transform"] == {"mx": 1.3, "my": 1.1, "tx": 12.0, "ty": -4.0}
