@@ -2190,6 +2190,19 @@ function renderEyeVisionReport(report){
     </div>`).join("");
   const limitations = (Array.isArray(report.limitations) ? report.limitations : [])
     .map(item=>`<li>${esc(item)}</li>`).join("");
+  const rr = report.review_request || {};
+  let reviewAction = "";
+  if(rr.eligible){
+    if(rr.status === "approved"){
+      reviewAction = `<p class="small" style="color:var(--gold)">Professionally reviewed and approved.</p>`;
+    } else if(rr.status === "requested" || rr.status === "draft"){
+      reviewAction = `<p class="small muted">Review requested. Your report is in the professional review queue.</p>`;
+    } else if(rr.is_paid_member){
+      reviewAction = `<div style="margin-top:.8rem"><button class="btn" id="eyeVisionReviewRequest">Request professional review</button><span class="small muted" id="eyeVisionReviewStatus" style="margin-left:.6rem"></span></div>`;
+    } else {
+      reviewAction = `<div style="margin-top:.8rem"><p class="small">Professional review is included with paid membership.</p><a class="btn" href="${esc(rr.upgrade_url || "/membership")}">Upgrade and request review</a></div>`;
+    }
+  }
   return `<div class="card" id="eyeVisionReport">
     <div id="eyeVisionReportToggle" role="button" tabindex="0"
       aria-expanded="${open ? "true" : "false"}"
@@ -2201,6 +2214,7 @@ function renderEyeVisionReport(report){
       <p>${esc(report.intro || "")}</p>
       ${report.scan_date ? `<p class="muted small">E4L scan: ${esc(report.scan_date)}</p>` : ""}
       ${rows || `<p class="muted">${esc(report.empty_state || "No eye- or vision-mapped patterns were found.")}</p>`}
+      ${reviewAction}
       ${limitations ? `<details style="margin-top:.8rem"><summary>Important context</summary><ul class="muted small">${limitations}</ul></details>` : ""}
     </div>
   </div>`;
@@ -2228,6 +2242,31 @@ function wireEyeVisionReport(){
       e.preventDefault(); flip();
     }
   });
+  const reviewButton = document.getElementById("eyeVisionReviewRequest");
+  if(reviewButton){
+    reviewButton.addEventListener("click", async ()=>{
+      reviewButton.disabled = true;
+      const status = document.getElementById("eyeVisionReviewStatus");
+      if(status) status.textContent = "Sending…";
+      const member = new URLSearchParams(location.search).get("member");
+      const url = `/api/portal/${encodeURIComponent(token)}/eye-vision-report/request-review`
+        + (member ? `?member=${encodeURIComponent(member)}` : "");
+      try{
+        const response = await fetch(url, {method:"POST"});
+        const result = await response.json();
+        if(response.status === 402 && result.upgrade_url){
+          location.href = result.upgrade_url;
+          return;
+        }
+        if(!response.ok) throw new Error(result.error || "Unable to request review");
+        reviewButton.remove();
+        if(status) status.textContent = "Review requested. Your report is now in the professional review queue.";
+      }catch(error){
+        reviewButton.disabled = false;
+        if(status) status.textContent = error.message || "Unable to request review.";
+      }
+    });
+  }
 }
 
 function render(d, v){

@@ -53,7 +53,9 @@
     { id:'cert',      name:'Cert',           desc:'ASH certification submissions',              route:'/console/cert',
       endpoint:'/api/cert/review/list?status=submitted', count:function(j){ return (j.submissions||[]).length; } },
     { id:'studio',    name:'Studio Credits', desc:'ThisStudio free-month claims',               route:'/console/studio-credits',
-      endpoint:'/api/console/studio-credits',           count:function(j){ return (j.claims||[]).filter(isPendingClaim).length; } }
+      endpoint:'/api/console/studio-credits',           count:function(j){ return (j.claims||[]).filter(isPendingClaim).length; } },
+    { id:'eyevision', name:'Eye & Vision Reports', desc:'Paid-member report editing and approval requests', route:'/console/eye-vision-reviews',
+      endpoint:'/api/console/eye-vision-reviews',       count:function(j){ return (j.pending||[]).length; } }
   ];
 
   function card(q){

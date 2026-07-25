@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eye & Vision Report Reviews · Console</title>
+<style>
+body{margin:0;background:#0a150d;color:#fdf4d8;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:24px}.muted{color:#a89870}.card{background:#111f16;border:1px solid #21472d;border-radius:12px;padding:16px;margin:14px 0}
+.meta{display:flex;gap:16px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+textarea{box-sizing:border-box;width:100%;min-height:380px;background:#0d1117;color:#fdf4d8;border:1px solid #21472d;border-radius:8px;padding:10px;font:12px ui-monospace,monospace}
+textarea.notes{min-height:80px}button{border:1px solid #d4a843;background:#d4a843;color:#111;padding:8px 14px;border-radius:8px;cursor:pointer;margin:8px 8px 0 0}
+button.alt{background:transparent;color:#fdf4d8;border-color:#21472d}button.danger{background:transparent;color:#ef9a9a;border-color:#7d3333}.status{min-height:20px;margin-top:8px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="admin" data-sub="approvals"></script>
+<main class="wrap">
+  <h1>Eye & Vision Report Reviews</h1>
+  <p class="muted">Paid-member requests awaiting editing and approval. Approved JSON becomes the client-visible report snapshot for that scan.</p>
+  <button class="alt" onclick="loadQueue()">Refresh</button>
+  <div id="state" class="muted"></div>
+  <div id="queue"></div>
+</main>
+<script>
+function key(){return localStorage.getItem("console_key")||""}
+function hdr(){return {"Content-Type":"application/json","X-Console-Key":key()}}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+async function loadQueue(){
+  const state=document.getElementById("state"); state.textContent="Loading…";
+  const r=await fetch("/api/console/eye-vision-reviews",{headers:hdr()});
+  if(!r.ok){state.textContent="Unable to load. Open the console through an authenticated console session.";return}
+  const j=await r.json(), rows=j.pending||[]; state.textContent=rows.length?`${rows.length} pending`:"No pending requests.";
+  document.getElementById("queue").innerHTML=rows.map(row=>`<section class="card" id="req-${row.id}">
+    <div class="meta"><strong>${esc(row.email)}</strong><span>Scan: ${esc(row.scan_date)}</span><span>Status: ${esc(row.status)}</span><span>Requested: ${esc(row.requested_at)}</span></div>
+    <div class="grid">
+      <div><label>Editable report JSON</label><textarea id="report-${row.id}">${esc(JSON.stringify(row.report,null,2))}</textarea></div>
+      <div><label>Reviewer notes</label><textarea class="notes" id="notes-${row.id}">${esc(row.reviewer_notes||"")}</textarea>
+        <p class="muted">Review the client-facing language, mapped evidence, safety context, and any suggestion boundaries before approval.</p>
+      </div>
+    </div>
+    <button onclick="act(${row.id},'approve')">Approve</button>
+    <button class="alt" onclick="act(${row.id},'save_draft')">Save draft</button>
+    <button class="danger" onclick="act(${row.id},'decline')">Decline</button>
+    <div class="status muted" id="status-${row.id}"></div>
+  </section>`).join("");
+}
+async function act(id,action){
+  const status=document.getElementById(`status-${id}`); status.textContent="Saving…";
+  let report=null;
+  if(action!=="decline"){
+    try{report=JSON.parse(document.getElementById(`report-${id}`).value)}
+    catch(e){status.textContent="Report JSON is invalid.";return}
+  }
+  const r=await fetch("/api/console/eye-vision-reviews",{method:"POST",headers:hdr(),body:JSON.stringify({
+    id,action,report,reviewer_notes:document.getElementById(`notes-${id}`).value
+  })});
+  const j=await r.json();
+  if(!r.ok){status.textContent=j.error||"Unable to save.";return}
+  status.textContent=`Saved as ${j.request.status}.`;
+  if(action==="approve"||action==="decline") setTimeout(loadQueue,500);
+}
+loadQueue();
+</script>
+</body>
+</html>
