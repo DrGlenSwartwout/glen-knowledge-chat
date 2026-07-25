@@ -17808,6 +17808,50 @@ def api_practitioner_clients_search():
     return jsonify({"ok": True, "clients": _pp.search_clients(pid, q)})
 
 
+@app.route("/api/practitioner/eye-vision-suggestions", methods=["GET", "POST"])
+def api_practitioner_eye_vision_suggestions():
+    """Practitioner-only Eye & Vision suggestion drafts and review decisions.
+
+    The client portal never calls this endpoint and never receives draft candidates.
+    """
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+    body = request.get_json(silent=True) or {}
+    client_email = (
+        body.get("client_email") if request.method == "POST"
+        else request.args.get("client_email")
+    )
+    client_email = (client_email or "").strip().lower()
+    if not client_email or not _pp.client_belongs_to_practitioner(pid, client_email):
+        return jsonify({"ok": False, "error": "not authorized for this client"}), 403
+
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        contract = _evr.build_practitioner_suggestions(
+            cx, client_email, _dt.date.today().isoformat())
+        if contract is None:
+            return jsonify({"ok": True, "suggestions": None})
+        _evsr.init_table(cx)
+        valid_ids = {
+            row.get("suggestion_id") for row in contract.get("candidates") or []}
+        if request.method == "POST":
+            suggestion_id = (body.get("suggestion_id") or "").strip()
+            if suggestion_id not in valid_ids:
+                return jsonify({"ok": False, "error": "unknown suggestion"}), 404
+            try:
+                _evsr.save(
+                    cx, client_email, suggestion_id, body.get("decision"), str(pid),
+                    body.get("client_safe_wording"),
+                    body.get("safety_review"))
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+        contract = _evsr.overlay(contract, _evsr.decisions(cx, client_email))
+    return jsonify({"ok": True, "suggestions": contract})
+
+
 @app.route("/api/practitioner/chat", methods=["POST"])
 def api_practitioner_chat():
     """Practitioner-authenticated product-selection chat scoped to FF catalog.

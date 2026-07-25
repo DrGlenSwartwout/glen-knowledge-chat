@@ -164,6 +164,22 @@ RELATIONSHIP_ALIASES = {
     "eyes": "eye", "retinal": "retina",
     "visual pathway": "vision", "visual processing": "vision",
 }
+URGENT_TERMS = (
+    "curtain", "sudden vision loss", "acute vision loss", "painful red eye",
+    "acute double vision", "sudden double vision", "new ptosis",
+    "dilated pupil", "severe eye trauma", "sudden neurologic",
+)
+PROGRAM_MATCHES = {
+    "glaucoma": ["glaucoma-elevated-iop", "glaucoma-normal-iop"],
+    "elevated eye pressure": ["glaucoma-elevated-iop"],
+    "normal tension glaucoma": ["glaucoma-normal-iop"],
+    "macular degeneration": ["dry-amd", "wet-amd"],
+    "dry amd": ["dry-amd"], "wet amd": ["wet-amd"],
+    "cataract": ["senile-cataract", "psc-cataract"],
+    "dry eye": ["dry-eye"],
+    "retinitis pigmentosa": ["retinitis-pigmentosa"],
+    "diabetic retinopathy": ["diabetic-retinopathy"],
+}
 
 
 def _norm(value):
@@ -296,6 +312,7 @@ def _finding(pattern, mappings, history):
     return {
         "finding_id": hashlib.sha256(seed.encode()).hexdigest()[:16],
         "code": code or None,
+        "category": pattern.get("category"),
         "name": name,
         "priority_rank": pattern.get("rank"),
         "classification": classification,
@@ -305,6 +322,191 @@ def _finding(pattern, mappings, history):
         "integrated_relationships": _relationship_layers(structures),
         "clinical_context_usage": CLINICAL_CONTEXT_USAGE,
     }
+
+
+def _practitioner_history(cx, email):
+    labels = reported_eye_history(cx, email)
+    all_text = list(labels)
+    try:
+        extended = portal_extended_history.get(cx, email) or {}
+        all_text.extend(_flatten_strings(extended.get("answers") or {}))
+    except Exception:
+        pass
+    current_products = []
+    try:
+        from dashboard import portal_health_history
+        health = portal_health_history.get(cx, email) or {}
+        for kind in portal_health_history.KINDS:
+            if health.get(kind + "_yes") and health.get(kind + "_text"):
+                current_products.append({
+                    "kind": kind, "names": health[kind + "_text"]})
+    except Exception:
+        pass
+    return labels, all_text, current_products
+
+
+def _suggestion_contract(findings, history, all_text, current_products):
+    safety_text = " ".join(str(v) for v in all_text).lower()
+    urgent_matches = [term for term in URGENT_TERMS if term in safety_text]
+    candidates = []
+    if urgent_matches:
+        seed = "urgent|" + "|".join(sorted(urgent_matches))
+        candidates.append({
+            "suggestion_id": hashlib.sha256(seed.encode()).hexdigest()[:16],
+            "category": "clinical_referral",
+            "name": "Urgent conventional eye or medical assessment",
+            "status": "pending_practitioner_approval",
+            "client_visible": False,
+            "priority": "urgent",
+            "trigger": {"reported_terms": urgent_matches},
+            "rationale": (
+                "Reported language matches an urgent eye/neurologic safety rule. "
+                "Remedy and product drafts are suppressed until appropriate assessment."
+            ),
+            "confidence": "rule_match",
+            "provenance": "eye_vision_safety_triage",
+        })
+    else:
+        for finding in findings:
+            if _norm(finding.get("category")) in {"er", "mr"}:
+                continue
+            seed = "infoceutical|" + finding["finding_id"]
+            candidates.append({
+                "suggestion_id": hashlib.sha256(seed.encode()).hexdigest()[:16],
+                "category": "infoceutical",
+                "name": finding["name"],
+                "code": finding.get("code"),
+                "status": "pending_practitioner_approval",
+                "client_visible": False,
+                "priority": finding.get("priority_rank"),
+                "trigger": {"finding_id": finding["finding_id"],
+                            "classification": finding["classification"]},
+                "rationale": (
+                    "The E4L scan prioritized this pattern. Its ocular mapping is "
+                    "context for review, not a claim that it treats an eye condition."
+                ),
+                "confidence": "scan_prioritized_canonical_mapping",
+                "provenance": "e4l_scan_and_canonical_structure_map",
+            })
+    program_keys = []
+    for label in history:
+        text = _norm(label)
+        for phrase, keys in PROGRAM_MATCHES.items():
+            if phrase in text:
+                program_keys.extend(keys)
+    for key in dict.fromkeys(program_keys):
+        candidates.append({
+            "suggestion_id": hashlib.sha256(
+                ("program|" + key).encode()).hexdigest()[:16],
+            "category": "authored_support_program_review",
+            "name": key,
+            "status": "pending_practitioner_approval",
+            "client_visible": False,
+            "priority": None,
+            "trigger": {"reported_history": history},
+            "rationale": (
+                "Reported history matches an existing authored eye-support program. "
+                "Review its stored items, modifiers, and consult flag."
+            ),
+            "confidence": "history_term_match",
+            "provenance": "authored_condition_program_reference",
+        })
+    structures = {
+        _norm(structure)
+        for finding in findings
+        for structure in finding.get("ocular_structures") or []
+    }
+    return {
+        "phase": 2, "audience": "practitioner_only",
+        "approval_required": True, "client_payload_includes_drafts": False,
+        "safety_status": (
+            "suppressed_urgent_review" if urgent_matches else "needs_review"),
+        "urgent_matches": urgent_matches,
+        "current_products_for_interaction_review": current_products,
+        "interaction_review_status": (
+            "required" if current_products else "history_not_supplied"),
+        "candidates": candidates,
+        "program_extension_opportunities": _program_extension_opportunities(
+            safety_text, structures),
+        "publication_rule": (
+            "Each candidate requires reviewer identity, timestamp, client-safe wording, "
+            "and contraindication/interaction review before client publication."
+        ),
+    }
+
+
+def _program_extension_opportunities(history_text, structures):
+    opportunities = []
+
+    def add(key, label, basis, scope, safeguards):
+        opportunities.append({
+            "program_key": key, "label": label,
+            "status": "program_design_review", "client_visible": False,
+            "basis": basis, "proposed_scope": scope,
+            "required_safeguards": safeguards,
+            "publication_ready": False,
+        })
+
+    if any(term in history_text for term in
+           ("diabetes", "diabetic", "blood sugar", "glucose", "insulin")):
+        add(
+            "glucose-metabolic-regulation", "Glucose and metabolic regulation",
+            "Reported metabolic history; not inferred from the scan.",
+            "Adjunctive support relevant to retinal, lens, vascular, and healing context.",
+            ["Medication and hypoglycemia review", "Glucose-monitoring plan",
+             "Do not replace diabetes care"])
+    if structures & {"retina", "optic nerve", "vision", "visual processing",
+                     "visual pathway"}:
+        add(
+            "cellular-energy-metabolism", "Cellular energy and metabolism",
+            "Mapped neural/retinal structure-function context.",
+            "A cross-condition program for mitochondrial, membrane, oxidative, and "
+            "cellular-energy support after an authored evidence review.",
+            ["Define eligible contexts", "Review interactions and duplication",
+             "Do not claim restoration of damaged tissue"])
+    if any(term in history_text for term in
+           ("toxin", "heavy metal", "mercury", "lead", "arsenic", "cadmium")):
+        add(
+            "toxin-exposure-support", "Toxin and heavy-metal exposure support",
+            "Reported toxin/exposure history; never inferred from an E4L pattern.",
+            "Assessment-led exposure reduction and medically appropriate support.",
+            ["Confirm exposure and source", "Require qualified testing/oversight",
+             "Avoid unsupervised chelation or detox claims",
+             "Review kidney, liver, pregnancy, and medication risks"])
+    if "retina" in structures or any(
+            term in history_text for term in ("retinopathy", "vascular", "circulation")):
+        add(
+            "ocular-circulation-support", "Ocular circulation and vascular support",
+            "Retinal mapping or reported vascular history.",
+            "Adjunctive cardiovascular/metabolic risk and ocular-perfusion support.",
+            ["Coordinate with conventional evaluation", "Review bleeding risk",
+             "Do not imply treatment of vascular occlusion"])
+    if structures & {"vision", "visual processing", "visual pathway"}:
+        add(
+            "neurovisual-processing-support", "Neurovisual processing support",
+            "Mapped visual-processing or pathway relationship.",
+            "Visual-motor, vestibular, circadian, and sensory-integration support.",
+            ["Screen for neurologic red flags", "Define referral boundaries",
+             "Separate training/support from disease treatment"])
+    return opportunities
+
+
+def build_practitioner_suggestions(cx, email, today, db_path=None):
+    """Build draft suggestions. Never call this from a client portal payload."""
+    history, all_text, current_products = _practitioner_history(cx, email)
+    scan = biofield_e4l.scan_context(email, today, db_path=db_path, limit=100)
+    if not scan.get("found"):
+        return None
+    patterns = scan.get("findings") or []
+    mappings = _mappings_for(
+        [p.get("code") for p in patterns if p.get("code")], db_path=db_path)
+    findings = [
+        finding for pattern in patterns
+        if (finding := _finding(
+            pattern, mappings.get(pattern.get("code"), []), history))
+    ]
+    return _suggestion_contract(
+        findings, history, all_text, current_products)
 
 
 def build_portal_block(cx, email, today, saved_collapsed=None, db_path=None):

@@ -76,3 +76,35 @@ def test_non_ocular_mapping_is_excluded(tmp_path):
         _portal(), "a@example.com", "2026-07-25", db_path=path)
     assert block["status"] == "no_eye_patterns"
     assert block["findings"] == []
+
+
+def test_practitioner_suggestions_are_pending_and_not_in_client_block(tmp_path):
+    cx = _portal()
+    e4l_path = _e4l(tmp_path)
+    cx.execute("INSERT INTO intake_responses VALUES(?,?,?,?,?,?)", (
+        "a@example.com", "1", "submitted",
+        json.dumps({"diagnoses": [{"diagnosis": "Glaucoma"}]}), "", ""))
+    suggestions = report.build_practitioner_suggestions(
+        cx, "a@example.com", "2026-07-25", db_path=e4l_path)
+    assert suggestions["audience"] == "practitioner_only"
+    assert suggestions["approval_required"] is True
+    assert all(not row["client_visible"] for row in suggestions["candidates"])
+    client = report.build_portal_block(
+        cx, "a@example.com", "2026-07-25", db_path=e4l_path)
+    assert "suggestions" not in client
+
+
+def test_practitioner_suggestions_suppress_products_for_urgent_history(tmp_path):
+    cx = _portal()
+    e4l_path = _e4l(tmp_path)
+    from dashboard import portal_extended_history
+    portal_extended_history.save(cx, "a@example.com", {
+        "trauma_yes": False,
+        "diagnoses_yes": True,
+        "diagnoses_text": "Sudden vision loss with a curtain",
+    })
+    suggestions = report.build_practitioner_suggestions(
+        cx, "a@example.com", "2026-07-25", db_path=e4l_path)
+    assert suggestions["safety_status"] == "suppressed_urgent_review"
+    assert [row["category"] for row in suggestions["candidates"]] == [
+        "clinical_referral"]
