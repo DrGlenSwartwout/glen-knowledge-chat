@@ -21623,11 +21623,56 @@ def _condition_key_from_tags(tags):
     return None
 
 
+def _condition_detect_tags(cx, email):
+    """Ordered auto-detect input for a client's eye-condition support program:
+    canonical conditions first (person_attributes -- Glen-approved and
+    vocabulary-canonical), then people.conditions, then people.tags.
+
+    This is ONLY the detection input for `_condition_key_from_tags`; the operator
+    override is applied by the caller, ABOVE this. Order is load-bearing: the
+    matcher returns the first unambiguous hit, so canonical conditions must lead.
+
+    Best-effort: a canonical read failure degrades to the people-only input and
+    never raises, and this function never reads or writes people.tags as a
+    canonical target -- it only reads it as existing detection input.
+    """
+    email = (email or "").strip().lower()
+    tags = []
+    if not email:
+        return tags
+    # Canonical conditions first, so they outrank people-derived hits.
+    try:
+        from dashboard import canonical_tags as _ct
+        for v in (_ct.get_person(cx, email).get("conditions") or []):
+            if str(v).strip():
+                tags.append(str(v))
+    except Exception:
+        pass
+    # Then people.conditions, then people.tags -- unchanged order and semantics.
+    # Positional indexing (row[0]=conditions, row[1]=tags) so this does not
+    # depend on cx.row_factory (get_person mutates and restores it).
+    try:
+        row = cx.execute(
+            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+            (email,)).fetchone()
+    except Exception:
+        row = None
+    if row:
+        for cell in (row[0], row[1]):
+            try:
+                v = json.loads(cell or "[]")
+            except Exception:
+                v = []
+            if isinstance(v, list):
+                tags.extend(str(x) for x in v)
+    return tags
+
+
 def _client_condition_for(email):
     """Resolve a client's eye-condition support-program key: the operator
     override (dashboard/client_conditions.py) wins; otherwise auto-detect from
-    the client's `people.conditions` + `people.tags`. Best-effort -- any error
-    returns None, never raises."""
+    the client's canonical conditions + `people.conditions` + `people.tags`.
+    Best-effort -- any error returns None, never raises."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -21639,20 +21684,7 @@ def _client_condition_for(email):
             override = _cc.get(cx, email)
             if override:
                 return override
-            row = cx.execute(
-                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-                (email,)).fetchone()
-            if not row:
-                return None
-            tags = []
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
-            return _condition_key_from_tags(tags)
+            return _condition_key_from_tags(_condition_detect_tags(cx, email))
     except Exception:
         return None
 
@@ -22509,22 +22541,11 @@ def api_console_client_condition_get():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_conditions as _cc
-    tags = []
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         override = _cc.get(cx, email)
-        row = cx.execute(
-            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-            (email,)).fetchone()
-        if row:
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
+        tags = _condition_detect_tags(cx, email)
     auto_detected = _condition_key_from_tags(tags)
     resolved = override or auto_detected
     return jsonify({"email": email, "resolved": resolved, "override": override,
