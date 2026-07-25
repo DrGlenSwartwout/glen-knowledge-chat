@@ -60,7 +60,8 @@ def test_set_transform_rejects_malformed():
     cx = _cx()
     bmp.put(cx, "c@x.com", "face", "", b"f", "image/jpeg", "portal-self")
     for bad in ({"mx": 1, "my": 0, "tx": 2}, {"mx": "x", "my": 0, "tx": 2, "ty": 3},
-                {"mx": float("nan"), "my": 0, "tx": 2, "ty": 3}, "notadict", []):
+                {"mx": float("nan"), "my": 0, "tx": 2, "ty": 3}, {"mx": True, "my": 0, "tx": 2, "ty": 3},
+                {"mx": float("inf"), "my": 0, "tx": 2, "ty": 3}, "notadict", []):
         assert bmp.set_transform(cx, "c@x.com", "face", "", bad) is False
     assert bmp.get_transform(cx, "c@x.com", "face", "") is None   # nothing persisted
 
