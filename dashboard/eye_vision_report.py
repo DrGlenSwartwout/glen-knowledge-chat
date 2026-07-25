@@ -222,6 +222,29 @@ def _flatten_strings(value):
     return []
 
 
+def _find_practitioner_satisfaction(value):
+    """Return an explicitly stored satisfaction answer; never infer it."""
+    keys = {
+        "current_practitioner_satisfactory",
+        "happy_with_current_practitioners",
+        "happy_with_current_practitioner",
+    }
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if _norm(key).replace(" ", "_") in keys and isinstance(item, bool):
+                return item
+        for item in value.values():
+            found = _find_practitioner_satisfaction(item)
+            if found is not None:
+                return found
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found = _find_practitioner_satisfaction(item)
+            if found is not None:
+                return found
+    return None
+
+
 def reported_eye_history(cx, email):
     """Return matching client-reported/canonical eye-history labels."""
     labels = []
@@ -327,9 +350,19 @@ def _finding(pattern, mappings, history):
 def _practitioner_history(cx, email):
     labels = reported_eye_history(cx, email)
     all_text = list(labels)
+    practitioner_satisfactory = None
+    try:
+        intake_answers = (intake.get_response(cx, email) or {}).get("answers") or {}
+        practitioner_satisfactory = _find_practitioner_satisfaction(intake_answers)
+    except Exception:
+        pass
     try:
         extended = portal_extended_history.get(cx, email) or {}
-        all_text.extend(_flatten_strings(extended.get("answers") or {}))
+        extended_answers = extended.get("answers") or {}
+        all_text.extend(_flatten_strings(extended_answers))
+        if practitioner_satisfactory is None:
+            practitioner_satisfactory = _find_practitioner_satisfaction(
+                extended_answers)
     except Exception:
         pass
     current_products = []
@@ -342,10 +375,11 @@ def _practitioner_history(cx, email):
                     "kind": kind, "names": health[kind + "_text"]})
     except Exception:
         pass
-    return labels, all_text, current_products
+    return labels, all_text, current_products, practitioner_satisfactory
 
 
-def _suggestion_contract(findings, history, all_text, current_products):
+def _suggestion_contract(findings, history, all_text, current_products,
+                         practitioner_satisfactory=None):
     safety_text = " ".join(str(v) for v in all_text).lower()
     urgent_matches = [term for term in URGENT_TERMS if term in safety_text]
     candidates = []
@@ -365,6 +399,7 @@ def _suggestion_contract(findings, history, all_text, current_products):
             ),
             "confidence": "rule_match",
             "provenance": "eye_vision_safety_triage",
+            "referral_route": _urgent_referral_route(practitioner_satisfactory),
         })
     else:
         for finding in findings:
@@ -435,6 +470,40 @@ def _suggestion_contract(findings, history, all_text, current_products):
     }
 
 
+def _urgent_referral_route(practitioner_satisfactory):
+    if practitioner_satisfactory is True:
+        return {
+            "status": "current_practitioner",
+            "instruction": (
+                "Contact the current satisfactory practitioner promptly. "
+                "Do not delay emergency or urgent conventional care."
+            ),
+            "practitioner_finder_url": None,
+        }
+    if practitioner_satisfactory is False:
+        return {
+            "status": "practitioner_finder",
+            "instruction": (
+                "Use the practitioner finder for additional support while also seeking "
+                "the urgent conventional assessment indicated by the symptom rule."
+            ),
+            "practitioner_finder_url": "/practitioner-finder",
+        }
+    return {
+        "status": "ask_first",
+        "question": (
+            "Are you happy with your current practitioners and able to contact one "
+            "promptly about this concern?"
+        ),
+        "if_yes": "Contact the current practitioner promptly.",
+        "if_no": "Offer the practitioner finder.",
+        "practitioner_finder_url": "/practitioner-finder",
+        "urgent_care_guardrail": (
+            "This routing question must not delay emergency or urgent conventional care."
+        ),
+    }
+
+
 def _program_extension_opportunities(history_text, structures):
     opportunities = []
 
@@ -493,7 +562,8 @@ def _program_extension_opportunities(history_text, structures):
 
 def build_practitioner_suggestions(cx, email, today, db_path=None):
     """Build draft suggestions. Never call this from a client portal payload."""
-    history, all_text, current_products = _practitioner_history(cx, email)
+    history, all_text, current_products, practitioner_satisfactory = (
+        _practitioner_history(cx, email))
     scan = biofield_e4l.scan_context(email, today, db_path=db_path, limit=100)
     if not scan.get("found"):
         return None
@@ -506,7 +576,8 @@ def build_practitioner_suggestions(cx, email, today, db_path=None):
             pattern, mappings.get(pattern.get("code"), []), history))
     ]
     return _suggestion_contract(
-        findings, history, all_text, current_products)
+        findings, history, all_text, current_products,
+        practitioner_satisfactory=practitioner_satisfactory)
 
 
 def build_portal_block(cx, email, today, saved_collapsed=None, db_path=None):

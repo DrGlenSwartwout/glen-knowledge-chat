@@ -108,3 +108,6 @@ def test_practitioner_suggestions_suppress_products_for_urgent_history(tmp_path)
     assert suggestions["safety_status"] == "suppressed_urgent_review"
     assert [row["category"] for row in suggestions["candidates"]] == [
         "clinical_referral"]
+    route = suggestions["candidates"][0]["referral_route"]
+    assert route["status"] == "ask_first"
+    assert route["practitioner_finder_url"] == "/practitioner-finder"
