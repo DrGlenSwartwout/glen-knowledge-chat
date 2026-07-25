@@ -70,6 +70,58 @@ def test_get_missing_returns_none():
     assert bmp.get(_cx(), "nobody@x.com", "face", "") is None
 
 
+def test_set_transform_upserts_for_fallback_face_client_with_no_prior_row():
+    # The bug: a client_photos-portrait-only client has NO body_map_photos
+    # face row. The browser auto-detects and PUTs a transform for that slot.
+    # Before the fix, set_transform's UPDATE-only write matched zero rows and
+    # silently discarded it -- this test reproduces and proves the fix.
+    cx = _cx()
+    assert bmp.get(cx, "c@x.com", "face", "") is None   # no row at all yet
+    assert bmp.set_transform(cx, "c@x.com", "face", "",
+                             {"mx": 1.2, "my": 0.1, "tx": 40, "ty": -8}) is True
+    assert bmp.get_transform(cx, "c@x.com", "face", "") == {"mx": 1.2, "my": 0.1,
+                                                             "tx": 40.0, "ty": -8.0}
+    rows = bmp.list_for_email(cx, "c@x.com")
+    assert len(rows) == 1
+    assert rows[0]["system"] == "face" and rows[0]["side"] == ""
+    assert rows[0]["has_transform"] is True
+
+
+def test_get_transform_independent_of_blob_for_transform_only_row():
+    cx = _cx()
+    bmp.set_transform(cx, "c@x.com", "face", "",
+                       {"mx": 2, "my": 2, "tx": 5, "ty": 5})
+    assert bmp.get_transform(cx, "c@x.com", "face", "") == {"mx": 2.0, "my": 2.0,
+                                                             "tx": 5.0, "ty": 5.0}
+
+
+def test_get_still_returns_none_for_transform_only_row():
+    # Photo contract unchanged: no photo bytes means get() returns None, so
+    # the face route's client_photos fallback still fires for the *photo*
+    # even though the *transform* is now saved and served.
+    cx = _cx()
+    bmp.set_transform(cx, "c@x.com", "face", "",
+                       {"mx": 1, "my": 0, "tx": 0, "ty": 0})
+    assert bmp.get(cx, "c@x.com", "face", "") is None
+
+
+def test_real_put_after_transform_only_row_stores_photo_and_clears_transform():
+    cx = _cx()
+    bmp.set_transform(cx, "c@x.com", "face", "",
+                       {"mx": 1, "my": 0, "tx": 0, "ty": 0})
+    assert bmp.put(cx, "c@x.com", "face", "", b"photo", "image/jpeg", "portal-self") is True
+    got = bmp.get(cx, "c@x.com", "face", "")
+    assert got["blob"] == b"photo" and got["transform"] is None
+    assert len(bmp.list_for_email(cx, "c@x.com")) == 1
+
+
+def test_clear_on_nonexistent_slot_is_noop_and_creates_no_row():
+    cx = _cx()
+    assert bmp.set_transform(cx, "c@x.com", "face", "", None) is True
+    assert bmp.list_for_email(cx, "c@x.com") == []
+    assert bmp.get(cx, "c@x.com", "face", "") is None
+
+
 def test_list_excludes_blobs_and_reports_has_transform():
     cx = _cx()
     bmp.put(cx, "c@x.com", "face", "", b"f", "image/jpeg", "portal-self")

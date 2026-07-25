@@ -92,27 +92,60 @@ def get(cx, email, system, side):
 def set_transform(cx, email, system, side, transform):
     """Save (or clear, when transform is None) the slot's {mx,my,tx,ty}. Rejects
     anything that is not four finite numbers. Returns True on a write/clear,
-    False on a malformed transform."""
+    False on a malformed transform.
+
+    Saving a valid transform is an UPSERT: many clients have no
+    body_map_photos row yet (their face slot is served by the client_photos
+    fallback), so an UPDATE-only write would silently match zero rows and
+    never persist. When no row exists, insert a transform-only row
+    (image_blob/content_type NULL, source='transform') carrying the
+    transform. Clearing (transform=None) stays UPDATE-only: there is nothing
+    useful to insert just to immediately hold a null transform, and clearing
+    a nonexistent slot is a harmless no-op.
+    """
     e, sys_, sd = _norm(email), (system or "").strip(), _side(side)
     if not e:
         return False
     init_table(cx)
     if transform is None:
-        val = None
-    else:
-        clean = _valid_transform(transform)
-        if clean is None:
-            return False
-        val = json.dumps(clean)
-    cx.execute("UPDATE body_map_photos SET transform_json=?, updated_at=? "
-               "WHERE email=? AND system=? AND side=?", (val, _now(), e, sys_, sd))
+        cx.execute("UPDATE body_map_photos SET transform_json=?, updated_at=? "
+                   "WHERE email=? AND system=? AND side=?", (None, _now(), e, sys_, sd))
+        cx.commit()
+        return True
+    clean = _valid_transform(transform)
+    if clean is None:
+        return False
+    val = json.dumps(clean)
+    now = _now()
+    cx.execute(
+        "INSERT INTO body_map_photos"
+        "(email, system, side, image_blob, content_type, transform_json, source, updated_at) "
+        "VALUES(?,?,?,NULL,NULL,?,?,?) "
+        "ON CONFLICT(email, system, side) DO UPDATE SET "
+        "transform_json=excluded.transform_json, updated_at=excluded.updated_at",
+        (e, sys_, sd, val, "transform", now))
     cx.commit()
     return True
 
 
 def get_transform(cx, email, system, side):
-    rec = get(cx, email, system, side)
-    return rec["transform"] if rec else None
+    """Return the slot's saved {mx,my,tx,ty}, or None. Reads transform_json
+    directly -- independent of whether image_blob is set -- so a
+    transform-only row (no photo bytes, e.g. a fallback-face client) still
+    surfaces its saved transform. Corrupt JSON degrades to None."""
+    e, sys_, sd = _norm(email), (system or "").strip(), _side(side)
+    if not e:
+        return None
+    init_table(cx)
+    r = cx.execute(
+        "SELECT transform_json FROM body_map_photos "
+        "WHERE email=? AND system=? AND side=?", (e, sys_, sd)).fetchone()
+    if not r or not r[0]:
+        return None
+    try:
+        return json.loads(r[0])
+    except (TypeError, ValueError):
+        return None
 
 
 def list_for_email(cx, email):
