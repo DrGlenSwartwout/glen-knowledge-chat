@@ -20810,6 +20810,8 @@ def api_portal_bodymap_transform_set(token):
     if not _bodymap_valid_system(system):
         return jsonify({"ok": False, "error": "unknown system"}), 400
     t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
     with _db_lock, db.connect(LOG_DB) as cx:
         _cp.init_client_portal_table(cx)
         portal = _portal_record_for(cx, token)
@@ -20850,6 +20852,8 @@ def api_console_bodymap_transform_set():
     if not email or not _bodymap_valid_system(system):
         return jsonify({"ok": False, "error": "email and valid system required"}), 400
     t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
     with _db_lock, db.connect(LOG_DB) as cx:
         ok = _bmp.set_transform(cx, email, system, side, t)
     return (jsonify({"ok": True}), 200) if ok else \

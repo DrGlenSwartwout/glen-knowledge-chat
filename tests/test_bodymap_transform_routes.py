@@ -89,3 +89,47 @@ def test_console_transform_roundtrip(tmp_path, monkeypatch):
                  json=T).status_code == 200
     assert c.get("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face"
                  ).get_json() == T
+
+
+def test_portal_put_unparseable_body_does_not_clear(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _token(appmod, "c@x.com"); _seed_photo(appmod, "c@x.com", "face")
+    c = appmod.app.test_client()
+    assert c.put(f"/api/portal/{tok}/bodymap-transform?system=face", json=T).status_code == 200
+    resp = c.put(f"/api/portal/{tok}/bodymap-transform?system=face",
+                 data=b"not json", content_type="text/plain")
+    assert resp.status_code == 400
+    assert c.get(f"/api/portal/{tok}/bodymap-transform?system=face").get_json() == T
+
+
+def test_portal_put_non_object_json_400(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _token(appmod, "c@x.com"); _seed_photo(appmod, "c@x.com", "face")
+    c = appmod.app.test_client()
+    assert c.put(f"/api/portal/{tok}/bodymap-transform?system=face",
+                 json=[1, 2, 3, 4]).status_code == 400
+    assert c.put(f"/api/portal/{tok}/bodymap-transform?system=face",
+                 json="x").status_code == 400
+
+
+def test_console_put_unparseable_body_does_not_clear(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    _seed_photo(appmod, "c@x.com", "face")
+    c = appmod.app.test_client()
+    assert c.put("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face",
+                 json=T).status_code == 200
+    resp = c.put("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face",
+                 data=b"not json", content_type="text/plain")
+    assert resp.status_code == 400
+    assert c.get("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face"
+                 ).get_json() == T
+
+
+def test_console_put_non_object_json_400(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    _seed_photo(appmod, "c@x.com", "face")
+    c = appmod.app.test_client()
+    assert c.put("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face",
+                 json=[1, 2, 3, 4]).status_code == 400
+    assert c.put("/api/console/bodymap-transform?key=test-secret&email=c@x.com&system=face",
+                 json="x").status_code == 400
