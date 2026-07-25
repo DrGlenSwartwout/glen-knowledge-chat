@@ -30,16 +30,20 @@ _ALLOWED = {
     "biofield_handoff.py": "fmp_snap_* tables; sole caller is the local-only biofield_local_app, which never runs under DB_BACKEND=postgres",
     "biofield_fmp_snapshot.py": "fmp_snap_* loader; sole caller is the local-only biofield_local_app, which never runs under DB_BACKEND=postgres",
     "fmp_orders.py": "__main__ CLI export tool (LOCAL_DB), not an app runtime path",
+    "biofield_local_app.py": "local-only biofield viewer (127.0.0.1); its chat_log.db is an FMP/biofield snapshot store, never routed through the Postgres adapter",
 }
 
 
 def _scanned_files():
-    yield ROOT / "app.py"
-    yield ROOT / "incentive_engine.py"
+    # Default-deny across EVERY top-level app module + every dashboard module.
+    # (Root modules like courses_blueprint / reply_watcher back live routes too,
+    # so a narrow app.py+dashboard scan missed real bypasses -- P06 Phase A.)
+    for p in sorted(ROOT.glob("*.py")):
+        if p.name not in _ALLOWED:
+            yield p
     for p in sorted((ROOT / "dashboard").glob("*.py")):
-        if p.name in _ALLOWED:
-            continue
-        yield p
+        if p.name not in _ALLOWED:
+            yield p
 
 
 def test_no_raw_chatlog_connect_bypasses_adapter():

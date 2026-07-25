@@ -85,7 +85,8 @@ def _resolve_user_id(email: str, db_path: str) -> Optional[int]:
     Returns None if the email isn't a registered user."""
     if not email:
         return None
-    with sqlite3.connect(db_path) as cx:
+    from dashboard import db
+    with db.connect(db_path) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
             "SELECT id FROM users WHERE LOWER(email) = ?",
@@ -102,8 +103,10 @@ def _record_feedback(
 ) -> int:
     """Persist one personal_email_feedback row and return its rowid."""
     now = datetime.now(timezone.utc).isoformat()
-    with sqlite3.connect(db_path) as cx:
-        cur = cx.execute(
+    from dashboard import db, dbwrite
+    with db.connect(db_path) as cx:
+        new_id = dbwrite.insert_returning_id(
+            cx,
             """INSERT INTO personal_email_feedback
                  (received_at, user_id, original_send_id, raw_text,
                   ai_summary, ai_category, routed_to,
@@ -120,9 +123,10 @@ def _record_feedback(
                 json.dumps(result.get("extracted_products", [])),
                 json.dumps(result.get("extracted_conditions", [])),
             ),
+            pk="id",
         )
         cx.commit()
-        return cur.lastrowid
+        return new_id
 
 
 def _extract_plain_body(payload: dict) -> str:
