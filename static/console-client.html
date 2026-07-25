@@ -29,6 +29,7 @@
 <body>
 <div class="wrap">
   <script src="/static/op-nav.js" data-active="people" data-sub="client"></script>
+  <script src="/static/js/console-documents.js"></script>
   <div id="gate"></div>
   <div id="picker" style="display:none">
     <h1>Open a client</h1>
@@ -51,6 +52,8 @@
       <div class="sec-body" id="b-comms"></div></details>
     <details id="sec-recs"><summary>Recommendations <span class="head-note" id="h-recs"></span></summary>
       <div class="sec-body" id="b-recs"></div></details>
+    <details id="sec-docs"><summary>Documents <span class="head-note" id="h-docs"></span></summary>
+      <div class="sec-body" id="b-docs"></div></details>
   </div>
 </div>
 <script>
@@ -187,6 +190,102 @@ function renderRecommendations(recs){
   }
 }
 
+function loadDocuments(){
+  var email=qsEmail(); if(!email) return;
+  fetch("/api/console/client-documents?email="+encodeURIComponent(email),{headers:hdr()})
+    .then(function(r){ return r.ok?r.json():{items:[]}; })
+    .then(function(d){
+      var items=d.items||[];
+      document.getElementById("h-docs").textContent=items.length?String(items.length):"";
+      document.getElementById("b-docs").innerHTML=renderDocUploadHtml()+renderDocumentsHtml(items,key());
+      wireDocUpload();
+      wireDocumentActions();
+    }).catch(function(){});
+}
+
+function wireDocUpload(){
+  var btn=document.getElementById("cd-upload-btn");
+  var input=document.getElementById("cd-upload-file");
+  var status=document.getElementById("cd-upload-status");
+  if(!btn||!input) return;
+  btn.addEventListener("click",function(){
+    var f=input.files&&input.files[0];
+    var email=qsEmail();
+    if(!f||!email){ if(status) status.textContent="Choose a file first."; return; }
+    btn.disabled=true;
+    if(status) status.textContent="Uploading…";
+    var fd=new FormData();
+    fd.append("email",email);
+    fd.append("file",f);
+    fetch("/api/console/client-document",{method:"POST",headers:hdr(),body:fd})
+      .then(function(r){
+        return r.json().catch(function(){ return {}; })
+          .then(function(j){ return {ok:r.ok, body:j}; });
+      })
+      .then(function(res){
+        if(res.ok && res.body && res.body.ok){ loadDocuments(); return; }
+        if(status) status.textContent=(res.body&&res.body.error)||"Upload failed. Please try again.";
+        btn.disabled=false;
+      })
+      .catch(function(){
+        if(status) status.textContent="Upload failed. Please try again.";
+        btn.disabled=false;
+      });
+  });
+}
+
+function checkedIdx(section,kind){
+  return Array.prototype.slice.call(
+    section.querySelectorAll('input[data-kind="'+kind+'"]:checked')
+  ).map(function(el){ return parseInt(el.getAttribute("data-idx"),10); });
+}
+
+function wireDocumentActions(){
+  var host=document.getElementById("b-docs");
+  host.querySelectorAll(".cd-approve").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var sec=btn.closest(".cd-doc"), id=btn.getAttribute("data-doc");
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/approve",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({
+          narrative_md: sec.querySelector(".cd-narrative").value,
+          attributes: checkedIdx(sec,"attributes"),
+          facts: checkedIdx(sec,"facts"),
+          reviewed_by: "console"
+        })
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+  host.querySelectorAll(".cd-reject").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var id=btn.getAttribute("data-doc");
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/reject",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({reviewed_by:"console"})
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+  host.querySelectorAll(".cd-toggle-visibility").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var id=btn.getAttribute("data-doc");
+      var next=btn.getAttribute("data-visible")!=="1";
+      btn.disabled=true;
+      fetch("/api/console/client-document/"+id+"/visibility",{
+        method:"POST",
+        headers:Object.assign({"Content-Type":"application/json"},hdr()),
+        body:JSON.stringify({visible:next})
+      }).then(function(){ loadDocuments(); })
+        .catch(function(){ btn.disabled=false; });
+    });
+  });
+}
+
 function showGate(){
   document.getElementById("gate").innerHTML =
     "<p class=empty>Enter a console key to view.</p>"+
@@ -211,6 +310,7 @@ function load(email){
         [email, d.person.phone, d.person.location, d.person.profession].filter(Boolean).join(" · ");
       renderStrip(d.process); renderClinical(d.clinical); renderTests(d.tests);
       renderInvoices(d.invoices); renderComms(d.comms); renderRecommendations(d.recommendations);
+      loadDocuments();
     })
     .catch(function(){ showGate(); });
 }

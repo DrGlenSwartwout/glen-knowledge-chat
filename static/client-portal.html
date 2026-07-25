@@ -516,6 +516,24 @@
     .ob-triage-field{flex:1 1 100%}
     .ob-med-count{display:flex}
   }
+  /* My Records tile (static/js/portal-documents.js) — matches the .card system */
+  .portal-documents .doc-upload{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;
+    margin-bottom:1rem}
+  .portal-documents .doc-upload label{color:var(--muted);font-size:.92rem}
+  .portal-documents .doc-upload-input{flex:1 1 12rem;min-width:0;color:var(--ink);font-family:inherit;
+    font-size:.9rem;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .portal-documents .doc-upload .btn{padding:9px 18px;font-size:.92rem}
+  .portal-documents .doc-upload-status{flex-basis:100%;color:var(--muted);font-size:.86rem;min-height:1em}
+  .portal-documents .doc-list{list-style:none;margin:0;padding:0}
+  .portal-documents .doc-item{padding:.85rem 0;border-top:1px solid var(--line)}
+  .portal-documents .doc-item:first-child{border-top:0}
+  .portal-documents .doc-file{display:inline-block;font-weight:600;color:var(--brand);
+    text-decoration:none;font-family:"Raleway",sans-serif}
+  .portal-documents .doc-file::before{content:"\1F4C4";margin-right:.4rem;filter:grayscale(.15)}
+  .portal-documents .doc-file:hover{text-decoration:underline}
+  .portal-documents .doc-narrative{margin:.45rem 0 0;color:var(--ink);line-height:1.55;font-size:.96rem}
+  .portal-documents .doc-pending{margin:.4rem 0 0;color:var(--muted);font-size:.9rem;font-style:italic}
+  .portal-documents .doc-empty{color:var(--muted);margin:0}
 </style>
 </head>
 <body>
@@ -547,9 +565,13 @@
        survives render()'s poll re-renders, which fully replace app.innerHTML;
        filled/emptied by static/js/portal-library.js's own fetch + mount. -->
   <div id="portal-library-mount"></div>
+  <!-- My Records tile. Sibling of #app, filled by static/js/portal-documents.js's
+       own fetch + mount, same pattern as the library tile above. -->
+  <div id="portal-documents-mount"></div>
 
 <script src="/static/entity-ref.js"></script>
 <script src="/static/js/portal-library.js"></script>
+<script src="/static/js/portal-documents.js"></script>
 <script src="/static/js/portal-onboarding.js"></script>
 <script>
 // The last path segment is either an emailed portal token or the literal "me"

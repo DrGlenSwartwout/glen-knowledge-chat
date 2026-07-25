@@ -20690,6 +20690,527 @@ def api_portal_photo_serve(token):
     return resp
 
 
+_DOC_MAX = 30 * 1024 * 1024
+_DOC_EXTRACTABLE = ("application/pdf",)
+
+
+def _doc_extract_status(ctype):
+    """PDFs and images go to the extractor; everything else is stored as-is.
+    Glen gets a wide range of file types — the rule is store everything,
+    extract what is readable."""
+    c = (ctype or "").lower()
+    if c in _DOC_EXTRACTABLE or c.startswith("image/"):
+        return "pending"
+    return "skipped-unreadable"
+
+
+_DOC_EXTRACT_CALL_MODEL = None  # test seam: monkeypatch to avoid a live Claude call
+
+
+def _trigger_document_extraction(doc_id):
+    """Kick off extraction for one freshly-stored 'pending' document without
+    blocking the upload request -- extraction makes a Claude API call that can
+    take many seconds. Mirrors the ingredient-page background-build pattern
+    (daemon thread, started after the triggering write, never joined).
+
+    Claims the document itself (the same guarded UPDATE run_pending uses) so
+    a document that has already been picked up by the console backfill route
+    is not double-processed. Never raises into the caller: extract_document
+    already fails closed to 'failed' internally, and the try/except here is a
+    belt-and-suspenders guard against anything else (import error, claim
+    error, thread start) so a broken extraction can never surface in the
+    upload response that triggered it.
+
+    CRITICAL: `_db_lock` is the application-wide write mutex used at hundreds
+    of call sites; production runs multi-second Anthropic vision calls under
+    `gunicorn --timeout 120`. Holding the lock across the model call would
+    stall every DB-touching request in this worker for the duration of the
+    call. So the lock is acquired and released THREE separate times here --
+    claim, model call (unlocked), write -- never held across
+    call_model_for_extraction. See dashboard/document_extract.py's
+    call_model_for_extraction / write_extraction_draft split.
+    """
+    def _run():
+        from dashboard import client_documents as _cd
+        from dashboard import document_extract as _de
+        try:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    return  # already claimed/processed elsewhere
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                return
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+            except Exception as e:                  # noqa: BLE001 - model call
+                # Same fail-closed contract extract_document always had: a
+                # failed/malformed model call lands the document in 'failed',
+                # never wedged in 'extracting'.
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+                return
+            try:
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _de.write_extraction_draft(cx, doc_id, payload)
+            except Exception as e:                  # noqa: BLE001 - write half
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+        except Exception as e:                      # noqa: BLE001 - background
+            # extraction must never raise into the request that triggered it.
+            print(f"[documents] extraction trigger failed for {doc_id}: {e!r}",
+                  flush=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _accept_document_upload(cx, email, f, source):
+    """Validate + store one uploaded document. Shared by the portal and console
+    routes so the two can never drift apart. Returns (body, status)."""
+    from dashboard import client_documents as _cd
+    blob = f.read() if f else b""
+    if not blob:
+        return {"ok": False, "error": "no file uploaded"}, 400
+    if len(blob) > _DOC_MAX:
+        return {"ok": False, "error": "file too large (max 30 MB)"}, 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    res = _cd.put(cx, email, blob, getattr(f, "filename", "") or "", ctype, source)
+    if not res:
+        return {"ok": False, "error": "could not store file"}, 400
+    if not res["deduped"]:
+        status = _doc_extract_status(ctype)
+        _cd.set_extract_status(cx, res["id"], status)
+        if status == "pending":
+            _trigger_document_extraction(res["id"])
+    return {"ok": True, "id": res["id"], "deduped": res["deduped"]}, 200
+
+
+@app.route("/api/portal/<token>/documents", methods=["POST"])
+def api_portal_document_upload(token):
+    """Client self-uploads a medical record. Token-scoped: writes ONLY the
+    token owner's email, exactly as the /photo upload does."""
+    from dashboard import client_portal as _cp
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "portal-self")
+    return jsonify(body), status
+
+
+@app.route("/api/portal/<token>/documents", methods=["GET"])
+def api_portal_documents(token):
+    """The token owner's uploaded records. `enabled` mirrors the hub flag so the
+    My Records tile stays dark until the flag flips.
+
+    The client sees their own file and — once Glen has approved it — the
+    narrative. Extracted attributes, facts, and labs are NEVER included.
+
+    Only client_visible documents are listed here: a console-uploaded record
+    (e.g. a third-party record Glen received and hasn't reviewed yet) stays
+    staff-only until he explicitly marks it visible. Self-uploaded
+    ('portal-self') documents are visible immediately -- see
+    client_documents.put(). Uses list_visible_for_email, NOT list_for_email,
+    so this enforcement lives in exactly one place.
+    """
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        docs = _cd.list_visible_for_email(cx, email) if email else []
+        items = []
+        for d in docs:
+            draft = _dx.get_for_document(cx, d["id"])
+            ready = bool(draft and draft["status"] == "confirmed")
+            items.append({
+                "id": d["id"],
+                "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"],
+                "status": "ready" if ready else "under_review",
+                "file_url": f"/api/portal/{token}/documents/{d['id']}/file",
+                "narrative_md": draft["narrative_md"] if ready else "",
+            })
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
+
+
+# Content types safe to render `inline` in a browser at our own origin. Anything
+# not on this list (including any image/* the upload route happens to accept,
+# e.g. image/svg+xml or image/heic) is served as attachment/octet-stream instead —
+# never let an arbitrary stored type drive inline rendering. Reused by the
+# console document viewer so the two never drift apart.
+_DOC_INLINE_TYPES = frozenset({
+    "application/pdf", "image/jpeg", "image/png", "image/webp",
+})
+
+_DOC_FILENAME_UNSAFE_RE = re.compile(r'[\x00-\x1f\x7f"\\]')
+
+
+def _doc_response_content_type(stored_content_type):
+    """(content_type, disposition) for a document response. `inline` only for
+    types on the allowlist; everything else downloads as attachment/octet-stream
+    so an attacker-controlled stored type can never render inline."""
+    ctype = (stored_content_type or "").lower()
+    if ctype in _DOC_INLINE_TYPES:
+        return ctype, "inline"
+    return "application/octet-stream", "attachment"
+
+
+def _doc_safe_filename(name):
+    """Strip CR/LF/other control chars plus '"' and '\\' from a stored filename
+    before it goes into a Content-Disposition header, so the header can never be
+    constructed into something that raises. Falls back to 'document'."""
+    cleaned = _DOC_FILENAME_UNSAFE_RE.sub("", name or "").strip()
+    return cleaned or "document"
+
+
+@app.route("/api/portal/<token>/documents/<int:doc_id>/file", methods=["GET"])
+def api_portal_document_file(token, doc_id):
+    """Stream the token owner's OWN document. Resolved through get_for_email so
+    a token can never fetch another client's file.
+
+    A document that exists and is owned by this token but is not yet
+    client_visible (staff-only, e.g. a console upload Glen hasn't reviewed)
+    404s exactly like a document that doesn't exist at all -- the client must
+    never be able to distinguish "not found" from "found but hidden".
+    """
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        doc = _cd.get_for_email(cx, doc_id, email) if email else None
+    if not doc or not doc.get("client_visible"):
+        return Response("", status=404)
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+    return resp
+
+
+@app.route("/api/console/client-document", methods=["POST"])
+def api_console_client_document_upload():
+    """Console-side upload for records that arrive by email or fax."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "console")
+    return jsonify(body), status
+
+
+def _console_guard():
+    """None when the caller is authorized, else a (body, status) tuple."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return {"ok": False, "error": "Unauthorized"}, 401
+    return None
+
+
+@app.route("/api/console/client-document/<int:doc_id>/approve", methods=["POST"])
+def api_console_client_document_approve(doc_id):
+    """The ONE gate. Writes the checked proposals to the live stores and
+    publishes the narrative to the client's portal, in a single request.
+
+    Deliberately does NOT write client_conditions: that table is the single
+    eye-condition support-program override and has its own console control.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    keep_attrs = set(body.get("attributes") or [])
+    keep_facts = set(body.get("facts") or [])
+    reviewed_by = (body.get("reviewed_by") or "console").strip()
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) so a zero-checked-items approval still
+        # leaves both live-store tables queryable afterward.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if draft["status"] != "ai_draft":
+            # Already approved (or rejected): write nothing, same idempotent
+            # response as before. Checked BEFORE any live write, so a repeat
+            # call after a successful approval never re-runs the writes below.
+            return jsonify({"ok": True, "already": True,
+                            "status": draft["status"]}), 200
+        narrative = body.get("narrative_md")
+        if narrative is None:
+            narrative = draft["narrative_md"]
+        # ORDER MATTERS: live writes happen BEFORE confirm(), not after.
+        # confirm(), set_attr() and set_fact() each cx.commit() independently
+        # -- there is no shared transaction for the `with db.connect(...)` to
+        # roll back -- so whichever of them runs LAST is the one a mid-loop
+        # exception leaves undone. The original plan had confirm() run
+        # FIRST: a failure partway through the write loop below (e.g. a
+        # proposed fact missing fact_key reaching set_fact(None), which
+        # raises IntegrityError on the NOT NULL column) would then leave the
+        # draft already `confirmed` -- narrative already live to the client
+        # -- with only some attributes/facts written, and confirm()'s
+        # compare-and-set (`status='ai_draft'`) means a retry can never
+        # re-open it to finish the job. Running the writes first and
+        # confirm() last means a failure here leaves the draft `ai_draft`:
+        # nothing has published, and a retry safely re-runs every write
+        # (set_attr is UNIQUE(email,field,value_norm) + INSERT OR IGNORE;
+        # set_fact is an upsert on (email,fact_key)) and then confirms. Do
+        # NOT restore the plan's confirm()-first ordering -- that reintroduces
+        # an unrecoverable partial-write state reachable by one bad proposal.
+        written = {"attributes": 0, "facts": 0}
+        skipped_facts = 0
+        for i, a in enumerate(draft["attributes"]):
+            if i not in keep_attrs:
+                continue
+            if _ct.set_attr(cx, draft["email"], a.get("field"), a.get("value"),
+                            source=f"document:{doc_id}"):
+                written["attributes"] += 1
+        for i, f in enumerate(draft["facts"]):
+            if i not in keep_facts:
+                continue
+            fact_key = f.get("fact_key")
+            # client_facts is a controlled vocabulary (ALLOWED_CLIENT_FACT_KEYS,
+            # same gate the portal client-fact route enforces). A model-proposed
+            # key outside it -- or a malformed item with no string fact_key at
+            # all -- must never reach set_fact(): set_fact is an UPSERT, so a
+            # bad value on an in-vocabulary-shaped-but-wrong key would silently
+            # overwrite a client-reported fact that drives support-program
+            # logic, and a missing fact_key raises IntegrityError (NOT NULL)
+            # and would abort the whole approval. Skip and keep going instead.
+            if not isinstance(fact_key, str) or fact_key not in ALLOWED_CLIENT_FACT_KEYS:
+                skipped_facts += 1
+                print(f"api_console_client_document_approve: doc_id={doc_id} "
+                      f"skipped out-of-vocabulary/invalid fact_key="
+                      f"{fact_key!r}", flush=True)
+                continue
+            _cf.set_fact(cx, draft["email"], fact_key, bool(f.get("value")))
+            written["facts"] += 1
+        # confirm() only flips an ai_draft, so a same-request race with a
+        # concurrent approval still resolves to the idempotent response.
+        if not _dx.confirm(cx, draft["id"], narrative, reviewed_by):
+            return jsonify({"ok": True, "already": True,
+                            "status": "confirmed"}), 200
+    return jsonify({"ok": True, "already": False, "written": written,
+                    "skipped_facts": skipped_facts}), 200
+
+
+@app.route("/api/console/client-document/<int:doc_id>/reject", methods=["POST"])
+def api_console_client_document_reject(doc_id):
+    """Discard the AI's reading. The uploaded file itself is kept."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) -- see approve() above for why.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _dx.reject(cx, draft["id"],
+                        (body.get("reviewed_by") or "console").strip())
+    return jsonify({"ok": True, "changed": ok}), 200
+
+
+@app.route("/api/console/client-documents", methods=["GET"])
+def api_console_client_documents():
+    """Review payload for one client's documents: the file, the AI's proposals
+    with their source quotes, and the editable narrative. This is what the
+    console Documents section renders."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with db.connect(LOG_DB) as cx:
+        # list_for_email (NOT list_visible_for_email): the console review
+        # screen must keep showing every document regardless of client
+        # visibility -- that's the whole point of the staff-only gate.
+        docs = _cd.list_for_email(cx, email)
+        items = []
+        for d in docs:
+            items.append({
+                "id": d["id"], "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"], "source": d["source"],
+                "extract_status": d["extract_status"],
+                "client_visible": bool(d["client_visible"]),
+                "file_url": f"/admin/client-document?id={d['id']}",
+                "draft": _dx.get_for_document(cx, d["id"]),
+            })
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/visibility", methods=["POST"])
+def api_console_client_document_visibility(doc_id):
+    """Console-only toggle: Glen decides when a staff-uploaded document
+    (e.g. a third-party record he received and read) becomes visible to the
+    client. A client's own self-upload is already visible from the moment
+    it's stored (see client_documents.put) -- this route can still flip it
+    either way; there is no restriction on which direction it's called."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    body = request.get_json(silent=True) or {}
+    visible = bool(body.get("visible"))
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cd.set_client_visible(cx, doc_id, visible)
+    return jsonify({"ok": True, "id": doc_id, "client_visible": visible})
+
+
+@app.route("/admin/client-document", methods=["GET"])
+def admin_client_document_file():
+    """Console-gated raw document viewer (PHI). Serves the bytes for review.
+
+    Reuses the Task 6 inline-type allowlist rather than trusting the stored
+    (attacker-influenced, upload-time-supplied) content_type: this route
+    serves third-party bytes to a live console session, so an unvalidated
+    inline text/html or image/svg+xml would execute script at the app's
+    origin with console privileges.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    try:
+        doc_id = int(request.args.get("id") or 0)
+    except ValueError:
+        return jsonify({"error": "bad id"}), 400
+    with db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id) if doc_id else None
+    if not doc:
+        return jsonify({"error": "not found"}), 404
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+    return resp
+
+
+@app.route("/api/console/documents/extract-pending", methods=["POST"])
+def api_console_documents_extract_pending():
+    """Operational backstop for the inline upload trigger: runs the extractor
+    over whatever is still 'pending' (e.g. a document the inline trigger's
+    process died before starting, or one requeued below). Uses the same
+    claim-guarded UPDATE (client_documents.claim_for_extraction) run_pending
+    itself uses.
+
+    CRITICAL: does NOT hand the whole batch to document_extract.run_pending
+    under one held `_db_lock` -- run_pending processes up to 5 documents
+    sequentially, and each one's model call takes tens of seconds, so a
+    single held lock across the whole batch would stall every DB-touching
+    request in this worker for the full multi-document run. Instead this
+    loop mirrors run_pending's claim-then-process shape itself, but takes
+    `_db_lock` three separate times PER document -- claim, model call
+    (unlocked), write -- exactly like the inline trigger in
+    _trigger_document_extraction. run_pending's own implementation (and its
+    own claim-guard tests) are untouched; this route just doesn't call it
+    under a single lock anymore.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extract as _de
+    with _db_lock, db.connect(LOG_DB) as cx:
+        candidates = _cd.pending(cx, limit=5)
+    drafted = 0
+    for cand in candidates:
+        doc_id = cand["id"]
+        try:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    continue  # another instance claimed it first
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                continue
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    if _de.write_extraction_draft(cx, doc_id, payload):
+                        drafted += 1
+            except Exception as e:                  # noqa: BLE001 - one bad
+                # document (model failure or malformed reply) must not abort
+                # the rest of the batch, and must fail closed to 'failed'.
+                print(f"[documents] extract-pending: extract failed for "
+                      f"{doc_id}: {e!r}", flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+        except Exception as e:                      # noqa: BLE001 - belt and
+            # suspenders: an unanticipated exception in the claim step must
+            # not abort the rest of the batch either.
+            print(f"[documents] extract-pending: document {doc_id} raised, "
+                  f"skipping: {e!r}", flush=True)
+    return jsonify({"ok": True, "drafted": drafted})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/requeue", methods=["POST"])
+def api_console_client_document_requeue(doc_id):
+    """Sets a document's extract_status back to 'pending' so run_pending (or
+    the next inline trigger) picks it up again. The ONLY recovery path for a
+    document stuck in 'extracting' after a process death, and the retry path
+    for one that landed in 'failed'.
+
+    Refuses when the document's extraction has already been reviewed and
+    approved (extract_status='drafted' and the draft's own status is
+    'confirmed'): re-extracting would be pointless anyway since
+    document_extractions.put_draft leaves a confirmed row untouched, but a
+    silent no-op there would look like a successful requeue. Say so instead.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        draft = _dx.get_for_document(cx, doc_id)
+        if doc["extract_status"] == "drafted" and draft and draft["status"] == "confirmed":
+            return jsonify({"ok": False,
+                            "error": "cannot requeue: draft already confirmed"}), 409
+        _cd.set_extract_status(cx, doc_id, "pending")
+    return jsonify({"ok": True, "id": doc_id, "extract_status": "pending"})
+
+
 def _portal_current_biofield_location(cx, email, content):
     """The spoken anatomical `location` from the client's CURRENT biofield report
     (same report the portal picks: content.current_scan_date -> newest). '' when
