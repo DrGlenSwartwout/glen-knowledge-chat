@@ -65,3 +65,13 @@ def test_get_subscription_maps(monkeypatch):
     out = stripe_pay.get_subscription("sub_1")
     assert out["current_period_end"] == 1700000000
     assert out["metadata"]["kind"] == "course_membership"
+
+
+def test_get_subscription_period_end_falls_back_to_item(monkeypatch):
+    # Stripe API 2025-03-31.basil+: no top-level current_period_end; it lives on the item.
+    monkeypatch.setattr(stripe_pay, "_get", lambda path: {
+        "id": "sub_2", "status": "active", "customer": "cus_2",
+        "items": {"data": [{"current_period_end": 1800000000}]},
+        "metadata": {"kind": "course_membership"}})
+    out = stripe_pay.get_subscription("sub_2")
+    assert out["current_period_end"] == 1800000000  # fell back to items.data[0], not None
