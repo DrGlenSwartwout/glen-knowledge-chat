@@ -1,10 +1,8 @@
 import sqlite3
 import os
-import tempfile
 
 os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
 os.environ.setdefault("PINECONE_API_KEY", "pc-dummy")
-os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="eye-review-routes-"))
 import app as appmod
 from dashboard import eye_vision_report
 from dashboard import eye_vision_review_requests
