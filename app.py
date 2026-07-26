@@ -17808,6 +17808,50 @@ def api_practitioner_clients_search():
     return jsonify({"ok": True, "clients": _pp.search_clients(pid, q)})
 
 
+@app.route("/api/practitioner/eye-vision-suggestions", methods=["GET", "POST"])
+def api_practitioner_eye_vision_suggestions():
+    """Practitioner-only Eye & Vision suggestion drafts and review decisions.
+
+    The client portal never calls this endpoint and never receives draft candidates.
+    """
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+    body = request.get_json(silent=True) or {}
+    client_email = (
+        body.get("client_email") if request.method == "POST"
+        else request.args.get("client_email")
+    )
+    client_email = (client_email or "").strip().lower()
+    if not client_email or not _pp.client_belongs_to_practitioner(pid, client_email):
+        return jsonify({"ok": False, "error": "not authorized for this client"}), 403
+
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        contract = _evr.build_practitioner_suggestions(
+            cx, client_email, _dt.date.today().isoformat())
+        if contract is None:
+            return jsonify({"ok": True, "suggestions": None})
+        _evsr.init_table(cx)
+        valid_ids = {
+            row.get("suggestion_id") for row in contract.get("candidates") or []}
+        if request.method == "POST":
+            suggestion_id = (body.get("suggestion_id") or "").strip()
+            if suggestion_id not in valid_ids:
+                return jsonify({"ok": False, "error": "unknown suggestion"}), 404
+            try:
+                _evsr.save(
+                    cx, client_email, suggestion_id, body.get("decision"), str(pid),
+                    body.get("client_safe_wording"),
+                    body.get("safety_review"))
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+        contract = _evsr.overlay(contract, _evsr.decisions(cx, client_email))
+    return jsonify({"ok": True, "suggestions": contract})
+
+
 @app.route("/api/practitioner/chat", methods=["POST"])
 def api_practitioner_chat():
     """Practitioner-authenticated product-selection chat scoped to FF catalog.
@@ -20234,6 +20278,48 @@ def api_client_portal(token):
             _pp.find_practitioner_id_by_email(primary_email))
     except Exception:
         payload["linked_practitioner_account"] = False
+    # Focused Eye & Vision E4L report. A saved client preference wins; otherwise
+    # it starts open only when the displayed member has eye/vision history.
+    if email_for_reports:
+        try:
+            from dashboard import eye_vision_report as _evr
+            from dashboard import recommendation_prefs as _rp_evr
+            from dashboard import eye_vision_review_requests as _evrr
+            with db.connect(LOG_DB) as _cx_evr:
+                _cx_evr.row_factory = sqlite3.Row
+                _rp_evr.init_recommendation_prefs(_cx_evr)
+                _section_state = _rp_evr.get_section_state(_cx_evr, email_for_reports)
+                _saved = _section_state.get(_evr.SECTION_KEY)
+                _eye_block = _evr.build_portal_block(
+                    _cx_evr, email_for_reports, _dt.date.today().isoformat(),
+                    saved_collapsed=_saved)
+                if _eye_block:
+                    _generated_eligible = bool(
+                        _eye_block.get("history_eye_issue")
+                        and _eye_block.get("status") == "ready")
+                    _evrr.init_table(_cx_evr)
+                    _review = _evrr.get_for_scan(
+                        _cx_evr, email_for_reports, _eye_block.get("scan_date"))
+                    if _review and _review["status"] == "approved":
+                        _approved = dict(_review.get("report") or {})
+                        # Preserve current display-state resolution; approval edits
+                        # report content, not the client's open/closed preference.
+                        for _key in (
+                            "open", "default_open", "preference_saved",
+                            "scan_date", "history_eye_issue", "section_key",
+                        ):
+                            _approved[_key] = _eye_block.get(_key)
+                        _eye_block = _approved
+                    _eye_block["review_request"] = {
+                        "eligible": _generated_eligible,
+                        "is_paid_member": _is_paid_member(email_for_reports),
+                        "status": (_review or {}).get("status"),
+                        "requested_at": (_review or {}).get("requested_at"),
+                        "upgrade_url": "/membership",
+                    }
+                    payload["eye_vision_report"] = _eye_block
+        except Exception as _e:
+            print(f"[eye-vision-report/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -20571,6 +20657,126 @@ def api_portal_rec_section(token):
             return jsonify({"ok": False, "error": "not found"}), 404
         _rp.set_section_state(cx, (portal.get("email") or "").strip().lower(), sk, collapsed)
     return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/eye-vision-report/state", methods=["POST"])
+def api_portal_eye_vision_state(token):
+    """Persist the displayed client's Eye & Vision section open/closed state."""
+    from dashboard import recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get("open"), bool):
+        return jsonify({"ok": False, "error": "open must be boolean"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                _hh.init_household_tables(cx)
+                member = (request.args.get("member") or "").strip().lower()
+                if member and _hh.can_view(cx, email, member):
+                    email = member
+            except Exception:
+                pass
+        _rp.init_recommendation_prefs(cx)
+        _rp.set_section_state(cx, email, "eye_vision_report", not data["open"])
+    return jsonify({"ok": True, "open": data["open"]})
+
+
+@app.route("/api/portal/<token>/eye-vision-report/request-review", methods=["POST"])
+def api_portal_eye_vision_request_review(token):
+    """Paid member requests review of the displayed interpreted eye report."""
+    import datetime as _dt
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_review_requests as _evrr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                _hh.init_household_tables(cx)
+                member = (request.args.get("member") or "").strip().lower()
+                if member and _hh.can_view(cx, email, member):
+                    email = member
+            except Exception:
+                pass
+        if not _is_paid_member(email):
+            return jsonify({
+                "ok": False, "error": "paid_membership_required",
+                "upgrade_url": "/membership",
+            }), 402
+        block = _evr.build_portal_block(
+            cx, email, _dt.date.today().isoformat())
+        if not block or not block.get("history_eye_issue") \
+                or block.get("status") != "ready":
+            return jsonify({"ok": False, "error": "report_not_eligible"}), 409
+        request_row = _evrr.request_review(
+            cx, email, block.get("scan_date"), block)
+    return jsonify({
+        "ok": True, "status": request_row["status"],
+        "requested_at": request_row["requested_at"],
+    })
+
+
+@app.route("/api/console/eye-vision-reviews", methods=["GET", "POST"])
+def api_console_eye_vision_reviews():
+    """Owner queue and edit/approve/decline actions for requested reports."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import eye_vision_review_requests as _evrr
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _evrr.init_table(cx)
+        _evsr.init_table(cx)
+        if request.method == "GET":
+            pending = _evrr.pending(cx)
+            for row in pending:
+                contract = _evr.build_practitioner_suggestions(
+                    cx, row["email"], row["scan_date"])
+                row["suggestions"] = _evsr.overlay(
+                    contract, _evsr.decisions(cx, row["email"]))
+            return jsonify({"ok": True, "pending": pending})
+        body = request.get_json(silent=True) or {}
+        reviewer_id = (body.get("reviewer_id") or "").strip()
+        try:
+            if not reviewer_id:
+                raise ValueError("reviewer identity is required")
+            suggestion_reviews = body.get("suggestion_reviews") or []
+            for suggestion in suggestion_reviews:
+                if suggestion.get("decision") == "approved" and (
+                        not str(suggestion.get("client_safe_wording") or "").strip()
+                        or not str(suggestion.get("safety_review") or "").strip()):
+                    raise ValueError(
+                        "approved suggestions require client wording and safety review")
+            for suggestion in suggestion_reviews:
+                _evsr.save(
+                    cx, body.get("email"), suggestion.get("suggestion_id"),
+                    suggestion.get("decision"), reviewer_id,
+                    suggestion.get("client_safe_wording"),
+                    suggestion.get("safety_review"))
+            result = _evrr.review(
+                cx, body.get("id"), body.get("action"),
+                body.get("report"), body.get("reviewer_notes"), reviewer_id)
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        if result is None:
+            return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True, "request": result})
+
+
+@app.route("/console/eye-vision-reviews")
+def console_eye_vision_reviews_page():
+    resp = send_from_directory(STATIC, "console-eye-vision-reviews.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 def _remedies_coerce_importance(value):
