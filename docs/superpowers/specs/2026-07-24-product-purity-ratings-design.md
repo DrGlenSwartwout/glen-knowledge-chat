@@ -141,13 +141,35 @@ A client reaches a rating on **paid membership** (e.g. `membership_category == '
 **explicit request**, reusing the `supplement_review_access` gating shape. Flow:
 
 1. Confirmed row exists → return instantly.
-2. Else create the row, **acquire the Other Ingredients** (client label photo, product-page scrape,
-   or staff entry — raw text always stored), run the screen, run tier-2 on anything not red, land in
-   `ai_draft`.
+2. Else create the row (`requested`), acquire the Other Ingredients (the two-step cascade below),
+   run the screen, run tier-2 on anything not red, land in `ai_draft`.
 3. Glen confirms in the console → cached + surfaced.
 
-Excipient acquisition is the fuzzy, failure-prone step; it is isolated. A failure leaves the row
-`unrated`, never crashes the request, and never guesses a color.
+### Acquisition — a two-step cascade (decided 2026-07-26)
+
+Excipient acquisition is the fuzzy, failure-prone step, so it is isolated, **async/operator-triggered
+(a deferred `requested → screened` transition), not inline** — web search + fetch + extract is slow
+(tens of seconds), so it never blocks the client's request behind a spinner.
+
+- **Step 1 — online, automatic (no client burden).** Search for the product's Other Ingredients on a
+  product listing or a label image online, fetch the candidate source, and extract. Prefer this so
+  most products resolve without ever bothering the client.
+- **Step 2 — client photo, only if Step 1 fails.** If nothing verifiable is found online, ask the
+  client (in the portal) to upload a clear photo of the facts panel, then extract from the image.
+
+**The fabrication guard binds BOTH steps and is the whole safety story.** Extraction accepts an
+ingredient line only if it is a verified quote from the fetched source (the page text, or the vision
+model's verbatim transcription of the image) — never a model guess. This reuses the shipped
+`dashboard/document_extract.verify_quotes` + fails-closed discipline from the document-ingestion
+feature (#1172). An online scrape that *guessed* ingredients is the worst outcome — it could
+green-light a stearate product — so unverifiable Step-1 output is treated as **"not found"** and
+cascades to Step 2; if Step 2 is also unavailable or fails, the row rests **`unrated`**, never a
+color, never green. Acquisition failure never crashes the request.
+
+**Reuse boundary:** Step 2 (image) reuses #1172's vision-extraction path directly (with a
+supplement-specific prompt). Step 1 (usually HTML text, not an image) reuses the *guard pattern*
+(`verify_quotes`, fails-closed, draft store) but needs its own text-source extractor. If a Step-1
+source is itself a label image, the image path is reusable there too.
 
 ## Section 3 — The two readers
 
