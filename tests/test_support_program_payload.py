@@ -21,6 +21,8 @@ from dashboard import client_portal as cp
 from dashboard import condition_programs as prog
 from dashboard import household as hh
 
+import begin_funnel
+
 EMAIL = "spcaregiver@example.com"
 MEMBER = "spmember@example.com"
 
@@ -54,6 +56,7 @@ def app_env(tmp_db, monkeypatch):
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
         cp.init_client_portal_table(cx)
+        begin_funnel.init_journey_tables(cx)
         hh.init_household_tables(cx)
         prog.init_table(cx)
         token, _pid = cp.upsert_portal(cx, EMAIL, "Caregiver", {})
@@ -138,16 +141,18 @@ def test_member_sees_their_own_condition_not_the_caregivers(app_env, monkeypatch
     monkeypatch.setenv("SUPPORT_PROGRAMS_ENABLED", "1")
     monkeypatch.setenv("HOUSEHOLD_VIEW_ENABLED", "1")
     _seed_program(app, "wet-amd", "Wet AMD", WET_AMD_ITEMS, consult_recommended=True)
-    _seed_program(app, "dry-eye", "Dry Eye", MEMBER_ITEMS, consult_recommended=False)
+    # member's condition uses a NON-MIGRATED key so the dry-eye/cataract modifier
+    # migrations don't clobber the seeded items — isolates the member-aware routing test.
+    _seed_program(app, "member-cond", "Member Condition", MEMBER_ITEMS, consult_recommended=False)
     _seed_condition(app, EMAIL, "wet-amd")
-    _seed_condition(app, MEMBER, "dry-eye")
+    _seed_condition(app, MEMBER, "member-cond")
     with sqlite3.connect(app.LOG_DB) as cx:
         hh.add_member(cx, EMAIL, MEMBER, "Member", "dependent")
 
     j = client.get(f"/api/portal/{token}?member={MEMBER}").get_json()
     assert "support_program" in j
     sp = j["support_program"]
-    assert sp["condition_key"] == "dry-eye"
+    assert sp["condition_key"] == "member-cond"
     assert [it["name"] for it in sp["items"]] == ["WholOmega"]
 
 
