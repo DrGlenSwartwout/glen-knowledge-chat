@@ -75,6 +75,52 @@ def create_checkout_session(amount_cents, *, customer_email, description, metada
     return {"id": j.get("id"), "url": j.get("url")}
 
 
+def _price_checkout_params(price_id, *, mode, customer_email, metadata,
+                           success_url, cancel_url, subscription_metadata=None) -> dict:
+    """Pure: build form params for a Checkout Session against an existing Stripe
+    Price. mode='payment' (one-time) or 'subscription' (recurring). subscription_
+    metadata is copied to subscription_data[metadata][...] so later invoice/
+    subscription events carry it."""
+    p = {
+        "mode": mode,
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "line_items[0][price]": price_id,
+        "line_items[0][quantity]": "1",
+    }
+    if customer_email:
+        p["customer_email"] = customer_email
+    for k, v in (metadata or {}).items():
+        if v is None:
+            continue
+        p[f"metadata[{k}]"] = str(v)
+    if mode == "subscription":
+        for k, v in (subscription_metadata or {}).items():
+            if v is None:
+                continue
+            p[f"subscription_data[metadata][{k}]"] = str(v)
+    return p
+
+
+def create_price_checkout_session(price_id, *, mode, customer_email, metadata,
+                                  success_url, cancel_url, subscription_metadata=None) -> dict:
+    """Create a hosted Checkout Session against an existing Price. Returns {id, url}."""
+    params = _price_checkout_params(
+        price_id, mode=mode, customer_email=customer_email, metadata=metadata,
+        success_url=success_url, cancel_url=cancel_url,
+        subscription_metadata=subscription_metadata)
+    j = _post("/checkout/sessions", params)
+    return {"id": j.get("id"), "url": j.get("url")}
+
+
+def get_subscription(sub_id) -> dict:
+    """Retrieve a Subscription. Returns {id, status, current_period_end, customer, metadata}."""
+    j = _get(f"/subscriptions/{sub_id}")
+    return {"id": j.get("id"), "status": j.get("status"),
+            "current_period_end": j.get("current_period_end"),
+            "customer": j.get("customer"), "metadata": j.get("metadata") or {}}
+
+
 def _find_or_create_customer(email: str) -> str:
     """Find a Stripe Customer by email, or create one. Returns the customer id ("" on
     failure). A setup-mode Checkout Session only saves the card to a Customer when one
