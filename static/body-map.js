@@ -488,6 +488,31 @@
     const h = document.createElement("h2");
     h.textContent = pz.count ? "Your findings on this map" : "Your Body Map";
     panel.appendChild(h);
+    const scanNote = document.createElement("p");
+    scanNote.className = "bm-scan-time";
+    const scanLabel = document.createElement("strong");
+    scanLabel.textContent = "Most recent scan:";
+    scanNote.appendChild(scanLabel);
+    const scanDate = pz.latest_scan_date;
+    const scanAt = pz.latest_scan_at ? new Date(pz.latest_scan_at) : null;
+    const validScanAt = scanAt && !Number.isNaN(scanAt.getTime());
+    if (validScanAt) {
+      const clockWindow = window.OrganClock && window.OrganClock.windowForHour(
+        scanAt.getHours() + scanAt.getMinutes() / 60);
+      const dateText = scanAt.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+      const timeText = scanAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      scanNote.appendChild(document.createTextNode(" " + dateText + " at " + timeText
+        + (clockWindow ? " · " + clockWindow.meridian + " window" : "")));
+    } else if (scanDate) {
+      const dateOnly = new Date(scanDate + "T12:00:00");
+      const dateText = Number.isNaN(dateOnly.getTime()) ? scanDate
+        : dateOnly.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+      scanNote.appendChild(document.createTextNode(" " + dateText
+        + " · time of day was not recorded"));
+    } else {
+      scanNote.appendChild(document.createTextNode(" none on file"));
+    }
+    panel.appendChild(scanNote);
     if (!pz.count) {
       const p = document.createElement("p"); p.className = "bm-hint";
       p.textContent = pz.has_photo

@@ -71,3 +71,5 @@ body { margin:0; font-family: system-ui, sans-serif; color:var(--bm-text); backg
 .bm-findings li { margin:.3rem 0; }
 .bm-finding { display:block; width:100%; text-align:left; padding:8px 10px; border:1px solid var(--bm-line); background:var(--bm-surface); border-radius:6px; cursor:pointer; color:var(--bm-heading); font-size:14px; }
 .bm-finding:hover { background:var(--bm-accent); color:#3a2c08; border-color:var(--bm-accent); }
+.bm-scan-time { margin:0 0 12px; padding:9px 10px; border:1px solid var(--bm-border); border-radius:7px; background:var(--bm-bg); color:var(--bm-muted); font-size:13px; line-height:1.4; }
+.bm-scan-time strong { color:var(--bm-heading); }
