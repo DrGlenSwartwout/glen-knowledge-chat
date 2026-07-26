@@ -5,6 +5,7 @@
   const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "",
                   litZones: new Set(), portalToken: null,
                   slotSide: "", slotTransform: null, savedParams: null };
+  let clockTimer = null;
 
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
@@ -243,6 +244,57 @@
       svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
         e.classList.toggle("bm-lit", state.litZones.has(e.dataset.id)));
     }
+    if (state.payload.system === "organclock") renderCurrentClockTime(svg, mapFn);
+  }
+
+  function appendSvgText(svg, className, x, y, value) {
+    const text = document.createElementNS(svgNS, "text");
+    text.setAttribute("class", className);
+    text.setAttribute("x", x); text.setAttribute("y", y);
+    text.textContent = value;
+    svg.appendChild(text);
+  }
+
+  function renderCurrentClockTime(svg, mapFn) {
+    const now = new Date();
+    const fractionalHour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+    const active = window.OrganClock && window.OrganClock.windowForHour(fractionalHour);
+    const activeId = active ? "clock-" + active.code : null;
+    if (activeId) {
+      svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
+        e.classList.toggle("bm-current", e.dataset.id === activeId));
+    }
+
+    const angle = window.OrganClock ? window.OrganClock.angleForHour(fractionalHour) : ((fractionalHour - 3 + 24) % 24) * 15;
+    const u = clockToNormalized(angle);
+    const center = mapFn({ x: 0, y: 0 });
+    const tip = mapFn({ x: u.x * 0.88, y: u.y * 0.88 });
+    const needle = document.createElementNS(svgNS, "line");
+    needle.setAttribute("class", "bm-clock-needle");
+    needle.setAttribute("x1", center.x); needle.setAttribute("y1", center.y);
+    needle.setAttribute("x2", tip.x); needle.setAttribute("y2", tip.y);
+    svg.appendChild(needle);
+
+    const hub = document.createElementNS(svgNS, "circle");
+    hub.setAttribute("class", "bm-clock-hub");
+    hub.setAttribute("cx", center.x); hub.setAttribute("cy", center.y); hub.setAttribute("r", 7);
+    svg.appendChild(hub);
+
+    const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    appendSvgText(svg, "bm-clock-time", center.x, center.y - 38, time);
+    appendSvgText(svg, "bm-clock-active", center.x, center.y - 18, active ? active.meridian : "");
+    appendSvgText(svg, "bm-clock-local", center.x, center.y + 32, "Your local time · " + zone);
+  }
+
+  function syncClockTimer() {
+    if (clockTimer) {
+      window.clearInterval(clockTimer);
+      clockTimer = null;
+    }
+    if (state.payload && state.payload.system === "organclock") {
+      clockTimer = window.setInterval(renderChart, 30000);
+    }
   }
 
   // Place zone labels in two vertical columns (left/right of the chart centre),
@@ -344,7 +396,7 @@
     const _sn = state.payload.side_noun;
     document.getElementById("bm-side-label").textContent =
       isOutlineFrame() ? "Side" : (_sn ? _sn.charAt(0).toUpperCase() + _sn.slice(1) : "Eye");
-    renderLayerToggles(); renderChart();
+    renderLayerToggles(); renderChart(); syncClockTimer();
   }
 
   function wire() {
