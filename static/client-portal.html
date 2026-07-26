@@ -481,12 +481,33 @@
   /* Task 6: compact glaucoma-pilot triage form, shown inline under the Match phase. */
   .ob-triage-form{margin:.9rem 0 0;padding-top:.9rem;border-top:1px dashed var(--line)}
   .ob-triage-intro{color:var(--muted);font-size:.85rem;margin:0 0 .7rem}
+  .ob-condition-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:.45rem .8rem;margin:0 0 .8rem}
+  .ob-condition-choice{display:flex;align-items:flex-start;gap:.45rem;font-size:.9rem;
+    line-height:1.35;color:var(--ink)}
+  .ob-condition-choice input{margin-top:.15rem}
+  .ob-condition-detail{margin:.8rem 0;padding:.8rem;background:var(--card2);
+    border:1px solid var(--line);border-radius:10px}
+  .ob-condition-detail[hidden]{display:none}
+  .ob-followup-title{font-weight:600;font-size:.9rem;margin:0 0 .65rem;color:var(--ink)}
+  .ob-history-section+.ob-history-section{margin-top:1rem;padding-top:1rem;
+    border-top:1px dashed var(--line)}
+  .ob-product-history{margin:0 0 .65rem}
+  .ob-product-detail{margin:.35rem 0 .75rem 1.45rem}
+  .ob-product-detail[hidden]{display:none}
   .ob-triage-row{display:flex;gap:.7rem;flex-wrap:wrap;margin:0 0 .7rem}
   .ob-triage-field{display:flex;flex-direction:column;gap:.3rem;font-size:.85rem;
     font-weight:600;color:var(--ink);flex:1 1 8rem;min-width:0}
   .ob-triage-field input{width:100%;background:var(--card2);color:var(--ink);
     border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
     font-family:inherit;box-sizing:border-box}
+  .ob-triage-field select{width:100%;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
+    font-family:inherit;box-sizing:border-box}
+  .ob-triage-field textarea{width:100%;resize:vertical;background:var(--card);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:.9rem;
+    font-family:inherit;box-sizing:border-box}
+  .ob-inline-field{max-width:15rem;margin:0 0 .65rem}
   .ob-triage-field input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
   .ob-triage-check{display:flex;align-items:center;gap:.5rem;font-size:.9rem;
     font-weight:400;color:var(--ink);margin:0 0 .6rem}
@@ -513,9 +534,28 @@
   @media (max-width:480px){
     .portal-onboarding{padding:16px 16px}
     .ob-triage-row{flex-direction:column;gap:.6rem}
+    .ob-condition-list{grid-template-columns:1fr}
     .ob-triage-field{flex:1 1 100%}
     .ob-med-count{display:flex}
   }
+  /* My Records tile (static/js/portal-documents.js) — matches the .card system */
+  .portal-documents .doc-upload{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;
+    margin-bottom:1rem}
+  .portal-documents .doc-upload label{color:var(--muted);font-size:.92rem}
+  .portal-documents .doc-upload-input{flex:1 1 12rem;min-width:0;color:var(--ink);font-family:inherit;
+    font-size:.9rem;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .portal-documents .doc-upload .btn{padding:9px 18px;font-size:.92rem}
+  .portal-documents .doc-upload-status{flex-basis:100%;color:var(--muted);font-size:.86rem;min-height:1em}
+  .portal-documents .doc-list{list-style:none;margin:0;padding:0}
+  .portal-documents .doc-item{padding:.85rem 0;border-top:1px solid var(--line)}
+  .portal-documents .doc-item:first-child{border-top:0}
+  .portal-documents .doc-file{display:inline-block;font-weight:600;color:var(--brand);
+    text-decoration:none;font-family:"Raleway",sans-serif}
+  .portal-documents .doc-file::before{content:"\1F4C4";margin-right:.4rem;filter:grayscale(.15)}
+  .portal-documents .doc-file:hover{text-decoration:underline}
+  .portal-documents .doc-narrative{margin:.45rem 0 0;color:var(--ink);line-height:1.55;font-size:.96rem}
+  .portal-documents .doc-pending{margin:.4rem 0 0;color:var(--muted);font-size:.9rem;font-style:italic}
+  .portal-documents .doc-empty{color:var(--muted);margin:0}
 </style>
 </head>
 <body>
@@ -547,9 +587,13 @@
        survives render()'s poll re-renders, which fully replace app.innerHTML;
        filled/emptied by static/js/portal-library.js's own fetch + mount. -->
   <div id="portal-library-mount"></div>
+  <!-- My Records tile. Sibling of #app, filled by static/js/portal-documents.js's
+       own fetch + mount, same pattern as the library tile above. -->
+  <div id="portal-documents-mount"></div>
 
 <script src="/static/entity-ref.js"></script>
 <script src="/static/js/portal-library.js"></script>
+<script src="/static/js/portal-documents.js"></script>
 <script src="/static/js/portal-onboarding.js"></script>
 <script>
 // The last path segment is either an emailed portal token or the literal "me"
@@ -739,6 +783,46 @@ function prlSupplementBodyHtml(sp){
   const btnHref = safeUrl(sp.prl_link) || "https://truly.vip/prl";
   const btn = `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="background:#2f6f5e;color:#fff;margin-top:.5rem">Go to Premier Research Labs</a>`;
   const micro = `<p class="small muted" style="margin-top:.4rem">Budget-friendly option — order these directly from PRL, or use your matched formulas above.</p>`;
+  return `${blocks}${btn}${micro}`;
+}
+// Fullscript dispensary card body (Task 7): third-party products Glen recommends
+// but does not formulate, grouped by why they surfaced (mirrors prlSupplementBodyHtml's
+// focus-area grouping above). Flag-gated server-side (FULLSCRIPT_ENABLED) — see
+// d.fullscript_enabled at the card block below. Every buy link goes through
+// /fs/<token>/<slug> (never fullscript.com directly) so the click is recorded and
+// the destination is chosen server-side.
+function fullscriptBodyHtml(fsData){
+  fsData = fsData || {};
+  // Only permit http(s) hrefs for the dispensary button; same defense-in-depth as
+  // prlSupplementBodyHtml's local safeUrl above (no global safeUrl exists in this file).
+  const safeUrl = u => { u = String(u||""); return /^https?:\/\//i.test(u) ? u : ""; };
+  // Reuses the module-level `token` global (set once from the URL path near the
+  // top of this file) -- the server no longer echoes the portal token into the
+  // payload (that would widen every response with a bearer token even while this
+  // channel is dark), and static/client-portal.html already has this value.
+  const fsToken = esc(token);
+  const groups = Array.isArray(fsData.groups) ? fsData.groups : [];
+  let blocks = groups.map(g => {
+    const items = (Array.isArray(g.products) ? g.products : []).map(p => {
+      const brand = p.brand ? `<span class="small muted"> — ${esc(p.brand)}</span>` : "";
+      const ff = (p.ff && p.ff.name)
+        ? `<span class="small muted"> · you also have <strong>${esc(p.ff.name)}</strong></span>` : "";
+      const why = p.reason ? `<div class="small muted">${esc(p.reason)}</div>` : "";
+      return `<li><a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}</li>`;
+    }).join("");
+    if(!items) return "";   // mirror can carry zero-product groups; don't render a bare heading
+    return `<h3 class="small" style="margin:.2rem 0">${esc(g.heading||"")}</h3><ul>${items}</ul>`;
+  }).join("");
+  if(!blocks) blocks = `<p class="muted">No Fullscript matches yet.</p>`;
+  // No unattributed fallback: a bare "https://us.fullscript.com/" link carries no
+  // dispensary attribution, so an order placed through it earns the practitioner
+  // nothing -- worse than showing no button at all. Render the CTA only when the
+  // server gave us a usable dispensary URL.
+  const btnHref = safeUrl(fsData.dispensary_url);
+  const btn = btnHref
+    ? `<a class="btn" href="${esc(btnHref)}" target="_blank" rel="noopener" style="margin-top:.5rem">Open my Fullscript dispensary</a>`
+    : "";
+  const micro = `<p class="small muted" style="margin-top:.4rem">Products I recommend but don't make. Ordering through my dispensary keeps everything in one place.</p>`;
   return `${blocks}${btn}${micro}`;
 }
 // Practitioner-composed program card body (Task 5): a standing program your
@@ -2072,6 +2156,121 @@ function wireRecommendationsCard(){
   });
 }
 
+function renderEyeVisionReport(report){
+  if(!report) return "";
+  const open = !!report.open;
+  const findings = Array.isArray(report.findings) ? report.findings : [];
+  const list = (label, values) => Array.isArray(values) && values.length
+    ? `<p class="small" style="margin:.35rem 0"><strong>${esc(label)}:</strong> ${values.map(esc).join("; ")}</p>`
+    : "";
+  const relationshipHtml = rel => {
+    const eav = (rel.eav_points || []).map(p=>[p.code, p.name].filter(Boolean).join(" — "));
+    const energetic = (rel.energetic_relationships || []).map(r=>
+      `${r.type || "relationship"}: ${(r.names || []).join(", ")}`);
+    const clinical = [
+      list("Related symptoms or issues", rel.symptom_context),
+      list("Related clinical contexts", rel.condition_context)
+    ].join("");
+    return `<div style="margin:.65rem 0;padding:.65rem;border-left:3px solid var(--line)">
+      <strong>${esc(rel.label || rel.mapped_from || "Mapped relationship")}</strong>
+      ${list("Structure / function", rel.structure_function)}
+      ${list("Innervation / regulation", rel.innervation_regulation)}
+      ${list("EAV point", eav)}
+      ${list("Meridian / energetic vessel", energetic)}
+      ${list("Information relationships", rel.information_relationships)}
+      ${clinical ? `<details style="margin-top:.4rem"><summary>Related clinical context (not a diagnosis)</summary>${clinical}</details>` : ""}
+    </div>`;
+  };
+  const rows = findings.map(f=>`<div style="padding:.8rem 0;border-top:1px solid var(--line)">
+      <strong>${esc(f.name || "E4L pattern")}</strong>
+      <p style="margin:.35rem 0">${esc(f.client_text || "")}</p>
+      ${f.history_context ? `<p class="muted small" style="margin:.35rem 0">${esc(f.history_context)}</p>` : ""}
+      ${(f.integrated_relationships || []).map(relationshipHtml).join("")}
+      ${f.clinical_context_usage ? `<p class="muted small" style="margin:.35rem 0">${esc(f.clinical_context_usage)}</p>` : ""}
+    </div>`).join("");
+  const limitations = (Array.isArray(report.limitations) ? report.limitations : [])
+    .map(item=>`<li>${esc(item)}</li>`).join("");
+  const rr = report.review_request || {};
+  let reviewAction = "";
+  if(rr.eligible){
+    if(rr.status === "approved"){
+      reviewAction = `<p class="small" style="color:var(--gold)">Professionally reviewed and approved.</p>`;
+    } else if(rr.status === "requested" || rr.status === "draft"){
+      reviewAction = `<p class="small muted">Review requested. Your report is in the professional review queue.</p>`;
+    } else if(rr.status === "declined"){
+      reviewAction = `<p class="small muted">This review request was not approved for publication. Please contact us if you would like clarification.</p>`;
+    } else if(rr.is_paid_member){
+      reviewAction = `<div style="margin-top:.8rem"><button class="btn" id="eyeVisionReviewRequest">Request professional review</button><span class="small muted" id="eyeVisionReviewStatus" style="margin-left:.6rem"></span></div>`;
+    } else {
+      reviewAction = `<div style="margin-top:.8rem"><p class="small">Professional review is included with paid membership.</p><a class="btn" href="${esc(rr.upgrade_url || "/membership")}">Upgrade and request review</a></div>`;
+    }
+  }
+  return `<div class="card" id="eyeVisionReport">
+    <div id="eyeVisionReportToggle" role="button" tabindex="0"
+      aria-expanded="${open ? "true" : "false"}"
+      style="display:flex;align-items:center;gap:10px;cursor:pointer">
+      <h2 style="margin:0;flex:1">${esc(report.title || "Your Eye & Vision Pattern Report")}</h2>
+      <span class="muted" data-eye-chevron>${open ? "▾" : "▸"}</span>
+    </div>
+    <div id="eyeVisionReportBody"${open ? "" : " hidden"} style="margin-top:.8rem">
+      <p>${esc(report.intro || "")}</p>
+      ${report.scan_date ? `<p class="muted small">E4L scan: ${esc(report.scan_date)}</p>` : ""}
+      ${rows || `<p class="muted">${esc(report.empty_state || "No eye- or vision-mapped patterns were found.")}</p>`}
+      ${reviewAction}
+      ${limitations ? `<details style="margin-top:.8rem"><summary>Important context</summary><ul class="muted small">${limitations}</ul></details>` : ""}
+    </div>
+  </div>`;
+}
+
+function wireEyeVisionReport(){
+  const toggle = document.getElementById("eyeVisionReportToggle");
+  const body = document.getElementById("eyeVisionReportBody");
+  if(!toggle || !body) return;
+  const flip = ()=>{
+    const open = body.hidden;
+    body.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    const chevron = toggle.querySelector("[data-eye-chevron]");
+    if(chevron) chevron.textContent = open ? "▾" : "▸";
+    const member = new URLSearchParams(location.search).get("member");
+    const url = `/api/portal/${encodeURIComponent(token)}/eye-vision-report/state`
+      + (member ? `?member=${encodeURIComponent(member)}` : "");
+    fetch(url, {method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({open:open})}).catch(()=>{});
+  };
+  toggle.addEventListener("click", flip);
+  toggle.addEventListener("keydown", e=>{
+    if(e.key === "Enter" || e.key === " " || e.key === "Spacebar"){
+      e.preventDefault(); flip();
+    }
+  });
+  const reviewButton = document.getElementById("eyeVisionReviewRequest");
+  if(reviewButton){
+    reviewButton.addEventListener("click", async ()=>{
+      reviewButton.disabled = true;
+      const status = document.getElementById("eyeVisionReviewStatus");
+      if(status) status.textContent = "Sending…";
+      const member = new URLSearchParams(location.search).get("member");
+      const url = `/api/portal/${encodeURIComponent(token)}/eye-vision-report/request-review`
+        + (member ? `?member=${encodeURIComponent(member)}` : "");
+      try{
+        const response = await fetch(url, {method:"POST"});
+        const result = await response.json();
+        if(response.status === 402 && result.upgrade_url){
+          location.href = result.upgrade_url;
+          return;
+        }
+        if(!response.ok) throw new Error(result.error || "Unable to request review");
+        reviewButton.remove();
+        if(status) status.textContent = "Review requested. Your report is now in the professional review queue.";
+      }catch(error){
+        reviewButton.disabled = false;
+        if(status) status.textContent = error.message || "Unable to request review.";
+      }
+    });
+  }
+}
+
 function render(d, v){
   d = d || {};
   // Hub landing (flagged). Prepended above existing cards; panels below unchanged.
@@ -2150,6 +2349,16 @@ function render(d, v){
       <div class="sub">${escGreeting(stripSalutation(d.greeting) || "This is your personal healing home: your video, your healing path, and your remedies, all in one place.")}</div>
       ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${esc(b)}</span>`).join("")}</div>`:""}
     </div>`;
+
+  if (d.linked_practitioner_account) {
+    html += `<div class="card quiet">
+      <h2>Your practitioner account</h2>
+      <p class="muted small">Manage certification, qualifications, clients, and practitioner ordering.</p>
+      <a class="btn full" href="/portal/${encodeURIComponent(seg)}/practitioner-account">Open Practitioner Portal</a>
+    </div>`;
+  }
+
+  html += renderEyeVisionReport(d.eye_vision_report);
 
   // Program-page entry card: links to the personalized membership program page.
   // Flag-gated server-side (payload.program_page is only truthy-enabled when
@@ -2683,6 +2892,17 @@ function render(d, v){
     html += `<div class="card prl-supplement-card">
       <h2>Premier Research Labs options</h2>
       ${prlSupplementBodyHtml(d.prl_supplement)}
+    </div>`;
+  }
+
+  // Fullscript card (Task 7, flag-gated server-side): a third-party dispensary
+  // channel, present only when FULLSCRIPT_ENABLED is on and this client's scan
+  // resolved to at least one candidate. Sibling of the PRL card above — same
+  // grouped-list idiom, distinct product source.
+  if (d.fullscript_enabled && d.fullscript) {
+    html += `<div class="card fullscript-card">
+      <h2>Fullscript</h2>
+      ${fullscriptBodyHtml(d.fullscript)}
     </div>`;
   }
 
@@ -3243,6 +3463,7 @@ function render(d, v){
   if(rdBtn) rdBtn.addEventListener("click", dismissRecommendation);
 
   wireRecommendationsCard();
+  wireEyeVisionReport();
 
   // My Remedies panel: every action (ranked "Add to my Oasis / order" hand-off,
   // plus the external-stack add/request-review/remove/edit actions) is wired

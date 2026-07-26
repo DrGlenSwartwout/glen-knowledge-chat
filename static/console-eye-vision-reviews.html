@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Eye & Vision Report Reviews · Console</title>
+<style>
+body{margin:0;background:#0a150d;color:#fdf4d8;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:1100px;margin:auto;padding:24px}.muted{color:#a89870}.card{background:#111f16;border:1px solid #21472d;border-radius:12px;padding:16px;margin:14px 0}
+.meta{display:flex;gap:16px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+label{display:block;font-weight:600;margin:10px 0 4px}input,select,textarea{box-sizing:border-box;width:100%;background:#0d1117;color:#fdf4d8;border:1px solid #21472d;border-radius:8px;padding:9px}
+textarea{min-height:100px}textarea.notes{min-height:80px}.finding,.suggestion{border:1px solid #21472d;border-radius:10px;padding:12px;margin:10px 0}.readonly{font-size:12px;color:#a89870}
+.advanced textarea{min-height:300px;font:12px ui-monospace,monospace}button{border:1px solid #d4a843;background:#d4a843;color:#111;padding:8px 14px;border-radius:8px;cursor:pointer;margin:8px 8px 0 0}
+button.alt{background:transparent;color:#fdf4d8;border-color:#21472d}button.danger{background:transparent;color:#ef9a9a;border-color:#7d3333}.status{min-height:20px;margin-top:8px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<script src="/static/op-nav.js" data-active="admin" data-sub="approvals"></script>
+<main class="wrap">
+  <h1>Eye & Vision Report Reviews</h1>
+  <p class="muted">Paid-member requests awaiting editing and approval. Approved JSON becomes the client-visible report snapshot for that scan.</p>
+  <label for="reviewer">Reviewer name</label>
+  <input id="reviewer" placeholder="Required for every saved decision" style="max-width:360px">
+  <button class="alt" onclick="loadQueue()">Refresh</button>
+  <div id="state" class="muted"></div>
+  <div id="queue"></div>
+</main>
+<script>
+function key(){return localStorage.getItem("console_key")||""}
+function hdr(){return {"Content-Type":"application/json","X-Console-Key":key()}}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+let queueRows={};
+(function(){const r=localStorage.getItem("eye_vision_reviewer")||"";document.getElementById("reviewer").value=r})();
+function findingEditor(rowId,f,index){
+  const mapped=(f.integrated_relationships||[]).map(r=>r.label||r.mapped_from).filter(Boolean).join(", ");
+  return `<div class="finding">
+    <strong>${esc(f.name||`Finding ${index+1}`)}</strong>
+    <div class="readonly">Code: ${esc(f.code||"—")} · Classification: ${esc(f.classification||"—")} · Mapped layers: ${esc(mapped||"—")}</div>
+    <label>Client interpretation</label><textarea id="finding-body-${rowId}-${index}">${esc(f.client_text||"")}</textarea>
+    <label>History context</label><textarea id="finding-history-${rowId}-${index}">${esc(f.history_context||"")}</textarea>
+  </div>`;
+}
+function suggestionEditor(rowId,s,index){
+  const review=s.review||{};
+  return `<div class="suggestion">
+    <strong>${esc(s.name||s.code||"Suggestion")}</strong>
+    <div class="readonly">${esc(s.category||"")} · ${esc(s.confidence||"")} · ${esc(s.rationale||"")}</div>
+    <label>Decision</label><select id="suggestion-decision-${rowId}-${index}">
+      <option value="">Pending</option><option value="approved"${review.decision==="approved"?" selected":""}>Approve</option>
+      <option value="rejected"${review.decision==="rejected"?" selected":""}>Reject</option>
+    </select>
+    <label>Client-safe wording</label><textarea id="suggestion-wording-${rowId}-${index}">${esc(review.client_safe_wording||"")}</textarea>
+    <label>Safety / interaction review</label><textarea id="suggestion-safety-${rowId}-${index}">${esc(review.safety_review||"")}</textarea>
+  </div>`;
+}
+function card(row){
+  queueRows[row.id]=row;
+  const report=row.report||{}, findings=report.findings||[];
+  const suggestions=((row.suggestions||{}).candidates)||[];
+  const extensions=((row.suggestions||{}).program_extension_opportunities)||[];
+  return `<section class="card" id="req-${row.id}">
+    <div class="meta"><strong>${esc(row.email)}</strong><span>Scan: ${esc(row.scan_date)}</span><span>Status: ${esc(row.status)}</span><span>Requested: ${esc(row.requested_at)}</span></div>
+    <div class="grid">
+      <div>
+        <h2>Client report</h2>
+        <label>Report title</label><input id="title-${row.id}" value="${esc(report.title||"")}">
+        <label>Introduction</label><textarea id="intro-${row.id}">${esc(report.intro||"")}</textarea>
+        ${findings.map((f,i)=>findingEditor(row.id,f,i)).join("")}
+        <label>Important context — one item per line</label><textarea id="limitations-${row.id}">${esc((report.limitations||[]).join("\n"))}</textarea>
+      </div>
+      <div>
+        <h2>Suggestions</h2>
+        <p class="muted">Suggestion approvals require both client-safe wording and a documented safety/interaction review.</p>
+        ${suggestions.length?suggestions.map((s,i)=>suggestionEditor(row.id,s,i)).join(""):'<p class="muted">No suggestion candidates.</p>'}
+        ${extensions.length?`<details><summary>Program extension opportunities (${extensions.length})</summary>${extensions.map(x=>`<p><strong>${esc(x.label)}</strong><br><span class="readonly">${esc(x.basis)} ${esc(x.proposed_scope)}</span></p>`).join("")}</details>`:""}
+        <label>Internal reviewer notes</label><textarea class="notes" id="notes-${row.id}">${esc(row.reviewer_notes||"")}</textarea>
+      </div>
+    </div>
+    <details class="advanced"><summary>Advanced: original JSON snapshot</summary><textarea readonly>${esc(JSON.stringify(report,null,2))}</textarea></details>
+    <button onclick="act(${row.id},'approve')">Approve report</button>
+    <button class="alt" onclick="act(${row.id},'save_draft')">Save draft</button>
+    <button class="danger" onclick="act(${row.id},'decline')">Decline</button>
+    <div class="status muted" id="status-${row.id}"></div>
+  </section>`;
+}
+async function loadQueue(){
+  const state=document.getElementById("state"); state.textContent="Loading…";
+  const r=await fetch("/api/console/eye-vision-reviews",{headers:hdr()});
+  if(!r.ok){state.textContent="Unable to load. Open the console through an authenticated console session.";return}
+  const j=await r.json(), rows=j.pending||[]; state.textContent=rows.length?`${rows.length} pending`:"No pending requests.";
+  queueRows={}; document.getElementById("queue").innerHTML=rows.map(card).join("");
+}
+function collectReport(id){
+  const row=queueRows[id], report=JSON.parse(JSON.stringify(row.report||{}));
+  report.title=document.getElementById(`title-${id}`).value.trim();
+  report.intro=document.getElementById(`intro-${id}`).value.trim();
+  (report.findings||[]).forEach((f,i)=>{
+    f.client_text=document.getElementById(`finding-body-${id}-${i}`).value.trim();
+    f.history_context=document.getElementById(`finding-history-${id}-${i}`).value.trim()||null;
+  });
+  report.limitations=document.getElementById(`limitations-${id}`).value.split("\n").map(s=>s.trim()).filter(Boolean);
+  return report;
+}
+function collectSuggestions(id){
+  const rows=(((queueRows[id]||{}).suggestions||{}).candidates)||[];
+  return rows.map((s,i)=>({
+    suggestion_id:s.suggestion_id,
+    decision:document.getElementById(`suggestion-decision-${id}-${i}`).value,
+    client_safe_wording:document.getElementById(`suggestion-wording-${id}-${i}`).value.trim(),
+    safety_review:document.getElementById(`suggestion-safety-${id}-${i}`).value.trim()
+  })).filter(s=>s.decision);
+}
+async function act(id,action){
+  const status=document.getElementById(`status-${id}`); status.textContent="Saving…";
+  const reviewer=document.getElementById("reviewer").value.trim();
+  if(!reviewer){status.textContent="Enter the reviewer name first.";return}
+  localStorage.setItem("eye_vision_reviewer",reviewer);
+  const report=action==="decline"?null:collectReport(id);
+  const r=await fetch("/api/console/eye-vision-reviews",{method:"POST",headers:hdr(),body:JSON.stringify({
+    id,email:queueRows[id].email,action,report,reviewer_id:reviewer,
+    reviewer_notes:document.getElementById(`notes-${id}`).value,
+    suggestion_reviews:collectSuggestions(id)
+  })});
+  const j=await r.json();
+  if(!r.ok){status.textContent=j.error||"Unable to save.";return}
+  status.textContent=`Saved as ${j.request.status}.`;
+  if(action==="approve"||action==="decline") setTimeout(loadQueue,500);
+}
+loadQueue();
+</script>
+</body>
+</html>

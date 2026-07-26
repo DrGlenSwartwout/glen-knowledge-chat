@@ -227,3 +227,85 @@ def test_client_condition_for_unknown_email_returns_none(app_mod):
 
 def test_client_condition_for_empty_email_returns_none(app_mod):
     assert app_mod._client_condition_for("") is None
+
+
+# --- CTI-2: canonical conditions in the detection input --------------------
+from dashboard import canonical_tags as _ct_seed
+
+
+def _seed_canonical(db, email, conditions):
+    with sqlite3.connect(db) as cx:
+        for v in conditions:
+            _ct_seed.set_attr(cx, email, "conditions", v, source="test")
+        cx.commit()
+
+
+def test_detect_tags_puts_canonical_conditions_first(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", conditions=["dry amd"], tags=["pb:dry-eye"])
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out[0] == "wet amd"                       # canonical is first
+    assert "dry amd" in out and "pb:dry-eye" in out  # people data still present
+
+
+def test_detect_tags_people_only_when_no_canonical(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"], tags=["x"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out == ["Wet AMD", "x"]
+
+
+def test_detect_tags_canonical_only_when_no_people_row(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["ocular hypertension"])
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")
+    assert out == ["ocular hypertension"]
+
+
+def test_detect_tags_empty_when_nothing(app_mod, tmp_db):
+    with sqlite3.connect(tmp_db) as cx:
+        assert app_mod._condition_detect_tags(cx, "nobody@x.com") == []
+
+
+def test_detect_tags_degrades_when_canonical_read_raises(app_mod, tmp_db, monkeypatch):
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"])
+    from dashboard import canonical_tags
+    monkeypatch.setattr(canonical_tags, "get_person",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    with sqlite3.connect(tmp_db) as cx:
+        out = app_mod._condition_detect_tags(cx, "jane@example.com")   # must not raise
+    assert out == ["Wet AMD"]
+
+
+# --- CTI-2 Task 2: resolver wired to canonical-aware detection input -------
+
+def test_resolver_override_still_wins_over_canonical(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    with sqlite3.connect(tmp_db) as cx:
+        from dashboard import client_conditions as _cc
+        _cc.init_table(cx)
+        _cc.set(cx, "jane@example.com", "dry-eye", "glen")
+    assert app_mod._client_condition_for("jane@example.com") == "dry-eye"
+
+
+def test_resolver_canonical_drives_program_when_no_override(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["ocular hypertension"])
+    assert app_mod._client_condition_for("jane@example.com") == "glaucoma-elevated-iop"
+
+
+def test_resolver_canonical_outranks_conflicting_people_tag(app_mod, tmp_db):
+    _seed_person(tmp_db, "jane@example.com", tags=["pb:dry-amd"])
+    _seed_canonical(tmp_db, "jane@example.com", ["wet amd"])
+    assert app_mod._client_condition_for("jane@example.com") == "wet-amd"
+
+
+def test_resolver_ambiguous_canonical_condition_returns_none(app_mod, tmp_db):
+    _seed_canonical(tmp_db, "jane@example.com", ["glaucoma"])
+    assert app_mod._client_condition_for("jane@example.com") is None
+
+
+def test_resolver_people_only_unchanged_regression(app_mod, tmp_db):
+    # No canonical row at all -> behaves exactly as before.
+    _seed_person(tmp_db, "jane@example.com", conditions=["Wet AMD"])
+    assert app_mod._client_condition_for("jane@example.com") == "wet-amd"

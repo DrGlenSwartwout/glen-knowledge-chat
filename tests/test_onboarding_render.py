@@ -72,15 +72,38 @@ def test_render_onboarding_triage_form_gated_on_history_done():
         };
       }
 
-      // (a) history NOT done -> the triage form is present.
+      // (a) history NOT done -> the condition checklist is present.
       const htmlNotDone = render(baseStatus(false, false));
       if (!/ob-triage-form/.test(htmlNotDone)) { console.error('triage form missing when history.done===false'); process.exit(1); }
       if (!/name="iop_od"/.test(htmlNotDone)) { console.error('missing iop_od input'); process.exit(1); }
       if (!/name="iop_os"/.test(htmlNotDone)) { console.error('missing iop_os input'); process.exit(1); }
-      if (!/name="on_meds"/.test(htmlNotDone)) { console.error('missing on_meds checkbox'); process.exit(1); }
-      if (!/name="field_loss"/.test(htmlNotDone)) { console.error('missing field_loss checkbox'); process.exit(1); }
-      if (!/data-category="normal"/.test(htmlNotDone) || !/data-category="elevated"/.test(htmlNotDone)) {
-        console.error('missing category fallback buttons'); process.exit(1);
+      const required = ['glaucoma','cataract','macular','dry-eye','retinitis-pigmentosa','diabetic-retinopathy','other'];
+      for (const condition of required) {
+        if (!htmlNotDone.includes('value="' + condition + '"')) {
+          console.error('missing condition ' + condition); process.exit(1);
+        }
+      }
+      if (!/name="other_condition"/.test(htmlNotDone)) {
+        console.error('missing Other free-text field'); process.exit(1);
+      }
+      for (const kind of ['prescriptions','otc','supplements']) {
+        if (!htmlNotDone.includes('name="' + kind + '_yes"') ||
+            !htmlNotDone.includes('name="' + kind + '_text"')) {
+          console.error('missing current-products fields for ' + kind); process.exit(1);
+        }
+      }
+      for (const kind of ['surgeries','physical_trauma','psychoemotional_trauma',
+                           'toxins','vaccinations','family_history','diagnoses',
+                           'allergies','dental','sleep']) {
+        if (!htmlNotDone.includes('name="' + kind + '_yes"') ||
+            !htmlNotDone.includes('name="' + kind + '_text"')) {
+          console.error('missing extended-history fields for ' + kind); process.exit(1);
+        }
+      }
+      if (!/parent or grandparent/.test(htmlNotDone) ||
+          !/current or past/.test(htmlNotDone) ||
+          !/age at the time/.test(htmlNotDone)) {
+        console.error('extended history is missing intake-parallel details'); process.exit(1);
       }
 
       // (a) history IS done -> the triage form is absent.

@@ -35,7 +35,19 @@ def test_decision_table():
 
 def test_single_program_conditions_resolve_with_no_triage_questions():
     assert ct.resolve_programs("dry-eye", {}) == ["dry-eye"]
+    assert ct.resolve_programs("retinitis-pigmentosa", {}) == ["retinitis-pigmentosa"]
+    assert ct.resolve_programs("diabetic-retinopathy", {}) == ["diabetic-retinopathy"]
     assert ct.resolve_programs("vision-improvement", {}) == ["vision-improvement"]
+    assert ct.resolve_programs("other", {"other_condition": "Uveitis"}) == []
+
+
+def test_other_condition_free_text_roundtrips():
+    cx = _cx()
+    result = ct.seed_from_triage(
+        cx, "other@x.com", "other", {"other_condition": "Uveitis"})
+    assert result["programs"] == []
+    stored = ct.get_triage(cx, "other@x.com", "other")
+    assert stored["other_condition"] == "Uveitis"
     # answers are irrelevant for a single-program condition
     assert ct.resolve_programs("dry-eye", {"iop_od": 30}) == ["dry-eye"]
 

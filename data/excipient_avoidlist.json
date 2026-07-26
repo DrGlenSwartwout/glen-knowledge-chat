@@ -1,0 +1,31 @@
+{
+  "version": "2026-07-24",
+  "red": [
+    {"canonical": "magnesium stearate",
+     "aliases": ["magnesium stearate", "vegetable stearate", "stearic acid", "vegetable magnesium stearate"],
+     "rationale": "Stearates coat particles and reduce bioavailability."},
+    {"canonical": "gelatin",
+     "aliases": ["gelatin", "bovine gelatin", "porcine gelatin", "gelatin capsule"],
+     "rationale": "Animal gelatin carries a documented glyphosate-contamination concern (Seneff) and is non-vegetarian."},
+    {"canonical": "dicalcium phosphate",
+     "aliases": ["dicalcium phosphate", "dcp", "calcium phosphate dibasic"],
+     "rationale": "Dicalcium phosphate is a poorly-chosen filler that Glen avoids."},
+    {"canonical": "titanium dioxide",
+     "aliases": ["titanium dioxide"],
+     "rationale": "Titanium dioxide is a whitening agent with no nutritional purpose and safety concerns."},
+    {"canonical": "artificial color",
+     "aliases": ["fd&c", "fd & c", "lake", "artificial color", "artificial colour", "tartrazine", "yellow 5", "red 40", "blue 1"],
+     "rationale": "Synthetic dyes have no nutritional purpose."},
+    {"canonical": "hydrogenated oil",
+     "aliases": ["hydrogenated oil", "partially hydrogenated", "hydrogenated soybean oil", "hydrogenated palm oil"],
+     "rationale": "Hydrogenated oils introduce trans fats."},
+    {"canonical": "carrageenan",
+     "aliases": ["carrageenan"],
+     "rationale": "Carrageenan is a pro-inflammatory thickener."}
+  ],
+  "yellow": [
+    {"canonical": "silicon dioxide",
+     "aliases": ["silicon dioxide", "silica", "silicon dioxide (as a flow agent)", "colloidal silicon dioxide"],
+     "rationale": "Silica as a flow-agent filler is inert and tolerated, but not ideal; it counts against a product only as a filler, never when present as an intentional nutrient."}
+  ]
+}

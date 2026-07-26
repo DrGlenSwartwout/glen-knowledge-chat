@@ -7688,6 +7688,46 @@ def email_click_redirect(token, source, slug):
     return redirect(dest, code=302)
 
 
+@app.route("/fs/<token>/<product_slug>", methods=["GET"])
+def fullscript_click_redirect(token, product_slug):
+    """Tracked OUTBOUND redirect into Glen's Fullscript dispensary. Identity is
+    server-resolved from the portal token only. The destination is built from a
+    hardcoded base + config + the DB row and NEVER from the request, so this
+    route cannot be turned into an open redirect. A recording failure must not
+    block the redirect."""
+    dest = "/"
+    try:
+        from dashboard import fullscript as _fs
+        with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            portal = _portal_record_for(cx, token)
+            if portal:
+                email = (portal.get("email") or "").strip().lower()
+                row = _fs.product_by_slug(cx, product_slug)
+                if email and row:
+                    dest = _fullscript_dispensary_url()
+                    # Origin attribution: EXACT while only the `pinned` and `scan`
+                    # drivers are wired (mirrors candidates_for's Phase A1 scope) --
+                    # revisit this when `review`/`condition` land, since a product
+                    # surfaced by one of those would still be misreported as "scan"
+                    # here. A failed pins lookup must not cost the client their
+                    # click, so fall back to an empty origin rather than losing it.
+                    origin = ""
+                    try:
+                        pinned_names = {p["name"] for p in _fs.pins_for_client(cx, email)}
+                        origin = "pinned" if row["name"] in pinned_names else "scan"
+                    except Exception:
+                        origin = ""
+                    try:
+                        _fs.record_click(cx, email, row["name"], origin)
+                    except Exception:
+                        pass
+    except Exception:
+        dest = "/"
+    return redirect(dest, code=302)
+
+
 @app.route("/begin/product-data/<slug>")
 def begin_product_data(slug):
     p = _get_product(slug)
@@ -15436,6 +15476,43 @@ def api_practitioner_portal_data():
     return jsonify({"ok": True, **data})
 
 
+@app.route("/practitioner/client-account", methods=["GET"])
+def practitioner_to_client_account():
+    """Reciprocal account bridge from a practitioner session to their own
+    email-matched client portal. Provision the client side on first use."""
+    token = (request.args.get("token") or "").strip()
+    pid = _pp.practitioner_id_from_session(token) if token else None
+    if not pid:
+        return redirect("/practitioner")
+    pdata = _pp.portal_data(pid)
+    if not pdata:
+        return redirect("/practitioner")
+    email = (pdata.get("email") or "").strip().lower()
+    name = (pdata.get("name") or "").strip()
+    from dashboard import client_portal as _cp
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        if not _cp.get_portal_content_by_email(cx, email):
+            _cp.upsert_portal(cx, email, name, {})
+        link, _reissued = _cp.portal_link_for(cx, email, portal_base())
+    return redirect(link or "/portal/login")
+
+
+@app.route("/api/practitioner/qualifications", methods=["POST"])
+def api_practitioner_qualifications():
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "not signed in"}), 401
+    try:
+        saved = _pp.save_qualification(pid, request.get_json(silent=True) or {})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        print(f"[practitioner-qualification] save failed: {e!r}", flush=True)
+        return jsonify({"ok": False, "error": "Could not save qualification details."}), 500
+    return jsonify({"ok": True, "qualification": saved})
+
+
 @app.route("/api/practitioner/pricing", methods=["POST"])
 def api_practitioner_pricing():
     pid = _practitioner_session_pid()
@@ -17839,6 +17916,50 @@ def api_practitioner_clients_search():
     return jsonify({"ok": True, "clients": _pp.search_clients(pid, q)})
 
 
+@app.route("/api/practitioner/eye-vision-suggestions", methods=["GET", "POST"])
+def api_practitioner_eye_vision_suggestions():
+    """Practitioner-only Eye & Vision suggestion drafts and review decisions.
+
+    The client portal never calls this endpoint and never receives draft candidates.
+    """
+    pid = _practitioner_session_pid()
+    if not pid:
+        return jsonify({"ok": False, "error": "authentication required"}), 401
+    body = request.get_json(silent=True) or {}
+    client_email = (
+        body.get("client_email") if request.method == "POST"
+        else request.args.get("client_email")
+    )
+    client_email = (client_email or "").strip().lower()
+    if not client_email or not _pp.client_belongs_to_practitioner(pid, client_email):
+        return jsonify({"ok": False, "error": "not authorized for this client"}), 403
+
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        contract = _evr.build_practitioner_suggestions(
+            cx, client_email, _dt.date.today().isoformat())
+        if contract is None:
+            return jsonify({"ok": True, "suggestions": None})
+        _evsr.init_table(cx)
+        valid_ids = {
+            row.get("suggestion_id") for row in contract.get("candidates") or []}
+        if request.method == "POST":
+            suggestion_id = (body.get("suggestion_id") or "").strip()
+            if suggestion_id not in valid_ids:
+                return jsonify({"ok": False, "error": "unknown suggestion"}), 404
+            try:
+                _evsr.save(
+                    cx, client_email, suggestion_id, body.get("decision"), str(pid),
+                    body.get("client_safe_wording"),
+                    body.get("safety_review"))
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+        contract = _evsr.overlay(contract, _evsr.decisions(cx, client_email))
+    return jsonify({"ok": True, "suggestions": contract})
+
+
 @app.route("/api/practitioner/chat", methods=["POST"])
 def api_practitioner_chat():
     """Practitioner-authenticated product-selection chat scoped to FF catalog.
@@ -18373,6 +18494,22 @@ def _prl_supplement_enabled():
     never gains the `prl_supplement` key, so responses stay byte-identical."""
     return (os.environ.get("PRL_SUPPLEMENT_ENABLED", "") or "").strip().lower() in (
         "1", "true", "yes", "on")
+
+
+def _fullscript_enabled():
+    """Default OFF. When off the portal payload never gains a `fullscript` key,
+    so responses stay byte-identical."""
+    return (os.environ.get("FULLSCRIPT_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _fullscript_dispensary_url():
+    """Attribution-safe entry point. Phase A routes every client here rather than
+    to a product deep link: whether a NEW signup from /u/catalog/product/... is
+    attached to the Remedy Match dispensary is unconfirmed, and guessing wrong
+    loses the margin. Built from a hardcoded base + config, never from a request."""
+    slug = (os.environ.get("FULLSCRIPT_DISPENSARY_SLUG", "") or "remedymatch").strip()
+    return f"https://us.fullscript.com/welcome/{slug}/store-start"
 
 
 def _portal_scan_history_enabled() -> bool:
@@ -19676,6 +19813,26 @@ def client_portal_page(token):
     return send_from_directory(STATIC, "client-portal.html")
 
 
+@app.route("/portal/<token>/practitioner-account")
+def client_to_practitioner_account(token):
+    """Reciprocal account bridge: a valid client portal may open the practitioner
+    account carrying the same email. The bridge mints a fresh scoped practitioner
+    session; it never exposes or reuses the client's durable portal token."""
+    with db.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+    if not portal:
+        return redirect("/portal/login")
+    email = (portal.get("email") or "").strip().lower()
+    try:
+        pid = _pp.find_practitioner_id_by_email(email)
+    except Exception:
+        pid = None
+    if not pid:
+        return redirect("/practitioner/register")
+    session = _pp.create_session_token(pid)
+    return redirect(f"/practitioner/portal?token={session}&linked=client")
+
+
 @app.route("/portal/<token>/bodymap")
 def client_portal_bodymap_page(token):
     """Personalized Body Map for a client: the same /body-map page, which detects
@@ -20125,6 +20282,20 @@ def api_client_portal(token):
                 payload["prl_supplement"] = _prl_block
         except Exception as _e:
             print(f"[prl-supplement/payload] {_e!r}", flush=True)
+    # Fullscript dispensary channel (flag-gated, best-effort), sibling of the
+    # PRL Supplement card above. The card's buy links are /fs/<token>/<slug> (Task 6);
+    # the frontend gets the token from its own module-level URL-derived `token`
+    # global (static/client-portal.html), not from the payload -- widening every
+    # portal response with a bearer token, even while this channel is dark, is
+    # exactly the regression this flag gate exists to prevent.
+    payload["fullscript_enabled"] = _fullscript_enabled()
+    if _fullscript_enabled():
+        try:
+            _fs_block = _fullscript_for(email_for_reports, req_date or None)
+            if _fs_block:
+                payload["fullscript"] = _fs_block
+        except Exception as _e:
+            print(f"[fullscript/payload] {_e!r}", flush=True)
     # Practitioner-composed program card (Task 5, flag-gated, best-effort): a
     # standing hand-composed program, distinct from the condition-driven
     # support_program card above and from the reco-card. email_for_reports is
@@ -20207,6 +20378,56 @@ def api_client_portal(token):
                 }
         except Exception as _e:
             print(f"[data-sharing/payload] {_e!r}", flush=True)
+    # Reciprocal account bridge. Presence only: the actual transition is a
+    # server-authorized redirect above, so no practitioner session is exposed here.
+    try:
+        primary_email = (portal.get("email") or "").strip().lower()
+        payload["linked_practitioner_account"] = bool(
+            _pp.find_practitioner_id_by_email(primary_email))
+    except Exception:
+        payload["linked_practitioner_account"] = False
+    # Focused Eye & Vision E4L report. A saved client preference wins; otherwise
+    # it starts open only when the displayed member has eye/vision history.
+    if email_for_reports:
+        try:
+            from dashboard import eye_vision_report as _evr
+            from dashboard import recommendation_prefs as _rp_evr
+            from dashboard import eye_vision_review_requests as _evrr
+            with db.connect(LOG_DB) as _cx_evr:
+                _cx_evr.row_factory = sqlite3.Row
+                _rp_evr.init_recommendation_prefs(_cx_evr)
+                _section_state = _rp_evr.get_section_state(_cx_evr, email_for_reports)
+                _saved = _section_state.get(_evr.SECTION_KEY)
+                _eye_block = _evr.build_portal_block(
+                    _cx_evr, email_for_reports, _dt.date.today().isoformat(),
+                    saved_collapsed=_saved)
+                if _eye_block:
+                    _generated_eligible = bool(
+                        _eye_block.get("history_eye_issue")
+                        and _eye_block.get("status") == "ready")
+                    _evrr.init_table(_cx_evr)
+                    _review = _evrr.get_for_scan(
+                        _cx_evr, email_for_reports, _eye_block.get("scan_date"))
+                    if _review and _review["status"] == "approved":
+                        _approved = dict(_review.get("report") or {})
+                        # Preserve current display-state resolution; approval edits
+                        # report content, not the client's open/closed preference.
+                        for _key in (
+                            "open", "default_open", "preference_saved",
+                            "scan_date", "history_eye_issue", "section_key",
+                        ):
+                            _approved[_key] = _eye_block.get(_key)
+                        _eye_block = _approved
+                    _eye_block["review_request"] = {
+                        "eligible": _generated_eligible,
+                        "is_paid_member": _is_paid_member(email_for_reports),
+                        "status": (_review or {}).get("status"),
+                        "requested_at": (_review or {}).get("requested_at"),
+                        "upgrade_url": "/membership",
+                    }
+                    payload["eye_vision_report"] = _eye_block
+        except Exception as _e:
+            print(f"[eye-vision-report/payload] {_e!r}", flush=True)
     return jsonify(payload)
 
 
@@ -20354,7 +20575,9 @@ def api_portal_triage(token):
                     "cataract_type", "age", "steroids", "diabetes", "inflammation",
                     "radiation", "atopy", "yellow_vision",
                     # macular sub-type triage
-                    "amd_type", "injections", "distortion")}
+                    "amd_type", "injections", "distortion",
+                    # free-text history item when no authored protocol fits
+                    "other_condition")}
         # Ensure the condition-programs store exists and every program (incl.
         # any added after prod's once-ever seed already fired, e.g.
         # vision-improvement) is present -- this route resolves programs by
@@ -20364,6 +20587,60 @@ def api_portal_triage(token):
         res = _ct.seed_from_triage(cx, email, cond, answers)
     return jsonify({"ok": True, "programs": res["programs"], "seeded": len(res["seeded"]),
                     "consult_recommended": bool(res.get("consult_recommended"))})
+
+
+@app.route("/api/portal/<token>/health-history/products", methods=["GET", "POST"])
+def api_portal_health_history_products(token):
+    """Token-gated current prescription, OTC-drug, and supplement history."""
+    from dashboard import client_portal as _cp, portal_health_history as _hh
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            return jsonify({"ok": True, "history": _hh.get(cx, email)})
+        data = request.get_json(silent=True) or {}
+        clean = {}
+        for kind in _hh.KINDS:
+            yes = data.get(kind + "_yes") is True
+            text = str(data.get(kind + "_text") or "").strip()[:4000]
+            if yes and not text:
+                return jsonify({
+                    "error": f"Brand and product names are required for {kind}."
+                }), 400
+            clean[kind + "_yes"] = yes
+            clean[kind + "_text"] = text
+        _hh.save(cx, email, clean)
+        return jsonify({"ok": True, "history": _hh.get(cx, email)})
+
+
+@app.route("/api/portal/<token>/health-history/extended", methods=["GET", "POST"])
+def api_portal_health_history_extended(token):
+    """Token-gated personal, exposure, trauma, and family history."""
+    from dashboard import client_portal as _cp, portal_extended_history as _eh
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if request.method == "GET":
+            return jsonify({"ok": True, "history": _eh.get(cx, email)})
+        data = request.get_json(silent=True) or {}
+        clean = {}
+        for category in _eh.CATEGORIES:
+            yes = data.get(category + "_yes") is True
+            text = str(data.get(category + "_text") or "").strip()[:6000]
+            if yes and not text:
+                return jsonify({
+                    "error": f"Details are required for {category}."
+                }), 400
+            clean[category + "_yes"] = yes
+            clean[category + "_text"] = text
+        _eh.save(cx, email, clean)
+        return jsonify({"ok": True, "history": _eh.get(cx, email)})
 
 
 @app.route("/api/portal/<token>/onboarding", methods=["GET"])
@@ -20488,6 +20765,126 @@ def api_portal_rec_section(token):
             return jsonify({"ok": False, "error": "not found"}), 404
         _rp.set_section_state(cx, (portal.get("email") or "").strip().lower(), sk, collapsed)
     return jsonify({"ok": True})
+
+
+@app.route("/api/portal/<token>/eye-vision-report/state", methods=["POST"])
+def api_portal_eye_vision_state(token):
+    """Persist the displayed client's Eye & Vision section open/closed state."""
+    from dashboard import recommendation_prefs as _rp
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get("open"), bool):
+        return jsonify({"ok": False, "error": "open must be boolean"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                _hh.init_household_tables(cx)
+                member = (request.args.get("member") or "").strip().lower()
+                if member and _hh.can_view(cx, email, member):
+                    email = member
+            except Exception:
+                pass
+        _rp.init_recommendation_prefs(cx)
+        _rp.set_section_state(cx, email, "eye_vision_report", not data["open"])
+    return jsonify({"ok": True, "open": data["open"]})
+
+
+@app.route("/api/portal/<token>/eye-vision-report/request-review", methods=["POST"])
+def api_portal_eye_vision_request_review(token):
+    """Paid member requests review of the displayed interpreted eye report."""
+    import datetime as _dt
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_review_requests as _evrr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if _household_view_enabled() and email:
+            try:
+                from dashboard import household as _hh
+                _hh.init_household_tables(cx)
+                member = (request.args.get("member") or "").strip().lower()
+                if member and _hh.can_view(cx, email, member):
+                    email = member
+            except Exception:
+                pass
+        if not _is_paid_member(email):
+            return jsonify({
+                "ok": False, "error": "paid_membership_required",
+                "upgrade_url": "/membership",
+            }), 402
+        block = _evr.build_portal_block(
+            cx, email, _dt.date.today().isoformat())
+        if not block or not block.get("history_eye_issue") \
+                or block.get("status") != "ready":
+            return jsonify({"ok": False, "error": "report_not_eligible"}), 409
+        request_row = _evrr.request_review(
+            cx, email, block.get("scan_date"), block)
+    return jsonify({
+        "ok": True, "status": request_row["status"],
+        "requested_at": request_row["requested_at"],
+    })
+
+
+@app.route("/api/console/eye-vision-reviews", methods=["GET", "POST"])
+def api_console_eye_vision_reviews():
+    """Owner queue and edit/approve/decline actions for requested reports."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import eye_vision_review_requests as _evrr
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _evrr.init_table(cx)
+        _evsr.init_table(cx)
+        if request.method == "GET":
+            pending = _evrr.pending(cx)
+            for row in pending:
+                contract = _evr.build_practitioner_suggestions(
+                    cx, row["email"], row["scan_date"])
+                row["suggestions"] = _evsr.overlay(
+                    contract, _evsr.decisions(cx, row["email"]))
+            return jsonify({"ok": True, "pending": pending})
+        body = request.get_json(silent=True) or {}
+        reviewer_id = (body.get("reviewer_id") or "").strip()
+        try:
+            if not reviewer_id:
+                raise ValueError("reviewer identity is required")
+            suggestion_reviews = body.get("suggestion_reviews") or []
+            for suggestion in suggestion_reviews:
+                if suggestion.get("decision") == "approved" and (
+                        not str(suggestion.get("client_safe_wording") or "").strip()
+                        or not str(suggestion.get("safety_review") or "").strip()):
+                    raise ValueError(
+                        "approved suggestions require client wording and safety review")
+            for suggestion in suggestion_reviews:
+                _evsr.save(
+                    cx, body.get("email"), suggestion.get("suggestion_id"),
+                    suggestion.get("decision"), reviewer_id,
+                    suggestion.get("client_safe_wording"),
+                    suggestion.get("safety_review"))
+            result = _evrr.review(
+                cx, body.get("id"), body.get("action"),
+                body.get("report"), body.get("reviewer_notes"), reviewer_id)
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        if result is None:
+            return jsonify({"ok": False, "error": "not found"}), 404
+    return jsonify({"ok": True, "request": result})
+
+
+@app.route("/console/eye-vision-reviews")
+def console_eye_vision_reviews_page():
+    resp = send_from_directory(STATIC, "console-eye-vision-reviews.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 def _remedies_coerce_importance(value):
@@ -20728,6 +21125,714 @@ def api_portal_photo_serve(token):
     return resp
 
 
+def _bodymap_valid_system(system):
+    """True if `system` is a real Body Map system id (guards junk slots)."""
+    import bodymap_store as _bm
+    try:
+        return (system or "").strip() in {s["id"] for s in _bm.system_catalog()}
+    except Exception:
+        return False
+
+
+def _accept_bodymap_photo(cx, email, system, side, f, source):
+    """Validate + store one slot photo. Shared by the portal and console routes."""
+    from dashboard import body_map_photos as _bmp
+    system = (system or "").strip()
+    if not _bodymap_valid_system(system):
+        return {"ok": False, "error": "unknown system"}, 400
+    blob = f.read() if f else b""
+    if not blob:
+        return {"ok": False, "error": "no image uploaded"}, 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    if ctype not in _PHOTO_TYPES:
+        return {"ok": False, "error": "use a JPG, PNG, or WEBP image"}, 400
+    if len(blob) > _PHOTO_MAX:
+        return {"ok": False, "error": "image too large (max 5 MB)"}, 400
+    _bmp.put(cx, email, system, side, blob, ctype, source)
+    return {"ok": True}, 200
+
+
+def _serve_bodymap_photo(rec, filename="photo"):
+    """A stored slot photo -> hardened Response (allowlist + nosniff)."""
+    ctype, disp = _doc_response_content_type(rec["content_type"])
+    resp = Response(rec["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Content-Disposition"] = f'{disp}; filename="{_doc_safe_filename(filename)}"'
+    return resp
+
+
+@app.route("/api/portal/<token>/bodymap-photo", methods=["POST"])
+def api_portal_bodymap_photo_upload(token):
+    """Client self-uploads a Body Map slot photo (token-scoped)."""
+    from dashboard import client_portal as _cp
+    system = request.args.get("system", "")
+    side = request.args.get("side", "")
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        body, status = _accept_bodymap_photo(cx, email, system, side,
+                                             request.files.get("photo"), "portal-self")
+    return jsonify(body), status
+
+
+@app.route("/api/portal/<token>/bodymap-photo", methods=["GET"])
+def api_portal_bodymap_photo_serve(token):
+    """Serve the token owner's slot photo. system=face with no slot row falls
+    back to the client_photos identity portrait (today's behavior)."""
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    from dashboard import client_photos as _cph
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        rec = _bmp.get(cx, email, system, side) if email else None
+        if not rec and system == "face" and email:
+            rec = _cph.get(cx, email)   # {blob, content_type} identity-portrait fallback
+    if not rec:
+        return Response("", status=404)
+    return _serve_bodymap_photo(rec)
+
+
+@app.route("/api/console/bodymap-photo", methods=["POST"])
+def api_console_bodymap_photo_upload():
+    """Console-side slot photo upload (for later curation)."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    email = (request.form.get("email") or "").strip().lower()
+    system = request.form.get("system", "") or request.args.get("system", "")
+    side = request.form.get("side", "") or request.args.get("side", "")
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        body, status = _accept_bodymap_photo(cx, email, system, side,
+                                             request.files.get("photo"), "console")
+    return jsonify(body), status
+
+
+@app.route("/api/console/bodymap-photo", methods=["GET"])
+def api_console_bodymap_photo_serve():
+    """Console-gated slot photo viewer."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        rec = _bmp.get(cx, email, system, side) if email else None
+    if not rec:
+        return Response("", status=404)
+    return _serve_bodymap_photo(rec)
+
+
+@app.route("/api/portal/<token>/bodymap-transform", methods=["PUT"])
+def api_portal_bodymap_transform_set(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "unknown system"}), 400
+    t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/portal/<token>/bodymap-transform", methods=["GET"])
+def api_portal_bodymap_transform_get(token):
+    from dashboard import client_portal as _cp
+    from dashboard import body_map_photos as _bmp
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
+@app.route("/api/console/bodymap-transform", methods=["PUT"])
+def api_console_bodymap_transform_set():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    if not email or not _bodymap_valid_system(system):
+        return jsonify({"ok": False, "error": "email and valid system required"}), 400
+    t = request.get_json(silent=True)
+    if not isinstance(t, dict):
+        return jsonify({"ok": False, "error": "transform object required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        ok = _bmp.set_transform(cx, email, system, side, t)
+    return (jsonify({"ok": True}), 200) if ok else \
+           (jsonify({"ok": False, "error": "invalid transform"}), 400)
+
+
+@app.route("/api/console/bodymap-transform", methods=["GET"])
+def api_console_bodymap_transform_get():
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"error": "Unauthorized"}), 401
+    from dashboard import body_map_photos as _bmp
+    email = (request.args.get("email") or "").strip().lower()
+    system = (request.args.get("system", "") or "").strip()
+    side = request.args.get("side", "")
+    with db.connect(LOG_DB) as cx:
+        t = _bmp.get_transform(cx, email, system, side) if email else None
+    if not t:
+        return Response("", status=404)
+    return jsonify(t)
+
+
+_DOC_MAX = 30 * 1024 * 1024
+_DOC_EXTRACTABLE = ("application/pdf",)
+
+
+def _doc_extract_status(ctype):
+    """PDFs and images go to the extractor; everything else is stored as-is.
+    Glen gets a wide range of file types — the rule is store everything,
+    extract what is readable."""
+    c = (ctype or "").lower()
+    if c in _DOC_EXTRACTABLE or c.startswith("image/"):
+        return "pending"
+    return "skipped-unreadable"
+
+
+_DOC_EXTRACT_CALL_MODEL = None  # test seam: monkeypatch to avoid a live Claude call
+
+
+def _trigger_document_extraction(doc_id):
+    """Kick off extraction for one freshly-stored 'pending' document without
+    blocking the upload request -- extraction makes a Claude API call that can
+    take many seconds. Mirrors the ingredient-page background-build pattern
+    (daemon thread, started after the triggering write, never joined).
+
+    Claims the document itself (the same guarded UPDATE run_pending uses) so
+    a document that has already been picked up by the console backfill route
+    is not double-processed. Never raises into the caller: extract_document
+    already fails closed to 'failed' internally, and the try/except here is a
+    belt-and-suspenders guard against anything else (import error, claim
+    error, thread start) so a broken extraction can never surface in the
+    upload response that triggered it.
+
+    CRITICAL: `_db_lock` is the application-wide write mutex used at hundreds
+    of call sites; production runs multi-second Anthropic vision calls under
+    `gunicorn --timeout 120`. Holding the lock across the model call would
+    stall every DB-touching request in this worker for the duration of the
+    call. So the lock is acquired and released THREE separate times here --
+    claim, model call (unlocked), write -- never held across
+    call_model_for_extraction. See dashboard/document_extract.py's
+    call_model_for_extraction / write_extraction_draft split.
+    """
+    def _run():
+        from dashboard import client_documents as _cd
+        from dashboard import document_extract as _de
+        try:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    return  # already claimed/processed elsewhere
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                return
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+            except Exception as e:                  # noqa: BLE001 - model call
+                # Same fail-closed contract extract_document always had: a
+                # failed/malformed model call lands the document in 'failed',
+                # never wedged in 'extracting'.
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+                return
+            try:
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _de.write_extraction_draft(cx, doc_id, payload)
+            except Exception as e:                  # noqa: BLE001 - write half
+                print(f"[documents] extract failed for {doc_id}: {e!r}",
+                      flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+        except Exception as e:                      # noqa: BLE001 - background
+            # extraction must never raise into the request that triggered it.
+            print(f"[documents] extraction trigger failed for {doc_id}: {e!r}",
+                  flush=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _accept_document_upload(cx, email, f, source):
+    """Validate + store one uploaded document. Shared by the portal and console
+    routes so the two can never drift apart. Returns (body, status)."""
+    from dashboard import client_documents as _cd
+    blob = f.read() if f else b""
+    if not blob:
+        return {"ok": False, "error": "no file uploaded"}, 400
+    if len(blob) > _DOC_MAX:
+        return {"ok": False, "error": "file too large (max 30 MB)"}, 400
+    ctype = (getattr(f, "mimetype", "") or "").lower()
+    res = _cd.put(cx, email, blob, getattr(f, "filename", "") or "", ctype, source)
+    if not res:
+        return {"ok": False, "error": "could not store file"}, 400
+    if not res["deduped"]:
+        status = _doc_extract_status(ctype)
+        _cd.set_extract_status(cx, res["id"], status)
+        if status == "pending":
+            _trigger_document_extraction(res["id"])
+    return {"ok": True, "id": res["id"], "deduped": res["deduped"]}, 200
+
+
+@app.route("/api/portal/<token>/documents", methods=["POST"])
+def api_portal_document_upload(token):
+    """Client self-uploads a medical record. Token-scoped: writes ONLY the
+    token owner's email, exactly as the /photo upload does."""
+    from dashboard import client_portal as _cp
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        if not email:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "portal-self")
+    return jsonify(body), status
+
+
+@app.route("/api/portal/<token>/documents", methods=["GET"])
+def api_portal_documents(token):
+    """The token owner's uploaded records. `enabled` mirrors the hub flag so the
+    My Records tile stays dark until the flag flips.
+
+    The client sees their own file and — once Glen has approved it — the
+    narrative. Extracted attributes, facts, and labs are NEVER included.
+
+    Only client_visible documents are listed here: a console-uploaded record
+    (e.g. a third-party record Glen received and hasn't reviewed yet) stays
+    staff-only until he explicitly marks it visible. Self-uploaded
+    ('portal-self') documents are visible immediately -- see
+    client_documents.put(). Uses list_visible_for_email, NOT list_for_email,
+    so this enforcement lives in exactly one place.
+    """
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        docs = _cd.list_visible_for_email(cx, email) if email else []
+        items = []
+        for d in docs:
+            draft = _dx.get_for_document(cx, d["id"])
+            ready = bool(draft and draft["status"] == "confirmed")
+            items.append({
+                "id": d["id"],
+                "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"],
+                "status": "ready" if ready else "under_review",
+                "file_url": f"/api/portal/{token}/documents/{d['id']}/file",
+                "narrative_md": draft["narrative_md"] if ready else "",
+            })
+    return jsonify({"enabled": _PORTAL_HUB_ENABLED, "items": items})
+
+
+# Content types safe to render `inline` in a browser at our own origin. Anything
+# not on this list (including any image/* the upload route happens to accept,
+# e.g. image/svg+xml or image/heic) is served as attachment/octet-stream instead —
+# never let an arbitrary stored type drive inline rendering. Reused by the
+# console document viewer so the two never drift apart.
+_DOC_INLINE_TYPES = frozenset({
+    "application/pdf", "image/jpeg", "image/png", "image/webp",
+})
+
+_DOC_FILENAME_UNSAFE_RE = re.compile(r'[\x00-\x1f\x7f"\\]')
+
+
+def _doc_response_content_type(stored_content_type):
+    """(content_type, disposition) for a document response. `inline` only for
+    types on the allowlist; everything else downloads as attachment/octet-stream
+    so an attacker-controlled stored type can never render inline."""
+    ctype = (stored_content_type or "").lower()
+    if ctype in _DOC_INLINE_TYPES:
+        return ctype, "inline"
+    return "application/octet-stream", "attachment"
+
+
+def _doc_safe_filename(name):
+    """Strip CR/LF/other control chars plus '"' and '\\' from a stored filename
+    before it goes into a Content-Disposition header, so the header can never be
+    constructed into something that raises. Falls back to 'document'."""
+    cleaned = _DOC_FILENAME_UNSAFE_RE.sub("", name or "").strip()
+    return cleaned or "document"
+
+
+@app.route("/api/portal/<token>/documents/<int:doc_id>/file", methods=["GET"])
+def api_portal_document_file(token, doc_id):
+    """Stream the token owner's OWN document. Resolved through get_for_email so
+    a token can never fetch another client's file.
+
+    A document that exists and is owned by this token but is not yet
+    client_visible (staff-only, e.g. a console upload Glen hasn't reviewed)
+    404s exactly like a document that doesn't exist at all -- the client must
+    never be able to distinguish "not found" from "found but hidden".
+    """
+    from dashboard import client_portal as _cp
+    from dashboard import client_documents as _cd
+    with db.connect(LOG_DB) as cx:
+        _cp.init_client_portal_table(cx)
+        portal = _portal_record_for(cx, token)
+        email = (portal.get("email") or "").strip().lower() if portal else ""
+        doc = _cd.get_for_email(cx, doc_id, email) if email else None
+    if not doc or not doc.get("client_visible"):
+        return Response("", status=404)
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+    return resp
+
+
+@app.route("/api/console/client-document", methods=["POST"])
+def api_console_client_document_upload():
+    """Console-side upload for records that arrive by email or fax."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    email = (request.form.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        body, status = _accept_document_upload(
+            cx, email, request.files.get("file"), "console")
+    return jsonify(body), status
+
+
+def _console_guard():
+    """None when the caller is authorized, else a (body, status) tuple."""
+    if CONSOLE_SECRET:
+        key = _present_console_key()
+        if key != CONSOLE_SECRET and not _owner_token_ok(key):
+            return {"ok": False, "error": "Unauthorized"}, 401
+    return None
+
+
+@app.route("/api/console/client-document/<int:doc_id>/approve", methods=["POST"])
+def api_console_client_document_approve(doc_id):
+    """The ONE gate. Writes the checked proposals to the live stores and
+    publishes the narrative to the client's portal, in a single request.
+
+    Deliberately does NOT write client_conditions: that table is the single
+    eye-condition support-program override and has its own console control.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    keep_attrs = set(body.get("attributes") or [])
+    keep_facts = set(body.get("facts") or [])
+    reviewed_by = (body.get("reviewed_by") or "console").strip()
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) so a zero-checked-items approval still
+        # leaves both live-store tables queryable afterward.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        if draft["status"] != "ai_draft":
+            # Already approved (or rejected): write nothing, same idempotent
+            # response as before. Checked BEFORE any live write, so a repeat
+            # call after a successful approval never re-runs the writes below.
+            return jsonify({"ok": True, "already": True,
+                            "status": draft["status"]}), 200
+        narrative = body.get("narrative_md")
+        if narrative is None:
+            narrative = draft["narrative_md"]
+        # ORDER MATTERS: live writes happen BEFORE confirm(), not after.
+        # confirm(), set_attr() and set_fact() each cx.commit() independently
+        # -- there is no shared transaction for the `with db.connect(...)` to
+        # roll back -- so whichever of them runs LAST is the one a mid-loop
+        # exception leaves undone. The original plan had confirm() run
+        # FIRST: a failure partway through the write loop below (e.g. a
+        # proposed fact missing fact_key reaching set_fact(None), which
+        # raises IntegrityError on the NOT NULL column) would then leave the
+        # draft already `confirmed` -- narrative already live to the client
+        # -- with only some attributes/facts written, and confirm()'s
+        # compare-and-set (`status='ai_draft'`) means a retry can never
+        # re-open it to finish the job. Running the writes first and
+        # confirm() last means a failure here leaves the draft `ai_draft`:
+        # nothing has published, and a retry safely re-runs every write
+        # (set_attr is UNIQUE(email,field,value_norm) + INSERT OR IGNORE;
+        # set_fact is an upsert on (email,fact_key)) and then confirms. Do
+        # NOT restore the plan's confirm()-first ordering -- that reintroduces
+        # an unrecoverable partial-write state reachable by one bad proposal.
+        written = {"attributes": 0, "facts": 0}
+        skipped_facts = 0
+        for i, a in enumerate(draft["attributes"]):
+            if i not in keep_attrs:
+                continue
+            if _ct.set_attr(cx, draft["email"], a.get("field"), a.get("value"),
+                            source=f"document:{doc_id}"):
+                written["attributes"] += 1
+        for i, f in enumerate(draft["facts"]):
+            if i not in keep_facts:
+                continue
+            fact_key = f.get("fact_key")
+            # client_facts is a controlled vocabulary (ALLOWED_CLIENT_FACT_KEYS,
+            # same gate the portal client-fact route enforces). A model-proposed
+            # key outside it -- or a malformed item with no string fact_key at
+            # all -- must never reach set_fact(): set_fact is an UPSERT, so a
+            # bad value on an in-vocabulary-shaped-but-wrong key would silently
+            # overwrite a client-reported fact that drives support-program
+            # logic, and a missing fact_key raises IntegrityError (NOT NULL)
+            # and would abort the whole approval. Skip and keep going instead.
+            if not isinstance(fact_key, str) or fact_key not in ALLOWED_CLIENT_FACT_KEYS:
+                skipped_facts += 1
+                print(f"api_console_client_document_approve: doc_id={doc_id} "
+                      f"skipped out-of-vocabulary/invalid fact_key="
+                      f"{fact_key!r}", flush=True)
+                continue
+            _cf.set_fact(cx, draft["email"], fact_key, bool(f.get("value")))
+            written["facts"] += 1
+        # confirm() only flips an ai_draft, so a same-request race with a
+        # concurrent approval still resolves to the idempotent response.
+        if not _dx.confirm(cx, draft["id"], narrative, reviewed_by):
+            return jsonify({"ok": True, "already": True,
+                            "status": "confirmed"}), 200
+    return jsonify({"ok": True, "already": False, "written": written,
+                    "skipped_facts": skipped_facts}), 200
+
+
+@app.route("/api/console/client-document/<int:doc_id>/reject", methods=["POST"])
+def api_console_client_document_reject(doc_id):
+    """Discard the AI's reading. The uploaded file itself is kept."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import document_extractions as _dx
+    from dashboard import canonical_tags as _ct
+    from dashboard import client_facts as _cf
+    body = request.get_json(silent=True) or {}
+    with _db_lock, db.connect(LOG_DB) as cx:
+        # Schema-only (no rows written) -- see approve() above for why.
+        _ct.init_tables(cx)
+        _cf.init_table(cx)
+        draft = _dx.get_for_document(cx, doc_id)
+        if not draft:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        ok = _dx.reject(cx, draft["id"],
+                        (body.get("reviewed_by") or "console").strip())
+    return jsonify({"ok": True, "changed": ok}), 200
+
+
+@app.route("/api/console/client-documents", methods=["GET"])
+def api_console_client_documents():
+    """Review payload for one client's documents: the file, the AI's proposals
+    with their source quotes, and the editable narrative. This is what the
+    console Documents section renders."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    with db.connect(LOG_DB) as cx:
+        # list_for_email (NOT list_visible_for_email): the console review
+        # screen must keep showing every document regardless of client
+        # visibility -- that's the whole point of the staff-only gate.
+        docs = _cd.list_for_email(cx, email)
+        items = []
+        for d in docs:
+            items.append({
+                "id": d["id"], "filename": d["filename"],
+                "uploaded_at": d["uploaded_at"], "source": d["source"],
+                "extract_status": d["extract_status"],
+                "client_visible": bool(d["client_visible"]),
+                "file_url": f"/admin/client-document?id={d['id']}",
+                "draft": _dx.get_for_document(cx, d["id"]),
+            })
+    return jsonify({"ok": True, "items": items})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/visibility", methods=["POST"])
+def api_console_client_document_visibility(doc_id):
+    """Console-only toggle: Glen decides when a staff-uploaded document
+    (e.g. a third-party record he received and read) becomes visible to the
+    client. A client's own self-upload is already visible from the moment
+    it's stored (see client_documents.put) -- this route can still flip it
+    either way; there is no restriction on which direction it's called."""
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    body = request.get_json(silent=True) or {}
+    visible = bool(body.get("visible"))
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        _cd.set_client_visible(cx, doc_id, visible)
+    return jsonify({"ok": True, "id": doc_id, "client_visible": visible})
+
+
+@app.route("/admin/client-document", methods=["GET"])
+def admin_client_document_file():
+    """Console-gated raw document viewer (PHI). Serves the bytes for review.
+
+    Reuses the Task 6 inline-type allowlist rather than trusting the stored
+    (attacker-influenced, upload-time-supplied) content_type: this route
+    serves third-party bytes to a live console session, so an unvalidated
+    inline text/html or image/svg+xml would execute script at the app's
+    origin with console privileges.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    try:
+        doc_id = int(request.args.get("id") or 0)
+    except ValueError:
+        return jsonify({"error": "bad id"}), 400
+    with db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id) if doc_id else None
+    if not doc:
+        return jsonify({"error": "not found"}), 404
+    ctype, disposition = _doc_response_content_type(doc["content_type"])
+    resp = Response(doc["blob"], mimetype=ctype)
+    resp.headers["Cache-Control"] = "private, no-store"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    safe_name = _doc_safe_filename(doc["filename"])
+    resp.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+    return resp
+
+
+@app.route("/api/console/documents/extract-pending", methods=["POST"])
+def api_console_documents_extract_pending():
+    """Operational backstop for the inline upload trigger: runs the extractor
+    over whatever is still 'pending' (e.g. a document the inline trigger's
+    process died before starting, or one requeued below). Uses the same
+    claim-guarded UPDATE (client_documents.claim_for_extraction) run_pending
+    itself uses.
+
+    CRITICAL: does NOT hand the whole batch to document_extract.run_pending
+    under one held `_db_lock` -- run_pending processes up to 5 documents
+    sequentially, and each one's model call takes tens of seconds, so a
+    single held lock across the whole batch would stall every DB-touching
+    request in this worker for the full multi-document run. Instead this
+    loop mirrors run_pending's claim-then-process shape itself, but takes
+    `_db_lock` three separate times PER document -- claim, model call
+    (unlocked), write -- exactly like the inline trigger in
+    _trigger_document_extraction. run_pending's own implementation (and its
+    own claim-guard tests) are untouched; this route just doesn't call it
+    under a single lock anymore.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extract as _de
+    with _db_lock, db.connect(LOG_DB) as cx:
+        candidates = _cd.pending(cx, limit=5)
+    drafted = 0
+    for cand in candidates:
+        doc_id = cand["id"]
+        try:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                if not _cd.claim_for_extraction(cx, doc_id):
+                    continue  # another instance claimed it first
+                doc = _cd.get(cx, doc_id)
+            if not doc:
+                continue
+            try:
+                payload = _de.call_model_for_extraction(
+                    doc["blob"], doc["content_type"], _DOC_EXTRACT_CALL_MODEL)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    if _de.write_extraction_draft(cx, doc_id, payload):
+                        drafted += 1
+            except Exception as e:                  # noqa: BLE001 - one bad
+                # document (model failure or malformed reply) must not abort
+                # the rest of the batch, and must fail closed to 'failed'.
+                print(f"[documents] extract-pending: extract failed for "
+                      f"{doc_id}: {e!r}", flush=True)
+                with _db_lock, db.connect(LOG_DB) as cx:
+                    _cd.set_extract_status(cx, doc_id, "failed")
+        except Exception as e:                      # noqa: BLE001 - belt and
+            # suspenders: an unanticipated exception in the claim step must
+            # not abort the rest of the batch either.
+            print(f"[documents] extract-pending: document {doc_id} raised, "
+                  f"skipping: {e!r}", flush=True)
+    return jsonify({"ok": True, "drafted": drafted})
+
+
+@app.route("/api/console/client-document/<int:doc_id>/requeue", methods=["POST"])
+def api_console_client_document_requeue(doc_id):
+    """Sets a document's extract_status back to 'pending' so run_pending (or
+    the next inline trigger) picks it up again. The ONLY recovery path for a
+    document stuck in 'extracting' after a process death, and the retry path
+    for one that landed in 'failed'.
+
+    Refuses when the document's extraction has already been reviewed and
+    approved (extract_status='drafted' and the draft's own status is
+    'confirmed'): re-extracting would be pointless anyway since
+    document_extractions.put_draft leaves a confirmed row untouched, but a
+    silent no-op there would look like a successful requeue. Say so instead.
+    """
+    guard = _console_guard()
+    if guard:
+        return jsonify(guard[0]), guard[1]
+    from dashboard import client_documents as _cd
+    from dashboard import document_extractions as _dx
+    with _db_lock, db.connect(LOG_DB) as cx:
+        doc = _cd.get(cx, doc_id)
+        if not doc:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        draft = _dx.get_for_document(cx, doc_id)
+        if doc["extract_status"] == "drafted" and draft and draft["status"] == "confirmed":
+            return jsonify({"ok": False,
+                            "error": "cannot requeue: draft already confirmed"}), 409
+        _cd.set_extract_status(cx, doc_id, "pending")
+    return jsonify({"ok": True, "id": doc_id, "extract_status": "pending"})
+
+
 def _portal_current_biofield_location(cx, email, content):
     """The spoken anatomical `location` from the client's CURRENT biofield report
     (same report the portal picks: content.current_scan_date -> newest). '' when
@@ -20807,18 +21912,37 @@ def _portal_bodymap_data(cx, email, content, system="face"):
         system = "face"
     VIEW, RESOLVE_SIDE = cfg["view"], cfg["resolve_side"]
     THEME = cfg.get("theme") or set()
+    slot_side = RESOLVE_SIDE if RESOLVE_SIDE in ("left", "right", "foot") else ""
     out = {"system": system, "view": VIEW, "has_photo": False,
-           "findings": [], "lit_zones": [], "count": 0}
+           "slot_side": slot_side, "slot_transform": None,
+           "findings": [], "lit_zones": [], "count": 0,
+           "latest_scan_date": None, "latest_scan_at": None}
     email = (email or "").strip().lower()
     if not email:
         return out
     try:
-        out["has_photo"] = bool(_cph.has(cx, email))
+        from dashboard import body_map_photos as _bmp
+        out["slot_transform"] = _bmp.get_transform(cx, email, system, slot_side)
+        rec = _bmp.get(cx, email, system, slot_side)   # photo bytes present?
+        if rec:
+            out["has_photo"] = True
+        elif system == "face" and _cph.has(cx, email):
+            out["has_photo"] = True            # client_photos portrait fallback
     except Exception:
         pass
     findings_out, lit, seen = [], [], set()
     try:
         sc = _e4l.scan_context(email, _dt.date.today().isoformat())
+        scan_date = sc.get("scan_date")
+        scan_at = sc.get("scan_at") or sc.get("scan_datetime")
+        # Forward-compatible: ingestion currently stores YYYY-MM-DD only, but if
+        # it begins retaining an ISO timestamp in scan_date, surface it without a
+        # second portal change. Never infer scan time from PDF/import timestamps.
+        if not scan_at and isinstance(scan_date, str) and "T" in scan_date:
+            scan_at = scan_date
+            scan_date = scan_date.split("T", 1)[0]
+        out["latest_scan_date"] = scan_date or None
+        out["latest_scan_at"] = scan_at or None
         raw_findings = sc.get("findings") or []
     except Exception:
         raw_findings = []
@@ -21661,11 +22785,56 @@ def _condition_key_from_tags(tags):
     return None
 
 
+def _condition_detect_tags(cx, email):
+    """Ordered auto-detect input for a client's eye-condition support program:
+    canonical conditions first (person_attributes -- Glen-approved and
+    vocabulary-canonical), then people.conditions, then people.tags.
+
+    This is ONLY the detection input for `_condition_key_from_tags`; the operator
+    override is applied by the caller, ABOVE this. Order is load-bearing: the
+    matcher returns the first unambiguous hit, so canonical conditions must lead.
+
+    Best-effort: a canonical read failure degrades to the people-only input and
+    never raises, and this function never reads or writes people.tags as a
+    canonical target -- it only reads it as existing detection input.
+    """
+    email = (email or "").strip().lower()
+    tags = []
+    if not email:
+        return tags
+    # Canonical conditions first, so they outrank people-derived hits.
+    try:
+        from dashboard import canonical_tags as _ct
+        for v in (_ct.get_person(cx, email).get("conditions") or []):
+            if str(v).strip():
+                tags.append(str(v))
+    except Exception:
+        pass
+    # Then people.conditions, then people.tags -- unchanged order and semantics.
+    # Positional indexing (row[0]=conditions, row[1]=tags) so this does not
+    # depend on cx.row_factory (get_person mutates and restores it).
+    try:
+        row = cx.execute(
+            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
+            (email,)).fetchone()
+    except Exception:
+        row = None
+    if row:
+        for cell in (row[0], row[1]):
+            try:
+                v = json.loads(cell or "[]")
+            except Exception:
+                v = []
+            if isinstance(v, list):
+                tags.extend(str(x) for x in v)
+    return tags
+
+
 def _client_condition_for(email):
     """Resolve a client's eye-condition support-program key: the operator
     override (dashboard/client_conditions.py) wins; otherwise auto-detect from
-    the client's `people.conditions` + `people.tags`. Best-effort -- any error
-    returns None, never raises."""
+    the client's canonical conditions + `people.conditions` + `people.tags`.
+    Best-effort -- any error returns None, never raises."""
     email = (email or "").strip().lower()
     if not email:
         return None
@@ -21677,20 +22846,7 @@ def _client_condition_for(email):
             override = _cc.get(cx, email)
             if override:
                 return override
-            row = cx.execute(
-                "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-                (email,)).fetchone()
-            if not row:
-                return None
-            tags = []
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
-            return _condition_key_from_tags(tags)
+            return _condition_key_from_tags(_condition_detect_tags(cx, email))
     except Exception:
         return None
 
@@ -21852,6 +23008,81 @@ def _prl_supplement_for(email, scan_date):
             if not fas:
                 return None
             return {"source": "derived", "prl_link": PRL_LINK, "focus_areas": fas}
+    except Exception:
+        return None
+
+
+_FULLSCRIPT_HEADINGS = {
+    "pinned": "Chosen for you",
+    "review": "Replaces something you're taking",
+    "scan": "Matched from your scan",
+    "condition": "For what you're working on",
+}
+
+
+def _fullscript_ff_view(best_ff, relation):
+    """Same shape as _prl_ff_view so both channel cards render identically."""
+    if not best_ff:
+        return None
+    try:
+        slug = _resolve_remedy_slug({"name": best_ff})
+    except Exception:
+        slug = None
+    return {"name": best_ff, "relation": relation or "consider", "slug": slug}
+
+
+def _fullscript_for(email, scan_date):
+    """The client's Fullscript channel card, or None (flag off / no scans / no
+    candidates). Best-effort: any error returns None, never raises.
+
+    Mirrors `_prl_supplement_for`'s date resolution exactly: resolve a single
+    scan date FIRST (distinct non-empty dates, most recent first; the caller's
+    `scan_date` wins if it's one of them), and only then read item codes for
+    that ONE date. Never collect item codes across every scan the client has
+    ever had -- that would let a years-old scan's item codes surface a product
+    under a "Matched from your scan" heading that names the CURRENT scan,
+    falsely attributing clinical content to a scan that never produced it."""
+    if not _fullscript_enabled():
+        return None
+    try:
+        from dashboard import fullscript as _fs
+        with db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _fs.init_tables(cx)
+            email_norm = (email or "").strip().lower()
+            dates = [r[0] for r in cx.execute(
+                "SELECT DISTINCT scan_date FROM scan_recommendations "
+                "WHERE email=? AND scan_date IS NOT NULL AND scan_date<>'' "
+                "ORDER BY scan_date DESC", (email_norm,)).fetchall()]
+            if not dates:
+                return None
+            sd = (scan_date or "").strip()
+            picked = sd if (sd and sd in dates) else dates[0]
+            rows = cx.execute(
+                "SELECT item_code FROM scan_recommendations "
+                "WHERE email=? AND scan_date=? ORDER BY priority_rank",
+                (email_norm, picked)).fetchall()
+            codes = [r["item_code"] for r in rows]
+            cands = _fs.candidates_for(cx, email_norm, item_codes=codes)
+        if not cands:
+            return None
+        groups, seen = [], {}
+        for c in cands:
+            g = seen.get(c["origin"])
+            if g is None:
+                g = {"origin": c["origin"],
+                     "heading": _FULLSCRIPT_HEADINGS.get(c["origin"], "Recommended"),
+                     "products": []}
+                seen[c["origin"]] = g
+                groups.append(g)
+            g["products"].append({
+                "name": c.get("name"),
+                "brand": c.get("brand"),
+                "product_slug": c.get("product_slug"),
+                "reason": c.get("reason") or "",
+                "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
+            })
+        return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups}
     except Exception:
         return None
 
@@ -22472,22 +23703,11 @@ def api_console_client_condition_get():
     if not email:
         return jsonify({"error": "email required"}), 400
     from dashboard import client_conditions as _cc
-    tags = []
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _cc.init_table(cx)
         override = _cc.get(cx, email)
-        row = cx.execute(
-            "SELECT conditions, tags FROM people WHERE lower(email)=lower(?)",
-            (email,)).fetchone()
-        if row:
-            for col in ("conditions", "tags"):
-                try:
-                    v = json.loads(row[col] or "[]")
-                except Exception:
-                    v = []
-                if isinstance(v, list):
-                    tags.extend(str(x) for x in v)
+        tags = _condition_detect_tags(cx, email)
     auto_detected = _condition_key_from_tags(tags)
     resolved = override or auto_detected
     return jsonify({"email": email, "resolved": resolved, "override": override,
@@ -26654,7 +27874,7 @@ def client_login_request():
                         email, row[1] or "", "Your Remedy Match sign-in link",
                         "Aloha,\n\nClick to sign in to your healing home:\n"
                         f"{portal_base()}/portal/login-verify?token={magic}\n\n"
-                        "This link expires in 15 minutes.")
+                        f"This link expires in {_pi.CLIENT_MAGIC_TTL_LABEL}.")
                 except Exception as e:
                     print(f"[client-login] email failed: {e!r}", flush=True)
     # No account enumeration: same response whether or not the email exists.

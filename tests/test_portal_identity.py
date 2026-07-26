@@ -100,6 +100,28 @@ def test_client_magic_link_is_one_time(tmp_path):
     assert pi.consume_client_magic_link(cx, link) is None
 
 
+def test_client_magic_link_default_is_valid_for_24_hours(tmp_path):
+    from dashboard import portal_identity as pi
+    assert pi.CLIENT_MAGIC_TTL_MIN == 24 * 60
+    assert pi.CLIENT_MAGIC_TTL_LABEL == "24 hours"
+    cx = sqlite3.connect(str(tmp_path / "t.db"))
+    pi._ensure_people_table(cx)
+    cx.execute(
+        "INSERT INTO people (email, name, roles, created_at, updated_at) "
+        "VALUES (?,?,?,?,?)",
+        ("ttl@example.com", "TTL", '["client"]', "t", "t"))
+    cx.commit()
+    pid = cx.execute(
+        "SELECT id FROM people WHERE email='ttl@example.com'").fetchone()[0]
+    pi.create_client_magic_link(cx, pid, "ttl@example.com")
+    created, expires = cx.execute(
+        "SELECT created_at, expires_at FROM auth_tokens "
+        "WHERE purpose='client_magic_link'").fetchone()
+    from datetime import datetime, timedelta
+    window = datetime.fromisoformat(expires) - datetime.fromisoformat(created)
+    assert abs(window - timedelta(hours=24)) < timedelta(seconds=1)
+
+
 def test_resolve_identity_uses_token_branch(tmp_path):
     from dashboard import portal_identity as pi
     cx = sqlite3.connect(str(tmp_path / "t.db"))

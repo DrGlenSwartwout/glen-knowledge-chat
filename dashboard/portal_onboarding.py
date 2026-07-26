@@ -10,7 +10,8 @@ _has_source below is written against the real (list) shape.
 """
 from dashboard import (client_scans, intake, client_photos,
                         portal_biofield_reports, recommendation_events,
-                        membership_products)
+                        membership_products, portal_health_history,
+                        portal_extended_history)
 
 
 def _has_scan(cx, email):
@@ -33,6 +34,17 @@ def _has_source(cx, email, source_key):
         return False
 
 
+def _has_condition_history(cx, email):
+    """Any submitted checklist response, including free-text Other."""
+    try:
+        return bool(cx.execute(
+            "SELECT 1 FROM condition_triage WHERE lower(email)=lower(?) LIMIT 1",
+            (email,),
+        ).fetchone())
+    except Exception:
+        return False
+
+
 def _safe(fn, cx, email):
     try:
         return bool(fn(cx, email))
@@ -42,6 +54,11 @@ def _safe(fn, cx, email):
 
 def build_status(cx, email):
     email = (email or "").strip().lower()
+    conditions_done = (
+        _has_source(cx, email, "condition") or _has_condition_history(cx, email)
+    )
+    products_done = _safe(portal_health_history.has, cx, email)
+    extended_done = _safe(portal_extended_history.has, cx, email)
 
     def step(k, label, done, href, **extra):
         d = {"key": k, "label": label, "done": done, "href": href}
@@ -58,7 +75,8 @@ def build_status(cx, email):
     ]
     match = [
         step("history", "Starter remedies from your history",
-             _has_source(cx, email, "condition"), "#recs"),
+             conditions_done and products_done and extended_done,
+             "#recs"),
         step("scan_match", "Personalized match from your scan",
              _has_source(cx, email, "biofield"), "#recs"),
     ]
@@ -74,4 +92,7 @@ def build_status(cx, email):
             {"key": "heal", "title": "Accelerate healing", "steps": heal},
         ],
         "member": _safe(membership_products.owns_group, cx, email),
+        "history_conditions_done": conditions_done,
+        "history_products_done": products_done,
+        "history_extended_done": extended_done,
     }

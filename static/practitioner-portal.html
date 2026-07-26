@@ -54,6 +54,16 @@
   .total{ font-size:18px; font-weight:700; font-family:var(--heading); margin-top:12px; color:var(--gold); }
   .warn{ color:var(--gold); font-size:13px; margin-top:8px; }
   .notice{ background:var(--surface-2); border:1px solid var(--border); color:var(--gold); border-radius:10px; padding:12px; font-size:14px; margin-top:10px; }
+  .qualification-gate{position:fixed;inset:0;z-index:1000;background:rgba(4,10,6,.9);
+    display:none;align-items:flex-start;justify-content:center;padding:24px;overflow:auto}
+  .qualification-gate.open{display:flex}
+  .qualification-card{width:min(620px,100%);background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+  .qualification-card label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+  .qualification-card input,.qualification-card select,.qualification-card textarea{
+    width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;
+    background:var(--surface-2);color:var(--cream);font:inherit}
+  .qualification-fields{display:none}.qualification-fields.open{display:block}
   #msg{ margin-top:12px; font-size:14px; color:#8fd6a3; }
   /* tab shell */
   .tabs{ display:flex; gap:2px; overflow-x:auto; border-bottom:1px solid var(--border); margin:18px 0 4px; -webkit-overflow-scrolling:touch; }
@@ -135,13 +145,57 @@
 <script src="/static/theme-mode.js"></script>
 </head>
 <body>
+<div class="qualification-gate" id="qualificationGate" role="dialog" aria-modal="true" aria-labelledby="qualificationTitle">
+  <form class="qualification-card" id="qualificationForm">
+    <h1 id="qualificationTitle">Complete your practitioner qualifications</h1>
+    <p class="muted">Before entering your practitioner account, tell us which qualification applies to you. This keeps practitioner, certification, and resale access accurate.</p>
+    <label for="qualificationType">Qualification path</label>
+    <select id="qualificationType" required>
+      <option value="">Choose one</option>
+      <option value="licensed">Licensed practitioner</option>
+      <option value="coach_certification">Coach certification</option>
+      <option value="resale">Resale certificate holder</option>
+    </select>
+    <label for="qualificationCredentials">Professional designation or credentials</label>
+    <input id="qualificationCredentials" placeholder="Examples: OD, RN, Health Coach">
+    <div class="qualification-fields" data-kind="licensed">
+      <label for="qualificationLicense">License number</label>
+      <input id="qualificationLicense">
+      <label for="qualificationLicenseState">License state or jurisdiction</label>
+      <input id="qualificationLicenseState">
+    </div>
+    <div class="qualification-fields" data-kind="coach_certification">
+      <label for="qualificationCertification">Coach certification details</label>
+      <textarea id="qualificationCertification" rows="3" placeholder="Program, issuing organization, level, and year"></textarea>
+    </div>
+    <div class="qualification-fields" data-kind="resale">
+      <label for="qualificationResale">Resale certificate / sales-tax permit number</label>
+      <input id="qualificationResale">
+      <label for="qualificationResaleState">Issuing state or jurisdiction</label>
+      <input id="qualificationResaleState">
+    </div>
+    <label style="display:flex;gap:9px;align-items:flex-start;color:var(--cream);cursor:pointer">
+      <input id="qualificationManual" type="checkbox" style="width:auto;margin-top:4px">
+      <span>Request manual approval</span>
+    </label>
+    <div id="qualificationManualFields" style="display:none">
+      <label for="qualificationManualNote">What would you like us to review?</label>
+      <textarea id="qualificationManualNote" rows="3" placeholder="Explain your qualification, documentation, or special circumstances"></textarea>
+    </div>
+    <div id="qualificationError" class="warn"></div>
+    <button type="submit" id="qualificationSave" style="margin-top:16px">Save and enter Practitioner Portal</button>
+  </form>
+</div>
 <div class="wrap">
   <div id="head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
     <div style="display:flex;align-items:center;gap:10px">
       <img id="brand-logo" src="" alt="" style="display:none;width:40px;height:40px;object-fit:contain;border-radius:6px;background:rgba(255,255,255,.08)">
       <div><h1>Practitioner Portal</h1><div class="muted" id="who">Loading…</div></div>
     </div>
-    <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      <a id="clientAccountLink" href="#" style="color:var(--gold);font-size:13px;font-weight:600">My Client Portal</a>
+      <span class="theme-toggle" id="themeToggle" role="group" aria-label="Theme mode"></span>
+    </div>
   </div>
   <!-- Ask Dr. Glen + Assignment: persistent ABOVE the tabs so they stay visible on
        every tab (answers product/condition questions AND suggests Functional
@@ -1493,6 +1547,11 @@ function renderTraining(d){
 function render(d){
   var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
   $('who').textContent = (d.name || '') + (practiceName ? ' · ' + practiceName : '');
+  $('clientAccountLink').href = '/practitioner/client-account?token=' + encodeURIComponent(TOKEN);
+  if (d.qualification_required || !d.qualification_completed) {
+    $('qualificationCredentials').value = d.credentials || '';
+    $('qualificationGate').classList.add('open');
+  }
   applyBranding(d.branding);
   $('modules').textContent = (d.modules_completed||0) + ' / 12';
   $('wallet').textContent = money(d.wallet_balance_cents);
@@ -1707,6 +1766,44 @@ function load(){
     .then(function(r){ return r.json(); })
     .then(function(d){ if(!d.ok){ $('who').textContent = 'Please sign in again.'; return; } render(d); });
 }
+
+$('qualificationType').addEventListener('change', function(){
+  var kind = this.value;
+  document.querySelectorAll('.qualification-fields').forEach(function(el){
+    el.classList.toggle('open', el.getAttribute('data-kind') === kind);
+  });
+});
+$('qualificationManual').addEventListener('change', function(){
+  $('qualificationManualFields').style.display = this.checked ? 'block' : 'none';
+  if (this.checked) $('qualificationManualNote').focus();
+});
+$('qualificationForm').addEventListener('submit', function(ev){
+  ev.preventDefault();
+  var kind = $('qualificationType').value;
+  var state = kind === 'resale' ? $('qualificationResaleState').value : $('qualificationLicenseState').value;
+  var payload = {
+    token:TOKEN,
+    qualification_type:kind,
+    credentials:$('qualificationCredentials').value,
+    license_number:$('qualificationLicense').value,
+    license_state:state,
+    certification_details:$('qualificationCertification').value,
+    resale_license_number:$('qualificationResale').value,
+    manual_approval_requested:$('qualificationManual').checked,
+    manual_approval_note:$('qualificationManualNote').value
+  };
+  $('qualificationSave').disabled = true;
+  $('qualificationError').textContent = '';
+  fetch('/api/practitioner/qualifications', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)})
+    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, body:j}; }); })
+    .then(function(res){
+      if(!res.ok) throw new Error(res.body.error || 'Could not save qualification details.');
+      $('qualificationGate').classList.remove('open');
+      load();
+    })
+    .catch(function(err){ $('qualificationError').textContent = err.message; })
+    .finally(function(){ $('qualificationSave').disabled = false; });
+});
 function setLine(slug, qty){
   fetch('/api/practitioner/cart', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:TOKEN, slug:slug, qty:qty})})
     .then(function(r){ return r.json(); }).then(function(d){ if(d.ok) render(d); });

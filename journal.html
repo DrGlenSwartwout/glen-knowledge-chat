@@ -165,6 +165,29 @@
     line-height: 1.55;
     white-space: pre-wrap;
   }
+  .mentioned-times { display: grid; gap: 10px; }
+  .mentioned-time {
+    display: grid;
+    grid-template-columns: 112px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+  }
+  .mentioned-clock { width: 112px; height: 112px; display: block; }
+  .mentioned-clock .clock-window { fill: var(--panel); stroke: var(--hair); stroke-width: 1; }
+  .mentioned-clock .clock-window.active { fill: var(--gold); stroke: var(--gold); }
+  .mentioned-clock text { fill: var(--dim); font-size: 7px; text-anchor: middle; }
+  .mentioned-clock .clock-caption { fill: var(--ink); font-size: 10px; font-weight: 700; }
+  .mentioned-quote { color: var(--gold); font-size: 12px; margin-bottom: 4px; }
+  .mentioned-title { color: var(--ink); font-size: 14px; font-weight: 700; }
+  .mentioned-interpretation { color: var(--dim); font-size: 12px; line-height: 1.45; margin-top: 3px; }
+  .mentioned-disclaimer { color: var(--dim); font-size: 10px; margin-top: 10px; }
+  @media (max-width: 480px) {
+    .mentioned-time { grid-template-columns: 88px 1fr; }
+    .mentioned-clock { width: 88px; height: 88px; }
+  }
 
   .top-emotions {
     display: flex;
@@ -588,6 +611,12 @@
       <div class="transcript" id="transcript"></div>
     </div>
 
+    <div class="panel" id="mentionedTimesPanel" style="display:none;">
+      <div class="panel-label">Times Mentioned · Chinese Organ Clock</div>
+      <div class="mentioned-times" id="mentionedTimes"></div>
+      <div class="mentioned-disclaimer">Traditional Chinese organ-clock context for reflection; not a diagnosis.</div>
+    </div>
+
     <div class="panel">
       <div class="panel-label">Top Emotions</div>
       <div class="top-emotions" id="topEmotions"></div>
@@ -658,6 +687,7 @@
   </div>
 </div>
 
+<script src="/static/organ-clock.js"></script>
 <script>
 const ANALYZE_URL = '/journal/analyze';
 
@@ -677,13 +707,13 @@ const ORGAN_WINDOWS = [
   { idx: 2,  meridian: 'Lung',            element: 'Metal', start: '03:00', end: '05:00' },
   { idx: 3,  meridian: 'Large Intestine', element: 'Metal', start: '05:00', end: '07:00' },
   { idx: 4,  meridian: 'Stomach',         element: 'Earth', start: '07:00', end: '09:00' },
-  { idx: 5,  meridian: 'Spleen',          element: 'Earth', start: '09:00', end: '11:00' },
+  { idx: 5,  meridian: 'Spleen',          display: 'Spleen/Pancreas', element: 'Earth', start: '09:00', end: '11:00' },
   { idx: 6,  meridian: 'Heart',           element: 'Fire',  start: '11:00', end: '13:00' },
   { idx: 7,  meridian: 'Small Intestine', element: 'Fire',  start: '13:00', end: '15:00' },
   { idx: 8,  meridian: 'Bladder',         element: 'Water', start: '15:00', end: '17:00' },
   { idx: 9,  meridian: 'Kidney',          element: 'Water', start: '17:00', end: '19:00' },
-  { idx: 10, meridian: 'Pericardium',     element: 'Fire',  start: '19:00', end: '21:00', note: 'Ministerial' },
-  { idx: 11, meridian: 'Triple Burner',   element: 'Fire',  start: '21:00', end: '23:00', note: 'Ministerial' },
+  { idx: 10, meridian: 'Pericardium',     display: 'Circulation (Pericardium)', element: 'Fire',  start: '19:00', end: '21:00', note: 'Ministerial' },
+  { idx: 11, meridian: 'Triple Burner',   display: 'Endocrine (Triple Burner)', element: 'Fire',  start: '21:00', end: '23:00', note: 'Ministerial' },
 ];
 
 function chineseOrganClock(date) {
@@ -885,6 +915,8 @@ const els = {
   treasures:       document.getElementById('treasures'),
   polyvagal:       document.getElementById('polyvagal'),
   organClock:      document.getElementById('organClock'),
+  mentionedTimesPanel: document.getElementById('mentionedTimesPanel'),
+  mentionedTimes:      document.getElementById('mentionedTimes'),
   metaLine:        document.getElementById('metaLine'),
   congruenceNote:  document.getElementById('congruenceNote'),
 };
@@ -1036,8 +1068,88 @@ function renderBars(target, items, metaLookup, withConfidence) {
   });
 }
 
+function clockPoint(angle, radius) {
+  const rad = angle * Math.PI / 180;
+  return { x: 60 + Math.sin(rad) * radius, y: 60 - Math.cos(rad) * radius };
+}
+
+function clockSectorPath(start, end, innerRadius, outerRadius) {
+  const a = clockPoint(start, outerRadius);
+  const b = clockPoint(end, outerRadius);
+  const c = clockPoint(end, innerRadius);
+  const d = clockPoint(start, innerRadius);
+  return [
+    'M', a.x, a.y,
+    'A', outerRadius, outerRadius, 0, 0, 1, b.x, b.y,
+    'L', c.x, c.y,
+    'A', innerRadius, innerRadius, 0, 0, 0, d.x, d.y,
+    'Z'
+  ].join(' ');
+}
+
+function buildMentionedClock(codes) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 120 120');
+  svg.setAttribute('class', 'mentioned-clock');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', 'Chinese organ clock highlighting ' + codes.join(', '));
+  window.OrganClock.WINDOWS.forEach(win => {
+    const start = window.OrganClock.angleForHour(win.startHour);
+    const path = document.createElementNS(svg.namespaceURI, 'path');
+    path.setAttribute('d', clockSectorPath(start, start + 30, 27, 54));
+    path.setAttribute('class', 'clock-window' + (codes.includes(win.code) ? ' active' : ''));
+    svg.appendChild(path);
+    const p = clockPoint(start + 15, 42);
+    const label = document.createElementNS(svg.namespaceURI, 'text');
+    label.setAttribute('x', p.x); label.setAttribute('y', p.y + 2.5);
+    label.textContent = win.code;
+    svg.appendChild(label);
+  });
+  const caption = document.createElementNS(svg.namespaceURI, 'text');
+  caption.setAttribute('x', 60); caption.setAttribute('y', 63);
+  caption.setAttribute('class', 'clock-caption');
+  caption.textContent = codes.length === 1 ? codes[0] : codes.length + ' windows';
+  svg.appendChild(caption);
+  return svg;
+}
+
+function renderMentionedTimes(transcript) {
+  const mentions = window.OrganClock ? window.OrganClock.extractTimeMentions(transcript) : [];
+  els.mentionedTimes.replaceChildren();
+  els.mentionedTimesPanel.style.display = mentions.length ? '' : 'none';
+  mentions.forEach(mention => {
+    const card = document.createElement('div');
+    card.className = 'mentioned-time';
+    card.appendChild(buildMentionedClock(mention.codes));
+
+    const copy = document.createElement('div');
+    const quote = document.createElement('div');
+    quote.className = 'mentioned-quote';
+    quote.textContent = '“' + mention.text.trim() + '”';
+    copy.appendChild(quote);
+
+    const windows = mention.codes
+      .map(code => window.OrganClock.WINDOWS.find(win => win.code === code))
+      .filter(Boolean);
+    const title = document.createElement('div');
+    title.className = 'mentioned-title';
+    title.textContent = windows.map(win => win.meridian + ' · ' + win.label).join(' / ');
+    copy.appendChild(title);
+
+    windows.forEach(win => {
+      const interpretation = document.createElement('div');
+      interpretation.className = 'mentioned-interpretation';
+      interpretation.textContent = win.element + ': ' + win.interpretation;
+      copy.appendChild(interpretation);
+    });
+    card.appendChild(copy);
+    els.mentionedTimes.appendChild(card);
+  });
+}
+
 function renderResults(data) {
   els.transcript.textContent = data.transcript || '(no transcript)';
+  renderMentionedTimes(data.transcript || '');
 
   // Top emotions
   els.topEmotions.innerHTML = '';
@@ -1128,7 +1240,7 @@ function renderResults(data) {
   els.organClock.innerHTML =
     '<div class="organ-time">' + hh + ':' + mm + '<span class="organ-tz">' + tzAbbr + '</span></div>' +
     '<div class="organ-meridian">' +
-      '<div class="organ-meridian-name">' + win.meridian + '</div>' +
+      '<div class="organ-meridian-name">' + (win.display || win.meridian) + '</div>' +
       '<div class="organ-meridian-meta">' + win.start + '–' + win.end +
       (win.note ? ' · ' + win.note : '') + '</div>' +
     '</div>' +

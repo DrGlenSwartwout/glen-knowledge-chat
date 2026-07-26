@@ -3,7 +3,9 @@
   const svgNS = "http://www.w3.org/2000/svg";
   const VIEW = 600, CX = 300, CY = 300;
   const state = { payload: null, eye: "right", activeLayers: new Set(), transform: null, depth: "",
-                  litZones: new Set(), portalToken: null };
+                  litZones: new Set(), portalToken: null,
+                  slotSide: "", slotTransform: null, savedParams: null };
+  let clockTimer = null;
 
   function zoneSide(z) { return z.side || z.eye; }
   function zoneGroup(z) { return z.group || z.germ_layer; }
@@ -242,6 +244,57 @@
       svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
         e.classList.toggle("bm-lit", state.litZones.has(e.dataset.id)));
     }
+    if (state.payload.system === "organclock") renderCurrentClockTime(svg, mapFn);
+  }
+
+  function appendSvgText(svg, className, x, y, value) {
+    const text = document.createElementNS(svgNS, "text");
+    text.setAttribute("class", className);
+    text.setAttribute("x", x); text.setAttribute("y", y);
+    text.textContent = value;
+    svg.appendChild(text);
+  }
+
+  function renderCurrentClockTime(svg, mapFn) {
+    const now = new Date();
+    const fractionalHour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
+    const active = window.OrganClock && window.OrganClock.windowForHour(fractionalHour);
+    const activeId = active ? "clock-" + active.code : null;
+    if (activeId) {
+      svg.querySelectorAll(".bm-zone, .bm-label, .bm-leader").forEach(e =>
+        e.classList.toggle("bm-current", e.dataset.id === activeId));
+    }
+
+    const angle = window.OrganClock ? window.OrganClock.angleForHour(fractionalHour) : ((fractionalHour - 3 + 24) % 24) * 15;
+    const u = clockToNormalized(angle);
+    const center = mapFn({ x: 0, y: 0 });
+    const tip = mapFn({ x: u.x * 0.88, y: u.y * 0.88 });
+    const needle = document.createElementNS(svgNS, "line");
+    needle.setAttribute("class", "bm-clock-needle");
+    needle.setAttribute("x1", center.x); needle.setAttribute("y1", center.y);
+    needle.setAttribute("x2", tip.x); needle.setAttribute("y2", tip.y);
+    svg.appendChild(needle);
+
+    const hub = document.createElementNS(svgNS, "circle");
+    hub.setAttribute("class", "bm-clock-hub");
+    hub.setAttribute("cx", center.x); hub.setAttribute("cy", center.y); hub.setAttribute("r", 7);
+    svg.appendChild(hub);
+
+    const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    appendSvgText(svg, "bm-clock-time", center.x, center.y - 38, time);
+    appendSvgText(svg, "bm-clock-active", center.x, center.y - 18, active ? active.meridian : "");
+    appendSvgText(svg, "bm-clock-local", center.x, center.y + 32, "Your local time · " + zone);
+  }
+
+  function syncClockTimer() {
+    if (clockTimer) {
+      window.clearInterval(clockTimer);
+      clockTimer = null;
+    }
+    if (state.payload && state.payload.system === "organclock") {
+      clockTimer = window.setInterval(renderChart, 30000);
+    }
   }
 
   // Place zone labels in two vertical columns (left/right of the chart centre),
@@ -343,14 +396,16 @@
     const _sn = state.payload.side_noun;
     document.getElementById("bm-side-label").textContent =
       isOutlineFrame() ? "Side" : (_sn ? _sn.charAt(0).toUpperCase() + _sn.slice(1) : "Eye");
-    renderLayerToggles(); renderChart();
+    renderLayerToggles(); renderChart(); syncClockTimer();
   }
 
   function wire() {
     document.getElementById("bm-system").addEventListener("change", e => {
       // In the portal, switching systems re-personalizes (keeps the client's
       // findings lit on the new map) instead of loading a blank reference chart.
-      if (state.portalToken) bootstrapPortal(e.target.value, e.target.value === "face");
+      // Every system now has its own optional slot photo (bootstrapPortal only
+      // loads it when the payload's has_photo says one exists for THIS system).
+      if (state.portalToken) bootstrapPortal(e.target.value, true);
       else loadSystem(e.target.value);
     });
     document.getElementById("bm-eye").addEventListener("change", e => { state.eye = e.target.value; renderChart(); });
@@ -376,9 +431,10 @@
   }
 
   // Load the client's personalization for `system` (default face), light their
-  // finding zones on that map, and — for the face, auto-warp their own photo.
-  // Other systems show the reference figure lit (a face selfie can't warp onto a
-  // body/foot map); the client can still upload a matching photo to warp it.
+  // finding zones on that map, and auto-warp the client's own photo for THIS
+  // system's slot when one is saved (a saved transform skips re-detect entirely;
+  // see loadPortalPhoto). A system with no saved slot photo shows the reference
+  // figure lit; the client can still upload a matching photo to warp it locally.
   async function bootstrapPortal(system, autoPhoto) {
     if (system === undefined) { system = "face"; autoPhoto = true; }
     const token = state.portalToken;
@@ -394,6 +450,8 @@
     if (pz && !pz.error) {
       if (pz.view) { state.eye = pz.view; document.getElementById("bm-eye").value = pz.view; }
       state.litZones = new Set(pz.lit_zones || []);
+      state.slotSide = pz.slot_side || "";
+      state.slotTransform = pz.slot_transform || null;
       renderChart();
       renderPortalPanel(pz);
       if (autoPhoto && pz.has_photo) loadPortalPhoto(token);
@@ -404,13 +462,24 @@
   function loadPortalPhoto(token) {
     const img = document.getElementById("bm-photo");
     img.onload = function () {
+      // A saved slot transform reconstructs the warp directly — no re-detect pause.
+      // Only fall through to auto-detect/manual anchoring when nothing is saved.
+      if (state.slotTransform) {
+        state.transform = bmTransformFromParams(state.slotTransform);
+        state.savedParams = state.slotTransform;
+        setMode(true);
+        renderChart();
+        return;
+      }
       setMode(true);
       document.getElementById("bm-autodetect").hidden = !detectorKind();
       beginAnchoring();              // resets anchors; keeps state.litZones
       autoDetect();                  // MediaPipe face landmarks -> warp
     };
     img.onerror = function () { setMode(false); };
-    img.src = "/api/portal/" + encodeURIComponent(token) + "/photo?t=" + Date.now();
+    img.src = "/api/portal/" + encodeURIComponent(token) + "/bodymap-photo?system="
+      + encodeURIComponent(state.payload.system) + "&side=" + encodeURIComponent(state.slotSide || "")
+      + "&t=" + Date.now();
   }
 
   function renderPortalPanel(pz) {
@@ -419,6 +488,31 @@
     const h = document.createElement("h2");
     h.textContent = pz.count ? "Your findings on this map" : "Your Body Map";
     panel.appendChild(h);
+    const scanNote = document.createElement("p");
+    scanNote.className = "bm-scan-time";
+    const scanLabel = document.createElement("strong");
+    scanLabel.textContent = "Most recent scan:";
+    scanNote.appendChild(scanLabel);
+    const scanDate = pz.latest_scan_date;
+    const scanAt = pz.latest_scan_at ? new Date(pz.latest_scan_at) : null;
+    const validScanAt = scanAt && !Number.isNaN(scanAt.getTime());
+    if (validScanAt) {
+      const clockWindow = window.OrganClock && window.OrganClock.windowForHour(
+        scanAt.getHours() + scanAt.getMinutes() / 60);
+      const dateText = scanAt.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+      const timeText = scanAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      scanNote.appendChild(document.createTextNode(" " + dateText + " at " + timeText
+        + (clockWindow ? " · " + clockWindow.meridian + " window" : "")));
+    } else if (scanDate) {
+      const dateOnly = new Date(scanDate + "T12:00:00");
+      const dateText = Number.isNaN(dateOnly.getTime()) ? scanDate
+        : dateOnly.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+      scanNote.appendChild(document.createTextNode(" " + dateText
+        + " · time of day was not recorded"));
+    } else {
+      scanNote.appendChild(document.createTextNode(" none on file"));
+    }
+    panel.appendChild(scanNote);
     if (!pz.count) {
       const p = document.createElement("p"); p.className = "bm-hint";
       p.textContent = pz.has_photo
@@ -481,11 +575,12 @@
     return a.length ? a : ANCHOR_STEPS;
   }
 
-  // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
-  // from the first two anchor correspondences. Exact for 2 points; a third is not required.
-  function fitSimilarity(steps) {
+  // The persistable similarity params {mx,my,tx,ty} from the first two anchor
+  // correspondences (translation + rotation + uniform scale). Same math as the
+  // old fitSimilarity; split out so the params can be SAVED, not just applied.
+  function bmTransformParams(steps, anchorMap) {
     const a0 = steps[0].template, a1 = steps[1].template;
-    const b0 = anchors[steps[0].key], b1 = anchors[steps[1].key];
+    const b0 = anchorMap[steps[0].key], b1 = anchorMap[steps[1].key];
     const dax = a1.x - a0.x, day = a1.y - a0.y;
     const dbx = b1.x - b0.x, dby = b1.y - b0.y;
     const denom = dax * dax + day * day || 1e-9;
@@ -493,7 +588,18 @@
     const my = (dby * dax - dbx * day) / denom;
     const tx = b0.x - (mx * a0.x - my * a0.y);
     const ty = b0.y - (my * a0.x + mx * a0.y);
-    return (n) => ({ x: mx * n.x - my * n.y + tx, y: my * n.x + mx * n.y + ty });
+    return { mx, my, tx, ty };
+  }
+
+  function bmTransformFromParams(p) {
+    return (n) => ({ x: p.mx * n.x - p.my * n.y + p.tx,
+                     y: p.my * n.x + p.mx * n.y + p.ty });
+  }
+
+  // Fit a similarity (translation + rotation + uniform scale) mapping template coords -> screen,
+  // from the first two anchor correspondences. Exact for 2 points; a third is not required.
+  function fitSimilarity(steps) {
+    return bmTransformFromParams(bmTransformParams(steps, anchors));
   }
 
   function setMode(photo) {
@@ -539,12 +645,34 @@
   }
 
   // Two tapped/detected anchors with template coords -> similarity; else iris fallback.
+  // Either path also yields persistable {mx,my,tx,ty} params, which we stash on
+  // state and best-effort save to the current slot so next load can skip re-detect.
   function placeOverlay(steps) {
     document.getElementById("bm-anchor-hint").textContent = "Overlay placed. Re-upload to redo.";
-    state.transform = (steps.length >= 2 && steps[0].template && steps[1].template)
-      ? fitSimilarity(steps)
-      : computeSimilarity(anchors.pupil, anchors.limbus, anchors.twelve);
+    let params;
+    if (steps.length >= 2 && steps[0].template && steps[1].template) {
+      params = bmTransformParams(steps, anchors);
+    } else {
+      const P = anchors.pupil, L = anchors.limbus, Tw = anchors.twelve;
+      const scale = Math.hypot(L.x - P.x, L.y - P.y);
+      const rot = Math.atan2(Tw.y - P.y, Tw.x - P.x) + Math.PI / 2;
+      params = { mx: scale * Math.cos(rot), my: scale * Math.sin(rot), tx: P.x, ty: P.y };
+    }
+    state.transform = bmTransformFromParams(params);
+    state.savedParams = params;
+    saveBodymapTransform(params);
     renderChart(); drawAnchors();
+  }
+
+  // Best-effort PUT of a newly-established alignment to the current portal slot.
+  // Errors are swallowed: a failed save just means the next load re-detects.
+  function saveBodymapTransform(params) {
+    if (!state.portalToken || !params) return;
+    fetch("/api/portal/" + encodeURIComponent(state.portalToken)
+          + "/bodymap-transform?system=" + encodeURIComponent(state.payload.system)
+          + "&side=" + encodeURIComponent(state.slotSide || ""),
+          { method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(params) }).catch(function () {});
   }
 
   // ---- ML auto-anchoring: detect the anchor landmarks on the photo client-side.
@@ -682,7 +810,14 @@
     }
   }
 
-  // expose for tasks/tests
-  window.__bm = { clockToNormalized, arcSectorPoints, computeSimilarity, state };
-  document.addEventListener("DOMContentLoaded", wire);
+  // node (tests): export the pure transform helpers. browser: wire the page.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { bmTransformFromParams: bmTransformFromParams,
+                       bmTransformParams: bmTransformParams };
+  }
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    // expose for tasks/tests
+    window.__bm = { clockToNormalized, arcSectorPoints, computeSimilarity, state };
+    document.addEventListener("DOMContentLoaded", wire);
+  }
 })();

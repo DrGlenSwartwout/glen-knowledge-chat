@@ -13,6 +13,8 @@ _N, _E = "glaucoma-normal-iop", "glaucoma-elevated-iop"
 # resolve straight to that program.
 _SINGLE_PROGRAM = {
     "dry-eye": "dry-eye",
+    "retinitis-pigmentosa": "retinitis-pigmentosa",
+    "diabetic-retinopathy": "diabetic-retinopathy",
     "vision-improvement": "vision-improvement",
 }
 
@@ -32,6 +34,7 @@ _NEW_COLUMNS = (
     ("steroids", "INTEGER"), ("diabetes", "INTEGER"), ("inflammation", "INTEGER"),
     ("radiation", "INTEGER"), ("atopy", "INTEGER"), ("yellow_vision", "INTEGER"),
     ("amd_type", "TEXT"), ("injections", "INTEGER"), ("distortion", "INTEGER"),
+    ("other_condition", "TEXT"),
 )
 
 
@@ -220,8 +223,8 @@ def upsert_triage(cx, email, condition, answers, resolved):
         "INSERT INTO condition_triage (email, condition, iop_od, iop_os, on_meds, med_count,"
         " meds_names, field_loss, category, cataract_type, age, steroids, diabetes,"
         " inflammation, radiation, atopy, yellow_vision, amd_type, injections, distortion,"
-        " resolved_programs, updated_at)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " other_condition, resolved_programs, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (email, condition, str(a.get("iop_od") or ""), str(a.get("iop_os") or ""),
          1 if a.get("on_meds") else 0, _safe_int(a.get("med_count"), 0),
          (a.get("meds_names") or "").strip(), 1 if a.get("field_loss") else 0,
@@ -232,6 +235,7 @@ def upsert_triage(cx, email, condition, answers, resolved):
          1 if a.get("atopy") else 0, 1 if a.get("yellow_vision") else 0,
          (a.get("amd_type") or "").strip(), 1 if a.get("injections") else 0,
          1 if a.get("distortion") else 0,
+         (a.get("other_condition") or "").strip(),
          json.dumps(resolved), _now()))
     cx.commit()
 
@@ -240,7 +244,7 @@ def get_triage(cx, email, condition):
     r = cx.execute(
         "SELECT iop_od,iop_os,on_meds,med_count,meds_names,field_loss,category,"
         " cataract_type,age,steroids,diabetes,inflammation,radiation,atopy,"
-        " yellow_vision,amd_type,injections,distortion,resolved_programs"
+        " yellow_vision,amd_type,injections,distortion,other_condition,resolved_programs"
         " FROM condition_triage WHERE email=? AND condition=?",
         ((email or "").strip().lower(), (condition or "").strip().lower())).fetchone()
     if not r:
@@ -251,7 +255,8 @@ def get_triage(cx, email, condition):
             "steroids": bool(r[9]), "diabetes": bool(r[10]), "inflammation": bool(r[11]),
             "radiation": bool(r[12]), "atopy": bool(r[13]), "yellow_vision": bool(r[14]),
             "amd_type": r[15], "injections": bool(r[16]), "distortion": bool(r[17]),
-            "resolved_programs": json.loads(r[18] or "[]")}
+            "other_condition": r[18],
+            "resolved_programs": json.loads(r[19] or "[]")}
 
 
 def seed_from_triage(cx, email, condition, answers):

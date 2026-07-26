@@ -29,6 +29,11 @@ PRACTITIONER_ROW = {
     "approval_notes": None,
     "resale_license_number": None,
     "credentials": "",
+    "qualification_type": None,
+    "certification_details": "",
+    "qualification_completed_at": None,
+    "manual_approval_requested_at": None,
+    "manual_approval_note": "",
 }
 
 
