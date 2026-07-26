@@ -13,9 +13,11 @@ def test_client_portal_has_member_review_and_upgrade_actions():
 
 def test_console_queue_supports_edit_approve_and_decline():
     html = (ROOT / "static" / "console-eye-vision-reviews.html").read_text()
-    assert "Editable report JSON" in html
-    assert "Approve" in html
+    assert "Client interpretation" in html
+    assert "Reviewer name" in html
+    assert "Approve report" in html
     assert "Save draft" in html
     assert "Decline" in html
+    assert "Suggestion approvals require" in html
     approvals = (ROOT / "static" / "console-approvals.html").read_text()
     assert "/console/eye-vision-reviews" in approvals

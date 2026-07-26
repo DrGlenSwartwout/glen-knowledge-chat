@@ -2197,6 +2197,8 @@ function renderEyeVisionReport(report){
       reviewAction = `<p class="small" style="color:var(--gold)">Professionally reviewed and approved.</p>`;
     } else if(rr.status === "requested" || rr.status === "draft"){
       reviewAction = `<p class="small muted">Review requested. Your report is in the professional review queue.</p>`;
+    } else if(rr.status === "declined"){
+      reviewAction = `<p class="small muted">This review request was not approved for publication. Please contact us if you would like clarification.</p>`;
     } else if(rr.is_paid_member){
       reviewAction = `<div style="margin-top:.8rem"><button class="btn" id="eyeVisionReviewRequest">Request professional review</button><span class="small muted" id="eyeVisionReviewStatus" style="margin-left:.6rem"></span></div>`;
     } else {

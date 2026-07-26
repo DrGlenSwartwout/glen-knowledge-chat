@@ -1,6 +1,7 @@
 """Paid-member requests for review of generated Eye & Vision E4L reports."""
 import json
 from datetime import datetime, timezone
+from dashboard import db
 
 
 VALID_ACTIONS = {"approve", "decline", "save_draft"}
@@ -24,6 +25,12 @@ def init_table(cx):
             reviewed_at TEXT,
             UNIQUE(email, scan_date)
         )""")
+    if not db.column_exists(cx, "eye_vision_review_requests", "reviewer_id"):
+        cx.execute("ALTER TABLE eye_vision_review_requests "
+                   "ADD COLUMN reviewer_id TEXT NOT NULL DEFAULT ''")
+    if not db.column_exists(cx, "eye_vision_review_requests", "revision_log_json"):
+        cx.execute("ALTER TABLE eye_vision_review_requests "
+                   "ADD COLUMN revision_log_json TEXT NOT NULL DEFAULT '[]'")
     cx.execute("""
         CREATE INDEX IF NOT EXISTS idx_eye_vision_review_status
         ON eye_vision_review_requests(status, updated_at)
@@ -40,6 +47,11 @@ def _row(row):
         "reviewer_notes": row["reviewer_notes"] or "",
         "requested_at": row["requested_at"], "updated_at": row["updated_at"],
         "reviewed_at": row["reviewed_at"],
+        "reviewer_id": (
+            row["reviewer_id"] if "reviewer_id" in row.keys() else "") or "",
+        "revision_log": json.loads(
+            (row["revision_log_json"]
+             if "revision_log_json" in row.keys() else None) or "[]"),
     }
 
 
@@ -89,7 +101,7 @@ def pending(cx):
     return [_row(row) for row in rows]
 
 
-def review(cx, request_id, action, report, reviewer_notes=""):
+def review(cx, request_id, action, report, reviewer_notes="", reviewer_id=""):
     init_table(cx)
     action = (action or "").strip()
     if action not in VALID_ACTIONS:
@@ -99,6 +111,9 @@ def review(cx, request_id, action, report, reviewer_notes=""):
         (int(request_id),)).fetchone()
     if row is None:
         return None
+    reviewer_id = (reviewer_id or "").strip()
+    if not reviewer_id:
+        raise ValueError("reviewer identity is required")
     if action != "decline" and not isinstance(report, dict):
         raise ValueError("an edited report object is required")
     status = {
@@ -107,12 +122,21 @@ def review(cx, request_id, action, report, reviewer_notes=""):
     now = _now()
     report_json = row["report_json"] if action == "decline" else json.dumps(report)
     reviewed_at = now if action in {"approve", "decline"} else None
+    revision_log = json.loads(
+        (row["revision_log_json"]
+         if "revision_log_json" in row.keys() else None) or "[]")
+    revision_log.append({
+        "action": action, "from_status": row["status"],
+        "to_status": status, "reviewer_id": reviewer_id, "at": now,
+    })
     cx.execute("""
         UPDATE eye_vision_review_requests
-        SET status=?, report_json=?, reviewer_notes=?, updated_at=?, reviewed_at=?
+        SET status=?, report_json=?, reviewer_notes=?, updated_at=?, reviewed_at=?,
+            reviewer_id=?, revision_log_json=?
         WHERE id=?
         """, (status, report_json, (reviewer_notes or "").strip(),
-              now, reviewed_at, int(request_id)))
+              now, reviewed_at, reviewer_id, json.dumps(revision_log),
+              int(request_id)))
     cx.commit()
     return _row(cx.execute(
         "SELECT * FROM eye_vision_review_requests WHERE id=?",

@@ -20730,16 +20730,41 @@ def api_console_eye_vision_reviews():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import eye_vision_review_requests as _evrr
+    from dashboard import eye_vision_report as _evr
+    from dashboard import eye_vision_suggestion_review as _evsr
     with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _evrr.init_table(cx)
+        _evsr.init_table(cx)
         if request.method == "GET":
-            return jsonify({"ok": True, "pending": _evrr.pending(cx)})
+            pending = _evrr.pending(cx)
+            for row in pending:
+                contract = _evr.build_practitioner_suggestions(
+                    cx, row["email"], row["scan_date"])
+                row["suggestions"] = _evsr.overlay(
+                    contract, _evsr.decisions(cx, row["email"]))
+            return jsonify({"ok": True, "pending": pending})
         body = request.get_json(silent=True) or {}
+        reviewer_id = (body.get("reviewer_id") or "").strip()
         try:
+            if not reviewer_id:
+                raise ValueError("reviewer identity is required")
+            suggestion_reviews = body.get("suggestion_reviews") or []
+            for suggestion in suggestion_reviews:
+                if suggestion.get("decision") == "approved" and (
+                        not str(suggestion.get("client_safe_wording") or "").strip()
+                        or not str(suggestion.get("safety_review") or "").strip()):
+                    raise ValueError(
+                        "approved suggestions require client wording and safety review")
+            for suggestion in suggestion_reviews:
+                _evsr.save(
+                    cx, body.get("email"), suggestion.get("suggestion_id"),
+                    suggestion.get("decision"), reviewer_id,
+                    suggestion.get("client_safe_wording"),
+                    suggestion.get("safety_review"))
             result = _evrr.review(
                 cx, body.get("id"), body.get("action"),
-                body.get("report"), body.get("reviewer_notes"))
+                body.get("report"), body.get("reviewer_notes"), reviewer_id)
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         if result is None:
