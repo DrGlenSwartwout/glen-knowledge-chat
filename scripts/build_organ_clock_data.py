@@ -25,18 +25,18 @@ GROUPS = [
 
 # (code, name, element, start_hour, time_label, function)
 ORGANS = [
-    ("LU", "Lung", "metal", 3, "3–5 AM", "Taking in, letting go; the breath and the day begin."),
-    ("LI", "Large intestine", "metal", 5, "5–7 AM", "Elimination and release; a natural time for a bowel movement."),
-    ("ST", "Stomach", "earth", 7, "7–9 AM", "Digestion at its strongest; the ideal time for the main meal."),
-    ("SP", "Spleen", "earth", 9, "9–11 AM", "Transforming food to energy; peak mental focus."),
-    ("HT", "Heart", "fire", 11, "11 AM–1 PM", "Circulation and joy; the Heart houses the spirit (Shen)."),
-    ("SI", "Small intestine", "fire", 13, "1–3 PM", "Sorting pure from impure; assimilation and discernment."),
-    ("BL", "Bladder", "water", 15, "3–5 PM", "Storing and clearing fluids; good time for study and work."),
-    ("KI", "Kidney", "water", 17, "5–7 PM", "Storing essence (Jing); the root of vitality and will."),
-    ("PC", "Pericardium", "fire", 19, "7–9 PM", "The Heart's protector; intimacy, relationship, circulation."),
-    ("TE", "Triple burner", "fire", 21, "9–11 PM", "Balancing the whole; metabolism and thermoregulation settle for sleep."),
-    ("GB", "Gallbladder", "wood", 23, "11 PM–1 AM", "Decisions and courage; deep regeneration begins."),
-    ("LR", "Liver", "wood", 1, "1–3 AM", "Detoxification and blood storage; deepest repair."),
+    ("LU", "Lung", "metal", 3, "3–5 AM", "Deep sleep and memory."),
+    ("LI", "Large intestine", "metal", 5, "5–7 AM", "Wake up to natural light."),
+    ("ST", "Stomach", "earth", 7, "7–9 AM", "Breakfast and concentration."),
+    ("SP", "Spleen/Pancreas", "earth", 9, "9–11 AM", "Focus and thinking clearly."),
+    ("HT", "Heart", "fire", 11, "11 AM–1 PM", "Relate to meaning, lunch."),
+    ("SI", "Small intestine", "fire", 13, "1–3 PM", "Absorb food, take a nap."),
+    ("BL", "Bladder", "water", 15, "3–5 PM", "Restore energy, work and study."),
+    ("KI", "Kidney", "water", 17, "5–7 PM", "Store nutrients, relax mind."),
+    ("PC", "Circulation", "fire", 19, "7–9 PM", "Pericardium correspondence. Turn down blue light, reading."),
+    ("TE", "Endocrine", "fire", 21, "9–11 PM", "Triple Burner correspondence. Metabolic balancing, enjoy life."),
+    ("GB", "Gall Bladder", "wood", 23, "11 PM–1 AM", "Sleep, cell repair, cleanse brain."),
+    ("LR", "Liver", "wood", 1, "1–3 AM", "Deep sleep, detox, recover, plan."),
 ]
 
 
@@ -46,6 +46,8 @@ def _zone(code, name, element, start_hour, time_label, function):
         "id": f"clock-{code}", "side": "clock", "bilateral": False, "group": element,
         "radial": {"r_inner": 0.42, "r_outer": 0.95},
         "sector": {"start_deg": start, "end_deg": start + 30},
+        "start_hour": start_hour,
+        "end_hour": (start_hour + 2) % 24,
         "anatomy": f"{name} ({time_label})",
         "meaning_standard": f"{name} meridian peaks {time_label}. {function}",
         "meaning_glen": "",
