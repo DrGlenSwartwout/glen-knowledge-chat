@@ -52,6 +52,20 @@ def test_payload_no_photo_no_slot(tmp_path, monkeypatch):
     assert out["has_photo"] is False and out["slot_transform"] is None
 
 
+def test_payload_surfaces_latest_scan_date_and_exact_time_when_available(tmp_path, monkeypatch):
+    appmod = _app(tmp_path, monkeypatch)
+    from dashboard import biofield_e4l as e4l
+    monkeypatch.setattr(e4l, "scan_context", lambda email, today: {
+        "scan_date": "2026-07-25",
+        "scan_at": "2026-07-25T18:39:00-10:00",
+        "findings": [],
+    })
+    cx = sqlite3.connect(appmod.LOG_DB)
+    out = appmod._portal_bodymap_data(cx, "c@x.com", {}, system="organclock")
+    assert out["latest_scan_date"] == "2026-07-25"
+    assert out["latest_scan_at"] == "2026-07-25T18:39:00-10:00"
+
+
 def test_payload_fallback_face_reports_transform_only_row(tmp_path, monkeypatch):
     """The bug: a fallback-face client (client_photos portrait, no body_map_photos
     photo bytes) aligns their face. The browser PUTs the transform, which persists

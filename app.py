@@ -21807,7 +21807,8 @@ def _portal_bodymap_data(cx, email, content, system="face"):
     slot_side = RESOLVE_SIDE if RESOLVE_SIDE in ("left", "right", "foot") else ""
     out = {"system": system, "view": VIEW, "has_photo": False,
            "slot_side": slot_side, "slot_transform": None,
-           "findings": [], "lit_zones": [], "count": 0}
+           "findings": [], "lit_zones": [], "count": 0,
+           "latest_scan_date": None, "latest_scan_at": None}
     email = (email or "").strip().lower()
     if not email:
         return out
@@ -21824,6 +21825,16 @@ def _portal_bodymap_data(cx, email, content, system="face"):
     findings_out, lit, seen = [], [], set()
     try:
         sc = _e4l.scan_context(email, _dt.date.today().isoformat())
+        scan_date = sc.get("scan_date")
+        scan_at = sc.get("scan_at") or sc.get("scan_datetime")
+        # Forward-compatible: ingestion currently stores YYYY-MM-DD only, but if
+        # it begins retaining an ISO timestamp in scan_date, surface it without a
+        # second portal change. Never infer scan time from PDF/import timestamps.
+        if not scan_at and isinstance(scan_date, str) and "T" in scan_date:
+            scan_at = scan_date
+            scan_date = scan_date.split("T", 1)[0]
+        out["latest_scan_date"] = scan_date or None
+        out["latest_scan_at"] = scan_at or None
         raw_findings = sc.get("findings") or []
     except Exception:
         raw_findings = []
