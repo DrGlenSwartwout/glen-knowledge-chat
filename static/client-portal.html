@@ -817,7 +817,13 @@ function fullscriptBodyHtml(fsData){
       if (pc === "green") badge = dot("#2f6f5e", "Meets our purity standard");
       else if (pc === "yellow") badge = dot("#c9a227", "Minor filler only");
       else if (pc === "red") { liStyle = ' style="opacity:.55"'; note = `<div class="small muted">contains excipients we avoid</div>`; }
-      return `<li${liStyle}>${badge}<a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}${note}</li>`;
+      // Phase 2c client photo: an unrated product (no confirmed color) invites a
+      // label-photo upload when the purity feature is on. Absent p.purity = unrated.
+      const canPhoto = fsData.purity_enabled && !p.purity && p.product_slug;
+      const photo = canPhoto
+        ? `<div class="small" style="margin:.2rem 0 .1rem"><label style="cursor:pointer;color:#2f6f5e">📷 Have this? Add a label photo to check its purity<input type="file" class="purity-photo" data-slug="${esc(p.product_slug)}" accept="image/jpeg,image/png,image/webp" style="display:none"></label> <span class="purity-photo-stat muted"></span></div>`
+        : "";
+      return `<li${liStyle}>${badge}<a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}${note}${photo}</li>`;
     }).join("");
     if(!items) return "";   // mirror can carry zero-product groups; don't render a bare heading
     return `<h3 class="small" style="margin:.2rem 0">${esc(g.heading||"")}</h3><ul>${items}</ul>`;
@@ -1699,6 +1705,27 @@ document.addEventListener("change", function(ev){
     cb.checked = !cb.checked;  // revert
     if (msg){ msg.hidden = false; msg.textContent = "Could not save. Please try again."; }
   });
+});
+
+// Delegated once: any purity label-photo input (rendered per unrated Fullscript
+// product) uploads to the portal purity/photo route; the result is review-gated,
+// so the client only ever sees a thank-you, never an unconfirmed color.
+document.addEventListener("change", async function(ev){
+  const inp = ev.target;
+  if (!inp || !inp.classList || !inp.classList.contains("purity-photo")) return;
+  if (!inp.files || !inp.files[0]) return;
+  const stat = inp.parentElement && inp.parentElement.parentElement
+    ? inp.parentElement.parentElement.querySelector(".purity-photo-stat") : null;
+  if (stat) stat.textContent = " Uploading…";
+  const fd = new FormData();
+  fd.append("photo", inp.files[0]);
+  fd.append("product_slug", inp.getAttribute("data-slug") || "");
+  try {
+    const r = await fetch("/api/portal/" + encodeURIComponent(token) + "/purity/photo",
+                          {method: "POST", body: fd, credentials: "same-origin"});
+    const j = await r.json();
+    if (stat) stat.textContent = (j && j.ok) ? " Thanks — we'll review this." : " Upload failed.";
+  } catch (e) { if (stat) stat.textContent = " Upload failed."; }
 });
 
 // My Health Profile inline editing (Task 4). The health_profile payload block
