@@ -517,12 +517,17 @@ def _default_call_model_image(blob, content_type):
     import anthropic
     cli = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
     b64 = base64.standard_b64encode(blob).decode("ascii")
-    if (content_type or "").lower() == "application/pdf":
+    ct = (content_type or "").lower()
+    if ct == "application/pdf":
         doc = {"type": "document", "source": {"type": "base64",
                "media_type": "application/pdf", "data": b64}}
     else:
+        # Anthropic's vision media_type is image/jpeg, not image/jpg -- the
+        # route allows image/jpg (some browsers report it), so normalize or a
+        # real JPEG would fail the SDK call and silently land 'unrated'.
+        media = "image/jpeg" if ct == "image/jpg" else ct
         doc = {"type": "image", "source": {"type": "base64",
-               "media_type": content_type, "data": b64}}
+               "media_type": media, "data": b64}}
     resp = cli.messages.create(
         model=_MODEL, max_tokens=2000,
         messages=[{"role": "user", "content": [doc, {"type": "text",
