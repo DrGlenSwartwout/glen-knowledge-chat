@@ -10917,6 +10917,15 @@ def _autoprovision_course_access(email):
 
 _ASH_CERT_COURSE = "ash-certification"
 
+# The 12 modules a member must have an APPROVED module_certifications row for
+# (course == _CERT_COURSE) before console approval grants the full lifetime
+# ASH Certification credential (course_entitlements.grant_cert). Order here is
+# cosmetic — all_certified() only checks membership, not sequence.
+_CERT_REQUIRED_MODULES = ["02-body", "03-mind", "04-spirit", "05-family-history",
+    "06-health-history", "07-epigenetics", "08-symptoms", "09-terrain",
+    "10-diagnoses", "11-treatment", "12-response", "13-prognosis"]
+_CERT_COURSE = _ASH_CERT_COURSE
+
 
 def _ash_paid_modules():
     """Ordered slugs of the ash-certification course's PAID topic modules — the
@@ -11025,6 +11034,53 @@ def _fulfill_module_certification(session):
     except Exception as e:
         print(f"[modcert] fulfill failed: {e!r}", flush=True)
         return "error"
+
+
+@app.route("/api/console/module-certs", methods=["GET"])
+def api_console_module_certs_pending():
+    """List module_certifications rows by status (default 'pending') — the
+    admin's approval queue for the $200-per-module certification purchases."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    status = (request.args.get("status") or "pending").strip()
+    from dashboard import module_certifications as _mc
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _mc.init_table(cx)
+        rows = cx.execute(
+            "SELECT email, course, module, status, created_at FROM module_certifications "
+            "WHERE status=? ORDER BY created_at", (status,)).fetchall()
+        items = [dict(r) for r in rows]
+    return jsonify({"items": items})
+
+
+@app.route("/api/console/module-certs/approve", methods=["POST"])
+def api_console_module_certs_approve():
+    """Approve one pending module certification. If this is the 12th (final)
+    required module approved for the member on _CERT_COURSE, also grants the
+    full lifetime ASH Certification credential (course_entitlements.grant_cert),
+    idempotent on stripe_ref=f"modcert:{email}" so re-approving never double-grants."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    course = (data.get("course") or "").strip()
+    module = (data.get("module") or "").strip()
+    if not (email and course and module):
+        return jsonify({"error": "bad request"}), 400
+    from dashboard import module_certifications as _mc
+    from dashboard import course_entitlements as _ce
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        ok = _mc.approve(cx, email, course, module, now_iso)
+        fully_certified = _mc.all_certified(cx, email, course, _CERT_REQUIRED_MODULES)
+        if fully_certified and course == _CERT_COURSE:
+            _ce.grant_cert(cx, email, source="module_certification",
+                           stripe_ref=f"modcert:{email}")
+        certified_count = len(_mc.certified_modules(cx, email, course))
+    return jsonify({"ok": ok, "certified_count": certified_count,
+                    "full_certification_granted": bool(fully_certified)})
 
 
 def _course_membership_renew(invoice):
