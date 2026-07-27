@@ -27648,6 +27648,48 @@ def product_review_intake_page():
     return resp
 
 
+# ── Purity ratings — Phase 2a request routes (console + portal) ──────────────
+# A client (via portal token) or Glen (console) can request a purity rating on
+# a product. dashboard/product_ratings.py owns the row; dashboard/
+# purity_ratings_access.py gates who may request. Client identity always comes
+# from the portal token, never a request-body field.
+
+@app.route("/api/console/purity/request", methods=["POST"])
+def api_console_purity_request():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _pr.init_tables(cx)
+        res = _pr.request(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "", requested_by="console")
+    return jsonify({"ok": True, **res})
+
+
+@app.route("/api/portal/<token>/purity/request", methods=["POST"])
+def api_portal_purity_request(token):
+    from dashboard import product_ratings as _pr, purity_ratings_access as _acc
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _pr.init_tables(cx); _acc.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not_found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not _acc.can_request(cx, email, membership_category(email)):
+            return jsonify({"error": "not_entitled"}), 403
+        res = _pr.request(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "", requested_by=email)
+    return jsonify({"ok": True, **res})
+
+
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
