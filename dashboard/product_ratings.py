@@ -33,8 +33,13 @@ def init_tables(cx):
         requested_at TEXT, screened_at TEXT, drafted_at TEXT, confirmed_at TEXT, updated_at TEXT)""")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_prat_color ON product_ratings(color)")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_prat_status ON product_ratings(status)")
-    _cols = {r[1] for r in cx.execute("PRAGMA table_info(product_ratings)")}
-    if "requested_by" not in _cols:
+    # Late column, added Postgres-safely: raw `PRAGMA table_info` passes through
+    # UNCHANGED to Postgres (pgcompat only rewrites `PRAGMA foreign_keys`), so it
+    # errors on PG and aborts the transaction -> every purity route then 500s with
+    # InFailedSqlTransaction. Use the adapter's cross-backend column check
+    # (information_schema on PG, PRAGMA on sqlite) instead.
+    from dashboard import db as _db
+    if not _db.column_exists(cx, "product_ratings", "requested_by"):
         cx.execute("ALTER TABLE product_ratings ADD COLUMN requested_by TEXT")
     cx.commit()
 
