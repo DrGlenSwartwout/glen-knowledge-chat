@@ -376,18 +376,22 @@ def _default_call_model_text(source_text, name, brand, sku):
     return json.loads(text)
 
 
-def _quote_near_anchor(source_text, quote, anchors, window=600):
+def _quote_near_anchor(source_text, quote, anchors, window=5000):
     """True iff `quote` occurs in `source_text` within `window` characters of an
-    occurrence of one of `anchors` (the target product's name / brand / sku).
+    occurrence of one of `anchors` (the target product's name / brand / sku /
+    slug).
 
     This ties an extracted quote to the target product's OWN region of a
-    multi-product catalog page. A neighbor product's identical-looking
-    ingredients line -- or its "Other Ingredients: None" declaration -- sits far
-    from the target's name (measured: a target's own line is <~260 chars from
-    its name, neighbors' lines are >1000 chars away on real Fullscript pages),
-    so borrowing it is rejected. Fails closed (returns False) when the quote is
-    absent or no usable anchor (>=3 chars) appears on the page, so a product
-    with no recoverable identity can never be greened off a borrowed quote.
+    multi-product catalog page. Measured on a real Fullscript page: the target's
+    own ingredients line sits ~660 chars from its brand and ~1400 from its slug,
+    while a DIFFERENT product's block is ~140,000 chars away -- an enormous safe
+    band. The window is set well above the intra-block spread (some anchors, like
+    the seed display name, may not even appear near the line, or at all) and far
+    below the inter-product distance, so a neighbor's identical-looking line --
+    or its "Other Ingredients: None" -- is still rejected. Fails closed (returns
+    False) when the quote is absent or no usable anchor (>=3 chars) appears on
+    the page, so a product with no recoverable identity can never be greened off
+    a borrowed quote.
 
     Matching is done in the whitespace-collapsed, lowercased space used by
     verify_quotes so offsets are consistent with that check."""
@@ -414,7 +418,7 @@ def _quote_near_anchor(source_text, quote, anchors, window=600):
     return False
 
 
-def extract_other_ingredients(source_text, *, name, brand, sku="", call_model=None):
+def extract_other_ingredients(source_text, *, name, brand, sku="", slug="", call_model=None):
     """Resolve the target product's Other Ingredients to one of three outcomes:
 
       - a NON-EMPTY str: the verified verbatim Other Ingredients line (the
@@ -450,7 +454,7 @@ def extract_other_ingredients(source_text, *, name, brand, sku="", call_model=No
         return None
     if not isinstance(payload, dict):
         return None
-    anchors = [name or "", brand or "", sku or ""]
+    anchors = [name or "", brand or "", sku or "", slug or ""]
     line = payload.get("other_ingredients_line")
     if isinstance(line, str) and line.strip():
         kept, _dropped = verify_quotes([{"source_quote": line}], source_text)

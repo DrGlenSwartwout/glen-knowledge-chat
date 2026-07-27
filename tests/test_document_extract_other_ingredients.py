@@ -107,7 +107,7 @@ def test_line_takes_precedence_over_none_quote():
 # attributes it to Vitamin C. Anchoring must reject it (target name is far from
 # the borrowed quote) -> None (unrated), never "".
 def _two_product_page():
-    filler = " lorem ipsum catalog padding. " * 60   # ~1800 chars of distance
+    filler = " lorem ipsum catalog padding. " * 300  # ~9000 chars > anchor window (5000)
     return ("Vitamin C 1000mg by Pure Encapsulations. "
             "Other Ingredients: hydrogenated palm oil, titanium dioxide."
             + filler +
