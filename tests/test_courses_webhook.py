@@ -211,6 +211,32 @@ def test_drip_self_selected_pref_is_honored_then_reverts_to_sequential(appmod, m
     assert _unlocked(appmod, email) == {"02-body", "05-family-history", "03-mind"}
 
 
+def test_drip_first_cycle_unlocks_only_one_module(appmod, monkeypatch):
+    # Real Stripe delivers BOTH checkout.session.completed AND a subscription_create
+    # invoice.paid for the first $99 charge — together they must unlock ONE module, not two.
+    from dashboard import stripe_pay
+    email = "drp@x.com"
+    sub_id = "sub_drp"
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": sub_id, "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    # 1) checkout.session.completed (drip) unlocks module 1
+    _drip_checkout(appmod, monkeypatch, email, sub_id=sub_id, cs_id="cs_drp")
+    assert _unlocked(appmod, email) == {"02-body"}
+    # 2) the SAME first charge's initial invoice (subscription_create) must NOT unlock a 2nd
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {
+        "subscription": sub_id, "id": "in_create", "billing_reason": "subscription_create"}}})
+    first = _unlocked(appmod, email)
+    assert len(first) == 1, f"first cycle must unlock exactly one module, got {first}"
+    assert first == {"02-body"}
+    # 3) a monthly cycle invoice unlocks the next module
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {
+        "subscription": sub_id, "id": "in_cycle2", "billing_reason": "subscription_cycle"}}})
+    after = _unlocked(appmod, email)
+    assert len(after) == 2, f"a cycle invoice unlocks the next module, got {after}"
+    assert after == {"02-body", "03-mind"}
+
+
 def _plan_sub(email="p@x.com", cpe=1000):
     return {"id": "sub_plan", "status": "active", "current_period_end": cpe,
             "customer": "cus_p", "metadata": {"kind": "course_plan", "email": email}}

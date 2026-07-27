@@ -11004,6 +11004,7 @@ def _course_membership_renew(invoice):
     try:
         sub_id = (invoice or {}).get("subscription")
         invoice_id = (invoice or {}).get("id")
+        billing_reason = (invoice or {}).get("billing_reason") or ""
         if not sub_id:
             return "skip"
         sub = stripe_pay.get_subscription(sub_id)
@@ -11020,9 +11021,16 @@ def _course_membership_renew(invoice):
                 return "skip"
             _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
                                  stripe_ref=sub_id, customer=sub.get("customer"))
-            is_new_invoice = bool(invoice_id) and _cmu.record_drip_charge(cx, sub_id, invoice_id)
-            if is_new_invoice:
-                _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
+            # The first invoice on a new drip subscription (billing_reason ==
+            # "subscription_create") is the SAME $99 charge that checkout.session.
+            # completed already unlocked module 1 for via _fulfill_course_purchase.
+            # Real Stripe delivers both events for that first payment, so unlocking
+            # here too would double-unlock on a single charge. Only the recurring
+            # subscription_cycle invoices (month 2 onward) unlock further modules.
+            if billing_reason != "subscription_create":
+                is_new_invoice = bool(invoice_id) and _cmu.record_drip_charge(cx, sub_id, invoice_id)
+                if is_new_invoice:
+                    _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
             cx.commit()
         return "ok"
     except Exception as e:
