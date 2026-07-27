@@ -17,6 +17,7 @@ from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
 from dashboard import course_tokens
+from dashboard import module_certifications
 from dashboard import stripe_pay
 from dashboard.courses_sanitize import sanitize_html
 
@@ -509,5 +510,55 @@ def courses_checkout():
             cancel_url=f"{base}/learn/ash-certification")
     except Exception:
         appmod.app.logger.exception("courses checkout failed")
+        return jsonify({"error": "checkout failed"}), 502
+    return jsonify({"url": sess.get("url")})
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/certify", methods=["POST"])
+def courses_certify_module(course_slug, module_slug):
+    """Checkout for a $200 module certification, gated on the learner having
+    already completed the module (all lessons watched + homework submitted).
+    Lands PENDING via the Stripe webhook fulfiller (record_purchase); this
+    route only creates the Checkout Session."""
+    import app as appmod  # late import: only for mentorship_base()
+    from dashboard import course_progress as cp
+
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+
+    price_id = os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip()
+    if not (_stripe_active() and price_id):
+        return jsonify({"error": "not available"}), 503
+
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    module = next((m for m in course.modules if m.slug == module_slug), None)
+    if module is None:
+        return jsonify({"error": "not found"}), 404
+    lesson_slugs = [l.slug for l in module.lessons]
+
+    cx = _connect()
+    try:
+        if not cp.module_completed(cx, email, course_slug, module_slug, lesson_slugs):
+            return jsonify({"error": "module not completed"}), 403
+        st = module_certifications.status_for(cx, email, course_slug, module_slug)
+    finally:
+        cx.close()
+    if st in ("pending", "approved"):
+        return jsonify({"error": f"already {st}"}), 409
+
+    base = appmod.mentorship_base()
+    try:
+        sess = stripe_pay.create_price_checkout_session(
+            price_id, mode="payment", customer_email=email,
+            metadata={"kind": "module_certification", "email": email,
+                     "course": course_slug, "module": module_slug},
+            success_url=f"{base}/learn/{course_slug}/{module_slug}?certified=1",
+            cancel_url=f"{base}/learn/{course_slug}/{module_slug}")
+    except Exception:
+        appmod.app.logger.exception("module certification checkout failed")
         return jsonify({"error": "checkout failed"}), 502
     return jsonify({"url": sess.get("url")})
