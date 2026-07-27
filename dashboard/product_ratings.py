@@ -33,6 +33,9 @@ def init_tables(cx):
         requested_at TEXT, screened_at TEXT, drafted_at TEXT, confirmed_at TEXT, updated_at TEXT)""")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_prat_color ON product_ratings(color)")
     cx.execute("CREATE INDEX IF NOT EXISTS ix_prat_status ON product_ratings(status)")
+    _cols = {r[1] for r in cx.execute("PRAGMA table_info(product_ratings)")}
+    if "requested_by" not in _cols:
+        cx.execute("ALTER TABLE product_ratings ADD COLUMN requested_by TEXT")
     cx.commit()
 
 
@@ -47,6 +50,22 @@ def get(cx, product_key):
         json.loads(d["other_ingredients_parsed"]) if d.get("other_ingredients_parsed") else []
     )
     return d
+
+
+def request(cx, product_key, *, brand, product_name, requested_by):
+    """Create a 'requested' row for a product if none exists. If a row exists at
+    ANY status it is returned untouched -- request never creates a duplicate and
+    never downgrades a further-along row."""
+    existing = get(cx, product_key)
+    if existing is not None:
+        return {"created": False, "status": existing["status"]}
+    now = _now()
+    cx.execute("""INSERT INTO product_ratings
+        (product_key, brand, product_name, status, requested_by, requested_at, updated_at)
+        VALUES (?,?,?,?,?,?,?)""",
+        (product_key, brand, product_name, "requested", requested_by, now, now))
+    cx.commit()
+    return {"created": True, "status": "requested"}
 
 
 def record_screen(cx, product_key, *, brand, product_name,
