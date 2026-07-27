@@ -75,3 +75,12 @@ def test_get_subscription_period_end_falls_back_to_item(monkeypatch):
         "metadata": {"kind": "course_membership"}})
     out = stripe_pay.get_subscription("sub_2")
     assert out["current_period_end"] == 1800000000  # fell back to items.data[0], not None
+
+
+def test_cancel_subscription(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(stripe_pay, "_delete",
+                        lambda path: seen.update(path=path) or {"id": "sub_9", "status": "canceled"})
+    out = stripe_pay.cancel_subscription("sub_9")
+    assert out == {"id": "sub_9", "status": "canceled"}
+    assert seen["path"] == "/subscriptions/sub_9"

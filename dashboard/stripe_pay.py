@@ -33,6 +33,14 @@ def _get(path: str) -> dict:
     return r.json()
 
 
+def _delete(path: str) -> dict:
+    """DELETE from the Stripe API. Returns the parsed JSON dict."""
+    url = path if path.startswith("http") else f"{STRIPE_API}{path}"
+    r = requests.delete(url, auth=(_key(), ""), timeout=20)
+    r.raise_for_status()
+    return r.json()
+
+
 def _checkout_params(amount_cents, *, customer_email, description, metadata,
                      success_url, cancel_url, currency="usd",
                      collect_shipping=False) -> dict:
@@ -130,6 +138,14 @@ def get_subscription(sub_id) -> dict:
     return {"id": j.get("id"), "status": j.get("status"),
             "current_period_end": cpe,
             "customer": j.get("customer"), "metadata": j.get("metadata") or {}}
+
+
+def cancel_subscription(sub_id) -> dict:
+    """Cancel a Stripe subscription immediately (stops further charges). Returns
+    {id, status}. Used when a $297x12 plan reaches its 12th payment and converts to
+    a lifetime cert."""
+    j = _delete(f"/subscriptions/{sub_id}")
+    return {"id": j.get("id"), "status": j.get("status")}
 
 
 def _find_or_create_customer(email: str) -> str:
