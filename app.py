@@ -30070,6 +30070,20 @@ def api_console_practitioners_edit(pid):
     if action == "credentials":
         _pa.set_credentials(pid, body.get("credentials"))
         return jsonify({"ok": True})
+    if action == "dropship_price":
+        raw_cents = body.get("unit_cents")
+        try:
+            cents = None if raw_cents in (None, "", 0, "0") else int(raw_cents)
+        except (TypeError, ValueError):
+            return jsonify({"error": "unit_cents must be an integer"}), 400
+        if cents is not None and not 1000 <= cents <= 100000:
+            return jsonify({"error": "unit_cents must be between 1000 and 100000"}), 400
+        from dashboard import practitioner_settings as _ps
+        with db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            _ps.init_settings_table(cx)
+            _ps.set_dropship_unit_cents(cx, pid, cents)
+        return jsonify({"ok": True, "dropship_unit_cents": cents})
     if action == "finder":
         _pa.set_finder_visibility(pid, bool(body.get("show")))
         return jsonify({"ok": True})

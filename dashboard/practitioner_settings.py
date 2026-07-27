@@ -34,10 +34,15 @@ def init_settings_table(cx) -> None:
             practitioner_id TEXT PRIMARY KEY,
             branding_json   TEXT NOT NULL DEFAULT '{}',
             pricing_json    TEXT NOT NULL DEFAULT '{}',
+            dropship_unit_cents INTEGER,
             updated_at      TEXT
         )
         """
     )
+    try:
+        cx.execute("ALTER TABLE practitioner_settings ADD COLUMN dropship_unit_cents INTEGER")
+    except Exception:
+        pass
     cx.commit()
 
 
@@ -116,6 +121,34 @@ def set_pricing(cx, pid: str, pricing: dict) -> None:
             updated_at   = excluded.updated_at
         """,
         (pid, json.dumps(pricing), _now()),
+    )
+    cx.commit()
+
+
+def dropship_unit_cents_for(cx, pid: str) -> int | None:
+    """Return a practitioner's flat drop-ship bottle price, or None for standard pricing."""
+    row = cx.execute(
+        "SELECT dropship_unit_cents FROM practitioner_settings WHERE practitioner_id = ?",
+        (pid,),
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    cents = int(row[0])
+    return cents if cents > 0 else None
+
+
+def set_dropship_unit_cents(cx, pid: str, cents: int | None) -> None:
+    """Persist a practitioner-only drop-ship bottle price; None restores the standard rate."""
+    value = int(cents) if cents is not None else None
+    cx.execute(
+        """
+        INSERT INTO practitioner_settings (practitioner_id, dropship_unit_cents, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(practitioner_id) DO UPDATE SET
+            dropship_unit_cents = excluded.dropship_unit_cents,
+            updated_at          = excluded.updated_at
+        """,
+        (pid, value, _now()),
     )
     cx.commit()
 

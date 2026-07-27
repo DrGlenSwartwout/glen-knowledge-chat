@@ -60,6 +60,21 @@ def dropship_line_cents(*, retail_cents, qty, modules, settings):
     }
 
 
+def _practitioner_dropship_unit_cents(pid: str) -> int | None:
+    """Stored practitioner-specific flat bottle price; None keeps standard pricing."""
+    from dashboard import practitioner_settings as _ps
+    try:
+        cx = db.connect(_LOG_DB)
+        cx.row_factory = sqlite3.Row
+        _ps.init_settings_table(cx)
+        try:
+            return _ps.dropship_unit_cents_for(cx, pid)
+        finally:
+            cx.close()
+    except Exception:
+        return None
+
+
 def build_dropship_order(cart: List[dict], practitioner: dict, *,
                          patient_ship: dict, method=None) -> dict:
     """Price a drop-ship cart at wholesale (paid-only -- no QBO invoice/customer
@@ -89,6 +104,7 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
 
     modules = int(practitioner.get("modules_completed", 0))
     settings = _settings()
+    special_unit_cents = _practitioner_dropship_unit_cents(practitioner["id"])
 
     # Build QBO lines — each priced at drop-ship wholesale (base + fee).
     lines = []
@@ -100,7 +116,7 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
         # base/fee use total_bottles for the blended curve; the line cost uses line_qty.
         dl = dropship_line_cents(retail_cents=retail, qty=total_bottles,
                                  modules=modules, settings=settings)
-        unit_cents = dl["unit_cents"]
+        unit_cents = special_unit_cents if special_unit_cents is not None else dl["unit_cents"]
         subtotal_cents += unit_cents * line_qty
         lines.append({
             "name": slug,
