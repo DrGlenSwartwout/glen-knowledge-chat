@@ -10,7 +10,7 @@ def _norm(email):
 
 def init_table(cx):
     cx.execute("""CREATE TABLE IF NOT EXISTS purity_ratings_access (
-        email TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1,
+        email TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0,
         set_by TEXT, updated_at TEXT)""")
     cx.commit()
 

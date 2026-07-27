@@ -35,6 +35,46 @@ def test_console_request_creates_row(client):
     assert _get(app_mod.LOG_DB, "jarrow-mag")["status"] == "requested"
 
 
+def test_console_duplicate_request_returns_200_not_500(client):
+    # First request creates the row.
+    r1 = client.post("/api/console/purity/request",
+                     json={"product_key": "dup-key", "brand": "B", "product_name": "N"})
+    assert r1.status_code == 200
+    assert r1.get_json()["created"] is True
+    # Second request for the SAME product_key hits the duplicate path in
+    # product_ratings.request() (get() -> dict(r)) -- on sqlite this raises
+    # ValueError unless cx.row_factory is set to sqlite3.Row, producing a 500.
+    r2 = client.post("/api/console/purity/request",
+                     json={"product_key": "dup-key", "brand": "B", "product_name": "N"})
+    assert r2.status_code == 200
+    body2 = r2.get_json()
+    assert body2["created"] is False
+    assert body2["status"] == "requested"
+    cx = sqlite3.connect(app_mod.LOG_DB)
+    n = cx.execute("SELECT COUNT(*) FROM product_ratings WHERE product_key=?",
+                   ("dup-key",)).fetchone()[0]
+    cx.close()
+    assert n == 1
+
+
+def test_portal_duplicate_request_returns_200_not_500(client):
+    r1 = client.post("/api/portal/TOKA/purity/request",
+                     json={"product_key": "dup-portal-key", "brand": "B", "product_name": "N"})
+    assert r1.status_code == 200
+    assert r1.get_json()["created"] is True
+    r2 = client.post("/api/portal/TOKA/purity/request",
+                     json={"product_key": "dup-portal-key", "brand": "B", "product_name": "N"})
+    assert r2.status_code == 200
+    body2 = r2.get_json()
+    assert body2["created"] is False
+    assert body2["status"] == "requested"
+    cx = sqlite3.connect(app_mod.LOG_DB)
+    n = cx.execute("SELECT COUNT(*) FROM product_ratings WHERE product_key=?",
+                   ("dup-portal-key",)).fetchone()[0]
+    cx.close()
+    assert n == 1
+
+
 def test_portal_request_uses_token_email_not_a_field(client):
     r = client.post("/api/portal/TOKA/purity/request",
                     json={"product_key": "k", "brand": "B", "product_name": "N",

@@ -27664,6 +27664,7 @@ def api_console_purity_request():
     if not key:
         return jsonify({"error": "product_key_required"}), 400
     with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.request()/get() need Row for dict(r)
         _pr.init_tables(cx)
         res = _pr.request(cx, key, brand=b.get("brand") or "",
                           product_name=b.get("product_name") or "", requested_by="console")
@@ -27787,6 +27788,7 @@ def api_portal_purity_request(token):
     if not key:
         return jsonify({"error": "product_key_required"}), 400
     with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.request()/get() need Row for dict(r)
         _pr.init_tables(cx); _acc.init_table(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
