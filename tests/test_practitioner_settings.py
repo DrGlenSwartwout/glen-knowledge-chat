@@ -48,3 +48,13 @@ def test_set_branding_does_not_overwrite_pricing():
     s = ps.get_settings(cx, "p1")
     assert s["pricing"]["default_markup_pct"] == 10
     assert s["branding"]["practice_name"] == "Clinic A"
+
+
+def test_practitioner_specific_dropship_price_roundtrip_and_clear():
+    cx = _cx()
+    assert ps.dropship_unit_cents_for(cx, "ashley") is None
+    ps.set_dropship_unit_cents(cx, "ashley", 4000)
+    assert ps.dropship_unit_cents_for(cx, "ashley") == 4000
+    assert ps.dropship_unit_cents_for(cx, "another-practitioner") is None
+    ps.set_dropship_unit_cents(cx, "ashley", None)
+    assert ps.dropship_unit_cents_for(cx, "ashley") is None

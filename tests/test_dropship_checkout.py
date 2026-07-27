@@ -102,6 +102,26 @@ def test_multi_line_cart_prices_off_total_bottles(monkeypatch):
     assert lines[0]["qty"] == 3 and lines[1]["qty"] == 3            # per-line qty
 
 
+def test_practitioner_specific_flat_dropship_price(monkeypatch):
+    _stub_order(monkeypatch)
+    monkeypatch.setattr(dc, "_practitioner_dropship_unit_cents",
+                        lambda pid: 4000 if pid == "ashley" else None)
+    ashley = {"id": "ashley", "modules_completed": 0,
+              "email": "ashley@example.com", "name": "Ashley"}
+    standard = {"id": "standard", "modules_completed": 0,
+                "email": "standard@example.com", "name": "Standard"}
+    cart = [{"slug": "a", "qty": 2}, {"slug": "b", "qty": 1}]
+    ship = {"name": "Patient", "state": "CA", "country": "US"}
+
+    special = dc.build_dropship_order(cart, ashley, patient_ship=ship, method="card")
+    regular = dc.build_dropship_order(cart, standard, patient_ship=ship, method="card")
+
+    assert special["subtotal_cents"] == 3 * 4000
+    assert all(round(line["amount"] * 100) == 4000
+               for line in special["qbo_payload"]["lines"])
+    assert regular["subtotal_cents"] != special["subtotal_cents"]
+
+
 def test_get_recorded_not_charged(monkeypatch):
     # GET comes back in the result, never added to the qbo_payload lines.
     _stub_order(monkeypatch, get=275)

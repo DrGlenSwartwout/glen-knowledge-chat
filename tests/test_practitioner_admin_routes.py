@@ -166,6 +166,24 @@ def test_edit_credentials_dispatch(client, monkeypatch):
     assert calls == {"pid": "p9", "cred": "ND"}
 
 
+def test_edit_dropship_price_persists_practitioner_override(client, monkeypatch):
+    c, appmod = client
+    from dashboard import practitioner_settings as ps
+    calls = {}
+    monkeypatch.setattr(
+        ps,
+        "set_dropship_unit_cents",
+        lambda cx, pid, cents: calls.update({"pid": pid, "cents": cents}),
+    )
+    response = c.post(
+        "/api/console/practitioners/p9/edit?key=" + _key(appmod),
+        json={"action": "dropship_price", "unit_cents": 4000},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["dropship_unit_cents"] == 4000
+    assert calls == {"pid": "p9", "cents": 4000}
+
+
 def test_edit_unknown_action_400(client, monkeypatch):
     c, appmod = client
     r = c.post("/api/console/practitioners/p9/edit?key=" + _key(appmod),
