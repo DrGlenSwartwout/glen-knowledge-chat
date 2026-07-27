@@ -246,8 +246,9 @@ through PR #1173):
 - **Aggregate math** — group-by-color over a known fixture.
 - **Gating** — an uncached request triggers the pipeline; an unconfirmed rating never reaches a
   client; a cached confirmed rating returns without re-analysis.
-- **Seed render** — a red product is suppressed; a yellow/green shows with its color and its
-  `best_ff` pairing.
+- **Card render** — a confirmed red shows greyed with a "contains excipients we avoid" note (kept,
+  not suppressed — refined Section 3, 2026-07-27); a yellow/green shows a color dot + tooltip; each
+  keeps its `best_ff` pairing; an unrated/unconfirmed product renders unchanged (no badge).
 
 ## Phasing (mirrors the Fullscript A1 build)
 

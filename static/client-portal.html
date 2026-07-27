@@ -812,7 +812,7 @@ function fullscriptBodyHtml(fsData){
       // green/yellow; a greyed row + note for a confirmed red. Absent p.purity
       // renders exactly as before.
       const pc = p.purity && p.purity.color;
-      const dot = (bg, label) => `<span title="${esc(label)}" style="display:inline-block;width:.6em;height:.6em;border-radius:50%;background:${bg};margin-right:.4em;vertical-align:middle"></span>`;
+      const dot = (bg, label) => `<span title="${esc(label)}" aria-label="${esc(label)}" role="img" style="display:inline-block;width:.6em;height:.6em;border-radius:50%;background:${bg};margin-right:.4em;vertical-align:middle"></span>`;
       let badge = "", liStyle = "", note = "";
       if (pc === "green") badge = dot("#2f6f5e", "Meets our purity standard");
       else if (pc === "yellow") badge = dot("#c9a227", "Minor filler only");
