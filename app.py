@@ -15934,7 +15934,8 @@ def api_practitioner_dropship_checkout():
                       name=(prac.get("name") or ""),
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale",
-                      get_cents=out.get("get_cents", 0))
+                      get_cents=out.get("get_cents", 0), pay_method=method,
+                      practitioner_id=pid)
         # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
         # return-handler can book a real Sales Receipt once payment is confirmed.
         if out.get("qbo_payload"):
@@ -30102,6 +30103,78 @@ def api_console_practitioners_edit(pid):
             return jsonify({"ok": False, "error": "send failed"}), 500
         return jsonify({"ok": True, "sent": True})
     return jsonify({"error": "unknown action"}), 400
+
+
+@app.route("/api/console/dropship/reissue", methods=["POST"])
+def api_console_dropship_reissue():
+    """Reprice unpaid drop-ship orders and replace their Stripe Checkout links."""
+    if not _console_key_ok():
+        return jsonify({"error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    pid = _norm_pid(body.get("practitioner_id"))
+    try:
+        order_ids = [int(v) for v in (body.get("order_ids") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "order_ids must be integers"}), 400
+    if not pid or not order_ids:
+        return jsonify({"error": "practitioner_id and order_ids are required"}), 400
+
+    from dashboard import stripe_pay as _sp
+    replacements = []
+    for oid in order_ids:
+        with db.connect(LOG_DB) as cx:
+            cx.row_factory = _sqlite3.Row
+            old = _bos_orders.get_order(cx, oid)
+        if not old or old.get("source") != "dropship":
+            return jsonify({"error": f"order #{oid} is not a drop-ship order"}), 400
+        if old.get("pay_status") == "paid" or old.get("status") == "cancelled":
+            return jsonify({"error": f"order #{oid} is not an open unpaid order"}), 400
+
+        practitioner = {
+            "id": pid,
+            "modules_completed": 0,
+            "email": old.get("email") or "",
+            "name": old.get("name") or "",
+        }
+        out = _dropship.build_dropship_order(
+            old.get("items") or [], practitioner,
+            patient_ship=old.get("address") or {}, method="card")
+        if not out.get("ok"):
+            return jsonify({"error": f"could not reprice order #{oid}"}), 422
+        new_ref = str(out.get("invoice_id") or "")
+        new_total = int(round((out.get("total") or 0) * 100))
+        new_url = _stripe_checkout_url_for_order(out, practitioner["email"], "")
+        if not new_url:
+            return jsonify({"error": f"could not create replacement payment link for order #{oid}"}), 502
+
+        try:
+            expired = _sp.expire_open_sessions_for_invoice(old.get("external_ref"))
+        except Exception as e:
+            app.logger.warning("dropship reissue: old Stripe session expiry failed: %r", e)
+            return jsonify({"error": f"could not invalidate the old payment link for order #{oid}"}), 502
+
+        _ingest_order(
+            source="dropship", external_ref=new_ref,
+            email=practitioner["email"], name=practitioner["name"],
+            items=old.get("items") or [], total_cents=new_total,
+            address=old.get("address") or {}, channel="wholesale",
+            get_cents=out.get("get_cents", 0), pay_method="card",
+            practitioner_id=pid)
+        if out.get("qbo_payload"):
+            with db.connect(LOG_DB) as cx:
+                _bos_orders.set_order_qbo_lines(cx, new_ref, out["qbo_payload"])
+        with db.connect(LOG_DB) as cx:
+            _bos_orders.set_order_status(cx, oid, "cancelled")
+
+        replacements.append({
+            "old_order_id": oid,
+            "old_sessions_expired": expired,
+            "recipient": (old.get("address") or {}).get("name") or "",
+            "new_ref": new_ref,
+            "total_cents": new_total,
+            "stripe_url": new_url,
+        })
+    return jsonify({"ok": True, "replacements": replacements})
 
 
 @app.route("/api/console/care-share/reverse", methods=["POST"])
