@@ -20,6 +20,7 @@ from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
 from dashboard import course_tokens
+from dashboard import module_certifications
 from dashboard import stripe_pay
 from dashboard import bodymap_homework
 from dashboard.courses_sanitize import sanitize_html
@@ -372,6 +373,39 @@ def lesson_page(course_slug, module_slug, lesson_slug):
             f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
             f'</script></div>')
     body += hw_html
+
+    cert_price_set = bool(os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip())
+    import app as _appmod  # late import: the certifiable-module set
+    cert_certifiable = (course_slug != _appmod._CERT_COURSE
+                        or module_slug in _appmod._CERT_REQUIRED_MODULES)
+    if email and cert_price_set and cert_certifiable:
+        cert_module = next((m for m in course.modules if m.slug == module_slug), None)
+        cert_lesson_slugs = [l.slug for l in cert_module.lessons] if cert_module else []
+        cx2 = _connect()
+        try:
+            from dashboard import course_progress as cp
+            cert_completed = cp.module_completed(cx2, email, course_slug, module_slug, cert_lesson_slugs)
+            cert_status = (module_certifications.status_for(cx2, email, course_slug, module_slug)
+                           if cert_completed else None)
+        finally:
+            cx2.close()
+        if cert_completed:
+            if cert_status == "approved":
+                body += '<div class="mu-cert"><p><b>Module certified.</b></p></div>'
+            elif cert_status == "pending":
+                body += '<div class="mu-cert"><p>Certification submitted. It is pending review.</p></div>'
+            else:
+                body += (
+                    '<div class="mu-cert"><h3>Certify this module</h3>'
+                    '<p>Certification for this module is $200.</p>'
+                    '<button type="button" onclick="muCertify()">Certify this module, $200</button> '
+                    '<span id="mu-cert-ok"></span>'
+                    f'<script>function muCertify(){{fetch("/api/courses/{course_slug}/{module_slug}/certify"'
+                    f'+location.search,{{method:"POST",headers:{{"Content-Type":"application/json"}}}})'
+                    f'.then(function(r){{return r.json()}}).then(function(d){{if(d.url){{location.href=d.url}}'
+                    f'else{{document.getElementById("mu-cert-ok").textContent=(d.error||"Not available right now.");}}}});}}'
+                    f'</script></div>'
+                )
     return render_template_string(_PAGE, title=lesson.title, body=body)
 
 
@@ -551,5 +585,60 @@ def courses_checkout():
             cancel_url=f"{base}/learn/ash-certification")
     except Exception:
         appmod.app.logger.exception("courses checkout failed")
+        return jsonify({"error": "checkout failed"}), 502
+    return jsonify({"url": sess.get("url")})
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/certify", methods=["POST"])
+def courses_certify_module(course_slug, module_slug):
+    """Checkout for a $200 module certification, gated on the learner having
+    already completed the module (all lessons watched + homework submitted).
+    Lands PENDING via the Stripe webhook fulfiller (record_purchase); this
+    route only creates the Checkout Session."""
+    import app as appmod  # late import: only for mentorship_base()
+    from dashboard import course_progress as cp
+
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+
+    price_id = os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip()
+    if not (_stripe_active() and price_id):
+        return jsonify({"error": "not available"}), 503
+
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    module = next((m for m in course.modules if m.slug == module_slug), None)
+    if module is None:
+        return jsonify({"error": "not found"}), 404
+    # On the real certification course, only the 12 certifiable modules count
+    # toward the credential; refuse to sell a dead-end certification for a
+    # non-required module (e.g. the intro).
+    if course_slug == appmod._CERT_COURSE and module_slug not in appmod._CERT_REQUIRED_MODULES:
+        return jsonify({"error": "not certifiable"}), 404
+    lesson_slugs = [l.slug for l in module.lessons]
+
+    cx = _connect()
+    try:
+        if not cp.module_completed(cx, email, course_slug, module_slug, lesson_slugs):
+            return jsonify({"error": "module not completed"}), 403
+        st = module_certifications.status_for(cx, email, course_slug, module_slug)
+    finally:
+        cx.close()
+    if st in ("pending", "approved"):
+        return jsonify({"error": f"already {st}"}), 409
+
+    base = appmod.mentorship_base()
+    try:
+        sess = stripe_pay.create_price_checkout_session(
+            price_id, mode="payment", customer_email=email,
+            metadata={"kind": "module_certification", "email": email,
+                     "course": course_slug, "module": module_slug},
+            success_url=f"{base}/learn/{course_slug}/{module_slug}?certified=1",
+            cancel_url=f"{base}/learn/{course_slug}/{module_slug}")
+    except Exception:
+        appmod.app.logger.exception("module certification checkout failed")
         return jsonify({"error": "checkout failed"}), 502
     return jsonify({"url": sess.get("url")})
