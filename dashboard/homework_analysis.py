@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import os
 
+from dashboard import bodymap_homework
+
 _MODEL = "claude-haiku-4-5-20251001"
 
 # module slug -> Glen's framework lens for the AI system prompt. Body wired now;
@@ -13,8 +15,11 @@ _MODEL = "claude-haiku-4-5-20251001"
 # 5 levels of regulation, Prognosis->5 stages, Epigenetics->E4L+Remedy Match, ...)
 # fill in on the drip cadence. Unmapped modules use the generic lens.
 _FRAMEWORK = {
-    "02-body": "Analyze through the Minding Body lens (the material, informational, and "
-               "spirit body as one system). Note tissue-layer / whole-body patterns where relevant.",
+    "02-body": "The learner may have marked areas of concern on a Body Map, optionally with "
+               "notes on each marked area. Analyze those flagged areas and their notes through "
+               "the tissue-layer / Minding Body lens (the material, informational, and spirit "
+               "body as one system). Look for whole-body and tissue-layer patterns across the "
+               "marked areas. Keep your analysis advisory, specific, and encouraging.",
 }
 _GENERIC = ("You are Dr. Glen Swartwout's teaching assistant for the Accelerated Self Healing "
             "certification. Evaluate the learner's homework supportively and specifically.")
@@ -32,12 +37,13 @@ def analyze(module: str, assignment: str, submission: str) -> dict:
     if not (submission or "").strip():
         return {"rating": "", "feedback": ""}
     try:
+        readable = bodymap_homework.summarize_marks(submission) or submission
         lens = _FRAMEWORK.get(module, "")
         system = (_GENERIC + (" " + lens if lens else "") +
                   " Reply as STRICT JSON: {\"rating\": <one short phrase>, "
                   "\"feedback\": <2-4 sentences of concrete suggestions for improvement "
                   "and further work>}. No prose outside the JSON.")
-        user = f"ASSIGNMENT:\n{assignment}\n\nLEARNER SUBMISSION:\n{submission}"
+        user = f"ASSIGNMENT:\n{assignment}\n\nLEARNER SUBMISSION:\n{readable}"
         resp = _client().messages.create(
             model=_MODEL, max_tokens=600, system=system,
             messages=[{"role": "user", "content": user}])
