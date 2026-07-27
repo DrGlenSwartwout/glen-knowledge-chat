@@ -76,7 +76,8 @@ def _practitioner_dropship_unit_cents(pid: str) -> int | None:
 
 
 def build_dropship_order(cart: List[dict], practitioner: dict, *,
-                         patient_ship: dict, method=None) -> dict:
+                         patient_ship: dict, method=None,
+                         shipping_cents=0) -> dict:
     """Price a drop-ship cart at wholesale (paid-only -- no QBO invoice/customer
     at checkout time), ship to the patient. A real, line-faithful QBO Sales
     Receipt is booked by the return-handler once payment is confirmed, from the
@@ -131,9 +132,10 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
 
     # Paid-only: no QBO invoice/customer yet -- mint a stable order/correlation
     # key and resolve credit redemption against IT (never a QBO invoice id).
+    shipping_cents = max(0, int(shipping_cents or 0))
     checkout_ref = uuid.uuid4().hex
     redeemed = wallet.redeem_for_order(practitioner["id"], subtotal_cents, checkout_ref)
-    charged = max(0, subtotal_cents - redeemed)
+    charged = max(0, subtotal_cents - redeemed) + shipping_cents
 
     # Fee-free 3% earn on zelle/wise.
     fee_free = 0
@@ -147,11 +149,21 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
         "doc_number": "",
         "total": round(charged / 100.0, 2),
         "subtotal_cents": subtotal_cents,
+        "shipping_cents": shipping_cents,
         "credit_redeemed_cents": redeemed,
         "fee_free_credit_cents": fee_free,
         "get_cents": get_cents,
         "method": method,
-        "qbo_payload": {"lines": lines, "discount_cents": redeemed, "tax_cents": 0},
+        "qbo_payload": {
+            "lines": lines + ([{
+                "name": "Shipping (USPS)",
+                "amount": shipping_cents / 100.0,
+                "qty": 1,
+                "description": "USPS shipping",
+            }] if shipping_cents else []),
+            "discount_cents": redeemed,
+            "tax_cents": 0,
+        },
         "ship_to": patient_ship,
         "source": "dropship",
     }

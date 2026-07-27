@@ -23,11 +23,13 @@ def test_dropship_quote_requires_auth(monkeypatch):
 
 def test_dropship_checkout_ships_to_patient(monkeypatch):
     _auth(monkeypatch)
+    monkeypatch.setattr(appmod, "_price_cart",
+                        lambda *a, **k: {"shipping_cents": 1300})
     monkeypatch.setattr(appmod._dropship, "build_dropship_order",
-        lambda *a, **k: {"ok": True, "invoice_id": "INV", "total": 339.60,
+        lambda *a, **k: {"ok": True, "invoice_id": "INV", "total": 352.60,
                          "customer_id": "C1", "source": "dropship",
                          "ship_to": k.get("patient_ship"), "method": "zelle",
-                         "get_cents": 0})
+                         "get_cents": 0, "shipping_cents": k.get("shipping_cents")})
     cap = {}
     monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: cap.update(kw))
     monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", False)
@@ -41,6 +43,7 @@ def test_dropship_checkout_ships_to_patient(monkeypatch):
     assert r.status_code == 200
     assert cap["source"] == "dropship"
     assert cap["address"]["name"] == "Pat"
+    assert cap["shipping_cents"] == 1300
 
 
 def test_dropship_checkout_requires_patient_address(monkeypatch):

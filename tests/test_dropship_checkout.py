@@ -134,6 +134,22 @@ def test_get_recorded_not_charged(monkeypatch):
     assert "tax" not in names and "get" not in names      # no GET line in the payload
 
 
+def test_shipping_is_added_to_practitioner_charge_and_qbo_payload(monkeypatch):
+    _stub_order(monkeypatch)
+    prac = {"id": "p1", "modules_completed": 0, "email": "doc@x.com", "name": "Doc"}
+    out = dc.build_dropship_order(
+        [{"slug": "a", "qty": 1}], prac,
+        patient_ship={"name": "Pat", "state": "CA", "country": "US"},
+        method="card", shipping_cents=1300)
+
+    assert out["shipping_cents"] == 1300
+    assert out["total"] == 69.60
+    assert out["qbo_payload"]["lines"][-1] == {
+        "name": "Shipping (USPS)", "amount": 13.0, "qty": 1,
+        "description": "USPS shipping",
+    }
+
+
 def test_empty_cart_rejected(monkeypatch):
     _stub_order(monkeypatch)
     prac = {"id": "p1", "modules_completed": 0, "email": "doc@x.com", "name": "Doc"}
