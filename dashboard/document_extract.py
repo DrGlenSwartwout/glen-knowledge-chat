@@ -337,15 +337,23 @@ _OTHER_ING_PROMPT = (
     "You are reading the text of a supplement catalog web page. It may contain "
     "several products. Find the ONE product that matches this identity:\n"
     "  name: {name}\n  brand: {brand}\n  sku: {sku}\n\n"
-    "Return STRICT JSON: {{\"other_ingredients_line\": \"...\"}} where the value "
-    "is the VERBATIM 'Other Ingredients' (or 'Non-Medicinal Ingredients') text "
-    "for THAT product ONLY, copied exactly from the page, character for "
-    "character. Do NOT include the 'Other Ingredients:' label, other products' "
-    "ingredients, the Supplement/Medicinal Facts actives, dosages, or any "
-    "warning text. If you cannot find this exact product's other-ingredients "
-    "text on the page, return {{\"other_ingredients_line\": \"\"}}. Never guess "
-    "or infer an ingredient that is not written on the page. No markdown "
-    "fences, no prose outside the JSON."
+    "Return STRICT JSON with ONE of these shapes:\n"
+    "  1. The product lists other ingredients -> "
+    "{{\"other_ingredients_line\": \"...\"}} where the value is the VERBATIM "
+    "'Other Ingredients' (or 'Non-Medicinal Ingredients') text for THAT product "
+    "ONLY, copied exactly from the page, character for character. Do NOT include "
+    "the 'Other Ingredients:' label, other products' ingredients, the "
+    "Supplement/Medicinal Facts actives, dosages, or any warning text.\n"
+    "  2. The product's block EXPLICITLY states it has no other ingredients "
+    "(e.g. 'Other Ingredients: None') -> "
+    "{{\"none_source_quote\": \"...\"}} where the value is that VERBATIM "
+    "declaration copied exactly from the page, INCLUDING the 'Other Ingredients' "
+    "label and the word 'None' (e.g. \"Other Ingredients: None\").\n"
+    "  3. You cannot find this exact product's block on the page -> "
+    "{{\"other_ingredients_line\": \"\"}}.\n"
+    "Never guess or infer an ingredient that is not written on the page, and "
+    "never claim 'None' unless the page literally says so for THIS product. No "
+    "markdown fences, no prose outside the JSON."
 )
 
 
@@ -368,11 +376,73 @@ def _default_call_model_text(source_text, name, brand, sku):
     return json.loads(text)
 
 
+def _quote_near_anchor(source_text, quote, anchors, window=600):
+    """True iff `quote` occurs in `source_text` within `window` characters of an
+    occurrence of one of `anchors` (the target product's name / brand / sku).
+
+    This ties an extracted quote to the target product's OWN region of a
+    multi-product catalog page. A neighbor product's identical-looking
+    ingredients line -- or its "Other Ingredients: None" declaration -- sits far
+    from the target's name (measured: a target's own line is <~260 chars from
+    its name, neighbors' lines are >1000 chars away on real Fullscript pages),
+    so borrowing it is rejected. Fails closed (returns False) when the quote is
+    absent or no usable anchor (>=3 chars) appears on the page, so a product
+    with no recoverable identity can never be greened off a borrowed quote.
+
+    Matching is done in the whitespace-collapsed, lowercased space used by
+    verify_quotes so offsets are consistent with that check."""
+    hay = _norm_text(source_text)
+    q = _norm_text(quote)
+    if not q or q not in hay:
+        return False
+    apos = []
+    for a in anchors:
+        na = _norm_text(a)
+        if len(na) < 3:
+            continue
+        i = hay.find(na)
+        while i >= 0:
+            apos.append(i)
+            i = hay.find(na, i + 1)
+    if not apos:
+        return False
+    i = hay.find(q)
+    while i >= 0:
+        if any(abs(ap - i) <= window for ap in apos):
+            return True
+        i = hay.find(q, i + 1)
+    return False
+
+
 def extract_other_ingredients(source_text, *, name, brand, sku="", call_model=None):
-    """Return the target product's Other Ingredients line, verified verbatim
-    against source_text, or None. Fails closed on a model error, a non-dict
-    reply, a non-string / empty line, or a line that is not a verbatim
-    substring of source_text (fabrication)."""
+    """Resolve the target product's Other Ingredients to one of three outcomes:
+
+      - a NON-EMPTY str: the verified verbatim Other Ingredients line (the
+        product lists excipients);
+      - "" (EMPTY str): the product VERIFIABLY lists no other ingredients (its
+        block literally reads e.g. "Other Ingredients: None") -- the caller
+        screens this GREEN (pristine);
+      - None: not found / unverifiable -> the caller screens UNRATED, never
+        green.
+
+    Both non-None outcomes are grounded the same TWO ways, so a mere model CLAIM
+    is never trusted and a neighbor product's text on a multi-product page cannot
+    be borrowed:
+      1. verbatim: the quote must pass verify_quotes as a substring of
+         source_text (and, for the none outcome, read as an
+         other-ingredients-none declaration -- contains both 'ingredient' and
+         'none');
+      2. anchored: the quote must occur within a window of the TARGET product's
+         own name/brand/sku (`_quote_near_anchor`), so a neighbor's line or its
+         "Other Ingredients: None" -- which sits far from the target's name --
+         is rejected.
+    A product whose block was merely NOT FOUND yields no quote that clears both,
+    so it fails closed to None -- 'not found' can never become green. The
+    residual risk is a neighbor whose block happens to fall inside the target's
+    anchor window; the human confirm gate is the backstop for that.
+
+    Fails closed to None on a model error, a non-dict reply, or any output that
+    clears neither grounded path."""
     call = call_model or _default_call_model_text
     try:
         payload = call(source_text, name, brand, sku)
@@ -380,10 +450,18 @@ def extract_other_ingredients(source_text, *, name, brand, sku="", call_model=No
         return None
     if not isinstance(payload, dict):
         return None
+    anchors = [name or "", brand or "", sku or ""]
     line = payload.get("other_ingredients_line")
-    if not isinstance(line, str) or not line.strip():
+    if isinstance(line, str) and line.strip():
+        kept, _dropped = verify_quotes([{"source_quote": line}], source_text)
+        if kept and _quote_near_anchor(source_text, line, anchors):
+            return line.strip()
         return None
-    kept, _dropped = verify_quotes([{"source_quote": line}], source_text)
-    if not kept:
-        return None
-    return line.strip()
+    none_q = payload.get("none_source_quote")
+    if isinstance(none_q, str) and none_q.strip():
+        kept, _dropped = verify_quotes([{"source_quote": none_q}], source_text)
+        nq = _norm_text(none_q)
+        if (kept and "none" in nq and "ingredient" in nq
+                and _quote_near_anchor(source_text, none_q, anchors)):
+            return ""     # verified explicit-none, in the target's region -> green
+    return None
