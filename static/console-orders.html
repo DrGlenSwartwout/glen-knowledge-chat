@@ -177,7 +177,7 @@
 
   function cardHtml(o){
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
-    var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', ');
+    var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||i.slug||''); }).join(', ');
     var acts = '';
     if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
     else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
@@ -281,7 +281,7 @@
     if (!showFulfill(o)) return '';
     var rows = (o.fulfillment||[]).map(function(f){
       var it = (o.items||[])[f.index] || {};
-      var name = esc(it.name||('Line '+(f.index+1)));
+      var name = esc(it.name||it.slug||('Line '+(f.index+1)));
       if (Number(f.backordered)<=0) return '<div class="ffline ok">'+name+' &mdash; sent '+f.fulfilled+'/'+f.ordered+' &#10003;</div>';
       return '<div class="ffline"><span>'+name+' &mdash; sent '+f.fulfilled+'/'+f.ordered+'</span>'
         + '<input type="number" min="0" max="'+f.backordered+'" value="0" id="ff-'+Number(o.id)+'-'+f.index+'"></div>';

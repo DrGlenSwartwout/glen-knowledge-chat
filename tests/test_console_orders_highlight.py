@@ -14,3 +14,9 @@ def test_orders_reads_order_param_and_flashes():
     assert "URLSearchParams(location.search).get('order')" in html
     assert "scrollIntoView" in html
     assert "ord-flash" in html
+
+
+def test_order_items_fall_back_to_slug_for_display():
+    html = _html()
+    assert "i.name||i.slug||''" in html
+    assert "it.name||it.slug||('Line '+" in html

@@ -98,6 +98,40 @@ def test_orders_list_and_board(monkeypatch, tmp_path):
     assert b"Orders" in p.data
 
 
+def test_orders_list_enriches_slug_only_item_names(monkeypatch, tmp_path):
+    app_module = _load_app()
+    import sqlite3
+    db = str(tmp_path / "named-items.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    monkeypatch.setattr(
+        app_module,
+        "_catalog_products",
+        lambda: [{"slug": "clear-the-way", "name": "Clear the Way"}],
+    )
+    from dashboard import orders as O
+    cx = sqlite3.connect(db)
+    cx.row_factory = sqlite3.Row
+    O.init_orders_table(cx)
+    O.upsert_order(
+        cx,
+        source="portal-dropship",
+        external_ref="drop-1",
+        email="practitioner@example.com",
+        items=[{"slug": "clear-the-way", "qty": 1}],
+        total_cents=5000,
+    )
+    cx.commit()
+    cx.close()
+
+    client = app_module.app.test_client()
+    key = app_module.dashboard.CONSOLE_SECRET or ""
+    response = client.get("/api/orders", headers={"X-Console-Key": key})
+
+    assert response.status_code == 200
+    order = next(o for o in response.get_json()["data"] if o["external_ref"] == "drop-1")
+    assert order["items"][0]["name"] == "Clear the Way"
+
+
 def test_finance_page_served(monkeypatch, tmp_path):
     app_module = _load_app()
     monkeypatch.setattr(app_module, "LOG_DB", str(tmp_path / "f.db"))

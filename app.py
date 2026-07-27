@@ -46239,6 +46239,13 @@ def bos_orders_create():
             try:
                 _phys_catalog = {p.get("slug"): p for p in _catalog_products()}
                 for o in rows:
+                    # Portal/drop-ship orders may persist only slug + qty. Enrich
+                    # the read response so every order surface (including the
+                    # per-line fulfillment controls) can show the catalog name.
+                    for it in o.get("items") or []:
+                        if not (it.get("name") or "").strip():
+                            product = _phys_catalog.get(it.get("slug")) or {}
+                            it["name"] = product.get("name") or it.get("slug") or ""
                     o["physical_units"] = _bos_orders.physical_units(o.get("items") or [], _phys_catalog)
                     o["pack_breakdown"] = _order_pack_breakdown(o)
             except Exception as _e:
