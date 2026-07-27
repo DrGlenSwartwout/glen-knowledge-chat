@@ -135,3 +135,15 @@ def confirm(cx, product_key):
     cx.execute("UPDATE product_ratings SET status='confirmed', confirmed_at=?, "
                "updated_at=? WHERE product_key=?", (now, now, product_key))
     cx.commit()
+
+
+def confirmed_color(cx, product_key):
+    """The confirmed color for a product, or None. Returns the row's color ONLY
+    when status == 'confirmed'; a screened/ai_draft/unrated/missing row returns
+    None. The Fullscript badge reader (Phase 3) calls this so an unconfirmed or
+    unrated product carries no badge. Scalar select (indexes column 0), so it is
+    correct with any row_factory and Postgres-safe."""
+    row = cx.execute(
+        "SELECT color FROM product_ratings WHERE product_key=? AND status='confirmed'",
+        (product_key,)).fetchone()
+    return row[0] if row else None

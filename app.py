@@ -18648,6 +18648,36 @@ def _fullscript_enabled():
         "1", "true", "yes", "on")
 
 
+def _purity_badges_enabled():
+    """Default OFF. When off, _fullscript_for adds no `purity` key, so the
+    portal payload stays byte-identical. Mirrors _fullscript_enabled."""
+    return (os.environ.get("PURITY_BADGES_ENABLED", "") or "").strip().lower() in (
+        "1", "true", "yes", "on")
+
+
+def _enrich_fullscript_purity(groups):
+    """Attach `purity: {color}` to each product carrying a CONFIRMED rating,
+    when the flag is on. In place; best-effort -- any failure leaves products
+    un-badged and never raises (the card must still render)."""
+    if not _purity_badges_enabled():
+        return groups
+    try:
+        from dashboard import product_ratings as _pr
+        with db.connect(LOG_DB) as cx:
+            _pr.init_tables(cx)
+            for g in groups:
+                for p in g.get("products", []):
+                    slug = (p.get("product_slug") or "").strip()
+                    if not slug:
+                        continue
+                    color = _pr.confirmed_color(cx, "fullscript::" + slug)
+                    if color:
+                        p["purity"] = {"color": color}
+    except Exception:
+        pass
+    return groups
+
+
 def _fullscript_dispensary_url():
     """Attribution-safe entry point. Phase A routes every client here rather than
     to a product deep link: whether a NEW signup from /u/catalog/product/... is
@@ -23250,6 +23280,7 @@ def _fullscript_for(email, scan_date):
                 "reason": c.get("reason") or "",
                 "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
             })
+        _enrich_fullscript_purity(groups)
         return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups}
     except Exception:
         return None

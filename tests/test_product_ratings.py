@@ -79,6 +79,27 @@ def test_unrated_cannot_advance_to_tier2():
         pr.set_tier2(cx, "k", 8.5, "{}")
 
 
+def test_confirmed_color_only_for_confirmed_rows():
+    import sqlite3
+    from dashboard import product_ratings as pr
+    cx = sqlite3.connect(":memory:")
+    cx.row_factory = sqlite3.Row
+    pr.init_tables(cx)
+    # a screened (not confirmed) green row -> no color yet
+    pr.record_screen(cx, "fullscript::a", brand="B", product_name="A",
+                     other_ingredients_raw="cellulose", other_ingredients_parsed=["cellulose"],
+                     screen={"color": "green", "red_hits": [], "yellow_hits": [], "avoidlist_version": "v1"})
+    assert pr.confirmed_color(cx, "fullscript::a") is None      # screened, not confirmed
+    # a confirmed red row -> its color
+    pr.record_screen(cx, "fullscript::r", brand="B", product_name="R",
+                     other_ingredients_raw="magnesium stearate", other_ingredients_parsed=["magnesium stearate"],
+                     screen={"color": "red", "red_hits": ["stearate"], "yellow_hits": [], "avoidlist_version": "v1"})
+    pr.confirm(cx, "fullscript::r")                              # red: screened -> confirmed
+    assert pr.confirmed_color(cx, "fullscript::r") == "red"
+    # a missing key -> None
+    assert pr.confirmed_color(cx, "fullscript::missing") is None
+
+
 def test_no_raw_pragma_table_info_in_purity_modules():
     """Raw `cx.execute("PRAGMA table_info(...)")` passes through UNCHANGED to
     Postgres (pgcompat only rewrites PRAGMA foreign_keys), errors there, and

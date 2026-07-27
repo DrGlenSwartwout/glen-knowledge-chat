@@ -197,20 +197,33 @@ image/PDF `call_model_for_extraction`. That one text extractor also serves Sourc
 
 Only two consumers read `product_ratings`; nothing else does.
 
-**Fullscript seed-gate (additive color badge, decided 2026-07-26).** The portal card annotates a
-product with its confirmed color rather than gating visibility on it: green/yellow products show
-their badge and their `best_ff` pairing, and an **unrated** product shows with no badge (the
-channel behaves exactly as it does pre-rating). The badge is purely additive — a rating only ever
-*adds* a color signal, never removes a card that the channel already showed. Reds are the one
-exception carried from the primary-use decision: a confirmed red is not surfaced to the client as a
-recommendation (the `best_ff` pairing does the honest work instead). This is decoupled from the
-static seed file: the seed holds candidates, the rating decides the badge, so a color change never
-regenerates the seed. Ties into PR #1173. (Phase 3.)
+**Fullscript card badge (Phase 3 — slice 1; decisions refined 2026-07-27).** The portal Fullscript
+card (`fullscriptBodyHtml` in `static/client-portal.html`, fed by `_fullscript_for`'s per-product
+dicts) annotates each product with its **confirmed** purity color, looked up by
+`product_key = fullscript::<product_slug>` over confirmed `product_ratings` rows only (a screened-but-
+unconfirmed or unrated product shows exactly as it does today — no badge, nothing removed).
 
-**Aggregate stat.** A group-by-color count over confirmed rows — "of N professional products
-screened, X% red, Y% filler-only, Z% fully clean." The public authority artifact; feeds
+- **Visual — a color dot + tooltip** (Glen's choice, least card noise): a small green/yellow dot
+  beside the product name; hover/tap reveals the plain explanation ("Meets our purity standard" /
+  "Minor filler only"). Green and yellow are purely additive signals on a product the card already
+  shows.
+- **Confirmed red — shown greyed with a note** (Glen's choice, overriding the earlier
+  "suppress"/no-name default): the red product stays visible but greyed, labeled "contains
+  excipients we avoid", paired with its `best_ff` clean alternative. This is a per-client private
+  annotation on that one client's card (not a public wall naming competitors), so it stays within
+  the primary-use boundary while being transparent.
+
+Decoupled from the static seed file (the seed holds candidates; the rating decides the annotation, so
+a color change never regenerates the seed). **Ships dark behind a `PURITY_BADGES_ENABLED` flag**
+(mirrors `FULLSCRIPT_ENABLED`): the enrichment + rendering are gated off until a headless
+render-verify passes, then the flag is flipped. Ties into PR #1173.
+
+**Aggregate stat (Phase 3 — slice 2, after the badge).** A group-by-color count over confirmed rows
+— "of N professional products screened, X% red, Y% filler-only, Z% fully clean" (as of 2026-07-27:
+24 confirmed → 12 red / 11 green / 1 yellow = 50% fail). The public authority artifact; feeds
 skepticalreviews and the content engine; honest, growing denominator framed as "of the N we have
-screened."
+screened." Public surface (skepticalreviews page / an illtowell stats block / content engine) to be
+chosen with Glen when this slice is built.
 
 ## Error handling
 
@@ -233,8 +246,9 @@ through PR #1173):
 - **Aggregate math** — group-by-color over a known fixture.
 - **Gating** — an uncached request triggers the pipeline; an unconfirmed rating never reaches a
   client; a cached confirmed rating returns without re-analysis.
-- **Seed render** — a red product is suppressed; a yellow/green shows with its color and its
-  `best_ff` pairing.
+- **Card render** — a confirmed red shows greyed with a "contains excipients we avoid" note (kept,
+  not suppressed — refined Section 3, 2026-07-27); a yellow/green shows a color dot + tooltip; each
+  keeps its `best_ff` pairing; an unrated/unconfirmed product renders unchanged (no badge).
 
 ## Phasing (mirrors the Fullscript A1 build)
 
