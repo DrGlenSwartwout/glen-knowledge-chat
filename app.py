@@ -34083,12 +34083,16 @@ def _merge_canonical_into_person(cx, person):
     except Exception:
         return person
     for f in _CANON_MERGE_DISCRETE:
-        try:
-            existing = json.loads(person.get(f) or "[]")
-            if not isinstance(existing, list):
+        raw = person.get(f)
+        if isinstance(raw, list):
+            existing = raw
+        else:
+            try:
+                existing = json.loads(raw or "[]")
+                if not isinstance(existing, list):
+                    existing = []
+            except (TypeError, ValueError):
                 existing = []
-        except (TypeError, ValueError):
-            existing = []
         merged, seen = [], set()
         for v in list(existing) + list(canon.get(f) or []):
             s = str(v).strip()

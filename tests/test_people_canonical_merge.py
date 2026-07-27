@@ -104,3 +104,26 @@ def test_blank_email_returns_unchanged():
     cx = _cx()
     person = {"email": "", "conditions": json.dumps(["x"])}
     assert app._merge_canonical_into_person(cx, person)["conditions"] == json.dumps(["x"])
+
+
+def test_scalar_canonical_overwrites_different_people_value():
+    """When both person and canonical have different non-empty scalar values,
+    canonical wins (overwrites people value)."""
+    cx = _cx()
+    _seed_canon(cx, "c@x.com", challenges="canonical-fatigue")
+    person = {"email": "c@x.com", "challenges": "people-fatigue"}
+    out = app._merge_canonical_into_person(cx, person)
+    assert out["challenges"] == "canonical-fatigue"
+
+
+def test_discrete_field_already_list_is_preserved_and_unioned():
+    """If person[field] is already a Python list (not a JSON string),
+    it should be preserved and unioned with canonical, not silently discarded."""
+    cx = _cx()
+    _seed_canon(cx, "c@x.com", conditions="canonical-glaucoma")
+    # person["conditions"] is a Python list, not a JSON string
+    person = {"email": "c@x.com", "conditions": ["people-glaucoma"]}
+    out = app._merge_canonical_into_person(cx, person)
+    # The list should be preserved and unioned with canonical
+    assert json.loads(out["conditions"]) == ["people-glaucoma", "canonical-glaucoma"]
+    assert isinstance(out["conditions"], str)  # still serialized to JSON
