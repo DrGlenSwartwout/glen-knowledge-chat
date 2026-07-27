@@ -41,13 +41,32 @@ def test_every_product_has_required_non_empty_fields():
             f"product {p.get('name')!r} has an empty product_slug")
 
 
-def test_every_product_best_ff_is_null():
+def test_best_ff_is_null_or_nonempty_string():
+    """The generator must never invent best_ff mappings -- but Glen may supply
+    one deliberately by hand after review (see
+    test_magnesium_taurate_maps_to_neuro_magnesium). This guard still catches
+    junk: an empty string or whitespace-only best_ff, or a non-string value,
+    is never valid -- only None or a real non-empty string."""
     seed = _load()
     for p in seed["products"]:
-        assert p.get("best_ff") is None, (
-            f"product {p.get('name')!r} has a non-null best_ff ({p.get('best_ff')!r}) "
-            "in the committed seed -- best_ff mappings are guesses the generator "
-            "must never invent; only Glen supplies them by hand after review")
+        best_ff = p.get("best_ff")
+        if best_ff is None:
+            continue
+        assert isinstance(best_ff, str) and best_ff.strip(), (
+            f"product {p.get('name')!r} has a junk best_ff ({best_ff!r}) in the "
+            "committed seed -- must be None or a non-empty string")
+
+
+def test_magnesium_taurate_maps_to_neuro_magnesium():
+    """Pins Glen's deliberate mapping: Jarrow Magnesium Taurate is his own
+    documented stearate-free counterpart to Neuro Magnesium. Guards against a
+    silent regression wiping out the one hand-supplied best_ff in the seed."""
+    seed = _load()
+    matches = [p for p in seed["products"] if p.get("name") == "Magnesium Taurate"]
+    assert matches, "Magnesium Taurate product missing from the committed seed"
+    p = matches[0]
+    assert p.get("best_ff") == "Neuro Magnesium"
+    assert p.get("relation") == "substitute"
 
 
 def test_focus_area_items_non_empty():
