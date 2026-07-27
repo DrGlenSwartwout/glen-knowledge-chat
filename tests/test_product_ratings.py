@@ -77,3 +77,23 @@ def test_unrated_cannot_advance_to_tier2():
     _rec(cx, "k", UNRATED)
     with pytest.raises(ValueError):
         pr.set_tier2(cx, "k", 8.5, "{}")
+
+
+def test_no_raw_pragma_table_info_in_purity_modules():
+    """Raw `cx.execute("PRAGMA table_info(...)")` passes through UNCHANGED to
+    Postgres (pgcompat only rewrites PRAGMA foreign_keys), errors there, and
+    aborts the transaction -> every purity route 500s with InFailedSqlTransaction.
+    This shipped once (Phase 2a, caught only when a prod route was first hit).
+    Late-column checks MUST go through dashboard.db.column_exists (information_
+    schema on PG). sqlite-only tests can't catch the PG break, so guard the source."""
+    import os, re
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    for mod in ("product_ratings.py", "fullscript.py", "purity_avoidlist.py",
+                "purity_screen.py", "purity_ratings_access.py"):
+        path = os.path.join(root, "dashboard", mod)
+        with open(path, encoding="utf-8") as f:
+            for i, line in enumerate(f, 1):
+                code = line.split("#", 1)[0]  # ignore comments (they may name the anti-pattern)
+                assert not re.search(r'execute\(\s*["\']PRAGMA\s+table_info', code), \
+                    f"{mod}:{i} calls raw PRAGMA table_info -- use dashboard.db.column_exists (PG-safe)"
