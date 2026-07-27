@@ -256,9 +256,12 @@ function render(d) {
 
   // Offers -- driven by /affiliate/portal-data offers[]; falls back to legacy single tracking_url
   const offersBox = document.getElementById('offers-container');
-  const offers = (d.offers && d.offers.length)
+  const offers = [...((d.offers && d.offers.length)
     ? d.offers
-    : (d.tracking_url ? [{name: 'Your Tracking Link', description: '', url: d.tracking_url, instructions: ''}] : []);
+    : (d.tracking_url ? [{name: 'Your Tracking Link', description: '', url: d.tracking_url, instructions: ''}] : []))];
+  if (d.cert_url) {
+    offers.unshift({ name: 'ASH Certification', description: 'Share this to invite people to become ASH certified.', url: d.cert_url, instructions: '' });
+  }
   offersBox.innerHTML = offers.map(o => `
     <div class="offer-block">
       <div class="offer-name">${escHtml(o.name)}</div>
