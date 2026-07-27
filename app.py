@@ -27756,6 +27756,159 @@ def product_review_intake_page():
     return resp
 
 
+# ── Purity ratings — Phase 2a request routes (console + portal) ──────────────
+# A client (via portal token) or Glen (console) can request a purity rating on
+# a product. dashboard/product_ratings.py owns the row; dashboard/
+# purity_ratings_access.py gates who may request. Client identity always comes
+# from the portal token, never a request-body field.
+
+@app.route("/api/console/purity/request", methods=["POST"])
+def api_console_purity_request():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.request()/get() need Row for dict(r)
+        _pr.init_tables(cx)
+        res = _pr.request(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "", requested_by="console")
+    return jsonify({"ok": True, **res})
+
+
+@app.route("/api/console/purity/screen", methods=["POST"])
+def api_console_purity_screen():
+    """Operator (Glen/console) manually enters a product's Other Ingredients and
+    runs the Phase-1 screen against the avoid-list. other_ingredients is passed
+    through UNCHANGED to screen_label -- None means no data was obtained and
+    must land 'unrated' (never green); an empty list means the product is known
+    to list no other ingredients and screens green.
+
+    other_ingredients_text is a convenience input for operators pasting a
+    label's "Other Ingredients:" line as a single string. Precedence:
+      1. other_ingredients key present (list or explicit null) -> used as-is.
+      2. else other_ingredients_text present and non-blank after stripping ->
+         split on newlines AND commas, strip each item, drop empties -> list.
+      3. else -> None -> unrated. A blank/whitespace-only
+         other_ingredients_text must NOT become [] (which would read green);
+         it means "no data" -> None -> unrated (safety-critical)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import (product_ratings as _pr, purity_screen as _ps,
+                            purity_avoidlist as _pa)
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    raw_text = None
+    if "other_ingredients" in b:
+        oi = b.get("other_ingredients")   # None -> unrated (never green); list -> screened
+        if oi is not None and not isinstance(oi, list):
+            return jsonify({"error": "other_ingredients_must_be_list_or_null"}), 400
+    else:
+        text = b.get("other_ingredients_text")
+        if text is not None and str(text).strip():
+            raw_text = str(text).strip()
+            oi = [p.strip() for p in re.split(r"[\n,]+", text) if p.strip()]
+        else:
+            oi = None
+    avoidlist = _pa.load_avoidlist()
+    screen = _ps.screen_label(b.get("actives"), oi, avoidlist)
+    if oi is None:
+        raw = ""
+    elif raw_text is not None:
+        raw = raw_text
+    else:
+        raw = "\n".join(oi)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get() needs Row for dict(r)
+        _pr.init_tables(cx)
+        _pr.record_screen(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "",
+                          other_ingredients_raw=raw, other_ingredients_parsed=(oi or []),
+                          screen=screen)
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"], "color": row["color"]})
+
+
+@app.route("/api/console/purity/tier2", methods=["POST"])
+def api_console_purity_tier2():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get()/set_tier2() need Row for dict(r)
+        _pr.init_tables(cx)
+        try:
+            _pr.set_tier2(cx, key, b.get("score"), b.get("detail_json") or "{}")
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"]})
+
+
+@app.route("/api/console/purity/confirm", methods=["POST"])
+def api_console_purity_confirm():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get()/confirm() need Row for dict(r)
+        _pr.init_tables(cx)
+        try:
+            _pr.confirm(cx, key)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"]})
+
+
+@app.route("/api/console/purity-ratings", methods=["GET"])
+def api_console_purity_ratings_list():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_tables(cx)
+        rows = [dict(r) for r in cx.execute(
+            "SELECT product_key, brand, product_name, color, status, avoidlist_version, "
+            "updated_at FROM product_ratings ORDER BY updated_at DESC").fetchall()]
+    return jsonify({"ok": True, "ratings": rows})
+
+
+@app.route("/api/portal/<token>/purity/request", methods=["POST"])
+def api_portal_purity_request(token):
+    from dashboard import product_ratings as _pr, purity_ratings_access as _acc
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.request()/get() need Row for dict(r)
+        _pr.init_tables(cx); _acc.init_table(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not_found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not _acc.can_request(cx, email, membership_category(email)):
+            return jsonify({"error": "not_entitled"}), 403
+        res = _pr.request(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "", requested_by=email)
+    return jsonify({"ok": True, **res})
+
+
 def _biofield_transition(token, new_status, tag):
     from dashboard import client_portal as _cp
     from dashboard import portal_identity as _pi
