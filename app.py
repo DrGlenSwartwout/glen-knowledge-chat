@@ -10978,7 +10978,13 @@ def _fulfill_course_purchase(session):
                     # drip ($99/mo course_membership): drip-active only, NOT level 2.
                     _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
                                          stripe_ref=sub_id, customer=customer)
-                    _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
+                    # Idempotent on the checkout session id (a distinct id in the same
+                    # course_drip_charges(invoice_id UNIQUE) table as invoice.paid's
+                    # idempotency below) so a redelivered checkout.session.completed
+                    # does NOT unlock a second module.
+                    from dashboard import course_module_unlocks as _cmu
+                    if _cmu.record_drip_charge(cx, sub_id, session.get("id")):
+                        _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
             else:
                 _ce.grant_cert(cx, email, source="stripe",
                                stripe_ref=session.get("id"), customer=customer)

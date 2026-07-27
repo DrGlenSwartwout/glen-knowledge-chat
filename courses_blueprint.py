@@ -357,10 +357,23 @@ def courses_submit_homework(course_slug, module_slug):
     payload = ((request.get_json(silent=True) or {}).get("payload") or "").strip()
     if not payload:
         return jsonify({"error": "empty"}), 400
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    module = next((m for m in course.modules if m.slug == module_slug), None)
+    if module is None:
+        return jsonify({"error": "not found"}), 404
     assignment = _HOMEWORK_ASSIGNMENT.get(module_slug, _HOMEWORK_DEFAULT)
-    fb = homework_analysis.analyze(module_slug, assignment, payload)  # advisory, never raises
     cx = _connect()
     try:
+        # Paywall gate: a module is "paid" if any of its lessons is. A learner
+        # without current access (full cert, banked completion, or active drip
+        # unlock) cannot bank a completion by submitting homework for free.
+        is_paid_module = any(l.access == "paid" for l in module.lessons)
+        if is_paid_module and not _paid_module_open(cx, email, course, module_slug):
+            return jsonify({"error": "forbidden"}), 403
+        fb = homework_analysis.analyze(module_slug, assignment, payload)  # advisory, never raises
         cp.record_homework(cx, email, course_slug, module_slug, payload,
                            ai_rating=fb.get("rating") or None, ai_feedback=fb.get("feedback") or None)
     finally:
@@ -374,8 +387,24 @@ def courses_mark_watched(course_slug, module_slug, lesson_slug):
     email = _resolve_learner_email()
     if not email:
         return jsonify({"error": "unauthorized"}), 401
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    lesson = None
+    for m in course.modules:
+        if m.slug == module_slug:
+            for l in m.lessons:
+                if l.slug == lesson_slug:
+                    lesson = l
+    if lesson is None:
+        return jsonify({"error": "not found"}), 404
     cx = _connect()
     try:
+        # Paywall gate: a free registered learner cannot forge "watched" on a
+        # paid lesson they never unlocked and bank the module's completion.
+        if lesson.access == "paid" and not _paid_module_open(cx, email, course, module_slug):
+            return jsonify({"error": "forbidden"}), 403
         cp.mark_watched(cx, email, course_slug, module_slug, lesson_slug)
     finally:
         cx.close()

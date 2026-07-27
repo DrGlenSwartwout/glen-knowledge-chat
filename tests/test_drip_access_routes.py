@@ -179,3 +179,70 @@ def test_course_home_shows_unlocked_paid_module_as_link(client):
     assert r.status_code == 200
     assert f'<a href="/learn/{_COURSE}/{_MODULE}/{_LESSON}">' in body
     assert "(certification module)" not in body
+
+
+# --- C1 (paywall bypass): completion endpoints must gate on module access ---
+
+def test_free_learner_cannot_forge_watched_on_paid_lesson(client):
+    c, appmod = client
+    tok = _token(appmod, "forger@x.com")  # registered (has a token) but NO unlock, NO cert
+    r = c.post(f"/api/courses/{_COURSE}/{_MODULE}/{_LESSON}/watched?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    from dashboard import course_progress as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert _LESSON not in cp.watched_lessons(cx, "forger@x.com", _COURSE, _MODULE)
+
+
+def test_free_learner_cannot_forge_homework_on_paid_module(client):
+    c, appmod = client
+    tok = _token(appmod, "forger2@x.com")
+    r = c.post(f"/api/courses/{_COURSE}/{_MODULE}/homework?token={tok}",
+               json={"payload": "i am definitely watching this"}, base_url=_MHOST)
+    assert r.status_code == 403
+    from dashboard import course_progress as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.homework(cx, "forger2@x.com", _COURSE, _MODULE) is None
+
+
+def test_forged_completion_does_not_bank_or_bypass_paywall(client):
+    c, appmod = client
+    email = "forger3@x.com"
+    tok = _token(appmod, email)
+    # Attempt to forge every lesson watched + homework for the paid module.
+    c.post(f"/api/courses/{_COURSE}/{_MODULE}/{_LESSON}/watched?token={tok}", base_url=_MHOST)
+    c.post(f"/api/courses/{_COURSE}/{_MODULE}/homework?token={tok}",
+           json={"payload": "forged reflection"}, base_url=_MHOST)
+    from dashboard import course_progress as cp, courses_content as cc
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        course = cc.load_course(_COURSE)
+        assert cp.module_completed(cx, email, _COURSE, _MODULE, [_LESSON]) is False
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    assert "Advanced transcript here" not in r.get_data(as_text=True)
+
+
+def test_unlocked_active_learner_watched_and_homework_succeed(client):
+    c, appmod = client
+    email = "legit@x.com"
+    tok = _token(appmod, email)
+    _grant_membership(appmod, email, active=True)
+    _unlock(appmod, email)
+    r = c.post(f"/api/courses/{_COURSE}/{_MODULE}/{_LESSON}/watched?token={tok}", base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    r = c.post(f"/api/courses/{_COURSE}/{_MODULE}/homework?token={tok}",
+               json={"payload": "real reflection"}, base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    from dashboard import course_progress as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.module_completed(cx, email, _COURSE, _MODULE, [_LESSON]) is True
+
+
+def test_member_lesson_watched_and_homework_still_work_for_plain_learner(client):
+    c, appmod = client
+    email = "plainlearner@x.com"
+    tok = _token(appmod, email)
+    r = c.post(f"/api/courses/{_COURSE}/01-intro/02-welcome/watched?token={tok}", base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["ok"] is True
+    r = c.post(f"/api/courses/{_COURSE}/01-intro/homework?token={tok}",
+               json={"payload": "member reflection"}, base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["ok"] is True

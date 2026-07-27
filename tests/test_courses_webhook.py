@@ -102,6 +102,27 @@ def test_subscription_purchase_grants_drip_not_level2_and_unlocks_module1(appmod
     assert _unlocked(appmod, "m@x.com") == {"02-body"}
 
 
+def test_replayed_checkout_session_completed_does_not_double_unlock(appmod, monkeypatch):
+    # I2: a redelivered checkout.session.completed (same session id, same sub) for
+    # a drip purchase must unlock exactly ONE module, not two.
+    from dashboard import stripe_pay
+    email = "replaydrip@x.com"
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_replay", "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    event = {"type": "checkout.session.completed", "data": {"object": {
+        "id": "cs_replay", "mode": "subscription", "subscription": "sub_replay", "customer": "cus_d",
+        "metadata": {"kind": "course_purchase", "email": email, "product": "membership"},
+        "customer_details": {"email": email}}}}
+    r1 = _post_event(appmod, event)
+    r2 = _post_event(appmod, event)
+    assert r1.status_code == 200 and r2.status_code == 200
+    unlocked = _unlocked(appmod, email)
+    assert len(unlocked) == 1, f"replayed checkout must unlock exactly one module, got {unlocked}"
+    assert unlocked == {"02-body"}
+    assert _drip_active(appmod, email, now=500) is True  # membership grant stays unconditional
+
+
 def test_replayed_event_does_not_double_grant(appmod):
     event = {"type": "checkout.session.completed", "data": {"object": {
         "id": "cs_300", "mode": "payment", "customer": "c",
