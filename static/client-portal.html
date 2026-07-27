@@ -819,7 +819,7 @@ function fullscriptBodyHtml(fsData){
       else if (pc === "red") { liStyle = ' style="opacity:.55"'; note = `<div class="small muted">contains excipients we avoid</div>`; }
       // Phase 2c client photo: an unrated product (no confirmed color) invites a
       // label-photo upload when the purity feature is on. Absent p.purity = unrated.
-      const canPhoto = fsData.purity_enabled && !p.purity && p.product_slug;
+      const canPhoto = fsData.purity_photo_ok && !p.purity && p.product_slug;
       const photo = canPhoto
         ? `<div class="small" style="margin:.2rem 0 .1rem"><label style="cursor:pointer;color:#2f6f5e">📷 Have this? Add a label photo to check its purity<input type="file" class="purity-photo" data-slug="${esc(p.product_slug)}" accept="image/jpeg,image/png,image/webp" style="display:none"></label> <span class="purity-photo-stat muted"></span></div>`
         : "";
