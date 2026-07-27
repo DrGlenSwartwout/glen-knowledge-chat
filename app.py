@@ -10996,6 +10996,37 @@ def _fulfill_course_purchase(session):
         return "error"
 
 
+def _fulfill_module_certification(session):
+    """Record a $200 module-certification purchase from a completed Checkout
+    Session whose metadata.kind == 'module_certification' as a PENDING row (an
+    admin approves it later, not here). Idempotent on the checkout session id
+    (module_certifications.record_purchase dedupes on stripe_ref). Never raises.
+    Returns 'ok' | 'skip' | 'error'."""
+    try:
+        md = (session or {}).get("metadata") or {}
+        if md.get("kind") != "module_certification":
+            return "skip"
+        email = (md.get("email") or (session.get("customer_details") or {}).get("email") or "").strip().lower()
+        if not email:
+            return "skip"
+        course = (md.get("course") or "").strip()
+        module = (md.get("module") or "").strip()
+        if not (course and module):
+            return "skip"
+        stripe_ref = session.get("id")
+        if not stripe_ref:
+            return "skip"
+        amount = session.get("amount_total")
+        with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
+            from dashboard import module_certifications as _mc
+            _mc.record_purchase(cx, email, course, module, stripe_ref, amount)
+        return "ok"
+    except Exception as e:
+        print(f"[modcert] fulfill failed: {e!r}", flush=True)
+        return "error"
+
+
 def _course_membership_renew(invoice):
     """On invoice.paid, extend a course membership (the $99/mo drip) to the
     subscription's new period end, AND unlock exactly one module per DISTINCT paid
@@ -32614,6 +32645,7 @@ def webhook_stripe():
                 except Exception as _we:
                     print(f"[stripe-webhook] paid-only book-back failed: {_we!r}", flush=True)
             _fulfill_course_purchase(obj)          # course: reads the object (mode/metadata)
+            _fulfill_module_certification(obj)     # module cert: self-dispatches on kind
         elif etype == "invoice.paid":
             _course_membership_renew(obj)
             _course_plan_charge(obj)
