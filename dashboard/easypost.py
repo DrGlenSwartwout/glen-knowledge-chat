@@ -51,8 +51,9 @@ def build_shipment(order, from_address):
     n_items = sum(int(i.get("qty", 1) or 1) for i in (order.get("items") or [])) or 1
     return {
         "to_address": {
-            "name": order.get("name") or order.get("email") or "Customer",
-            "street1": addr.get("street", ""), "city": addr.get("city", ""),
+            "name": addr.get("name") or order.get("name") or order.get("email") or "Customer",
+            "street1": addr.get("street", ""), "street2": addr.get("address2", ""),
+            "city": addr.get("city", ""),
             "state": addr.get("state", ""), "zip": addr.get("zip", ""),
             "country": addr.get("country", "US"),
         },
