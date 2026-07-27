@@ -316,5 +316,19 @@
 </footer>
 
 <script src="/ref-capture.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  try {
+    var ref = (typeof getRef === "function") ? getRef() : "";
+    if (!ref) return;
+    var qs = "ref=" + encodeURIComponent(ref);
+    var links = document.querySelectorAll('a[href^="https://courses.mentorshipu.com/learn/ash-certification"]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute("href");
+      links[i].setAttribute("href", href + (href.indexOf("?") === -1 ? "?" : "&") + qs);
+    }
+  } catch (_) {}
+});
+</script>
 </body>
 </html>
