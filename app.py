@@ -27725,6 +27725,60 @@ def api_console_purity_screen():
     return jsonify({"ok": True, "status": row["status"], "color": row["color"]})
 
 
+@app.route("/api/console/purity/tier2", methods=["POST"])
+def api_console_purity_tier2():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get()/set_tier2() need Row for dict(r)
+        _pr.init_tables(cx)
+        try:
+            _pr.set_tier2(cx, key, b.get("score"), b.get("detail_json") or "{}")
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"]})
+
+
+@app.route("/api/console/purity/confirm", methods=["POST"])
+def api_console_purity_confirm():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get()/confirm() need Row for dict(r)
+        _pr.init_tables(cx)
+        try:
+            _pr.confirm(cx, key)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"]})
+
+
+@app.route("/api/console/purity-ratings", methods=["GET"])
+def api_console_purity_ratings_list():
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import product_ratings as _pr
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_tables(cx)
+        rows = [dict(r) for r in cx.execute(
+            "SELECT product_key, brand, product_name, color, status, avoidlist_version, "
+            "updated_at FROM product_ratings ORDER BY updated_at DESC").fetchall()]
+    return jsonify({"ok": True, "ratings": rows})
+
+
 @app.route("/api/portal/<token>/purity/request", methods=["POST"])
 def api_portal_purity_request(token):
     from dashboard import product_ratings as _pr, purity_ratings_access as _acc

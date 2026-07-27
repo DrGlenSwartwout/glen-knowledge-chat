@@ -119,3 +119,46 @@ def test_console_screen_blank_text_is_unrated_not_green(client):
     row = _get(app_mod.LOG_DB, "k5")
     assert row["status"] == "unrated"
     assert row["color"] is None
+
+
+def _screen(client, key, oi):
+    client.post("/api/console/purity/request", json={"product_key": key, "brand": "B", "product_name": "N"})
+    client.post("/api/console/purity/screen", json={"product_key": key, "other_ingredients": oi})
+
+
+def test_green_tier2_then_confirm(client):
+    _screen(client, "g", ["Hypromellose"])   # green
+    r = client.post("/api/console/purity/tier2", json={"product_key": "g", "score": 8.5, "detail_json": "{}"})
+    assert r.status_code == 200 and _get(app_mod.LOG_DB, "g")["status"] == "ai_draft"
+    r = client.post("/api/console/purity/confirm", json={"product_key": "g"})
+    assert r.status_code == 200 and _get(app_mod.LOG_DB, "g")["status"] == "confirmed"
+
+
+def test_red_confirms_without_tier2(client):
+    _screen(client, "r", ["Magnesium Stearate"])   # red
+    r = client.post("/api/console/purity/confirm", json={"product_key": "r"})
+    assert r.status_code == 200 and _get(app_mod.LOG_DB, "r")["status"] == "confirmed"
+
+
+def test_tier2_on_a_red_is_rejected(client):
+    _screen(client, "r2", ["Gelatin"])   # red
+    r = client.post("/api/console/purity/tier2", json={"product_key": "r2", "score": 9, "detail_json": "{}"})
+    assert r.status_code == 400   # engine raises; route returns 400, does not 500
+
+
+def test_console_list_returns_rows(client):
+    _screen(client, "g2", ["Hypromellose"])
+    r = client.get("/api/console/purity-ratings")
+    assert r.status_code == 200
+    keys = [row["product_key"] for row in r.get_json()["ratings"]]
+    assert "g2" in keys
+
+
+def test_console_routes_require_secret(client, monkeypatch):
+    monkeypatch.setattr(app_mod, "_portal_console_ok", lambda: False)
+    for path, body in [("/api/console/purity/request", {"product_key": "x"}),
+                       ("/api/console/purity/screen", {"product_key": "x"}),
+                       ("/api/console/purity/tier2", {"product_key": "x"}),
+                       ("/api/console/purity/confirm", {"product_key": "x"})]:
+        assert client.post(path, json=body).status_code == 401
+    assert client.get("/api/console/purity-ratings").status_code == 401
