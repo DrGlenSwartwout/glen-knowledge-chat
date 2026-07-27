@@ -39,6 +39,12 @@
   .card-body { display:none; margin-top:8px; }
   .card.open .card-body { display:block; }
   .card-body .prods { color:var(--cream); }
+  .order-details { margin-top:8px; padding:8px 10px; border:1px solid var(--border);
+                   border-radius:7px; background:rgba(0,0,0,.12); }
+  .order-details .detail-title { color:var(--gold); font-size:11px; font-weight:700;
+                                 letter-spacing:.05em; text-transform:uppercase; }
+  .order-details .detail-row { color:var(--cream); font-size:12px; line-height:1.45; margin-top:4px; }
+  .order-details .detail-label { color:var(--muted); }
   .acts { margin-top:9px; display:flex; flex-wrap:wrap; gap:6px; }
   .acts button { font-size:11px; border:1px solid var(--border); background:transparent;
                  color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
@@ -165,6 +171,21 @@
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   // Display-only relabel of order source (DB values unchanged).
   function srcLabel(s){ var m={'reorder':'Order','portal-reorder':'Portal order'}; return m[s]||s; }
+  function dropShipDetailsHtml(o){
+    if (o.source !== 'dropship') return '';
+    var a = o.address || {};
+    var cityLine = [a.city, a.state, a.zip].filter(Boolean).join(' ');
+    var addressLines = [a.street, a.address2, cityLine, a.country].filter(Boolean);
+    var practitioner = [o.name, o.email, o.phone].filter(Boolean).map(esc).join(' &middot; ');
+    return '<div class="order-details">'
+      + '<div class="detail-title">Drop-ship details</div>'
+      + '<div class="detail-row"><span class="detail-label">Practitioner:</span> '+(practitioner||'&mdash;')+'</div>'
+      + '<div class="detail-row"><span class="detail-label">Ship to:</span> '+esc(a.name||'&mdash;')+'</div>'
+      + '<div class="detail-row"><span class="detail-label">Shipping address:</span><br>'
+      + (addressLines.length ? addressLines.map(esc).join('<br>') : '&mdash;')+'</div>'
+      + '<div class="detail-row"><span class="detail-label">Order reference:</span> '+esc(o.external_ref||('#'+o.id))+'</div>'
+      + '</div>';
+  }
 
   // Household / combined-shipment state (feature-flagged server-side).
   var HH = { enabled:false, sel:{}, clusters:[] };
@@ -254,6 +275,7 @@
     }).join('');
     var body = '<div class="card-body">'
       + (items?'<div class="meta prods">'+items+'</div>':'')
+      + dropShipDetailsHtml(o)
       + giftLines
       + (o.tracking_number?'<div class="meta">tracking '+esc(o.tracking_number)+'</div>':'')
       + (o.biofield_pdf_url?'<div class="meta"><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a></div>':'')
@@ -269,7 +291,7 @@
   function dateStr(iso){ try { return new Date(iso).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); } catch(e){ return ''; } }
   // Friendly "where/how placed" label from the order source (+ pickup), plain text (esc'd by caller).
   function whereLabel(o){
-    var m={'in-house':'In-house (phone/email)','portal-reorder':'Portal order','reorder':'Order',
+    var m={'in-house':'In-house (phone/email)','portal-reorder':'Portal order','reorder':'Order','dropship':'Drop ship',
            'funnel':'Website','biofield_trial':'Biofield trial','biofield':'Biofield'};
     var lbl = m[(o.source||'')] || srcLabel(o.source) || o.source || '—';
     if (o.channel==='pickup') lbl += ' · Pickup';

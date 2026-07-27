@@ -26,6 +26,28 @@ def test_build_shipment_shape():
     assert s["parcel"]["weight"] > 0  # ounces, derived from item count
 
 
+def test_dropship_label_uses_ship_to_recipient_and_second_address_line():
+    from dashboard import easypost as EP
+    order = {
+        "name": "Ashley Practitioner",
+        "email": "ashley@example.com",
+        "address": {
+            "name": "Patient Recipient",
+            "street": "10 Main St",
+            "address2": "Apt 4B",
+            "city": "Austin",
+            "state": "TX",
+            "zip": "78701",
+        },
+        "items": [{"qty": 1}],
+    }
+
+    shipment = EP.build_shipment(order, from_address={})
+
+    assert shipment["to_address"]["name"] == "Patient Recipient"
+    assert shipment["to_address"]["street2"] == "Apt 4B"
+
+
 def test_clicknship_url_constant():
     from dashboard import easypost as EP
     assert EP.CLICKNSHIP_URL.startswith("https://")

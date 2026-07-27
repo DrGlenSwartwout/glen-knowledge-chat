@@ -115,8 +115,10 @@ def test_get_tax_report_buckets():
 def test_normalize_ship_address():
     app_module = _load_app()
     out = app_module._normalize_ship_address(
-        {"street": "1 Aloha St", "city": "Hilo", "state": "hi", "zip": "96720"}, fallback_name="Jo")
+        {"street": "1 Aloha St", "address2": "Unit 2", "city": "Hilo",
+         "state": "hi", "zip": "96720"}, fallback_name="Jo")
     assert out["state"] == "HI" and out["city"] == "Hilo" and out["name"] == "Jo"
+    assert out["address2"] == "Unit 2"
     assert app_module._normalize_ship_address({}) == {}
 
 

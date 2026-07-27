@@ -42855,7 +42855,9 @@ def _normalize_ship_address(addr, fallback_name=""):
         return {}
     return {
         "name": (addr.get("name") or fallback_name or "").strip(),
-        "street": street, "city": city, "state": state, "zip": zipc,
+        "street": street,
+        "address2": (addr.get("address2") or addr.get("street2") or "").strip(),
+        "city": city, "state": state, "zip": zipc,
         "country": (addr.get("country") or "US").strip().upper(),
     }
 
