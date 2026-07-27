@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASH Certification: Accelerated Self Healing℠</title>
+<style>
+  :root{
+    --green:#2f6f5e;
+    --green-dark:#255a4c;
+    --green-soft:#eaf2ef;
+    --gold:#c9a227;
+    --gold-soft:#f6efd8;
+    --ink:#233330;
+    --muted:#57655f;
+    --line:#dfe7e3;
+    --paper:#ffffff;
+    --wash:#f4f8f6;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.6;
+    font-size:18px;
+  }
+  .wrap{max-width:70rem;margin:0 auto;padding:0 1.25rem;}
+  .narrow{max-width:52rem;margin-left:auto;margin-right:auto;}
+  h1,h2,h3{line-height:1.2;color:var(--green-dark);margin:0 0 .6rem;}
+  h1{font-size:2.15rem;font-weight:800;letter-spacing:-.01em;}
+  h2{font-size:1.7rem;font-weight:750;margin-top:0;}
+  h3{font-size:1.15rem;color:var(--ink);}
+  p{margin:0 0 1rem;}
+  a{color:var(--green-dark);}
+  .eyebrow{
+    display:inline-block;
+    text-transform:uppercase;
+    letter-spacing:.14em;
+    font-size:.78rem;
+    font-weight:700;
+    color:var(--gold);
+    margin-bottom:1rem;
+  }
+  section{padding:3.5rem 0;}
+  section + section{border-top:1px solid var(--line);}
+  .hero{
+    background:linear-gradient(160deg,var(--green) 0%,var(--green-dark) 100%);
+    color:#fff;
+    padding:4.5rem 0 4rem;
+  }
+  .hero .eyebrow{color:var(--gold-soft);}
+  .hero h1{color:#fff;max-width:24ch;}
+  .hero .sub{font-size:1.2rem;color:#e6f0ec;max-width:46ch;margin-bottom:1.8rem;}
+  .btn{
+    display:inline-block;
+    background:var(--gold);
+    color:#3a2f05;
+    font-weight:750;
+    text-decoration:none;
+    padding:.95rem 2rem;
+    border-radius:.6rem;
+    font-size:1.08rem;
+    box-shadow:0 6px 18px rgba(0,0,0,.14);
+  }
+  .btn:hover{background:#d8b02f;}
+  .btn.ghost{
+    background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);
+    box-shadow:none;
+  }
+  .cta-note{font-size:.92rem;color:#dbe8e3;margin-top:.9rem;}
+  .lead{font-size:1.2rem;color:var(--muted);}
+  .wash{background:var(--wash);}
+  .arc{list-style:none;padding:0;margin:2rem 0 0;counter-reset:step;}
+  .arc li{
+    position:relative;
+    padding:1.1rem 1.1rem 1.1rem 3.6rem;
+    border:1px solid var(--line);
+    border-radius:.7rem;
+    background:var(--paper);
+    margin-bottom:.7rem;
+  }
+  .arc li::before{
+    counter-increment:step;
+    content:counter(step);
+    position:absolute;
+    left:1rem;top:1.05rem;
+    width:1.9rem;height:1.9rem;
+    background:var(--green-soft);
+    color:var(--green-dark);
+    border-radius:50%;
+    font-weight:750;font-size:.9rem;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .arc li h3{margin:0 0 .15rem;color:var(--green-dark);}
+  .arc li p{margin:0;color:var(--muted);font-size:.98rem;}
+  .grid{display:grid;gap:1.1rem;grid-template-columns:1fr;margin-top:1.8rem;}
+  @media(min-width:640px){.grid.two{grid-template-columns:1fr 1fr;}}
+  .card{
+    border:1px solid var(--line);
+    border-radius:.8rem;
+    padding:1.4rem;
+    background:var(--paper);
+  }
+  .checklist{list-style:none;padding:0;margin:1.4rem 0 0;}
+  .checklist li{position:relative;padding:.35rem 0 .35rem 1.9rem;}
+  .checklist li::before{
+    content:"";
+    position:absolute;left:.1rem;top:.85rem;
+    width:.7rem;height:.7rem;
+    border-radius:2px;
+    background:var(--green);
+  }
+  .pricing{display:grid;gap:1.2rem;grid-template-columns:1fr;margin-top:2rem;}
+  @media(min-width:860px){.pricing{grid-template-columns:repeat(3,1fr);}}
+  .plan{
+    border:1px solid var(--line);
+    border-radius:.9rem;
+    padding:1.6rem;
+    background:var(--paper);
+    display:flex;flex-direction:column;
+  }
+  .plan.feature{
+    border:2px solid var(--green);
+    box-shadow:0 10px 30px rgba(47,111,94,.12);
+  }
+  .plan .tag{
+    display:inline-block;
+    font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;
+    font-weight:700;color:var(--gold);margin-bottom:.6rem;
+  }
+  .plan .amount{font-size:2rem;font-weight:800;color:var(--green-dark);}
+  .plan .amount small{font-size:1rem;font-weight:600;color:var(--muted);}
+  .plan .desc{color:var(--muted);font-size:.98rem;flex:1;margin:.6rem 0 1.2rem;}
+  .plan .btn{text-align:center;}
+  .save{color:var(--green);font-weight:700;font-size:.9rem;}
+  .quote{
+    border-left:4px solid var(--gold);
+    padding:.4rem 0 .4rem 1.3rem;
+    color:var(--ink);
+    font-size:1.15rem;
+  }
+  .risk{
+    background:var(--green-soft);
+    border:1px solid var(--line);
+    border-radius:.9rem;
+    padding:1.6rem 1.8rem;
+    margin-top:1.6rem;
+  }
+  .final{
+    background:linear-gradient(160deg,var(--green) 0%,var(--green-dark) 100%);
+    color:#fff;text-align:center;
+  }
+  .final h2{color:#fff;}
+  .final p{color:#e6f0ec;}
+  .final .narrow{max-width:44rem;}
+  footer{padding:2.2rem 0;text-align:center;color:var(--muted);font-size:.86rem;}
+  .center{text-align:center;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">ASH Certification</span>
+    <h1>Become an ASH℠ Certified Practitioner of Accelerated Self Healing</h1>
+    <p class="sub">The full curriculum of Dr. Glen Swartwout's method, self-paced and built to be applied. Learn to read the biofield, address the whole person, and earn your certification.</p>
+    <a class="btn" href="https://courses.mentorshipu.com/learn/ash-certification">Enroll in ASH Certification</a>
+    <p class="cta-note">Lifetime access. 13 modules, 60 lessons. Three ways to enroll below.</p>
+  </div>
+</header>
+
+<section>
+  <div class="wrap narrow">
+    <span class="eyebrow">The big idea</span>
+    <h2>Healing is something the body already knows how to do</h2>
+    <p class="lead">When you give it the right conditions, the body heals. That is the heart of Accelerated Self Healing℠.</p>
+    <p>The method does not chase symptoms one at a time. It works with the whole person, body, mind, spirit, and terrain, and it starts with biofield analysis so you can see where the real leverage lives. Accelerated Self Healing is a way of reading a case and a way of restoring the conditions under which the body's own intelligence takes over.</p>
+    <p>ASH Certification is where you learn that method in full and prove you can apply it. It is the same clinical thinking Dr. Glen Swartwout has developed and used across decades of practice, laid out module by module so you can follow the whole arc from first principles to prognosis.</p>
+  </div>
+</section>
+
+<section class="wash">
+  <div class="wrap">
+    <span class="eyebrow">The journey</span>
+    <h2>Thirteen modules that walk you through the whole method</h2>
+    <p class="narrow" style="margin-left:0;">The module order is the transformation. Each one builds on the last, moving from how self healing works to how you read a person, all the way to how a case unfolds over time. Sixty lessons in total.</p>
+    <ol class="arc">
+      <li><h3>Introduction</h3><p>Accelerated Self Healing and biofield analysis. The foundation the whole method rests on.</p></li>
+      <li><h3>Body</h3><p>The physical layer of the person and how it shows up in your reading.</p></li>
+      <li><h3>Mind</h3><p>The mental patterns that shape health and healing.</p></li>
+      <li><h3>Spirit</h3><p>The deeper layer of meaning, energy, and self that the method never leaves out.</p></li>
+      <li><h3>Family History</h3><p>What travels down through the generations, and how it sets the stage.</p></li>
+      <li><h3>Health History</h3><p>Reading the person's own story over time as clinical signal.</p></li>
+      <li><h3>Epigenetics</h3><p>How environment and experience shape the expression of what was inherited.</p></li>
+      <li><h3>Symptoms</h3><p>Learning to hear symptoms as messengers rather than problems to silence.</p></li>
+      <li><h3>Terrain</h3><p>The biological terrain, the ground the whole picture grows out of.</p></li>
+      <li><h3>Diagnoses</h3><p>Bringing the reading together into a clear working understanding.</p></li>
+      <li><h3>Treatment</h3><p>Choosing and sequencing what restores the conditions for self healing.</p></li>
+      <li><h3>Response</h3><p>Reading how the body answers, and adjusting with it.</p></li>
+      <li><h3>Prognosis</h3><p>Seeing where a case is headed and how healing unfolds over time.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap narrow">
+    <span class="eyebrow">Who this is for</span>
+    <h2>For practitioners and serious self-healers</h2>
+    <p>ASH Certification is for two kinds of people who want the same thing, the whole method rather than a piece of it.</p>
+    <div class="grid two">
+      <div class="card">
+        <h3>Practitioners</h3>
+        <p>Clinicians and healers who want to learn Accelerated Self Healing in full, apply it in their work, and hold a certification that reflects real command of the method.</p>
+      </div>
+      <div class="card">
+        <h3>Serious self-healers</h3>
+        <p>People committed to their own healing who want to understand the whole approach deeply enough to live it and to guide it, not just follow instructions.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wash">
+  <div class="wrap narrow">
+    <span class="eyebrow">What you get</span>
+    <h2>Everything you need to learn it and complete it</h2>
+    <ul class="checklist">
+      <li>Lifetime access to the full ASH Certification curriculum, yours to keep.</li>
+      <li>All 13 modules and 60 lessons, self-paced, so you move at the speed that fits your life.</li>
+      <li>Video lessons with full transcripts, so you can watch, read, and review the way you learn best.</li>
+      <li>Homework tools that turn each module into applied practice, not just information.</li>
+      <li>A clear path to certification: work through every module to complete it.</li>
+    </ul>
+    <p style="margin-top:1.2rem;">Certification includes a review and approval step so your completion reflects real understanding of the method.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <span class="eyebrow">Enroll</span>
+    <h2>Three ways to enroll</h2>
+    <p class="narrow" style="margin-left:0;">Choose the pace and the payment that fit you. Every path leads to the same certification.</p>
+    <div class="pricing">
+      <div class="plan">
+        <span class="tag">Pay in full</span>
+        <div class="amount">$2,997</div>
+        <p class="save">Save $567 versus the monthly plan</p>
+        <p class="desc">One payment, full access from day one, and the best overall value. The simplest way to begin.</p>
+        <a class="btn" href="https://courses.mentorshipu.com/learn/ash-certification">Enroll</a>
+      </div>
+      <div class="plan feature">
+        <span class="tag">12 monthly payments</span>
+        <div class="amount">$297<small> / month</small></div>
+        <p class="save">Full price $3,564. Full access from day one</p>
+        <p class="desc">Spread the investment across a year while you work through every module with everything unlocked immediately.</p>
+        <a class="btn" href="https://courses.mentorshipu.com/learn/ash-certification">Enroll</a>
+      </div>
+      <div class="plan">
+        <span class="tag">Per-module drip</span>
+        <div class="amount">$99<small> / month</small></div>
+        <p class="save">A gentler pace, a new module each month</p>
+        <p class="desc">A new module unlocks every month. Ideal if you want to take it slow and let each module settle before the next.</p>
+        <a class="btn" href="https://courses.mentorshipu.com/learn/ash-certification">Enroll</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wash">
+  <div class="wrap narrow">
+    <span class="eyebrow">Why learn it from the source</span>
+    <h2>The method, taught by the practitioner who developed it</h2>
+    <p class="quote">Accelerated Self Healing is not a collection of techniques. It is a way of seeing the whole person, and of trusting what the body already knows.</p>
+    <p style="margin-top:1.2rem;">Accelerated Self Healing℠ is Dr. Glen Swartwout's own method, shaped over decades of clinical work. ASH Certification is that method taught in full, in his sequence, from the foundations through terrain, diagnosis, and prognosis. You are learning it from the source, not a secondhand summary of it.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap narrow">
+    <span class="eyebrow">Before you decide</span>
+    <h2>If you are weighing it</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3>Not sure you have the time?</h3>
+        <p>The curriculum is self-paced with lifetime access. The per-module path unlocks one module a month by design, so you can go as gently as you need. Nothing expires on you.</p>
+      </div>
+      <div class="card">
+        <h3>Worried it is too much at once?</h3>
+        <p>The 13 modules are built to be taken in order, each one building on the last. You are never asked to hold the whole method in your head at once, only the next step.</p>
+      </div>
+    </div>
+    <div class="risk">
+      <h3 style="margin-top:0;">A method meant to be applied, and to stay with you</h3>
+      <p style="margin-bottom:0;">Every path leads to the same certification, and your access does not end when you finish. You keep the curriculum, the videos, and the transcripts for life, so you can return to any module whenever a case, or your own healing, calls for it.</p>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="wrap narrow">
+    <span class="eyebrow" style="color:var(--gold-soft);">Begin</span>
+    <h2>Start your ASH Certification</h2>
+    <p>Learn the whole method, apply it, and earn your certification as an Accelerated Self Healing℠ practitioner. Choose the path that fits you and begin today.</p>
+    <p style="margin-top:1.6rem;"><a class="btn" href="https://courses.mentorshipu.com/learn/ash-certification">Enroll in ASH Certification</a></p>
+    <p class="cta-note">Lifetime access. Self-paced. 13 modules, 60 lessons.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Accelerated Self Healing℠ with Dr. Glen Swartwout. ASH Certification.</p>
+  </div>
+</footer>
+
+<script src="/ref-capture.js"></script>
+</body>
+</html>
