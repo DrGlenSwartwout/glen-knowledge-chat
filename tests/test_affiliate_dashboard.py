@@ -64,3 +64,19 @@ def test_mask_lead_name():
     assert ad._mask_lead_name("Mary", "Johnson") == "Mary J."
     assert ad._mask_lead_name("Mary", "") == "Mary"
     assert ad._mask_lead_name(None, None) == ""
+
+def test_cert_url_present_for_known_slug():
+    cx = _cx(); _seed(cx)
+    d = ad.build_dashboard(cx, "amy7", quiz_url=QUIZ, public_base_url=BASE)
+    assert d["cert_url"] == "https://illtowell.com/certification?ref=amy7"
+
+def test_cert_url_absent_for_unknown_slug():
+    cx = _cx()
+    d = ad.build_dashboard(cx, "nope", quiz_url=QUIZ, public_base_url=BASE)
+    assert d == {}
+    assert "cert_url" not in d
+
+def test_cert_url_trailing_slash_base():
+    cx = _cx(); _seed(cx)
+    d = ad.build_dashboard(cx, "amy7", quiz_url=QUIZ, public_base_url="https://illtowell.com/")
+    assert d["cert_url"] == "https://illtowell.com/certification?ref=amy7"

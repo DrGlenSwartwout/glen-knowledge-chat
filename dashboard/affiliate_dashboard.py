@@ -30,6 +30,7 @@ def build_dashboard(cx, slug, *, quiz_url, public_base_url):
     long_url = f"{quiz_url}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     tracking_url = short_url if short_url else long_url
     recruit_url = f"{base}/affiliate?ref={slug}"
+    cert_url = f"{base}/certification?ref={slug}"
     try:
         stats = cx.execute(
             "SELECT COUNT(*), MAX(received_at) FROM referral_events WHERE utm_source=?",
@@ -53,7 +54,7 @@ def build_dashboard(cx, slug, *, quiz_url, public_base_url):
         stats, recent, recruited_count, conversions_count, offers, social = None, [], 0, 0, [], []
     return {
         "name": name, "organization": org, "slug": slug,
-        "tracking_url": tracking_url, "recruit_url": recruit_url,
+        "tracking_url": tracking_url, "recruit_url": recruit_url, "cert_url": cert_url,
         "total_leads": stats[0] if stats else 0,
         "last_lead": stats[1] if stats else None,
         "recruited_count": recruited_count,
