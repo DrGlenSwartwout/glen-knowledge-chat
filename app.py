@@ -6930,6 +6930,40 @@ def _referral_pct_for_referrer(referrer_email, settings):
         return base
 
 
+def _credit_referrer_by_slug(cx, slug, buyer_email, product_cents, order_ref):
+    """Credit an ambassador (points or cash) for a referred sale, given the slug
+    directly (no email lookup). Requires an open cx with row_factory=sqlite3.Row.
+    Reuses the exact rate/mode/ledger as _settle_referral. Idempotent per order_ref
+    via the ledger UNIQUE constraints. Best-effort: never raises."""
+    try:
+        from dashboard import points as _points
+        from dashboard import rewards as _rewards
+        _points.init_points_table(cx)
+        _rewards.init_affiliate_earnings_table(cx)
+        buyer_email = (buyer_email or "").strip().lower()
+        referrer_email = _rewards.referrer_email_for_slug(cx, slug)
+        if not referrer_email:
+            return
+        # Exclude self-referral
+        if referrer_email.strip().lower() == buyer_email:
+            return
+        settings = _rewards.load_settings(_rewards_settings())
+        referral_reward_pct = _referral_pct_for_referrer(referrer_email, settings)
+        reward = round(product_cents * referral_reward_pct)
+        if reward <= 0:
+            return
+        mode = _rewards.reward_mode_for_slug(cx, slug)
+        if mode == "points":
+            _points.credit(cx, referrer_email,
+                           value_cents=reward, reason="referral", order_ref=order_ref)
+        else:
+            _rewards.accrue_cash(cx, slug=slug, email=referrer_email,
+                                 order_ref=order_ref, amount_cents=reward)
+        _maybe_raise_cashout_review(cx, slug, mode)
+    except Exception as _e:
+        print(f"[rewards] _credit_referrer_by_slug failed ref={order_ref}: {_e!r}", flush=True)
+
+
 def _settle_referral(order, *, order_ref: str) -> None:
     """Credit the referrer (points or cash) on a full-price referred sale.
     Idempotent per order_ref. Best-effort -- never raises."""
@@ -6954,25 +6988,7 @@ def _settle_referral(order, *, order_ref: str) -> None:
             slug = _referrer_slug_for_email(cx, buyer_email)
             if not slug:
                 return
-            referrer_email = _rewards.referrer_email_for_slug(cx, slug)
-            if not referrer_email:
-                return
-            # Exclude self-referral
-            if referrer_email.strip().lower() == buyer_email:
-                return
-            settings = _rewards.load_settings(_rewards_settings())
-            referral_reward_pct = _referral_pct_for_referrer(referrer_email, settings)
-            reward = round(product_cents * referral_reward_pct)
-            if reward <= 0:
-                return
-            mode = _rewards.reward_mode_for_slug(cx, slug)
-            if mode == "points":
-                _points.credit(cx, referrer_email,
-                               value_cents=reward, reason="referral", order_ref=order_ref)
-            else:
-                _rewards.accrue_cash(cx, slug=slug, email=referrer_email,
-                                     order_ref=order_ref, amount_cents=reward)
-            _maybe_raise_cashout_review(cx, slug, mode)
+            _credit_referrer_by_slug(cx, slug, buyer_email, product_cents, order_ref)
     except Exception as _e:
         print(f"[rewards] _settle_referral failed inv={order_ref}: {_e!r}", flush=True)
 
