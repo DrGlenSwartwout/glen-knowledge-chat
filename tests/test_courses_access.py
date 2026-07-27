@@ -34,3 +34,12 @@ def test_lock_state(access, level, state):
 
 def test_unknown_access_is_never_visible():
     assert ca.is_visible("bogus", 2) is False
+
+
+def test_module_access_matrix():
+    assert ca.module_access(full_cert=True,  completed=False, unlocked=False, drip_active=False) is True
+    assert ca.module_access(full_cert=False, completed=True,  unlocked=False, drip_active=False) is True   # banked
+    assert ca.module_access(full_cert=False, completed=False, unlocked=True,  drip_active=True)  is True   # unlocked+active
+    assert ca.module_access(full_cert=False, completed=False, unlocked=True,  drip_active=False) is False  # unlocked but lapsed
+    assert ca.module_access(full_cert=False, completed=True,  unlocked=True,  drip_active=False) is True   # completed banks despite lapse
+    assert ca.module_access(full_cert=False, completed=False, unlocked=False, drip_active=True)  is False  # active but not this module
