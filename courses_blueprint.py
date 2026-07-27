@@ -81,6 +81,17 @@ def _member_level():
         cx.close()
 
 
+def _resolve_learner_email():
+    token = request.args.get("token") or request.cookies.get("mu_token")
+    if not token:
+        return ""
+    cx = _connect()
+    try:
+        return (course_tokens.resolve_course_token(cx, token) or "").strip().lower()
+    finally:
+        cx.close()
+
+
 _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }} · MentorshipU</title></head>
@@ -250,7 +261,35 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     dls = f"<h3>Resources</h3><ul>{dls}</ul>" if dls else ""
     body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
             f'<h1>{escape(lesson.title)}</h1><div>{safe_body}</div>{dls}')
+    watch_js = (
+        f'<p><button type="button" id="mu-watched" onclick="muWatched()">Mark watched</button> '
+        f'<span id="mu-watched-ok"></span></p>'
+        f'<script>'
+        f'function muWatched(){{fetch("/api/courses/{course.slug}/{module_slug}/{lesson_slug}/watched"'
+        f'+location.search,{{method:"POST"}}).then(function(r){{if(r.ok)'
+        f'document.getElementById("mu-watched-ok").textContent="Marked watched.";}});}}'
+        # YouTube IFrame API: auto-mark when the embedded video ends.
+        f'(function(){{var t=document.createElement("script");t.src="https://www.youtube.com/iframe_api";'
+        f'document.head.appendChild(t);window.onYouTubeIframeAPIReady=function(){{'
+        f'var f=document.querySelector("iframe[src*=\\"youtube\\"]");if(!f)return;'
+        f'try{{new YT.Player(f,{{events:{{onStateChange:function(e){{if(e.data===0)muWatched();}}}}}});}}catch(_){{}}}};}})();'
+        f'</script>')
+    body += watch_js
     return render_template_string(_PAGE, title=lesson.title, body=body)
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/<lesson_slug>/watched", methods=["POST"])
+def courses_mark_watched(course_slug, module_slug, lesson_slug):
+    from dashboard import course_progress as cp
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    cx = _connect()
+    try:
+        cp.mark_watched(cx, email, course_slug, module_slug, lesson_slug)
+    finally:
+        cx.close()
+    return jsonify({"ok": True})
 
 
 @courses_bp.route("/api/mentorship/intake/start", methods=["POST"])
