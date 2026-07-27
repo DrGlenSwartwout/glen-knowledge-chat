@@ -48,10 +48,20 @@ def test_registered_with_cert_is_two():
     assert cid.member_level_for(c, tok) == 2
 
 
-def test_registered_with_active_membership_is_two():
+def test_registered_with_active_membership_is_one():
+    # Membership is now the drip-active flag only, not full-cert access — an active
+    # membership with no cert/plan entitlement stays at registered level 1.
     c = _cx()
     tok = course_tokens.mint_course_token(c, "sub@x.com", "S")
     ce.grant_membership(c, "sub@x.com", until_epoch=9_999_999_999.0, source="stripe", stripe_ref="sub_1")
+    assert cid.member_level_for(c, tok) == 1
+    assert ce.drip_active(c, "sub@x.com") is True
+
+
+def test_registered_with_active_plan_is_two():
+    c = _cx()
+    tok = course_tokens.mint_course_token(c, "plan@x.com", "PL")
+    ce.grant_plan(c, "plan@x.com", until_epoch=9_999_999_999.0, source="stripe", stripe_ref="sub_plan1")
     assert cid.member_level_for(c, tok) == 2
 
 
@@ -59,5 +69,5 @@ def test_expired_membership_falls_back_to_one():
     c = _cx()
     tok = course_tokens.mint_course_token(c, "old@x.com", "O")
     ce.grant_membership(c, "old@x.com", until_epoch=1000.0, source="stripe", stripe_ref="sub_2")
-    # token still resolves to an email (level 1) but membership is expired now
-    assert cid.member_level_for(c, tok) == 1  # paid_level_for uses real time.time() >> 1000
+    # token still resolves to an email (level 1); membership never grants level 2 now anyway
+    assert cid.member_level_for(c, tok) == 1

@@ -43,6 +43,32 @@ def _paid_level(appmod, email, now=None):
         return ce.paid_level_for(cx, email, now=now)
 
 
+def _drip_active(appmod, email, now=None):
+    from dashboard import course_entitlements as ce
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        ce.init_course_entitlements_table(cx)
+        return ce.drip_active(cx, email, now=now)
+
+
+def _unlocked(appmod, email, course="ash-certification"):
+    from dashboard import course_module_unlocks as cmu
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cmu.init_unlock_tables(cx)
+        return cmu.unlocked_modules(cx, email, course)
+
+
+def _drip_checkout(appmod, monkeypatch, email, sub_id="sub_drip", cs_id="cs_drip", cpe=9_999_999_999):
+    """Post a checkout.session.completed for a $99/mo drip (product=membership)."""
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": sub_id, "status": "active", "current_period_end": cpe,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    return _post_event(appmod, {"type": "checkout.session.completed", "data": {"object": {
+        "id": cs_id, "mode": "subscription", "subscription": sub_id, "customer": "cus_d",
+        "metadata": {"kind": "course_purchase", "email": email, "product": "membership"},
+        "customer_details": {"email": email}}}})
+
+
 def test_onetime_purchase_grants_cert_and_mints_token(appmod, monkeypatch):
     sent = {}
     monkeypatch.setattr(appmod, "send_mentorship_setup_link",
@@ -57,7 +83,7 @@ def test_onetime_purchase_grants_cert_and_mints_token(appmod, monkeypatch):
     assert sent["email"] == "buy@x.com" and "token=" in sent["url"]
 
 
-def test_subscription_purchase_grants_membership(appmod, monkeypatch):
+def test_subscription_purchase_grants_drip_not_level2_and_unlocks_module1(appmod, monkeypatch):
     from dashboard import stripe_pay
     monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
         "id": "sub_1", "status": "active", "current_period_end": 2000,
@@ -68,8 +94,33 @@ def test_subscription_purchase_grants_membership(appmod, monkeypatch):
         "customer_details": {"email": "m@x.com"}}}}
     r = _post_event(appmod, event)
     assert r.status_code == 200
-    assert _paid_level(appmod, "m@x.com", now=500) == 2
-    assert _paid_level(appmod, "m@x.com", now=2500) == 0
+    # a drip (course_membership) buyer is drip-active, NOT level 2 (that's plan/cert only)
+    assert _paid_level(appmod, "m@x.com", now=500) == 0
+    assert _drip_active(appmod, "m@x.com", now=500) is True
+    assert _drip_active(appmod, "m@x.com", now=2500) is False  # window expired at 2000
+    # first purchase unlocks the first paid module of ash-certification
+    assert _unlocked(appmod, "m@x.com") == {"02-body"}
+
+
+def test_replayed_checkout_session_completed_does_not_double_unlock(appmod, monkeypatch):
+    # I2: a redelivered checkout.session.completed (same session id, same sub) for
+    # a drip purchase must unlock exactly ONE module, not two.
+    from dashboard import stripe_pay
+    email = "replaydrip@x.com"
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_replay", "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    event = {"type": "checkout.session.completed", "data": {"object": {
+        "id": "cs_replay", "mode": "subscription", "subscription": "sub_replay", "customer": "cus_d",
+        "metadata": {"kind": "course_purchase", "email": email, "product": "membership"},
+        "customer_details": {"email": email}}}}
+    r1 = _post_event(appmod, event)
+    r2 = _post_event(appmod, event)
+    assert r1.status_code == 200 and r2.status_code == 200
+    unlocked = _unlocked(appmod, email)
+    assert len(unlocked) == 1, f"replayed checkout must unlock exactly one module, got {unlocked}"
+    assert unlocked == {"02-body"}
+    assert _drip_active(appmod, email, now=500) is True  # membership grant stays unconditional
 
 
 def test_replayed_event_does_not_double_grant(appmod):
@@ -105,10 +156,15 @@ def test_subscription_deleted_relocks(appmod, monkeypatch):
         "id": "cs_500", "mode": "subscription", "subscription": "sub_9", "customer": "c",
         "metadata": {"kind": "course_purchase", "email": "z@x.com", "product": "membership"},
         "customer_details": {"email": "z@x.com"}}}})
-    assert _paid_level(appmod, "z@x.com", now=1) == 2
+    assert _drip_active(appmod, "z@x.com", now=1) is True
+    assert _paid_level(appmod, "z@x.com", now=1) == 0        # drip alone never was level 2
+    assert _unlocked(appmod, "z@x.com") == {"02-body"}
     _post_event(appmod, {"type": "customer.subscription.deleted", "data": {"object": {
         "id": "sub_9", "metadata": {"kind": "course_membership", "email": "z@x.com"}}}})
-    assert _paid_level(appmod, "z@x.com", now=1) == 0
+    assert _drip_active(appmod, "z@x.com", now=1) is False
+    # relock is the resolver's job (next task), not this handler — the unlocked set
+    # (and any past module completion) is left intact by subscription.deleted.
+    assert _unlocked(appmod, "z@x.com") == {"02-body"}
 
 
 def test_renewal_without_metadata_email_extends_existing(appmod, monkeypatch):
@@ -121,14 +177,85 @@ def test_renewal_without_metadata_email_extends_existing(appmod, monkeypatch):
         "id": "cs_ne", "mode": "subscription", "subscription": "sub_ne", "customer": "c",
         "metadata": {"kind": "course_purchase", "product": "membership"},
         "customer_details": {"email": "anon@x.com"}}}})
-    assert _paid_level(appmod, "anon@x.com", now=500) == 2      # initial grant via customer_details
-    assert _paid_level(appmod, "anon@x.com", now=1500) == 0     # expires at 1000
+    assert _drip_active(appmod, "anon@x.com", now=500) is True    # initial grant via customer_details
+    assert _drip_active(appmod, "anon@x.com", now=1500) is False  # expires at 1000
+    assert _paid_level(appmod, "anon@x.com", now=500) == 0        # drip alone never lifts to level 2
     # invoice.paid renewal extends to 3000 even though sub metadata has no email
     monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
         "id": "sub_ne", "status": "active", "current_period_end": 3000,
         "customer": "c", "metadata": {"kind": "course_membership"}})
-    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {"subscription": "sub_ne"}}})
-    assert _paid_level(appmod, "anon@x.com", now=2500) == 2     # renewed via stored-row email fallback
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_ne", "id": "in_ne_1"}}})
+    assert _drip_active(appmod, "anon@x.com", now=2500) is True   # renewed via stored-row email fallback
+
+
+def test_drip_invoice_unlocks_next_module_and_replay_does_not_advance(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    email = "drip@x.com"
+    _drip_checkout(appmod, monkeypatch, email)
+    assert _unlocked(appmod, email) == {"02-body"}            # first module from checkout
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_drip", "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_drip", "id": "in_d1"}}})
+    assert _unlocked(appmod, email) == {"02-body", "03-mind"}          # 1st paid invoice -> next module
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_drip", "id": "in_d2"}}})
+    assert _unlocked(appmod, email) == {"02-body", "03-mind", "04-spirit"}  # 2nd distinct invoice -> next
+    # replaying an already-seen invoice must NOT unlock a 4th module
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_drip", "id": "in_d2"}}})
+    assert _unlocked(appmod, email) == {"02-body", "03-mind", "04-spirit"}
+    assert _paid_level(appmod, email, now=1) == 0
+    assert _drip_active(appmod, email, now=1) is True
+
+
+def test_drip_self_selected_pref_is_honored_then_reverts_to_sequential(appmod, monkeypatch):
+    from dashboard import course_module_unlocks as cmu
+    from dashboard import stripe_pay
+    email = "pref@x.com"
+    _drip_checkout(appmod, monkeypatch, email, sub_id="sub_pref", cs_id="cs_pref")
+    assert _unlocked(appmod, email) == {"02-body"}
+    # learner sets a preference for a later module before the next invoice
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        cmu.set_unlock_pref(cx, email, "ash-certification", "05-family-history")
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": "sub_pref", "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_pref", "id": "in_p1"}}})
+    assert _unlocked(appmod, email) == {"02-body", "05-family-history"}   # pref honored, then consumed
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_pref", "id": "in_p2"}}})
+    # pref was consumed by the prior invoice -> reverts to sequential course order
+    assert _unlocked(appmod, email) == {"02-body", "05-family-history", "03-mind"}
+
+
+def test_drip_first_cycle_unlocks_only_one_module(appmod, monkeypatch):
+    # Real Stripe delivers BOTH checkout.session.completed AND a subscription_create
+    # invoice.paid for the first $99 charge — together they must unlock ONE module, not two.
+    from dashboard import stripe_pay
+    email = "drp@x.com"
+    sub_id = "sub_drp"
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: {
+        "id": sub_id, "status": "active", "current_period_end": 9_999_999_999,
+        "customer": "cus_d", "metadata": {"kind": "course_membership", "email": email}})
+    # 1) checkout.session.completed (drip) unlocks module 1
+    _drip_checkout(appmod, monkeypatch, email, sub_id=sub_id, cs_id="cs_drp")
+    assert _unlocked(appmod, email) == {"02-body"}
+    # 2) the SAME first charge's initial invoice (subscription_create) must NOT unlock a 2nd
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {
+        "subscription": sub_id, "id": "in_create", "billing_reason": "subscription_create"}}})
+    first = _unlocked(appmod, email)
+    assert len(first) == 1, f"first cycle must unlock exactly one module, got {first}"
+    assert first == {"02-body"}
+    # 3) a monthly cycle invoice unlocks the next module
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {
+        "subscription": sub_id, "id": "in_cycle2", "billing_reason": "subscription_cycle"}}})
+    after = _unlocked(appmod, email)
+    assert len(after) == 2, f"a cycle invoice unlocks the next module, got {after}"
+    assert after == {"02-body", "03-mind"}
 
 
 def _plan_sub(email="p@x.com", cpe=1000):

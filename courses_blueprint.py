@@ -81,6 +81,17 @@ def _member_level():
         cx.close()
 
 
+def _resolve_learner_email():
+    token = request.args.get("token") or request.cookies.get("mu_token")
+    if not token:
+        return ""
+    cx = _connect()
+    try:
+        return (course_tokens.resolve_course_token(cx, token) or "").strip().lower()
+    finally:
+        cx.close()
+
+
 _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }} · MentorshipU</title></head>
@@ -148,23 +159,22 @@ _REGISTER_FORM = """
 
 def _enroll_panel(course):
     # The $99/mo membership button shows only when its price is configured
-    # (STRIPE_MEMBERSHIP_PRICE_ID). At the Option-1 launch only the one-time cert is
-    # live; the membership button stays hidden until Build #2 wires the per-module
-    # drip model, then reappears automatically with no code change.
+    # (STRIPE_MEMBERSHIP_PRICE_ID); it's the live drip button once Build #2's price
+    # is set, no code change needed. Same for the 12-month plan.
     membership_btn = ""
     if os.environ.get("STRIPE_MEMBERSHIP_PRICE_ID", "").strip():
         membership_btn = (' <button type="button" onclick="muCheckout(\'membership\')">'
-                          'Join monthly, $99 a month</button>')
+                          'Join monthly, $99 a month, a new module unlocks every month</button>')
     plan_btn = ""
     if os.environ.get("STRIPE_PLAN_PRICE_ID", "").strip():
         plan_btn = (' <button type="button" onclick="muCheckout(\'plan\')">'
-                    'Pay over 12 months, $297 a month</button>')
+                    'Pay over 12 months, $297 a month, full access from day one</button>')
     return (
         '<div class="enroll">'
         '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
         'at your own pace, for life.</p>'
         '<p>'
-        '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button>'
+        '<button type="button" onclick="muCheckout(\'onetime\')">Pay in full, $2,997 (save $567)</button>'
         + plan_btn + membership_btn +
         '</p>'
         '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
@@ -172,6 +182,22 @@ def _enroll_panel(course):
         '.then(function(r){return r.json()}).then(function(d){'
         'if(d.url){location.href=d.url}else{alert(d.error||"Checkout is not available right now.")}})}'
         '</script></div>')
+
+
+def _paid_module_open(cx, email, course_obj, module_slug) -> bool:
+    """Per-module access for a `paid` module: full-cert holder, OR the module is
+    completed (banked for life), OR unlocked and the learner's drip membership
+    is currently active. Anonymous (email == "") is always False."""
+    from dashboard import course_entitlements, course_module_unlocks, course_progress
+    module = next((m for m in course_obj.modules if m.slug == module_slug), None)
+    if module is None:
+        return False
+    lesson_slugs = [l.slug for l in module.lessons]
+    full_cert = course_entitlements.paid_level_for(cx, email) == 2
+    completed = course_progress.module_completed(cx, email, course_obj.slug, module_slug, lesson_slugs)
+    unlocked = module_slug in course_module_unlocks.unlocked_modules(cx, email, course_obj.slug)
+    drip = course_entitlements.drip_active(cx, email)
+    return ca.module_access(full_cert=full_cert, completed=completed, unlocked=unlocked, drip_active=drip)
 
 
 def learn_home():
@@ -193,24 +219,35 @@ def learn_home():
 
 def course_home(course_slug):
     level = _member_level()
+    email = _resolve_learner_email()
     try:
         course = cc.load_course(course_slug)
     except FileNotFoundError:
         return render_template_string(_PAGE, title="Not found", body="<h1>Course not found</h1>"), 404
     rows = []
     has_locked_paid = False
-    for m in course.modules:
-        rows.append(f"<h3>{escape(m.title)}</h3><ul>")
-        for l in m.lessons:
-            state = ca.lock_state(l.access, level)
-            if state == "open":
-                rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{escape(l.title)}</a></li>')
-            elif state == "locked_register":
-                rows.append(f'<li>{escape(l.title)} <a href="/learn#register">(register free)</a></li>')
-            else:  # locked_upgrade
-                rows.append(f"<li>{escape(l.title)} (certification module)</li>")
-                has_locked_paid = True
-        rows.append("</ul>")
+    cx = _connect()
+    try:
+        paid_open_cache = {}
+        for m in course.modules:
+            rows.append(f"<h3>{escape(m.title)}</h3><ul>")
+            for l in m.lessons:
+                if l.access == "paid":
+                    if m.slug not in paid_open_cache:
+                        paid_open_cache[m.slug] = _paid_module_open(cx, email, course, m.slug)
+                    state = "open" if paid_open_cache[m.slug] else "locked_upgrade"
+                else:
+                    state = ca.lock_state(l.access, level)
+                if state == "open":
+                    rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{escape(l.title)}</a></li>')
+                elif state == "locked_register":
+                    rows.append(f'<li>{escape(l.title)} <a href="/learn#register">(register free)</a></li>')
+                else:  # locked_upgrade
+                    rows.append(f"<li>{escape(l.title)} (certification module)</li>")
+                    has_locked_paid = True
+            rows.append("</ul>")
+    finally:
+        cx.close()
     body = f'<p><a href="/learn">← All courses</a></p><h1>{escape(course.title)}</h1><p>{escape(course.description)}</p>{"".join(rows)}'
     if has_locked_paid:
         body += _enroll_panel(course)
@@ -232,16 +269,32 @@ def lesson_page(course_slug, module_slug, lesson_slug):
                     lesson = l
     if lesson is None:
         return render_template_string(_PAGE, title="Not found", body="<h1>Lesson not found</h1>"), 404
-    if not ca.is_visible(lesson.access, level):
-        state = ca.lock_state(lesson.access, level)
-        head = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
-                f'<h1>{escape(lesson.title)}</h1>')
-        if state == "locked_upgrade":
-            body = head + _enroll_panel(course)
+
+    email = _resolve_learner_email()
+    cx = _connect()
+    try:
+        if lesson.access == "paid":
+            visible = _paid_module_open(cx, email, course, module_slug)
+            locked_state = "locked_upgrade"
         else:
-            body = head + ('<p>Register free to watch this lesson.</p>'
-                            '<p><a href="/learn#register">Register</a></p>')
-        return render_template_string(_PAGE, title=lesson.title, body=body), 403
+            visible = ca.is_visible(lesson.access, level)
+            locked_state = ca.lock_state(lesson.access, level)
+        if not visible:
+            head = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
+                    f'<h1>{escape(lesson.title)}</h1>')
+            if locked_state == "locked_upgrade":
+                body = head + _enroll_panel(course)
+            else:
+                body = head + ('<p>Register free to watch this lesson.</p>'
+                                '<p><a href="/learn#register">Register</a></p>')
+            return render_template_string(_PAGE, title=lesson.title, body=body), 403
+
+        prior = None
+        if email:
+            from dashboard import course_progress as cp
+            prior = cp.homework(cx, email, course.slug, module_slug)
+    finally:
+        cx.close()
     safe_body = sanitize_html(lesson.body_md)
     dls = "".join(
         f'<li><a href="{escape(d.get("url",""))}">{escape(d.get("label","Download"))}</a></li>'
@@ -250,7 +303,136 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     dls = f"<h3>Resources</h3><ul>{dls}</ul>" if dls else ""
     body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
             f'<h1>{escape(lesson.title)}</h1><div>{safe_body}</div>{dls}')
+    watch_js = (
+        f'<p><button type="button" id="mu-watched" onclick="muWatched()">Mark watched</button> '
+        f'<span id="mu-watched-ok"></span></p>'
+        f'<script>'
+        f'function muWatched(){{fetch("/api/courses/{course.slug}/{module_slug}/{lesson_slug}/watched"'
+        f'+location.search,{{method:"POST"}}).then(function(r){{if(r.ok)'
+        f'document.getElementById("mu-watched-ok").textContent="Marked watched.";}});}}'
+        # YouTube IFrame API: auto-mark when the embedded video ends.
+        f'(function(){{var t=document.createElement("script");t.src="https://www.youtube.com/iframe_api";'
+        f'document.head.appendChild(t);window.onYouTubeIframeAPIReady=function(){{'
+        f'var f=document.querySelector("iframe[src*=\\"youtube\\"]");if(!f)return;'
+        f'try{{new YT.Player(f,{{events:{{onStateChange:function(e){{if(e.data===0)muWatched();}}}}}});}}catch(_){{}}}};}})();'
+        f'</script>')
+    body += watch_js
+    assignment = escape(_HOMEWORK_ASSIGNMENT.get(module_slug, _HOMEWORK_DEFAULT))
+    prior_html = ""
+    if prior and prior.get("ai_feedback"):
+        prior_html = (f'<p class="mu-fb"><b>Feedback:</b> {escape(prior["ai_feedback"])}'
+                      + (f' <i>({escape(prior["ai_rating"])})</i>' if prior.get("ai_rating") else "") + '</p>')
+    hw_html = (
+        f'<div class="mu-hw"><h3>Homework</h3><p>{assignment}</p>'
+        f'<textarea id="mu-hw" rows="6" style="width:100%">{escape((prior or {}).get("payload") or "")}</textarea>'
+        f'<p><button type="button" onclick="muHw()">Submit homework</button> <span id="mu-hw-ok"></span></p>'
+        f'{prior_html}'
+        f'<script>function muHw(){{fetch("/api/courses/{course.slug}/{module_slug}/homework"+location.search,'
+        f'{{method:"POST",headers:{{"Content-Type":"application/json"}},'
+        f'body:JSON.stringify({{payload:document.getElementById("mu-hw").value}})}})'
+        f'.then(function(r){{return r.json()}}).then(function(d){{'
+        f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
+        f'</script></div>')
+    body += hw_html
     return render_template_string(_PAGE, title=lesson.title, body=body)
+
+
+# module slug -> the homework assignment prompt shown to the learner + given to the AI.
+# Body is the reflective prompt (its rich Body Map tool arrives in Plan 3); the rest
+# fill in on the drip cadence (Family: chart family health challenges; etc.).
+_HOMEWORK_ASSIGNMENT = {
+    "02-body": "Reflect on your body: your top takeaways from this module and one concrete "
+               "action you will apply.",
+}
+_HOMEWORK_DEFAULT = "Your top takeaways from this module and one concrete action you will apply."
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/homework", methods=["POST"])
+def courses_submit_homework(course_slug, module_slug):
+    from dashboard import course_progress as cp
+    from dashboard import homework_analysis
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    payload = ((request.get_json(silent=True) or {}).get("payload") or "").strip()
+    if not payload:
+        return jsonify({"error": "empty"}), 400
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    module = next((m for m in course.modules if m.slug == module_slug), None)
+    if module is None:
+        return jsonify({"error": "not found"}), 404
+    assignment = _HOMEWORK_ASSIGNMENT.get(module_slug, _HOMEWORK_DEFAULT)
+    cx = _connect()
+    try:
+        # Paywall gate: a module is "paid" if any of its lessons is. A learner
+        # without current access (full cert, banked completion, or active drip
+        # unlock) cannot bank a completion by submitting homework for free.
+        is_paid_module = any(l.access == "paid" for l in module.lessons)
+        if is_paid_module and not _paid_module_open(cx, email, course, module_slug):
+            return jsonify({"error": "forbidden"}), 403
+        fb = homework_analysis.analyze(module_slug, assignment, payload)  # advisory, never raises
+        cp.record_homework(cx, email, course_slug, module_slug, payload,
+                           ai_rating=fb.get("rating") or None, ai_feedback=fb.get("feedback") or None)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "rating": fb.get("rating", ""), "feedback": fb.get("feedback", "")})
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/<lesson_slug>/watched", methods=["POST"])
+def courses_mark_watched(course_slug, module_slug, lesson_slug):
+    from dashboard import course_progress as cp
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    lesson = None
+    for m in course.modules:
+        if m.slug == module_slug:
+            for l in m.lessons:
+                if l.slug == lesson_slug:
+                    lesson = l
+    if lesson is None:
+        return jsonify({"error": "not found"}), 404
+    cx = _connect()
+    try:
+        # Paywall gate: a free registered learner cannot forge "watched" on a
+        # paid lesson they never unlocked and bank the module's completion.
+        if lesson.access == "paid" and not _paid_module_open(cx, email, course, module_slug):
+            return jsonify({"error": "forbidden"}), 403
+        cp.mark_watched(cx, email, course_slug, module_slug, lesson_slug)
+    finally:
+        cx.close()
+    return jsonify({"ok": True})
+
+
+@courses_bp.route("/api/courses/<course_slug>/unlock-next", methods=["POST"])
+def courses_unlock_next(course_slug):
+    """Self-select which paid module unlocks next on the learner's next drip
+    charge (consumed once by _drip_unlock_next in app.py). Token-gated."""
+    from dashboard import course_module_unlocks as cmu
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    module = ((request.get_json(silent=True) or {}).get("module") or "").strip()
+    try:
+        course = cc.load_course(course_slug)
+    except FileNotFoundError:
+        return jsonify({"error": "not found"}), 404
+    paid_modules = {m.slug for m in course.modules if any(l.access == "paid" for l in m.lessons)}
+    if module not in paid_modules:
+        return jsonify({"error": "unknown module"}), 400
+    cx = _connect()
+    try:
+        cmu.set_unlock_pref(cx, email, course_slug, module)
+    finally:
+        cx.close()
+    return jsonify({"ok": True})
 
 
 @courses_bp.route("/api/mentorship/intake/start", methods=["POST"])
