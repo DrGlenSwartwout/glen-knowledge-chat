@@ -332,6 +332,24 @@ def test_membership_button_appears_when_price_configured(client, monkeypatch):
     assert "Join monthly" in r.get_data(as_text=True)  # reappears automatically for Build #2
 
 
+def test_plan_button_appears_when_price_configured(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("STRIPE_PLAN_PRICE_ID", "price_plan")
+    tok = _seed_token(appmod, "pf@x.com", cert=False)
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    assert "Pay over 12 months" in r.get_data(as_text=True)
+
+
+def test_plan_button_hidden_when_price_unset(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.delenv("STRIPE_PLAN_PRICE_ID", raising=False)
+    tok = _seed_token(appmod, "pf2@x.com", cert=False)
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    assert "Pay over 12 months" not in r.get_data(as_text=True)
+
+
 def test_paid_lesson_opens_for_level_2(client, monkeypatch):
     c, appmod = client
     tok = _seed_token(appmod, "paid@x.com", cert=True)

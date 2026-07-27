@@ -155,13 +155,17 @@ def _enroll_panel(course):
     if os.environ.get("STRIPE_MEMBERSHIP_PRICE_ID", "").strip():
         membership_btn = (' <button type="button" onclick="muCheckout(\'membership\')">'
                           'Join monthly, $99 a month</button>')
+    plan_btn = ""
+    if os.environ.get("STRIPE_PLAN_PRICE_ID", "").strip():
+        plan_btn = (' <button type="button" onclick="muCheckout(\'plan\')">'
+                    'Pay over 12 months, $297 a month</button>')
     return (
         '<div class="enroll">'
         '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
         'at your own pace, for life.</p>'
         '<p>'
         '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button>'
-        + membership_btn +
+        + plan_btn + membership_btn +
         '</p>'
         '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
         'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'
