@@ -241,11 +241,10 @@
           // The organ clock's 5-element colors. Set via inline STYLE (not the
           // `fill` presentation attribute) so it beats the `.bm-zone` stylesheet
           // rule -- an SVG presentation attribute loses to any CSS rule. The
-          // `.bm-current`/`.bm-lit` !important rules still override this, so the
-          // current-hour highlight and personalized findings win as before.
-          // Opacity 0.6 (vs a lit zone's 0.35) so the elements read at a glance.
+          // `.bm-lit` !important rule still wins for personalized findings.
+          // Yin (zang) organs render more saturated than their yang (fu) partner.
           path.style.fill = grp.color;
-          path.style.fillOpacity = "0.6";
+          path.style.fillOpacity = (z.polarity === "yin") ? "0.82" : "0.5";
         }
         path.addEventListener("click", () => selectZone(z));
         svg.appendChild(path);
