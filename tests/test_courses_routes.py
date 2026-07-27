@@ -317,8 +317,9 @@ def test_paid_lesson_shows_enroll_panel_to_free_member(client, monkeypatch):
     r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
     body = r.get_data(as_text=True)
     assert r.status_code == 403
-    assert "Get the full certification" in body
+    assert "Pay in full" in body
     assert "$2,997" in body
+    assert "save $567" in body
     assert "Join monthly" not in body  # membership button hidden until STRIPE_MEMBERSHIP_PRICE_ID set
     assert "<script>alert(1)</script>" not in body  # no lesson body leaked
 
@@ -355,4 +356,4 @@ def test_paid_lesson_opens_for_level_2(client, monkeypatch):
     tok = _seed_token(appmod, "paid@x.com", cert=True)
     r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
     assert r.status_code == 200
-    assert "Get the full certification" not in r.get_data(as_text=True)
+    assert "Pay in full" not in r.get_data(as_text=True)
