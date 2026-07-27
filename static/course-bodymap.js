@@ -188,17 +188,26 @@
     var viewToggle = document.createElement("div");
     viewToggle.className = "cbm-view-toggle";
     viewToggle.style.display = "none";
-    var frontBtn = document.createElement("button");
-    frontBtn.type = "button";
-    frontBtn.textContent = "Front";
-    frontBtn.className = "cbm-view-btn cbm-active";
-    var backBtn = document.createElement("button");
-    backBtn.type = "button";
-    backBtn.textContent = "Back";
-    backBtn.className = "cbm-view-btn";
-    viewToggle.appendChild(frontBtn);
-    viewToggle.appendChild(backBtn);
     topBar.appendChild(viewToggle);
+
+    function _cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+    // Build the view toggle from the map's own outline keys (front/back, or
+    // female/male for urogenital, etc.) rather than a hardcoded front/back, so
+    // every system's sides are selectable.
+    function buildViewButtons(views) {
+      viewToggle.textContent = "";
+      views.forEach(function (v) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.textContent = _cap(v);
+        b.className = "cbm-view-btn" + (v === state.view ? " cbm-active" : "");
+        b.setAttribute("data-view", v);
+        b.addEventListener("click", function () { setView(v); });
+        viewToggle.appendChild(b);
+      });
+      viewToggle.style.display = views.length >= 2 ? "" : "none";
+    }
 
     wrap.appendChild(topBar);
 
@@ -378,8 +387,10 @@
 
     function setView(view) {
       state.view = view;
-      frontBtn.classList.toggle("cbm-active", view === "front");
-      backBtn.classList.toggle("cbm-active", view === "back");
+      var btns = viewToggle.querySelectorAll(".cbm-view-btn");
+      Array.prototype.forEach.call(btns, function (b) {
+        b.classList.toggle("cbm-active", b.getAttribute("data-view") === view);
+      });
       renderMap();
     }
 
@@ -392,9 +403,14 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           state.payload = data;
-          var hasBack = !!(data.outlines && data.outlines.back);
-          viewToggle.style.display = hasBack ? "" : "none";
-          setView("front");
+          var views = Object.keys(data.outlines || {});
+          if (views.length === 0) views = ["front"];
+          // Prefer "front" as the default when present (the natural body view);
+          // systems without it (e.g. urogenital female/male) fall back to the first key.
+          var defaultView = views.indexOf("front") >= 0 ? "front" : views[0];
+          state.view = defaultView;
+          buildViewButtons(views);
+          setView(defaultView);
           applyPriorMarks();
           renderMap();
           renderList();
@@ -424,8 +440,7 @@
       loadSystem(next);
     });
 
-    frontBtn.addEventListener("click", function () { setView("front"); });
-    backBtn.addEventListener("click", function () { setView("back"); });
+    // View buttons are wired per-system in buildViewButtons().
 
     overallNote.addEventListener("input", function () {
       state.note = overallNote.value;
