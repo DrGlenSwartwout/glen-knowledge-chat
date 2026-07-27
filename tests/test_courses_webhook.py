@@ -210,3 +210,21 @@ def test_plan_charge_counts_even_when_email_unresolved(appmod, monkeypatch):
     with sqlite3.connect(appmod.LOG_DB) as cx:
         n = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id='sub_anon'").fetchone()[0]
     assert n == 1  # counted despite unresolved email (grant deferred to the completed event)
+
+
+def test_plan_overcharge_past_12_fires_alert(appmod, monkeypatch):
+    # A 13th-or-later paid invoice (a charge that slipped past the 12-payment
+    # conversion) must fire an operational overcharge alert; exactly 12 must not.
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: _plan_sub(email="oc@x.com", cpe=1000))
+    monkeypatch.setattr(stripe_pay, "cancel_subscription", lambda sid: {"id": sid, "status": "canceled"})
+    alerts = []
+    monkeypatch.setattr(appmod, "_send_token_alert",
+                        lambda subject, body: alerts.append((subject, body)) or True)
+    for i in range(1, 13):  # 12 charges → conversion, NO overcharge alert
+        _post_event(appmod, {"type": "invoice.paid",
+                             "data": {"object": {"subscription": "sub_plan", "id": f"in_{i}"}}})
+    assert alerts == []
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_plan", "id": "in_13"}}})
+    assert len(alerts) == 1 and "OVERCHARGE" in alerts[0][0]

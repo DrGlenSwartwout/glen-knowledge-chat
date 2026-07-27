@@ -11027,6 +11027,16 @@ def _course_plan_charge(invoice):
                 stripe_pay.cancel_subscription(sub_id)
             except Exception as e:
                 print(f"[course] plan cancel-at-12 failed sub={sub_id}: {e!r}", flush=True)
+        if count > 12:  # a charge slipped past the 12-payment conversion — a refund is owed
+            try:
+                _send_token_alert(
+                    "MentorshipU cert plan OVERCHARGE",
+                    f"A $297x12 course plan took a 13th-or-later charge past its lifetime "
+                    f"conversion. Refund $297 and confirm the subscription is canceled.\n"
+                    f"subscription={sub_id}\ninvoice={invoice_id}\nemail={email}\n"
+                    f"charge_count={count}")
+            except Exception as e:
+                print(f"[course] plan overcharge alert failed sub={sub_id}: {e!r}", flush=True)
         return "ok"
     except Exception as e:
         print(f"[course] plan charge failed: {e!r}", flush=True)
