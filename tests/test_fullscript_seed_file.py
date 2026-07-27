@@ -69,6 +69,18 @@ def test_magnesium_taurate_maps_to_neuro_magnesium():
     assert p.get("relation") == "substitute"
 
 
+def test_l_theanine_maps_to_neuro_magnesium():
+    """Pins Glen's deliberate L-Theanine mapping (Neuro Magnesium carries the
+    same active per his knowledge base; he chose it as the first pick). Guards
+    the second hand-supplied best_ff against a silent regression."""
+    seed = _load()
+    matches = [p for p in seed["products"] if p.get("name") == "L-Theanine"]
+    assert matches, "L-Theanine product missing from the committed seed"
+    p = matches[0]
+    assert p.get("best_ff") == "Neuro Magnesium"
+    assert p.get("relation") == "substitute"
+
+
 def test_focus_area_items_non_empty():
     seed = _load()
     assert seed["focus_area_items"], (
