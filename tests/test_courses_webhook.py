@@ -194,3 +194,19 @@ def test_plan_handler_skips_membership_kind(appmod, monkeypatch):
         except sqlite3.OperationalError:
             n = 0
     assert n == 0  # plan handler did not record a course_membership invoice
+
+
+def test_plan_charge_counts_even_when_email_unresolved(appmod, monkeypatch):
+    import sqlite3
+    from dashboard import stripe_pay
+    # Anonymous plan: subscription metadata carries NO email, and no membership row
+    # exists yet (invoice.paid before checkout.session.completed). The charge must
+    # still be counted so the 12-count stays accurate.
+    monkeypatch.setattr(stripe_pay, "get_subscription",
+                        lambda sid: {"id": "sub_anon", "status": "active", "current_period_end": 1000,
+                                     "customer": "c", "metadata": {"kind": "course_plan"}})
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_anon", "id": "in_anon_1"}}})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id='sub_anon'").fetchone()[0]
+    assert n == 1  # counted despite unresolved email (grant deferred to the completed event)

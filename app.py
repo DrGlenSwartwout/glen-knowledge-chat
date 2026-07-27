@@ -11003,12 +11003,18 @@ def _course_plan_charge(invoice):
         until = float(sub.get("current_period_end") or 0) or None
         with _db_lock, db.connect(LOG_DB) as cx:
             _ce.init_course_entitlements_table(cx)
+            # Record the charge FIRST: it is idempotent on invoice_id and email-
+            # independent, so the 12-count stays accurate even when this invoice.paid
+            # arrives before checkout.session.completed has stored the buyer's email
+            # (anonymous plan checkout). Access itself is granted by the completed
+            # event; under-counting here would permanently stall the conversion.
+            count = _ce.record_plan_charge(cx, sub_id, invoice_id)
             email = (sub_md.get("email") or "").strip().lower()
             if not email:
                 email = (_ce.email_for_stripe_ref(cx, sub_id) or "").strip().lower()
             if not email:
-                return "skip"
-            count = _ce.record_plan_charge(cx, sub_id, invoice_id)
+                cx.commit()
+                return "ok"  # charge counted; grant deferred until the email resolves
             if count >= 12:
                 _ce.grant_cert(cx, email, source="stripe", stripe_ref=sub_id,
                                customer=sub.get("customer"))
