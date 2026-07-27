@@ -14620,6 +14620,12 @@ def affiliate_page():
     return resp
 
 
+@app.route("/certification")
+def certification_page():
+    resp = send_from_directory(STATIC, "certification.html")
+    return resp
+
+
 @app.route("/affiliate/hub/<slug>")
 def affiliate_hub_page(slug):
     resp = send_from_directory(STATIC, "affiliate-hub.html")
