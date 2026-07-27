@@ -99,3 +99,46 @@ def test_line_takes_precedence_over_none_quote():
     got = dx.extract_other_ingredients(SOURCE, name="Magnesium Taurate",
                                        brand="Jarrow Formulas", call_model=fake_model)
     assert got == "magnesium stearate (vegetable source) and silicon dioxide"
+
+
+# --- multi-product page: a NEIGHBOR's "None" must not green the target -------
+# Target (Vitamin C) has a real red excipient; a DIFFERENT product (Creatine)
+# far down the page declares None. The model borrows Creatine's none-quote and
+# attributes it to Vitamin C. Anchoring must reject it (target name is far from
+# the borrowed quote) -> None (unrated), never "".
+def _two_product_page():
+    filler = " lorem ipsum catalog padding. " * 60   # ~1800 chars of distance
+    return ("Vitamin C 1000mg by Pure Encapsulations. "
+            "Other Ingredients: hydrogenated palm oil, titanium dioxide."
+            + filler +
+            "Creatine by Thorne. Other Ingredients: None. Keep dry.")
+
+
+def test_neighbor_none_quote_does_not_green_target():
+    page = _two_product_page()
+    def borrow_none(source_text, name, brand, sku):
+        return {"none_source_quote": "Other Ingredients: None"}
+    # asking about Vitamin C, model borrows Creatine's None -> must be rejected
+    assert dx.extract_other_ingredients(page, name="Vitamin C 1000mg",
+                                        brand="Pure Encapsulations",
+                                        call_model=borrow_none) is None
+
+
+def test_neighbor_line_quote_does_not_attach_to_target():
+    page = _two_product_page()
+    # model borrows the OTHER product's (Creatine's) none region text as a line
+    def borrow_line(source_text, name, brand, sku):
+        return {"other_ingredients_line": "None"}   # from Creatine's block, far from Vitamin C
+    got = dx.extract_other_ingredients(page, name="Vitamin C 1000mg",
+                                       brand="Pure Encapsulations", call_model=borrow_line)
+    # "None" is 4 chars (< MIN_QUOTE_LEN) so verify drops it anyway; either way not the target's line
+    assert got is None
+
+
+def test_target_own_none_still_greens():
+    # Sanity: the target's OWN none (near its name) still resolves to "".
+    page = "Creatine by Thorne SKU SF221 . Other Ingredients: None. Keep dry."
+    def own_none(source_text, name, brand, sku):
+        return {"none_source_quote": "Other Ingredients: None"}
+    assert dx.extract_other_ingredients(page, name="Creatine", brand="Thorne",
+                                        call_model=own_none) == ""
