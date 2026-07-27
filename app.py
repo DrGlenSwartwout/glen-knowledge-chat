@@ -6964,6 +6964,23 @@ def _credit_referrer_by_slug(cx, slug, buyer_email, product_cents, order_ref):
         print(f"[rewards] _credit_referrer_by_slug failed ref={order_ref}: {_e!r}", flush=True)
 
 
+def _credit_course_referral(cx, ref, buyer_email, product_cents, order_ref):
+    """Credit an ambassador for a referred COURSE sale, given the ref slug from
+    Stripe metadata. Gated on REWARDS_TIERS_ENABLED. Best-effort: never raises."""
+    try:
+        if not _rewards_enabled():
+            return
+        ref = (ref or "").strip()
+        import re as _re
+        if not (ref and _re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref)):
+            return
+        if int(product_cents or 0) <= 0 or not order_ref:
+            return
+        _credit_referrer_by_slug(cx, ref, (buyer_email or "").strip().lower(), int(product_cents), order_ref)
+    except Exception as _e:
+        print(f"[rewards] _credit_course_referral failed ref={order_ref}: {_e!r}", flush=True)
+
+
 def _settle_referral(order, *, order_ref: str) -> None:
     """Credit the referrer (points or cash) on a full-price referred sale.
     Idempotent per order_ref. Best-effort -- never raises."""
@@ -11020,6 +11037,8 @@ def _fulfill_course_purchase(session):
             else:
                 _ce.grant_cert(cx, email, source="stripe",
                                stripe_ref=session.get("id"), customer=customer)
+                _credit_course_referral(cx, md.get("ref"), email,
+                                        int(session.get("amount_total") or 0), session.get("id"))
             cx.commit()
         _autoprovision_course_access(email)
         return "ok"
@@ -11053,6 +11072,8 @@ def _fulfill_module_certification(session):
             cx.row_factory = sqlite3.Row
             from dashboard import module_certifications as _mc
             _mc.record_purchase(cx, email, course, module, stripe_ref, amount)
+            _credit_course_referral(cx, md.get("ref"), email,
+                                    int(session.get("amount_total") or 0), session.get("id"))
         return "ok"
     except Exception as e:
         print(f"[modcert] fulfill failed: {e!r}", flush=True)
@@ -11129,6 +11150,7 @@ def _course_membership_renew(invoice):
             return "skip"
         until = float(sub.get("current_period_end") or 0) or None
         with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
             _ce.init_course_entitlements_table(cx)
             email = (sub_md.get("email") or "").strip().lower()
             if not email:
@@ -11137,6 +11159,8 @@ def _course_membership_renew(invoice):
                 return "skip"
             _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
                                  stripe_ref=sub_id, customer=sub.get("customer"))
+            _credit_course_referral(cx, sub_md.get("ref"), email,
+                                    int((invoice or {}).get("amount_paid") or 0), invoice_id)
             # The first invoice on a new drip subscription (billing_reason ==
             # "subscription_create") is the SAME $99 charge that checkout.session.
             # completed already unlocked module 1 for via _fulfill_course_purchase.
@@ -11171,6 +11195,7 @@ def _course_plan_charge(invoice):
             return "skip"
         until = float(sub.get("current_period_end") or 0) or None
         with _db_lock, db.connect(LOG_DB) as cx:
+            cx.row_factory = sqlite3.Row
             _ce.init_course_entitlements_table(cx)
             # Record the charge FIRST: it is idempotent on invoice_id and email-
             # independent, so the 12-count stays accurate even when this invoice.paid
@@ -11184,6 +11209,8 @@ def _course_plan_charge(invoice):
             if not email:
                 cx.commit()
                 return "ok"  # charge counted; grant deferred until the email resolves
+            _credit_course_referral(cx, sub_md.get("ref"), email,
+                                    int((invoice or {}).get("amount_paid") or 0), invoice_id)
             if count >= 12:
                 _ce.grant_cert(cx, email, source="stripe", stripe_ref=sub_id,
                                customer=sub.get("customer"))
