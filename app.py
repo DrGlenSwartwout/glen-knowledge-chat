@@ -34060,6 +34060,51 @@ def _people_search_query(params):
     return where, args
 
 
+_CANON_MERGE_DISCRETE = ("conditions", "terrain_concerns", "body_systems")
+_CANON_MERGE_SCALAR = ("challenges", "goals")
+
+
+def _merge_canonical_into_person(cx, person):
+    """Read-through: union the client's canonical clinical attributes
+    (canonical_tags.person_attributes) into a /api/people row, so doc-approved
+    conditions/terrain/systems reach the biofield narrative's profile block.
+
+    Preserves each field's serialized shape (discrete = JSON-string list, scalar
+    = plain string) so the console people view and the narrative are unaffected.
+    NEVER touches `tags` (the CRM/GHL bucket). Best-effort: any failure returns
+    the person unchanged. Mutates and returns `person`.
+    """
+    email = (person.get("email") or "").strip()
+    if not email:
+        return person
+    try:
+        from dashboard import canonical_tags as _ct
+        canon = _ct.get_person(cx, email)
+    except Exception:
+        return person
+    for f in _CANON_MERGE_DISCRETE:
+        try:
+            existing = json.loads(person.get(f) or "[]")
+            if not isinstance(existing, list):
+                existing = []
+        except (TypeError, ValueError):
+            existing = []
+        merged, seen = [], set()
+        for v in list(existing) + list(canon.get(f) or []):
+            s = str(v).strip()
+            k = s.lower()
+            if s and k not in seen:
+                seen.add(k)
+                merged.append(s)
+        if merged:                       # leave the field untouched when empty
+            person[f] = json.dumps(merged)
+    for f in _CANON_MERGE_SCALAR:
+        cv = str(canon.get(f) or "").strip()
+        if cv:
+            person[f] = cv
+    return person
+
+
 @app.route("/api/people", methods=["GET"])
 def get_people():
     if CONSOLE_SECRET:
