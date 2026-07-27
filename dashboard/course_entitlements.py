@@ -1,9 +1,11 @@
 # dashboard/course_entitlements.py
 """Email-keyed paid-access entitlements for MentorshipU courses.
 
-Pure: stdlib + the caller's sqlite3 connection only, never imports app. A row
-lifts an email to course access level 2 (paid). cert_onetime = lifetime
-(expires_at NULL); membership = active through expires_at (epoch seconds).
+Pure: stdlib + the caller's sqlite3 connection only, never imports app.
+cert_onetime and plan rows lift an email to course access level 2 (paid);
+cert_onetime = lifetime (expires_at NULL), plan = active through expires_at
+(epoch seconds), $297x12 full-cert access. membership is the $99/mo
+drip-active flag only — it does NOT grant level 2 (see `drip_active`).
 Idempotent on (kind, stripe_ref) so a replayed Stripe webhook cannot double-grant.
 """
 from __future__ import annotations
@@ -113,6 +115,59 @@ def grant_membership(cx, email: str, *, until_epoch: float | None, source: str,
                 cx.commit()
 
 
+def grant_plan(cx, email: str, *, until_epoch: float | None, source: str,
+               stripe_ref: str | None = None, customer: str | None = None) -> None:
+    """Grant/extend a plan (the $297x12 full-cert-access plan) through until_epoch.
+    Extend never shortens (None == unlimited). Idempotent on (plan, stripe_ref)."""
+    init_course_entitlements_table(cx)
+    email, now = _norm(email), _now_iso()
+    if stripe_ref:
+        row = cx.execute(
+            "SELECT id, expires_at FROM course_entitlements WHERE kind='plan' AND stripe_ref=?",
+            (stripe_ref,)).fetchone()
+        if row:
+            new_exp = _membership_new_expiry(row[1], until_epoch)
+            cx.execute("UPDATE course_entitlements SET status='active', expires_at=?, email=?, "
+                       "updated_at=? WHERE id=?", (new_exp, email, now, row[0]))
+            cx.commit()
+            return
+    try:
+        cx.execute(
+            "INSERT INTO course_entitlements(email, kind, status, expires_at, source, "
+            "stripe_customer_id, stripe_ref, created_at, updated_at) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (email, "plan", "active", until_epoch, source, customer, stripe_ref, now, now))
+        cx.commit()
+    except sqlite3.IntegrityError:
+        # Concurrent grant for the same (plan, stripe_ref) won the race; extend
+        # the now-existing row instead of crashing (idempotent, never shortens).
+        cx.rollback()
+        if stripe_ref:
+            row = cx.execute(
+                "SELECT id, expires_at FROM course_entitlements WHERE kind='plan' AND stripe_ref=?",
+                (stripe_ref,)).fetchone()
+            if row:
+                new_exp = _membership_new_expiry(row[1], until_epoch)
+                cx.execute("UPDATE course_entitlements SET status='active', expires_at=?, email=?, "
+                           "updated_at=? WHERE id=?", (new_exp, email, now, row[0]))
+                cx.commit()
+
+
+def drip_active(cx, email: str, now: float | None = None) -> bool:
+    """True if the email has an active (unexpired) drip membership. Never raises."""
+    try:
+        email = _norm(email)
+        if not email:
+            return False
+        now = float(now) if now is not None else time.time()
+        row = cx.execute(
+            "SELECT 1 FROM course_entitlements WHERE email=? AND status='active' AND kind='membership' "
+            "AND (expires_at IS NULL OR expires_at > ?) LIMIT 1", (email, now)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
 def expire_membership(cx, *, stripe_ref: str) -> None:
     """Mark a Stripe-backed membership canceled so paid_level_for relocks it."""
     init_course_entitlements_table(cx)
@@ -136,8 +191,9 @@ def email_for_stripe_ref(cx, stripe_ref: str) -> str | None:
 
 
 def paid_level_for(cx, email: str, now: float | None = None) -> int:
-    """2 if the email has an active cert OR active (unexpired) membership, else 0.
-    Never raises."""
+    """2 if the email has an active cert OR active (unexpired) plan, else 0.
+    A `membership` row alone (drip-active) does NOT grant level 2 — see
+    `drip_active`. Never raises."""
     try:
         email = _norm(email)
         if not email:
@@ -145,7 +201,7 @@ def paid_level_for(cx, email: str, now: float | None = None) -> int:
         now = float(now) if now is not None else time.time()
         row = cx.execute(
             "SELECT 1 FROM course_entitlements WHERE email=? AND status='active' AND ("
-            "kind='cert_onetime' OR (kind='membership' AND (expires_at IS NULL OR expires_at > ?))"
+            "kind='cert_onetime' OR (kind='plan' AND (expires_at IS NULL OR expires_at > ?))"
             ") LIMIT 1", (email, now)).fetchone()
         return 2 if row else 0
     except Exception:
