@@ -1,3 +1,5 @@
+import json
+
 from dashboard import homework_analysis as ha
 
 
@@ -10,6 +12,20 @@ class _FakeMessages:
     def create(self, **k): return _FakeResp(self._t)
 class _FakeClient:
     def __init__(self, text): self.messages = _FakeMessages(text)
+
+
+class _CapturingMessages:
+    """Stub messages.create() that records the prompt it was sent and returns
+    a canned valid-JSON response."""
+    def __init__(self, captured):
+        self._captured = captured
+    def create(self, **k):
+        self._captured["system"] = k.get("system")
+        self._captured["user"] = k["messages"][0]["content"]
+        return _FakeResp('{"rating": "Solid", "feedback": "Keep going."}')
+class _CapturingClient:
+    def __init__(self, captured):
+        self.messages = _CapturingMessages(captured)
 
 
 def test_analyze_parses_rating_and_feedback(monkeypatch):
@@ -36,3 +52,33 @@ def test_empty_submission_skips_model(monkeypatch):
     monkeypatch.setattr(ha, "_client", lambda: called.__setitem__("n", called["n"] + 1) or _FakeClient("{}"))
     out = ha.analyze("02-body", "Reflect.", "   ")
     assert called["n"] == 0 and out["rating"] == ""  # no model call for empty submission
+    assert out == {"rating": "", "feedback": ""}
+
+
+def test_bodymap_payload_sent_as_readable(monkeypatch):
+    import bodymap_store
+    zone = bodymap_store.zone_ids("organs")[0]
+    payload = json.dumps({
+        "system": "organs",
+        "marks": [{"zone": zone, "note": "tight"}],
+        "note": "stressed",
+    })
+    captured = {}
+    monkeypatch.setattr(ha, "_client", lambda: _CapturingClient(captured))
+    out = ha.analyze("02-body", "Reflect on your body.", payload)
+    assert out == {"rating": "Solid", "feedback": "Keep going."}
+    sent = captured["user"]
+    assert "Organs" in sent
+    assert "tight" in sent
+    assert "stressed" in sent
+    # the raw JSON/zone-id shape must not leak into the prompt
+    assert "organ-" not in sent
+    assert '"marks"' not in sent
+
+
+def test_free_text_submission_unchanged(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ha, "_client", lambda: _CapturingClient(captured))
+    text = "I feel tension in my shoulders and jaw."
+    ha.analyze("02-body", "Reflect on your body.", text)
+    assert text in captured["user"]

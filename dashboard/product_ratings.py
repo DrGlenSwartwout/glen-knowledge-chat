@@ -147,3 +147,17 @@ def confirmed_color(cx, product_key):
         "SELECT color FROM product_ratings WHERE product_key=? AND status='confirmed'",
         (product_key,)).fetchone()
     return row[0] if row else None
+
+
+def aggregate_confirmed(cx):
+    """Counts of CONFIRMED product ratings by color, for the public aggregate
+    stat. unrated is never confirmed, so only red/yellow/green appear. Returns
+    NO product identities. `screened` is the confirmed total."""
+    counts = {"red": 0, "yellow": 0, "green": 0}
+    for row in cx.execute("SELECT color, COUNT(*) FROM product_ratings "
+                          "WHERE status='confirmed' GROUP BY color").fetchall():
+        c = row[0]
+        if c in counts:
+            counts[c] = row[1]
+    counts["screened"] = counts["red"] + counts["yellow"] + counts["green"]
+    return counts

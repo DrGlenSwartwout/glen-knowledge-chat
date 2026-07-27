@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import threading
 import time as _time
+from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Blueprint, request, jsonify, redirect, make_response, render_template_string, abort
+from flask import (Blueprint, request, jsonify, redirect, make_response,
+                    render_template_string, abort, send_from_directory)
 
 try:
     from markupsafe import escape
@@ -19,10 +22,12 @@ from dashboard import courses_identity as cid
 from dashboard import course_tokens
 from dashboard import module_certifications
 from dashboard import stripe_pay
+from dashboard import bodymap_homework
 from dashboard.courses_sanitize import sanitize_html
 
 courses_bp = Blueprint("courses", __name__)
 _write_lock = threading.Lock()
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 _RL_WINDOW_S = 3600
 _RL_MAX_PER_IP = 10
@@ -255,6 +260,20 @@ def course_home(course_slug):
     return render_template_string(_PAGE, title=course.title, body=body)
 
 
+@courses_bp.route("/course-bodymap.js")
+def course_bodymap_js():
+    # Serves the Body-Map homework widget (static/course-bodymap.js). Host-gated
+    # by the blueprint's before_request like every other courses_bp route.
+    resp = send_from_directory(_STATIC_DIR, "course-bodymap.js")
+    resp.headers["Content-Type"] = "application/javascript"
+    return resp
+
+
+# module slug -> the interactive homework tool it uses. Modules not listed here
+# get the plain free-text textarea + muHw() path.
+_MODULE_TOOL = {"02-body": "bodymap"}
+
+
 @courses_bp.route("/learn/<course_slug>/<module_slug>/<lesson_slug>")
 def lesson_page(course_slug, module_slug, lesson_slug):
     level = _member_level()
@@ -323,17 +342,36 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     if prior and prior.get("ai_feedback"):
         prior_html = (f'<p class="mu-fb"><b>Feedback:</b> {escape(prior["ai_feedback"])}'
                       + (f' <i>({escape(prior["ai_rating"])})</i>' if prior.get("ai_rating") else "") + '</p>')
-    hw_html = (
-        f'<div class="mu-hw"><h3>Homework</h3><p>{assignment}</p>'
-        f'<textarea id="mu-hw" rows="6" style="width:100%">{escape((prior or {}).get("payload") or "")}</textarea>'
-        f'<p><button type="button" onclick="muHw()">Submit homework</button> <span id="mu-hw-ok"></span></p>'
-        f'{prior_html}'
-        f'<script>function muHw(){{fetch("/api/courses/{course.slug}/{module_slug}/homework"+location.search,'
-        f'{{method:"POST",headers:{{"Content-Type":"application/json"}},'
-        f'body:JSON.stringify({{payload:document.getElementById("mu-hw").value}})}})'
-        f'.then(function(r){{return r.json()}}).then(function(d){{'
-        f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
-        f'</script></div>')
+    if _MODULE_TOOL.get(module_slug) == "bodymap":
+        mount_opts = {
+            "system": "organs",
+            "priorPayload": (prior or {}).get("payload") or "",
+            "submitUrl": f"/api/courses/{course.slug}/{module_slug}/homework",
+        }
+        # Safely embed server-derived text in an inline <script>: JSON-encode,
+        # then neutralize </script>/HTML-comment breakout sequences (matches the
+        # `_safe = json.dumps(...).replace(...)` convention used elsewhere in app.py).
+        mount_json = (json.dumps(mount_opts).replace("<", "\\u003c")
+                      .replace(">", "\\u003e").replace("&", "\\u0026"))
+        hw_html = (
+            f'<div class="mu-hw"><h3>Homework</h3><p>{assignment}</p>'
+            f'<div id="mu-hw-bodymap"></div>'
+            f'{prior_html}'
+            f'<script src="/course-bodymap.js"></script>'
+            f'<script>CourseBodyMap.mount(document.getElementById("mu-hw-bodymap"), {mount_json});</script>'
+            f'</div>')
+    else:
+        hw_html = (
+            f'<div class="mu-hw"><h3>Homework</h3><p>{assignment}</p>'
+            f'<textarea id="mu-hw" rows="6" style="width:100%">{escape((prior or {}).get("payload") or "")}</textarea>'
+            f'<p><button type="button" onclick="muHw()">Submit homework</button> <span id="mu-hw-ok"></span></p>'
+            f'{prior_html}'
+            f'<script>function muHw(){{fetch("/api/courses/{course.slug}/{module_slug}/homework"+location.search,'
+            f'{{method:"POST",headers:{{"Content-Type":"application/json"}},'
+            f'body:JSON.stringify({{payload:document.getElementById("mu-hw").value}})}})'
+            f'.then(function(r){{return r.json()}}).then(function(d){{'
+            f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
+            f'</script></div>')
     body += hw_html
 
     cert_price_set = bool(os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip())
@@ -372,11 +410,12 @@ def lesson_page(course_slug, module_slug, lesson_slug):
 
 
 # module slug -> the homework assignment prompt shown to the learner + given to the AI.
-# Body is the reflective prompt (its rich Body Map tool arrives in Plan 3); the rest
-# fill in on the drip cadence (Family: chart family health challenges; etc.).
+# Body uses the interactive Body Map tool (see _MODULE_TOOL); the rest fill in on
+# the drip cadence (Family: chart family health challenges; etc.).
 _HOMEWORK_ASSIGNMENT = {
-    "02-body": "Reflect on your body: your top takeaways from this module and one concrete "
-               "action you will apply.",
+    "02-body": "On the body map below, mark the areas where you feel concern, tension, "
+               "symptoms, or a history of trouble. Add a short note on any area that needs "
+               "one, then add an overall reflection on what you are noticing.",
 }
 _HOMEWORK_DEFAULT = "Your top takeaways from this module and one concrete action you will apply."
 
@@ -390,6 +429,9 @@ def courses_submit_homework(course_slug, module_slug):
         return jsonify({"error": "unauthorized"}), 401
     payload = ((request.get_json(silent=True) or {}).get("payload") or "").strip()
     if not payload:
+        return jsonify({"error": "empty"}), 400
+    parsed_bodymap = bodymap_homework.parse_marks(payload)
+    if parsed_bodymap is not None and not bodymap_homework.has_content(parsed_bodymap):
         return jsonify({"error": "empty"}), 400
     try:
         course = cc.load_course(course_slug)
