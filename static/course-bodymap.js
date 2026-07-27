@@ -81,7 +81,7 @@
     state = state || {};
     var entries;
     if (state.marks instanceof Map) {
-      entries = Array.prototype.slice.call(state.marks.entries());
+      entries = Array.from(state.marks.entries());
     } else {
       var src = state.marks || {};
       entries = Object.keys(src).map(function (k) { return [k, src[k]]; });

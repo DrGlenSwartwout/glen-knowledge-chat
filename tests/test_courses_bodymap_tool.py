@@ -16,6 +16,16 @@ def test_file_exists():
     assert SRC_PATH.exists()
 
 
+def test_serialize_converts_map_entries_correctly():
+    # Guard against the MapIterator bug: Array.prototype.slice.call(map.entries())
+    # returns [] (an iterator is not array-like), which would silently drop every
+    # marked zone on save. _serialize must use Array.from / spread on the Map.
+    src = _source()
+    assert "slice.call" not in src, "slice.call() on a Map iterator drops all marks"
+    assert ("Array.from(state.marks.entries())" in src
+            or "[...state.marks.entries()]" in src), "must convert Map entries via Array.from / spread"
+
+
 def test_defines_course_body_map_with_mount_and_serialize():
     src = _source()
     assert "window.CourseBodyMap" in src
