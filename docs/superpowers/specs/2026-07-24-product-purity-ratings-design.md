@@ -1,7 +1,7 @@
 # Product purity ratings — red/yellow/green excipient screen
 
-**Date:** 2026-07-24
-**Status:** approved design, not yet planned
+**Date:** 2026-07-24 (acquisition source resolved 2026-07-26)
+**Status:** Phase 1 + 2a shipped; Phase 2b (Fullscript-source acquisition) approved, being planned
 **Owner:** Glen
 
 ## Problem
@@ -141,45 +141,71 @@ A client reaches a rating on **paid membership** (e.g. `membership_category == '
 **explicit request**, reusing the `supplement_review_access` gating shape. Flow:
 
 1. Confirmed row exists → return instantly.
-2. Else create the row (`requested`), acquire the Other Ingredients (the two-step cascade below),
+2. Else create the row (`requested`), acquire the Other Ingredients (the source cascade below),
    run the screen, run tier-2 on anything not red, land in `ai_draft`.
 3. Glen confirms in the console → cached + surfaced.
 
-### Acquisition — a two-step cascade (decided 2026-07-26)
+### Acquisition — one interface, a source cascade (source resolved 2026-07-26)
 
-Excipient acquisition is the fuzzy, failure-prone step, so it is isolated, **async/operator-triggered
-(a deferred `requested → screened` transition), not inline** — web search + fetch + extract is slow
-(tens of seconds), so it never blocks the client's request behind a spinner.
+Excipient acquisition is the fuzzy, failure-prone step, so it is isolated behind a single interface,
+`acquire(product) → {raw, parsed, source, ok}`. Every source produces the same shape; everything
+downstream (the screen, `record_screen`) is source-agnostic. Sources are tried in order; each new
+one plugs in without touching the screen.
 
-- **Step 1 — online, automatic (no client burden).** Search for the product's Other Ingredients on a
-  product listing or a label image online, fetch the candidate source, and extract. Prefer this so
-  most products resolve without ever bothering the client.
-- **Step 2 — client photo, only if Step 1 fails.** If nothing verifiable is found online, ask the
-  client (in the portal) to upload a clear photo of the facts panel, then extract from the image.
+- **Source A — the Fullscript public product page (Phase 2b, this build; the only source that
+  ships now).** Fullscript exposes an unauthenticated product page at
+  `https://fullscript.com/catalog/products/<product_slug>` that carries the manufacturer's full
+  **Other Ingredients** line verbatim (verified 2026-07-26 against Jarrow Magnesium Taurate →
+  "Capsule (hydroxypropylmethylcellulose), magnesium stearate (vegetable source) and silicon
+  dioxide"). A plain server-side `GET` with a browser User-Agent returns it (HTTP 200; the payload
+  embeds the text — no headless browser, no GraphQL, no login). Every seed product already stores
+  its `product_slug`, so the URL is buildable today for all 24. This is the public page a client
+  would see, **not** the internal `fs-graphql` endpoint — lower brand-relationship risk than the
+  undocumented API, and correct at browsing volume.
+- **Source B — general web search (deferred).** For non-Fullscript products, search + fetch a
+  manufacturer/retailer page. Deferred because it needs a web-search tool the app does not have
+  yet, and because 100% of current products are Fullscript items. The interface is shaped so it
+  slots in later without disturbing Source A.
+- **Source C — client photo (deferred to Phase 2c).** If no online source resolves, ask the client
+  (in the portal) to upload a clear photo of the facts panel and extract from the image. Reuses
+  #1172's vision path directly.
 
-**The fabrication guard binds BOTH steps and is the whole safety story.** Extraction accepts an
-ingredient line only if it is a verified quote from the fetched source (the page text, or the vision
-model's verbatim transcription of the image) — never a model guess. This reuses the shipped
-`dashboard/document_extract.verify_quotes` + fails-closed discipline from the document-ingestion
-feature (#1172). An online scrape that *guessed* ingredients is the worst outcome — it could
-green-light a stearate product — so unverifiable Step-1 output is treated as **"not found"** and
-cascades to Step 2; if Step 2 is also unavailable or fails, the row rests **`unrated`**, never a
-color, never green. Acquisition failure never crashes the request.
+**Triggering — synchronous, operator-triggered.** With Source A a single `GET` + one extraction
+completes in a few seconds, and there is one operator over ~24 products, so acquisition runs inline
+on the console screen action (the `requested → screened` transition) — no background-job or queue
+infrastructure. The client-facing gate still reads the cached row; a client request that finds no
+confirmed row simply shows "not yet rated" rather than blocking on a live fetch.
 
-**Reuse boundary:** Step 2 (image) reuses #1172's vision-extraction path directly (with a
-supplement-specific prompt). Step 1 (usually HTML text, not an image) reuses the *guard pattern*
-(`verify_quotes`, fails-closed, draft store) but needs its own text-source extractor. If a Step-1
-source is itself a label image, the image path is reusable there too.
+**The fabrication guard is the whole safety story, and it binds every source.** The page embeds
+several products' data (the target plus related items) inside a rich-text blob, so extraction is
+**not** a brittle structural parse: the model is given the fetched source text plus the target
+product's name / brand / SKU, returns that product's Other Ingredients, and the shipped
+`dashboard/document_extract.verify_quotes` then requires the returned line to be a **verbatim
+substring of the fetched source** — any fabrication or wrong-block guess fails closed to "not
+found". This reuses the `verify_quotes` + fails-closed discipline from the document-ingestion
+feature (#1172). A scrape that *guessed* ingredients is the worst outcome — it could green-light a
+stearate product — so unverifiable output is treated as **"not found"** and the row rests
+**`unrated`**, never a color, never green. Acquisition failure (non-200, timeout, no Other
+Ingredients on the page, verify rejection) never crashes the request.
+
+**Reuse boundary:** the image sources (Source C, and any Source-B label image) reuse #1172's
+vision-extraction path directly. Source A (HTML text, not an image) reuses the *guard*
+(`verify_quotes`, fails-closed) but needs its own text-source extractor — a sibling of the existing
+image/PDF `call_model_for_extraction`. That one text extractor also serves Source B when it lands.
 
 ## Section 3 — The two readers
 
 Only two consumers read `product_ratings`; nothing else does.
 
-**Fullscript seed-gate.** The portal card shows a product only once it has a **confirmed, non-red**
-rating, annotated with its color, each yellow/green paired with the `best_ff` formula. Reds are
-suppressed at render. This is decoupled from the static seed file: the seed holds candidates, the
-rating decides whether and how one appears, so a color change never regenerates the seed. Ties into
-PR #1173.
+**Fullscript seed-gate (additive color badge, decided 2026-07-26).** The portal card annotates a
+product with its confirmed color rather than gating visibility on it: green/yellow products show
+their badge and their `best_ff` pairing, and an **unrated** product shows with no badge (the
+channel behaves exactly as it does pre-rating). The badge is purely additive — a rating only ever
+*adds* a color signal, never removes a card that the channel already showed. Reds are the one
+exception carried from the primary-use decision: a confirmed red is not surfaced to the client as a
+recommendation (the `best_ff` pairing does the honest work instead). This is decoupled from the
+static seed file: the seed holds candidates, the rating decides the badge, so a color change never
+regenerates the seed. Ties into PR #1173. (Phase 3.)
 
 **Aggregate stat.** A group-by-color count over confirmed rows — "of N professional products
 screened, X% red, Y% filler-only, Z% fully clean." The public authority artifact; feeds
@@ -215,9 +241,17 @@ through PR #1173):
 - **Phase 1 — the engine.** The avoid-list asset, the role-aware screen, the `product_ratings`
   table and state machine, all unit-tested with **manual excipient entry**. No UI, no acquisition
   at scale. Ships the core and its guards.
-- **Phase 2 — the on-request flow.** Gating (membership/request), excipient acquisition, the
-  analyzer hand-off, and the confirm console. Reuses the product-review infrastructure.
-- **Phase 3 — the two readers.** The Fullscript seed-gate integration and the aggregate stat.
+- **Phase 2a — gating + manual screen console (shipped).** Membership/request gate, the
+  console request/screen/tier2/confirm routes, manual excipient entry. Reuses the product-review
+  infrastructure. (PR #1177 engine + the 2a routes; the PG-safe `init_tables` fix, #1196.)
+- **Phase 2b — Fullscript-source acquisition (this build).** The `acquire(product)` interface with
+  Source A (the Fullscript public product page), a browser-UA fetcher, the guarded text-source
+  extractor (`verify_quotes`, fails-closed), and inline wiring into the console screen action. All
+  24 seed products become screenable without manual entry. Sources B/C are shaped-for, not built.
+- **Phase 2c — client-photo fallback (deferred).** Source C: portal photo upload → #1172 vision
+  path → same screen. Built only if online sources leave products unresolved.
+- **Phase 3 — the two readers.** The Fullscript seed-gate integration (additive color badge above)
+  and the aggregate "% fail" stat.
 
 Each phase produces something testable on its own.
 
