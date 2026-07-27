@@ -22529,6 +22529,27 @@ def api_portal_ff_add_to_invoice(token):
         return jsonify({"ok": True, "order_ref": ext})
 
 
+_FF_SIGNAL_FIELDS = ("conditions", "terrain_concerns", "body_systems",
+                     "challenges", "goals")
+
+
+def _ff_draft_canonical(cx, email):
+    """The client's canonical record for the FF-review signal: canonical_tags
+    get_person restricted to the clinical fields (tags dropped -- that is the
+    CRM/GHL bucket). Best-effort: {} on any failure. Read-only; NEVER merged
+    into the draft's match items."""
+    email = (email or "").strip()
+    if not email:
+        return {}
+    try:
+        from dashboard import canonical_tags as _ct
+        p = _ct.get_person(cx, email)
+    except Exception:
+        return {}
+    return {f: p.get(f) for f in _FF_SIGNAL_FIELDS
+            if (p.get(f) if isinstance(p.get(f), list) else str(p.get(f) or "").strip())}
+
+
 @app.route("/api/console/ff-match-drafts", methods=["GET"])
 def api_console_ff_match_drafts_list():
     """Owner console: list FF-match drafts for review (Slice 3c). Optional
@@ -22539,6 +22560,8 @@ def api_console_ff_match_drafts_list():
         cx.row_factory = sqlite3.Row
         ff_match_drafts.init_table(cx)
         drafts = ff_match_drafts.list_by_status(cx, request.args.get("status"))
+        for d in drafts:
+            d["canonical"] = _ff_draft_canonical(cx, d.get("email") or "")
     return jsonify({"drafts": drafts})
 
 
