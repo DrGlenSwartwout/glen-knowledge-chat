@@ -34130,7 +34130,8 @@ def get_people():
             f"LIMIT ? OFFSET ?",
             args + [limit, offset]
         ).fetchall()
-    return jsonify({"total": total, "people": [dict(r) for r in rows]})
+        people = [_merge_canonical_into_person(cx, dict(r)) for r in rows]
+    return jsonify({"total": total, "people": people})
 
 
 @app.route("/api/people/recent-comms", methods=["GET"])
@@ -34154,9 +34155,10 @@ def get_person(person_id):
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute("SELECT * FROM people WHERE id=?", (person_id,)).fetchone()
-    if not row:
+        person = _merge_canonical_into_person(cx, dict(row)) if row else None
+    if not person:
         return jsonify({"error":"Not found"}), 404
-    return jsonify(dict(row))
+    return jsonify(person)
 
 
 @app.route("/api/people", methods=["POST"])

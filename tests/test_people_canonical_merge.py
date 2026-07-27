@@ -127,3 +127,82 @@ def test_discrete_field_already_list_is_preserved_and_unioned():
     # The list should be preserved and unioned with canonical
     assert json.loads(out["conditions"]) == ["people-glaucoma", "canonical-glaucoma"]
     assert isinstance(out["conditions"], str)  # still serialized to JSON
+
+
+# --- endpoint integration -------------------------------------------------
+
+@pytest.fixture
+def app_env(tmp_path, monkeypatch):
+    p = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(p) as cx:
+        cx.execute(
+            "CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "email TEXT UNIQUE, name TEXT, first_name TEXT, last_name TEXT, "
+            "phone TEXT, city TEXT, state TEXT, country TEXT, island TEXT, "
+            "profession TEXT, title TEXT, organizations TEXT, ghl_id TEXT, "
+            "source TEXT, tags TEXT DEFAULT '[]', roles TEXT, challenges TEXT, "
+            "goals TEXT, terrain_concerns TEXT DEFAULT '[]', "
+            "body_systems TEXT DEFAULT '[]', conditions TEXT DEFAULT '[]', "
+            "order_count INTEGER, last_order_date TEXT, session_count INTEGER, "
+            "last_session_date TEXT, last_contact_date TEXT, synced_at TEXT)")
+        cx.commit()
+    monkeypatch.setattr(app, "LOG_DB", p)
+    monkeypatch.setattr(app, "CONSOLE_SECRET", "testkey")
+    return p
+
+
+def _seed_person_row(db, email, **cols):
+    keys = ["email"] + list(cols)
+    vals = [email] + list(cols.values())
+    with sqlite3.connect(db) as cx:
+        cx.execute(f"INSERT INTO people ({','.join(keys)}) VALUES "
+                   f"({','.join('?' * len(keys))})", vals)
+        cx.commit()
+
+
+def _seed_canon_db(db, email, **fields):
+    with sqlite3.connect(db) as cx:
+        ct.init_tables(cx)
+        for f, vals in fields.items():
+            for v in (vals if isinstance(vals, (list, tuple)) else [vals]):
+                ct.set_attr(cx, email, f, v, source="test")
+        cx.commit()
+
+
+def test_get_people_merges_canonical_condition(app_env):
+    _seed_person_row(app_env, "c@x.com", conditions=json.dumps(["glaucoma"]),
+                     tags=json.dumps(["vip"]))
+    _seed_canon_db(app_env, "c@x.com", conditions="ocular hypertension")
+    r = app.app.test_client().get("/api/people?q=c@x.com",
+                                  headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    person = next(p for p in r.get_json()["people"] if p["email"] == "c@x.com")
+    assert set(json.loads(person["conditions"])) == {"glaucoma", "ocular hypertension"}
+    assert json.loads(person["tags"]) == ["vip"]            # tags untouched
+
+
+def test_get_people_requires_console_key(app_env):
+    r = app.app.test_client().get("/api/people?q=c@x.com")
+    assert r.status_code == 401
+
+
+def test_get_people_canonical_failure_returns_people_unchanged(app_env, monkeypatch):
+    _seed_person_row(app_env, "c@x.com", conditions=json.dumps(["glaucoma"]))
+    monkeypatch.setattr(ct, "get_person",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    r = app.app.test_client().get("/api/people?q=c@x.com",
+                                  headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    person = next(p for p in r.get_json()["people"] if p["email"] == "c@x.com")
+    assert json.loads(person["conditions"]) == ["glaucoma"]
+
+
+def test_get_person_by_id_merges_canonical(app_env):
+    _seed_person_row(app_env, "c@x.com", conditions=json.dumps(["glaucoma"]))
+    _seed_canon_db(app_env, "c@x.com", terrain_concerns="oxidative stress")
+    with sqlite3.connect(app_env) as cx:
+        pid = cx.execute("SELECT id FROM people WHERE email='c@x.com'").fetchone()[0]
+    r = app.app.test_client().get(f"/api/people/{pid}",
+                                  headers={"X-Console-Key": "testkey"})
+    assert r.status_code == 200
+    assert json.loads(r.get_json()["terrain_concerns"]) == ["oxidative stress"]
