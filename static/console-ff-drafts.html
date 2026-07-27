@@ -15,6 +15,12 @@
   .dhead{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
   .dhead b{ font-size:15px; } .email{ color:#9db4ff; font-size:12px; margin-left:6px; }
   .scandate{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .canon{ background:var(--bg); border:1px dashed var(--border); border-radius:8px;
+         padding:8px 10px; margin-bottom:10px; }
+  .canon-h{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em;
+         margin-bottom:4px; }
+  .canon-line{ font-size:12.5px; margin:2px 0; }
+  .canon-k{ color:var(--muted); font-weight:600; margin-right:4px; }
   .item{ border-top:1px solid var(--border); padding:10px 0; }
   .item:first-of-type{ border-top:none; }
   .iname{ font-weight:600; font-size:14px; }
@@ -38,6 +44,7 @@
                   background:var(--gold); color:#0a150d; font-weight:600; cursor:pointer; }
 </style>
 <script src="/static/op-nav.js" data-active="clinical"></script>
+<script src="/static/js/ff-draft-canon.js"></script>
 <h1>FF Match Review</h1>
 <p class="sub">Functional Formulation matches generated per scan, awaiting Dr. Glen's review. Edit meaning/dosing per item, then publish — the draft drops off this list once published.</p>
 <div id="content"><p class="sub">Loading…</p></div>
@@ -63,9 +70,11 @@
   function card(d, di){
     var items = d.items || [];
     var itemsHtml = items.map(function(it, ii){ return itemBlock(di, ii, it); }).join('');
+    var canonHtml = renderCanonBlock(d.canonical);   // distinct block, above items
     return '<div class="dcard" data-di="'+di+'">'
       + '<div class="dhead"><div><b>FF matches</b><span class="email">'+esc(d.email)+'</span></div>'
       + '<div class="scandate">scan '+esc(d.scan_date)+'</div></div>'
+      + canonHtml
       + itemsHtml
       + '<div class="actions"><button class="publish" data-di="'+di+'">Publish</button>'
       + '<span class="status" data-di-status="'+di+'"></span></div>'
