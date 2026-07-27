@@ -72,3 +72,28 @@ def test_acquire_label_only_line_lands_unrated():
         fetch=lambda url, headers: type("R", (), {"status_code": 200, "text": page})(),
         call_model=lambda s, n, b, k: {"other_ingredients_line": "Other Ingredients:"})
     assert res == {"raw": "", "parsed": None, "source": "fullscript", "ok": False}
+
+
+# --- explicit-none from acquire -> green (parsed []), unverifiable -> unrated -
+NONE_PAGE = ("Creatine by Thorne SKU SF221 . Other Ingredients: None. "
+             "Keep closed in a cool dry place.")
+
+
+def test_acquire_explicit_none_is_green():
+    res = pa.acquire(
+        {"product_slug": "creatine", "name": "Creatine", "brand": "Thorne"},
+        fetch=lambda url, headers: type("R", (), {"status_code": 200, "text": NONE_PAGE})(),
+        call_model=lambda s, n, b, k: {"none_source_quote": "Other Ingredients: None"})
+    assert res["ok"] is True
+    assert res["parsed"] == []          # empty list -> screens GREEN (not None)
+    assert res["source"] == "fullscript"
+    assert "none" in res["raw"].lower()
+
+
+def test_acquire_unverifiable_none_stays_unrated():
+    # Model claims none but its quote is not on the page -> miss (parsed None).
+    res = pa.acquire(
+        {"product_slug": "creatine", "name": "Creatine", "brand": "Thorne"},
+        fetch=lambda url, headers: type("R", (), {"status_code": 200, "text": NONE_PAGE})(),
+        call_model=lambda s, n, b, k: {"none_source_quote": "there are absolutely no fillers whatsoever"})
+    assert res == {"raw": "", "parsed": None, "source": "fullscript", "ok": False}

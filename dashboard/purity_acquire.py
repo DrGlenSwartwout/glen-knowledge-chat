@@ -45,8 +45,11 @@ def acquire(product, *, fetch=None, call_model=None):
         line = _dx.extract_other_ingredients(
             text, name=product.get("name") or "", brand=product.get("brand") or "",
             sku=product.get("sku") or "", call_model=call_model)
-        if not line:
-            return dict(_MISS)
+        if line is None:                     # not found / unverifiable
+            return dict(_MISS)               # -> parsed None -> unrated, never green
+        if line == "":                       # verifiably lists NO other ingredients
+            return {"raw": "None (no other ingredients listed)",
+                    "parsed": [], "source": "fullscript", "ok": True}  # -> green
         parsed = split_other_ingredients(line)
         if not parsed:                       # verified line parsed to zero items
             return dict(_MISS)               # -> parsed None -> unrated, never green
