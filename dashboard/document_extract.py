@@ -322,3 +322,68 @@ def run_pending(cx, limit=5, call_model=None):
             print(f"[documents] run_pending: document {doc['id']} raised, "
                   f"skipping: {e!r}", flush=True)
     return done
+
+
+# --- Text-source Other-Ingredients extraction (purity Phase 2b) -----------
+# Sibling of call_model_for_extraction, for an HTML/text source rather than an
+# image/PDF blob. Same fabrication guard (verify_quotes), same fails-closed
+# discipline. The page embeds several products' data, so the model is anchored
+# on the target product's name/brand/SKU and instructed to return ONLY that
+# product's Other Ingredients; verify_quotes then requires the returned line to
+# be a verbatim substring of the fetched page, so a fabricated or wrong-block
+# line fails closed to None.
+
+_OTHER_ING_PROMPT = (
+    "You are reading the text of a supplement catalog web page. It may contain "
+    "several products. Find the ONE product that matches this identity:\n"
+    "  name: {name}\n  brand: {brand}\n  sku: {sku}\n\n"
+    "Return STRICT JSON: {{\"other_ingredients_line\": \"...\"}} where the value "
+    "is the VERBATIM 'Other Ingredients' (or 'Non-Medicinal Ingredients') text "
+    "for THAT product ONLY, copied exactly from the page, character for "
+    "character. Do NOT include the 'Other Ingredients:' label, other products' "
+    "ingredients, the Supplement/Medicinal Facts actives, dosages, or any "
+    "warning text. If you cannot find this exact product's other-ingredients "
+    "text on the page, return {{\"other_ingredients_line\": \"\"}}. Never guess "
+    "or infer an ingredient that is not written on the page. No markdown "
+    "fences, no prose outside the JSON."
+)
+
+
+def _default_call_model_text(source_text, name, brand, sku):
+    """The real Anthropic text call. Lazy-imported so tests that inject
+    call_model never pull the SDK."""
+    import anthropic
+    cli = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    prompt = _OTHER_ING_PROMPT.format(name=name or "", brand=brand or "", sku=sku or "")
+    resp = cli.messages.create(
+        model=_MODEL, max_tokens=1000,
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": source_text[:120000]},
+            {"type": "text", "text": prompt}]}])
+    text = resp.content[0].text.strip()
+    if text.startswith("```"):                      # tolerate accidental fences
+        text = text.split("```", 2)[1]
+        if text.startswith("json\n"):
+            text = text[5:]
+    return json.loads(text)
+
+
+def extract_other_ingredients(source_text, *, name, brand, sku="", call_model=None):
+    """Return the target product's Other Ingredients line, verified verbatim
+    against source_text, or None. Fails closed on a model error, a non-dict
+    reply, a non-string / empty line, or a line that is not a verbatim
+    substring of source_text (fabrication)."""
+    call = call_model or _default_call_model_text
+    try:
+        payload = call(source_text, name, brand, sku)
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    line = payload.get("other_ingredients_line")
+    if not isinstance(line, str) or not line.strip():
+        return None
+    kept, _dropped = verify_quotes([{"source_quote": line}], source_text)
+    if not kept:
+        return None
+    return line.strip()
