@@ -13671,6 +13671,27 @@ def api_console_prl_sync():
     return jsonify({"ok": True, **counts})
 
 
+@app.route("/api/console/fullscript/sync", methods=["POST"])
+def api_console_fullscript_sync():
+    """Owner sync: (re)load the Fullscript reference tables (catalog + FF
+    crosswalk, focus-area->product map, item->focus-area map) from
+    data/fullscript_seed.json into the ratings DB. Idempotent full replace.
+    Sends NOTHING. Console-secret gated."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import fullscript as _fs
+    seed_path = os.path.join(os.path.dirname(__file__), "data", "fullscript_seed.json")
+    try:
+        with open(seed_path) as f:
+            seed = json.load(f)
+    except Exception as _e:
+        return jsonify({"error": f"seed load failed: {_e!r}"}), 500
+    with _db_lock, db.connect(LOG_DB) as cx:
+        _fs.init_tables(cx)
+        counts = _fs.sync_from_seed(cx, seed)
+    return jsonify({"ok": True, **counts})
+
+
 @app.route("/api/console/scan-recommendations", methods=["GET"])
 def api_console_scan_recommendations_read():
     """Owner: read back what the pusher stored. Slice 1 shipped write-only, so this is
