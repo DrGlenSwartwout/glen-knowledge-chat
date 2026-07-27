@@ -28395,13 +28395,19 @@ def api_portal_purity_photo(token):
     """A client uploads a label photo for an UNRATED product on their card. The
     photo is vision-extracted, screened, and recorded as 'screened' (pending
     Glen's confirm -- the client never sees an unconfirmed color). Gated by
-    PURITY_BADGES_ENABLED. Identity is the portal token only. The vision call
-    runs OUTSIDE _db_lock; only record_screen is inside."""
+    PURITY_BADGES_ENABLED and the paid/explicit-request entitlement gate (same
+    as api_portal_purity_request -- purity is a paid perk, not a free-lead
+    perk). Identity is the portal token only. The vision call runs OUTSIDE
+    _db_lock; only record_screen is inside. A product already at
+    screened/ai_draft/confirmed is never re-screened (no laundering a pending
+    red via a second upload) -- that check, along with the token/entitlement/
+    catalog checks, happens in the initial read connection BEFORE the vision
+    call is ever made."""
     if not _purity_badges_enabled():
         return jsonify({"error": "not_available"}), 404
     from dashboard import (product_ratings as _pr, purity_screen as _ps,
                            purity_avoidlist as _pa, purity_acquire as _acq,
-                           fullscript as _fs)
+                           purity_ratings_access as _acc, fullscript as _fs)
     slug = (request.form.get("product_slug") or "").strip()
     f = request.files.get("photo") or request.files.get("file")
     if not f or not (f.filename or "").strip():
@@ -28412,18 +28418,29 @@ def api_portal_purity_photo(token):
     blob = f.read()
     if len(blob) > 10 * 1024 * 1024:
         return jsonify({"error": "file_too_large"}), 400
-    # Authorize the token and resolve the product to a REAL catalog row (never
-    # trust an arbitrary slug); read-only, own connection.
+    # Authorize the token, check entitlement, resolve the product to a REAL
+    # catalog row (never trust an arbitrary slug), and check for an existing
+    # rated row -- all cheap/trusted, all BEFORE the vision call. Read-only,
+    # own connection.
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         _fs.init_tables(cx)
+        _acc.init_table(cx)
+        _pr.init_tables(cx)
         portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not_found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not _acc.can_request(cx, email, membership_category(email)):
+            return jsonify({"error": "not_entitled"}), 403
         prow = _fs.product_by_slug(cx, slug)
-    if not prow:
-        return jsonify({"error": "unknown_product"}), 404
-    key = "fullscript::" + slug
+        if not prow:
+            return jsonify({"error": "unknown_product"}), 404
+        key = "fullscript::" + slug
+        existing = _pr.get(cx, key)
+        if existing is not None and existing["status"] in ("screened", "ai_draft", "confirmed"):
+            return jsonify({"ok": True,
+                            "message": "This product is already being reviewed."})
     name, brand = prow.get("name") or "", prow.get("brand") or ""
     # Slow vision call OUTSIDE the lock.
     res = _acq.acquire_from_image({"name": name, "brand": brand}, blob, ctype)

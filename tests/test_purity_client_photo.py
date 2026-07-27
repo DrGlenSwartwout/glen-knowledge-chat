@@ -1,12 +1,13 @@
 import io, sqlite3, pytest, app as app_mod
 from dashboard import product_ratings as pr, fullscript as fs, purity_acquire as pa_mod
+from dashboard import purity_ratings_access as acc
 
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
     db = str(tmp_path / "cp.db")
     cx = sqlite3.connect(db); cx.row_factory = sqlite3.Row
-    pr.init_tables(cx); fs.init_tables(cx)
+    pr.init_tables(cx); fs.init_tables(cx); acc.init_table(cx)
     # a real catalog product to resolve the slug against
     fs.sync_from_seed(cx, {"products": [{"name": "Test Mag", "brand": "BrandX",
                                          "product_slug": "test-mag", "external_id": "EID",
@@ -16,6 +17,8 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod, "LOG_DB", db)
     monkeypatch.setattr(app_mod, "_purity_badges_enabled", lambda: True)
     monkeypatch.setattr(app_mod, "_portal_record_for", lambda cx, tok: {"email": "a@b.com"} if tok == "TOK" else None)
+    # entitled by default ('full' membership -> can_request short-circuits True)
+    monkeypatch.setattr(app_mod, "membership_category", lambda email: "full", raising=False)
     app_mod.app.config["TESTING"] = True
     return app_mod.app.test_client()
 
@@ -64,3 +67,49 @@ def test_client_photo_requires_file(client):
     r = client.post("/api/portal/TOK/purity/photo",
                     data={"product_slug": "test-mag"}, content_type="multipart/form-data")
     assert r.status_code == 400
+
+
+def test_client_photo_not_entitled_403(client, monkeypatch):
+    monkeypatch.setattr(app_mod, "membership_category", lambda email: "none", raising=False)
+    r = client.post("/api/portal/TOK/purity/photo",
+                    data=_img({"product_slug": "test-mag"}), content_type="multipart/form-data")
+    assert r.status_code == 403
+    assert r.get_json()["error"] == "not_entitled"
+
+
+def test_client_photo_no_launder_existing_screened(client, monkeypatch):
+    key = "fullscript::test-mag"
+    cx = sqlite3.connect(app_mod.LOG_DB); cx.row_factory = sqlite3.Row
+    pr.record_screen(cx, key, brand="BrandX", product_name="Test Mag",
+                     other_ingredients_raw="titanium dioxide",
+                     other_ingredients_parsed=["titanium dioxide"],
+                     screen={"color": "red", "red_hits": ["titanium dioxide"],
+                            "yellow_hits": [], "avoidlist_version": "v1"})
+    cx.commit(); cx.close()
+
+    def _boom(*a, **k):
+        raise AssertionError("acquire_from_image must not be called")
+    monkeypatch.setattr(pa_mod, "acquire_from_image", _boom)
+
+    r = client.post("/api/portal/TOK/purity/photo",
+                    data=_img({"product_slug": "test-mag"}), content_type="multipart/form-data")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "already being reviewed" in body["message"].lower()
+
+    cx = sqlite3.connect(app_mod.LOG_DB); cx.row_factory = sqlite3.Row
+    row = cx.execute("SELECT status, color, other_ingredients_raw FROM product_ratings "
+                     "WHERE product_key=?", (key,)).fetchone()
+    cx.close()
+    assert row["status"] == "screened" and row["color"] == "red"
+    assert row["other_ingredients_raw"] == "titanium dioxide"   # unchanged
+
+
+def test_client_photo_rejects_bad_type(client):
+    r = client.post("/api/portal/TOK/purity/photo",
+                    data={"product_slug": "test-mag",
+                         "photo": (io.BytesIO(b"not an image"), "note.txt", "text/plain")},
+                    content_type="multipart/form-data")
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "image_only"
