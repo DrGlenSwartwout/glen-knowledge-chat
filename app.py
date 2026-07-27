@@ -25547,6 +25547,47 @@ def portal_family_plan_subscribe(token):
     return jsonify({"ok": True, "url": sess.get("url")})
 
 
+def _family_upgrade_credit(email):
+    """A current paid individual member receives one $99 cycle as an immediate
+    household-upgrade credit. Trial members are excluded. The individual
+    recurring subscription is stopped only after the household payment settles."""
+    if not email:
+        return 0
+    try:
+        return 9900 if _active_membership_for_email(email) and membership_category(email) != "trial" else 0
+    except Exception:
+        return 0
+
+
+@app.route("/family-plan/checkout", methods=["POST"])
+def family_plan_checkout():
+    """Public household checkout. Existing paid individual members who use the
+    same email receive a $99 upgrade credit; Stripe metadata makes fulfillment
+    deterministic and auditable."""
+    if not (_family_plan_enabled() and _STRIPE_ACTIVE):
+        return jsonify({"error": "not_found"}), 404
+    from dashboard import family_plan as _fp, stripe_pay as _sp
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    tier_key = (data.get("tier") or "").strip()
+    tier = _fp.get_tier(tier_key)
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not tier:
+        return jsonify({"ok": False, "error": "unknown tier"}), 400
+    credit = min(_family_upgrade_credit(email), tier["amount_cents"])
+    amount = tier["amount_cents"] - credit
+    base = PUBLIC_BASE_URL.rstrip("/")
+    sess = _sp.create_checkout_session(
+        amount, customer_email=email, description=tier["label"],
+        metadata={"kind": "family_plan", "email": email, "tier": tier_key,
+                  "upgrade_credit_cents": str(credit)},
+        success_url=f"{base}/family-plan/return?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{base}/membership", save_card=True)
+    return jsonify({"ok": True, "url": sess.get("url"), "upgrade_credit_cents": credit,
+                    "amount_cents": amount})
+
+
 def _fulfill_family_plan(session_id):
     """Activate a caregiver's paid Family Plan from a paid+vaulted checkout,
     idempotently (claim-then-activate on family_sub_grants(session_id) PRIMARY
@@ -25561,6 +25602,10 @@ def _fulfill_family_plan(session_id):
         if md.get("kind") != "family_plan":
             return {"ok": False, "reason": "not_family_plan"}
         email = (md.get("email") or "").strip().lower()
+        tier_key = md.get("tier") or "family_monthly"
+        tier = _fp.get_tier(tier_key)
+        if not tier:
+            return {"ok": False, "reason": "unknown_tier"}
         pi_id = sess.get("payment_intent")
         if not (email and pi_id):
             return {"ok": False, "reason": "incomplete"}
@@ -25571,7 +25616,8 @@ def _fulfill_family_plan(session_id):
         if not (customer and pm):
             return {"ok": False, "reason": "no_card"}
         from datetime import date as _date
-        next_charge = _subs.add_months(_date.today().isoformat(), 1)
+        next_charge = _subs.add_months(
+            _date.today().isoformat(), int(tier["cadence_months"]))
         with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             cx.execute("CREATE TABLE IF NOT EXISTS family_sub_grants "
@@ -25584,10 +25630,22 @@ def _fulfill_family_plan(session_id):
             if not claimed:
                 return {"ok": True, "reason": "already_fulfilled"}
             _fp.activate(cx, email, next_charge_at=next_charge, customer_id=customer,
-                         payment_method_id=pm, source="stripe")
+                         payment_method_id=pm, source="stripe",
+                         amount_cents=tier["amount_cents"],
+                         cadence_months=tier["cadence_months"])
             _fp.record_charge(cx, caregiver_email=email,
-                              amount_cents=_fp.PLAN["amount_cents"], pi_id=pi_id,
+                              amount_cents=int(sess.get("amount_total") or
+                                               (tier["amount_cents"] -
+                                                int(md.get("upgrade_credit_cents") or 0))),
+                              pi_id=pi_id,
                               status="succeeded")
+            # Household coverage replaces future individual billing. Access grants
+            # are intentionally retained for history and expire naturally.
+            if int(md.get("upgrade_credit_cents") or 0) > 0:
+                _subs.init_subscriptions_table(cx)
+                _subs.migrate_add_membership_columns(cx)
+                for individual in _subs.active_memberships_by_email(cx, email):
+                    _subs.set_status(cx, int(individual["id"]), "cancelled")
         try:
             html = ("<p>Your Family Plan is active. Everyone in your household with "
                     "sharing on now has their full analysis unlocked. You can cancel "
@@ -25893,7 +25951,9 @@ def family_plan_charge_cron():
             _fp.record_charge(cx, caregiver_email=email, amount_cents=sub["amount_cents"],
                               pi_id=pi_id, status="succeeded" if ok else "failed")
             if ok:
-                _fp.mark_charged(cx, email, _subs.add_months(today, 1))
+                _fp.mark_charged(
+                    cx, email,
+                    _subs.add_months(today, int(sub.get("cadence_months") or 1)))
             else:
                 _fp.mark_failed(cx, email, retry_at)
                 row = _fp.get(cx, email)
