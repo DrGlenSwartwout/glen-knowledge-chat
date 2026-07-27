@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import threading
 import time as _time
@@ -103,6 +104,7 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <title>{{ title }} · MentorshipU</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:760px;margin:2rem auto;padding:0 1rem;color:#1c2b26">
 {{ body|safe }}
+<script src="/ref-capture.js"></script>
 </body></html>"""
 
 
@@ -184,7 +186,8 @@ def _enroll_panel(course):
         + plan_btn + membership_btn +
         '</p>'
         '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
-        'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'
+        'headers:{"Content-Type":"application/json"},'
+        'body:JSON.stringify({product:p,ref:(window.getRef?getRef():"")})})'
         '.then(function(r){return r.json()}).then(function(d){'
         'if(d.url){location.href=d.url}else{alert(d.error||"Checkout is not available right now.")}})}'
         '</script></div>')
@@ -401,7 +404,8 @@ def lesson_page(course_slug, module_slug, lesson_slug):
                     '<button type="button" onclick="muCertify()">Certify this module, $200</button> '
                     '<span id="mu-cert-ok"></span>'
                     f'<script>function muCertify(){{fetch("/api/courses/{course_slug}/{module_slug}/certify"'
-                    f'+location.search,{{method:"POST",headers:{{"Content-Type":"application/json"}}}})'
+                    f'+location.search,{{method:"POST",headers:{{"Content-Type":"application/json"}},'
+                    f'body:JSON.stringify({{ref:(window.getRef?getRef():"")}})}})'
                     f'.then(function(r){{return r.json()}}).then(function(d){{if(d.url){{location.href=d.url}}'
                     f'else{{document.getElementById("mu-cert-ok").textContent=(d.error||"Not available right now.");}}}});}}'
                     f'</script></div>'
@@ -577,6 +581,18 @@ def courses_checkout():
     sub_kind = "course_plan" if product == "plan" else "course_membership"
     metadata = {"kind": "course_purchase", "email": email or None, "product": product}
     sub_md = {"kind": sub_kind, "email": email or None} if mode == "subscription" else None
+
+    # Ambassador ref passthrough (rm_ref cookie doesn't cross to this host, so
+    # the client resends it in the POST body). Crediting lands in a later task
+    # — here we only stamp it into Stripe metadata for the session (all modes)
+    # and the subscription (membership/plan), so it survives to the webhook.
+    ref = (data.get("ref") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref):
+        ref = ""
+    if ref:
+        metadata["ref"] = ref
+        if sub_md is not None:
+            sub_md["ref"] = ref
     try:
         sess = stripe_pay.create_price_checkout_session(
             price_id, mode=mode, customer_email=(email or None), metadata=metadata,
@@ -630,12 +646,20 @@ def courses_certify_module(course_slug, module_slug):
     if st in ("pending", "approved"):
         return jsonify({"error": f"already {st}"}), 409
 
+    data = request.get_json(silent=True) or {}
+    ref = (data.get("ref") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", ref):
+        ref = ""
+    metadata = {"kind": "module_certification", "email": email,
+                "course": course_slug, "module": module_slug}
+    if ref:
+        metadata["ref"] = ref
+
     base = appmod.mentorship_base()
     try:
         sess = stripe_pay.create_price_checkout_session(
             price_id, mode="payment", customer_email=email,
-            metadata={"kind": "module_certification", "email": email,
-                     "course": course_slug, "module": module_slug},
+            metadata=metadata,
             success_url=f"{base}/learn/{course_slug}/{module_slug}?certified=1",
             cancel_url=f"{base}/learn/{course_slug}/{module_slug}")
     except Exception:
