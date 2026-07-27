@@ -19,6 +19,9 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod, "_portal_record_for", lambda cx, tok: {"email": "a@b.com"} if tok == "TOK" else None)
     # entitled by default ('full' membership -> can_request short-circuits True)
     monkeypatch.setattr(app_mod, "membership_category", lambda email: "full", raising=False)
+    # Console-ok by default, so console-gated tests don't depend on CONSOLE_SECRET being
+    # unset in the shell (Glen's profile exports it, which confounds the vacuous default).
+    monkeypatch.setattr(app_mod, "_portal_console_ok", lambda: True)
     app_mod.app.config["TESTING"] = True
     return app_mod.app.test_client()
 
