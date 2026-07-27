@@ -169,10 +169,12 @@ def drip_active(cx, email: str, now: float | None = None) -> bool:
 
 
 def expire_membership(cx, *, stripe_ref: str) -> None:
-    """Mark a Stripe-backed membership canceled so paid_level_for relocks it."""
+    """Mark a Stripe-backed membership OR plan canceled (by stripe_ref, which is a
+    subscription id unique to one row) so drip_active/paid_level_for relock it.
+    Never touches cert_onetime (lifetime, never Stripe-subscription-backed)."""
     init_course_entitlements_table(cx)
     cx.execute("UPDATE course_entitlements SET status='canceled', updated_at=? "
-               "WHERE kind='membership' AND stripe_ref=?", (_now_iso(), stripe_ref))
+               "WHERE kind IN ('membership', 'plan') AND stripe_ref=?", (_now_iso(), stripe_ref))
     cx.commit()
 
 

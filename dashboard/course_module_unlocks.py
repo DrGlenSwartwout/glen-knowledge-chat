@@ -1,6 +1,7 @@
 """The MentorshipU drip's unlocked-module set + the learner's 'unlock next'
 preference. Pure: stdlib + the caller's sqlite3 connection only. Reads never raise."""
 from __future__ import annotations
+import sqlite3
 import time
 
 
@@ -54,6 +55,34 @@ def take_unlock_pref(cx, email, course):
         return row[0]
     except Exception:
         return None
+
+
+def init_drip_charges_table(cx) -> None:
+    cx.execute("CREATE TABLE IF NOT EXISTS course_drip_charges("
+               "sub_id TEXT NOT NULL, invoice_id TEXT NOT NULL, created_at TEXT)")
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_drip_charge_invoice "
+               "ON course_drip_charges(invoice_id)")
+    cx.commit()
+
+
+def record_drip_charge(cx, sub_id, invoice_id) -> bool:
+    """Record a paid drip invoice (idempotent on invoice_id, mirroring
+    course_entitlements.record_plan_charge's idempotency). Returns True only the
+    FIRST time this invoice_id is seen — the caller unlocks a module only when this
+    is True, so a replayed invoice.paid never unlocks a second module. Returns
+    False on replay or on any error (never raises)."""
+    try:
+        init_drip_charges_table(cx)
+        try:
+            cx.execute("INSERT INTO course_drip_charges(sub_id, invoice_id, created_at) "
+                       "VALUES(?,?,?)", (sub_id, invoice_id, _now()))
+            cx.commit()
+            return True
+        except sqlite3.IntegrityError:
+            cx.rollback()  # replayed invoice — already unlocked its module, do not repeat
+            return False
+    except Exception:
+        return False
 
 
 def next_module_to_unlock(cx, email, course, ordered_modules):

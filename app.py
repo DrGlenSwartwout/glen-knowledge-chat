@@ -10915,12 +10915,42 @@ def _autoprovision_course_access(email):
         print(f"[course] autoprovision failed for {email}: {e!r}", flush=True)
 
 
+_ASH_CERT_COURSE = "ash-certification"
+
+
+def _ash_paid_modules():
+    """Ordered slugs of the ash-certification course's PAID topic modules — the
+    modules the $99/mo drip unlocks one-per-paid-month. Never raises."""
+    from dashboard import courses_content as _cc
+    try:
+        c = _cc.load_course(_ASH_CERT_COURSE)
+        return [m.slug for m in c.modules if any((l.access or "") == "paid" for l in m.lessons)]
+    except Exception:
+        return []
+
+
+def _drip_unlock_next(cx, email, course):
+    """Unlock the learner's next drip module: their self-selected pref (consumed
+    once) else the next module in course order. No-op if none remain. Never raises."""
+    from dashboard import course_module_unlocks as _cmu
+    try:
+        ordered = _ash_paid_modules()
+        mod = _cmu.take_unlock_pref(cx, email, course) or \
+            _cmu.next_module_to_unlock(cx, email, course, ordered)
+        if mod:
+            _cmu.unlock_module(cx, email, course, mod)
+    except Exception as e:
+        print(f"[course] drip unlock failed for {email}: {e!r}", flush=True)
+
+
 def _fulfill_course_purchase(session):
     """Grant a course entitlement from a completed Checkout Session whose
-    metadata.kind == 'course_purchase'. mode=payment => lifetime cert; mode=
-    subscription => membership through current_period_end. Then auto-provision a
-    token + access email. Idempotent (grant_* key on stripe_ref). Never raises.
-    Returns 'ok' | 'skip' | 'error'."""
+    metadata.kind == 'course_purchase'. mode=payment => lifetime cert. mode=
+    subscription splits on metadata.product: 'plan' => the $297x12 plan (level-2
+    access via grant_plan); else (drip 'membership') => grant_membership (drip-
+    active only, NOT level 2) + unlock the learner's first module. Then
+    auto-provision a token + access email. Idempotent (grant_* key on stripe_ref).
+    Never raises. Returns 'ok' | 'skip' | 'error'."""
     from dashboard import course_entitlements as _ce
     try:
         md = (session or {}).get("metadata") or {}
@@ -10931,6 +10961,7 @@ def _fulfill_course_purchase(session):
             return "skip"
         mode = session.get("mode") or ("subscription" if session.get("subscription") else "payment")
         customer = session.get("customer")
+        product = (md.get("product") or "").strip().lower()
         with _db_lock, db.connect(LOG_DB) as cx:
             cx.row_factory = sqlite3.Row
             _ce.init_course_entitlements_table(cx)
@@ -10940,8 +10971,14 @@ def _fulfill_course_purchase(session):
                     return "skip"
                 sub = stripe_pay.get_subscription(sub_id)
                 until = float(sub.get("current_period_end") or 0) or None
-                _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
-                                     stripe_ref=sub_id, customer=customer)
+                if product == "plan":
+                    _ce.grant_plan(cx, email, until_epoch=until, source="stripe",
+                                   stripe_ref=sub_id, customer=customer)
+                else:
+                    # drip ($99/mo course_membership): drip-active only, NOT level 2.
+                    _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
+                                         stripe_ref=sub_id, customer=customer)
+                    _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
             else:
                 _ce.grant_cert(cx, email, source="stripe",
                                stripe_ref=session.get("id"), customer=customer)
@@ -10954,14 +10991,19 @@ def _fulfill_course_purchase(session):
 
 
 def _course_membership_renew(invoice):
-    """On invoice.paid, extend a course membership to the subscription's new period
-    end. Identified by the subscription's metadata.kind == 'course_membership'. Email
-    comes from the subscription metadata, falling back to the email already stored on
-    the entitlement row (anonymous checkout leaves the metadata email empty). No
-    re-email. Never raises. Returns 'ok' | 'skip' | 'error'."""
+    """On invoice.paid, extend a course membership (the $99/mo drip) to the
+    subscription's new period end, AND unlock exactly one module per DISTINCT paid
+    invoice — idempotent on invoice id via course_drip_charges, so a replayed
+    invoice.paid does NOT unlock a second module. Identified by the subscription's
+    metadata.kind == 'course_membership'. Email comes from the subscription
+    metadata, falling back to the email already stored on the entitlement row
+    (anonymous checkout leaves the metadata email empty). No re-email. Never
+    raises. Returns 'ok' | 'skip' | 'error'."""
     from dashboard import course_entitlements as _ce
+    from dashboard import course_module_unlocks as _cmu
     try:
         sub_id = (invoice or {}).get("subscription")
+        invoice_id = (invoice or {}).get("id")
         if not sub_id:
             return "skip"
         sub = stripe_pay.get_subscription(sub_id)
@@ -10978,6 +11020,9 @@ def _course_membership_renew(invoice):
                 return "skip"
             _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
                                  stripe_ref=sub_id, customer=sub.get("customer"))
+            is_new_invoice = bool(invoice_id) and _cmu.record_drip_charge(cx, sub_id, invoice_id)
+            if is_new_invoice:
+                _drip_unlock_next(cx, email, _ASH_CERT_COURSE)
             cx.commit()
         return "ok"
     except Exception as e:
@@ -11019,8 +11064,8 @@ def _course_plan_charge(invoice):
                 _ce.grant_cert(cx, email, source="stripe", stripe_ref=sub_id,
                                customer=sub.get("customer"))
             else:
-                _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
-                                     stripe_ref=sub_id, customer=sub.get("customer"))
+                _ce.grant_plan(cx, email, until_epoch=until, source="stripe",
+                               stripe_ref=sub_id, customer=sub.get("customer"))
             cx.commit()
         if count >= 12:  # stop billing after conversion; cert already granted above
             try:
@@ -29778,7 +29823,9 @@ def console_courses_grant_membership():
         return jsonify({"error": "bad request"}), 400
     until = time.time() + months * 30 * 86400
     with _db_lock, db.connect(LOG_DB) as cx:
-        _ce.grant_membership(cx, email, until_epoch=until, source="manual")
+        # A comp/admin grant is full access for the window (consult, comp, staff),
+        # not a drip enrollment — grant_plan lifts to level 2 through until_epoch.
+        _ce.grant_plan(cx, email, until_epoch=until, source="manual")
         cx.commit()
     _autoprovision_course_access(email)
     return jsonify({"ok": True, "email": email, "until_epoch": until})
