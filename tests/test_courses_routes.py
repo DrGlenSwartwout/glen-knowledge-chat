@@ -270,6 +270,31 @@ def test_checkout_not_available_when_price_unset(client, monkeypatch):
     assert r.status_code == 503
 
 
+def test_checkout_plan_uses_subscription_and_course_plan_kind(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("STRIPE_ACTIVE", "1")
+    monkeypatch.setenv("STRIPE_PLAN_PRICE_ID", "price_plan")
+    from dashboard import stripe_pay
+    captured = {}
+    monkeypatch.setattr(stripe_pay, "create_price_checkout_session",
+                        lambda price_id, **k: captured.update(price_id=price_id, mode=k["mode"],
+                                                              sub_md=k.get("subscription_metadata")) or
+                        {"id": "cs_p", "url": "https://stripe/cs_p"})
+    r = c.post("/api/courses/checkout", json={"product": "plan"}, base_url=_MHOST)
+    assert r.status_code == 200 and r.get_json()["url"] == "https://stripe/cs_p"
+    assert captured["price_id"] == "price_plan"
+    assert captured["mode"] == "subscription"
+    assert (captured["sub_md"] or {}).get("kind") == "course_plan"
+
+
+def test_checkout_plan_not_available_when_price_unset(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("STRIPE_ACTIVE", "1")
+    monkeypatch.delenv("STRIPE_PLAN_PRICE_ID", raising=False)
+    r = c.post("/api/courses/checkout", json={"product": "plan"}, base_url=_MHOST)
+    assert r.status_code == 503
+
+
 def _seed_token(appmod, email, cert=False):
     import sqlite3
     from dashboard import course_tokens, course_entitlements as ce
