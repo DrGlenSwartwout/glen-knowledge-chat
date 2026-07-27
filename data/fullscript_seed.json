@@ -31,6 +31,150 @@
    "ff_alts": [],
    "source": "seed",
    "active": 1
+  },
+  {
+   "name": "Lutein 20mg",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODI4NTM=",
+   "product_slug": "lutein-20-mg-120-softgels",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Zeaxanthin + Lutein",
+   "brand": "Eye Promise",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTI2Njg=",
+   "product_slug": "zeaxanthin-lutein",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Astaxanthin 12mg",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjUxODM=",
+   "product_slug": "astaxanthin-60-softgels",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Astaxanthin",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Bilberry 160mg",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzE5NjM=",
+   "product_slug": "bilberry-160-mg",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "complement",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Bacopa Monnieri",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzE5MzU=",
+   "product_slug": "bacopa-monniera-200-mg-180-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Ginkgo Forte",
+   "brand": "MediHerb",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTM3NDE=",
+   "product_slug": "ginkgo-forte",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Phosphatidyl Serine 300mg",
+   "brand": "Protocol for Life Balance",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODM4OTM=",
+   "product_slug": "phosphatidyl-serine",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuroprotect",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Algae DHA",
+   "brand": "Nordic Naturals",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTE4Njg=",
+   "product_slug": "algae-dha-60sg",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "WholOmega",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Algae Omega",
+   "brand": "Nordic Naturals",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODIwNTI=",
+   "product_slug": "algae-omega-120-softgels",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "WholOmega",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
   }
  ],
  "focus_area_products": [
@@ -45,6 +189,60 @@
    "focus_area_name": "Nervous System",
    "fs_product_name": "L-Theanine",
    "rank": 1
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Lutein 20mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Zeaxanthin + Lutein",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Astaxanthin 12mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Bilberry 160mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Bacopa Monnieri",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Ginkgo Forte",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Phosphatidyl Serine 300mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Algae DHA",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Algae Omega",
+   "rank": 0
   }
  ],
  "focus_area_items": [
@@ -131,6 +329,158 @@
   {
    "focus_area_id": 9,
    "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES2"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "MB4"
   }
  ]
 }
