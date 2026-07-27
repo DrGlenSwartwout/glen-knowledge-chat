@@ -27670,6 +27670,38 @@ def api_console_purity_request():
     return jsonify({"ok": True, **res})
 
 
+@app.route("/api/console/purity/screen", methods=["POST"])
+def api_console_purity_screen():
+    """Operator (Glen/console) manually enters a product's Other Ingredients and
+    runs the Phase-1 screen against the avoid-list. other_ingredients is passed
+    through UNCHANGED to screen_label -- None means no data was obtained and
+    must land 'unrated' (never green); an empty list means the product is known
+    to list no other ingredients and screens green."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import (product_ratings as _pr, purity_screen as _ps,
+                            purity_avoidlist as _pa)
+    b = request.get_json(silent=True) or {}
+    key = (b.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    oi = b.get("other_ingredients")   # None -> unrated (never green); list -> screened
+    if oi is not None and not isinstance(oi, list):
+        return jsonify({"error": "other_ingredients_must_be_list_or_null"}), 400
+    avoidlist = _pa.load_avoidlist()
+    screen = _ps.screen_label(b.get("actives"), oi, avoidlist)
+    raw = "" if oi is None else "\n".join(oi)
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row   # product_ratings.get() needs Row for dict(r)
+        _pr.init_tables(cx)
+        _pr.record_screen(cx, key, brand=b.get("brand") or "",
+                          product_name=b.get("product_name") or "",
+                          other_ingredients_raw=raw, other_ingredients_parsed=(oi or []),
+                          screen=screen)
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"], "color": row["color"]})
+
+
 @app.route("/api/portal/<token>/purity/request", methods=["POST"])
 def api_portal_purity_request(token):
     from dashboard import product_ratings as _pr, purity_ratings_access as _acc

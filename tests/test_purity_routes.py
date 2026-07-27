@@ -60,3 +60,24 @@ def test_portal_request_not_entitled_403(client, monkeypatch):
                     json={"product_key": "blocked", "brand": "B", "product_name": "N"})
     assert r.status_code == 403
     assert _get(app_mod.LOG_DB, "blocked") is None
+
+
+def test_console_screen_runs_the_real_screen(client):
+    client.post("/api/console/purity/request",
+                json={"product_key": "k", "brand": "B", "product_name": "N"})
+    r = client.post("/api/console/purity/screen",
+                    json={"product_key": "k",
+                          "other_ingredients": ["Hypromellose", "Magnesium Stearate"]})
+    assert r.status_code == 200
+    row = _get(app_mod.LOG_DB, "k")
+    assert row["status"] == "screened" and row["color"] == "red"
+
+
+def test_console_screen_none_data_is_unrated_not_green(client):
+    client.post("/api/console/purity/request",
+                json={"product_key": "k2", "brand": "B", "product_name": "N"})
+    r = client.post("/api/console/purity/screen",
+                    json={"product_key": "k2", "other_ingredients": None})
+    assert r.status_code == 200
+    assert _get(app_mod.LOG_DB, "k2")["status"] == "unrated"
+    assert _get(app_mod.LOG_DB, "k2")["color"] is None
