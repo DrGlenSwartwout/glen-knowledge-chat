@@ -275,7 +275,64 @@ def lesson_page(course_slug, module_slug, lesson_slug):
         f'try{{new YT.Player(f,{{events:{{onStateChange:function(e){{if(e.data===0)muWatched();}}}}}});}}catch(_){{}}}};}})();'
         f'</script>')
     body += watch_js
+    prior = None
+    cx = _connect()
+    try:
+        email = _resolve_learner_email()
+        if email:
+            from dashboard import course_progress as cp
+            prior = cp.homework(cx, email, course.slug, module_slug)
+    finally:
+        cx.close()
+    assignment = escape(_HOMEWORK_ASSIGNMENT.get(module_slug, _HOMEWORK_DEFAULT))
+    prior_html = ""
+    if prior and prior.get("ai_feedback"):
+        prior_html = (f'<p class="mu-fb"><b>Feedback:</b> {escape(prior["ai_feedback"])}'
+                      + (f' <i>({escape(prior["ai_rating"])})</i>' if prior.get("ai_rating") else "") + '</p>')
+    hw_html = (
+        f'<div class="mu-hw"><h3>Homework</h3><p>{assignment}</p>'
+        f'<textarea id="mu-hw" rows="6" style="width:100%">{escape((prior or {}).get("payload") or "")}</textarea>'
+        f'<p><button type="button" onclick="muHw()">Submit homework</button> <span id="mu-hw-ok"></span></p>'
+        f'{prior_html}'
+        f'<script>function muHw(){{fetch("/api/courses/{course.slug}/{module_slug}/homework"+location.search,'
+        f'{{method:"POST",headers:{{"Content-Type":"application/json"}},'
+        f'body:JSON.stringify({{payload:document.getElementById("mu-hw").value}})}})'
+        f'.then(function(r){{return r.json()}}).then(function(d){{'
+        f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
+        f'</script></div>')
+    body += hw_html
     return render_template_string(_PAGE, title=lesson.title, body=body)
+
+
+# module slug -> the homework assignment prompt shown to the learner + given to the AI.
+# Body is the reflective prompt (its rich Body Map tool arrives in Plan 3); the rest
+# fill in on the drip cadence (Family: chart family health challenges; etc.).
+_HOMEWORK_ASSIGNMENT = {
+    "02-body": "Reflect on your body: your top takeaways from this module and one concrete "
+               "action you will apply.",
+}
+_HOMEWORK_DEFAULT = "Your top takeaways from this module and one concrete action you will apply."
+
+
+@courses_bp.route("/api/courses/<course_slug>/<module_slug>/homework", methods=["POST"])
+def courses_submit_homework(course_slug, module_slug):
+    from dashboard import course_progress as cp
+    from dashboard import homework_analysis
+    email = _resolve_learner_email()
+    if not email:
+        return jsonify({"error": "unauthorized"}), 401
+    payload = ((request.get_json(silent=True) or {}).get("payload") or "").strip()
+    if not payload:
+        return jsonify({"error": "empty"}), 400
+    assignment = _HOMEWORK_ASSIGNMENT.get(module_slug, _HOMEWORK_DEFAULT)
+    fb = homework_analysis.analyze(module_slug, assignment, payload)  # advisory, never raises
+    cx = _connect()
+    try:
+        cp.record_homework(cx, email, course_slug, module_slug, payload,
+                           ai_rating=fb.get("rating") or None, ai_feedback=fb.get("feedback") or None)
+    finally:
+        cx.close()
+    return jsonify({"ok": True, "rating": fb.get("rating", ""), "feedback": fb.get("feedback", "")})
 
 
 @courses_bp.route("/api/courses/<course_slug>/<module_slug>/<lesson_slug>/watched", methods=["POST"])

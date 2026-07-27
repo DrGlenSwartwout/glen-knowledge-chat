@@ -38,3 +38,40 @@ def test_watched_unauthorized_without_token(client):
     c, _ = client
     r = c.post("/api/courses/ash-intro/01-intro/01-out-takes/watched", base_url=_MHOST)
     assert r.status_code == 401
+
+
+def test_homework_stores_and_returns_feedback(client, monkeypatch):
+    c, appmod = client
+    from dashboard import homework_analysis
+    monkeypatch.setattr(homework_analysis, "analyze",
+                        lambda module, assignment, submission: {"rating": "Good", "feedback": "Nice, go deeper."})
+    tok = _token(appmod, "hw@x.com")
+    r = c.post(f"/api/courses/ash-intro/01-intro/homework?token={tok}",
+               json={"payload": "my reflection"}, base_url=_MHOST)
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["ok"] is True and j["rating"] == "Good" and "deeper" in j["feedback"]
+    from dashboard import course_progress as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        hw = cp.homework(cx, "hw@x.com", "ash-intro", "01-intro")
+    assert hw["payload"] == "my reflection" and hw["submitted_at"]
+
+
+def test_homework_records_even_if_ai_fails(client, monkeypatch):
+    c, appmod = client
+    from dashboard import homework_analysis
+    monkeypatch.setattr(homework_analysis, "analyze",
+                        lambda *a, **k: {"rating": "", "feedback": ""})  # AI down/empty
+    tok = _token(appmod, "hw2@x.com")
+    r = c.post(f"/api/courses/ash-intro/01-intro/homework?token={tok}",
+               json={"payload": "still counts"}, base_url=_MHOST)
+    assert r.status_code == 200
+    from dashboard import course_progress as cp
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        assert cp.homework(cx, "hw2@x.com", "ash-intro", "01-intro")["submitted_at"]  # submitted regardless
+
+
+def test_homework_unauthorized_without_token(client):
+    c, _ = client
+    r = c.post("/api/courses/ash-intro/01-intro/homework", json={"payload": "x"}, base_url=_MHOST)
+    assert r.status_code == 401
