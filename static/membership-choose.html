@@ -34,8 +34,13 @@
   .benefits{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px;
     list-style:none; margin-top:18px; color:var(--cream); font-size:14px; }
   .benefits li:before{ content:"✓"; color:var(--gold); margin-right:9px; font-weight:700; }
+  .analysis-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
+  .analysis-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+  .analysis-card h3{ font-family:var(--heading); font-size:17px; line-height:1.3; }
+  .analysis-card .price{ color:var(--gold); font-family:var(--heading); font-weight:700; margin-top:5px; }
+  .analysis-card p{ color:var(--muted); font-size:13px; margin-top:9px; }
   .upgrade{ border-color:var(--gold); background:rgba(212,168,67,.06); }
-  @media(max-width:650px){ .benefits{grid-template-columns:1fr;} }
+  @media(max-width:650px){ .benefits,.analysis-grid{grid-template-columns:1fr;} }
   .tier{ border:1px solid var(--border); border-radius:var(--radius); padding:18px; transition:border-color .2s; }
   .tier:hover{ border-color:rgba(212,168,67,.45); }
   .tier .t-head{ display:flex; align-items:baseline; gap:11px; }
@@ -58,13 +63,27 @@
     <p class="sub">Choose individual membership or extend the same ongoing support and savings to everyone in your household.</p>
 
     <ul class="benefits">
-      <li>Full Biofield Analysis access</li>
+      <li>Automated Biofield Analysis reports</li>
       <li>Live group coaching</li>
       <li>Personal health dashboard</li>
       <li>Member pricing on products</li>
       <li>Ingredient and remedy research</li>
-      <li>Biofield Analyses for $200</li>
+      <li>$200 Causal Biofield Analysis member price</li>
     </ul>
+
+    <h2 class="section-title">Two different levels of Biofield Analysis</h2>
+    <div class="analysis-grid">
+      <div class="analysis-card">
+        <h3>Automated Biofield Analysis</h3>
+        <div class="price">Included with membership</div>
+        <p>Your voice scan is interpreted automatically through Dr. Glen's clinical knowledge base. Your private report maps stress-pattern layers, matched remedies, and changes over time. This is not a personal consultation or a Causal Biofield Analysis with Dr. Glen.</p>
+      </div>
+      <div class="analysis-card">
+        <h3>Personal Causal Biofield Analysis</h3>
+        <div class="price">$200 for active members</div>
+        <p>Dr. Glen Swartwout, O.D., N.D., F.C.S.O., personally reviews your patterns at a deeper causal level, designs your Functional Formulations™ program, and meets with you for a consultation. The non-member price is $300 and includes your first month of individual membership.</p>
+      </div>
+    </div>
 
     <div class="card">
       <div class="field">
@@ -109,7 +128,7 @@
 
     <div class="msg" id="msg"></div>
     <p class="note"><strong>Already an individual member?</strong> Use the same email to upgrade. We apply a $99 credit automatically, and any individual recurring billing is stopped only after your household payment succeeds. After you choose, Stripe will show the exact amount and renewal terms before you pay.</p>
-    <p class="note">A $300 Biofield Analysis includes the first month of individual membership. Active individual and household members receive Biofield Analyses for $200.</p>
+    <p class="note">The automated report included with membership and the personal Causal Biofield Analysis are separate services. Stripe will show the exact service, price, and renewal terms before you pay.</p>
   </div>
 
   <script>

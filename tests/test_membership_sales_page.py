@@ -12,6 +12,11 @@ def test_membership_page_lists_individual_household_and_biofield_benefits():
     assert "Individual membership" in text
     assert "Household membership" in text
     assert "$1,497/yr" in text
-    assert "Biofield Analyses for $200" in text
+    assert "Automated Biofield Analysis" in text
+    assert "Included with membership" in text
+    assert "Personal Causal Biofield Analysis" in text
+    assert "$200 for active members" in text
+    assert "non-member price is $300" in text
+    assert "not a personal consultation or a Causal Biofield Analysis" in text
     assert "apply a $99 credit automatically" in text
     assert "/family-plan/checkout" in text
