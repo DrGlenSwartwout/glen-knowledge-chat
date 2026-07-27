@@ -58,3 +58,19 @@ def test_stats_endpoint_public_aggregate(client):
 def test_stats_endpoint_no_auth_required(client):
     # no console key header -> still 200 (public)
     assert client.get("/api/purity/stats").status_code == 200
+
+
+def test_stats_endpoint_empty_no_confirmed_rows(monkeypatch, tmp_path):
+    # Real prod state before anything is confirmed: 200, zeroed, graceful headline,
+    # no ZeroDivisionError.
+    import sqlite3, app as app_mod
+    from dashboard import product_ratings as pr
+    db = str(tmp_path / "empty.db")
+    cx = sqlite3.connect(db); pr.init_tables(cx); cx.commit(); cx.close()
+    monkeypatch.setattr(app_mod, "LOG_DB", db)
+    app_mod.app.config["TESTING"] = True
+    r = app_mod.app.test_client().get("/api/purity/stats")
+    assert r.status_code == 200
+    b = r.get_json()
+    assert b["screened"] == 0 and b["fail_pct"] == 0
+    assert b["headline"] == "No products screened yet."
