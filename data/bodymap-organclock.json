@@ -6,22 +6,27 @@
   "groups": [
     {
       "id": "metal",
+      "color": "#868e96",
       "label": "Metal — Lung / Large Intestine"
     },
     {
       "id": "earth",
+      "color": "#f2b705",
       "label": "Earth — Stomach / Spleen"
     },
     {
       "id": "fire",
+      "color": "#e03131",
       "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"
     },
     {
       "id": "water",
+      "color": "#1971c2",
       "label": "Water — Kidney / Bladder"
     },
     {
       "id": "wood",
+      "color": "#2f9e44",
       "label": "Wood — Gallbladder / Liver"
     }
   ],
@@ -31,6 +36,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "metal",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -55,6 +61,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "metal",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -79,6 +86,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "earth",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -103,6 +111,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "earth",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -127,6 +136,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "fire",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -151,6 +161,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "fire",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -175,6 +186,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "water",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -199,6 +211,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "water",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -223,6 +236,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "fire",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -247,6 +261,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "fire",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -271,6 +286,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "wood",
+      "polarity": "yang",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95
@@ -295,6 +311,7 @@
       "side": "clock",
       "bilateral": false,
       "group": "wood",
+      "polarity": "yin",
       "radial": {
         "r_inner": 0.42,
         "r_outer": 0.95

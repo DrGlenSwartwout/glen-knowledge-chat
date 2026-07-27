@@ -127,7 +127,12 @@
     "#b5447a", "#2f8f8f", "#8a6d2f", "#6a4ac0", "#c05a2a", "#3a7a5f", "#a03a6a", "#4a6aae"];
   function groupColor(z) {
     const groups = groupsOf(state.payload);
-    const idx = groups.findIndex(g => g.id === zoneGroup(z));
+    const gid = zoneGroup(z);
+    // An explicit per-group `color` wins (e.g. the organ clock's 5-element
+    // colors); otherwise fall back to a distinct color by list position.
+    const grp = groups.find(g => g.id === gid);
+    if (grp && grp.color) return grp.color;
+    const idx = groups.findIndex(g => g.id === gid);
     return GROUP_PALETTE[(idx >= 0 ? idx : 0) % GROUP_PALETTE.length];
   }
 
@@ -228,6 +233,19 @@
         const path = document.createElementNS(svgNS, "path");
         path.setAttribute("d", pointsToPath(arcSectorPoints(z.radial, z.sector), mapFn));
         path.setAttribute("class", "bm-zone"); path.dataset.id = z.id;
+        // An annular-sector zone whose group carries an explicit color (the organ
+        // clock's 5-element colors) is filled with it; systems whose groups have
+        // no color (iris/sclera) keep the CSS default fill.
+        const grp = groupsOf(state.payload).find(g => g.id === zoneGroup(z));
+        if (grp && grp.color) {
+          // The organ clock's 5-element colors. Set via inline STYLE (not the
+          // `fill` presentation attribute) so it beats the `.bm-zone` stylesheet
+          // rule -- an SVG presentation attribute loses to any CSS rule. The
+          // `.bm-lit` !important rule still wins for personalized findings.
+          // Yin (zang) organs render more saturated than their yang (fu) partner.
+          path.style.fill = grp.color;
+          path.style.fillOpacity = (z.polarity === "yin") ? "0.82" : "0.5";
+        }
         path.addEventListener("click", () => selectZone(z));
         svg.appendChild(path);
         // label at the sector centroid (mid-angle, mid-radius)
