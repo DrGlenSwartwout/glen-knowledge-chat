@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 import app as app_mod
 from dashboard import product_ratings as pr
+from dashboard import purity_acquire
 
 
 @pytest.fixture
@@ -199,6 +200,50 @@ def test_console_routes_require_secret(client, monkeypatch):
     for path, body in [("/api/console/purity/request", {"product_key": "x"}),
                        ("/api/console/purity/screen", {"product_key": "x"}),
                        ("/api/console/purity/tier2", {"product_key": "x"}),
-                       ("/api/console/purity/confirm", {"product_key": "x"})]:
+                       ("/api/console/purity/confirm", {"product_key": "x"}),
+                       ("/api/console/purity/acquire",
+                        {"product_key": "k", "product_slug": "s"})]:
         assert client.post(path, json=body).status_code == 401
     assert client.get("/api/console/purity-ratings").status_code == 401
+
+
+def test_acquire_route_screens_red(client, monkeypatch):
+    # Fullscript-sourced ingredients include a stearate (red) + silica (yellow)
+    monkeypatch.setattr(purity_acquire, "acquire", lambda product, **kw: {
+        "raw": "magnesium stearate (vegetable source) and silicon dioxide",
+        "parsed": ["magnesium stearate (vegetable source)", "silicon dioxide"],
+        "source": "fullscript", "ok": True})
+    r = client.post("/api/console/purity/acquire", json={
+        "product_key": "jarrow::magnesium-taurate", "product_slug": "magnesium-taurate",
+        "brand": "Jarrow Formulas", "product_name": "Magnesium Taurate"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["color"] == "red"            # stearate beats silica
+    assert body["status"] == "screened"
+    assert body["source"] == "fullscript"
+    row = _get(app_mod.LOG_DB, "jarrow::magnesium-taurate")
+    assert row["status"] == "screened" and row["color"] == "red"
+
+
+def test_acquire_route_miss_lands_unrated(client, monkeypatch):
+    monkeypatch.setattr(purity_acquire, "acquire", lambda product, **kw: {
+        "raw": "", "parsed": None, "source": "fullscript", "ok": False})
+    r = client.post("/api/console/purity/acquire", json={
+        "product_key": "brand::unknown", "product_slug": "unknown"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["color"] is None             # unrated: never green
+    assert body["status"] == "unrated"
+    row = _get(app_mod.LOG_DB, "brand::unknown")
+    assert row["status"] == "unrated" and row["color"] is None
+
+
+def test_acquire_route_requires_product_key(client):
+    r = client.post("/api/console/purity/acquire", json={"product_slug": "x"})
+    assert r.status_code == 400
+
+
+def test_acquire_route_requires_product_slug(client):
+    r = client.post("/api/console/purity/acquire", json={"product_key": "k"})
+    assert r.status_code == 400
