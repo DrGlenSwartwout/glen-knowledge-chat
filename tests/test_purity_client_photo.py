@@ -113,3 +113,51 @@ def test_client_photo_rejects_bad_type(client):
                     content_type="multipart/form-data")
     assert r.status_code == 400
     assert r.get_json()["error"] == "image_only"
+
+
+from dashboard import purity_photos as _pp
+
+
+def test_client_photo_persists_the_image(client, monkeypatch):
+    from dashboard import purity_acquire as _pa
+    monkeypatch.setattr(_pa, "acquire_from_image", lambda product, blob, ct, **k: {
+        "raw": "silica", "parsed": ["silica"], "source": "photo", "ok": True})
+    r = client.post("/api/portal/TOK/purity/photo",
+                    data=_img({"product_slug": "test-mag"}), content_type="multipart/form-data")
+    assert r.status_code == 200
+    import sqlite3, app as app_mod
+    cx = sqlite3.connect(app_mod.LOG_DB); cx.row_factory = sqlite3.Row
+    row = _pp.get(cx, "fullscript::test-mag"); cx.close()
+    assert row is not None and bytes(row["image_blob"]) and row["email"] == "a@b.com"
+
+
+def test_console_serves_the_photo(client):
+    import sqlite3, app as app_mod
+    cx = sqlite3.connect(app_mod.LOG_DB); cx.row_factory = sqlite3.Row
+    _pp.save(cx, "fullscript::test-mag", "a@b.com", b"\xff\xd8JPEGBYTES", "image/jpeg"); cx.close()
+    r = client.get("/api/console/purity/photo/fullscript::test-mag")
+    assert r.status_code == 200 and r.mimetype == "image/jpeg"
+    assert r.data == b"\xff\xd8JPEGBYTES"
+
+
+def test_console_serve_photo_missing_404(client):
+    assert client.get("/api/console/purity/photo/fullscript::none").status_code == 404
+
+
+def test_console_serve_photo_unauthorized(client, monkeypatch):
+    import app as app_mod
+    monkeypatch.setattr(app_mod, "_portal_console_ok", lambda: False)
+    assert client.get("/api/console/purity/photo/fullscript::test-mag").status_code == 401
+
+
+def test_ratings_list_flags_has_photo(client):
+    import sqlite3, app as app_mod
+    from dashboard import product_ratings as pr, purity_photos as pp
+    cx = sqlite3.connect(app_mod.LOG_DB); cx.row_factory = sqlite3.Row
+    pr.record_screen(cx, "fullscript::test-mag", brand="B", product_name="P",
+                     other_ingredients_raw="silica", other_ingredients_parsed=["silica"],
+                     screen={"color": "yellow", "red_hits": [], "yellow_hits": ["silica"], "avoidlist_version": "v1"})
+    pp.save(cx, "fullscript::test-mag", "a@b.com", b"img", "image/png"); cx.close()
+    r = client.get("/api/console/purity-ratings")
+    rows = {row["product_key"]: row for row in r.get_json()["ratings"]}
+    assert rows["fullscript::test-mag"]["has_photo"] is True

@@ -23381,8 +23381,18 @@ def _fullscript_for(email, scan_date):
                 "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
             })
         _enrich_fullscript_purity(groups)
+        photo_ok = False
+        if _purity_badges_enabled():
+            try:
+                from dashboard import purity_ratings_access as _acc
+                with db.connect(LOG_DB) as cx:
+                    _acc.init_table(cx)
+                    photo_ok = _acc.can_request(cx, (email_norm or "").strip().lower(),
+                                                membership_category(email))
+            except Exception:
+                photo_ok = False
         return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups,
-                "purity_enabled": _purity_badges_enabled()}
+                "purity_enabled": _purity_badges_enabled(), "purity_photo_ok": photo_ok}
     except Exception:
         return None
 
@@ -28334,14 +28344,35 @@ def api_console_purity_confirm():
 def api_console_purity_ratings_list():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
-    from dashboard import product_ratings as _pr
+    from dashboard import product_ratings as _pr, purity_photos as _pp
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _pr.init_tables(cx)
+        _pr.init_tables(cx); _pp.init_table(cx)
         rows = [dict(r) for r in cx.execute(
             "SELECT product_key, brand, product_name, color, status, avoidlist_version, "
             "updated_at FROM product_ratings ORDER BY updated_at DESC").fetchall()]
+        with_photos = _pp.keys_with_photos(cx)
+    for r in rows:
+        r["has_photo"] = r["product_key"] in with_photos
     return jsonify({"ok": True, "ratings": rows})
+
+
+@app.route("/api/console/purity/photo/<path:product_key>", methods=["GET"])
+def api_console_purity_photo_serve(product_key):
+    """Console-gated: the raw client-uploaded label photo for a product, so Glen
+    can verify a client-submitted screen against the actual label before
+    confirming."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import purity_photos as _pp
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pp.init_table(cx)
+        row = _pp.get(cx, product_key)
+    if not row or not row.get("image_blob"):
+        return jsonify({"error": "no_photo"}), 404
+    return Response(bytes(row["image_blob"]),
+                    mimetype=row.get("content_type") or "application/octet-stream")
 
 
 @app.route("/api/purity/stats", methods=["GET"])
@@ -28452,6 +28483,8 @@ def api_portal_purity_photo(token):
         _pr.record_screen(cx, key, brand=brand, product_name=name,
                           other_ingredients_raw=res["raw"],
                           other_ingredients_parsed=(res["parsed"] or []), screen=screen)
+        from dashboard import purity_photos as _pp
+        _pp.save(cx, key, email, blob, ctype)
     return jsonify({"ok": True,
                     "message": "Thanks — we'll review this and update your card."})
 
