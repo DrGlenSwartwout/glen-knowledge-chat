@@ -277,7 +277,10 @@ function loadPortalData(){
       $('who').textContent = (d.name || '') + (practiceName ? ' \xb7 ' + practiceName : '');
       applyBranding(d.branding);
       // show/hide card option
-      if(d.stripe_active) $('opt-card').style.display = '';
+      if(d.stripe_active){
+        $('opt-card').style.display = '';
+        $('pay-method').value = 'card';
+      }
       $('auth-wall').style.display = 'none';
       $('main-content').style.display = 'block';
       loadQuote();
