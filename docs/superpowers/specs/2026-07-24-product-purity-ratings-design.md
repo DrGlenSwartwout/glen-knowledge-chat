@@ -218,12 +218,23 @@ a color change never regenerates the seed). **Ships dark behind a `PURITY_BADGES
 (mirrors `FULLSCRIPT_ENABLED`): the enrichment + rendering are gated off until a headless
 render-verify passes, then the flag is flipped. Ties into PR #1173.
 
-**Aggregate stat (Phase 3 — slice 2, after the badge).** A group-by-color count over confirmed rows
-— "of N professional products screened, X% red, Y% filler-only, Z% fully clean" (as of 2026-07-27:
-24 confirmed → 12 red / 11 green / 1 yellow = 50% fail). The public authority artifact; feeds
-skepticalreviews and the content engine; honest, growing denominator framed as "of the N we have
-screened." Public surface (skepticalreviews page / an illtowell stats block / content engine) to be
-chosen with Glen when this slice is built.
+**Aggregate stat (Phase 3 — slice 2; decisions 2026-07-27).** The public authority artifact: a live
+group-by-color count over CONFIRMED rows (as of 2026-07-27: 24 confirmed → 12 red / 11 green / 1
+yellow = 50% fail). Two pieces:
+
+- **`GET /api/purity/stats` — public, unauthenticated, aggregate ONLY.** Returns counts + percentages
+  and a headline string; NEVER a product name or brand (the primary-use boundary: only the aggregate
+  rate is public, never a per-competitor red badge). Computed live so the denominator grows.
+- **`/purity-stat` — an embeddable widget page** (`static/purity-stat.html`, iframe/embed-friendly,
+  self-contained inline styles) that fetches the endpoint and renders it. Glen drops it onto any
+  surface (funnel, a reviews page, a Cloudflare-Pages site); the email/content engine can pull the
+  same endpoint. This is the reusable core; the specific host page(s) are Glen's to place.
+
+Framing (Glen's choice — **blunt fail-rate**): headline = "X% of professional-quality products
+we've screened fail our purity standard" (fail = red / confirmed). The widget also shows the honest
+"of the N we've screened" denominator and the clean / filler-only / fail split. Not flag-gated: the
+endpoint + widget are inert until Glen embeds them, and the aggregate is exactly what he wants
+public.
 
 ## Error handling
 
