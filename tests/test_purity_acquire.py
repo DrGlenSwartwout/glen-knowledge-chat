@@ -61,3 +61,14 @@ def test_acquire_never_raises_on_internal_error(monkeypatch):
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
     res = pa.acquire(PROD)
     assert res == {"raw": "", "parsed": None, "source": "fullscript", "ok": False}
+
+
+def test_acquire_label_only_line_lands_unrated():
+    # Model echoes just the label; it verifies as a substring but parses to zero
+    # items. Must be a miss (unrated), never green.
+    page = "Magnesium Taurate . Other Ingredients: none listed here."
+    res = pa.acquire(
+        {"product_slug": "x", "name": "n", "brand": "b"},
+        fetch=lambda url, headers: type("R", (), {"status_code": 200, "text": page})(),
+        call_model=lambda s, n, b, k: {"other_ingredients_line": "Other Ingredients:"})
+    assert res == {"raw": "", "parsed": None, "source": "fullscript", "ok": False}

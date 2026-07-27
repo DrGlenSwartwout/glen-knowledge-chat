@@ -47,7 +47,9 @@ def acquire(product, *, fetch=None, call_model=None):
             sku=product.get("sku") or "", call_model=call_model)
         if not line:
             return dict(_MISS)
-        return {"raw": line, "parsed": split_other_ingredients(line),
-                "source": "fullscript", "ok": True}
+        parsed = split_other_ingredients(line)
+        if not parsed:                       # verified line parsed to zero items
+            return dict(_MISS)               # -> parsed None -> unrated, never green
+        return {"raw": line, "parsed": parsed, "source": "fullscript", "ok": True}
     except Exception:
         return dict(_MISS)

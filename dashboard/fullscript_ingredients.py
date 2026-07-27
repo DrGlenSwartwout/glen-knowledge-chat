@@ -14,8 +14,8 @@ import re
 
 PRODUCT_URL = "https://fullscript.com/catalog/products/{slug}"
 
-# A real browser UA; mirrors dashboard/ghl_email.py. Default python-requests /
-# urllib UAs are 403'd by Cloudflare.
+# A real browser UA; required because Fullscript is behind Cloudflare, which
+# 403s default python-requests / urllib UAs (see reference_cloudflare_ua_ban).
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
