@@ -28202,6 +28202,31 @@ def api_console_purity_ratings_list():
     return jsonify({"ok": True, "ratings": rows})
 
 
+@app.route("/api/purity/stats", methods=["GET"])
+def api_purity_stats():
+    """PUBLIC aggregate purity stat: counts + percentages + a headline. Returns
+    NEVER a product name/brand -- only the aggregate rate is public (spec
+    primary-use boundary). Live group-by-color over CONFIRMED product_ratings;
+    best-effort (a DB error yields a zeroed aggregate, never a 500)."""
+    from dashboard import product_ratings as _pr
+    try:
+        with db.connect(LOG_DB) as cx:
+            _pr.init_tables(cx)
+            agg = _pr.aggregate_confirmed(cx)
+    except Exception:
+        agg = {"screened": 0, "red": 0, "yellow": 0, "green": 0}
+    n = agg["screened"]
+    def pct(k):
+        return round(100 * agg[k] / n) if n else 0
+    fail_pct = pct("red")
+    headline = (f"{fail_pct}% of professional-quality products we've screened "
+                "fail our purity standard") if n else "No products screened yet."
+    return jsonify({"screened": n, "red": agg["red"], "yellow": agg["yellow"],
+                    "green": agg["green"], "fail_pct": fail_pct,
+                    "clean_pct": pct("green"), "filler_pct": pct("yellow"),
+                    "headline": headline})
+
+
 @app.route("/api/portal/<token>/purity/request", methods=["POST"])
 def api_portal_purity_request(token):
     from dashboard import product_ratings as _pr, purity_ratings_access as _acc
