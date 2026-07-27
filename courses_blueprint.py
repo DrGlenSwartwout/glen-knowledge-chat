@@ -17,6 +17,7 @@ from dashboard import courses_content as cc
 from dashboard import courses_access as ca
 from dashboard import courses_identity as cid
 from dashboard import course_tokens
+from dashboard import stripe_pay
 from dashboard.courses_sanitize import sanitize_html
 
 courses_bp = Blueprint("courses", __name__)
@@ -145,6 +146,30 @@ _REGISTER_FORM = """
 """
 
 
+def _enroll_panel(course):
+    # The $99/mo membership button shows only when its price is configured
+    # (STRIPE_MEMBERSHIP_PRICE_ID). At the Option-1 launch only the one-time cert is
+    # live; the membership button stays hidden until Build #2 wires the per-module
+    # drip model, then reappears automatically with no code change.
+    membership_btn = ""
+    if os.environ.get("STRIPE_MEMBERSHIP_PRICE_ID", "").strip():
+        membership_btn = (' <button type="button" onclick="muCheckout(\'membership\')">'
+                          'Join monthly, $99 a month</button>')
+    return (
+        '<div class="enroll">'
+        '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
+        'at your own pace, for life.</p>'
+        '<p>'
+        '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button>'
+        + membership_btn +
+        '</p>'
+        '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
+        'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'
+        '.then(function(r){return r.json()}).then(function(d){'
+        'if(d.url){location.href=d.url}else{alert(d.error||"Checkout is not available right now.")}})}'
+        '</script></div>')
+
+
 def learn_home():
     # Following an emailed link sets the member cookie, then redirects clean.
     token = request.args.get("token")
@@ -169,6 +194,7 @@ def course_home(course_slug):
     except FileNotFoundError:
         return render_template_string(_PAGE, title="Not found", body="<h1>Course not found</h1>"), 404
     rows = []
+    has_locked_paid = False
     for m in course.modules:
         rows.append(f"<h3>{escape(m.title)}</h3><ul>")
         for l in m.lessons:
@@ -177,10 +203,13 @@ def course_home(course_slug):
                 rows.append(f'<li><a href="/learn/{course.slug}/{m.slug}/{l.slug}">{escape(l.title)}</a></li>')
             elif state == "locked_register":
                 rows.append(f'<li>{escape(l.title)} <a href="/learn#register">(register free)</a></li>')
-            else:
-                rows.append(f"<li>{escape(l.title)} (members-only, upgrade coming soon)</li>")
+            else:  # locked_upgrade
+                rows.append(f"<li>{escape(l.title)} (certification module)</li>")
+                has_locked_paid = True
         rows.append("</ul>")
     body = f'<p><a href="/learn">← All courses</a></p><h1>{escape(course.title)}</h1><p>{escape(course.description)}</p>{"".join(rows)}'
+    if has_locked_paid:
+        body += _enroll_panel(course)
     return render_template_string(_PAGE, title=course.title, body=body)
 
 
@@ -201,9 +230,13 @@ def lesson_page(course_slug, module_slug, lesson_slug):
         return render_template_string(_PAGE, title="Not found", body="<h1>Lesson not found</h1>"), 404
     if not ca.is_visible(lesson.access, level):
         state = ca.lock_state(lesson.access, level)
-        msg = "Register free to watch this lesson." if state == "locked_register" else "This lesson is for paid members."
-        body = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
-                f'<h1>{escape(lesson.title)}</h1><p>{msg}</p><p><a href="/learn#register">Register</a></p>')
+        head = (f'<p><a href="/learn/{course.slug}">← {escape(course.title)}</a></p>'
+                f'<h1>{escape(lesson.title)}</h1>')
+        if state == "locked_upgrade":
+            body = head + _enroll_panel(course)
+        else:
+            body = head + ('<p>Register free to watch this lesson.</p>'
+                            '<p><a href="/learn#register">Register</a></p>')
         return render_template_string(_PAGE, title=lesson.title, body=body), 403
     safe_body = sanitize_html(lesson.body_md)
     dls = "".join(
@@ -246,3 +279,47 @@ def mentorship_intake_start():
     except Exception:
         appmod.app.logger.exception("mentorship setup link email failed")
     return jsonify({"ok": True})
+
+
+def _stripe_active() -> bool:
+    return os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+_COURSE_PRICE_ENV = {"onetime": "STRIPE_CERT_PRICE_ID", "membership": "STRIPE_MEMBERSHIP_PRICE_ID"}
+
+
+@courses_bp.route("/api/courses/checkout", methods=["POST"])
+def courses_checkout():
+    import app as appmod  # late import: only for mentorship_base()
+    data = request.get_json(silent=True) or {}
+    product = (data.get("product") or "").strip().lower()
+    if product not in _COURSE_PRICE_ENV:
+        return jsonify({"error": "unknown product"}), 400
+    price_id = os.environ.get(_COURSE_PRICE_ENV[product], "").strip()
+    if not (_stripe_active() and price_id):
+        return jsonify({"error": "not available"}), 503
+
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        token = request.args.get("token") or request.cookies.get("mu_token")
+        if token:
+            cx = _connect()
+            try:
+                email = (course_tokens.resolve_course_token(cx, token) or "").strip().lower()
+            finally:
+                cx.close()
+
+    base = appmod.mentorship_base()
+    mode = "payment" if product == "onetime" else "subscription"
+    metadata = {"kind": "course_purchase", "email": email or None, "product": product}
+    sub_md = {"kind": "course_membership", "email": email or None} if mode == "subscription" else None
+    try:
+        sess = stripe_pay.create_price_checkout_session(
+            price_id, mode=mode, customer_email=(email or None), metadata=metadata,
+            subscription_metadata=sub_md,
+            success_url=f"{base}/learn/ash-certification?enrolled=1",
+            cancel_url=f"{base}/learn/ash-certification")
+    except Exception:
+        appmod.app.logger.exception("courses checkout failed")
+        return jsonify({"error": "checkout failed"}), 502
+    return jsonify({"url": sess.get("url")})

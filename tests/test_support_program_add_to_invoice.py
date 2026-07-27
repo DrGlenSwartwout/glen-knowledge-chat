@@ -23,6 +23,8 @@ from dashboard import condition_programs as prog
 from dashboard import household as hh
 from dashboard import orders as ord_mod
 
+import begin_funnel
+
 CAREGIVER = "spcaregiver2@example.com"
 MEMBER = "spmember2@example.com"
 TAGGED = "sptagged@example.com"
@@ -59,6 +61,7 @@ def app_mod(tmp_db, monkeypatch):
     with sqlite3.connect(tmp_db) as cx:
         cx.row_factory = sqlite3.Row
         cp.init_client_portal_table(cx)
+        begin_funnel.init_journey_tables(cx)
         hh.init_household_tables(cx)
         prog.init_table(cx)
         cc.init_table(cx)
@@ -260,11 +263,13 @@ def test_second_post_never_overwrites_an_advanced_order(app_mod, tmp_db):
 def test_member_aware_uses_members_own_program(app_mod, tmp_db, monkeypatch):
     monkeypatch.setenv("HOUSEHOLD_VIEW_ENABLED", "1")
     _seed_program(tmp_db, key="wet-amd", label="Wet AMD", items=WET_AMD_ITEMS)
-    _seed_program(tmp_db, key="dry-eye", label="Dry Eye",
+    # non-migrated key so the dry-eye/cataract modifier migrations don't clobber
+    # the seeded items — isolates the member-aware routing test.
+    _seed_program(tmp_db, key="member-cond", label="Member Condition",
                   items=[{"slug": FF_SLUG, "name": "Mucosa Syntropy Powder"}],
                   consult_recommended=False)
     _seed_condition(tmp_db, CAREGIVER, "wet-amd")
-    _seed_condition(tmp_db, MEMBER, "dry-eye")
+    _seed_condition(tmp_db, MEMBER, "member-cond")
     with sqlite3.connect(tmp_db) as cx:
         hh.add_member(cx, CAREGIVER, MEMBER, "Member", "dependent")
     token = _seed_portal(tmp_db, CAREGIVER)
@@ -273,7 +278,7 @@ def test_member_aware_uses_members_own_program(app_mod, tmp_db, monkeypatch):
     r = _post(client, token, member=MEMBER)
     assert r.status_code == 200
     body = r.get_json()
-    assert body["order_ref"] == f"SPINV-{MEMBER}-dry-eye"
+    assert body["order_ref"] == f"SPINV-{MEMBER}-member-cond"
 
     rows = _orders_rows(tmp_db)
     assert len(rows) == 1
