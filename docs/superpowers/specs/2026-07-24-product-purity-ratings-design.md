@@ -166,9 +166,18 @@ one plugs in without touching the screen.
   manufacturer/retailer page. Deferred because it needs a web-search tool the app does not have
   yet, and because 100% of current products are Fullscript items. The interface is shaped so it
   slots in later without disturbing Source A.
-- **Source C — client photo (deferred to Phase 2c).** If no online source resolves, ask the client
-  (in the portal) to upload a clear photo of the facts panel and extract from the image. Reuses
-  #1172's vision path directly.
+- **Source C — a label photo (Phase 2c; decisions 2026-07-27).** When no online source resolves, a
+  photo of the product's facts panel is vision-extracted. Two suppliers, sequenced:
+  **operator upload first** (Glen/staff photograph the bottle and upload in the console — the full
+  reusable image→extract→screen slice, built now), then **client upload later** (the portal asks the
+  client to upload when their card shows an unrated product — a deferred follow-up reusing #1172's
+  portal document-upload UI). A single-product label has NO cross-product-borrow risk, so the
+  `_quote_near_anchor` anchor does NOT apply here; the fabrication guard is `verify_quotes` against
+  the model's OWN verbatim transcription of the label (`label_text`) — the same fail-closed
+  discipline as #1172. Returns the same three outcomes as the text extractor: a verified line, `""`
+  (verified explicit-none → green), or `None` (miss → unrated). Note: as of 2026-07-27 all 24
+  products resolve online, so this path has no active trigger yet — it is the fallback for future
+  products (non-Fullscript, or pages missing an Other-Ingredients line).
 
 **Triggering — synchronous, operator-triggered.** With Source A a single `GET` + one extraction
 completes in a few seconds, and there is one operator over ~24 products, so acquisition runs inline
@@ -273,8 +282,10 @@ through PR #1173):
   Source A (the Fullscript public product page), a browser-UA fetcher, the guarded text-source
   extractor (`verify_quotes`, fails-closed), and inline wiring into the console screen action. All
   24 seed products become screenable without manual entry. Sources B/C are shaped-for, not built.
-- **Phase 2c — client-photo fallback (deferred).** Source C: portal photo upload → #1172 vision
-  path → same screen. Built only if online sources leave products unresolved.
+- **Phase 2c — label-photo fallback.** Source C (above): **operator console photo upload built now**
+  (image → vision-extract Other Ingredients, guarded by `verify_quotes` against the transcription →
+  same screen/record as the online path); **client portal photo prompt deferred** as a follow-up.
+  Fallback for products online sources can't resolve (none currently — all 24 resolve online).
 - **Phase 3 — the two readers.** The Fullscript seed-gate integration (additive color badge above)
   and the aggregate "% fail" stat.
 
