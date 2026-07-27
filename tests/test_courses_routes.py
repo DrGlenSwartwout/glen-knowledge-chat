@@ -287,12 +287,24 @@ _PAID_URL = "/learn/ash-intro/03-pro/01-advanced"  # fixture course slug + the p
 
 def test_paid_lesson_shows_enroll_panel_to_free_member(client, monkeypatch):
     c, appmod = client
+    monkeypatch.delenv("STRIPE_MEMBERSHIP_PRICE_ID", raising=False)  # Option-1 launch: membership dark
     tok = _seed_token(appmod, "free@x.com", cert=False)
     r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    body = r.get_data(as_text=True)
     assert r.status_code == 403
-    assert "Get the full certification" in r.get_data(as_text=True)
-    assert "$2,997" in r.get_data(as_text=True)
-    assert "<script>alert(1)</script>" not in r.get_data(as_text=True)  # no lesson body leaked
+    assert "Get the full certification" in body
+    assert "$2,997" in body
+    assert "Join monthly" not in body  # membership button hidden until STRIPE_MEMBERSHIP_PRICE_ID set
+    assert "<script>alert(1)</script>" not in body  # no lesson body leaked
+
+
+def test_membership_button_appears_when_price_configured(client, monkeypatch):
+    c, appmod = client
+    monkeypatch.setenv("STRIPE_MEMBERSHIP_PRICE_ID", "price_mem")
+    tok = _seed_token(appmod, "free2@x.com", cert=False)
+    r = c.get(f"{_PAID_URL}?token={tok}", base_url=_MHOST)
+    assert r.status_code == 403
+    assert "Join monthly" in r.get_data(as_text=True)  # reappears automatically for Build #2
 
 
 def test_paid_lesson_opens_for_level_2(client, monkeypatch):

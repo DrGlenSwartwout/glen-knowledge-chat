@@ -147,13 +147,21 @@ _REGISTER_FORM = """
 
 
 def _enroll_panel(course):
+    # The $99/mo membership button shows only when its price is configured
+    # (STRIPE_MEMBERSHIP_PRICE_ID). At the Option-1 launch only the one-time cert is
+    # live; the membership button stays hidden until Build #2 wires the per-module
+    # drip model, then reappears automatically with no code change.
+    membership_btn = ""
+    if os.environ.get("STRIPE_MEMBERSHIP_PRICE_ID", "").strip():
+        membership_btn = (' <button type="button" onclick="muCheckout(\'membership\')">'
+                          'Join monthly, $99 a month</button>')
     return (
         '<div class="enroll">'
         '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
         'at your own pace, for life.</p>'
         '<p>'
-        '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button> '
-        '<button type="button" onclick="muCheckout(\'membership\')">Join monthly, $99 a month</button>'
+        '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button>'
+        + membership_btn +
         '</p>'
         '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
         'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'

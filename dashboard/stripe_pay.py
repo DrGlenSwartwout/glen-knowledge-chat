@@ -114,10 +114,21 @@ def create_price_checkout_session(price_id, *, mode, customer_email, metadata,
 
 
 def get_subscription(sub_id) -> dict:
-    """Retrieve a Subscription. Returns {id, status, current_period_end, customer, metadata}."""
+    """Retrieve a Subscription. Returns {id, status, current_period_end, customer, metadata}.
+
+    current_period_end moved off the Subscription and onto each item in Stripe API
+    version 2025-03-31.basil+; when the top-level field is absent, fall back to the
+    first item's current_period_end so a membership window is never read as null
+    (null = unlimited to course_entitlements — a silent over-grant). Works on both
+    old and new API versions regardless of the account's pinned version."""
     j = _get(f"/subscriptions/{sub_id}")
+    cpe = j.get("current_period_end")
+    if cpe is None:
+        items = ((j.get("items") or {}).get("data") or [])
+        if items:
+            cpe = items[0].get("current_period_end")
     return {"id": j.get("id"), "status": j.get("status"),
-            "current_period_end": j.get("current_period_end"),
+            "current_period_end": cpe,
             "customer": j.get("customer"), "metadata": j.get("metadata") or {}}
 
 
