@@ -155,13 +155,17 @@ def _enroll_panel(course):
     if os.environ.get("STRIPE_MEMBERSHIP_PRICE_ID", "").strip():
         membership_btn = (' <button type="button" onclick="muCheckout(\'membership\')">'
                           'Join monthly, $99 a month</button>')
+    plan_btn = ""
+    if os.environ.get("STRIPE_PLAN_PRICE_ID", "").strip():
+        plan_btn = (' <button type="button" onclick="muCheckout(\'plan\')">'
+                    'Pay over 12 months, $297 a month</button>')
     return (
         '<div class="enroll">'
         '<p>Unlock all twelve certification modules and learn the full Accelerated Self Healing method '
         'at your own pace, for life.</p>'
         '<p>'
         '<button type="button" onclick="muCheckout(\'onetime\')">Get the full certification, $2,997</button>'
-        + membership_btn +
+        + plan_btn + membership_btn +
         '</p>'
         '<script>function muCheckout(p){fetch("/api/courses/checkout",{method:"POST",'
         'headers:{"Content-Type":"application/json"},body:JSON.stringify({product:p})})'
@@ -285,7 +289,8 @@ def _stripe_active() -> bool:
     return os.environ.get("STRIPE_ACTIVE", "").strip().lower() in ("1", "true", "yes", "on")
 
 
-_COURSE_PRICE_ENV = {"onetime": "STRIPE_CERT_PRICE_ID", "membership": "STRIPE_MEMBERSHIP_PRICE_ID"}
+_COURSE_PRICE_ENV = {"onetime": "STRIPE_CERT_PRICE_ID", "membership": "STRIPE_MEMBERSHIP_PRICE_ID",
+                     "plan": "STRIPE_PLAN_PRICE_ID"}
 
 
 @courses_bp.route("/api/courses/checkout", methods=["POST"])
@@ -311,8 +316,9 @@ def courses_checkout():
 
     base = appmod.mentorship_base()
     mode = "payment" if product == "onetime" else "subscription"
+    sub_kind = "course_plan" if product == "plan" else "course_membership"
     metadata = {"kind": "course_purchase", "email": email or None, "product": product}
-    sub_md = {"kind": "course_membership", "email": email or None} if mode == "subscription" else None
+    sub_md = {"kind": sub_kind, "email": email or None} if mode == "subscription" else None
     try:
         sess = stripe_pay.create_price_checkout_session(
             price_id, mode=mode, customer_email=(email or None), metadata=metadata,

@@ -10985,13 +10985,71 @@ def _course_membership_renew(invoice):
         return "error"
 
 
+def _course_plan_charge(invoice):
+    """On invoice.paid for a $297x12 course PLAN (subscription metadata.kind ==
+    'course_plan'): extend access to the new period end and count the charge
+    (idempotent on invoice id). On the 12th charge, grant a lifetime cert and cancel
+    the subscription so there is no 13th charge. Never raises. 'ok'|'skip'|'error'."""
+    from dashboard import course_entitlements as _ce
+    try:
+        sub_id = (invoice or {}).get("subscription")
+        invoice_id = (invoice or {}).get("id")
+        if not sub_id or not invoice_id:
+            return "skip"
+        sub = stripe_pay.get_subscription(sub_id)
+        sub_md = sub.get("metadata") or {}
+        if sub_md.get("kind") != "course_plan":
+            return "skip"
+        until = float(sub.get("current_period_end") or 0) or None
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _ce.init_course_entitlements_table(cx)
+            # Record the charge FIRST: it is idempotent on invoice_id and email-
+            # independent, so the 12-count stays accurate even when this invoice.paid
+            # arrives before checkout.session.completed has stored the buyer's email
+            # (anonymous plan checkout). Access itself is granted by the completed
+            # event; under-counting here would permanently stall the conversion.
+            count = _ce.record_plan_charge(cx, sub_id, invoice_id)
+            email = (sub_md.get("email") or "").strip().lower()
+            if not email:
+                email = (_ce.email_for_stripe_ref(cx, sub_id) or "").strip().lower()
+            if not email:
+                cx.commit()
+                return "ok"  # charge counted; grant deferred until the email resolves
+            if count >= 12:
+                _ce.grant_cert(cx, email, source="stripe", stripe_ref=sub_id,
+                               customer=sub.get("customer"))
+            else:
+                _ce.grant_membership(cx, email, until_epoch=until, source="stripe",
+                                     stripe_ref=sub_id, customer=sub.get("customer"))
+            cx.commit()
+        if count >= 12:  # stop billing after conversion; cert already granted above
+            try:
+                stripe_pay.cancel_subscription(sub_id)
+            except Exception as e:
+                print(f"[course] plan cancel-at-12 failed sub={sub_id}: {e!r}", flush=True)
+        if count > 12:  # a charge slipped past the 12-payment conversion — a refund is owed
+            try:
+                _send_token_alert(
+                    "MentorshipU cert plan OVERCHARGE",
+                    f"A $297x12 course plan took a 13th-or-later charge past its lifetime "
+                    f"conversion. Refund $297 and confirm the subscription is canceled.\n"
+                    f"subscription={sub_id}\ninvoice={invoice_id}\nemail={email}\n"
+                    f"charge_count={count}")
+            except Exception as e:
+                print(f"[course] plan overcharge alert failed sub={sub_id}: {e!r}", flush=True)
+        return "ok"
+    except Exception as e:
+        print(f"[course] plan charge failed: {e!r}", flush=True)
+        return "error"
+
+
 def _course_membership_cancel(subscription):
     """On customer.subscription.deleted for a course membership, expire it so the
     modules relock. Never raises. Returns 'ok' | 'skip' | 'error'."""
     from dashboard import course_entitlements as _ce
     try:
         sub = subscription or {}
-        if (sub.get("metadata") or {}).get("kind") != "course_membership":
+        if (sub.get("metadata") or {}).get("kind") not in ("course_membership", "course_plan"):
             return "skip"
         sub_id = sub.get("id")
         if not sub_id:
@@ -32253,6 +32311,7 @@ def webhook_stripe():
             _fulfill_course_purchase(obj)          # course: reads the object (mode/metadata)
         elif etype == "invoice.paid":
             _course_membership_renew(obj)
+            _course_plan_charge(obj)
         elif etype == "customer.subscription.deleted":
             _course_membership_cancel(obj)
         return ("", 200)

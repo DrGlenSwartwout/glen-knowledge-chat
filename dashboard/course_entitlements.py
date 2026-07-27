@@ -150,3 +150,31 @@ def paid_level_for(cx, email: str, now: float | None = None) -> int:
         return 2 if row else 0
     except Exception:
         return 0
+
+
+def init_course_plan_charges_table(cx) -> None:
+    cx.execute(
+        "CREATE TABLE IF NOT EXISTS course_plan_charges("
+        "sub_id TEXT NOT NULL, invoice_id TEXT NOT NULL, created_at TEXT)")
+    cx.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_charge_invoice "
+               "ON course_plan_charges(invoice_id)")
+    cx.commit()
+
+
+def record_plan_charge(cx, sub_id: str, invoice_id: str) -> int:
+    """Record a paid invoice for a plan subscription (idempotent on invoice_id) and
+    return the current count of distinct paid invoices for that subscription. Returns
+    0 on any error so the webhook stays safe."""
+    try:
+        init_course_plan_charges_table(cx)
+        try:
+            cx.execute("INSERT INTO course_plan_charges(sub_id, invoice_id, created_at) "
+                       "VALUES(?,?,?)", (sub_id, invoice_id, _now_iso()))
+            cx.commit()
+        except sqlite3.IntegrityError:
+            cx.rollback()  # replayed invoice — already counted, do not double
+        row = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id=?",
+                         (sub_id,)).fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0

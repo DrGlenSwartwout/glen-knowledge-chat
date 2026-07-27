@@ -129,3 +129,102 @@ def test_renewal_without_metadata_email_extends_existing(appmod, monkeypatch):
         "customer": "c", "metadata": {"kind": "course_membership"}})
     _post_event(appmod, {"type": "invoice.paid", "data": {"object": {"subscription": "sub_ne"}}})
     assert _paid_level(appmod, "anon@x.com", now=2500) == 2     # renewed via stored-row email fallback
+
+
+def _plan_sub(email="p@x.com", cpe=1000):
+    return {"id": "sub_plan", "status": "active", "current_period_end": cpe,
+            "customer": "cus_p", "metadata": {"kind": "course_plan", "email": email}}
+
+
+def test_plan_charges_extend_then_convert_to_lifetime(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: _plan_sub(cpe=1000))
+    cancelled = {}
+    monkeypatch.setattr(stripe_pay, "cancel_subscription",
+                        lambda sid: cancelled.setdefault("sid", sid) or {"id": sid, "status": "canceled"})
+    # charges 1..11 → membership window (level 2 only within the window)
+    for i in range(1, 12):
+        _post_event(appmod, {"type": "invoice.paid",
+                             "data": {"object": {"subscription": "sub_plan", "id": f"in_{i}"}}})
+    assert _paid_level(appmod, "p@x.com", now=500) == 2            # inside window
+    assert _paid_level(appmod, "p@x.com", now=9_999_999_999) == 0  # window expired, no cert yet
+    # 12th charge → lifetime cert + subscription cancelled
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_plan", "id": "in_12"}}})
+    assert _paid_level(appmod, "p@x.com", now=9_999_999_999) == 2  # lifetime cert
+    assert cancelled.get("sid") == "sub_plan"
+
+
+def test_plan_charge_replay_does_not_advance_count(appmod, monkeypatch):
+    import sqlite3
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: _plan_sub())
+    monkeypatch.setattr(stripe_pay, "cancel_subscription", lambda sid: {"id": sid, "status": "canceled"})
+    for i in (1, 1, 2):  # in_1 replayed
+        _post_event(appmod, {"type": "invoice.paid",
+                             "data": {"object": {"subscription": "sub_plan", "id": f"in_{i}"}}})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id='sub_plan'").fetchone()[0]
+    assert n == 2  # not 3
+
+
+def test_plan_cancel_before_12_locks_but_after_conversion_keeps_access(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: _plan_sub(email="q@x.com", cpe=1000))
+    monkeypatch.setattr(stripe_pay, "cancel_subscription", lambda sid: {"id": sid, "status": "canceled"})
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_plan", "id": "in_a"}}})
+    assert _paid_level(appmod, "q@x.com", now=500) == 2
+    _post_event(appmod, {"type": "customer.subscription.deleted",
+                         "data": {"object": {"id": "sub_plan", "metadata": {"kind": "course_plan"}}}})
+    assert _paid_level(appmod, "q@x.com", now=500) == 0  # locked (no cert yet)
+
+
+def test_plan_handler_skips_membership_kind(appmod, monkeypatch):
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription",
+                        lambda sid: {"id": "s", "status": "active", "current_period_end": 1000,
+                                     "customer": "c", "metadata": {"kind": "course_membership", "email": "m@x.com"}})
+    monkeypatch.setattr(stripe_pay, "cancel_subscription", lambda sid: {"id": sid, "status": "canceled"})
+    _post_event(appmod, {"type": "invoice.paid", "data": {"object": {"subscription": "s", "id": "in_x"}}})
+    import sqlite3
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        try:
+            n = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id='s'").fetchone()[0]
+        except sqlite3.OperationalError:
+            n = 0
+    assert n == 0  # plan handler did not record a course_membership invoice
+
+
+def test_plan_charge_counts_even_when_email_unresolved(appmod, monkeypatch):
+    import sqlite3
+    from dashboard import stripe_pay
+    # Anonymous plan: subscription metadata carries NO email, and no membership row
+    # exists yet (invoice.paid before checkout.session.completed). The charge must
+    # still be counted so the 12-count stays accurate.
+    monkeypatch.setattr(stripe_pay, "get_subscription",
+                        lambda sid: {"id": "sub_anon", "status": "active", "current_period_end": 1000,
+                                     "customer": "c", "metadata": {"kind": "course_plan"}})
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_anon", "id": "in_anon_1"}}})
+    with sqlite3.connect(appmod.LOG_DB) as cx:
+        n = cx.execute("SELECT COUNT(*) FROM course_plan_charges WHERE sub_id='sub_anon'").fetchone()[0]
+    assert n == 1  # counted despite unresolved email (grant deferred to the completed event)
+
+
+def test_plan_overcharge_past_12_fires_alert(appmod, monkeypatch):
+    # A 13th-or-later paid invoice (a charge that slipped past the 12-payment
+    # conversion) must fire an operational overcharge alert; exactly 12 must not.
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "get_subscription", lambda sid: _plan_sub(email="oc@x.com", cpe=1000))
+    monkeypatch.setattr(stripe_pay, "cancel_subscription", lambda sid: {"id": sid, "status": "canceled"})
+    alerts = []
+    monkeypatch.setattr(appmod, "_send_token_alert",
+                        lambda subject, body: alerts.append((subject, body)) or True)
+    for i in range(1, 13):  # 12 charges → conversion, NO overcharge alert
+        _post_event(appmod, {"type": "invoice.paid",
+                             "data": {"object": {"subscription": "sub_plan", "id": f"in_{i}"}}})
+    assert alerts == []
+    _post_event(appmod, {"type": "invoice.paid",
+                         "data": {"object": {"subscription": "sub_plan", "id": "in_13"}}})
+    assert len(alerts) == 1 and "OVERCHARGE" in alerts[0][0]

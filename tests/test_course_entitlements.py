@@ -71,3 +71,19 @@ def test_membership_finite_upgraded_to_unlimited(cx):
     ce.grant_membership(cx, "u2@x.com", until_epoch=1000.0, source="stripe", stripe_ref="sub_u2")
     ce.grant_membership(cx, "u2@x.com", until_epoch=None, source="stripe", stripe_ref="sub_u2")
     assert ce.paid_level_for(cx, "u2@x.com", now=5000.0) == 2  # now unlimited
+
+
+def test_record_plan_charge_counts_and_is_idempotent(cx):
+    from dashboard import course_entitlements as ce
+    assert ce.record_plan_charge(cx, "sub_A", "in_1") == 1
+    assert ce.record_plan_charge(cx, "sub_A", "in_1") == 1   # replay same invoice → no double
+    assert ce.record_plan_charge(cx, "sub_A", "in_2") == 2   # new invoice → increment
+    assert ce.record_plan_charge(cx, "sub_B", "in_9") == 1   # isolated per subscription
+
+
+def test_record_plan_charge_never_raises_on_broken_cx():
+    from dashboard import course_entitlements as ce
+    class Boom:
+        def execute(self, *a, **k): raise RuntimeError("db down")
+        def commit(self): pass
+    assert ce.record_plan_charge(Boom(), "s", "i") == 0
