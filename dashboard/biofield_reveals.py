@@ -13,6 +13,13 @@ def _now():
 
 
 def _rows_cursor(cx):
+    # db._PgConn is deliberately execute-only: each execute() returns a
+    # HybridRow-producing cursor, so it does not expose sqlite3's cursor() or
+    # row_factory APIs. Returning the connection preserves the shared
+    # `.execute(...).fetch*()` contract on Postgres. SQLite still needs a
+    # row-configured cursor so dict(row) continues to work there.
+    if getattr(cx, "backend", "sqlite") == "postgres":
+        return cx
     cur = cx.cursor()
     cur.row_factory = sqlite3.Row
     return cur

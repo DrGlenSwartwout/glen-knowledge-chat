@@ -69,6 +69,25 @@ def test_token_lookup(tmp_path):
     assert m.get_by_token_hash(cx, "H:tok")["id"] == rid
 
 
+def test_token_lookup_accepts_backend_wrapper_without_cursor(tmp_path):
+    """Postgres db._PgConn intentionally exposes execute(), not cursor()."""
+    m = _mod()
+    raw = _cx(tmp_path)
+    rid, _ = m.upsert(raw, "pg@x.com", "2026-07-27", _interp(), _remedies(), "s")
+    m.set_token(raw, rid, "H:pg-token")
+    raw.row_factory = sqlite3.Row
+
+    class ExecuteOnlyConnection:
+        backend = "postgres"
+
+        def execute(self, sql, params=()):
+            return raw.execute(sql, params)
+
+    row = m.get_by_token_hash(ExecuteOnlyConnection(), "H:pg-token")
+    assert row["id"] == rid
+    assert row["email"] == "pg@x.com"
+
+
 def test_edit_interpretation_and_remedies(tmp_path):
     m = _mod(); cx = _cx(tmp_path)
     rid, _ = m.upsert(cx, "a@x.com", "2026-06-19", _interp(), _remedies(), "s")

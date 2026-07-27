@@ -4,14 +4,14 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Choose your Membership</title>
+<title>Individual &amp; Household Memberships | Healing Oasis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Raleway:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   :root{ --bg:#0a150d; --surface:#111f16; --surface-2:#162318; --border:#21472d;
     --cream:#fdf4d8; --muted:#a89870; --gold:#d4a843; --green:#3d8a52;
-    --maxw:640px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
+    --maxw:940px; --radius:14px; --ease:cubic-bezier(0.22,1,0.36,1);
     --font:"Open Sans",system-ui,sans-serif; --heading:"Raleway",system-ui,sans-serif; }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{ background:var(--bg); color:var(--cream); font-family:var(--font); font-size:16px; line-height:1.6;
@@ -30,6 +30,17 @@
   input:focus{ border-color:var(--gold); }
   input::placeholder{ color:var(--muted); opacity:.6; }
   .tiers{ display:flex; flex-direction:column; gap:14px; }
+  .section-title{ margin-top:34px; font-size:21px; }
+  .benefits{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 24px;
+    list-style:none; margin-top:18px; color:var(--cream); font-size:14px; }
+  .benefits li:before{ content:"✓"; color:var(--gold); margin-right:9px; font-weight:700; }
+  .analysis-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
+  .analysis-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:20px; }
+  .analysis-card h3{ font-family:var(--heading); font-size:17px; line-height:1.3; }
+  .analysis-card .price{ color:var(--gold); font-family:var(--heading); font-weight:700; margin-top:5px; }
+  .analysis-card p{ color:var(--muted); font-size:13px; margin-top:9px; }
+  .upgrade{ border-color:var(--gold); background:rgba(212,168,67,.06); }
+  @media(max-width:650px){ .benefits,.analysis-grid{grid-template-columns:1fr;} }
   .tier{ border:1px solid var(--border); border-radius:var(--radius); padding:18px; transition:border-color .2s; }
   .tier:hover{ border-color:rgba(212,168,67,.45); }
   .tier .t-head{ display:flex; align-items:baseline; gap:11px; }
@@ -48,8 +59,31 @@
 <body>
   <div class="shell">
     <p class="eyebrow">Healing Oasis · Membership</p>
-    <h1>Choose your Membership</h1>
-    <p class="sub">Join live group coaching and enjoy member pricing on everything in the store. Pick the plan that fits you best.</p>
+    <h1>Personalized support for you—or your whole household</h1>
+    <p class="sub">Choose individual membership or extend the same ongoing support and savings to everyone in your household.</p>
+
+    <ul class="benefits">
+      <li>Automated Biofield Analysis reports</li>
+      <li>Live group coaching</li>
+      <li>Personal health dashboard</li>
+      <li>Member pricing on products</li>
+      <li>Ingredient and remedy research</li>
+      <li>$200 Causal Biofield Analysis member price</li>
+    </ul>
+
+    <h2 class="section-title">Two different levels of Biofield Analysis</h2>
+    <div class="analysis-grid">
+      <div class="analysis-card">
+        <h3>Automated Biofield Analysis</h3>
+        <div class="price">Included with membership</div>
+        <p>Your voice scan is interpreted automatically through Dr. Glen's clinical knowledge base. Your private report maps stress-pattern layers, matched remedies, and changes over time. This is not a personal consultation or a Causal Biofield Analysis with Dr. Glen.</p>
+      </div>
+      <div class="analysis-card">
+        <h3>Personal Causal Biofield Analysis</h3>
+        <div class="price">$200 for active members</div>
+        <p>Dr. Glen Swartwout, O.D., N.D., F.C.S.O., personally reviews your patterns at a deeper causal level, designs your Functional Formulations™ program, and meets with you for a consultation. The non-member price is $300 and includes your first month of individual membership.</p>
+      </div>
+    </div>
 
     <div class="card">
       <div class="field">
@@ -58,7 +92,8 @@
       </div>
     </div>
 
-    <div class="tiers" id="tiers">
+    <h2 class="section-title">Individual membership</h2>
+    <div class="tiers">
       <div class="tier" data-tier="month">
         <div class="t-head"><span class="t-name">Monthly Membership</span><span class="t-price">$99</span></div>
         <p class="t-sub">Billed once. One month of live group coaching and member pricing.</p>
@@ -76,8 +111,24 @@
       </div>
     </div>
 
+    <h2 class="section-title">Household membership</h2>
+    <p class="sub">One plan covers the people connected to your household. Each person keeps a private profile and receives member benefits.</p>
+    <div class="tiers">
+      <div class="tier upgrade" data-tier="family_monthly">
+        <div class="t-head"><span class="t-name">Household — Monthly</span><span class="t-price">$147/mo</span></div>
+        <p class="t-sub">Ongoing household coverage, billed monthly. Cancel from your portal.</p>
+        <button class="btn" data-choose="family_monthly">Choose household monthly</button>
+      </div>
+      <div class="tier upgrade" data-tier="family_annual">
+        <div class="t-head"><span class="t-name">Household — Annual</span><span class="t-price">$1,497/yr</span></div>
+        <p class="t-sub">A full year of household coverage, renewed annually.</p>
+        <button class="btn" data-choose="family_annual">Choose household annual</button>
+      </div>
+    </div>
+
     <div class="msg" id="msg"></div>
-    <p class="note">After you choose, you will be taken to a secure Stripe checkout page to complete your payment. You can cancel or pause your membership any time from the link in your welcome email.</p>
+    <p class="note"><strong>Already an individual member?</strong> Use the same email to upgrade. We apply a $99 credit automatically, and any individual recurring billing is stopped only after your household payment succeeds. After you choose, Stripe will show the exact amount and renewal terms before you pay.</p>
+    <p class="note">The automated report included with membership and the personal Causal Biofield Analysis are separate services. Stripe will show the exact service, price, and renewal terms before you pay.</p>
   </div>
 
   <script>
@@ -100,7 +151,8 @@
         var original = btn.textContent;
         btn.textContent = 'Loading…';
 
-        fetch(BASE + '/membership/checkout', {
+        var household = tier.indexOf('family_') === 0;
+        fetch(BASE + (household ? '/family-plan/checkout' : '/membership/checkout'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: email, tier: tier })

@@ -116,3 +116,19 @@ def test_sync_from_seed_counts_match_file_contents():
             .fetchone()[0] == len(seed["focus_area_products"]))
     assert (cx.execute("SELECT COUNT(*) FROM fullscript_focus_area_items")
             .fetchone()[0] == len(seed["focus_area_items"]))
+
+
+def test_every_best_ff_resolves_to_a_real_slug():
+    """A best_ff that doesn't resolve renders a chip with no link -- a dead chip
+    (the NeurOmega mistake: a PRL-crosswalk label that isn't a real product name).
+    Every non-null best_ff in the committed seed must resolve to a real slug."""
+    import os
+    os.environ.setdefault("OPENAI_API_KEY", "dummy")
+    os.environ.setdefault("PINECONE_API_KEY", "dummy")
+    import app
+    for p in _load()["products"]:
+        ff = p.get("best_ff")
+        if ff:
+            v = app._fullscript_ff_view(ff, p.get("relation"))
+            assert v and v.get("slug"), \
+                f"{p['name']}: best_ff {ff!r} does not resolve to a slug (dead chip)"

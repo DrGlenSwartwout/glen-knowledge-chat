@@ -31,6 +31,361 @@
    "ff_alts": [],
    "source": "seed",
    "active": 1
+  },
+  {
+   "name": "Lutein 20mg",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODI4NTM=",
+   "product_slug": "lutein-20-mg-120-softgels",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Zeaxanthin + Lutein",
+   "brand": "Eye Promise",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTI2Njg=",
+   "product_slug": "zeaxanthin-lutein",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Astaxanthin 12mg",
+   "brand": "Jarrow Formulas",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjUxODM=",
+   "product_slug": "astaxanthin-60-softgels",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Astaxanthin",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Bilberry 160mg",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzE5NjM=",
+   "product_slug": "bilberry-160-mg",
+   "url": null,
+   "focus_tags": [
+    "Eyes / Vision / Visual Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Macular Wellness Lutein",
+   "relation": "complement",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Bacopa Monnieri",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzE5MzU=",
+   "product_slug": "bacopa-monniera-200-mg-180-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Ginkgo Forte",
+   "brand": "MediHerb",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTM3NDE=",
+   "product_slug": "ginkgo-forte",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Brain Boost Nootropic",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Phosphatidyl Serine 300mg",
+   "brand": "Protocol for Life Balance",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODM4OTM=",
+   "product_slug": "phosphatidyl-serine",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuroprotect",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Algae DHA",
+   "brand": "Nordic Naturals",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTE4Njg=",
+   "product_slug": "algae-dha-60sg",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "WholOmega",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Algae Omega",
+   "brand": "Nordic Naturals",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODIwNTI=",
+   "product_slug": "algae-omega-120-softgels",
+   "url": null,
+   "focus_tags": [
+    "Memory"
+   ],
+   "product_type": "supplement",
+   "best_ff": "WholOmega",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "CoQ10 120mg",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzAyMjI=",
+   "product_slug": "coq10-120-mg-120-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Cardiovascular System"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Heart Health",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Milk Thistle",
+   "brand": "Designs for Health",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzI0Njc=",
+   "product_slug": "milk-thistle-90-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Liver"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Liver Support",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "N-Acetyl Cysteine",
+   "brand": "Ortho Molecular Products",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzYzMzk=",
+   "product_slug": "n-acetyl-cysteine-60-caps",
+   "url": null,
+   "focus_tags": [
+    "Liver"
+   ],
+   "product_type": "supplement",
+   "best_ff": "N-Acetyl Cysteine",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Probiotic",
+   "brand": "Theramedix BioSET",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODM4NjM=",
+   "product_slug": "probiotic-120-caps",
+   "url": null,
+   "focus_tags": [
+    "Intestines"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Microbiome",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Beet Root",
+   "brand": "Nature's Way",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNTY2OTM=",
+   "product_slug": "beet-root-100-caps",
+   "url": null,
+   "focus_tags": [
+    "Gall Bladder"
+   ],
+   "product_type": "supplement",
+   "best_ff": "TMG Syntropy Powder",
+   "relation": "complement",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Betaine HCl",
+   "brand": "Enzymedica",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTExNjc=",
+   "product_slug": "betaine-hcl-120c",
+   "url": null,
+   "focus_tags": [
+    "Stomach"
+   ],
+   "product_type": "supplement",
+   "best_ff": "GastroZyme",
+   "relation": "substitute",
+   "ff_alts": [
+    "GI Repair",
+    "GERD Guard"
+   ],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Ashwagandha 700",
+   "brand": "Gaia Herbs Pro",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtOTQ5Mjg=",
+   "product_slug": "ashwagandha-700",
+   "url": null,
+   "focus_tags": [
+    "Adrenal Glands"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Adrenal Syntropy",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Quercetin",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzA5NDE=",
+   "product_slug": "quercetin-250-mg-120-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Lungs"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Immune Modulation",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Zinc 30",
+   "brand": "Pure Encapsulations",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzE3NjE=",
+   "product_slug": "zinc-30-180-vcaps",
+   "url": null,
+   "focus_tags": [
+    "Spleen"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Spleen Support",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Creatine",
+   "brand": "Thorne",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtODI3MTE=",
+   "product_slug": "creatine",
+   "url": null,
+   "focus_tags": [
+    "Muscle Fascia"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Muscle Mass",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "D-Ribose",
+   "brand": "Ecological Formulas/Cardiovascular Research",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNjI3MTU=",
+   "product_slug": "d-ribose-450-g",
+   "url": null,
+   "focus_tags": [
+    "Energy Levels"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Mitochondrial Biogenesis",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Berberine 500mg",
+   "brand": "Integrative Therapeutics",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzc3ODc=",
+   "product_slug": "berberine-60-vegcaps",
+   "url": null,
+   "focus_tags": [
+    "Pancreas"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Glucose Tolerance",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
+  },
+  {
+   "name": "Magtein",
+   "brand": "Source Naturals",
+   "external_id": "U3ByZWU6OlByb2R1Y3QtNzkwNDA=",
+   "product_slug": "magtein-90-caps",
+   "url": null,
+   "focus_tags": [
+    "Hearing / Audio Processing"
+   ],
+   "product_type": "supplement",
+   "best_ff": "Neuro Magnesium",
+   "relation": "substitute",
+   "ff_alts": [],
+   "source": "seed",
+   "active": 1
   }
  ],
  "focus_area_products": [
@@ -45,6 +400,138 @@
    "focus_area_name": "Nervous System",
    "fs_product_name": "L-Theanine",
    "rank": 1
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Lutein 20mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Zeaxanthin + Lutein",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Astaxanthin 12mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 16,
+   "focus_area_name": "Eyes / Vision / Visual Processing",
+   "fs_product_name": "Bilberry 160mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Bacopa Monnieri",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Ginkgo Forte",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Phosphatidyl Serine 300mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Algae DHA",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 36,
+   "focus_area_name": "Memory",
+   "fs_product_name": "Algae Omega",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 10,
+   "focus_area_name": "Cardiovascular System",
+   "fs_product_name": "CoQ10 120mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 11,
+   "focus_area_name": "Liver",
+   "fs_product_name": "Milk Thistle",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 11,
+   "focus_area_name": "Liver",
+   "fs_product_name": "N-Acetyl Cysteine",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 14,
+   "focus_area_name": "Intestines",
+   "fs_product_name": "Probiotic",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 17,
+   "focus_area_name": "Gall Bladder",
+   "fs_product_name": "Beet Root",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 19,
+   "focus_area_name": "Stomach",
+   "fs_product_name": "Betaine HCl",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 20,
+   "focus_area_name": "Adrenal Glands",
+   "fs_product_name": "Ashwagandha 700",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 21,
+   "focus_area_name": "Lungs",
+   "fs_product_name": "Quercetin",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 22,
+   "focus_area_name": "Spleen",
+   "fs_product_name": "Zinc 30",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 43,
+   "focus_area_name": "Muscle Fascia",
+   "fs_product_name": "Creatine",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 48,
+   "focus_area_name": "Energy Levels",
+   "fs_product_name": "D-Ribose",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 53,
+   "focus_area_name": "Pancreas",
+   "fs_product_name": "Berberine 500mg",
+   "rank": 0
+  },
+  {
+   "focus_area_id": 23,
+   "focus_area_name": "Hearing / Audio Processing",
+   "fs_product_name": "Magtein",
+   "rank": 0
   }
  ],
  "focus_area_items": [
@@ -131,6 +618,686 @@
   {
    "focus_area_id": 9,
    "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 16,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ED4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI14"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "EI16"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES2"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "ES10"
+  },
+  {
+   "focus_area_id": 36,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED5"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ED16"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET1"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET2"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 10,
+   "item_code": "ES6"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 11,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 14,
+   "item_code": "ET8"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "ET10"
+  },
+  {
+   "focus_area_id": 17,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED8"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED9"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI7"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "EI11"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ET9"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 19,
+   "item_code": "MB4"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI8"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 20,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED10"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "EI5"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET5"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET6"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 21,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED13"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED14"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ET3"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "ES1"
+  },
+  {
+   "focus_area_id": 22,
+   "item_code": "MB2"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ED6"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI1"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI4"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI13"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "EI15"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ET0"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES3"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES9"
+  },
+  {
+   "focus_area_id": 23,
+   "item_code": "ES15"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "ED9"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "EI3"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 43,
+   "item_code": "ES7"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED1"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED3"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED7"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI2"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI6"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "EI9"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ES4"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET12"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET11"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ET14"
+  },
+  {
+   "focus_area_id": 48,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED11"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED12"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ED15"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "EI10"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "EI12"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ET7"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ET13"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "ES13"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "MB1"
+  },
+  {
+   "focus_area_id": 53,
+   "item_code": "MB4"
   }
  ]
 }

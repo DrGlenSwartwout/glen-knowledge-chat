@@ -15,13 +15,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 5-Element (TCM) colors, saturated. White (Metal) and black (Water) render as
+# grey and deep blue so they stay visible on the cream background; Wood=green,
+# Fire=red, Earth=yellow are canonical. Each element's yin (zang) organ is drawn
+# more saturated than its yang (fu) organ (see YIN_ORGANS + the renderer).
 GROUPS = [
-    {"id": "metal", "label": "Metal — Lung / Large Intestine"},
-    {"id": "earth", "label": "Earth — Stomach / Spleen"},
-    {"id": "fire", "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"},
-    {"id": "water", "label": "Water — Kidney / Bladder"},
-    {"id": "wood", "label": "Wood — Gallbladder / Liver"},
+    {"id": "metal", "color": "#868e96", "label": "Metal — Lung / Large Intestine"},
+    {"id": "earth", "color": "#f2b705", "label": "Earth — Stomach / Spleen"},
+    {"id": "fire", "color": "#e03131", "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"},
+    {"id": "water", "color": "#1971c2", "label": "Water — Kidney / Bladder"},
+    {"id": "wood", "color": "#2f9e44", "label": "Wood — Gallbladder / Liver"},
 ]
+
+# Yin (zang, solid) organs are drawn more saturated than their yang (fu, hollow)
+# partner in the same element. Pericardium (PC) is yin, Triple Burner (TE) yang.
+YIN_ORGANS = {"LU", "SP", "HT", "KI", "PC", "LR"}
 
 # (code, name, element, start_hour, time_label, function)
 ORGANS = [
@@ -44,6 +52,7 @@ def _zone(code, name, element, start_hour, time_label, function):
     start = ((start_hour - 3) % 24) * 15  # Lung (3 AM) -> 0 deg at top; clockwise
     return {
         "id": f"clock-{code}", "side": "clock", "bilateral": False, "group": element,
+        "polarity": "yin" if code in YIN_ORGANS else "yang",
         "radial": {"r_inner": 0.42, "r_outer": 0.95},
         "sector": {"start_deg": start, "end_deg": start + 30},
         "start_hour": start_hour,
