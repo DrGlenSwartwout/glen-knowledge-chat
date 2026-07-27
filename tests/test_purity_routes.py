@@ -1,11 +1,13 @@
 """Phase-2a purity routes: request (portal+console), screen, tier2, confirm.
 Console writes are console-secret gated; client identity comes from the portal
 token only."""
+import io
 import sqlite3
 import pytest
 import app as app_mod
 from dashboard import product_ratings as pr
 from dashboard import purity_acquire
+from dashboard import purity_acquire as _pa_mod
 
 
 @pytest.fixture
@@ -247,3 +249,54 @@ def test_acquire_route_requires_product_key(client):
 def test_acquire_route_requires_product_slug(client):
     r = client.post("/api/console/purity/acquire", json={"product_key": "k"})
     assert r.status_code == 400
+
+
+def _img(client_form):
+    return {**client_form, "photo": (io.BytesIO(b"\xff\xd8fakejpeg"), "label.jpg")}
+
+
+def test_acquire_photo_screens_red(client, monkeypatch):
+    monkeypatch.setattr(_pa_mod, "acquire_from_image", lambda product, blob, ct, **k: {
+        "raw": "magnesium stearate, silica", "parsed": ["magnesium stearate", "silica"],
+        "source": "photo", "ok": True})
+    r = client.post("/api/console/purity/acquire-photo",
+                    data=_img({"product_key": "brand::prod", "product_name": "P", "brand": "B"}),
+                    content_type="multipart/form-data")
+    assert r.status_code == 200
+    b = r.get_json()
+    assert b["color"] == "red" and b["status"] == "screened" and b["source"] == "photo"
+
+
+def test_acquire_photo_miss_unrated(client, monkeypatch):
+    monkeypatch.setattr(_pa_mod, "acquire_from_image", lambda product, blob, ct, **k: {
+        "raw": "", "parsed": None, "source": "photo", "ok": False})
+    r = client.post("/api/console/purity/acquire-photo",
+                    data=_img({"product_key": "brand::unk"}), content_type="multipart/form-data")
+    assert r.status_code == 200
+    assert r.get_json()["color"] is None and r.get_json()["status"] == "unrated"
+
+
+def test_acquire_photo_requires_key(client):
+    r = client.post("/api/console/purity/acquire-photo",
+                    data=_img({}), content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_acquire_photo_requires_file(client):
+    r = client.post("/api/console/purity/acquire-photo",
+                    data={"product_key": "k"}, content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_acquire_photo_rejects_bad_type(client):
+    r = client.post("/api/console/purity/acquire-photo",
+                    data={"product_key": "k", "photo": (io.BytesIO(b"x"), "note.txt")},
+                    content_type="multipart/form-data")
+    assert r.status_code == 400
+
+
+def test_acquire_photo_unauthorized(client, monkeypatch):
+    monkeypatch.setattr(app_mod, "_portal_console_ok", lambda: False)
+    r = client.post("/api/console/purity/acquire-photo",
+                    data=_img({"product_key": "k"}), content_type="multipart/form-data")
+    assert r.status_code == 401

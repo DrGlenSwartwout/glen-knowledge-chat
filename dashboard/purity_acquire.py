@@ -56,3 +56,26 @@ def acquire(product, *, fetch=None, call_model=None):
         return {"raw": line, "parsed": parsed, "source": "fullscript", "ok": True}
     except Exception:
         return dict(_MISS)
+
+
+def acquire_from_image(product, blob, content_type, *, call_model=None):
+    """Acquire Other Ingredients from a single-product LABEL photo. Same
+    {raw,parsed,source,ok} contract as acquire(); source='photo'. DB-free; holds
+    no lock; never raises. Miss -> parsed None -> caller screens unrated."""
+    miss = {"raw": "", "parsed": None, "source": "photo", "ok": False}
+    try:
+        p = product or {}
+        line = _dx.extract_other_ingredients_from_image(
+            blob, content_type, name=p.get("name") or "", brand=p.get("brand") or "",
+            sku=p.get("sku") or "", call_model=call_model)
+        if line is None:
+            return dict(miss)
+        if line == "":
+            return {"raw": "None (no other ingredients listed)", "parsed": [],
+                    "source": "photo", "ok": True}
+        parsed = split_other_ingredients(line)
+        if not parsed:
+            return dict(miss)
+        return {"raw": line, "parsed": parsed, "source": "photo", "ok": True}
+    except Exception:
+        return dict(miss)

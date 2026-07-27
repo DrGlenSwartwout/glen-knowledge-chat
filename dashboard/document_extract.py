@@ -418,6 +418,31 @@ def _quote_near_anchor(source_text, quote, anchors, window=5000):
     return False
 
 
+def _ground_oi(payload, source_text, anchors):
+    """Resolve a model payload {other_ingredients_line?, none_source_quote?} to a
+    verified line / "" (verified explicit-none -> caller screens green) / None
+    (miss -> unrated). Every non-None outcome must pass verify_quotes against
+    source_text; when `anchors` is a list the quote must ALSO fall within a
+    target anchor (_quote_near_anchor) -- for multi-product online pages.
+    `anchors=None` skips the anchor: a single-product LABEL photo has no neighbor
+    to borrow from, so verify_quotes against the label's own transcription is the
+    whole guard."""
+    line = payload.get("other_ingredients_line")
+    if isinstance(line, str) and line.strip():
+        kept, _d = verify_quotes([{"source_quote": line}], source_text)
+        if kept and (anchors is None or _quote_near_anchor(source_text, line, anchors)):
+            return line.strip()
+        return None
+    none_q = payload.get("none_source_quote")
+    if isinstance(none_q, str) and none_q.strip():
+        kept, _d = verify_quotes([{"source_quote": none_q}], source_text)
+        nq = _norm_text(none_q)
+        if (kept and "none" in nq and "ingredient" in nq
+                and (anchors is None or _quote_near_anchor(source_text, none_q, anchors))):
+            return ""
+    return None
+
+
 def extract_other_ingredients(source_text, *, name, brand, sku="", slug="", call_model=None):
     """Resolve the target product's Other Ingredients to one of three outcomes:
 
@@ -454,18 +479,84 @@ def extract_other_ingredients(source_text, *, name, brand, sku="", slug="", call
         return None
     if not isinstance(payload, dict):
         return None
-    anchors = [name or "", brand or "", sku or "", slug or ""]
-    line = payload.get("other_ingredients_line")
-    if isinstance(line, str) and line.strip():
-        kept, _dropped = verify_quotes([{"source_quote": line}], source_text)
-        if kept and _quote_near_anchor(source_text, line, anchors):
-            return line.strip()
+    return _ground_oi(payload, source_text, [name or "", brand or "", sku or "", slug or ""])
+
+
+# --- Image-source Other-Ingredients extraction (purity Phase 2c) ----------
+# Sibling of extract_other_ingredients, for a single-product LABEL PHOTO rather
+# than a multi-product catalog page. There is no neighbor product to borrow a
+# quote from, so grounding is against the model's OWN verbatim transcription of
+# the label (`label_text`) with NO anchor -- verify_quotes against that
+# transcription is the whole guard.
+
+_OTHER_ING_IMAGE_PROMPT = (
+    "You are reading a photo of a single dietary supplement product label. "
+    "Return STRICT JSON with:\n"
+    '  "label_text": a VERBATIM transcription of ALL text visible on the label, '
+    "exactly as printed. Every other value is checked against this, so any text "
+    "not present here is discarded.\n"
+    "AND ONE of:\n"
+    '  "other_ingredients_line": the VERBATIM "Other Ingredients" (or '
+    '"Non-Medicinal Ingredients") text copied exactly, WITHOUT the label word; '
+    "OR\n"
+    '  "none_source_quote": if the label explicitly states it has none (e.g. '
+    '"Other Ingredients: None"), that verbatim declaration INCLUDING the word '
+    '"None"; OR\n'
+    '  "other_ingredients_line": "" if the label is unreadable or shows no '
+    "other-ingredients section.\n"
+    "Never invent an ingredient not printed on the label. No markdown fences, no "
+    "prose outside the JSON."
+)
+
+
+def _default_call_model_image(blob, content_type):
+    """Real Anthropic vision call for a supplement-label photo. Lazy-imported so
+    tests that inject call_model never pull the SDK. Mirrors _default_call_model's
+    image/PDF source shaping."""
+    import base64
+    import anthropic
+    cli = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    b64 = base64.standard_b64encode(blob).decode("ascii")
+    ct = (content_type or "").lower()
+    if ct == "application/pdf":
+        doc = {"type": "document", "source": {"type": "base64",
+               "media_type": "application/pdf", "data": b64}}
+    else:
+        # Anthropic's vision media_type is image/jpeg, not image/jpg -- the
+        # route allows image/jpg (some browsers report it), so normalize or a
+        # real JPEG would fail the SDK call and silently land 'unrated'.
+        media = "image/jpeg" if ct == "image/jpg" else ct
+        doc = {"type": "image", "source": {"type": "base64",
+               "media_type": media, "data": b64}}
+    resp = cli.messages.create(
+        model=_MODEL, max_tokens=2000,
+        messages=[{"role": "user", "content": [doc, {"type": "text",
+                                                     "text": _OTHER_ING_IMAGE_PROMPT}]}])
+    text = resp.content[0].text.strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1]
+        if text.startswith("json\n"):
+            text = text[5:]
+    return json.loads(text)
+
+
+def extract_other_ingredients_from_image(blob, content_type, *, name="", brand="",
+                                         sku="", call_model=None):
+    """Vision variant of extract_other_ingredients for a single-product LABEL
+    photo. Returns a verified line / "" (verified explicit-none) / None (miss),
+    grounded by verify_quotes against the model's OWN verbatim transcription
+    (`label_text`) -- NO anchor, since a single label has no neighbor product to
+    borrow from. Fails closed to None on a model error, non-dict reply, or a
+    missing/blank/non-str transcription. name/brand/sku are accepted for parity
+    with the text extractor but unused here (no anchor)."""
+    call = call_model or _default_call_model_image
+    try:
+        payload = call(blob, content_type)
+    except Exception:
         return None
-    none_q = payload.get("none_source_quote")
-    if isinstance(none_q, str) and none_q.strip():
-        kept, _dropped = verify_quotes([{"source_quote": none_q}], source_text)
-        nq = _norm_text(none_q)
-        if (kept and "none" in nq and "ingredient" in nq
-                and _quote_near_anchor(source_text, none_q, anchors)):
-            return ""     # verified explicit-none, in the target's region -> green
-    return None
+    if not isinstance(payload, dict):
+        return None
+    src = payload.get("label_text")
+    if not isinstance(src, str) or not src.strip():
+        return None
+    return _ground_oi(payload, src, None)

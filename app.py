@@ -28161,6 +28161,47 @@ def api_console_purity_acquire():
                     "source": res["source"], "raw": res["raw"]})
 
 
+@app.route("/api/console/purity/acquire-photo", methods=["POST"])
+def api_console_purity_acquire_photo():
+    """Operator uploads a product LABEL photo; vision-extract the Other
+    Ingredients, screen, and record. Phase-2c fallback for products online
+    sources can't resolve. The vision call runs OUTSIDE _db_lock (same contract
+    as /purity/acquire); only record_screen is inside. A miss screens 'unrated'
+    (never green)."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import (product_ratings as _pr, purity_screen as _ps,
+                           purity_avoidlist as _pa, purity_acquire as _acq)
+    key = (request.form.get("product_key") or "").strip()
+    if not key:
+        return jsonify({"error": "product_key_required"}), 400
+    f = request.files.get("photo") or request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"error": "photo_required"}), 400
+    ctype = (f.mimetype or "").lower()
+    if ctype not in ("image/png", "image/jpeg", "image/jpg", "image/webp",
+                     "image/gif", "application/pdf"):
+        return jsonify({"error": "image_or_pdf_only"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"error": "file_too_large"}), 400
+    brand = request.form.get("brand") or ""
+    name = request.form.get("product_name") or ""
+    # Slow vision call: OUTSIDE the lock.
+    res = _acq.acquire_from_image({"name": name, "brand": brand}, blob, ctype)
+    avoidlist = _pa.load_avoidlist()
+    screen = _ps.screen_label(None, res["parsed"], avoidlist)   # parsed None -> unrated
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_tables(cx)
+        _pr.record_screen(cx, key, brand=brand, product_name=name,
+                          other_ingredients_raw=res["raw"],
+                          other_ingredients_parsed=(res["parsed"] or []), screen=screen)
+        row = _pr.get(cx, key)
+    return jsonify({"ok": True, "status": row["status"], "color": row["color"],
+                    "source": res["source"], "raw": res["raw"]})
+
+
 @app.route("/api/console/purity/tier2", methods=["POST"])
 def api_console_purity_tier2():
     if not _portal_console_ok():
