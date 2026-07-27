@@ -120,3 +120,19 @@ def test_happy_path_returns_checkout_url(client, monkeypatch):
     }
     assert captured["success_url"] == f"{_MHOST}/learn/{_COURSE}/{_MODULE}?certified=1"
     assert captured["cancel_url"] == f"{_MHOST}/learn/{_COURSE}/{_MODULE}"
+
+
+def test_non_required_module_not_certifiable(client, monkeypatch):
+    # On the real cert course, a module outside the 12 required set (e.g. intro)
+    # must not be sellable. Simulate by pointing _CERT_COURSE at the sample
+    # course and excluding this module from the required set.
+    c, appmod = client
+    monkeypatch.setattr(appmod, "_CERT_COURSE", _COURSE)
+    monkeypatch.setattr(appmod, "_CERT_REQUIRED_MODULES", ["99-not-this"])
+    _stripe_on(monkeypatch)
+    email = "learner@test.co"
+    _complete_module(appmod, email)
+    tok = _mint_token(appmod, email)
+    r = c.post(_URL, base_url=_MHOST, query_string={"token": tok})
+    assert r.status_code == 404
+    assert r.get_json() == {"error": "not certifiable"}

@@ -337,7 +337,10 @@ def lesson_page(course_slug, module_slug, lesson_slug):
     body += hw_html
 
     cert_price_set = bool(os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip())
-    if email and cert_price_set:
+    import app as _appmod  # late import: the certifiable-module set
+    cert_certifiable = (course_slug != _appmod._CERT_COURSE
+                        or module_slug in _appmod._CERT_REQUIRED_MODULES)
+    if email and cert_price_set and cert_certifiable:
         cert_module = next((m for m in course.modules if m.slug == module_slug), None)
         cert_lesson_slugs = [l.slug for l in cert_module.lessons] if cert_module else []
         cx2 = _connect()
@@ -568,6 +571,11 @@ def courses_certify_module(course_slug, module_slug):
     module = next((m for m in course.modules if m.slug == module_slug), None)
     if module is None:
         return jsonify({"error": "not found"}), 404
+    # On the real certification course, only the 12 certifiable modules count
+    # toward the credential; refuse to sell a dead-end certification for a
+    # non-required module (e.g. the intro).
+    if course_slug == appmod._CERT_COURSE and module_slug not in appmod._CERT_REQUIRED_MODULES:
+        return jsonify({"error": "not certifiable"}), 404
     lesson_slugs = [l.slug for l in module.lessons]
 
     cx = _connect()

@@ -3,8 +3,9 @@ completed module ($200), which lands PENDING until an admin approves it. Pure:
 stdlib + the caller's sqlite3 connection only. Money-adjacent — idempotent on
 stripe_ref. Reads never raise."""
 from __future__ import annotations
-import sqlite3
 import time
+
+from dashboard import db
 
 
 def _norm(s): return (s or "").strip().lower()
@@ -39,7 +40,7 @@ def record_purchase(cx, email, course, module, stripe_ref, amount_cents) -> bool
                        (email, course, module, "pending", stripe_ref, amount_cents, _now()))
             cx.commit()
             return True
-        except sqlite3.IntegrityError:
+        except db.IntegrityError:
             cx.rollback()  # replayed stripe_ref — already recorded, do not duplicate
             return False
     except Exception:
