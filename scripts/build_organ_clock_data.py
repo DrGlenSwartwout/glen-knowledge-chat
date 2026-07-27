@@ -15,12 +15,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 5-Element (TCM) colors. White (Metal) and black (Water) are rendered as
+# silver-grey and deep blue so they stay visible at the map's 0.35 fill-opacity
+# on the cream background; Wood=green, Fire=red, Earth=yellow/gold are canonical.
 GROUPS = [
-    {"id": "metal", "label": "Metal — Lung / Large Intestine"},
-    {"id": "earth", "label": "Earth — Stomach / Spleen"},
-    {"id": "fire", "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"},
-    {"id": "water", "label": "Water — Kidney / Bladder"},
-    {"id": "wood", "label": "Wood — Gallbladder / Liver"},
+    {"id": "metal", "color": "#9aa0a6", "label": "Metal — Lung / Large Intestine"},
+    {"id": "earth", "color": "#caa02c", "label": "Earth — Stomach / Spleen"},
+    {"id": "fire", "color": "#c0392b", "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"},
+    {"id": "water", "color": "#2f5fa6", "label": "Water — Kidney / Bladder"},
+    {"id": "wood", "color": "#3f8f4a", "label": "Wood — Gallbladder / Liver"},
 ]
 
 # (code, name, element, start_hour, time_label, function)

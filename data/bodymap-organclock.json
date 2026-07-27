@@ -6,22 +6,27 @@
   "groups": [
     {
       "id": "metal",
+      "color": "#9aa0a6",
       "label": "Metal — Lung / Large Intestine"
     },
     {
       "id": "earth",
+      "color": "#caa02c",
       "label": "Earth — Stomach / Spleen"
     },
     {
       "id": "fire",
+      "color": "#c0392b",
       "label": "Fire — Heart / Small Intestine / Pericardium / Triple Burner"
     },
     {
       "id": "water",
+      "color": "#2f5fa6",
       "label": "Water — Kidney / Bladder"
     },
     {
       "id": "wood",
+      "color": "#3f8f4a",
       "label": "Wood — Gallbladder / Liver"
     }
   ],
