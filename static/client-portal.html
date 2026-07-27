@@ -808,7 +808,16 @@ function fullscriptBodyHtml(fsData){
       const ff = (p.ff && p.ff.name)
         ? `<span class="small muted"> · you also have <strong>${esc(p.ff.name)}</strong></span>` : "";
       const why = p.reason ? `<div class="small muted">${esc(p.reason)}</div>` : "";
-      return `<li><a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}</li>`;
+      // Purity badge (Phase 3, flag-gated server-side): a color dot+tooltip for
+      // green/yellow; a greyed row + note for a confirmed red. Absent p.purity
+      // renders exactly as before.
+      const pc = p.purity && p.purity.color;
+      const dot = (bg, label) => `<span title="${esc(label)}" style="display:inline-block;width:.6em;height:.6em;border-radius:50%;background:${bg};margin-right:.4em;vertical-align:middle"></span>`;
+      let badge = "", liStyle = "", note = "";
+      if (pc === "green") badge = dot("#2f6f5e", "Meets our purity standard");
+      else if (pc === "yellow") badge = dot("#c9a227", "Minor filler only");
+      else if (pc === "red") { liStyle = ' style="opacity:.55"'; note = `<div class="small muted">contains excipients we avoid</div>`; }
+      return `<li${liStyle}>${badge}<a href="/fs/${fsToken}/${esc(p.product_slug||"")}" target="_blank" rel="noopener">${esc(p.name||"")}</a>${brand}${ff}${why}${note}</li>`;
     }).join("");
     if(!items) return "";   // mirror can carry zero-product groups; don't render a bare heading
     return `<h3 class="small" style="margin:.2rem 0">${esc(g.heading||"")}</h3><ul>${items}</ul>`;
