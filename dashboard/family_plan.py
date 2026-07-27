@@ -12,11 +12,22 @@ the routes/cron, guarded by next_charge_at advancing only on success.
 mid-month. The cron cancels after its retry budget, and cancelling stops cover.
 """
 
-PLAN = {
-    "amount_cents": 14700,   # the special offer, charged monthly
-    "value_cents": 19700,    # the anchor shown alongside it
-    "label": "Family Plan",
+TIERS = {
+    "family_monthly": {
+        "key": "family_monthly", "amount_cents": 14700,
+        "cadence_months": 1, "label": "Household Membership — Monthly",
+    },
+    "family_annual": {
+        "key": "family_annual", "amount_cents": 149700,
+        "cadence_months": 12, "label": "Household Membership — Annual",
+    },
 }
+# Backward-compatible alias used by the portal and console while they migrate to tiers.
+PLAN = {**TIERS["family_monthly"], "value_cents": 19700}
+
+
+def get_tier(key):
+    return TIERS.get(key)
 
 # Statuses that still entitle. `past_due` = grace while the cron retries.
 ACTIVE_STATUSES = ("active", "past_due")
@@ -32,6 +43,7 @@ CREATE TABLE IF NOT EXISTS family_subscriptions (
     started_at TEXT,
     next_charge_at TEXT,
     last_charged_at TEXT,
+    cadence_months INTEGER DEFAULT 1,
     fail_count INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_familysub_due ON family_subscriptions(status, next_charge_at);
@@ -57,11 +69,16 @@ def _lc(email):
 
 def init_family_plan_table(cx):
     cx.executescript(_DDL)
+    try:
+        cx.execute("ALTER TABLE family_subscriptions ADD COLUMN cadence_months INTEGER DEFAULT 1")
+    except Exception:
+        pass
     cx.commit()
 
 
 def activate(cx, caregiver_email, *, next_charge_at, customer_id=None,
-             payment_method_id=None, source="stripe", amount_cents=None):
+             payment_method_id=None, source="stripe", amount_cents=None,
+             cadence_months=1):
     """Start (or restart) a caregiver's plan. A comped plan passes source='comp'
     with no card and no next_charge_at — same entitlement, never billed.
 
@@ -74,14 +91,15 @@ def activate(cx, caregiver_email, *, next_charge_at, customer_id=None,
         raise ValueError("amount_cents must be non-negative")
     cx.execute(
         "INSERT INTO family_subscriptions (caregiver_email,amount_cents,stripe_customer_id,"
-        "payment_method_id,status,source,started_at,next_charge_at,fail_count) "
-        "VALUES (?,?,?,?,'active',?,?,?,0) "
+        "payment_method_id,status,source,started_at,next_charge_at,cadence_months,fail_count) "
+        "VALUES (?,?,?,?,'active',?,?,?,?,0) "
         "ON CONFLICT(caregiver_email) DO UPDATE SET "
         "amount_cents=excluded.amount_cents, stripe_customer_id=excluded.stripe_customer_id, "
         "payment_method_id=excluded.payment_method_id, status='active', "
-        "source=excluded.source, next_charge_at=excluded.next_charge_at, fail_count=0",
+        "source=excluded.source, next_charge_at=excluded.next_charge_at, "
+        "cadence_months=excluded.cadence_months, fail_count=0",
         (_lc(caregiver_email), amt, customer_id, payment_method_id,
-         source, _now(), next_charge_at))
+         source, _now(), next_charge_at, int(cadence_months)))
     cx.commit()
 
 
