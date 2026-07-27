@@ -2732,6 +2732,13 @@ def begin_page():
     return _serve_funnel_home()
 
 
+@app.route("/purity-stat")
+def purity_stat_page():
+    """Public embeddable widget rendering GET /api/purity/stats. iframe-friendly;
+    self-contained. No auth."""
+    return send_from_directory(STATIC, "purity-stat.html")
+
+
 @app.route("/begin/tone")
 def begin_tone():
     resp = send_from_directory(STATIC, "tone-analyzer.html")

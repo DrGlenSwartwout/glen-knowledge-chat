@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Purity screen — the numbers</title>
+<style>
+  :root { --green:#2f6f5e; --gold:#c9a227; --fail:#8a4b4b; --ink:#1c2a26; --muted:#6b7a75; }
+  html,body { margin:0; background:transparent; }
+  .wrap { font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink);
+          max-width:520px; margin:0 auto; padding:1.25rem 1.4rem; box-sizing:border-box; }
+  .big { font-size:2.6rem; font-weight:800; line-height:1; color:var(--fail); }
+  .headline { font-size:1.05rem; font-weight:600; margin:.5rem 0 .1rem; }
+  .denom { color:var(--muted); font-size:.85rem; margin-bottom:.9rem; }
+  .split { display:flex; gap:.5rem; font-size:.8rem; }
+  .split div { flex:1; text-align:center; padding:.4rem .2rem; border-radius:.5rem; background:#f3f6f4; }
+  .split b { display:block; font-size:1.1rem; }
+  .g { color:var(--green); } .y { color:var(--gold); } .r { color:var(--fail); }
+  .err { color:var(--muted); font-size:.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><span class="err">Loading purity screen…</span></div>
+<script>
+(function(){
+  var root = document.getElementById("root");
+  fetch("/api/purity/stats").then(function(r){ return r.json(); }).then(function(d){
+    if (!d || !d.screened) { root.innerHTML = '<span class="err">No products screened yet.</span>'; return; }
+    root.innerHTML =
+      '<div class="big">' + d.fail_pct + '%</div>' +
+      '<div class="headline">of professional-quality products we've screened fail our purity standard</div>' +
+      '<div class="denom">Of ' + d.screened + ' professional products we've screened.</div>' +
+      '<div class="split">' +
+        '<div><b class="g">' + d.clean_pct + '%</b>fully clean</div>' +
+        '<div><b class="y">' + d.filler_pct + '%</b>filler only</div>' +
+        '<div><b class="r">' + d.fail_pct + '%</b>excipients we avoid</div>' +
+      '</div>';
+  }).catch(function(){ root.innerHTML = '<span class="err">Purity screen unavailable.</span>'; });
+})();
+</script>
+</body>
+</html>
