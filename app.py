@@ -15922,7 +15922,12 @@ def api_practitioner_dropship_checkout():
     if not ship:
         return jsonify({"ok": False, "error": "patient_address is required"}), 400
     try:
-        out = _dropship.build_dropship_order(items, prac, patient_ship=ship, method=method)
+        shipping_cents = int(_price_cart(items, ship=ship)["shipping_cents"])
+        out = _dropship.build_dropship_order(
+            items, prac, patient_ship=ship, method=method,
+            shipping_cents=shipping_cents)
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
     except Exception as e:
         print(f"[dropship-checkout] failed: {e!r}", flush=True)
         return jsonify({"ok": False, "error": "Checkout failed. Please try again."}), 500
@@ -15935,7 +15940,8 @@ def api_practitioner_dropship_checkout():
                       total_cents=int(round((out.get("total") or 0) * 100)),
                       items=items, address=ship, channel="wholesale",
                       get_cents=out.get("get_cents", 0), pay_method=method,
-                      practitioner_id=pid)
+                      practitioner_id=pid,
+                      shipping_cents=out.get("shipping_cents", 0))
         # Persist the line-faithful QBO payload (paid-only: no invoice yet) so the
         # return-handler can book a real Sales Receipt once payment is confirmed.
         if out.get("qbo_payload"):
@@ -30136,9 +30142,13 @@ def api_console_dropship_reissue():
             "email": old.get("email") or "",
             "name": old.get("name") or "",
         }
+        shipping_cents = int(_price_cart(
+            old.get("items") or [], ship=old.get("address") or {}
+        )["shipping_cents"])
         out = _dropship.build_dropship_order(
             old.get("items") or [], practitioner,
-            patient_ship=old.get("address") or {}, method="card")
+            patient_ship=old.get("address") or {}, method="card",
+            shipping_cents=shipping_cents)
         if not out.get("ok"):
             return jsonify({"error": f"could not reprice order #{oid}"}), 422
         new_ref = str(out.get("invoice_id") or "")
@@ -30159,7 +30169,8 @@ def api_console_dropship_reissue():
             items=old.get("items") or [], total_cents=new_total,
             address=old.get("address") or {}, channel="wholesale",
             get_cents=out.get("get_cents", 0), pay_method="card",
-            practitioner_id=pid)
+            practitioner_id=pid,
+            shipping_cents=out.get("shipping_cents", 0))
         if out.get("qbo_payload"):
             with db.connect(LOG_DB) as cx:
                 _bos_orders.set_order_qbo_lines(cx, new_ref, out["qbo_payload"])
