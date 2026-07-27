@@ -37,14 +37,17 @@ def acquire(product, *, fetch=None, call_model=None):
     """Acquire Other Ingredients for `product` (dict: product_slug, name,
     brand, optional sku). Returns {raw, parsed, source, ok}. DB-free; holds no
     lock; never raises."""
-    slug = (product or {}).get("product_slug")
-    text = _fi.fetch_page_text(slug, fetch=fetch)
-    if not text:
+    try:
+        slug = (product or {}).get("product_slug")
+        text = _fi.fetch_page_text(slug, fetch=fetch)
+        if not text:
+            return dict(_MISS)
+        line = _dx.extract_other_ingredients(
+            text, name=product.get("name") or "", brand=product.get("brand") or "",
+            sku=product.get("sku") or "", call_model=call_model)
+        if not line:
+            return dict(_MISS)
+        return {"raw": line, "parsed": split_other_ingredients(line),
+                "source": "fullscript", "ok": True}
+    except Exception:
         return dict(_MISS)
-    line = _dx.extract_other_ingredients(
-        text, name=product.get("name") or "", brand=product.get("brand") or "",
-        sku=product.get("sku") or "", call_model=call_model)
-    if not line:
-        return dict(_MISS)
-    return {"raw": line, "parsed": split_other_ingredients(line),
-            "source": "fullscript", "ok": True}
