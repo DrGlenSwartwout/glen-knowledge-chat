@@ -27676,7 +27676,16 @@ def api_console_purity_screen():
     runs the Phase-1 screen against the avoid-list. other_ingredients is passed
     through UNCHANGED to screen_label -- None means no data was obtained and
     must land 'unrated' (never green); an empty list means the product is known
-    to list no other ingredients and screens green."""
+    to list no other ingredients and screens green.
+
+    other_ingredients_text is a convenience input for operators pasting a
+    label's "Other Ingredients:" line as a single string. Precedence:
+      1. other_ingredients key present (list or explicit null) -> used as-is.
+      2. else other_ingredients_text present and non-blank after stripping ->
+         split on newlines AND commas, strip each item, drop empties -> list.
+      3. else -> None -> unrated. A blank/whitespace-only
+         other_ingredients_text must NOT become [] (which would read green);
+         it means "no data" -> None -> unrated (safety-critical)."""
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
     from dashboard import (product_ratings as _pr, purity_screen as _ps,
@@ -27685,12 +27694,26 @@ def api_console_purity_screen():
     key = (b.get("product_key") or "").strip()
     if not key:
         return jsonify({"error": "product_key_required"}), 400
-    oi = b.get("other_ingredients")   # None -> unrated (never green); list -> screened
-    if oi is not None and not isinstance(oi, list):
-        return jsonify({"error": "other_ingredients_must_be_list_or_null"}), 400
+    raw_text = None
+    if "other_ingredients" in b:
+        oi = b.get("other_ingredients")   # None -> unrated (never green); list -> screened
+        if oi is not None and not isinstance(oi, list):
+            return jsonify({"error": "other_ingredients_must_be_list_or_null"}), 400
+    else:
+        text = b.get("other_ingredients_text")
+        if text is not None and str(text).strip():
+            raw_text = str(text).strip()
+            oi = [p.strip() for p in re.split(r"[\n,]+", text) if p.strip()]
+        else:
+            oi = None
     avoidlist = _pa.load_avoidlist()
     screen = _ps.screen_label(b.get("actives"), oi, avoidlist)
-    raw = "" if oi is None else "\n".join(oi)
+    if oi is None:
+        raw = ""
+    elif raw_text is not None:
+        raw = raw_text
+    else:
+        raw = "\n".join(oi)
     with _db_lock, db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row   # product_ratings.get() needs Row for dict(r)
         _pr.init_tables(cx)

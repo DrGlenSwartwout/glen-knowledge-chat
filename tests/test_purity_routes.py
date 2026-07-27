@@ -81,3 +81,41 @@ def test_console_screen_none_data_is_unrated_not_green(client):
     assert r.status_code == 200
     assert _get(app_mod.LOG_DB, "k2")["status"] == "unrated"
     assert _get(app_mod.LOG_DB, "k2")["color"] is None
+
+
+def test_console_screen_text_comma_split_reaches_screen(client):
+    client.post("/api/console/purity/request",
+                json={"product_key": "k3", "brand": "B", "product_name": "N"})
+    r = client.post("/api/console/purity/screen",
+                    json={"product_key": "k3",
+                          "other_ingredients_text": "Cellulose, Magnesium Stearate, Silica"})
+    assert r.status_code == 200
+    row = _get(app_mod.LOG_DB, "k3")
+    assert row["status"] == "screened" and row["color"] == "red"
+
+
+def test_console_screen_text_newline_split_reaches_screen(client):
+    # "Magnesium" and "Stearate" on separate label lines are two distinct,
+    # unlisted items -- neither is the red alias "magnesium stearate" on its
+    # own. If newline splitting were dropped, the two lines would collapse
+    # into one normalized string "magnesium stearate" and false-positive red,
+    # so this also proves the newline (not just comma) split actually runs.
+    client.post("/api/console/purity/request",
+                json={"product_key": "k4", "brand": "B", "product_name": "N"})
+    r = client.post("/api/console/purity/screen",
+                    json={"product_key": "k4",
+                          "other_ingredients_text": "Magnesium\nStearate"})
+    assert r.status_code == 200
+    row = _get(app_mod.LOG_DB, "k4")
+    assert row["status"] == "screened" and row["color"] == "green"
+
+
+def test_console_screen_blank_text_is_unrated_not_green(client):
+    client.post("/api/console/purity/request",
+                json={"product_key": "k5", "brand": "B", "product_name": "N"})
+    r = client.post("/api/console/purity/screen",
+                    json={"product_key": "k5", "other_ingredients_text": "   "})
+    assert r.status_code == 200
+    row = _get(app_mod.LOG_DB, "k5")
+    assert row["status"] == "unrated"
+    assert row["color"] is None
