@@ -112,3 +112,21 @@ def test_shipping_details_to_address_missing_returns_empty():
     assert shipping_details_to_address({"address": {}}) == {}
     # No line1 (address present but street missing) -- still treated as absent.
     assert shipping_details_to_address({"name": "X", "address": {"city": "Honolulu"}}) == {}
+
+
+def test_expire_open_sessions_for_invoice_only_expires_matching_open(monkeypatch):
+    from dashboard import stripe_pay
+    monkeypatch.setattr(stripe_pay, "_get", lambda path: {"data": [
+        {"id": "cs_match", "status": "open", "metadata": {"invoice_id": "old-ref"}},
+        {"id": "cs_paid", "status": "complete", "metadata": {"invoice_id": "old-ref"}},
+        {"id": "cs_other", "status": "open", "metadata": {"invoice_id": "other-ref"}},
+    ]})
+    expired = []
+    monkeypatch.setattr(
+        stripe_pay, "_post",
+        lambda path, params: expired.append((path, params)) or {"status": "expired"})
+
+    count = stripe_pay.expire_open_sessions_for_invoice("old-ref")
+
+    assert count == 1
+    assert expired == [("/checkout/sessions/cs_match/expire", {})]

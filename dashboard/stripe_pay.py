@@ -206,6 +206,23 @@ def get_session(session_id) -> dict:
             "shipping_details": j.get("shipping_details")}
 
 
+def expire_open_sessions_for_invoice(invoice_id: str, *, limit: int = 100) -> int:
+    """Expire recent open Checkout Sessions carrying metadata.invoice_id."""
+    target = str(invoice_id or "").strip()
+    if not target:
+        return 0
+    result = _get(f"/checkout/sessions?limit={max(1, min(int(limit), 100))}")
+    expired = 0
+    for session in result.get("data") or []:
+        if (session.get("metadata") or {}).get("invoice_id") != target:
+            continue
+        if session.get("status") != "open":
+            continue
+        _post(f"/checkout/sessions/{session['id']}/expire", {})
+        expired += 1
+    return expired
+
+
 def shipping_details_to_address(shipping_details) -> dict:
     """Map a Stripe Checkout Session's `shipping_details` field ({name,
     address:{line1,line2,city,state,postal_code,country}}) to the order address
