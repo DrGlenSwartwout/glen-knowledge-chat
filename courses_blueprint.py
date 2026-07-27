@@ -335,6 +335,36 @@ def lesson_page(course_slug, module_slug, lesson_slug):
         f'document.getElementById("mu-hw-ok").textContent=d.ok?("Submitted."+(d.feedback?" "+d.feedback:"")):(d.error||"Error");}});}}'
         f'</script></div>')
     body += hw_html
+
+    cert_price_set = bool(os.environ.get("STRIPE_MODULE_CERT_PRICE_ID", "").strip())
+    if email and cert_price_set:
+        cert_module = next((m for m in course.modules if m.slug == module_slug), None)
+        cert_lesson_slugs = [l.slug for l in cert_module.lessons] if cert_module else []
+        cx2 = _connect()
+        try:
+            from dashboard import course_progress as cp
+            cert_completed = cp.module_completed(cx2, email, course_slug, module_slug, cert_lesson_slugs)
+            cert_status = (module_certifications.status_for(cx2, email, course_slug, module_slug)
+                           if cert_completed else None)
+        finally:
+            cx2.close()
+        if cert_completed:
+            if cert_status == "approved":
+                body += '<div class="mu-cert"><p><b>Module certified.</b></p></div>'
+            elif cert_status == "pending":
+                body += '<div class="mu-cert"><p>Certification submitted. It is pending review.</p></div>'
+            else:
+                body += (
+                    '<div class="mu-cert"><h3>Certify this module</h3>'
+                    '<p>Certification for this module is $200.</p>'
+                    '<button type="button" onclick="muCertify()">Certify this module, $200</button> '
+                    '<span id="mu-cert-ok"></span>'
+                    f'<script>function muCertify(){{fetch("/api/courses/{course_slug}/{module_slug}/certify"'
+                    f'+location.search,{{method:"POST",headers:{{"Content-Type":"application/json"}}}})'
+                    f'.then(function(r){{return r.json()}}).then(function(d){{if(d.url){{location.href=d.url}}'
+                    f'else{{document.getElementById("mu-cert-ok").textContent=(d.error||"Not available right now.");}}}});}}'
+                    f'</script></div>'
+                )
     return render_template_string(_PAGE, title=lesson.title, body=body)
 
 
