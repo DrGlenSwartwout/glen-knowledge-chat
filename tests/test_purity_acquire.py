@@ -97,3 +97,37 @@ def test_acquire_unverifiable_none_stays_unrated():
         fetch=lambda url, headers: type("R", (), {"status_code": 200, "text": NONE_PAGE})(),
         call_model=lambda s, n, b, k: {"none_source_quote": "there are absolutely no fillers whatsoever"})
     assert res == {"raw": "", "parsed": None, "source": "fullscript", "ok": False}
+
+
+# --- Tests for acquire_from_image ---
+_PHOTO_MISS = {"raw": "", "parsed": None, "source": "photo", "ok": False}
+
+
+def test_acquire_from_image_line_screens():
+    res = pa.acquire_from_image(
+        {"name": "Mag Taurate", "brand": "X"}, b"img", "image/jpeg",
+        call_model=lambda blob, ct: {"label_text": "Other Ingredients: magnesium stearate, silica",
+                                     "other_ingredients_line": "magnesium stearate, silica"})
+    assert res["ok"] is True and res["source"] == "photo"
+    assert "magnesium stearate" in res["parsed"] and "silica" in res["parsed"]
+
+
+def test_acquire_from_image_explicit_none_is_green():
+    res = pa.acquire_from_image(
+        {"name": "Creatine", "brand": "Thorne"}, b"img", "image/jpeg",
+        call_model=lambda blob, ct: {"label_text": "Other Ingredients: None.",
+                                     "none_source_quote": "Other Ingredients: None"})
+    assert res["ok"] is True and res["parsed"] == [] and res["source"] == "photo"
+
+
+def test_acquire_from_image_miss_is_unrated():
+    res = pa.acquire_from_image(
+        {"name": "X", "brand": "Y"}, b"img", "image/jpeg",
+        call_model=lambda blob, ct: {"label_text": "unrelated text", "other_ingredients_line": ""})
+    assert res == _PHOTO_MISS
+
+
+def test_acquire_from_image_never_raises():
+    res = pa.acquire_from_image({"name": "X"}, b"img", "image/jpeg",
+                                call_model=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert res == _PHOTO_MISS
