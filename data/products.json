@@ -2610,10 +2610,13 @@
       "qty_pricing": true
     },
     "clear-the-way": {
-      "name": "5 Ways \"Clear the Way\" Naturally Transforms Tissue Healing",
+      "name": "Clear the Way",
       "price_cents": 6997,
-      "pinecone_title": "5 Ways &quot;Clear the Way&quot; Naturally Transforms Tissue Healing",
+      "pinecone_title": "Clear the Way",
       "url": "https://remedymatch.com/remedies/syntropy/20-clear-the-way",
+      "description": "Clear the Way Functional Formulation — 30 capsules.",
+      "bottle_type": "30 Caps",
+      "fmp_id": "1125",
       "qty_pricing": true
     },
     "clarity": {
