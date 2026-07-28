@@ -23424,7 +23424,18 @@ def _fullscript_for(email, scan_date):
                 "ff": _fullscript_ff_view(c.get("best_ff"), c.get("relation")),
             })
         _enrich_fullscript_purity(groups)
-        return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups}
+        photo_ok = False
+        if _purity_badges_enabled():
+            try:
+                from dashboard import purity_ratings_access as _acc
+                with db.connect(LOG_DB) as cx:
+                    _acc.init_table(cx)
+                    _e = (email_norm or "").strip().lower()
+                    photo_ok = _acc.can_request(cx, _e, membership_category(_e))
+            except Exception:
+                photo_ok = False
+        return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups,
+                "purity_enabled": _purity_badges_enabled(), "purity_photo_ok": photo_ok}
     except Exception:
         return None
 
@@ -28376,14 +28387,44 @@ def api_console_purity_confirm():
 def api_console_purity_ratings_list():
     if not _portal_console_ok():
         return jsonify({"error": "unauthorized"}), 401
-    from dashboard import product_ratings as _pr
+    from dashboard import product_ratings as _pr, purity_photos as _pp
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
-        _pr.init_tables(cx)
+        _pr.init_tables(cx); _pp.init_table(cx)
         rows = [dict(r) for r in cx.execute(
             "SELECT product_key, brand, product_name, color, status, avoidlist_version, "
             "updated_at FROM product_ratings ORDER BY updated_at DESC").fetchall()]
+        with_photos = _pp.keys_with_photos(cx)
+    for r in rows:
+        r["has_photo"] = r["product_key"] in with_photos
     return jsonify({"ok": True, "ratings": rows})
+
+
+@app.route("/api/console/purity/photo/<path:product_key>", methods=["GET"])
+def api_console_purity_photo_serve(product_key):
+    """Console-gated: the raw client-uploaded label photo for a product, so Glen
+    can verify a client-submitted screen against the actual label before
+    confirming."""
+    if not _portal_console_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    from dashboard import purity_photos as _pp
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pp.init_table(cx)
+        row = _pp.get(cx, product_key)
+    if not row or not row.get("image_blob"):
+        return jsonify({"error": "no_photo"}), 404
+    # Serve-time content-type re-check (the write path already allowlists, this is
+    # defense-in-depth) + hardening headers, mirroring the body-map/client-photo
+    # serve routes: never sniff a client-uploaded blob into an executable type,
+    # and never cache this private (medical-adjacent) image.
+    ct = (row.get("content_type") or "").lower()
+    if ct not in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"):
+        ct = "application/octet-stream"
+    resp = Response(bytes(row["image_blob"]), mimetype=ct)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @app.route("/api/purity/stats", methods=["GET"])
@@ -28430,6 +28471,74 @@ def api_portal_purity_request(token):
         res = _pr.request(cx, key, brand=b.get("brand") or "",
                           product_name=b.get("product_name") or "", requested_by=email)
     return jsonify({"ok": True, **res})
+
+
+@app.route("/api/portal/<token>/purity/photo", methods=["POST"])
+def api_portal_purity_photo(token):
+    """A client uploads a label photo for an UNRATED product on their card. The
+    photo is vision-extracted, screened, and recorded as 'screened' (pending
+    Glen's confirm -- the client never sees an unconfirmed color). Gated by
+    PURITY_BADGES_ENABLED and the paid/explicit-request entitlement gate (same
+    as api_portal_purity_request -- purity is a paid perk, not a free-lead
+    perk). Identity is the portal token only. The vision call runs OUTSIDE
+    _db_lock; only record_screen is inside. A product already at
+    screened/ai_draft/confirmed is never re-screened (no laundering a pending
+    red via a second upload) -- that check, along with the token/entitlement/
+    catalog checks, happens in the initial read connection BEFORE the vision
+    call is ever made."""
+    if not _purity_badges_enabled():
+        return jsonify({"error": "not_available"}), 404
+    from dashboard import (product_ratings as _pr, purity_screen as _ps,
+                           purity_avoidlist as _pa, purity_acquire as _acq,
+                           purity_ratings_access as _acc, fullscript as _fs)
+    slug = (request.form.get("product_slug") or "").strip()
+    f = request.files.get("photo") or request.files.get("file")
+    if not f or not (f.filename or "").strip():
+        return jsonify({"error": "photo_required"}), 400
+    ctype = (f.mimetype or "").lower()
+    if ctype not in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"):
+        return jsonify({"error": "image_only"}), 400
+    blob = f.read()
+    if len(blob) > 10 * 1024 * 1024:
+        return jsonify({"error": "file_too_large"}), 400
+    # Authorize the token, check entitlement, resolve the product to a REAL
+    # catalog row (never trust an arbitrary slug), and check for an existing
+    # rated row -- all cheap/trusted, all BEFORE the vision call. Read-only,
+    # own connection.
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _fs.init_tables(cx)
+        _acc.init_table(cx)
+        _pr.init_tables(cx)
+        portal = _portal_record_for(cx, token)
+        if not portal:
+            return jsonify({"error": "not_found"}), 404
+        email = (portal.get("email") or "").strip().lower()
+        if not _acc.can_request(cx, email, membership_category(email)):
+            return jsonify({"error": "not_entitled"}), 403
+        prow = _fs.product_by_slug(cx, slug)
+        if not prow:
+            return jsonify({"error": "unknown_product"}), 404
+        key = "fullscript::" + slug
+        existing = _pr.get(cx, key)
+        if existing is not None and existing["status"] in ("screened", "ai_draft", "confirmed"):
+            return jsonify({"ok": True,
+                            "message": "This product is already being reviewed."})
+    name, brand = prow.get("name") or "", prow.get("brand") or ""
+    # Slow vision call OUTSIDE the lock.
+    res = _acq.acquire_from_image({"name": name, "brand": brand}, blob, ctype)
+    avoidlist = _pa.load_avoidlist()
+    screen = _ps.screen_label(None, res["parsed"], avoidlist)   # parsed None -> unrated
+    with _db_lock, db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
+        _pr.init_tables(cx)
+        _pr.record_screen(cx, key, brand=brand, product_name=name,
+                          other_ingredients_raw=res["raw"],
+                          other_ingredients_parsed=(res["parsed"] or []), screen=screen)
+        from dashboard import purity_photos as _pp
+        _pp.save(cx, key, email, blob, ctype)
+    return jsonify({"ok": True,
+                    "message": "Thanks — we'll review this and update your card."})
 
 
 def _biofield_transition(token, new_status, tag):
