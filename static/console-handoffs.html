@@ -28,7 +28,9 @@
   li.done .dot{ background:var(--green); border-color:var(--green); }
   li.done{ color:var(--cream); } li.todo{ color:var(--muted); }
   li.next{ color:var(--cream); } li.next .dot{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(212,168,67,.18); }
-  .slabel{ flex:1; } .snote{ color:var(--muted); font-size:12px; }
+  .slabel{ flex:1; color:inherit; text-decoration:none; }
+  .slabel:hover{ color:#b9c7ff; text-decoration:underline; }
+  .snote{ color:var(--muted); font-size:12px; }
   a.act{ color:#0a150d; background:var(--gold); padding:3px 9px; border-radius:7px;
          text-decoration:none; font-weight:600; font-size:12px; white-space:nowrap; }
   a.act:hover{ filter:brightness(1.08); }
@@ -68,24 +70,32 @@
 
   function composer(email){ return '/console/biofield-portal?email='+encodeURIComponent(email)+'&key='+encodeURIComponent(key()); }
   function ordersLink(id){ return '/console/orders'+(id?('?order='+id):'?')+'&key='+encodeURIComponent(key()); }
+  function intakeLink(){ return '/console/biofield-intake?key='+encodeURIComponent(key()); }
 
-  // Step definitions in sequence: label + how to render the action for a client `c`.
+  // Every step label links either to the completed item or to the place where the
+  // unfinished item can be completed. Buttons remain as explicit next-action shortcuts.
   var STEPS = [
     { k:'paid', label:'Paid — $300 Biofield Analysis',
+      href:function(c,s){ return ordersLink(s.order_id); },
       act:function(c,s){ return s.done && s.order_id ? '<a class="lnk" href="'+ordersLink(s.order_id)+'">Orders &rarr;</a>' : ''; } },
     { k:'handed_off', label:'Intake authored &amp; handed off',
+      href:function(c,s){ return s.done ? composer(c.email) : intakeLink(); },
       act:function(c,s){
         if(!s.done) return '<span class="snote">awaiting Dr. Glen&rsquo;s intake app</span>';
         if(s.awaiting_publish) return '<a class="act" href="'+composer(c.email)+'">Review &amp; publish</a>';
         return '';
       } },
     { k:'analysis_published', label:'Analysis published &amp; emailed',
+      href:function(c,s){ return composer(c.email); },
       act:function(c,s){ return s.done ? '' : '<a class="act" href="'+composer(c.email)+'">Publish &amp; email &rarr;</a>'; } },
     { k:'invoice_published', label:'Invoice published',
+      href:function(c,s){ return s.done && s.order_id ? ordersLink(s.order_id) : composer(c.email); },
       act:function(c,s){ return s.done ? '' : '<a class="act" href="'+composer(c.email)+'">Invoice panel &rarr;</a>'; } },
     { k:'invoice_paid', label:'Invoice paid',
+      href:function(c,s){ return ordersLink(s.order_id); },
       act:function(c,s){ return s.done ? '' : (s.order_id ? '<a class="lnk" href="'+ordersLink(s.order_id)+'">Orders &rarr;</a>' : ''); } },
     { k:'fulfilled', label:'Fulfilled — remedies shipped',
+      href:function(c,s){ return ordersLink(s.order_id); },
       act:function(c,s){ return s.done ? '' : '<a class="lnk" href="'+ordersLink(c.steps.invoice_published.order_id)+'">Orders &rarr;</a>'; } }
   ];
 
@@ -95,8 +105,9 @@
     for(var i=0;i<STEPS.length;i++){ if(!c.steps[STEPS[i].k].done){ nextIdx=i; break; } }
     var lis = STEPS.map(function(step, i){
       var s = c.steps[step.k]; s.order_id = s.order_id || (step.k==='invoice_paid' ? c.steps.invoice_published.order_id : s.order_id);
+      if(step.k==='fulfilled') s.order_id = s.order_id || c.steps.invoice_published.order_id;
       var cls = s.done ? 'done' : (i===nextIdx ? 'next' : 'todo');
-      return '<li class="'+cls+'"><span class="dot"></span><span class="slabel">'+step.label+'</span>'+step.act(c,s)+'</li>';
+      return '<li class="'+cls+'"><span class="dot"></span><a class="slabel" href="'+step.href(c,s)+'">'+step.label+'</a>'+step.act(c,s)+'</li>';
     }).join('');
     var done = c.done_count!=null ? c.done_count : 0;
     return '<div class="pcard"><div class="phead"><div><b>'+esc(c.name||'(unnamed)')+'</b>'
