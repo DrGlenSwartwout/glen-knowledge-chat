@@ -1142,7 +1142,7 @@ def _create_label_exec(params, ctx):
     order = get_order(cx, oid)
     if not order:
         raise ValueError(f"order #{oid} not found")
-    if not EP.is_configured():
+    if not EP.label_api_configured():
         return {"order_id": oid, "handoff": EP.CLICKNSHIP_URL,
                 "message": "No label API configured. Buy the label on USPS Click-N-Ship, "
                            "then use Ship + tracking to record the number."}

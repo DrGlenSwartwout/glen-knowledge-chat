@@ -61,6 +61,9 @@ services:
       # Set = orders.create_label buys the lowest USPS rate and returns a label.
       - key: EASYPOST_API_KEY
         sync: false
+      # ShipStation API shipping. Preferred over EasyPost when both are present.
+      - key: SHIPENGINE_API_KEY
+        sync: false
       # Public funnel domain. Customer-facing links (full-report email footer,
       # affiliate recruit_url, etc.) derive from this. illtowell.com is live and
       # serving this service; keep this authoritative so links never read the
