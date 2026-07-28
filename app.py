@@ -18640,13 +18640,25 @@ def _cart_email():
 def _cart_open_token(cx):
     """The token for this visitor's open cart, or "" if they have none. A member's
     cart wins over the cookie, which is what makes the cart follow them across
-    devices once identified."""
+    devices once identified.
+
+    Never returns a token whose cart is not open. A stale `rm_cart` cookie left
+    over from an order that has since been placed (or merged away) must not let
+    the visitor view or mutate the record of what they already bought -- every
+    caller (GET /api/cart, set-qty, and the fallback in add) routes through this
+    one choke point rather than checking status at each call site."""
     email = _cart_email()
     if email:
         tok = _cart_store.open_token_for_email(cx, email)
         if tok:
             return tok
-    return _cart_token_from_cookie()
+    token = _cart_token_from_cookie()
+    if not token:
+        return ""
+    row = cx.execute(
+        "SELECT 1 FROM carts WHERE token=? AND status='open'", (token,)
+    ).fetchone()
+    return token if row else ""
 
 
 def _cart_payload(cx, token):

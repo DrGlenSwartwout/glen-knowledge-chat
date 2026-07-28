@@ -85,3 +85,74 @@ def test_unavailable_item_is_flagged_not_dropped(client, db, monkeypatch):
     body = client.get("/api/cart").get_json()
     assert len(body["items"]) == 1
     assert body["items"][0]["available"] is False
+
+
+def _cookie_token(client):
+    """The current rm_cart cookie value, however this Werkzeug version exposes it."""
+    c = client.get_cookie("rm_cart")
+    return c.value if c else ""
+
+
+def test_get_cart_ignores_a_cart_that_was_already_ordered(client, db):
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+    token = _cookie_token(client)
+    assert token
+
+    cx = sqlite3.connect(db)
+    CS.mark_ordered(cx, token, "checkout-ref-1")
+    cx.close()
+
+    body = client.get("/api/cart").get_json()
+    assert body["items"] == []
+    assert body["count"] == 0
+
+
+def test_set_qty_cannot_mutate_an_ordered_cart(client, db):
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+    token = _cookie_token(client)
+    assert token
+
+    cx = sqlite3.connect(db)
+    CS.mark_ordered(cx, token, "checkout-ref-2")
+    cx.close()
+
+    client.post("/api/cart/set-qty", json={"slug": "brain-boost", "qty": 9})
+
+    cx = sqlite3.connect(db)
+    row = cx.execute(
+        "SELECT qty FROM cart_items WHERE token=? AND slug=?", (token, "brain-boost")
+    ).fetchone()
+    cx.close()
+    assert row is not None
+    assert row[0] == 1  # unchanged -- the ordered cart's record of what was bought
+
+
+def test_add_after_checkout_starts_a_new_cart_and_recookies(client, db):
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+    old_token = _cookie_token(client)
+    assert old_token
+
+    cx = sqlite3.connect(db)
+    CS.mark_ordered(cx, old_token, "checkout-ref-3")
+    cx.close()
+
+    r = client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 3})
+    assert r.status_code == 200
+    set_cookie = r.headers.get("Set-Cookie", "")
+    assert "rm_cart=" in set_cookie
+
+    new_token = _cookie_token(client)
+    assert new_token
+    assert new_token != old_token
+
+    body = client.get("/api/cart").get_json()
+    assert body["count"] == 3
+    assert len(body["items"]) == 1
+    assert body["items"][0]["slug"] == "brain-boost"
+
+    cx = sqlite3.connect(db)
+    old_items = cx.execute(
+        "SELECT qty FROM cart_items WHERE token=? AND slug=?", (old_token, "brain-boost")
+    ).fetchall()
+    cx.close()
+    assert old_items == [(1,)]  # the ordered cart's line is untouched
