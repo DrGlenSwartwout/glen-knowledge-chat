@@ -65,6 +65,41 @@ def test_merge_is_idempotent(cx):
     assert CS.items(cx, first)[0]["qty"] == 2
 
 
+def test_merge_is_idempotent_after_folding_into_a_pre_existing_member_cart(cx):
+    # Pre-existing member cart
+    CS.get_or_create(cx, "mem1", email="a@x.com")
+    CS.add_item(cx, "mem1", "brain-boost", qty=3)
+    CS.add_item(cx, "mem1", "neuroprotect", qty=1)
+
+    # Anonymous cart with overlapping and new items
+    CS.get_or_create(cx, "anon1")
+    CS.add_item(cx, "anon1", "brain-boost", qty=2)  # lower, higher-wins applies
+    CS.add_item(cx, "anon1", "wholomega", qty=1)     # new item
+
+    # Call merge three times
+    first = CS.merge(cx, "anon1", "a@x.com")
+    second = CS.merge(cx, "anon1", "a@x.com")
+    third = CS.merge(cx, "anon1", "a@x.com")
+
+    # All three calls return the same member token
+    assert first == second == third == "mem1"
+
+    # Verify final state: higher qty wins, new items included
+    got = {i["slug"]: i["qty"] for i in CS.items(cx, "mem1")}
+    assert got == {"brain-boost": 3, "neuroprotect": 1, "wholomega": 1}
+
+    # Only one open cart for this email
+    count = cx.execute(
+        "SELECT COUNT(*) FROM carts WHERE email=? AND status='open'", ("a@x.com",)
+    ).fetchone()[0]
+    assert count == 1
+
+    # Anon cart is merged with no items
+    assert CS.items(cx, "anon1") == []
+    row = cx.execute("SELECT status FROM carts WHERE token=?", ("anon1",)).fetchone()
+    assert row[0] == "merged"
+
+
 def test_merge_with_unknown_anon_token_returns_member_cart(cx):
     CS.get_or_create(cx, "mem1", email="a@x.com")
     assert CS.merge(cx, "nosuchtoken", "a@x.com") == "mem1"
@@ -86,3 +121,40 @@ def test_mark_ordered_closes_cart_and_records_ref(cx):
     assert row[0] == "ordered"
     assert row[1] == "ref123"
     assert CS.open_token_for_email(cx, "a@x.com") == ""
+
+
+def test_merge_recovers_when_the_member_cart_appears_mid_flight(cx):
+    """Simulate a race where the member cart is created between the read and write."""
+    # Create a member cart
+    mem_token = CS.get_or_create(cx, "mem1", email="a@x.com")
+    CS.add_item(cx, "mem1", "brain-boost", qty=2)
+
+    # Create an anonymous cart
+    CS.get_or_create(cx, "anon1")
+    CS.add_item(cx, "anon1", "wholomega", qty=1)
+
+    # Monkeypatch open_token_for_email so the first call returns "" (simulating the race
+    # where it hasn't found the member cart yet), and subsequent calls return the real token
+    call_count = [0]
+    original_func = CS.open_token_for_email
+
+    def patched_open_token_for_email(cx, email):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # First call: pretend we don't have a member cart yet (simulating race condition)
+            return ""
+        # Subsequent calls: return the real member token
+        return original_func(cx, email)
+
+    try:
+        CS.open_token_for_email = patched_open_token_for_email
+        # Call merge - it should handle the race gracefully
+        result = CS.merge(cx, "anon1", "a@x.com")
+    finally:
+        CS.open_token_for_email = original_func
+
+    # Merge should have recovered and returned the real member token
+    assert result == mem_token
+    # The anonymous items should be merged into the member cart
+    got = {i["slug"]: i["qty"] for i in CS.items(cx, mem_token)}
+    assert got == {"brain-boost": 2, "wholomega": 1}

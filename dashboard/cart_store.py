@@ -100,13 +100,24 @@ def get_or_create(cx, token, email=""):
 
     # 4. Create the cart
     now = _now_iso()
-    cx.execute(
-        "INSERT INTO carts(token, email, status, checkout_ref, created_at, updated_at) "
-        "VALUES (?,?,'open','',?,?)",
-        (token, norm_email, now, now),
-    )
-    cx.commit()
-    return token
+    try:
+        cx.execute(
+            "INSERT INTO carts(token, email, status, checkout_ref, created_at, updated_at) "
+            "VALUES (?,?,'open','',?,?)",
+            (token, norm_email, now, now),
+        )
+        cx.commit()
+        return token
+    except Exception:
+        # Race: another request just created the email's cart. Re-read step 2.
+        if norm_email:
+            row = cx.execute(
+                "SELECT token FROM carts WHERE email=? AND status='open' LIMIT 1", (norm_email,)
+            ).fetchone()
+            if row:
+                return row[0]
+        # If re-read still finds nothing, the error was something else
+        raise
 
 
 def open_token_for_email(cx, email):
@@ -208,12 +219,46 @@ def merge(cx, anon_token, email):
         return member_token or get_or_create(cx, _new_token_for(email), email=email)
 
     if not member_token:
-        cx.execute(
-            "UPDATE carts SET email=?, updated_at=? WHERE token=?",
-            (email, _now_iso(), anon_token),
-        )
-        cx.commit()
-        return anon_token
+        try:
+            cx.execute(
+                "UPDATE carts SET email=?, updated_at=? WHERE token=?",
+                (email, _now_iso(), anon_token),
+            )
+            cx.commit()
+            return anon_token
+        except Exception:
+            # Race: another request just created the member's cart. Re-read and fold.
+            member_token = open_token_for_email(cx, email)
+            if member_token:
+                # Fold the anon cart into the now-existing member cart
+                for it in items(cx, anon_token):
+                    row = cx.execute(
+                        "SELECT qty FROM cart_items WHERE token=? AND slug=? AND fmt=?",
+                        (member_token, it["slug"], it["format"]),
+                    ).fetchone()
+                    if row:
+                        if int(it["qty"]) > int(row[0]):
+                            cx.execute(
+                                "UPDATE cart_items SET qty=? WHERE token=? AND slug=? AND fmt=?",
+                                (_clamp(it["qty"]), member_token, it["slug"], it["format"]),
+                            )
+                    else:
+                        cx.execute(
+                            "INSERT INTO cart_items(token, slug, fmt, qty, source, added_at) "
+                            "VALUES (?,?,?,?,?,?)",
+                            (member_token, it["slug"], it["format"], _clamp(it["qty"]),
+                             it["source"], _now_iso()),
+                        )
+                cx.execute("DELETE FROM cart_items WHERE token=?", (anon_token,))
+                cx.execute(
+                    "UPDATE carts SET status='merged', updated_at=? WHERE token=?",
+                    (_now_iso(), anon_token),
+                )
+                _touch(cx, member_token)
+                cx.commit()
+                return member_token
+            # If re-read still finds nothing, the error was something else
+            raise
 
     for it in items(cx, anon_token):
         row = cx.execute(
