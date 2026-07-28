@@ -16064,6 +16064,17 @@ def api_practitioner_dropship_checkout():
     ship = _normalize_ship_address(patient_addr_raw, fallback_name="")
     if not ship:
         return jsonify({"ok": False, "error": "patient_address is required"}), 400
+    practitioner_name = " ".join((prac.get("name") or "").lower().split())
+    recipient_name = " ".join((ship.get("name") or "").lower().split())
+    if (practitioner_name and recipient_name == practitioner_name
+            and _body.get("recipient_name_confirmed") is not True):
+        return jsonify({
+            "ok": False,
+            "error": "The patient recipient name matches the practitioner. "
+                     "Enter the patient's name, or explicitly confirm that the "
+                     "practitioner is the intended recipient.",
+            "code": "recipient_name_matches_practitioner",
+        }), 400
     try:
         shipping_cents = int(_price_cart(items, ship=ship)["shipping_cents"])
         out = _dropship.build_dropship_order(

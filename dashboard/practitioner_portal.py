@@ -225,7 +225,9 @@ def client_belongs_to_practitioner(practitioner_id, email, *, db_path=None) -> b
 
 def search_clients(practitioner_id, q, *, limit=8, db_path=None) -> List[dict]:
     """The practitioner's own dispensary clients matching `q` (email substring or joined
-    people.name), for the chat client-focus picker. Deduped by email; scoped to the
+    people.name), for the chat client-focus picker. Includes the most recent ship-to
+    address from that practitioner's orders when available, so selecting a client can
+    populate the drop-ship recipient fields. Deduped by email; scoped to the
     practitioner (never returns another practitioner's client). Empty q -> []."""
     qq = (q or "").strip().lower()
     if not practitioner_id or not qq:
@@ -244,7 +246,26 @@ def search_clients(practitioner_id, q, *, limit=8, db_path=None) -> List[dict]:
             "ORDER BY name, email LIMIT ?",
             (str(practitioner_id), like, like, int(limit)),
         ).fetchall()
-    return [{"email": r[0], "name": r[1]} for r in rows]
+        clients = []
+        for r in rows:
+            ship = {}
+            try:
+                order_row = cx.execute(
+                    "SELECT address_json FROM orders "
+                    "WHERE practitioner_id=? AND lower(email)=lower(?) "
+                    "  AND address_json IS NOT NULL AND address_json <> '' "
+                    "ORDER BY id DESC LIMIT 1",
+                    (str(practitioner_id), r[0]),
+                ).fetchone()
+                if order_row and order_row[0]:
+                    parsed = json.loads(order_row[0])
+                    if isinstance(parsed, dict):
+                        ship = parsed
+            except (sqlite3.OperationalError, ValueError, TypeError):
+                # Older/test databases may not have the unified orders table yet.
+                ship = {}
+            clients.append({"email": r[0], "name": r[1], "ship": ship})
+    return clients
 
 
 def practitioner_id_by_dispensary_code(code) -> Optional[str]:

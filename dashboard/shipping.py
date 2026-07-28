@@ -987,14 +987,16 @@ MAX_RATE_JUMP_PCT = 0.40
 # greedy-match "Small" inside "Small Flat Rate Box". We match per-size
 # independently anyway, but keep this list as the canonical lookup.
 _SIZE_PATTERNS = [
-    ("S", re.compile(r"Small\s+Flat\s+Rate\s+Box[^$]{0,200}\$(\d+\.\d{2})", re.I | re.S)),
+    # S is our internal Small Box packed inside a USPS Flat Rate Padded Envelope.
+    # Price the carrier package actually mailed, not USPS's Small Flat Rate Box.
+    ("S", re.compile(r"(?:Padded\s+Flat\s+Rate\s+Envelope|Flat\s+Rate\s+Padded\s+Envelope)[^$]{0,200}\$(\d+\.\d{2})", re.I | re.S)),
     ("M", re.compile(r"Medium\s+Flat\s+Rate\s+Box[^$]{0,200}\$(\d+\.\d{2})", re.I | re.S)),
     ("L", re.compile(r"Large\s+Flat\s+Rate\s+Box[^$]{0,200}\$(\d+\.\d{2})", re.I | re.S)),
 ]
 
 
 def _parse_usps_html(html: str) -> Dict[str, int]:
-    """Extract S/M/L Flat Rate retail prices in cents from the USPS page HTML.
+    """Extract padded-envelope/Medium/Large retail prices in cents from USPS HTML.
 
     Raises ValueError if any size is missing — caller should treat that as
     "source page changed, need a manual update via /admin/shipping".
@@ -1013,6 +1015,27 @@ def _parse_usps_html(html: str) -> Dict[str, int]:
             f"or use the manual-propose form at /admin/shipping."
         )
     return out
+
+
+def box_size_for_charged_cents(charged_cents: int, db_path: Optional[str] = None):
+    """Resolve the single S/M/L tier represented by an order's stored shipping charge.
+
+    Searches confirmed rate history (not only today's rate), because an order may
+    have been paid before a rate change and labeled afterward. Returns None when the
+    charge is custom, multi-box, free, or ambiguously used by multiple tiers, so label
+    buying never guesses a carrier package.
+    """
+    target = int(charged_cents or 0)
+    if target <= 0:
+        return None
+    with _connect(db_path) as cx:
+        rows = cx.execute(
+            "SELECT DISTINCT box_size FROM usps_rates "
+            "WHERE charged_cents=? AND confirmed_by IS NOT NULL AND confirmed_by != ?",
+            (target, PENDING),
+        ).fetchall()
+    matches = [r["box_size"] for r in rows]
+    return matches[0] if len(matches) == 1 else None
 
 
 def fetch_usps_retail_prices(timeout: int = 30) -> Dict[str, int]:

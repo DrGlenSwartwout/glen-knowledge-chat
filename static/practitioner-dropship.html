@@ -166,6 +166,7 @@ var $ = function(id){ return document.getElementById(id); };
 var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
 var cartData = [];  // [{slug, qty, unit_cents, line_cents}]
 var quoteLoaded = false;
+var practitionerName = '';
 
 // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
 if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
@@ -274,6 +275,7 @@ function loadPortalData(){
       if(!d) return;
       if(!d.ok){ showAuthWall(); return; }
       var practiceName = (d.branding && d.branding.practice_name) || d.practice_name || '';
+      practitionerName = d.name || '';
       $('who').textContent = (d.name || '') + (practiceName ? ' \xb7 ' + practiceName : '');
       applyBranding(d.branding);
       // show/hide card option
@@ -311,6 +313,17 @@ $('checkout-btn').addEventListener('click', function(){
   var method = $('pay-method').value || 'zelle';
   var patient_address = {name: name, street: addr1, city: city, state: state, zip: zip, country: 'US'};
   if(addr2) patient_address.address2 = addr2;
+  var recipientNameConfirmed = false;
+  var normalizedRecipient = name.toLowerCase().replace(/\s+/g, ' ').trim();
+  var normalizedPractitioner = practitionerName.toLowerCase().replace(/\s+/g, ' ').trim();
+  if(normalizedPractitioner && normalizedRecipient === normalizedPractitioner){
+    recipientNameConfirmed = window.confirm(
+      'The patient recipient name matches your practitioner name. ' +
+      'Press OK only if you intend this package to be addressed to you. ' +
+      'Otherwise press Cancel and enter the patient’s name.'
+    );
+    if(!recipientNameConfirmed) return;
+  }
 
   $('checkout-btn').disabled = true;
   setMsg('Placing your drop-ship order…', false);
@@ -318,7 +331,12 @@ $('checkout-btn').addEventListener('click', function(){
   fetch('/api/practitioner/dropship/checkout', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({token: TOKEN, method: method, patient_address: patient_address})
+    body: JSON.stringify({
+      token: TOKEN,
+      method: method,
+      patient_address: patient_address,
+      recipient_name_confirmed: recipientNameConfirmed
+    })
   })
     .then(function(r){ return r.json(); })
     .then(function(d){
@@ -415,22 +433,33 @@ loadPortalData();
   function renderClientResults(clients){
     var box = document.getElementById('client-search-results');
     if(!clients || !clients.length){ box.style.display='none'; box.innerHTML=''; return; }
-    box.innerHTML = clients.map(function(c){
+    box.innerHTML = clients.map(function(c, i){
       var em = escapeHtml(c.email);
       var label = (c.name ? escapeHtml(c.name) + ' — ' : '') + em;
-      return '<div class="client-result" data-email="'+em+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
+      return '<div class="client-result" data-index="'+i+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
     }).join('');
     box.style.display='block';
     Array.prototype.forEach.call(box.querySelectorAll('.client-result'), function(el){
-      el.onclick = function(){ clientFocusSet(el.getAttribute('data-email'), el.textContent); };
+      el.onclick = function(){
+        var c = clients[parseInt(el.getAttribute('data-index'), 10)];
+        clientFocusSet(c, el.textContent);
+      };
     });
   }
-  function clientFocusSet(email, label){
-    currentClientEmail = email || '';
+  function clientFocusSet(client, label){
+    client = client || {};
+    currentClientEmail = client.email || '';
     var badge = document.getElementById('client-focus-badge');
-    badge.textContent = 'Client in focus: ' + (label || email);
+    badge.textContent = 'Client in focus: ' + (label || client.email || '');
     badge.style.display = 'inline-block';
     document.getElementById('client-focus-clear').style.display = 'inline-block';
+    var ship = client.ship || {};
+    $('pat-name').value = ship.name || client.name || '';
+    $('addr1').value = ship.street || ship.address1 || '';
+    $('addr2').value = ship.address2 || '';
+    $('addr-city').value = ship.city || '';
+    $('addr-state').value = (ship.state || '').toUpperCase();
+    $('addr-zip').value = ship.zip || ship.postal_code || '';
     var box = document.getElementById('client-search-results');
     box.style.display='none'; box.innerHTML='';
     document.getElementById('client-search').value = '';

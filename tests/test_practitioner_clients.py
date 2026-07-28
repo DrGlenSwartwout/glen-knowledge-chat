@@ -50,7 +50,8 @@ def test_search_empty_q_returns_empty(tmp_path):
 def test_search_by_email_and_by_joined_name(tmp_path):
     db = str(tmp_path / "t.db"); _seed_full(db)
     by_email = pp.search_clients("prac-1", "karin", db_path=db)
-    assert {"email": "karin@x.com", "name": "Karin Doe"} in by_email
+    assert any(c["email"] == "karin@x.com" and c["name"] == "Karin Doe"
+               for c in by_email)
     by_name = pp.search_clients("prac-1", "doe", db_path=db)
     assert any(c["email"] == "karin@x.com" for c in by_name)
 
@@ -71,3 +72,27 @@ def test_search_never_returns_other_practitioners_client(tmp_path):
 def test_search_respects_limit(tmp_path):
     db = str(tmp_path / "t.db"); _seed_full(db)
     assert len(pp.search_clients("prac-1", "x.com", limit=1, db_path=db)) == 1
+
+
+def test_search_includes_latest_scoped_ship_to_address(tmp_path):
+    from dashboard import orders
+
+    db = str(tmp_path / "t.db"); _seed_full(db)
+    cx = sqlite3.connect(db)
+    orders.init_orders_table(cx)
+    orders.upsert_order(
+        cx, source="dispensary", external_ref="old", email="karin@x.com",
+        name="Karin Doe", practitioner_id="prac-1",
+        address={"name": "Karin Doe", "street": "1 Old St", "city": "Hilo",
+                 "state": "HI", "zip": "96720"},
+    )
+    orders.upsert_order(
+        cx, source="dispensary", external_ref="new", email="karin@x.com",
+        name="Karin Doe", practitioner_id="prac-1",
+        address={"name": "Karin Doe", "street": "2 New St", "city": "Hilo",
+                 "state": "HI", "zip": "96720"},
+    )
+    cx.close()
+
+    result = pp.search_clients("prac-1", "karin", db_path=db)
+    assert result[0]["ship"]["street"] == "2 New St"
