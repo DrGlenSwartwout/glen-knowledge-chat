@@ -177,3 +177,82 @@ def items(cx, token):
         {"slug": r[0], "qty": int(r[1]), "format": r[2] or "", "source": r[3] or ""}
         for r in rows
     ]
+
+
+def merge(cx, anon_token, email):
+    """Fold an anonymous cart onto a member email and return the surviving token.
+
+    Quantity rule: the HIGHER of the two wins, never the sum. The same bottle added
+    on a phone and then a laptop is one intent repeated; summing would charge double.
+
+    Idempotent: merging an already-merged or unknown token is a no-op that still
+    returns the member's open cart token.
+    """
+    email = _norm_email(email)
+    if not email:
+        raise ValueError("email required")
+    anon_token = (anon_token or "").strip()
+
+    member_token = open_token_for_email(cx, email)
+
+    anon_open = False
+    if anon_token:
+        row = cx.execute(
+            "SELECT status, email FROM carts WHERE token=?", (anon_token,)
+        ).fetchone()
+        anon_open = bool(row) and row[0] == "open"
+        if anon_open and (row[1] or "") == email:
+            return anon_token          # already this member's cart
+
+    if not anon_open:
+        return member_token or get_or_create(cx, _new_token_for(email), email=email)
+
+    if not member_token:
+        cx.execute(
+            "UPDATE carts SET email=?, updated_at=? WHERE token=?",
+            (email, _now_iso(), anon_token),
+        )
+        cx.commit()
+        return anon_token
+
+    for it in items(cx, anon_token):
+        row = cx.execute(
+            "SELECT qty FROM cart_items WHERE token=? AND slug=? AND fmt=?",
+            (member_token, it["slug"], it["format"]),
+        ).fetchone()
+        if row:
+            if int(it["qty"]) > int(row[0]):
+                cx.execute(
+                    "UPDATE cart_items SET qty=? WHERE token=? AND slug=? AND fmt=?",
+                    (_clamp(it["qty"]), member_token, it["slug"], it["format"]),
+                )
+        else:
+            cx.execute(
+                "INSERT INTO cart_items(token, slug, fmt, qty, source, added_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (member_token, it["slug"], it["format"], _clamp(it["qty"]),
+                 it["source"], _now_iso()),
+            )
+    cx.execute("DELETE FROM cart_items WHERE token=?", (anon_token,))
+    cx.execute(
+        "UPDATE carts SET status='merged', updated_at=? WHERE token=?",
+        (_now_iso(), anon_token),
+    )
+    _touch(cx, member_token)
+    cx.commit()
+    return member_token
+
+
+def _new_token_for(email):
+    """Deterministic fallback token when a member needs a cart and has none.
+    Never used for anonymous carts, which get a random token from the route layer."""
+    import hashlib
+    return "cart:" + hashlib.sha1(_norm_email(email).encode()).hexdigest()[:24]
+
+
+def mark_ordered(cx, token, checkout_ref):
+    cx.execute(
+        "UPDATE carts SET status='ordered', checkout_ref=?, updated_at=? WHERE token=?",
+        ((checkout_ref or "").strip(), _now_iso(), token),
+    )
+    cx.commit()
