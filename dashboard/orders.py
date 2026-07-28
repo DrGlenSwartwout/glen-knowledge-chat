@@ -1147,6 +1147,9 @@ def _create_label_exec(params, ctx):
                 "message": "No label API configured. Buy the label on USPS Click-N-Ship, "
                            "then use Ship + tracking to record the number."}
     from_addr = (ctx or {}).get("from_address") or EP.ship_from()
+    from dashboard import shipping as SH
+    order["shipping_box_size"] = SH.box_size_for_charged_cents(
+        order.get("shipping_cents"))
     out = EP.buy_label(order, from_addr)
     set_order_label(cx, oid, out.get("label_url", ""), out.get("tracking_number"))
     return {"order_id": oid, "tracking_number": out.get("tracking_number", ""),

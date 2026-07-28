@@ -64,3 +64,37 @@ def test_dropship_checkout_requires_patient_address(monkeypatch):
     data = r.get_json()
     assert data.get("ok") is False
     assert "patient_address" in (data.get("error") or "")
+
+
+def test_dropship_checkout_blocks_practitioner_as_recipient_without_confirmation(monkeypatch):
+    _auth(monkeypatch)
+    monkeypatch.setattr(appmod._pp, "cart_clear", lambda pid: None)
+    r = appmod.app.test_client().post(
+        "/api/practitioner/dropship/checkout",
+        json={"method": "zelle",
+              "patient_address": {"name": "  DOC ", "state": "CA", "country": "US",
+                                  "street": "1 Main St", "city": "Los Angeles",
+                                  "zip": "90001"}})
+    assert r.status_code == 400
+    assert r.get_json()["code"] == "recipient_name_matches_practitioner"
+
+
+def test_dropship_checkout_allows_confirmed_practitioner_recipient(monkeypatch):
+    _auth(monkeypatch)
+    monkeypatch.setattr(appmod, "_price_cart",
+                        lambda *a, **k: {"shipping_cents": 1300})
+    monkeypatch.setattr(appmod._dropship, "build_dropship_order",
+        lambda *a, **k: {"ok": True, "invoice_id": "INV", "total": 100.0,
+                         "customer_id": "C1", "source": "dropship",
+                         "ship_to": k.get("patient_ship"), "method": "zelle",
+                         "get_cents": 0, "shipping_cents": k.get("shipping_cents")})
+    monkeypatch.setattr(appmod, "_ingest_order", lambda **kw: None)
+    monkeypatch.setattr(appmod, "_STRIPE_ACTIVE", False)
+    monkeypatch.setattr(appmod._pp, "cart_clear", lambda pid: None)
+    r = appmod.app.test_client().post(
+        "/api/practitioner/dropship/checkout",
+        json={"method": "zelle", "recipient_name_confirmed": True,
+              "patient_address": {"name": "Doc", "state": "CA", "country": "US",
+                                  "street": "1 Main St", "city": "Los Angeles",
+                                  "zip": "90001"}})
+    assert r.status_code == 200

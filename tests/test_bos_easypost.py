@@ -26,6 +26,25 @@ def test_build_shipment_shape():
     assert s["parcel"]["weight"] > 0  # ounces, derived from item count
 
 
+def test_small_box_buys_padded_flat_rate_envelope():
+    from dashboard import easypost as EP
+    shipment = EP.build_shipment(
+        {"shipping_box_size": "S", "items": [{"qty": 2}], "address": {}},
+        from_address={},
+    )
+    assert shipment["parcel"]["predefined_package"] == "FlatRatePaddedEnvelope"
+
+
+def test_medium_and_large_keep_their_flat_rate_box_packages():
+    from dashboard import easypost as EP
+    assert EP.build_shipment(
+        {"shipping_box_size": "M", "items": []}, {}
+    )["parcel"]["predefined_package"] == "MediumFlatRateBox"
+    assert EP.build_shipment(
+        {"shipping_box_size": "L", "items": []}, {}
+    )["parcel"]["predefined_package"] == "LargeFlatRateBox"
+
+
 def test_dropship_label_uses_ship_to_recipient_and_second_address_line():
     from dashboard import easypost as EP
     order = {

@@ -12,6 +12,13 @@ CLICKNSHIP_URL = "https://cns.usps.com"
 _API = "https://api.easypost.com/v2"
 _DEFAULT_OZ = 4  # base weight per parcel
 _PER_ITEM_OZ = 4  # rough per-bottle weight
+_PREDEFINED_PACKAGE_BY_BOX_SIZE = {
+    # Remedy Match packs the internal Small Box inside USPS's padded flat-rate
+    # envelope. The carrier-facing package must therefore be the envelope.
+    "S": "FlatRatePaddedEnvelope",
+    "M": "MediumFlatRateBox",
+    "L": "LargeFlatRateBox",
+}
 
 # Ship-from defaults to Remedy Match LLC's Hilo address (the same address used in
 # the email footers). EasyPost rejects a shipment with no from_address, so this is
@@ -49,6 +56,11 @@ def build_shipment(order, from_address):
     addr = order.get("address") or {}
     fa = from_address or {}
     n_items = sum(int(i.get("qty", 1) or 1) for i in (order.get("items") or [])) or 1
+    parcel = {"weight": _DEFAULT_OZ + _PER_ITEM_OZ * n_items}
+    box_size = str(order.get("shipping_box_size") or order.get("box_size") or "").upper()
+    predefined = _PREDEFINED_PACKAGE_BY_BOX_SIZE.get(box_size)
+    if predefined:
+        parcel["predefined_package"] = predefined
     return {
         "to_address": {
             "name": addr.get("name") or order.get("name") or order.get("email") or "Customer",
@@ -63,7 +75,7 @@ def build_shipment(order, from_address):
             "zip": fa.get("zip", ""), "country": fa.get("country", "US"),
             "phone": fa.get("phone", ""),
         },
-        "parcel": {"weight": _DEFAULT_OZ + _PER_ITEM_OZ * n_items},
+        "parcel": parcel,
     }
 
 

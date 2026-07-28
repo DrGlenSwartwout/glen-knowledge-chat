@@ -28,6 +28,19 @@ def test_init_shipping_schema_seeds_default_rates(tmp_path):
     assert rates["S"]["effective_date"] == "2026-04-26"
 
 
+def test_box_size_for_charged_cents_resolves_unique_tier(tmp_path):
+    from dashboard.shipping import (
+        box_size_for_charged_cents,
+        init_shipping_schema,
+    )
+    db_path = str(tmp_path / "chat_log.db")
+    with sqlite3.connect(db_path) as cx:
+        init_shipping_schema(cx)
+    assert box_size_for_charged_cents(1300, db_path=db_path) == "S"
+    assert box_size_for_charged_cents(2300, db_path=db_path) == "M"
+    assert box_size_for_charged_cents(9999, db_path=db_path) is None
+
+
 def test_init_shipping_schema_creates_tables(tmp_path):
     """init_shipping_schema must create bottle_types, box_capacity, usps_rates."""
     db_path = tmp_path / "chat_log.db"
@@ -292,6 +305,7 @@ SAMPLE_USPS_HTML = """
 <h2>Priority Mail Flat Rate</h2>
 <ul>
   <li>Flat Rate Envelope: $11.95</li>
+  <li>Flat Rate Padded Envelope: $12.30</li>
   <li>Small Flat Rate Box: $13.50</li>
   <li>Medium Flat Rate Box: $24.00</li>
   <li>Large Flat Rate Box: $33.10</li>
@@ -302,11 +316,11 @@ SAMPLE_USPS_HTML = """
 def test_parse_usps_html_extracts_three_sizes():
     from dashboard.shipping import _parse_usps_html
     out = _parse_usps_html(SAMPLE_USPS_HTML)
-    assert out == {"S": 1350, "M": 2400, "L": 3310}
+    assert out == {"S": 1230, "M": 2400, "L": 3310}
 
 def test_parse_usps_html_raises_on_missing_size():
     from dashboard.shipping import _parse_usps_html
-    bad = "<html><body><p>Small Flat Rate Box: $13.50 (medium price moved)</p></body></html>"
+    bad = "<html><body><p>Flat Rate Padded Envelope: $12.30 (medium price moved)</p></body></html>"
     with pytest.raises(ValueError, match="missing sizes"):
         _parse_usps_html(bad)
 
