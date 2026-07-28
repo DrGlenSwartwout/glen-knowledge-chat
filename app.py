@@ -23387,8 +23387,8 @@ def _fullscript_for(email, scan_date):
                 from dashboard import purity_ratings_access as _acc
                 with db.connect(LOG_DB) as cx:
                     _acc.init_table(cx)
-                    photo_ok = _acc.can_request(cx, (email_norm or "").strip().lower(),
-                                                membership_category(email))
+                    _e = (email_norm or "").strip().lower()
+                    photo_ok = _acc.can_request(cx, _e, membership_category(_e))
             except Exception:
                 photo_ok = False
         return {"dispensary_url": _fullscript_dispensary_url(), "groups": groups,
@@ -28371,8 +28371,17 @@ def api_console_purity_photo_serve(product_key):
         row = _pp.get(cx, product_key)
     if not row or not row.get("image_blob"):
         return jsonify({"error": "no_photo"}), 404
-    return Response(bytes(row["image_blob"]),
-                    mimetype=row.get("content_type") or "application/octet-stream")
+    # Serve-time content-type re-check (the write path already allowlists, this is
+    # defense-in-depth) + hardening headers, mirroring the body-map/client-photo
+    # serve routes: never sniff a client-uploaded blob into an executable type,
+    # and never cache this private (medical-adjacent) image.
+    ct = (row.get("content_type") or "").lower()
+    if ct not in ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"):
+        ct = "application/octet-stream"
+    resp = Response(bytes(row["image_blob"]), mimetype=ct)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"] = "private, no-store"
+    return resp
 
 
 @app.route("/api/purity/stats", methods=["GET"])
