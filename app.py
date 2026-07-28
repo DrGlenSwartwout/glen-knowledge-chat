@@ -18743,6 +18743,65 @@ def api_cart_set_qty():
         return jsonify(_cart_payload(cx, token))
 
 
+@app.route("/api/cart/checkout", methods=["POST"])
+def api_cart_checkout():
+    """Cart -> order. The membership gate reuses the existing need_optin contract,
+    so the page can show the shared window.OptinGate exactly as reorder.html and
+    begin-buy.html already do. Membership itself is written by /begin/unlock."""
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    email = _cart_email()
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to place your order."}), 403
+
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        anon_token = _cart_token_from_cookie()
+        token = _cart_store.merge(cx, anon_token, email)
+        cart = _cart_store.items(cx, token)
+
+    if not cart:
+        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+
+    unavailable = [c["slug"] for c in cart
+                   if not _get_product(c["slug"])
+                   or (_get_product(c["slug"]) or {}).get("inactive")]
+    if unavailable:
+        return jsonify({"ok": False, "unavailable": unavailable,
+                        "error": "Some items are no longer available. "
+                                 "Please remove them and try again."}), 400
+
+    ship = _normalize_ship_address(data.get("address") or {},
+                                   fallback_name=(data.get("name") or ""))
+    try:
+        redeem = int(data.get("points_to_redeem_cents") or 0)
+    except (TypeError, ValueError):
+        redeem = 0
+    try:
+        res = _checkout_cart(email, [{"slug": c["slug"], "qty": c["qty"],
+                                      "format": c["format"]} for c in cart],
+                             ship=ship, points_to_redeem_cents=redeem,
+                             referral_code=(data.get("referral_code") or "").strip())
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    if not res.get("stripe_url"):
+        # Never confirm an order the customer has no way to pay for.
+        print("[cart] checkout produced no stripe_url", flush=True)
+        return jsonify({"ok": False,
+                        "error": "We could not start payment just now. "
+                                 "Please try again in a moment."}), 502
+
+    with db.connect(LOG_DB) as cx:
+        _cart_store.mark_ordered(cx, token, res["out"].get("invoice_id", ""))
+    return jsonify({"ok": True, "stripe_url": res["stripe_url"],
+                    "total": res["out"].get("total")})
+
+
 @app.route("/reorder")
 def reorder_page():
     return send_from_directory(STATIC, "reorder.html")
