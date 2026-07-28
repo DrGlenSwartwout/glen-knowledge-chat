@@ -28,3 +28,36 @@ def test_dropship_cards_show_recipient_and_shipping_address():
     assert "Drop-ship details" in html
     assert "Shipping address:" in html
     assert "+ dropShipDetailsHtml(o)" in html
+
+
+def test_packed_and_shipped_orders_remain_editable():
+    html = _html()
+    assert "o.status==='packed') acts = editBtn(o.id)" in html
+    assert "o.status==='shipped') acts = editBtn(o.id)" in html
+    assert "acts = keep + editBtn(o.id)" in html
+
+
+def test_packed_shipped_and_combined_orders_can_print_existing_label():
+    html = _html()
+    assert "function labelBtn(o)" in html
+    assert "function printShippingLabel(id)" in html
+    assert "window.open(o.label_url, '_blank')" in html
+    assert "var labelOrder = ms.find" in html
+    assert "labelOrder ? labelBtn(labelOrder)" in html
+
+
+def test_unpurchased_labels_are_bought_then_opened_for_printing():
+    html = _html()
+    assert "Buy + print shipping label" in html
+    assert "function buyAndPrintLabel(id)" in html
+    assert "'/api/action/orders.create_label'" in html
+    assert "function buyAndPrintGroupLabel(sid)" in html
+    assert "'/api/action/shipments.create_label'" in html
+    assert "res.status==='done' && out.label_url" in html
+
+
+def test_easypost_tracking_can_be_emailed_without_retyping():
+    html = _html()
+    assert "o.tracking_number ? btn(o.id,'orders.send_tracking','Send tracking')" in html
+    assert "HH.byId[Number(id)].tracking_number" in html
+    assert "prompt('Tracking number (optional):', saved)" in html

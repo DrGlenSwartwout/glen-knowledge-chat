@@ -204,8 +204,9 @@
     else if (o.status==='confirmed') acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
     else if (o.status==='new' && !isPaidReady(o)) acts = editBtn(o.id) + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
     else if (o.status==='new')     acts = editBtn(o.id) + ' ' + btn(o.id,'orders.mark_packed','Pack') + ' ' + sendInvBtn(o);
-    else if (o.status==='packed') acts = btn(o.id,'orders.create_label','Create label') + ' ' + shipBtn(o.id);
-    else if (o.status==='shipped') acts = btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
+    else if (o.status==='packed') acts = editBtn(o.id) + ' ' + labelBtn(o) + ' '
+      + (o.tracking_number ? btn(o.id,'orders.send_tracking','Send tracking') + ' ' : '') + shipBtn(o.id);
+    else if (o.status==='shipped') acts = editBtn(o.id) + ' ' + labelBtn(o) + ' ' + btn(o.id,'orders.send_tracking','Send tracking') + ' ' + btn(o.id,'orders.mark_delivered','Mark delivered') + ' ' + btn(o.id,'orders.mark_done','Mark done');
     if (o.pay_status === 'claimed') acts = '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' + acts;
     if (o.status!=='done' && o.status!=='delivered' && o.status!=='cancelled') acts += ' <button class="cancel" onclick="act('+Number(o.id)+',\'orders.cancel\',{})">Cancel</button>';
     // Grouped into a combined shipment: fulfillment is driven by the shipment
@@ -216,7 +217,7 @@
       // only the fulfillment buttons move to the shipment card.
       var keep = (o.pay_status==='claimed')
         ? '<button onclick="confirmClaimed(' + Number(o.id) + ",'" + String(o.pay_method || '').replace(/'/g, '') + "'" + ')">Confirm payment' + (o.pay_method ? ' (' + esc(o.pay_method) + ')' : '') + '</button> ' : '';
-      acts = keep + '<span class="meta">Shipping handled in shipment #'+Number(o.group_shipment_id)+' (Households column).</span>';
+      acts = keep + editBtn(o.id) + ' <span class="meta">Shipping handled in shipment #'+Number(o.group_shipment_id)+' (Households column).</span>';
     }
     // Print invoice on every card lane (reprint a receipt at any point —
     // packed/shipped/done included) EXCEPT cancelled, where there's nothing to
@@ -333,6 +334,34 @@
   function shipBtn(id){ return '<button onclick="ship('+Number(id)+')">Ship + tracking</button>'; }
   function payBtn(id){ return '<button onclick="recordPay('+Number(id)+')">Record payment</button>'; }
   function printInvBtn(id){ return '<button onclick="printInvoice('+Number(id)+')">Print invoice</button>'; }
+  function labelBtn(o){
+    return o.label_url
+      ? '<button onclick="printShippingLabel('+Number(o.id)+')">Reprint shipping label</button>'
+      : '<button onclick="buyAndPrintLabel('+Number(o.id)+')">Buy + print shipping label</button>';
+  }
+  function printShippingLabel(id){
+    var o = HH.byId && HH.byId[Number(id)];
+    if (!o || !o.label_url){ alert('No shipping label has been created for this order.'); return; }
+    window.open(o.label_url, '_blank');
+  }
+  async function buyAndPrintLabel(id){
+    // Open synchronously so the eventual label PDF is not blocked as a popup.
+    var w = window.open('', '_blank');
+    var r = await fetch('/api/action/orders.create_label', {
+      method:'POST', headers:hdr(), body:JSON.stringify({order_id:Number(id)})
+    });
+    var res = await r.json().catch(function(){ return {}; });
+    var out = res.result || {};
+    if (res.status==='done' && out.label_url){
+      if (w) w.location = out.label_url; else window.open(out.label_url, '_blank');
+    } else if (res.status==='done' && out.handoff){
+      if (w) w.location = out.handoff; else window.open(out.handoff, '_blank');
+    } else {
+      if (w) w.close();
+      alert((out && out.error) || res.error || 'Could not buy the shipping label.');
+    }
+    load();
+  }
   // A paid order becomes a clickable receipt in the client's portal History
   // automatically on payment; this shows that state (and a manual publish for older
   // paid orders that predate the auto-publish).
@@ -469,6 +498,7 @@
   function shipmentCardHtml(sid, ms){
     var st = (ms[0]||{}).status || '';
     var tn = ''; ms.forEach(function(m){ if(m.tracking_number) tn = m.tracking_number; });
+    var labelOrder = ms.find(function(m){ return !!m.label_url; });
     var who = ms.map(function(m){ return esc(m.name||m.email||('#'+m.id)); }).join(' + ');
     var items = ms.map(function(m){ return (m.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||''); }).join(', '); }).filter(Boolean).join(' | ');
     // Shipping is blocked until every member is paid — you can group early, but
@@ -481,9 +511,9 @@
       acts += '<span class="meta" style="color:var(--gold)">Waiting on payment: '+unpaidNames.join(', ')
         +' &mdash; collect on each order card, then ship together.</span> ';
     } else {
-      if (!tn) acts += gbtn(sid,'shipments.create_label','Create label') + ' <button onclick="setGroupTracking('+Number(sid)+')">Set tracking</button> ';
+      if (!tn) acts += '<button onclick="buyAndPrintGroupLabel('+Number(sid)+')">Buy + print shipping label</button> <button onclick="setGroupTracking('+Number(sid)+')">Set tracking</button> ';
       if (st==='new') acts += gbtn(sid,'shipments.mark_packed','Pack') + ' ';
-      if (tn) acts += gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
+      if (tn) acts += (labelOrder ? labelBtn(labelOrder) + ' ' : '') + gbtn(sid,'shipments.send_tracking','Send tracking') + ' ' + gbtn(sid,'shipments.mark_delivered','Mark delivered') + ' ' + gbtn(sid,'shipments.mark_done','Mark done') + ' ';
     }
     // Recompute + split the one-parcel shipping (only meaningful while still open).
     if (!tn) acts += '<button onclick="recalcShipping('+Number(sid)+',false)">Recalc shipping</button> ';
@@ -582,6 +612,23 @@
     if (out.handoff) window.open(out.handoff, '_blank');   // Click-N-Ship handoff
     load();
   }
+  async function buyAndPrintGroupLabel(sid){
+    var w = window.open('', '_blank');
+    var r = await fetch('/api/action/shipments.create_label', {
+      method:'POST', headers:hdr(), body:JSON.stringify({shipment_id:Number(sid)})
+    });
+    var res = await r.json().catch(function(){ return {}; });
+    var out = res.result || {};
+    if (res.status==='done' && out.label_url){
+      if (w) w.location = out.label_url; else window.open(out.label_url, '_blank');
+    } else if (res.status==='done' && out.handoff){
+      if (w) w.location = out.handoff; else window.open(out.handoff, '_blank');
+    } else {
+      if (w) w.close();
+      alert((out && out.error) || res.error || 'Could not buy the shipping label.');
+    }
+    load();
+  }
   function setGroupTracking(sid){
     var tn = prompt('USPS tracking number (from Click-N-Ship, for the combined parcel):',''); if(tn===null) return;
     if(!tn.trim()){ alert('Enter a tracking number.'); return; }
@@ -637,7 +684,8 @@
     load();
   }
   function ship(id){
-    var tn = prompt('Tracking number (optional):','');
+    var saved = (HH.byId && HH.byId[Number(id)] && HH.byId[Number(id)].tracking_number) || '';
+    var tn = prompt('Tracking number (optional):', saved);
     act(id, 'orders.set_tracking', {tracking_number: tn||''});
   }
   // One-click refund of an order's outstanding shipping credit. MONEY_SEND action:
