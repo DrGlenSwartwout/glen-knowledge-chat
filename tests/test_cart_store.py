@@ -61,3 +61,27 @@ def test_open_token_for_email(cx):
     CS.get_or_create(cx, "tokA", email="A@X.com")
     assert CS.open_token_for_email(cx, "a@x.com") == "tokA"
     assert CS.open_token_for_email(cx, "nobody@x.com") == ""
+
+
+def test_get_or_create_returns_the_members_existing_open_cart(cx):
+    CS.get_or_create(cx, "tokA", email="a@x.com")
+    result = CS.get_or_create(cx, "tokB", email="a@x.com")
+    assert result == "tokA"
+    assert CS.items(cx, "tokA") == []
+
+
+def test_get_or_create_after_that_cart_was_ordered_mints_a_new_token(cx):
+    tok1 = CS.get_or_create(cx, "tok1")
+    assert tok1 == "tok1"
+    cx.execute("UPDATE carts SET status='ordered' WHERE token=?", ("tok1",))
+    cx.commit()
+    new_tok = CS.get_or_create(cx, "tok1")
+    assert new_tok
+    assert new_tok != "tok1"
+    assert CS.items(cx, new_tok) == []
+
+
+def test_get_or_create_is_still_idempotent_for_an_open_token(cx):
+    t = CS.get_or_create(cx, "tok1")
+    assert t == "tok1"
+    assert CS.get_or_create(cx, "tok1") == "tok1"
