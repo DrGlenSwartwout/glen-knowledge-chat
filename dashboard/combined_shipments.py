@@ -417,7 +417,7 @@ def _create_label_exec(params, ctx):
                 "label_url": sh.get("label_url", ""),
                 "message": f"Shipment #{sid} already has a label "
                            f"(tracking {sh['tracking_number']})."}
-    if not EP.is_configured():
+    if not EP.label_api_configured():
         return {"shipment_id": sid, "handoff": EP.CLICKNSHIP_URL,
                 "message": "No label API configured. Buy ONE label on USPS "
                            "Click-N-Ship for the combined parcel, then use "

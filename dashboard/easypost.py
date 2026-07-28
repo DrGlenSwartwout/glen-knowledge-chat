@@ -1,15 +1,15 @@
-"""EasyPost carrier boundary, behind the EASYPOST_API_KEY feature flag.
+"""Shipping-label carrier boundary.
 
-When the key is absent (current state), the Orders module falls back to a manual
-USPS Click-N-Ship handoff. When set, buy_label() purchases the lowest USPS rate
-and returns the label URL + tracking number. The pure helpers are unit-tested;
-the live API call is production-only."""
+ShipStation API is preferred when SHIPENGINE_API_KEY is present; EasyPost remains
+supported for existing installations and for its tracker/webhook integration.
+With neither label key, Orders falls back to USPS Click-N-Ship."""
 import json
 import os
 import urllib.request
 
 CLICKNSHIP_URL = "https://cns.usps.com"
 _API = "https://api.easypost.com/v2"
+_SHIPENGINE_API = "https://api.shipengine.com/v1"
 _DEFAULT_OZ = 4  # base weight per parcel
 _PER_ITEM_OZ = 4  # rough per-bottle weight
 _PREDEFINED_PACKAGE_BY_BOX_SIZE = {
@@ -18,6 +18,11 @@ _PREDEFINED_PACKAGE_BY_BOX_SIZE = {
     "S": "FlatRatePaddedEnvelope",
     "M": "MediumFlatRateBox",
     "L": "LargeFlatRateBox",
+}
+_SHIPENGINE_PACKAGE_BY_BOX_SIZE = {
+    "S": "flat_rate_padded_envelope",
+    "M": "medium_flat_rate_box",
+    "L": "large_flat_rate_box",
 }
 
 # Ship-from defaults to Remedy Match LLC's Hilo address (the same address used in
@@ -35,7 +40,13 @@ _SHIP_FROM = {
 
 
 def is_configured():
+    """EasyPost tracker API readiness (kept separate from label readiness)."""
     return bool(os.environ.get("EASYPOST_API_KEY"))
+
+
+def label_api_configured():
+    """True when either supported provider can purchase a shipping label."""
+    return bool(os.environ.get("SHIPENGINE_API_KEY") or os.environ.get("EASYPOST_API_KEY"))
 
 
 def ship_from():
@@ -79,9 +90,89 @@ def build_shipment(order, from_address):
     }
 
 
+def build_shipengine_label(order, from_address, carrier_id):
+    """Pure: build one USPS Priority Mail label request for ShipStation API."""
+    addr = order.get("address") or {}
+    fa = from_address or {}
+    n_items = sum(int(i.get("qty", 1) or 1) for i in (order.get("items") or [])) or 1
+    box_size = str(order.get("shipping_box_size") or order.get("box_size") or "").upper()
+    package_code = _SHIPENGINE_PACKAGE_BY_BOX_SIZE.get(box_size, "package")
+    return {
+        "shipment": {
+            "carrier_id": carrier_id,
+            "service_code": "usps_priority_mail",
+            "ship_to": {
+                "name": addr.get("name") or order.get("name") or order.get("email") or "Customer",
+                "address_line1": addr.get("street", ""),
+                "address_line2": addr.get("address2", ""),
+                "city_locality": addr.get("city", ""),
+                "state_province": addr.get("state", ""),
+                "postal_code": addr.get("zip", ""),
+                "country_code": addr.get("country", "US"),
+                "phone": order.get("phone", ""),
+            },
+            "ship_from": {
+                "name": fa.get("name", ""),
+                "address_line1": fa.get("street", ""),
+                "city_locality": fa.get("city", ""),
+                "state_province": fa.get("state", ""),
+                "postal_code": fa.get("zip", ""),
+                "country_code": fa.get("country", "US"),
+                "phone": fa.get("phone", ""),
+            },
+            "packages": [{
+                "package_code": package_code,
+                "weight": {"value": _DEFAULT_OZ + _PER_ITEM_OZ * n_items, "unit": "ounce"},
+            }],
+        },
+        "label_format": "pdf",
+        "label_layout": "4x6",
+        "label_download_type": "url",
+    }
+
+
+def _shipengine_request(path, *, data=None):
+    key = os.environ.get("SHIPENGINE_API_KEY")
+    if not key:
+        raise RuntimeError("SHIPENGINE_API_KEY not set")
+    body = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(
+        _SHIPENGINE_API + path, data=body, method=("POST" if body is not None else "GET"),
+        headers={"API-Key": key, "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read())
+
+
+def _shipengine_usps_carrier_id():
+    explicit = os.environ.get("SHIPENGINE_USPS_CARRIER_ID", "").strip()
+    if explicit:
+        return explicit
+    carriers = _shipengine_request("/carriers")
+    for carrier in carriers:
+        code = str(carrier.get("carrier_code") or "").lower()
+        name = str(carrier.get("friendly_name") or carrier.get("carrier_name") or "").lower()
+        if code in ("stamps_com", "usps") or "stamps" in name or name == "usps":
+            return carrier.get("carrier_id")
+    raise RuntimeError("ShipStation USPS/Stamps.com carrier not found")
+
+
+def _buy_shipengine_label(order, from_address):
+    payload = build_shipengine_label(order, from_address, _shipengine_usps_carrier_id())
+    bought = _shipengine_request("/labels", data=payload)
+    downloads = bought.get("label_download") or {}
+    return {
+        "tracking_number": bought.get("tracking_number", ""),
+        "label_url": downloads.get("pdf") or downloads.get("href") or "",
+        "estimated_delivery_date": bought.get("estimated_delivery_date"),
+        "provider": "shipengine",
+    }
+
+
 def buy_label(order, from_address):
-    """Live: create a shipment, buy the lowest rate. Production-only (requires
-    EASYPOST_API_KEY). Returns {tracking_number, label_url} or raises."""
+    """Purchase a label, preferring ShipStation API over legacy EasyPost."""
+    if os.environ.get("SHIPENGINE_API_KEY"):
+        return _buy_shipengine_label(order, from_address)
     key = os.environ.get("EASYPOST_API_KEY")
     if not key:
         raise RuntimeError("EASYPOST_API_KEY not set")
