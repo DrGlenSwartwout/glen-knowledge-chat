@@ -149,6 +149,7 @@ from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
 from dashboard import condition_programs, broad_benefit
+from dashboard import cart_store as _cart_store
 from dashboard import life_stress
 from dashboard import life_stress_selection
 _oa  = _build_openai_client()
@@ -6172,6 +6173,10 @@ _PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED",
 # roadmap) in the client portal. Ships dark; same truthy set as the other
 # portal flags. See dashboard/oasis_block.py.
 _PORTAL_OASIS_ENABLED = os.environ.get("PORTAL_OASIS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Portal store slice 1: the persistent cart. Ships OFF. With this off, the cart
+# routes 404, the product page shows no Add to cart control, and the portal
+# payload is byte-identical to pre-cart.
+_PORTAL_CART_ENABLED = os.environ.get("PORTAL_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -18604,6 +18609,126 @@ def _stripe_checkout_url_for_reorder(out, email):
 
 def _reorder_email_from_cookie():
     return (request.cookies.get("rm_reorder_email", "") or "").strip().lower()
+
+
+_CART_COOKIE = "rm_cart"
+
+
+def _cart_token_from_cookie():
+    return (request.cookies.get(_CART_COOKIE) or "").strip()
+
+
+def _cart_email():
+    """Best-known email for the current visitor, or "" if anonymous. Tries the
+    reorder cookie first (an identified reorder session), then the funnel state
+    for this amg_session."""
+    email = (_reorder_email_from_cookie() or "").strip().lower()
+    if email:
+        return email
+    sid = (request.cookies.get("amg_session") or "").strip()
+    if not sid:
+        return ""
+    try:
+        with db.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=sid)
+        return (state.get("email") or "").strip().lower()
+    except Exception as e:
+        print(f"[cart] email resolve failed: {e!r}", flush=True)
+        return ""
+
+
+def _cart_open_token(cx):
+    """The token for this visitor's open cart, or "" if they have none. A member's
+    cart wins over the cookie, which is what makes the cart follow them across
+    devices once identified."""
+    email = _cart_email()
+    if email:
+        tok = _cart_store.open_token_for_email(cx, email)
+        if tok:
+            return tok
+    return _cart_token_from_cookie()
+
+
+def _cart_payload(cx, token):
+    if not token:
+        return {"ok": True, "items": [], "count": 0}
+    out, count = [], 0
+    for it in _cart_store.items(cx, token):
+        p = _get_product(it["slug"])
+        out.append({
+            "slug": it["slug"],
+            "name": (p or {}).get("name", it["slug"]),
+            "qty": it["qty"],
+            "format": it["format"],
+            "available": bool(p) and not p.get("inactive"),
+        })
+        # Counts EVERY line, including unavailable ones, so this number always
+        # matches the tile badge from dashboard/cart_block.py. An unavailable row
+        # is surfaced by its `available` flag, not by silently changing the count.
+        count += it["qty"]
+    return {"ok": True, "items": out, "count": count}
+
+
+@app.route("/api/cart", methods=["GET"])
+def api_cart():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        return jsonify(_cart_payload(cx, _cart_open_token(cx)))
+
+
+@app.route("/api/cart/add", methods=["POST"])
+def api_cart_add():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip().lower()
+    p = _get_product(slug)
+    if not p or p.get("info_only") or p.get("inactive"):
+        return jsonify({"ok": False, "error": "That product is not available."}), 400
+    fmt = (data.get("format") or "").strip().lower()
+    try:
+        qty = max(1, min(int(data.get("qty", 1) or 1), 99))
+    except (TypeError, ValueError):
+        qty = 1
+    email = _cart_email()
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        token = _cart_open_token(cx) or _uuid.uuid4().hex
+        # get_or_create returns the token of an OPEN cart, which may DIFFER from the
+        # one passed: it returns the member's existing open cart, and it mints a fresh
+        # token when the one we hold belongs to a cart already merged or ordered (the
+        # cookie still holds the old token after a customer's first order). Always use
+        # the returned value, and re-cookie whenever it differs from what the browser sent.
+        token = _cart_store.get_or_create(cx, token, email=email)
+        new_cookie = token if token != _cart_token_from_cookie() else ""
+        _cart_store.add_item(cx, token, slug, qty=qty, fmt=fmt,
+                             source=(data.get("source") or "").strip())
+        payload = _cart_payload(cx, token)
+    resp = jsonify(payload)
+    if new_cookie:
+        # secure=request.is_secure, matching every other cookie in this app. Hard-coding
+        # secure=True breaks the pytest test client, which runs over http.
+        resp.set_cookie(_CART_COOKIE, new_cookie, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/cart/set-qty", methods=["POST"])
+def api_cart_set_qty():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip().lower()
+    fmt = (data.get("format") or "").strip().lower()
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        token = _cart_open_token(cx)
+        if not token:
+            return jsonify({"ok": True, "items": [], "count": 0})
+        _cart_store.set_qty(cx, token, slug, fmt, data.get("qty", 0))
+        return jsonify(_cart_payload(cx, token))
 
 
 @app.route("/reorder")
