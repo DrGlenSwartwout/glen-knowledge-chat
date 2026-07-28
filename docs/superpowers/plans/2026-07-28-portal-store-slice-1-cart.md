@@ -54,7 +54,7 @@
 - Consumes: nothing.
 - Produces:
   - `init_cart_tables(cx) -> None`
-  - `get_or_create(cx, token, email="") -> str` (returns the token of an open cart)
+  - `get_or_create(cx, token, email="") -> str` (returns the token of an open cart, **which may differ from the token passed in** — see the resolution order in the module docstring; callers must use the return value)
   - `add_item(cx, token, slug, qty=1, fmt="", source="") -> int` (returns the new quantity for that line)
   - `set_qty(cx, token, slug, fmt, qty) -> None` (qty <= 0 removes the line)
   - `items(cx, token) -> list[dict]` with keys `slug`, `qty`, `format`, `source`
@@ -728,12 +728,14 @@ def api_cart_add():
     email = _cart_email()
     with db.connect(LOG_DB) as cx:
         _cart_store.init_cart_tables(cx)
-        token = _cart_open_token(cx)
-        new_cookie = ""
-        if not token:
-            token = _uuid.uuid4().hex
-            new_cookie = token
-        _cart_store.get_or_create(cx, token, email=email)
+        token = _cart_open_token(cx) or _uuid.uuid4().hex
+        # get_or_create returns the token of an OPEN cart, which may DIFFER from the
+        # one passed: it returns the member's existing open cart, and it mints a fresh
+        # token when the one we hold belongs to a cart already merged or ordered (the
+        # cookie still holds the old token after a customer's first order). Always use
+        # the returned value, and re-cookie whenever it differs from what the browser sent.
+        token = _cart_store.get_or_create(cx, token, email=email)
+        new_cookie = token if token != _cart_token_from_cookie() else ""
         _cart_store.add_item(cx, token, slug, qty=qty, fmt=fmt,
                              source=(data.get("source") or "").strip())
         payload = _cart_payload(cx, token)
