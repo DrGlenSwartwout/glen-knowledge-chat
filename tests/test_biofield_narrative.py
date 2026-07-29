@@ -68,7 +68,8 @@ def test_narrative_roundtrip(tmp_path):
 
 
 def test_prompt_carries_voice_rules_layers_and_notes():
-    p = build_narrative_prompt(_report(), "kidney felt weak; mercury history")
+    report = {**_report(), "phase": 4, "location": "Liver"}
+    p = build_narrative_prompt(report, "kidney felt weak; mercury history")
     sys, usr = p["system"], p["user"]
     # voice rules
     assert "Aloha" in sys
@@ -82,6 +83,14 @@ def test_prompt_carries_voice_rules_layers_and_notes():
     # the verbal notes are handed to the model
     assert "kidney felt weak; mercury history" in usr
     assert "Lewis Zardo" in usr
+    assert "first paragraph" in sys
+    assert "Phase 4, Cleanse" in usr
+    assert "located this phase at Liver" in usr
+
+
+def test_prompt_omits_terrain_block_without_phase():
+    p = build_narrative_prompt(_report(), "")
+    assert "TERRAIN READING" not in p["user"]
 
 
 def test_video_script_roundtrip(tmp_path):

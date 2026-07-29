@@ -514,7 +514,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
                e4l_db=None, fee_get=None, fee_set=None, fee_clear=None,
                invoice_fetch_catalog=None, invoice_create=None, invoice_link=None,
-               invoice_paid_check=None, ingredients_db=None):
+               invoice_paid_check=None, invoice_latest=None, ingredients_db=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -540,6 +540,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     invoice_create = invoice_create or biofield_invoice.default_create_order
     invoice_link = invoice_link or biofield_invoice.default_invoice_link
     invoice_paid_check = invoice_paid_check or biofield_invoice.default_biofield_paid
+    invoice_latest = invoice_latest or biofield_invoice.default_latest_invoice
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -929,9 +930,20 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                     "note": (f"Biofield Analysis already paid (order #{paid.get('order_id')}) — "
                              "no remedies to invoice, so no new invoice was raised."),
                     "print_url": "", "orders_url": "", "external_ref": "", "total_dollars": ""}
+        # A repeated raise refreshes Biofield-sourced remedies from the schedule,
+        # while keeping lines added manually in Edit Invoice on the current draft.
+        previous = invoice_latest(email) or {}
+        replace_open = bool(
+            previous.get("ok") and previous.get("status") == "proposed"
+            and previous.get("pay_status") != "paid"
+            and not previous.get("portal_published")
+        )
+        if replace_open:
+            built["lines"] = biofield_invoice.merge_manual_invoice_lines(
+                built["lines"], previous.get("items") or [])
         note = biofield_invoice.build_invoice_note(rep.get("phase"), rep.get("location"))
         created = invoice_create({"name": client.get("name"), "email": email}, built["lines"],
-                                 invoice_note=note)
+                                 replace_open=replace_open, invoice_note=note)
         if not created.get("ok"):
             return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
         link = invoice_link(created.get("order_id"))
@@ -955,6 +967,22 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 "skipped": built["skipped"],
                 "warning": warning,
                 "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
+
+    @app.route("/author/<test_id>/invoice/view")
+    def author_invoice_view_latest(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"ok": False, "error": "Add a client email first."}, 400
+        latest = invoice_latest(email) or {}
+        oid = latest.get("order_id")
+        if not latest.get("ok") or not oid:
+            return {"ok": False, "error": latest.get("error") or "No invoice found."}, 404
+        link = invoice_link(oid) or {}
+        if not link.get("ok") or not link.get("print_url"):
+            return {"ok": False, "error": link.get("error") or "Invoice link unavailable."}, 502
+        return {"ok": True, "order_id": oid, "print_url": link["print_url"]}
 
     @app.route("/author/<test_id>/invoice/publish", methods=["POST"])
     def author_invoice_publish(test_id):
@@ -1347,8 +1375,12 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     @app.route("/author/<test_id>/row/<int:rid>", methods=["POST"])
     def author_row_save(test_id, rid):
         d = request.get_json(silent=True) or {}
+        if isinstance(d.get("schedule_slots"), list):
+            import json as _json
+            d["schedule_slot"] = _json.dumps(d["schedule_slots"])
         fields = {}
-        for k in ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing"):
+        for k in ("layer", "head", "most_affected", "remedy", "dosage",
+                  "frequency", "timing", "schedule_slot"):
             if k in d:
                 fields[k] = _layer_int(d[k]) if k == "layer" else d[k]
         if "layer" in fields:

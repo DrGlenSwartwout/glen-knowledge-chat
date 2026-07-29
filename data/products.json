@@ -12387,6 +12387,17 @@
       "description": "10 drops 3 times a day 30 minutes before food",
       "bottle_type": "Dropper 50 mL"
     },
+    "miasmatox-homeopathic-complex-in-terrain-restore": {
+      "name": "Miasmatox Homeopathic Complex in Terrain Restore",
+      "price_cents": 6997,
+      "pinecone_title": "Miasmatox Homeopathic Complex in Terrain Restore",
+      "qty_pricing": true,
+      "ingredients_source": "custom_catalog",
+      "no_groovekart": true,
+      "regular_cents": 8000,
+      "description": "10 drops 3 times a day 30 minutes before food",
+      "bottle_type": "Dropper 50 mL"
+    },
     "shark-essence-homeoenergetic-drops": {
       "name": "Shark Essence HomeoEnergetic Drops",
       "price_cents": 6997,
@@ -21272,7 +21283,7 @@
       "name": "WholOmega 120 gelcaps",
       "price_cents": 19000,
       "pinecone_title": "WholOmega 120 gelcaps",
-      "qty_pricing": true,
+      "qty_pricing": false,
       "fmp_id": "448",
       "ingredients_source": "gk",
       "no_groovekart": true,

@@ -297,6 +297,45 @@ def test_invoice_route_returns_order_id_and_links(tmp_path):
     assert "orders_url" in j                              # present (empty without CONSOLE_SECRET)
 
 
+def test_reraise_invoice_preserves_manual_lines(tmp_path):
+    from dashboard.biofield_authoring import init_auth_tables, create_test, add_chain_row
+    db = str(tmp_path / "chat_log.db")
+    cx = sqlite3.connect(db)
+    init_auth_tables(cx)
+    tid = create_test(cx, "Pt", "pt@x.com", "2026-07-08")
+    add_chain_row(cx, tid, 1, "Head", "Tail", "Liver Support",
+                  "1 cap", "daily", "with food")
+    cx.commit()
+    captured = {}
+
+    def fake_create(customer, lines, replace_open=False, invoice_note=None):
+        captured.update(lines=lines, replace_open=replace_open)
+        return {"ok": True, "order_id": 43, "total_cents": 10000}
+
+    latest = lambda email: {
+        "ok": True, "order_id": 42, "status": "proposed", "pay_status": "unpaid",
+        "portal_published": False,
+        "items": [
+            {"slug": "old-remedy", "qty": 1, "source": "biofield"},
+            {"slug": "owner-added", "qty": 2, "source": "self"},
+        ],
+    }
+    client = create_app(
+        db,
+        invoice_fetch_catalog=lambda: [
+            {"name": "Liver Support", "slug": "liver-support"},
+            {"name": "Owner Added", "slug": "owner-added"},
+        ],
+        invoice_create=fake_create,
+        invoice_link=lambda oid: {"ok": True, "print_url": "x"},
+        invoice_latest=latest,
+    ).test_client()
+    assert client.post("/author/%s/invoice" % tid, json={}).get_json()["ok"]
+    assert captured["replace_open"] is True
+    assert {"slug": "owner-added", "qty": 2, "source": "self"} in captured["lines"]
+    assert not any(line["slug"] == "old-remedy" for line in captured["lines"])
+
+
 def test_default_orders_link():
     import importlib
     from dashboard import biofield_invoice as bi

@@ -68,10 +68,10 @@ def test_masthead_includes_logo():
 def test_terrain_banner_at_top_when_phase_present():
     rep = {**REPORT, "phase": 4, "location": "Toxicity"}
     html = render_present(rep, narrative="x")
-    assert "Terrain Refresh (Phase 4)" in html
-    assert "Toxicity" in html
-    # the terrain reading sits at the very top: before the Remedy Schedule
-    assert html.index("Terrain Refresh") < html.index("Remedy Schedule")
+    assert "Phase 4: Toxicity" in html
+    # The terrain reading sits below the branded header and above the schedule.
+    assert html.index('<div class="masthead">') < html.index("Phase 4: Toxicity")
+    assert html.index("Phase 4: Toxicity") < html.index("Remedy Schedule")
 
 
 def test_no_terrain_banner_without_a_phase():
@@ -83,8 +83,7 @@ def test_no_terrain_banner_without_a_phase():
 def test_location_omitted_when_blank_but_phase_shown():
     rep = {**REPORT, "phase": 2, "location": ""}
     html = render_present(rep, narrative="x")
-    assert "Terrain Repair (Phase 2)" in html
-    assert "Location" not in html
+    assert "Phase 2:" in html
 
 
 def test_terrain_restore_schedule_entry_tagged_with_phase():

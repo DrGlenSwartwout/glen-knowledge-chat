@@ -46218,7 +46218,13 @@ def api_invoice_get(token):
                 summary["opened"] = _opens.get_open(_cxo, "invoice", _opens.invoice_key(token))
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
-    return jsonify({"ok": True, "order": summary})
+    resp = jsonify({"ok": True, "order": summary})
+    # A permanent invoice token can point to an order that the owner edits later.
+    # Prevent browsers/proxies from showing the JSON captured before that edit.
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 def _invoice_membership_offer(order):

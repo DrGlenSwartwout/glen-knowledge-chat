@@ -72,6 +72,8 @@ def test_panel_has_raise_invoice_button_when_email():
     assert "Raise invoice" in html
     assert "id=invresult" in html
     assert "function raiseInvoice()" in html
+    assert "View invoice" in html
+    assert "function viewInvoice()" in html
 
 
 def test_panel_no_invoice_button_without_email():
