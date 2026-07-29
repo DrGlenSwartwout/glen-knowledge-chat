@@ -56,6 +56,8 @@ def test_resolvable_remedies_become_lines_unresolvable_skipped():
     assert slugs == [BIOFIELD_SLUG, "liver-support", "vitality"]   # order preserved, biofield first
     assert out["skipped"] == ["Green Jasper Gem Elixir"]
     assert all(l["qty"] == 1 for l in out["lines"])
+    remedy_lines = [l for l in out["lines"] if l["slug"] != BIOFIELD_SLUG]
+    assert all(l["source"] == "biofield" for l in remedy_lines)
 
 
 def test_doses_per_day_parsing():
@@ -82,6 +84,7 @@ def test_build_invoice_lines_honors_per_remedy_qty():
     out = build_invoice_lines({}, [{"name": "B17 Syntropy", "qty": 2}], cat)
     b17 = [l for l in out["lines"] if l["slug"] == "b17-syntropy"][0]
     assert b17["qty"] == 2
+    assert b17["source"] == "biofield"
     # backward-compat: a bare string still means qty 1
     out2 = build_invoice_lines({}, ["B17 Syntropy"], cat)
     assert [l for l in out2["lines"] if l["slug"] == "b17-syntropy"][0]["qty"] == 1

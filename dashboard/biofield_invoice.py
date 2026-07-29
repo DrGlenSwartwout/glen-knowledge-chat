@@ -105,7 +105,10 @@ def build_invoice_lines(client, remedies, catalog, include_fee=True):
             qty = 1
         slug = resolve_line_slug(name, catalog)
         if slug:
-            lines.append({"slug": slug, "qty": qty})
+            # These remedies came from the practitioner's authored Biofield
+            # analysis, so preserve that provenance through order creation and
+            # into Edit Invoice instead of falling back to source='self'.
+            lines.append({"slug": slug, "qty": qty, "source": "biofield"})
         else:
             skipped.append(name)
     return {"lines": lines, "skipped": skipped}
