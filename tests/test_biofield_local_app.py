@@ -520,7 +520,11 @@ def test_build_invoice_lines_include_fee_false():
     cat = [{"name": "Liver Support", "slug": "liver-support"}]
     built = biofield_invoice.build_invoice_lines(
         {"email": "x@x.com"}, [{"name": "Liver Support", "qty": 2}], cat, include_fee=False)
-    assert built["lines"] == [{"slug": "liver-support", "qty": 2}]     # no biofield-analysis
+    # source='biofield' is load-bearing, not decoration: merge_manual_invoice_lines
+    # keys off it to tell authored-analysis remedies from invoice-editor additions,
+    # so assert it rather than loosening the comparison.
+    assert built["lines"] == [
+        {"slug": "liver-support", "qty": 2, "source": "biofield"}]     # no biofield-analysis
     # no remedies + no fee -> empty (caller skips the raise)
     assert biofield_invoice.build_invoice_lines({}, [], cat, include_fee=False)["lines"] == []
 
@@ -605,4 +609,7 @@ def test_handoff_route_raises_invoice(tmp_path, monkeypatch):
     assert j["invoice"]["ok"] is True and j["invoice"]["order_id"] == 77
     slugs = [l["slug"] for l in captured["lines"]]
     assert slugs[0] == "biofield-analysis"           # fee always first
-    assert {"slug": "liver-support", "qty": 2} in captured["lines"]   # 2 bottles for twice-daily
+    # 2 bottles for twice-daily, carrying the authored-analysis provenance through
+    # order creation (see build_invoice_lines).
+    assert {"slug": "liver-support", "qty": 2,
+            "source": "biofield"} in captured["lines"]
