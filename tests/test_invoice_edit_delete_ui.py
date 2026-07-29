@@ -14,3 +14,10 @@ def test_edit_invoice_has_explicit_delete_button_per_line():
 def test_edit_invoice_delete_requires_confirmation():
     assert 'if (EDIT_OID && !confirm("Delete "' in SRC
     assert "LINES.splice(i,1)" in SRC
+
+
+def test_edit_invoice_has_print_download_pdf_button():
+    assert 'id="print-inv-btn"' in SRC
+    assert "Print / Download PDF" in SRC
+    assert '"/api/console/order/"+Number(EDIT_OID)+"/invoice-link"' in SRC
+    assert '$("print-inv-btn").style.display = "inline-block"' in SRC

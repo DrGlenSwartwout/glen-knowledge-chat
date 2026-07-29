@@ -143,6 +143,7 @@
     </div>
     <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button>
       <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button>
+      <button id="print-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="printInvoiceEdit()">Print / Download PDF</button>
       <button id="grant-member-btn" class="ghost" style="display:none;margin-left:8px" onclick="grantMemberAccess()" title="Grant this client a 30-day member-access window and reprice this invoice at member pricing">Grant 30-day member access + reprice</button>
       <button id="save-cprices-btn" class="ghost" style="margin-left:8px" onclick="saveClientPrices()">Save line prices as this client's standard</button></div>
     <div style="margin-top:8px;font-size:13px">
@@ -554,6 +555,24 @@ $("c-email").addEventListener("input", onEmailInput);
 // ── create vs edit dispatch ──
 function submitOrder(){ return EDIT_OID ? editInvoice() : createInvoice(); }
 
+async function printInvoiceEdit(){
+  if (!EDIT_OID) return;
+  // Open synchronously so browsers do not block the new tab while the secure
+  // printable-invoice link is being minted.
+  const tab = window.open("", "_blank");
+  try {
+    const r = await fetch("/api/console/order/"+Number(EDIT_OID)+"/invoice-link",
+                          {headers:HEADERS});
+    const j = await r.json();
+    if (!r.ok || !j.ok || !j.link) throw new Error(j.error||"Could not open invoice");
+    if (tab) tab.location = j.link;
+    else window.location = j.link;
+  } catch (e) {
+    if (tab) tab.close();
+    toast(e.message||"Could not open invoice", "error");
+  }
+}
+
 // ── edit an existing order's invoice ──
 async function loadOrderForEdit(oid){
   const r = await fetch("/api/orders?limit=300", {headers:HEADERS});
@@ -570,6 +589,7 @@ async function loadOrderForEdit(oid){
   // (turns green + "Invoice Sent" once it's already gone out).
   var _sib = $("send-inv-btn");
   _sib.style.display = "inline-block";
+  $("print-inv-btn").style.display = "inline-block";
   $("grant-member-btn").style.display = "inline-block";
   if (o.invoice_sent_at){ _sib.textContent = "Invoice Sent "+invSentStr(o.invoice_sent_at)+" (re-send)"; _sib.classList.add("inv-sent"); }
   // Prefill customer (read-only context — pricing/membership keyed off email).
