@@ -2617,7 +2617,15 @@
       "description": "Clear the Way Functional Formulation — 30 capsules.",
       "bottle_type": "30 Caps",
       "fmp_id": "1125",
-      "qty_pricing": true
+      "qty_pricing": true,
+      "ingredients": [
+        {
+          "name": "Serrapeptase 400,000 u/g (Serratiopeptidase) (Serratia marcescens)",
+          "dose": "500 mg",
+          "compound_mg": 500.0
+        }
+      ],
+      "ingredients_source": "fmp-bom-2026-05-23"
     },
     "clarity": {
       "name": "Clarity",
@@ -12515,11 +12523,48 @@
       "pinecone_title": "Oxygen Cleanse Watermelon Powder",
       "qty_pricing": true,
       "fmp_id": "306",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop 2 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Magnesium Peroxide (43% Mg)",
+          "dose": "250 mg",
+          "standardized_pct": 43.0,
+          "standardized_as": "Mg",
+          "compound_mg": 250.0,
+          "active_mg": 107.5
+        },
+        {
+          "name": "Vitamin C: L-Ascorbic Acid (natural)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Watermelon (Citrullus lanatus) (succus)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Slippery Elm Bark 4:1 (Ulmus rubra) (cortex)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Mogroside V 80% (Siraitia grosvenorii)",
+          "dose": "20 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Aloe Acemannan Polysaccharides 98% (Aloe spp.)",
+          "dose": "5 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 5.0
+        }
+      ]
     },
     "adrenal-syntropy-powder": {
       "name": "Adrenal Syntropy Powder",
@@ -12539,11 +12584,200 @@
       "pinecone_title": "Myelin Repair Neuroceramides",
       "qty_pricing": true,
       "fmp_id": "315",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "ingredients": [
+        {
+          "name": "Magnesium L-Threonate (7% Mg)",
+          "dose": "57 mg",
+          "standardized_pct": 7.0,
+          "standardized_as": "Mg",
+          "compound_mg": 57.0,
+          "active_mg": 3.99
+        },
+        {
+          "name": "Zinc Bisglycinate (20% Zn)",
+          "dose": "15 mg",
+          "standardized_pct": 20.0,
+          "standardized_as": "Zn",
+          "compound_mg": 15.0,
+          "active_mg": 3.0
+        },
+        {
+          "name": "Lithium Orotate (3.83% Li)",
+          "dose": "25 mg",
+          "standardized_pct": 3.83,
+          "standardized_as": "Li",
+          "compound_mg": 25.0,
+          "active_mg": 0.9575
+        },
+        {
+          "name": "GTF Chromium (Chromium Polynicotinate) (12.4% Cr)",
+          "dose": "1.6 mg",
+          "standardized_pct": 12.4,
+          "standardized_as": "Cr",
+          "compound_mg": 1.6,
+          "active_mg": 0.1984
+        },
+        {
+          "name": "Vitamin B12 Blend: Adenosyl & Methyl Cobalamin",
+          "dose": "600 mcg",
+          "compound_mg": 0.6
+        },
+        {
+          "name": "Vitamin B15: TMG (Trimethylglycine) (Beta vulgaris)",
+          "dose": "15 mg",
+          "compound_mg": 15.0
+        },
+        {
+          "name": "Vitamin C: L-Ascorbic Acid (natural)",
+          "dose": "1 mg",
+          "compound_mg": 1.0
+        },
+        {
+          "name": "Vitamin D3: Cholecalciferol 500,000 IU/g (1.25%)",
+          "dose": "3.68 mg",
+          "purity_pct": 25.0,
+          "compound_mg": 3.68
+        },
+        {
+          "name": "Vitamin E Succinate (D-Alpha Tocopherol Succinate)",
+          "dose": "25 mg",
+          "compound_mg": 25.0
+        },
+        {
+          "name": "Vitamin K2: MK-7 (Menaquinone-7) 1.3%",
+          "dose": "3.1 mg",
+          "compound_mg": 3.1
+        },
+        {
+          "name": "Vitamin K2: MK-4 (Menaquinone) 98%",
+          "dose": ".4 mg",
+          "purity_pct": 98.0
+        },
+        {
+          "name": "Coenzyme Q10 (CoQ10) 98% (Ubiquinone)",
+          "dose": "25 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 25.0
+        },
+        {
+          "name": "Vitamin B13: DMAE (Dimethylaminoethanol) Bitartrate*",
+          "dose": "30 mg",
+          "compound_mg": 30.0
+        },
+        {
+          "name": "Na RALA (Stabilized Bio-enhanced Na R-Lipoate)",
+          "dose": "10 mg",
+          "compound_mg": 10.0
+        },
+        {
+          "name": "NAC (N-Acetyl Cysteine)",
+          "dose": "20 mg",
+          "compound_mg": 20.0
+        },
+        {
+          "name": "S-Acetyl GSH 99% (S-Acetyl L-Glutathione)",
+          "dose": "10 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Reduced GSH (L-Glutathione) 98%",
+          "dose": "0 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "ALCAR (Acetyl L-Carnitine) HYGROSCOPIC",
+          "dose": "20 mg",
+          "compound_mg": 20.0
+        },
+        {
+          "name": "*Phosphatidylserine 50%",
+          "dose": "20 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Phytoceramides 10% (Oryza sativa)",
+          "dose": "35 mg",
+          "purity_pct": 10.0,
+          "compound_mg": 35.0
+        },
+        {
+          "name": "Stinging Nettle Beta Sitosterol 95% (Urtica dioica)",
+          "dose": "20 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Trans-Resveratrol 98% (Polygonum cuspidatum)",
+          "dose": "5 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 5.0
+        },
+        {
+          "name": "Trans-Resveratrol 99% (Polygonum cuspidatum)",
+          "dose": "0 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Lutein 80% (Tagetes spp.)",
+          "dose": "10 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "*Green Tea Polyphenols 98% EGCG 50% (Camelia sinensis)",
+          "dose": "20 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "*Curcumin 95% (Curcuma longa)",
+          "dose": "20 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "0 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Ginsenosides 80% (Panax ginseng)",
+          "dose": "20 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Cordyceps Polysaccharides 30% (Cordyceps militaris)",
+          "dose": "20 mg",
+          "purity_pct": 30.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Red Root 4:1 (Ceanothus americanus)",
+          "dose": "20 mg",
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Rosmarinic Acid 8% Mel.",
+          "dose": "20 mg",
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "34.5 mg",
+          "compound_mg": 34.5
+        }
+      ]
     },
     "immune-intelligence-powder": {
       "name": "Immune Intelligence Powder",
@@ -12551,10 +12785,49 @@
       "pinecone_title": "Immune Intelligence Powder",
       "qty_pricing": true,
       "fmp_id": "316",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "description": "1 scoop daily in food or drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Lactoferrin 99% (Capra hircus)",
+          "dose": "100 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Colostrum (Capra hircus)",
+          "dose": "150 mg",
+          "compound_mg": 150.0
+        },
+        {
+          "name": "Microbiome: 32 species, 100B CFU/g",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Chlorella (Chlorella spp.) (broken cell wall)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Cranesbill Geranium 20:1 (Geranium maculatum)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Caprylic Acid 95% (Cocos nucifera)",
+          "dose": "50 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "3.45 mg",
+          "compound_mg": 3.45
+        }
+      ]
     },
     "sublingual-b12-powder": {
       "name": "Sublingual B12 Powder",
@@ -12574,11 +12847,116 @@
       "pinecone_title": "Endocrine Restore Powder",
       "qty_pricing": true,
       "fmp_id": "338",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop dissolved and held in mouth daily early in the day",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "CS-4 (Cordyceps sinensis) (mycelium)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "D-Ribose",
+          "dose": "0 mg",
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Gypenosides 98% (Gynostemma pentaphyllum)",
+          "dose": "25 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 25.0
+        },
+        {
+          "name": "Withanolides 20% (Withania somnifera)",
+          "dose": "25 mg",
+          "purity_pct": 20.0,
+          "compound_mg": 25.0
+        },
+        {
+          "name": "*Rosavin 3% Salidroside 1% (Rhodiola rosea)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "7-Keto DHEA 99% (3-acetyl-7-oxo-dehydroepiandrosterone)",
+          "dose": "10 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "DHEA Sulfate 99% (Dehydroepiandrosterone Sulfate)",
+          "dose": "10 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Pregnenolone 99%",
+          "dose": "10 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Diosgenin 98% (Dioscorea villosa)",
+          "dose": "10 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "*Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "15 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 15.0
+        },
+        {
+          "name": "Arabinogalactan (Larix occidentalis)",
+          "dose": "0 mg",
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Cordyceps Polysaccharides 30% (Cordyceps militaris)",
+          "dose": "0 mg",
+          "purity_pct": 30.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "*Phosphatidylserine 50%",
+          "dose": "100 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Magnolol & Honokiol 98% (Magnolia grandiflora)",
+          "dose": "30 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 30.0
+        },
+        {
+          "name": "*Ursolic Acid 50% (Ocimum sanctum)",
+          "dose": "25 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 25.0
+        },
+        {
+          "name": "Schisandrins 9% (Schisandra chinensis) (fructus)",
+          "dose": "25 mg",
+          "compound_mg": 25.0
+        },
+        {
+          "name": "Ginsenosides 80% (Panax ginseng)",
+          "dose": "5 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 5.0
+        },
+        {
+          "name": "Macamides 60% (Lepidium meyenii)",
+          "dose": "10 mg",
+          "purity_pct": 60.0,
+          "compound_mg": 10.0
+        }
+      ]
     },
     "terrain-restore-drops": {
       "name": "Terrain Restore Drops",
@@ -12622,11 +13000,40 @@
       "pinecone_title": "TMG Syntropy Powder",
       "qty_pricing": true,
       "fmp_id": "368",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop up to 3 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Vitamin B15: TMG (Trimethylglycine) (Beta vulgaris)",
+          "dose": "400 mg",
+          "compound_mg": 400.0
+        },
+        {
+          "name": "Vitamin B15: Pangamic Acid 99%",
+          "dose": "80 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 80.0
+        },
+        {
+          "name": "Vitamin B16: DMG (Dimethylglycine)",
+          "dose": "5 mg",
+          "compound_mg": 5.0
+        },
+        {
+          "name": "Mogroside V 80% (Siraitia grosvenorii)",
+          "dose": "10 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "5 mg",
+          "compound_mg": 5.0
+        }
+      ]
     },
     "neuro-eye-drops": {
       "name": "Neuro+ Eye Drops",
@@ -12683,11 +13090,88 @@
       "pinecone_title": "Focus Neuro-Magnesium Powder",
       "qty_pricing": true,
       "fmp_id": "431",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "Magnesium drink mix for daytime and before sleep supplying Magnesium that crosses the blood brain barrier - unlike most forms. Includes Zinc and Lithium to complete the full trinity of brain minerals plus nutritional cofactors B6 and D3, and botanical synergists L-Theanine, Tetrahydrocurcumin and Apigenin. 1 scoop 2 times a day in water",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Magnesium L-Threonate (7% Mg)",
+          "dose": "330 mg",
+          "standardized_pct": 7.0,
+          "standardized_as": "Mg",
+          "compound_mg": 330.0,
+          "active_mg": 23.1
+        },
+        {
+          "name": "Magnesium Acetyl-Taurate (6% Mg)",
+          "dose": "",
+          "standardized_pct": 6.0,
+          "standardized_as": "Mg"
+        },
+        {
+          "name": "Vitamin C: Zinc Ascorbate (15% Zn)",
+          "dose": "",
+          "standardized_pct": 15.0,
+          "standardized_as": "Zn"
+        },
+        {
+          "name": "Vitamin B6: P5P (Pyridoxal 5-Phosphate)",
+          "dose": "3.35 mg",
+          "compound_mg": 3.35
+        },
+        {
+          "name": "Vitamin D3: Cholecalciferol 500,000 IU/g (1.25%)",
+          "dose": ".65 mg",
+          "purity_pct": 25.0
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "33 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "*Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "17 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 17.0
+        },
+        {
+          "name": "L-Theanine 99%",
+          "dose": "65 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 65.0
+        },
+        {
+          "name": "Celery Seed Apigenin 98% (Apium graveolens) (semen)",
+          "dose": "17 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 17.0
+        },
+        {
+          "name": "Zinc Bisglycinate (20% Zn)",
+          "dose": "25 mg",
+          "standardized_pct": 20.0,
+          "standardized_as": "Zn",
+          "compound_mg": 25.0,
+          "active_mg": 5.0
+        },
+        {
+          "name": "Lithium Orotate (3.83% Li)",
+          "dose": "9 mg",
+          "standardized_pct": 3.83,
+          "standardized_as": "Li",
+          "compound_mg": 9.0,
+          "active_mg": 0.3447
+        },
+        {
+          "name": "Micro-encapsulated Monk Fruit Mogroside V 50% (Siratia grosvenorii)",
+          "dose": "",
+          "purity_pct": 50.0
+        }
+      ]
     },
     "clear-lens-eye-drops-aces-cat-eye-drops-2": {
       "name": "Clear Lens+ Eye Drops ACES+CAT Eye Drops",
@@ -12721,11 +13205,63 @@
       "pinecone_title": "Rescue Phytochromotherapy",
       "qty_pricing": true,
       "fmp_id": "452",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop 2 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Amla Vitamin C 50% (Phyllanthus emblica)",
+          "dose": "0 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Magnesium L-Threonate (7% Mg)",
+          "dose": "57 mg",
+          "standardized_pct": 7.0,
+          "standardized_as": "Mg",
+          "compound_mg": 57.0,
+          "active_mg": 3.99
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "230 mg",
+          "compound_mg": 230.0
+        },
+        {
+          "name": "Phycocyanin 99% (Spirulina platensis)",
+          "dose": "50 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Mogroside V 80% (Siraitia grosvenorii)",
+          "dose": "20 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "L-Theanine 99%",
+          "dose": "7 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 7.0
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "17 mg",
+          "compound_mg": 17.0
+        },
+        {
+          "name": "Vitamin C: Magnesium Ascorbate (6.5% Mg)",
+          "dose": "120 mg",
+          "standardized_pct": 6.5,
+          "standardized_as": "Mg",
+          "compound_mg": 120.0,
+          "active_mg": 7.8
+        }
+      ]
     },
     "soothe-powder": {
       "name": "Soothe Powder",
@@ -12733,11 +13269,95 @@
       "pinecone_title": "Soothe Powder",
       "qty_pricing": true,
       "fmp_id": "454",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule 2 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Vitamin B7: Biotin",
+          "dose": "150 mcg",
+          "compound_mg": 0.15
+        },
+        {
+          "name": "Vitamin B9: 5-MTHF (L-5-methyltetrahydrofolate) 98%",
+          "dose": "100 mcg",
+          "purity_pct": 98.0,
+          "compound_mg": 0.1
+        },
+        {
+          "name": "Vitamin B12 Blend: Adenosyl & Methyl Cobalamin",
+          "dose": "3 mcg",
+          "compound_mg": 0.003
+        },
+        {
+          "name": "Magnesium Butyrate (21.8% Mg)",
+          "dose": "55 mg",
+          "standardized_pct": 21.8,
+          "standardized_as": "Mg",
+          "compound_mg": 55.0,
+          "active_mg": 11.99
+        },
+        {
+          "name": "Slippery Elm Bark 4:1 (Ulmus rubra) (cortex)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Marshmallow (Althaea officinalis) (radix)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Nopal Cactus (Opuntia ficus)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "*Chitosan 90% Deacetylated (Aspergillus niger)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Fenugreek (Trigonella foenum-graecum) (semen)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "MCP (Modified Citrus Pectin) 90% (Citrus spp.)",
+          "dose": "60 mg",
+          "purity_pct": 90.0,
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Glucomannan (Amorphophallus konjac)",
+          "dose": "60 mg",
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Aloe Acemannan Polysaccharides 98% (Aloe spp.)",
+          "dose": "23 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 23.0
+        },
+        {
+          "name": "Humic Acid 99%",
+          "dose": "1 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 1.0
+        },
+        {
+          "name": "Fulvic Acid 95%",
+          "dose": "1 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 1.0
+        },
+        {
+          "name": "Portobello Chitosan Oligosaccharide (Agaricus bisporus) 98% deacetylated",
+          "dose": ""
+        }
+      ]
     },
     "vagus-nerve-support-drops": {
       "name": "Vagus Nerve Support Drops",
@@ -12767,10 +13387,33 @@
       "pinecone_title": "Sanctuary C60 in Black Seed Oil Drops",
       "qty_pricing": true,
       "fmp_id": "468",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
-      "description": "10 drops 3 times a day in mouth"
+      "description": "10 drops 3 times a day in mouth",
+      "ingredients": [
+        {
+          "name": "Black Cumin (Nigella sativa) Seed OIl",
+          "dose": ".5 ml"
+        },
+        {
+          "name": "C60 99.99% (Buckminster Fullerene)",
+          "dose": ".4 mg",
+          "purity_pct": 99.99
+        },
+        {
+          "name": "ORMUS Pacific Ocean 30X",
+          "dose": ".4 mg"
+        },
+        {
+          "name": "ORMUS Monoatomic Rose Gold",
+          "dose": ".4 mg"
+        },
+        {
+          "name": "ORMUS: Phinheas Manna",
+          "dose": ".006 ml"
+        }
+      ]
     },
     "shields-up-cold-flu-formula": {
       "name": "Shields Up - Cold/Flu Formula",
@@ -12778,11 +13421,95 @@
       "pinecone_title": "Shields Up - Cold/Flu Formula",
       "qty_pricing": true,
       "fmp_id": "469",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "ingredients": [
+        {
+          "name": "Vitamin D3: Cholecalciferol 500,000 IU/g (1.25%)",
+          "dose": "1.3 mg",
+          "purity_pct": 25.0,
+          "compound_mg": 1.3
+        },
+        {
+          "name": "NAC (N-Acetyl Cysteine)",
+          "dose": "200 mg",
+          "compound_mg": 200.0
+        },
+        {
+          "name": "Elderberry Anthocyanins 25% (Sambucus nigra)",
+          "dose": "60 mg",
+          "purity_pct": 25.0,
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Ginsenosides 80% (Panax ginseng)",
+          "dose": "3.3 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 3.3
+        },
+        {
+          "name": "Allicin 25% (Allium sativa)",
+          "dose": "2.6 mg",
+          "purity_pct": 25.0,
+          "compound_mg": 2.6
+        },
+        {
+          "name": "Maitake Polysaccharides 50% (Grifola frondosa)",
+          "dose": "100 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Thymoquinone 20% (Nigella sativa)",
+          "dose": "8 mg",
+          "purity_pct": 20.0,
+          "compound_mg": 8.0
+        },
+        {
+          "name": "Pullulan 00 vegi capsule",
+          "dose": ""
+        },
+        {
+          "name": "Zinc Bisglycinate (20% Zn)",
+          "dose": "25 mg",
+          "standardized_pct": 20.0,
+          "standardized_as": "Zn",
+          "compound_mg": 25.0,
+          "active_mg": 5.0
+        },
+        {
+          "name": "Andrographolide 98% (Andrographis paniculata)",
+          "dose": "16.7 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 16.7
+        },
+        {
+          "name": "EMIQ 98% (Enzymatical ly Modified Isoquercetrin) (Sophorae japonica)",
+          "dose": "33 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "Reishi Triterpenoids 10%, Polysaccharides 50% (Ganoderma lucidum)",
+          "dose": "33 mg",
+          "purity_pct": 10.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "*Gingerols 10% (Zingiber officinalis)",
+          "dose": "20 mg",
+          "purity_pct": 10.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Gingerols 20% (Zingiber officinalis)",
+          "dose": "",
+          "purity_pct": 20.0
+        }
+      ]
     },
     "ocular-terrain-restore": {
       "name": "Ocular Terrain Restore",
@@ -12824,11 +13551,21 @@
       "pinecone_title": "OffSyrup Drops",
       "qty_pricing": true,
       "fmp_id": "503",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "10 drops 3 times a day as needed",
-      "bottle_type": "Dropper 50 mL"
+      "bottle_type": "Dropper 50 mL",
+      "ingredients": [
+        {
+          "name": "Bronchial Support Herbal Syrup",
+          "dose": ".10 ml"
+        },
+        {
+          "name": "Terrain Restore",
+          "dose": ".40 ml"
+        }
+      ]
     },
     "cinnamon-blue-drops": {
       "name": "Cinnamon Blue Drops",
@@ -12848,11 +13585,29 @@
       "pinecone_title": "Crucifer Complex Powder",
       "qty_pricing": true,
       "fmp_id": "582",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop daily in food or drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "DIM 98% (3,4 Diindolylmethane) (Brassica oleracea)",
+          "dose": "24 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 24.0
+        },
+        {
+          "name": "Kale 4:1 (Brassica oleracea) (folia)",
+          "dose": "238 mg",
+          "compound_mg": 238.0
+        },
+        {
+          "name": "Collard (Brassica oleracea) (folia)",
+          "dose": "238 mg",
+          "compound_mg": 238.0
+        }
+      ]
     },
     "comfort-synovial-syntropy": {
       "name": "Comfort Synovial Syntropy",
@@ -12860,11 +13615,121 @@
       "pinecone_title": "Comfort Synovial Syntropy",
       "qty_pricing": true,
       "fmp_id": "586",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "ingredients": [
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "33 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "Pine OPCs 95% (Oligomeric Proanthocyanidins) (Pinus pinaster)",
+          "dose": "35 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 35.0
+        },
+        {
+          "name": "Trans-Resveratrol 98% (Polygonum cuspidatum)",
+          "dose": "33 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "Notoginsenosides 80% (Panax notoginseng)",
+          "dose": "33 mg",
+          "purity_pct": 80.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "Thymoquinone 20% (Nigella sativa)",
+          "dose": "33 mg",
+          "purity_pct": 20.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "*Paeoniflorin 50% (Paeonia spp.) ~1.5:1",
+          "dose": "0 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 0.0
+        },
+        {
+          "name": "Oxindole Alkaloids 5% (Uncaria tomentosa)",
+          "dose": "33 mg",
+          "compound_mg": 33.0
+        },
+        {
+          "name": "CBD 99% (Cannabidiol) (Cannabis sativa)",
+          "dose": "7 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 7.0
+        },
+        {
+          "name": "*Boswellic Acid 95% (Boswellia serrata)",
+          "dose": "100 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Collagen - Undenatured Type II (UC-II)",
+          "dose": ""
+        },
+        {
+          "name": "Micro-encapsulated Gingerols 20% (Zingiber officinalis)",
+          "dose": "",
+          "purity_pct": 20.0
+        },
+        {
+          "name": "*Gingerols 10% (Zingiber officinalis)",
+          "dose": "33 mg",
+          "purity_pct": 10.0,
+          "compound_mg": 33.0
+        },
+        {
+          "name": "Gingerols 20% (Zingiber officinalis)",
+          "dose": "",
+          "purity_pct": 20.0
+        },
+        {
+          "name": "NEM (Eggshell Membrane)",
+          "dose": ""
+        },
+        {
+          "name": "Avocado-Soybean Unsaponifiables (ASU)",
+          "dose": ""
+        },
+        {
+          "name": "Hyaluronic Acid (Vegan)",
+          "dose": "33 mg",
+          "compound_mg": 33.0
+        },
+        {
+          "name": "High AKBA Boswellic Acid 90% (Boswellia serrata)",
+          "dose": "",
+          "purity_pct": 90.0
+        },
+        {
+          "name": "Pterostilbene 98%",
+          "dose": "17 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 17.0
+        },
+        {
+          "name": "EMIQ 98% (Enzymatical ly Modified Isoquercetrin) (Sophorae japonica)",
+          "dose": "17 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 17.0
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "65 mg",
+          "compound_mg": 65.0
+        }
+      ]
     },
     "msm-syntropy-powder": {
       "name": "MSM Syntropy Powder",
@@ -12872,11 +13737,43 @@
       "pinecone_title": "MSM Syntropy Powder",
       "qty_pricing": true,
       "fmp_id": "606",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop up to 3 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Vitamin B7: Biotin",
+          "dose": ".1 mg"
+        },
+        {
+          "name": "Vitamin C: L-Ascorbic Acid (natural)",
+          "dose": "133.3 mg",
+          "compound_mg": 133.3
+        },
+        {
+          "name": "Bamboo Silica 70% (Bambusa arundinacea)",
+          "dose": "",
+          "purity_pct": 70.0
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": "333.3 mg",
+          "compound_mg": 333.3
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "33.3 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 33.3
+        },
+        {
+          "name": "*Boswellic Acid 95% (Boswellia serrata)",
+          "dose": "",
+          "purity_pct": 95.0
+        }
+      ]
     },
     "relationship-shell-essence-in-terrain-restore": {
       "name": "Relationship Shell Essence in Terrain Restore",
@@ -16063,11 +16960,92 @@
       "pinecone_title": "Bioavailability Blend Powder",
       "qty_pricing": true,
       "fmp_id": "879",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 scoop with supplements as needed",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Vitamin B13: Phosphatides 30% (Helianthus annua)",
+          "dose": "13 mg",
+          "purity_pct": 30.0,
+          "compound_mg": 13.0
+        },
+        {
+          "name": "Ginkgo European Std. 10:1 EP Standard (Ginkgo biloba)",
+          "dose": "8 mg",
+          "compound_mg": 8.0
+        },
+        {
+          "name": "Vitamin B3: Niacin",
+          "dose": "5 mg",
+          "compound_mg": 5.0
+        },
+        {
+          "name": "Moringa 100:1 (Moringa oleifera) (folia)",
+          "dose": "3 mg",
+          "compound_mg": 3.0
+        },
+        {
+          "name": "*Licorice Omnipotent (5% total acid) (Glycyrrhiza glabra)",
+          "dose": "0 mg",
+          "standardized_pct": 5.0,
+          "standardized_as": "total acid",
+          "compound_mg": 0.0,
+          "active_mg": 0.0
+        },
+        {
+          "name": "Vinpocetine 99% (Vinca minor)",
+          "dose": "1 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 1.0
+        },
+        {
+          "name": "*Gingerols 10% (Zingiber officinalis)",
+          "dose": "0.5 mg",
+          "purity_pct": 10.0,
+          "compound_mg": 0.5
+        },
+        {
+          "name": "Piperine 95% (Piper nigrum)",
+          "dose": "0.5 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 0.5
+        },
+        {
+          "name": "Humic Acid 99%",
+          "dose": "0.5 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 0.5
+        },
+        {
+          "name": "Fulvic Acid 95%",
+          "dose": "0.5 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 0.5
+        },
+        {
+          "name": "ORMUS Pacific Ocean 30X",
+          "dose": "0.5 mg",
+          "compound_mg": 0.5
+        },
+        {
+          "name": "Vitamin B13: Alpha GPC (Alpha-Glyceryl Phosphoryl Choline) 99%",
+          "dose": "",
+          "purity_pct": 99.0
+        },
+        {
+          "name": "DGL Licorice (<3% Glycyrrhizic acid) (Glycyrrhiza glabra)",
+          "dose": "2 mg",
+          "compound_mg": 2.0
+        },
+        {
+          "name": "EMIQ 98% (Enzymatical ly Modified Isoquercetrin) (Sophorae japonica)",
+          "dose": "",
+          "purity_pct": 98.0
+        }
+      ]
     },
     "c15-syntropy": {
       "name": "C15 Syntropy",
@@ -16075,11 +17053,59 @@
       "pinecone_title": "C15 Syntropy",
       "qty_pricing": true,
       "fmp_id": "880",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "Essential for cell membrane function, cell metabolism Fatty liver, fat deposits in eye such as drusen, brain and other tissues, obesity 1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "ingredients": [
+        {
+          "name": "C15 (Pentadecanoic Acid)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Sodium Propionate",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "ALCAR (Acetyl L-Carnitine) HYGROSCOPIC",
+          "dose": "5 mg",
+          "compound_mg": 5.0
+        },
+        {
+          "name": "Bioavailability Blend",
+          "dose": "34.5 mg",
+          "compound_mg": 34.5
+        },
+        {
+          "name": "Pullulan 00 vegi capsule",
+          "dose": ""
+        },
+        {
+          "name": "Vitamin B13: Alpha GPC (Alpha-Glyceryl Phosphoryl Choline) 99%",
+          "dose": "65 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 65.0
+        },
+        {
+          "name": "Vitamin B13: DMAE (Dimethylaminoethanol) Bitartrate*",
+          "dose": "65 mg",
+          "compound_mg": 65.0
+        },
+        {
+          "name": "Vitamin B13: Centrophenoxine 99%*",
+          "dose": "65 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 65.0
+        },
+        {
+          "name": "Vitamin B13: Choline Bitartrate*",
+          "dose": "65 mg",
+          "compound_mg": 65.0
+        }
+      ]
     },
     "cds": {
       "name": "CDS",
@@ -16243,11 +17269,38 @@
       "pinecone_title": "Three Treasures",
       "qty_pricing": true,
       "fmp_id": "905",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "1 capsule daily with food",
-      "bottle_type": "30 Caps"
+      "bottle_type": "30 Caps",
+      "ingredients": [
+        {
+          "name": "Bioavailability Blend",
+          "dose": "34.5 mg",
+          "compound_mg": 34.5
+        },
+        {
+          "name": "*Boswellic Acid 95% (Boswellia serrata)",
+          "dose": "150 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 150.0
+        },
+        {
+          "name": "Myrrh (Commiphora myrrha) (resin)",
+          "dose": "150 mg",
+          "compound_mg": 150.0
+        },
+        {
+          "name": "Pullulan 00 vegi capsule",
+          "dose": ""
+        },
+        {
+          "name": "ORMUS Monoatomic Rose Gold",
+          "dose": "150 mg",
+          "compound_mg": 150.0
+        }
+      ]
     },
     "spirit-mineral-gold-in-terrain-restore": {
       "name": "Spirit Mineral Gold in Terrain Restore",
@@ -16398,10 +17451,76 @@
       "pinecone_title": "Mucosa Syntropy Powder",
       "qty_pricing": true,
       "fmp_id": "954",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "description": "Supports energy metabolism, healing, and integrity of the small intestine mucosa. 1 scoop up to 2 times a day throughout the day",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "L-Glutamine",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Humic Acid 99%",
+          "dose": "1 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 1.0
+        },
+        {
+          "name": "Zinc Carnosine 99% (23% Zn)",
+          "dose": "6 mg",
+          "standardized_pct": 23.0,
+          "standardized_as": "Zn",
+          "compound_mg": 6.0,
+          "active_mg": 1.38
+        },
+        {
+          "name": "Quercetin Dihydrate 98% (Sophorae japonica)*",
+          "dose": "15 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 15.0
+        },
+        {
+          "name": "*Curcumin 95% (Curcuma longa)",
+          "dose": "50 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "50 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 50.0
+        },
+        {
+          "name": "NAG (N-Acetyl D-Glucosamine)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "DGL Licorice (<3% Glycyrrhizic acid) (Glycyrrhiza glabra)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Trans-Resveratrol 98% (Polygonum cuspidatum)",
+          "dose": "10 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Aloe Acemannan Polysaccharides 98% (Aloe spp.)",
+          "dose": "18 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 18.0
+        },
+        {
+          "name": "Slippery Elm Bark 4:1 (Ulmus rubra) (cortex)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        }
+      ]
     },
     "cerluten-brain-peptide-in-terrain-restore": {
       "name": "Cerluten Brain Peptide in Terrain Restore",
@@ -16613,11 +17732,68 @@
       "pinecone_title": "Nerve Relief Powder",
       "qty_pricing": true,
       "fmp_id": "974",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "regular_cents": 8000,
       "description": "Synergistic with WholOmega, Neuro-Magnesium, and Nerve Repair 1 scoop 2 times a day in food or drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Na RALA (Stabilized Bio-enhanced Na R-Lipoate)",
+          "dose": "43 mg",
+          "compound_mg": 43.0
+        },
+        {
+          "name": "ALCAR (Acetyl L-Carnitine) HYGROSCOPIC",
+          "dose": "143 mg",
+          "compound_mg": 143.0
+        },
+        {
+          "name": "Vitamin B1: Benfotiamine 99%",
+          "dose": "43 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 43.0
+        },
+        {
+          "name": "L-Carnosine 99% EYE DROPS",
+          "dose": "71 mg",
+          "compound_mg": 71.0
+        },
+        {
+          "name": "Lion's Mane Polysaccharides 30% (Hericium erinaceus)",
+          "dose": "143 mg",
+          "purity_pct": 30.0,
+          "compound_mg": 143.0
+        },
+        {
+          "name": "Vitamin B12: Methylcobalamin",
+          "dose": "0.143 mg",
+          "compound_mg": 0.143
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "14 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 14.0
+        },
+        {
+          "name": "*Boswellic Acid 95% (Boswellia serrata)",
+          "dose": "43 mg",
+          "purity_pct": 95.0,
+          "compound_mg": 43.0
+        },
+        {
+          "name": "*Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "13 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 13.0
+        },
+        {
+          "name": "Vitamin B6: P5P (Pyridoxal 5-Phosphate)",
+          "dose": "7 mg",
+          "compound_mg": 7.0
+        }
+      ]
     },
     "cell-metabolism-homeopathic-complex-in-terrain-restore": {
       "name": "Cell Metabolism Homeopathic Complex in Terrain Restore",
@@ -17798,10 +18974,73 @@
       "pinecone_title": "Scar Soft Drink",
       "qty_pricing": true,
       "fmp_id": "1075",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "description": "1 scoop 2 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "Bamboo Silica 70% (Bambusa arundinacea)",
+          "dose": "110 mg",
+          "purity_pct": 70.0,
+          "compound_mg": 110.0
+        },
+        {
+          "name": "EMIQ 98% (Enzymatical ly Modified Isoquercetrin) (Sophorae japonica)",
+          "dose": "25 mg",
+          "purity_pct": 98.0,
+          "compound_mg": 25.0
+        },
+        {
+          "name": "MSM (Methylsulfonylmethane)",
+          "dose": ""
+        },
+        {
+          "name": "Yuzu Spray-Dried Fruit Juice (Citrus junos)",
+          "dose": "40 mg",
+          "compound_mg": 40.0
+        },
+        {
+          "name": "Micro-encapsulated Gingerols 20% (Zingiber officinalis)",
+          "dose": "60 mg",
+          "purity_pct": 20.0,
+          "compound_mg": 60.0
+        },
+        {
+          "name": "Micro-encapsulated Monk Fruit Mogroside V 50% (Siratia grosvenorii)",
+          "dose": "20 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Micro-encapsulated Low-MW Hyaluronic Acid (vegan source)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Micro-encapsulated Fulvic Acid",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Finger Lime Freeze-Dried Fruit Juice (Citrus australasica)",
+          "dose": ""
+        },
+        {
+          "name": "Zinc Bisglycinate (20% Zn)",
+          "dose": "13 mg",
+          "standardized_pct": 20.0,
+          "standardized_as": "Zn",
+          "compound_mg": 13.0,
+          "active_mg": 2.6
+        },
+        {
+          "name": "Turmeric Tetrahydrocurcumin 99% (Curcuma longa)",
+          "dose": "75 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 75.0
+        }
+      ]
     },
     "stress-resistance-homeopathic-complex-in-terrain-restore": {
       "name": "Stress Resistance Homeopathic Complex in Terrain Restore",
@@ -17869,10 +19108,62 @@
       "pinecone_title": "Serenity BlueGreen Balance Drink Mix",
       "qty_pricing": true,
       "fmp_id": "1081",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "description": "1 scoop 2 times a day in drinks",
-      "bottle_type": "30 g"
+      "bottle_type": "30 g",
+      "ingredients": [
+        {
+          "name": "*Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "20 mg",
+          "purity_pct": 50.0,
+          "compound_mg": 20.0
+        },
+        {
+          "name": "Micro-encapsulated Monk Fruit Mogroside V 50% (Siratia grosvenorii)",
+          "dose": "",
+          "purity_pct": 50.0
+        },
+        {
+          "name": "Yuzu Spray-Dried Fruit Juice (Citrus junos)",
+          "dose": "50 mg",
+          "compound_mg": 50.0
+        },
+        {
+          "name": "Barley (Hordeum vulgare) Grass Juice Powder Organic",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Spirulina pacifica",
+          "dose": ""
+        },
+        {
+          "name": "Potassium Citrate",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Spirulina (Spirulina platensis)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Phycocyanin 99% (Spirulina platensis)",
+          "dose": "30 mg",
+          "purity_pct": 99.0,
+          "compound_mg": 30.0
+        },
+        {
+          "name": "Collard (Brassica oleracea) (folia)",
+          "dose": "100 mg",
+          "compound_mg": 100.0
+        },
+        {
+          "name": "Kale (Brassica oleracea) (succus)",
+          "dose": ""
+        }
+      ]
     },
     "neurocalm-homeopathic-complex-in-terrain-restore": {
       "name": "Neurocalm Homeopathic Complex in Terrain Restore",
@@ -18216,10 +19507,24 @@
       "pinecone_title": "Fungal Nail Repair",
       "qty_pricing": true,
       "fmp_id": "1130",
-      "ingredients_source": "fmp_snap",
+      "ingredients_source": "fmp-bom-2026-05-23",
       "no_groovekart": true,
       "description": "1 drop daily",
-      "bottle_type": "15ml"
+      "bottle_type": "15ml",
+      "ingredients": [
+        {
+          "name": "Ozonated Olive Oil (Olea europaea)",
+          "dose": ""
+        },
+        {
+          "name": "Undecylenic Acid 99% liquid (Ricinus communis)",
+          "dose": ""
+        },
+        {
+          "name": "Black Cumin (Nigella sativa) Seed OIl",
+          "dose": ""
+        }
+      ]
     },
     "glautarakt-homeopathic-complex-in-terrain-restore": {
       "name": "Glautarakt Homeopathic Complex in Terrain Restore",
