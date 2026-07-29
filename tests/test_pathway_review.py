@@ -63,6 +63,25 @@ def test_queue_orders_by_ingredient_reach(cx):
     assert rows[0]["canonical_label"] == "NF-κB"
 
 
+def test_lifted_atoms_add_reach_without_adding_review_work(cx):
+    """The alias sweep lifts canonical names out of the discarded em-dash tail.
+    Because a lifted atom reuses an atom_key that is already decided, it must
+    raise the pathway's ingredient reach and never appear as a new queue item —
+    that is the whole reason the sweep is free to run."""
+    before = pr.queue(cx, include_singletons=True)
+    cx.execute("INSERT INTO pathway_atoms(pathway_row_id,ingredient_id,position,"
+               "atom,atom_key,is_annotation,source) "
+               "VALUES(3,7,0,'nf kappab','nf kappab',0,'rest')")
+    cx.commit()
+    after = pr.queue(cx, include_singletons=True)
+    assert len(after) == len(before)                     # no new card
+    reach = {r["atom_key"]: r["ingredients"] for r in after}
+    assert reach["nf kappab"] == 2                       # ingredient 1 plus 7
+    # and a lifted atom whose key is already settled stays out entirely
+    pr.decide(cx, "nf kappab", "confirmed", canonical_id=1)
+    assert "nf kappab" not in [r["atom_key"] for r in pr.queue(cx, include_singletons=True)]
+
+
 def test_annotation_atoms_never_enter_the_queue(cx):
     cx.execute("UPDATE pathway_atoms SET is_annotation=1")
     cx.commit()

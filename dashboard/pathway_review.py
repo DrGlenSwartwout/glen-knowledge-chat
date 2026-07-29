@@ -45,10 +45,15 @@ def init_tables(cx):
         id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,
         label TEXT NOT NULL, family TEXT, status TEXT NOT NULL DEFAULT 'proposed',
         notes TEXT, created_at TEXT NOT NULL, decided_at TEXT);
+    -- `source` distinguishes atoms split out of the pathway head from canonical
+    -- names lifted out of the discarded em-dash tail by the vault's alias sweep.
+    -- Lifted atoms reuse an already-decided atom_key, so they add ingredient
+    -- reach without ever adding a review item.
     CREATE TABLE IF NOT EXISTS pathway_atoms(
         id INTEGER PRIMARY KEY AUTOINCREMENT, pathway_row_id INTEGER NOT NULL,
         ingredient_id INTEGER, position INTEGER NOT NULL, atom TEXT NOT NULL,
-        atom_key TEXT NOT NULL, is_annotation INTEGER NOT NULL DEFAULT 0);
+        atom_key TEXT NOT NULL, is_annotation INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'head');
     CREATE TABLE IF NOT EXISTS pathway_atom_map(
         atom_key TEXT PRIMARY KEY, canonical_id INTEGER, decision TEXT NOT NULL,
         source TEXT NOT NULL, rationale TEXT, decided_at TEXT);
@@ -84,6 +89,10 @@ def stats(cx):
     return {
         "settled": settled,
         "pending": pending,
+        # The default queue serves batch 1 only (atoms reaching >=2 ingredients).
+        # Without this the header's total would promise cards the queue never
+        # offers, and "load more" would vanish early looking broken.
+        "batch": pending_count(cx),
         "canonical": q("SELECT COUNT(*) FROM canonical_pathways"),
         "canonical_confirmed": q("SELECT COUNT(*) FROM canonical_pathways WHERE status='confirmed'"),
         "atoms_total": q("SELECT COUNT(DISTINCT atom_key) FROM pathway_atoms WHERE is_annotation=0"),
