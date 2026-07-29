@@ -489,10 +489,25 @@ def _has_col(cx, table, col):
     return db.column_exists(cx, table, col)
 
 
+_CUSTOM_REMEDIES = (
+    {
+        "name": "Miasmatox Homeopathic Complex in Terrain Restore",
+        "dosage": "10 drops",
+        "frequency": "3 times a day",
+        "timing": "30 minutes before food",
+        "phase": "",
+        "system": "",
+        "discontinue_intent": False,
+    },
+)
+
+
 def remedy_catalog(cx, q="", limit=20):
-    """Search the product catalog (from the snapshot) for the remedy picker."""
+    """Search the snapshot plus locally maintained additions for the remedy picker."""
+    query = (q or "").strip().lower()
+    custom = [dict(r) for r in _CUSTOM_REMEDIES if query in r["name"].lower()]
     if not _has(cx, "fmp_snap_products"):
-        return []
+        return custom[:limit]
     cx.row_factory = sqlite3.Row
     like = f"%{(q or '').strip()}%"
     rows = cx.execute(
@@ -511,7 +526,9 @@ def remedy_catalog(cx, q="", limit=20):
         d["discontinue_intent"] = _is_discontinue_intent(d["name"])
         d["name"] = _clean_product_name(d["name"])
         out.append(d)
-    return out
+    existing = {r["name"].lower() for r in out}
+    out.extend(r for r in custom if r["name"].lower() not in existing)
+    return sorted(out, key=lambda r: r["name"].lower())[:limit]
 
 
 # Reveal remedy names diverge from FMP product names in ways a suffix match can't
@@ -555,6 +572,10 @@ def remedy_dosing(cx, name):
     genuinely divergent names. Returns {dosage, frequency, timing}; all '' when
     unresolved (infoceuticals / E4L drivers have no physical dose)."""
     blank = {"dosage": "", "frequency": "", "timing": ""}
+    clean_name = _clean_product_name(name).lower()
+    for remedy in _CUSTOM_REMEDIES:
+        if clean_name == remedy["name"].lower():
+            return {k: remedy[k] for k in blank}
     if not _has(cx, "fmp_snap_products"):
         return blank
     cx.row_factory = sqlite3.Row

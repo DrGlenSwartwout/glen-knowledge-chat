@@ -43,6 +43,25 @@ def test_dosing_autofill(tmp_path):
         "dosage": "3 caps", "frequency": "daily", "timing": "with food"}
 
 
+def test_custom_miasmatox_catalog_and_dosing(tmp_path):
+    cx = _seed(str(tmp_path / "chat_log.db"))
+    result = remedy_catalog(cx, "miasmatox")
+    assert result == [{
+        "name": "Miasmatox Homeopathic Complex in Terrain Restore",
+        "dosage": "10 drops",
+        "frequency": "3 times a day",
+        "timing": "30 minutes before food",
+        "phase": "",
+        "system": "",
+        "discontinue_intent": False,
+    }]
+    assert remedy_dosing(cx, result[0]["name"]) == {
+        "dosage": "10 drops",
+        "frequency": "3 times a day",
+        "timing": "30 minutes before food",
+    }
+
+
 def test_stress_vocab(tmp_path):
     cx = _seed(str(tmp_path / "chat_log.db"))
     assert stress_vocab(cx, "ac") == ["Acid"]
@@ -56,6 +75,6 @@ def test_stress_suggestions_counts_history(tmp_path):
 
 def test_helpers_graceful_without_snapshot(tmp_path):
     cx = sqlite3.connect(str(tmp_path / "chat_log.db"))
-    assert remedy_catalog(cx, "x") == [] and stress_vocab(cx) == []
+    assert remedy_catalog(cx, "no-such-remedy") == [] and stress_vocab(cx) == []
     assert stress_suggestions(cx, "x") == []
     assert remedy_dosing(cx, "x") == {"dosage": "", "frequency": "", "timing": ""}
