@@ -54,6 +54,16 @@ def test_update_and_delete_row(tmp_path):
     assert authored_report(cx, tid)["layers"] == []
 
 
+def test_manual_schedule_slot_survives_report_rebuild(tmp_path):
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    rid = add_chain_row(cx, tid, 1, "Night", "Night", "TMG", "1 scoop", "daily", "at night")
+    update_chain_row(cx, rid, schedule_slot="Lunch")
+    entry = authored_report(cx, tid)["schedule"]["entries"][0]
+    assert entry["slots"] == ["Lunch"]
+    assert entry["source_rids"] == [rid]
+
+
 def test_authored_report_depth_match(tmp_path):
     cx = _cx(tmp_path)
     from dashboard.biofield_dimensions import seed_dimensions, tag, DEPTH_KEY

@@ -75,6 +75,10 @@ def init_auth_tables(cx):
     except Exception:
         pass
     try:
+        cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN schedule_slot TEXT")
+    except Exception:
+        pass
+    try:
         # Per-layer stress codes (JSON list), carried from the synthesis/reveal so a
         # layer knows its own patterns even when the coverage map doesn't link them.
         cx.execute("ALTER TABLE biofield_auth_chain ADD COLUMN codes TEXT")
@@ -417,7 +421,8 @@ def update_chain_row(cx, rid, **fields):
     """Edit a row's VALUES. Bumps `updated_at` so an audit can tell a human edit from
     what the interpreter originally wrote (see was_edited). Confirming or re-ordering
     a row is not a value edit and deliberately leaves `updated_at` alone."""
-    cols = ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing")
+    cols = ("layer", "head", "most_affected", "remedy", "dosage", "frequency",
+            "timing", "schedule_slot")
     sets, vals = [], []
     for k in cols:
         if k in fields:
@@ -623,6 +628,7 @@ def ordered_chain(cx, tid):
     cx.row_factory = sqlite3.Row
     rows = cx.execute(
         "SELECT id, layer, head, most_affected, remedy, dosage, frequency, timing, "
+        "schedule_slot, "
         "confirmed, origin FROM biofield_auth_chain "
         "WHERE test_id=? AND TRIM(COALESCE(remedy,''))<>''", (_num(tid),)).fetchall()
 
@@ -638,6 +644,7 @@ def ordered_chain(cx, tid):
                     "most_affected": r["most_affected"] or "", "remedy": r["remedy"] or "",
                     "dosage": r["dosage"] or "", "frequency": r["frequency"] or "",
                     "timing": r["timing"] or "",
+                    "schedule_slot": r["schedule_slot"] or "",
                     "confirmed": 0 if r["confirmed"] == 0 else 1,
                     "origin": r["origin"] or "live",
                     "zone": "bottom" if unbalanced_scan(r) else "top"})
@@ -692,8 +699,9 @@ def authored_report(cx, tid):
         l["depth_status"] = depth_match(sd, rd)
         l["depth_need"] = depth_label(cx, sd)
     schedule = build_schedule([
-        {"name": l["remedy"], "dosage": l["dosage"],
-         "frequency": l["frequency"], "timing": l["timing"]} for l in layers])
+        {"name": l["remedy"], "dosage": l["dosage"], "frequency": l["frequency"],
+         "timing": l["timing"], "schedule_slot": l["schedule_slot"],
+         "source_rids": [l["rid"]]} for l in layers])
     tk = t.keys() if t else []
     return {"test_id": str(tid),
             "client": {"name": (t["name"] if t else "") or "",

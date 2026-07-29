@@ -21272,7 +21272,7 @@
       "name": "WholOmega 120 gelcaps",
       "price_cents": 19000,
       "pinecone_title": "WholOmega 120 gelcaps",
-      "qty_pricing": true,
+      "qty_pricing": false,
       "fmp_id": "448",
       "ingredients_source": "gk",
       "no_groovekart": true,

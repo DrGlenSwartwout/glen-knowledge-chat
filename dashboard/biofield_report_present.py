@@ -82,16 +82,13 @@ def _masthead(report):
 
 
 def _terrain(report):
-    """The scan's terrain reading (BSI phase + spoken location) as a banner at the very
-    top of the report. '' when no phase was read (FMP-snapshot / older authored tests)."""
-    from dashboard.terrain_phase import phase_display
-    disp = phase_display(report.get("phase"))
-    if not disp:
+    """The scan's terrain reading in the requested print-header format."""
+    from dashboard.terrain_phase import phase_num
+    phase = phase_num(report.get("phase"))
+    if not phase:
         return ""
     loc = (report.get("location") or "").strip()
-    tail = f' <span class="terrain-loc">· Location: {_e(loc)}</span>' if loc else ""
-    return (f'<div class="terrain"><span class="terrain-k">Your Terrain</span>'
-            f'{_e(disp)}{tail}</div>')
+    return f'<div class="terrain">Phase {phase}: {_e(loc)}</div>'
 
 
 def _sched_name(name, report):
@@ -173,7 +170,7 @@ def _chain(report):
 
 
 def render_present(report, narrative=""):
-    body = (_masthead(report) + _terrain(report) + _schedule(report) + _narrative(narrative)
+    body = (_terrain(report) + _masthead(report) + _schedule(report) + _narrative(narrative)
             + _life_stress(report) + _chain(report) + f'<div class="footer">{_e(FOOTER)}</div>')
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<title>Biofield Analysis</title><style>{_CSS}</style></head>"

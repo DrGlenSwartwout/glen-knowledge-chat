@@ -166,12 +166,18 @@ def build_schedule(remedies):
         contains = [_strip_terrain_restore(r.get("name")) for r in liquids]
         freq = next((r.get("frequency") for r in liquids if (r.get("frequency") or "").strip()), "")
         timing = next((r.get("timing") for r in liquids if (r.get("timing") or "").strip()), "")
+        manual_slots = {r.get("schedule_slot") for r in liquids if r.get("schedule_slot") in SLOTS}
+        manual_slot = manual_slots.pop() if len(manual_slots) == 1 else ""
+        source_rids = [rid for r in liquids for rid in (r.get("source_rids") or [])]
         work.append({"name": "Terrain Restore", "dosage": "contains: " + ", ".join(contains),
-                     "frequency": freq, "timing": timing, "contains": contains})
+                     "frequency": freq, "timing": timing, "contains": contains,
+                     "schedule_slot": manual_slot, "source_rids": source_rids})
 
     entries = []
     for r in work:
         slots, food, per_slot = _placement(r.get("frequency"), r.get("timing"), r.get("dosage"))
+        if r.get("schedule_slot") in SLOTS:
+            slots = [r["schedule_slot"]]
         entries.append({
             "name": (r.get("name") or "").strip(),
             "dosage": (r.get("dosage") or "").strip(),
@@ -182,5 +188,6 @@ def build_schedule(remedies):
             "food": food,
             "as_directed": not slots,
             "contains": r.get("contains") or [],
+            "source_rids": r.get("source_rids") or [],
         })
     return {"slots": SLOTS, "entries": entries}

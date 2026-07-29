@@ -1348,7 +1348,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     def author_row_save(test_id, rid):
         d = request.get_json(silent=True) or {}
         fields = {}
-        for k in ("layer", "head", "most_affected", "remedy", "dosage", "frequency", "timing"):
+        for k in ("layer", "head", "most_affected", "remedy", "dosage",
+                  "frequency", "timing", "schedule_slot"):
             if k in d:
                 fields[k] = _layer_int(d[k]) if k == "layer" else d[k]
         if "layer" in fields:

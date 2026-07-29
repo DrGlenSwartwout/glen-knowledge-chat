@@ -49,6 +49,12 @@ _STYLE = """
  tr:last-child td{border-bottom:0}
  .lyr{color:var(--accent);font-weight:700;white-space:nowrap}
  .slot{font-weight:600;color:var(--accent);white-space:nowrap;width:130px}
+ .sched-drop{min-height:44px;white-space:normal}
+ .sched-drop.over{background:rgba(212,168,67,.12);box-shadow:inset 0 0 0 1px var(--accent)}
+ .sched-remedy{display:inline-flex;align-items:center;gap:5px;margin:2px 5px 2px 0;
+   padding:5px 9px;background:#0c0e12;border:1px solid var(--line);border-radius:7px}
+ .sched-remedy[draggable=true]{cursor:grab}
+ .sched-remedy.drag{opacity:.45}
  .food{color:var(--muted);font-size:12px}
  .warn{color:#e0823a;font-size:12px}
  input[type=search]{background:#0c0e12;color:var(--fg);border:1px solid var(--line);
@@ -358,28 +364,62 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
     chain = ("<h2>Causal Chain Report</h2>"
              + render_chain_table(report.get("layers") or [], with_depth_badge=True))
 
-    # Schedule grid
+    # Schedule grid. Authored reports carry source row ids, making the slots
+    # editable; imported FileMaker reports remain read-only.
     sched = report.get("schedule") or {}
     entries = sched.get("entries") or []
     placed = [e for e in entries if not e.get("as_directed")]
+    editable = any(e.get("source_rids") for e in entries)
+
+    def remedy_chip(e):
+        rids = ",".join(str(r) for r in (e.get("source_rids") or []))
+        drag = (f' draggable="true" data-rids="{_e(rids)}" '
+                'ondragstart="schedDragStart(event)" ondragend="schedDragEnd(event)"'
+                if rids else "")
+        return (f'<span class="sched-remedy"{drag}>{_e(e.get("name") or "")} '
+                f'<span class=food>({_e(e.get("per_slot") or e.get("dosage") or "")}'
+                + (f", {_e(e.get('food'))}" if e.get("food") else "")
+                + ")</span></span>")
+
     srows = ""
     for slot in sched.get("slots") or []:
         here = [e for e in placed if slot in (e.get("slots") or [])]
-        if not here:
+        if not here and not editable:
             continue
-        cells = "; ".join(
-            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('per_slot') or e.get('dosage') or '')}"
-            + (f", {_e(e.get('food'))}" if e.get('food') else "") + ")</span>"
-            for e in here)
-        srows += f"<tr><td class=slot>{_e(slot)}</td><td>{cells}</td></tr>"
+        cells = "".join(remedy_chip(e) for e in here)
+        drop = (f' class="sched-drop" data-slot="{_e(slot)}" '
+                'ondragover="schedDragOver(event)" ondragleave="schedDragLeave(event)" '
+                'ondrop="schedDrop(event)"' if editable else "")
+        srows += f"<tr><td class=slot>{_e(slot)}</td><td{drop}>{cells}</td></tr>"
     asdir = [e for e in entries if e.get("as_directed")]
     if asdir:
-        cells = "; ".join(
-            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('timing') or 'as directed')})</span>"
-            for e in asdir)
-        srows += f"<tr><td class=slot>As directed</td><td>{cells}</td></tr>"
+        srows += ("<tr><td class=slot>As directed</td><td>"
+                  + "".join(remedy_chip(e) for e in asdir) + "</td></tr>")
     schedule = ("<h2>Remedy Schedule</h2>"
-                "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>")
+                + ("<p class=sub>Drag a remedy to a different time slot. Changes save automatically.</p>"
+                   if editable else "")
+                + "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>"
+                + ("<div id=schedStat class=food></div>" if editable else "")
+                + ("""<script>
+var schedDragged=null;
+function schedDragStart(e){schedDragged=e.currentTarget;e.currentTarget.classList.add('drag');
+ e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',e.currentTarget.dataset.rids||'')}
+function schedDragEnd(e){e.currentTarget.classList.remove('drag');
+ document.querySelectorAll('.sched-drop.over').forEach(function(x){x.classList.remove('over')})}
+function schedDragOver(e){e.preventDefault();e.currentTarget.classList.add('over');
+ e.dataTransfer.dropEffect='move'}
+function schedDragLeave(e){e.currentTarget.classList.remove('over')}
+async function schedDrop(e){e.preventDefault();var zone=e.currentTarget;zone.classList.remove('over');
+ if(!schedDragged)return;var rids=(schedDragged.dataset.rids||'').split(',').filter(Boolean);
+ var stat=document.getElementById('schedStat');stat.textContent='Saving schedule…';
+ try{for(var i=0;i<rids.length;i++){var r=await fetch('/author/__TID__/row/'+rids[i],{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({schedule_slot:zone.dataset.slot})});if(!r.ok)throw new Error('save failed')}
+  document.querySelectorAll('.sched-remedy').forEach(function(x){
+   if(x!==schedDragged&&x.dataset.rids===schedDragged.dataset.rids)x.remove()});
+  zone.appendChild(schedDragged);stat.textContent='Schedule saved.'}
+ catch(err){stat.textContent='Could not save schedule. Reload and try again.'}}
+</script>""".replace("__TID__", _e(report.get("test_id") or "")) if editable else ""))
 
     # Narrative + verbal notes (Increment 2)
     tid = _e(report.get("test_id") or "")

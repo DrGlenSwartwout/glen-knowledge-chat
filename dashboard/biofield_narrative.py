@@ -88,7 +88,9 @@ def save_video_script(cx, test_id, script):
 _SYSTEM = (
     "You write in Dr. Glen Swartwout's warm, calm clinical voice, as a letter to a "
     "patient about their Biofield Analysis (a Causal Chain Report). RULES:\n"
-    "- Open with 'Aloha <first name>,' then 2-3 warm sentences framing the causal chain: "
+    "- Open with 'Aloha <first name>,' then, when a TERRAIN READING is present, make the "
+    "first paragraph a plain-language description of that terrain phase and its location. "
+    "Do not omit, rename, or infer a different phase or location. Then use 2-3 warm sentences framing the causal chain: "
     "the most recent layer sits on top, deeper and older roots beneath, and supporting them "
     "in order lets the chain unwind and the body self-correct.\n"
     "- One short plain-English paragraph per layer, top-down (Layer 1 = most recent/surface "
@@ -180,8 +182,13 @@ def _user_block(report, notes, scan=None, profile=None):
     c = report.get("client") or {}
     lines = [f"PATIENT: {c.get('name') or ''}",
              f"DATE: {report.get('date') or ''}",
-             "",
-             "CAUSAL CHAIN (top-down, most recent layer first to deepest root):"]
+             ""]
+    from dashboard.terrain_phase import phase_narrative_description
+    terrain = phase_narrative_description(report.get("phase"), report.get("location"))
+    if terrain:
+        lines += ["TERRAIN READING (use as the first paragraph after the greeting):",
+                  terrain, ""]
+    lines += ["CAUSAL CHAIN (top-down, most recent layer first to deepest root):"]
     for l in report.get("layers") or []:
         ln = l.get("layer")
         lines.append(
