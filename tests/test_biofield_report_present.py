@@ -69,8 +69,8 @@ def test_terrain_banner_at_top_when_phase_present():
     rep = {**REPORT, "phase": 4, "location": "Toxicity"}
     html = render_present(rep, narrative="x")
     assert "Phase 4: Toxicity" in html
-    # the terrain reading sits at the very top: before the masthead and schedule
-    assert html.index("Phase 4: Toxicity") < html.index('<div class="masthead">')
+    # The terrain reading sits below the branded header and above the schedule.
+    assert html.index('<div class="masthead">') < html.index("Phase 4: Toxicity")
     assert html.index("Phase 4: Toxicity") < html.index("Remedy Schedule")
 
 

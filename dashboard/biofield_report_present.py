@@ -170,7 +170,7 @@ def _chain(report):
 
 
 def render_present(report, narrative=""):
-    body = (_terrain(report) + _masthead(report) + _schedule(report) + _narrative(narrative)
+    body = (_masthead(report) + _terrain(report) + _schedule(report) + _narrative(narrative)
             + _life_stress(report) + _chain(report) + f'<div class="footer">{_e(FOOTER)}</div>')
     return (f"<!doctype html><html><head><meta charset=utf-8>"
             f"<title>Biofield Analysis</title><style>{_CSS}</style></head>"
