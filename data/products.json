@@ -12077,75 +12077,69 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Zinc Aspartate",
-          "dose": "10 mg"
+          "name": "L-Carnosine",
+          "dose": "285.0",
+          "grade": "Oral powder, at least 99%",
+          "compound_mg": 285.0,
+          "purity_pct": 99.0
         },
         {
-          "name": "Zinc Carnosine",
-          "dose": "8.7 mg"
+          "name": "Zinc L-Carnosine",
+          "dose": "75.0",
+          "grade": "99%, 23% zinc",
+          "compound_mg": 75.0,
+          "standardized_pct": 23.0,
+          "standardized_as": "zinc",
+          "active_mg": 17.25
         },
         {
-          "name": "Zinc",
-          "dose": "6.5 mg"
+          "name": "Mixed Tocopherols Powder",
+          "dose": "50.0",
+          "grade": "30%",
+          "compound_mg": 50.0,
+          "purity_pct": 30.0
         },
         {
-          "name": "Zinc Glycinate",
-          "dose": "10 mg"
+          "name": "Copper Glycinate",
+          "dose": "15.0",
+          "grade": "10% copper",
+          "compound_mg": 15.0,
+          "standardized_pct": 10.0,
+          "standardized_as": "copper",
+          "active_mg": 1.5
         },
         {
-          "name": "Zinc Malate",
-          "dose": "6.25 mg"
+          "name": "Zinc Bisglycinate",
+          "dose": "10.0",
+          "grade": "20% zinc",
+          "compound_mg": 10.0,
+          "standardized_pct": 20.0,
+          "standardized_as": "zinc",
+          "active_mg": 2.0
         },
         {
-          "name": "Zinc Monomethionine",
-          "dose": "9.5 mg"
+          "name": "Zinc Citrate",
+          "dose": "6.5",
+          "grade": "31% zinc",
+          "compound_mg": 6.5,
+          "standardized_pct": 31.0,
+          "standardized_as": "zinc",
+          "active_mg": 2.015
         },
         {
-          "name": "Zinc Orotate",
-          "dose": "13.3 mg"
+          "name": "Riboflavin 5-Phosphate",
+          "dose": "5.0",
+          "grade": "Assay to verify",
+          "compound_mg": 5.0
         },
         {
-          "name": "Zinc",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Zinc Sulfate Monohydrate",
-          "dose": "5 mg"
-        },
-        {
-          "name": "Magnesium",
-          "dose": "285.7 mg"
-        },
-        {
-          "name": "Chromium",
-          "dose": "1.6 mg"
-        },
-        {
-          "name": "Retinyl Acetate",
-          "dose": "1.5 mg"
-        },
-        {
-          "name": "Riboflavin-5-Phosphate (Coenzyme B2)",
-          "dose": "50 mg"
-        },
-        {
-          "name": "Adenosyl 90% & Methyl 10% Cobalamin",
-          "dose": "6 mcg"
-        },
-        {
-          "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "6.7 mg"
-        },
-        {
-          "name": "Mixed Tocopherols",
-          "dose": "67 mg"
-        },
-        {
-          "name": "Pregnenolone",
-          "dose": "20 mg"
+          "name": "Vitamin D3 Powder",
+          "dose": "2.0",
+          "grade": "500,000 IU/g",
+          "compound_mg": 2.0
         }
       ],
-      "ingredients_source": "fmp_new",
+      "ingredients_source": "production-sheet-2026-07-27",
       "description": "Zinc Synergy . Zinc Synergy Zinc Syntropy Zinc acts as a cofactor for 2,000 different enzymes, more than any other vitamin or mineral. Zinc is essential for immunity, wound healing and all the special senses: vision, hearing, taste and smell. Low levels can cause craving of salty and spicy foods. Only 8% of Americans fail to take in an adequate amount of Zinc in their daily diet as defined by currently accepted standards, yet Zinc deficiency is one of the most common micronutrient deficiencies. Phytates in grains bind Zinc, reducing its bioavailability, making grain-based diets another...",
       "gk_stale": true,
       "gk_stale_reason": "GK page missing: Magnesium",
