@@ -114,6 +114,27 @@ def build_invoice_lines(client, remedies, catalog, include_fee=True):
     return {"lines": lines, "skipped": skipped}
 
 
+def merge_manual_invoice_lines(new_lines, existing_items):
+    """Preserve invoice-editor additions while refreshing Biofield schedule lines."""
+    merged = [dict(line) for line in (new_lines or [])]
+    present = {(line.get("slug") or "").strip() for line in merged}
+    for item in existing_items or []:
+        slug = (item.get("slug") or "").strip()
+        if (not slug or slug == BIOFIELD_SLUG or
+                (item.get("source") or "").strip().lower() == "biofield" or
+                slug in present):
+            continue
+        line = {"slug": slug, "qty": max(1, int(item.get("qty") or 1))}
+        for key in ("source", "note", "format"):
+            if item.get(key):
+                line[key] = item[key]
+        if item.get("override") and item.get("unit_cents") is not None:
+            line["unit_cents"] = item["unit_cents"]
+        merged.append(line)
+        present.add(slug)
+    return merged
+
+
 def _console():
     key = os.environ.get("CONSOLE_SECRET")
     if not key:
@@ -214,7 +235,10 @@ def default_latest_invoice(email):
             items = order.get("items") or []
             if any((it.get("slug") == BIOFIELD_SLUG or it.get("source") == "biofield")
                    for it in items):
-                return {"ok": True, "order_id": order.get("id")}
+                return {"ok": True, "order_id": order.get("id"),
+                        "items": items, "status": order.get("status"),
+                        "pay_status": order.get("pay_status"),
+                        "portal_published": bool(order.get("portal_published"))}
         return {"ok": False, "error": "No Biofield invoice found for this client."}
     except Exception:
         return {"ok": False, "error": "Couldn't reach the console to find the invoice."}

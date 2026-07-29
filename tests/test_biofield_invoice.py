@@ -1,6 +1,7 @@
 from dashboard.biofield_invoice import (
     BIOFIELD_SLUG, resolve_line_slug, build_invoice_lines,
-    DEFAULT_INVOICE_NOTE, terrain_note, build_invoice_note)
+    DEFAULT_INVOICE_NOTE, terrain_note, build_invoice_note,
+    merge_manual_invoice_lines)
 
 
 def test_terrain_note_only_when_phase_present():
@@ -88,3 +89,20 @@ def test_build_invoice_lines_honors_per_remedy_qty():
     # backward-compat: a bare string still means qty 1
     out2 = build_invoice_lines({}, ["B17 Syntropy"], cat)
     assert [l for l in out2["lines"] if l["slug"] == "b17-syntropy"][0]["qty"] == 1
+
+
+def test_regenerated_invoice_preserves_only_manual_additions():
+    refreshed = [
+        {"slug": BIOFIELD_SLUG, "qty": 1},
+        {"slug": "new-scheduled", "qty": 2, "source": "biofield"},
+    ]
+    existing = [
+        {"slug": BIOFIELD_SLUG, "qty": 1},
+        {"slug": "old-scheduled", "qty": 1, "source": "biofield"},
+        {"slug": "manual-extra", "qty": 3, "source": "self", "note": "Owner added"},
+    ]
+    assert merge_manual_invoice_lines(refreshed, existing) == [
+        {"slug": BIOFIELD_SLUG, "qty": 1},
+        {"slug": "new-scheduled", "qty": 2, "source": "biofield"},
+        {"slug": "manual-extra", "qty": 3, "source": "self", "note": "Owner added"},
+    ]
