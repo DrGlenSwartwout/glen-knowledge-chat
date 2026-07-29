@@ -7684,7 +7684,21 @@ def begin_buy_page(slug):
 def begin_product_page(slug):
     if not _get_product(slug):
         return ("", 404)
-    resp = send_from_directory(STATIC, "begin-product.html")
+    html = (STATIC / "begin-product.html").read_text(encoding="utf-8")
+    if _PORTAL_CART_ENABLED:
+        html = (html.replace("/*__CART_CONTROL_FN_START__*/", "")
+                    .replace("/*__CART_CONTROL_FN_END__*/", "")
+                    .replace("/*__CART_CONTROL_CALL_START__*/", "")
+                    .replace("/*__CART_CONTROL_CALL_END__*/", ""))
+    else:
+        html = re.sub(
+            r"[ \t]*/\*__CART_CONTROL_FN_START__\*/.*?/\*__CART_CONTROL_FN_END__\*/[ \t]*\n?",
+            "", html, flags=re.S)
+        html = re.sub(
+            r"[ \t]*/\*__CART_CONTROL_CALL_START__\*/.*?/\*__CART_CONTROL_CALL_END__\*/[ \t]*\n?",
+            "", html, flags=re.S)
+    html = html.replace("__CART_ENABLED__", "true" if _PORTAL_CART_ENABLED else "false")
+    resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,

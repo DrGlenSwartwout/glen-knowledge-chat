@@ -1,0 +1,36 @@
+import os
+# Dummy keys so `import app` (which constructs OpenAI + Pinecone clients at import)
+# succeeds under a secretless CI without doppler.
+os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
+os.environ.setdefault("PINECONE_API_KEY", "pc-dummy")
+
+import pytest
+
+import app
+
+
+@pytest.fixture()
+def client():
+    return app.app.test_client()
+
+
+def _prep(monkeypatch):
+    monkeypatch.setattr(
+        app, "_get_product",
+        lambda slug: {"slug": "brain-boost", "name": "Brain Boost",
+                      "price_cents": 6997} if slug == "brain-boost" else None)
+
+
+def test_product_page_has_no_cart_markup_when_flag_off(client, monkeypatch):
+    _prep(monkeypatch)
+    monkeypatch.setattr(app, "_PORTAL_CART_ENABLED", False)
+    html = client.get("/begin/product/brain-boost").get_data(as_text=True)
+    assert "data-cart-add" not in html
+    assert "CART_ENABLED = false" in html
+
+
+def test_product_page_exposes_the_cart_control_when_flag_on(client, monkeypatch):
+    _prep(monkeypatch)
+    monkeypatch.setattr(app, "_PORTAL_CART_ENABLED", True)
+    html = client.get("/begin/product/brain-boost").get_data(as_text=True)
+    assert "CART_ENABLED = true" in html

@@ -293,6 +293,7 @@
   <script>
     var BASE = window.location.origin;
     var slug = location.pathname.split('/').filter(Boolean).pop() || '';
+    var CART_ENABLED = __CART_ENABLED__;
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     function show(id){ var e = document.getElementById(id); if (e) e.classList.remove('hidden'); }
@@ -1353,7 +1354,7 @@
     function buildCtaBlock(ctaUrl){
       var wrap = document.createElement('div');
       wrap.className = 'sp-cta-wrap';
-      wrap.id = 'sp-cta-block';
+      wrap.id = 'buy-actions';
       var a = document.createElement('a');
       a.href = ctaUrl || '#';
       a.className = 'cta-btn mc-open';
@@ -1362,6 +1363,34 @@
       return wrap;
     }
 
+    /*__CART_CONTROL_FN_START__*/
+    // ── Add to cart (Task 5) ──────────────────────────────────────────────────
+    function renderCartControl(slug){
+      if (!CART_ENABLED) return;
+      var host = document.getElementById('buy-actions');
+      if (!host) return;
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-secondary';
+      btn.setAttribute('data-cart-add', slug);
+      btn.textContent = 'Add to cart';
+      btn.addEventListener('click', function(){
+        btn.disabled = true;
+        var label = btn.textContent;
+        btn.textContent = 'Adding…';
+        fetch('/api/cart/add', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({slug: slug, qty: 1, source: 'product'})
+        }).then(function(r){ return r.json(); }).then(function(d){
+          btn.disabled = false;
+          if (!d || !d.ok) { btn.textContent = label; return; }
+          btn.textContent = 'Added';
+          setTimeout(function(){ btn.textContent = label; }, 2000);
+        }).catch(function(){ btn.disabled = false; btn.textContent = label; });
+      });
+      host.appendChild(btn);
+    }
+    /*__CART_CONTROL_FN_END__*/
     // ── Founding launch: promo video + counter ────────────────────────────────
     // populated from /begin/product-page-data/<slug>: data.founding_video_url, data.founding
     // Live counter polls /begin/founding/status/<slug> every 60s; flips to sold-out
@@ -1373,7 +1402,7 @@
     function _applyFoundingStatus(status){
       var fc = document.getElementById('founding-counter');
       var soldOut = document.getElementById('founding-soldout');
-      var ctaBlock = document.getElementById('sp-cta-block');
+      var ctaBlock = document.getElementById('buy-actions');
       if (status.open){
         // show live counter
         if (fc){
@@ -1509,6 +1538,7 @@
       });
 
       renderFounding(data);
+      /*__CART_CONTROL_CALL_START__*/renderCartControl(slug);/*__CART_CONTROL_CALL_END__*/
       show('sp-product');
       show('sp-back');
     }
