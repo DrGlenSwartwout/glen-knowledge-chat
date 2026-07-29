@@ -17465,7 +17465,13 @@ def api_console_search():
                     break
                 name = (pr.get("name") or "")
                 slug = (pr.get("slug") or "")
-                ing = " ".join(pr.get("ingredients") or [])
+                # products.json stores ingredients as {name, dose} dicts, so a
+                # bare join raised TypeError on the FIRST product with any
+                # ingredients — swallowed by the except below, which silently
+                # emptied the products section of every console search.
+                ing = " ".join(
+                    (i.get("name") or "") if isinstance(i, dict) else str(i)
+                    for i in (pr.get("ingredients") or []))
                 if ql in name.lower() or ql in slug.lower() or ql in ing.lower():
                     out["products"].append({
                         "title": name or slug, "subtitle": slug,
