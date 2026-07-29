@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 
 from dashboard import cart_store as CS
+from tests.aborting_conn import AbortingConn
 
 
 @pytest.fixture()
@@ -185,3 +186,33 @@ def test_merge_recovers_when_the_member_cart_appears_mid_flight(cx):
     # The anonymous items should be merged into the member cart
     got = {i["slug"]: i["qty"] for i in CS.items(cx, mem_token)}
     assert got == {"brain-boost": 2, "wholomega": 1}
+
+
+def test_merge_race_recovery_survives_an_aborted_transaction(cx):
+    """CRITICAL, same root cause as `get_or_create`'s: `merge`'s race self-heal
+    recovers by re-reading (`open_token_for_email`) after the claim UPDATE fails.
+    On Postgres that failed UPDATE leaves the transaction ABORTED, so the recovery
+    read raises `InFailedSqlTransaction` and the anonymous cart's items are LOST
+    instead of folded onto the member. sqlite3 keeps the connection usable, which
+    is the only reason the pre-existing race test passes.
+
+    `AbortingConn` reproduces the driver state: the racing request's member cart is
+    staged, the claim UPDATE aborts the transaction, and every statement after it
+    raises until `rollback()`."""
+    CS.get_or_create(cx, "anon1")
+    CS.add_item(cx, "anon1", "wholomega", qty=1)
+
+    def winner_creates_the_member_cart(raw):
+        CS.get_or_create(raw, "mem-race", email="a@x.com")
+        CS.add_item(raw, "mem-race", "brain-boost", qty=2)
+
+    wrapped = AbortingConn(cx, fail_on="UPDATE carts SET email=",
+                           on_fail=winner_creates_the_member_cart)
+
+    assert CS.merge(wrapped, "anon1", "A@X.com") == "mem-race"
+    assert wrapped.rollbacks == 1
+    # the anonymous basket was folded on, not stranded
+    got = {i["slug"]: i["qty"] for i in CS.items(cx, "mem-race")}
+    assert got == {"brain-boost": 2, "wholomega": 1}
+    assert cx.execute(
+        "SELECT status FROM carts WHERE token=?", ("anon1",)).fetchone()[0] == "merged"

@@ -72,26 +72,37 @@ def get_or_create(cx, token, email=""):
     """Get or create an open cart. Returns token (may differ from argument).
 
     Resolution order:
-    1. If open cart exists for `token`, return `token`.
+    1. If an open cart exists for `token` AND this visitor owns it, return `token`.
     2. If `email` is non-empty and owns an open cart, return that existing token.
     3. If `token` exists but is non-open status, mint fresh token and create cart.
     4. Otherwise, create cart with `token` and return `token`.
+
+    Step 1's ownership test is the same guard `merge` already carries: an open cart
+    stamped with a DIFFERENT member's email is never handed back just because the
+    caller presented its token. The token travels in a browser cookie, and this
+    codebase explicitly models shared household devices -- without the test, the
+    next person on that browser (anonymous, or signed in as someone else) writes
+    into the previous member's cart, and that member is charged for it.
 
     Callers MUST use the returned token, not the argument.
     """
     token = (token or "").strip()
     if not token:
         raise ValueError("token required")
+    norm_email = _norm_email(email)
 
-    # 1. Check if open cart exists for this token
+    # 1. Check if an open cart exists for this token AND belongs to this visitor
     row = cx.execute(
-        "SELECT token FROM carts WHERE token=? AND status='open'", (token,)
+        "SELECT email FROM carts WHERE token=? AND status='open'", (token,)
     ).fetchone()
     if row:
-        return token
+        owner = _norm_email(row[0])
+        if not owner or owner == norm_email:
+            return token
+        # else: open, but owned by a DIFFERENT member -- fall through and give this
+        # visitor a cart of their own rather than that member's.
 
     # 2. If email is given, check if it owns an open cart
-    norm_email = _norm_email(email)
     if norm_email:
         row = cx.execute(
             "SELECT token FROM carts WHERE email=? AND status='open' LIMIT 1", (norm_email,)
@@ -117,6 +128,17 @@ def get_or_create(cx, token, email=""):
         cx.commit()
         return token
     except Exception:
+        # MANDATORY on Postgres -- do NOT remove as "dead code because SQLite works
+        # without it". psycopg leaves the transaction in an ABORTED state after a
+        # failed statement, so the very next statement (the recovery SELECT below)
+        # raises InFailedSqlTransaction instead of returning the winner's token, and
+        # this whole self-heal becomes inert in production while staying green in a
+        # SQLite-only test suite. The INSERT above is the first statement after a
+        # commit, so this rollback discards nothing.
+        try:
+            cx.rollback()
+        except Exception:
+            pass
         # Race: another request just created the email's cart. Re-read step 2.
         if norm_email:
             row = cx.execute(
@@ -246,6 +268,15 @@ def merge(cx, anon_token, email):
             cx.commit()
             return anon_token
         except Exception:
+            # MANDATORY on Postgres -- see the identical note in `get_or_create`.
+            # Without it the aborted transaction makes `open_token_for_email`'s
+            # SELECT raise, and the anonymous cart is lost instead of folded.
+            # The UPDATE above is the first statement after a commit, so this
+            # rollback discards nothing.
+            try:
+                cx.rollback()
+            except Exception:
+                pass
             # Race: another request just created the member's cart. Re-read and fold.
             member_token = open_token_for_email(cx, email)
             if member_token:
