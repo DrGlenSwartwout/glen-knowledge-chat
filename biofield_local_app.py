@@ -514,7 +514,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
                e4l_db=None, fee_get=None, fee_set=None, fee_clear=None,
                invoice_fetch_catalog=None, invoice_create=None, invoice_link=None,
-               invoice_paid_check=None):
+               invoice_paid_check=None, ingredients_db=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -1478,6 +1478,77 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         with sqlite3.connect(e4l_db) as cx:
             _fm.init_tables(cx)
             return {"ok": True, "mappings": _fm.reorder(cx, b.get("code"), b.get("order") or [])}
+
+    # --- Canonical pathway review (atom -> canonical, in the vault ingredients.db) --
+    # Separate db from both chat_log.db and e4l.db: the ingredient corpus lives in
+    # ~/AI-Training/ingredients.db, which this local tool reads directly.
+    def _ingredients_db():
+        from dashboard import pathway_review as _pr
+        return ingredients_db or _pr._db_path()
+
+    @app.route("/pathway-review")
+    def pathway_review_page():
+        from dashboard import pathway_review as _pr
+        from dashboard.pathway_review_html import render_pathway_review_page
+        from dashboard.biofield_report_html import _workflow_nav
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            rows = _pr.queue(cx, limit=40)
+            return render_pathway_review_page(
+                rows, _pr.canonicals(cx), _pr.stats(cx),
+                directions=_pr.direction_queue(cx, limit=25),
+                nav=_workflow_nav("pathway"))
+
+    @app.route("/api/pathway-review/queue")
+    def pathway_review_queue():
+        from dashboard import pathway_review as _pr
+        from dashboard.pathway_review_html import render_atom_card
+        offset = _safe_int(request.args.get("offset"), 0)
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            rows = _pr.queue(cx, limit=40, offset=offset)
+            canon = _pr.canonicals(cx)
+        return {"ok": True, "count": len(rows),
+                "html": "".join(render_atom_card(r, canon) for r in rows)}
+
+    @app.route("/api/pathway-review/decide", methods=["POST"])
+    def pathway_review_decide():
+        from dashboard import pathway_review as _pr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            got = _pr.decide(cx, b.get("atom_key"), b.get("decision"),
+                             b.get("canonical_id"), b.get("rationale"))
+        return ({"ok": True, "decided": got} if got
+                else ({"ok": False, "error": "bad atom_key or decision"}, 400))
+
+    @app.route("/api/pathway-review/undo", methods=["POST"])
+    def pathway_review_undo():
+        from dashboard import pathway_review as _pr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            return {"ok": True, "decided": _pr.undo(cx, b.get("atom_key"))}
+
+    @app.route("/api/pathway-review/canonical", methods=["POST"])
+    def pathway_review_new_canonical():
+        from dashboard import pathway_review as _pr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            got = _pr.create_canonical(cx, b.get("label"), b.get("family"), b.get("notes"))
+        return ({"ok": True, "canonical": got} if got
+                else ({"ok": False, "error": "label required"}, 400))
+
+    @app.route("/api/pathway-review/direction", methods=["POST"])
+    def pathway_review_direction():
+        from dashboard import pathway_review as _pr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _pr.init_tables(cx)
+            got = _pr.set_direction(cx, b.get("effect_key"), b.get("direction"))
+        return ({"ok": True, "set": got} if got
+                else ({"ok": False, "error": "bad direction"}, 400))
 
     @app.route("/api/dosing")
     def api_dosing():
