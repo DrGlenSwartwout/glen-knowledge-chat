@@ -47328,7 +47328,13 @@ def bos_orders_create():
                 print(f"[orders] invoice open annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
-        return jsonify({"ok": True, "data": rows})
+        resp = jsonify({"ok": True, "data": rows})
+        # Orders stay editable. Reopening Edit Invoice must not repopulate fields
+        # (especially a manual shipping override) from a pre-save cached list.
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     # --- existing POST body unchanged below ---
     b = request.get_json(silent=True) or {}
     ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")

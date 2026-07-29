@@ -25,6 +25,10 @@ def test_edit_invoice_has_print_download_pdf_button():
     assert 'window.open("", "_blank")' not in SRC
 
 
+def test_edit_invoice_reload_bypasses_cached_order_values():
+    assert 'fetch("/api/orders?limit=300", {headers:HEADERS, cache:"no-store"})' in SRC
+
+
 def test_line_items_table_contains_delete_column_without_overlay():
     assert '<div class="lines-scroll">' in SRC
     assert ".lines-scroll { width:100%; overflow-x:auto; overflow-y:hidden;" in SRC
