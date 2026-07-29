@@ -514,7 +514,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                fetch_runner=None, fetch_profile=None, fetch_recent_comms=None,
                e4l_db=None, fee_get=None, fee_set=None, fee_clear=None,
                invoice_fetch_catalog=None, invoice_create=None, invoice_link=None,
-               invoice_paid_check=None, ingredients_db=None):
+               invoice_paid_check=None, invoice_latest=None, ingredients_db=None):
     app = Flask(__name__)
     # The clinical-tags ledger lives in the SEPARATE local e4l.db (not the app's chat_log.db).
     e4l_db = e4l_db or _e4l_db_path()
@@ -540,6 +540,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     invoice_create = invoice_create or biofield_invoice.default_create_order
     invoice_link = invoice_link or biofield_invoice.default_invoice_link
     invoice_paid_check = invoice_paid_check or biofield_invoice.default_biofield_paid
+    invoice_latest = invoice_latest or biofield_invoice.default_latest_invoice
 
     def _report_for(cx, test_id):
         return (authored_report(cx, test_id) if str(test_id).startswith("a")
@@ -955,6 +956,22 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 "skipped": built["skipped"],
                 "warning": warning,
                 "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
+
+    @app.route("/author/<test_id>/invoice/view")
+    def author_invoice_view_latest(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"ok": False, "error": "Add a client email first."}, 400
+        latest = invoice_latest(email) or {}
+        oid = latest.get("order_id")
+        if not latest.get("ok") or not oid:
+            return {"ok": False, "error": latest.get("error") or "No invoice found."}, 404
+        link = invoice_link(oid) or {}
+        if not link.get("ok") or not link.get("print_url"):
+            return {"ok": False, "error": link.get("error") or "Invoice link unavailable."}, 502
+        return {"ok": True, "order_id": oid, "print_url": link["print_url"]}
 
     @app.route("/author/<test_id>/invoice/publish", methods=["POST"])
     def author_invoice_publish(test_id):

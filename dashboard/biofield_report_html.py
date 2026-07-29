@@ -1094,6 +1094,7 @@ def render_fee_panel(state):
         "<span id=feestat class=food></span></div>"
         "<div class=btnrow style='margin-top:10px'>"
         "<button class=btn id=raisebtn onclick=raiseInvoice()>Raise invoice &rarr;</button>"
+        "<button class='btn ghost' id=viewinvbtn onclick=viewInvoice()>View invoice &rarr;</button>"
         "<span id=invstat class=food></span></div>"
         "<div id=invresult class=food style='margin-top:6px'></div>")
     js = (
@@ -1108,6 +1109,13 @@ def render_fee_panel(state):
         "else{document.getElementById('feestat').textContent=j.error||'error';}});}"
         "function setFee(){feeSwap(_abase()+'/fee');}"
         "function clearFee(){feeSwap(_abase()+'/fee/clear');}"
+        "function viewInvoice(){var btn=document.getElementById('viewinvbtn');"
+        "var s=document.getElementById('invstat');var w=window.open('about:blank','_blank');"
+        "btn.disabled=true;s.textContent=' finding invoice...';"
+        "fetch(_abase()+'/invoice/view').then(r=>r.json()).then(function(j){"
+        "btn.disabled=false;s.textContent='';if(j.ok&&j.print_url){w.location=j.print_url;}"
+        "else{if(w)w.close();s.textContent=j.error||'No invoice found.';}})"
+        ".catch(function(){btn.disabled=false;if(w)w.close();s.textContent='Could not find invoice.';});}"
         "function publishInvoice(oid,btn){var t=btn.textContent;btn.disabled=true;btn.textContent='publishing...';"
         "fetch(_abase()+'/invoice/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:oid})})"
         ".then(r=>r.json()).then(function(j){if(j.ok){btn.textContent='Published to portal \\u2713';}"

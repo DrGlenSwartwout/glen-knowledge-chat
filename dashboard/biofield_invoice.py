@@ -196,6 +196,30 @@ def default_orders_link(order_id):
     return f"{base}/console/orders?order={int(order_id)}&key={urllib.parse.quote(key)}"
 
 
+def default_latest_invoice(email):
+    """Latest Biofield-authored invoice for this client, including remedy-only
+    invoices raised after the analysis fee was already paid."""
+    base, key = _console()
+    if not base or not (email or "").strip():
+        return {"ok": False, "error": "invoice unavailable"}
+    try:
+        url = f"{base}/api/orders?limit=300&key=" + urllib.parse.quote(key)
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            rows = (_json.loads(r.read().decode() or "{}").get("data") or [])
+        target = email.strip().lower()
+        for order in rows:
+            if (order.get("email") or "").strip().lower() != target:
+                continue
+            items = order.get("items") or []
+            if any((it.get("slug") == BIOFIELD_SLUG or it.get("source") == "biofield")
+                   for it in items):
+                return {"ok": True, "order_id": order.get("id")}
+        return {"ok": False, "error": "No Biofield invoice found for this client."}
+    except Exception:
+        return {"ok": False, "error": "Couldn't reach the console to find the invoice."}
+
+
 def default_publish_invoice(order_id):
     """POST the prod publish-to-portal endpoint for an order, so it shows as a pay
     card on the client's portal. Returns {ok, link} or {ok:False, error}."""
