@@ -18810,7 +18810,20 @@ def _recover_stale_cart_claim(email, stale_token, claimed_at):
     reaching into the orders table from cart_store) whether an order for this email
     was created at or after the claim. Found -> mark the stale cart ordered (closed,
     not re-priced). Not found -> release the claim back to 'open' so its items are
-    usable again."""
+    usable again.
+
+    Returns True if a decision was reached and acted on (caller may proceed), False
+    if the order lookup itself raised and no decision could be made.
+
+    The lookup-raises case is deliberately NOT treated as "no order found": failing
+    open here (releasing the claim when we don't actually know whether an order
+    exists) risks reopening a cart whose order really was placed, letting the same
+    items be charged a SECOND time. Failing closed (leaving the claim exactly as it
+    was, still 409ing) is fully recoverable -- this same recovery re-runs on the
+    customer's next attempt, and the lookup will usually succeed then. A wrongly
+    locked customer is annoying; a double charge costs Glen a refund, both
+    transactions' card fees, and the customer's trust. When we cannot tell which
+    state we're in, we choose the reversible failure."""
     matched_ref = None
     try:
         with db.connect(LOG_DB) as ocx:
@@ -18822,16 +18835,18 @@ def _recover_stale_cart_claim(email, stale_token, claimed_at):
                 break
     except Exception:
         app.logger.exception("cart checkout: stale-claim order lookup failed for %s", email)
+        return False  # unknown state -- leave the claim untouched, keep 409ing
 
     if matched_ref is not None:
         _mark_ordered_resilient(stale_token, matched_ref)
-        return
+        return True
     try:
         with db.connect(LOG_DB) as cx:
             _cart_store.release_claim(cx, stale_token)
     except Exception:
         app.logger.exception(
             "cart checkout: stale-claim release failed for token %s", stale_token)
+    return True
 
 
 @app.route("/api/cart/checkout", methods=["POST"])
@@ -18883,7 +18898,13 @@ def api_cart_checkout():
         # existing pattern of a dedicated row-factory connection for _bos_orders
         # reads), not nested inside the block above.
         if stale_token:
-            _recover_stale_cart_claim(email, stale_token, stale_claimed_at)
+            if not _recover_stale_cart_claim(email, stale_token, stale_claimed_at):
+                # The order lookup itself failed -- we don't know whether an order
+                # exists for the stale claim, so we cannot safely release OR close
+                # it. Leave it exactly as it was and keep refusing this request;
+                # the same recovery re-runs on the next attempt.
+                return jsonify({"ok": False,
+                                "error": "This order is already being processed."}), 409
 
         with db.connect(LOG_DB) as cx:
             _cart_store.init_cart_tables(cx)

@@ -427,8 +427,15 @@ def test_stale_claim_with_no_order_is_released_and_checkout_proceeds(client, db,
     finally:
         cx.close()
 
-    # No order exists anywhere for this email -- the earlier attempt died before
-    # `_checkout_cart` ever got to ingest one.
+    # The orders table exists (as it always does in production) but has no row for
+    # this email -- the earlier attempt died before `_checkout_cart` ever got to
+    # ingest one. A clean "table exists, no matching row" is what distinguishes this
+    # from the lookup-RAISES case covered separately below.
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+    finally:
+        ocx.close()
 
     seen = []
     _stub_checkout(monkeypatch, seen)
@@ -444,6 +451,49 @@ def test_stale_claim_with_no_order_is_released_and_checkout_proceeds(client, db,
         row = cx.execute(
             "SELECT status FROM carts WHERE token=?", (old_token,)).fetchone()
         assert row[0] == "ordered"  # released, then this same checkout closed it
+    finally:
+        cx.close()
+
+
+def test_a_failing_order_lookup_keeps_the_claim_rather_than_risking_a_double_charge(
+        client, db, monkeypatch):
+    """Round-2 fix-round-3: when the order lookup inside stale-claim recovery itself
+    RAISES (as distinct from cleanly finding no order), the claim must be left
+    exactly as it was -- not released, not closed. Releasing on an unknown-state
+    lookup failure would risk reopening a cart whose order actually exists, letting
+    the same items be charged a second time. A wrongly-locked customer is
+    recoverable (the same recovery re-runs on their next attempt); a double charge
+    is not."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    old_claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (old_claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    def boom(*a, **k):
+        raise RuntimeError("orders db unreachable")
+    monkeypatch.setattr(O, "list_orders_by_email", boom)
+
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 409
+
+    # neither released nor closed -- exactly as it was before this request
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        row = cx.execute(
+            "SELECT status, claimed_at FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert row[0] == "checking_out"
+        assert row[1] == old_claimed_at
     finally:
         cx.close()
 
