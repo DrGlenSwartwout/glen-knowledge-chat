@@ -67,18 +67,22 @@ def test_panel_zero_courtesy_is_comp_not_standard():
     assert "Standard: $" not in html       # ...not a fall-through to standard
 
 
-def test_panel_has_raise_invoice_button_when_email():
+def test_panel_has_stateful_create_edit_invoice_button_when_email():
     html = render_fee_panel(_state(courtesy_cents=10000))
-    assert "Raise invoice" in html
+    assert "Create invoice" in html
+    assert "Raise invoice" not in html
     assert "id=invresult" in html
-    assert "function raiseInvoice()" in html
+    assert "function createInvoice()" in html
+    assert "function invoiceAction()" in html
+    assert "Edit invoice" in html
+    assert "/invoice/status" in html
     assert "View invoice" in html
     assert "function viewInvoice()" in html
 
 
 def test_panel_no_invoice_button_without_email():
     html = render_fee_panel(_state(email="", has_email=False, available=False))
-    assert "Raise invoice" not in html
+    assert "Create invoice" not in html
 
 
 def test_author_html_has_print_report_link():

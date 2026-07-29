@@ -13,7 +13,11 @@ def _no_gate(monkeypatch):
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    from dashboard import biofield_invoice as bi
+    monkeypatch.setattr(
+        bi, "default_edit_order_link",
+        lambda oid: f"https://illtowell.com/orders/new?edit_order={oid}")
     db = str(tmp_path / "t.db")
     with sqlite3.connect(db) as cx:
         init_auth_tables(cx)
@@ -25,7 +29,8 @@ def client(tmp_path):
     def fake_catalog():
         return [{"slug": "liver-support", "name": "Liver Support"}]
 
-    def fake_create(customer, lines, replace_open=False, invoice_note=None):
+    def fake_create(customer, lines, replace_open=False, invoice_note=None,
+                    update_order_id=None):
         calls["lines"] = lines
         return {"ok": True, "order_id": 7, "external_ref": "INH-Z", "total_cents": 10000, "error": None,
                 "accepted_slugs": ["biofield-analysis", "liver-support"]}
@@ -35,7 +40,9 @@ def client(tmp_path):
 
     app = create_app(db_path=db, invoice_fetch_catalog=fake_catalog,
                      invoice_create=fake_create, invoice_link=fake_link,
-                     invoice_latest=lambda email: {"ok": True, "order_id": 7})
+                     invoice_latest=lambda email: {
+                         "ok": True, "order_id": 7, "status": "confirmed",
+                         "pay_status": "unpaid", "items": []})
     app.testing = True
     c = app.test_client()
     c._calls = calls
@@ -58,6 +65,13 @@ def test_view_latest_invoice(client):
     j = r.get_json()
     assert j["ok"] and j["order_id"] == 7
     assert j["print_url"].endswith("print=1")
+
+
+def test_invoice_status_detects_existing_without_minting_print_link(client):
+    r = client.get(f"/author/{client._tid}/invoice/status")
+    j = r.get_json()
+    assert j["ok"] and j["exists"] and j["order_id"] == 7
+    assert "edit_order=7" in j["edit_url"]
 
 
 def test_invoice_requires_email(tmp_path):

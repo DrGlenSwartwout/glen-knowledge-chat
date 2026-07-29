@@ -967,11 +967,26 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
                 "print_url": link.get("print_url") if link.get("ok") else "",
                 "order_id": created.get("order_id"),
                 "orders_url": biofield_invoice.default_orders_link(created.get("order_id")),
+                "edit_url": biofield_invoice.default_edit_order_link(created.get("order_id")),
                 "external_ref": created.get("external_ref"),
                 "added": added_count,
                 "skipped": built["skipped"],
                 "warning": warning,
                 "total_dollars": biofield_fee.cents_to_dollars(total) if total is not None else ""}
+
+    @app.route("/author/<test_id>/invoice/status")
+    def author_invoice_status(test_id):
+        with sqlite3.connect(db_path) as cx:
+            rep = authored_report(cx, test_id)
+        email = ((rep.get("client") or {}).get("email") or "").strip()
+        if not email:
+            return {"ok": True, "exists": False}
+        latest = invoice_latest(email) or {}
+        oid = latest.get("order_id")
+        if not latest.get("ok") or not oid:
+            return {"ok": True, "exists": False}
+        return {"ok": True, "exists": True, "order_id": oid,
+                "edit_url": biofield_invoice.default_edit_order_link(oid)}
 
     @app.route("/author/<test_id>/invoice/view")
     def author_invoice_view_latest(test_id):
@@ -987,7 +1002,8 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         link = invoice_link(oid) or {}
         if not link.get("ok") or not link.get("print_url"):
             return {"ok": False, "error": link.get("error") or "Invoice link unavailable."}, 502
-        return {"ok": True, "order_id": oid, "print_url": link["print_url"]}
+        return {"ok": True, "order_id": oid, "print_url": link["print_url"],
+                "edit_url": biofield_invoice.default_edit_order_link(oid)}
 
     @app.route("/author/<test_id>/invoice/publish", methods=["POST"])
     def author_invoice_publish(test_id):

@@ -220,6 +220,15 @@ def default_orders_link(order_id):
     return f"{base}/console/orders?order={int(order_id)}&key={urllib.parse.quote(key)}"
 
 
+def default_edit_order_link(order_id):
+    """Direct Edit Invoice URL for a known order."""
+    base, key = _console()
+    if not base or not order_id:
+        return ""
+    return (f"{base}/orders/new?edit_order={int(order_id)}&key="
+            f"{urllib.parse.quote(key)}")
+
+
 def default_latest_invoice(email):
     """Latest Biofield-authored invoice for this client, including remedy-only
     invoices raised after the analysis fee was already paid."""
