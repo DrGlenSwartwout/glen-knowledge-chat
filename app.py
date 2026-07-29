@@ -18702,11 +18702,18 @@ def api_cart():
             # to touch a cart owned by a different member (see cart_store.merge).
             anon_token = _cart_token_from_cookie()
             if anon_token and anon_token != token:
-                row = cx.execute(
-                    "SELECT status, email FROM carts WHERE token=?", (anon_token,)
-                ).fetchone()
-                if row and row[0] == "open" and not (row[1] or ""):
-                    token = _cart_store.merge(cx, anon_token, email)
+                try:
+                    row = cx.execute(
+                        "SELECT status, email FROM carts WHERE token=?", (anon_token,)
+                    ).fetchone()
+                    if row and row[0] == "open" and not (row[1] or ""):
+                        token = _cart_store.merge(cx, anon_token, email)
+                except Exception:
+                    # `merge` is a WRITE (UPDATE/INSERT/DELETE + commit), not a read --
+                    # a GET must never come back as a 500 because that opportunistic
+                    # merge hit a DB error. Degrade to the member's own cart (`token`
+                    # already resolved above) instead of failing the whole page.
+                    app.logger.exception("cart GET: read-time merge failed for %s", email)
         return jsonify(_cart_payload(cx, token))
 
 
@@ -18763,6 +18770,70 @@ def api_cart_set_qty():
         return jsonify(_cart_payload(cx, token))
 
 
+# A claim (status='checking_out') older than this is treated as abandoned rather
+# than in-flight: the process behind it (deploy restart, OOM, SIGKILL) died
+# somewhere between claiming the cart and either completing or releasing it. This
+# app autodeploys on merge, and the claim window spans pricing, order ingest and a
+# live Stripe round-trip, so this is not theoretical.
+_CART_CLAIM_STALE_SECONDS = 15 * 60  # 15 minutes
+
+
+def _mark_ordered_resilient(token, checkout_ref):
+    """mark_ordered wrapped with one retry. A single transient failure here must not
+    be what strands a cart in 'checking_out' forever (that is the exact mechanism
+    behind the round-2 Critical: this call swallowing its exception with no retry).
+    Any failure past the retry is logged, never raised -- by the time this is called
+    the order (and usually the Stripe session) already exist; the stale-claim
+    recovery below is what makes a persistent failure here non-permanent for the
+    customer even though this function itself does not raise."""
+    for attempt in (1, 2):
+        try:
+            with db.connect(LOG_DB) as cx:
+                _cart_store.mark_ordered(cx, token, checkout_ref)
+            return True
+        except Exception:
+            app.logger.exception(
+                "cart checkout: mark_ordered failed for token %s (attempt %d)", token, attempt)
+    return False
+
+
+def _recover_stale_cart_claim(email, stale_token, claimed_at):
+    """A `checking_out` cart older than _CART_CLAIM_STALE_SECONDS either genuinely
+    completed (mark_ordered failed even after its retry, or the process died between
+    the claim and mark_ordered) or died before `_checkout_cart` ever ingested an
+    order. These two cases require OPPOSITE recovery: closing a cart that already
+    has a real order is a no-op; reopening one that doesn't is what makes the item
+    purchasable again -- reopening a cart whose order DOES exist would let the same
+    items be bought a second time.
+
+    Decided by checking (via the existing `_bos_orders` orders helpers, not by
+    reaching into the orders table from cart_store) whether an order for this email
+    was created at or after the claim. Found -> mark the stale cart ordered (closed,
+    not re-priced). Not found -> release the claim back to 'open' so its items are
+    usable again."""
+    matched_ref = None
+    try:
+        with db.connect(LOG_DB) as ocx:
+            ocx.row_factory = sqlite3.Row
+            recent = _bos_orders.list_orders_by_email(ocx, email, limit=10)
+        for o in recent:
+            if (o.get("created_at") or "") >= (claimed_at or ""):
+                matched_ref = o.get("external_ref", "")
+                break
+    except Exception:
+        app.logger.exception("cart checkout: stale-claim order lookup failed for %s", email)
+
+    if matched_ref is not None:
+        _mark_ordered_resilient(stale_token, matched_ref)
+        return
+    try:
+        with db.connect(LOG_DB) as cx:
+            _cart_store.release_claim(cx, stale_token)
+    except Exception:
+        app.logger.exception(
+            "cart checkout: stale-claim release failed for token %s", stale_token)
+
+
 @app.route("/api/cart/checkout", methods=["POST"])
 def api_cart_checkout():
     """Cart -> order. The membership gate reuses the existing need_optin contract,
@@ -18787,6 +18858,8 @@ def api_cart_checkout():
     token = ""
     claimed = False
     try:
+        stale_token = ""
+        stale_claimed_at = ""
         with db.connect(LOG_DB) as cx:
             _cart_store.init_cart_tables(cx)
             # Checked BEFORE merge: merge's own no-open-cart fallback cannot tell "no
@@ -18794,8 +18867,26 @@ def api_cart_checkout():
             # concurrent second request here would otherwise be handed a fresh EMPTY
             # cart instead of being refused, orphaning the real cart's items.
             if _cart_store.checking_out_for_email(cx, email):
-                return jsonify({"ok": False,
-                                "error": "This order is already being processed."}), 409
+                cutoff = (datetime.now(timezone.utc)
+                          - timedelta(seconds=_CART_CLAIM_STALE_SECONDS)).isoformat()
+                stale_token = _cart_store.stale_claim_for_email(cx, email, cutoff)
+                if not stale_token:
+                    # The claim is NEWER than the staleness window -- a genuine
+                    # concurrent checkout is really in flight right now.
+                    return jsonify({"ok": False,
+                                    "error": "This order is already being processed."}), 409
+                row = cx.execute(
+                    "SELECT claimed_at FROM carts WHERE token=?", (stale_token,)).fetchone()
+                stale_claimed_at = row[0] if row else ""
+
+        # Recovery runs on its own connection(s) (matching _resolve_ship_address's
+        # existing pattern of a dedicated row-factory connection for _bos_orders
+        # reads), not nested inside the block above.
+        if stale_token:
+            _recover_stale_cart_claim(email, stale_token, stale_claimed_at)
+
+        with db.connect(LOG_DB) as cx:
+            _cart_store.init_cart_tables(cx)
             anon_token = _cart_token_from_cookie()
             token = _cart_store.merge(cx, anon_token, email)
             cart = _cart_store.items(cx, token)
@@ -18849,14 +18940,12 @@ def api_cart_checkout():
         # _checkout_cart already ingested the order by this point regardless of
         # whether Stripe minted a URL, so the cart is marked ordered on EVERY path
         # from here -- a retry after an empty stripe_url must not mint a second
-        # order. mark_ordered is wrapped so a failure here is logged, not raised:
-        # the order and (if present) the Stripe session already exist, and the
-        # customer must still get the payment link back.
-        try:
-            with db.connect(LOG_DB) as cx:
-                _cart_store.mark_ordered(cx, token, out.get("invoice_id", ""))
-        except Exception:
-            app.logger.exception("cart checkout: mark_ordered failed for token %s", token)
+        # order. Retried once and never raised (see _mark_ordered_resilient): the
+        # order and (if present) the Stripe session already exist, and the customer
+        # must still get the payment link back even if this write keeps failing --
+        # a persistent failure here is recovered later by the stale-claim check
+        # above, not by raising into the 500 handler.
+        _mark_ordered_resilient(token, out.get("invoice_id", ""))
 
         _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
         return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})

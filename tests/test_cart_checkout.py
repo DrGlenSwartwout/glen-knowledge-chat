@@ -5,10 +5,12 @@ os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
 os.environ.setdefault("PINECONE_API_KEY", "pc-dummy")
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 import app
+import dashboard.orders as O
 from dashboard import cart_store as CS
 
 
@@ -246,3 +248,271 @@ def test_get_cart_merges_anon_cookie_cart_for_identified_member(client, db, monk
     body = client.get("/api/cart").get_json()
     got = {i["slug"]: i["qty"] for i in body["items"]}
     assert got == {"brain-boost": 1, "wholomega": 5}
+
+
+def test_get_cart_survives_merge_failure_and_shows_member_cart(client, db, monkeypatch):
+    """Round-2 NEW IMPORTANT: the read-time merge added for I8 is a WRITE (UPDATE/
+    INSERT/DELETE + commit), not a read. If it raises, the GET must degrade to the
+    member's own cart, not blow up into an HTML 500."""
+    # Anonymous session adds an item first, getting the rm_cart cookie.
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        CS.get_or_create(cx, "mem-b", email="a@x.com")
+        CS.add_item(cx, "mem-b", "wholomega", qty=3)
+    finally:
+        cx.close()
+
+    def boom(*a, **k):
+        raise RuntimeError("merge exploded")
+    monkeypatch.setattr(app._cart_store, "merge", boom)
+
+    r = client.get("/api/cart")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    got = {i["slug"]: i["qty"] for i in body["items"]}
+    # degraded to the member cart only -- the anon cart was never folded in
+    assert got == {"wholomega": 3}
+
+
+def test_mark_ordered_raising_still_returns_200_with_payment_link(client, db, monkeypatch):
+    """Pin IMPORTANT 5: a mark_ordered failure must not turn an already-priced,
+    already-charged (or about to be charged) order into a lost payment link."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    monkeypatch.setattr(
+        app, "_checkout_cart",
+        lambda email, cart, **k: {"out": {"invoice_id": "ref-mo-2", "total": 5.0},
+                                  "stripe_url": "https://stripe.test/mo"})
+
+    def always_raise(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(CS, "mark_ordered", always_raise)
+
+    client.post("/api/cart/add", json={"slug": "brain-boost"})
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["stripe_url"] == "https://stripe.test/mo"
+
+
+def test_unexpected_exception_returns_json_500(client, db, monkeypatch):
+    """Pin IMPORTANT 6: a non-CheckoutError exception must come back as JSON, not an
+    HTML 500 that a fetch().json() client chokes on -- and must not strand the claim."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    def boom(*a, **k):
+        raise RuntimeError("kaboom")
+    monkeypatch.setattr(app, "_checkout_cart", boom)
+
+    client.post("/api/cart/add", json={"slug": "brain-boost"})
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 500
+    assert r.content_type.startswith("application/json")
+    assert r.get_json()["ok"] is False
+
+    # the claim must not be left stuck either
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        assert CS.open_token_for_email(cx, "a@x.com") != ""
+    finally:
+        cx.close()
+
+
+def test_fresh_claim_still_409s(client, db, monkeypatch):
+    """Round-2 NEW CRITICAL guard: a claim that is NOT yet stale (well within the
+    staleness window) must still be refused as a genuine concurrent checkout, not
+    "recovered" out from under the request that is legitimately still running."""
+    calls = []
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    monkeypatch.setattr(app, "_checkout_cart", lambda *a, **k: calls.append(1))
+
+    client.post("/api/cart/add", json={"slug": "brain-boost"})
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        token = CS.open_token_for_email(cx, "a@x.com")
+        assert token
+        assert CS.claim_for_checkout(cx, token) is True
+    finally:
+        cx.close()
+
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 409
+    assert calls == []
+
+
+def test_stale_claim_with_an_existing_order_is_closed_not_reopened(client, db, monkeypatch):
+    """Round-2 NEW CRITICAL fix: a `checking_out` claim older than the staleness
+    window whose order DID get ingested (mark_ordered failed, or the process died
+    right after ingest) must be closed, not reopened -- reopening it would let the
+    same items be bought a SECOND time."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    old_claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (old_claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    # The checkout that claimed it really did ingest an order (created at/after the
+    # claim) before dying -- exactly what `_checkout_cart` does before minting Stripe.
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="reorder", external_ref="prior-order-1", email="a@x.com",
+                       items=[{"slug": "brain-boost", "qty": 2}], total_cents=13994,
+                       address=ADDRESS)
+    finally:
+        ocx.close()
+
+    # A fresh add for THIS new checkout attempt -- the member's old cart is stuck
+    # 'checking_out', so /api/cart/add mints a brand new open cart for them.
+    client.post("/api/cart/add", json={"slug": "wholomega", "qty": 1})
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    # the NEW checkout only ever saw the new cart's item -- the stale cart's
+    # brain-boost items were never re-priced or re-sent to _checkout_cart
+    assert seen[0]["cart"] == [{"slug": "wholomega", "qty": 1, "format": ""}]
+
+    # the old, stale, already-ordered cart ends closed, referencing the order that
+    # was already found -- not reopened
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        row = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert row[0] == "ordered"
+        assert row[1] == "prior-order-1"
+    finally:
+        cx.close()
+
+
+def test_stale_claim_with_no_order_is_released_and_checkout_proceeds(client, db, monkeypatch):
+    """Round-2 NEW CRITICAL fix, other branch: a `checking_out` claim older than the
+    staleness window whose checkout died BEFORE any order was ingested must be
+    released back to 'open' so its items are usable again, and this checkout must
+    then proceed with them."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    old_claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (old_claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    # No order exists anywhere for this email -- the earlier attempt died before
+    # `_checkout_cart` ever got to ingest one.
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    # the released cart's original items were used, not lost
+    assert seen[0]["cart"] == [{"slug": "brain-boost", "qty": 2, "format": ""}]
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        row = cx.execute(
+            "SELECT status FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert row[0] == "ordered"  # released, then this same checkout closed it
+    finally:
+        cx.close()
+
+
+def test_mark_ordered_failure_does_not_lock_the_member_out(client, db, monkeypatch):
+    """Round-2 NEW CRITICAL, trigger 1 (the one the round-1 concern predicted):
+    `mark_ordered` failing on the first checkout must not return a permanent 409 to
+    every future checkout attempt for this member. Forces mark_ordered to raise only
+    during the FIRST checkout (both the original attempt and its retry -- see
+    `_mark_ordered_resilient`), then relies on the stale-claim recovery (with the
+    staleness window shrunk to 0 so the test doesn't need to sleep) to un-stick it
+    on a later attempt."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    monkeypatch.setattr(app, "_CART_CLAIM_STALE_SECONDS", 0)
+
+    def fake_checkout_that_really_ingests(email, cart, **k):
+        # Mirrors what the real _checkout_cart does: the order is ingested BEFORE
+        # this function returns, regardless of what happens to mark_ordered after.
+        ocx = sqlite3.connect(app.LOG_DB)
+        try:
+            O.init_orders_table(ocx)
+            O.upsert_order(ocx, source="reorder", external_ref="ref-lockout-1", email=email,
+                           items=cart, total_cents=6997, address=ADDRESS)
+        finally:
+            ocx.close()
+        return {"out": {"invoice_id": "ref-lockout-1", "total": 69.97},
+                "stripe_url": "https://stripe.test/lockout"}
+    monkeypatch.setattr(app, "_checkout_cart", fake_checkout_that_really_ingests)
+
+    real_mark_ordered = CS.mark_ordered
+    calls = {"n": 0}
+
+    def flaky_mark_ordered(cx, token, ref):
+        calls["n"] += 1
+        if calls["n"] <= 2:   # the first checkout's original attempt + its one retry
+            raise RuntimeError("boom")
+        return real_mark_ordered(cx, token, ref)
+    monkeypatch.setattr(CS, "mark_ordered", flaky_mark_ordered)
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        first_token = CS.open_token_for_email(cx, "a@x.com")
+        assert first_token
+    finally:
+        cx.close()
+
+    r1 = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r1.status_code == 200
+    body1 = r1.get_json()
+    assert body1["ok"] is True
+    assert body1["stripe_url"] == "https://stripe.test/lockout"
+
+    # The cart is still stuck 'checking_out' -- mark_ordered never succeeded, and
+    # every future checkout for this member would 409 forever without recovery.
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        row = cx.execute(
+            "SELECT status FROM carts WHERE token=?", (first_token,)).fetchone()
+        assert row[0] == "checking_out"
+    finally:
+        cx.close()
+
+    # The member tries again with something new to buy.
+    client.post("/api/cart/add", json={"slug": "wholomega", "qty": 1})
+
+    r2 = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    # The critical assertion: NOT a 409 -- the member is not locked out forever.
+    assert r2.status_code != 409
+    assert r2.status_code == 200
+    assert r2.get_json()["ok"] is True

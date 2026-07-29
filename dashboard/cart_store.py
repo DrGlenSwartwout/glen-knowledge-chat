@@ -57,6 +57,14 @@ def init_cart_tables(cx):
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_carts_open_email "
         "ON carts(email) WHERE status='open' AND email<>''"
     )
+    # When a cart entered 'checking_out' (see claim_for_checkout). NULL for a cart
+    # that was never claimed. Lets a stale claim (process died mid-checkout: deploy
+    # restart, OOM, SIGKILL between the claim and mark_ordered) be told apart from a
+    # genuinely in-flight one, instead of locking the member out of checkout forever.
+    try:
+        cx.execute("ALTER TABLE carts ADD COLUMN claimed_at TEXT")
+    except Exception:
+        pass  # already present
     cx.commit()
 
 
@@ -323,14 +331,38 @@ def checking_out_for_email(cx, email):
     return bool(row)
 
 
+def stale_claim_for_email(cx, email, cutoff_iso):
+    """Token of a `checking_out` cart for this email whose claim is OLDER than
+    `cutoff_iso` (i.e. genuinely abandoned -- the process behind it died before
+    releasing or completing it), else "". ISO-8601 UTC timestamps (as produced by
+    `_now_iso()` everywhere in this module) compare correctly as plain strings, so
+    no datetime parsing is needed here.
+
+    A cart whose claim is NEWER than the cutoff is not returned -- that is a
+    genuinely in-flight concurrent checkout, not a stale one, and the caller must
+    still refuse it (409), not "recover" it out from under the request that is
+    legitimately still running."""
+    email = _norm_email(email)
+    if not email:
+        return ""
+    row = cx.execute(
+        "SELECT token FROM carts WHERE email=? AND status='checking_out' "
+        "AND claimed_at IS NOT NULL AND claimed_at < ? LIMIT 1",
+        (email, cutoff_iso),
+    ).fetchone()
+    return row[0] if row else ""
+
+
 def claim_for_checkout(cx, token):
     """Atomically claim an open cart for checkout. Returns True iff THIS call won the
     race (rowcount==1). A losing caller must not proceed to price/charge -- another
     checkout for this same cart is already in flight, and letting both continue is
     what produces two orders and two Stripe sessions for one cart."""
+    now = _now_iso()
     cur = cx.execute(
-        "UPDATE carts SET status='checking_out', updated_at=? WHERE token=? AND status='open'",
-        (_now_iso(), token),
+        "UPDATE carts SET status='checking_out', claimed_at=?, updated_at=? "
+        "WHERE token=? AND status='open'",
+        (now, now, token),
     )
     cx.commit()
     return cur.rowcount == 1
@@ -338,10 +370,12 @@ def claim_for_checkout(cx, token):
 
 def release_claim(cx, token):
     """Revert a claimed-but-not-completed cart back to open, so a checkout that failed
-    after claiming (bad address, pricing error, unexpected exception) does not lock the
-    customer out of their own cart."""
+    after claiming (bad address, pricing error, unexpected exception, or a recovered
+    stale claim that turned out to have no order behind it) does not lock the customer
+    out of their own cart."""
     cx.execute(
-        "UPDATE carts SET status='open', updated_at=? WHERE token=? AND status='checking_out'",
+        "UPDATE carts SET status='open', claimed_at=NULL, updated_at=? "
+        "WHERE token=? AND status='checking_out'",
         (_now_iso(), token),
     )
     cx.commit()
@@ -349,7 +383,8 @@ def release_claim(cx, token):
 
 def mark_ordered(cx, token, checkout_ref):
     cx.execute(
-        "UPDATE carts SET status='ordered', checkout_ref=?, updated_at=? WHERE token=?",
+        "UPDATE carts SET status='ordered', checkout_ref=?, claimed_at=NULL, updated_at=? "
+        "WHERE token=?",
         ((checkout_ref or "").strip(), _now_iso(), token),
     )
     cx.commit()
