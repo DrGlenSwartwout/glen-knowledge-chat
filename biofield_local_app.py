@@ -933,17 +933,22 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         # A repeated raise refreshes Biofield-sourced remedies from the schedule,
         # while keeping lines added manually in Edit Invoice on the current draft.
         previous = invoice_latest(email) or {}
-        replace_open = bool(
-            previous.get("ok") and previous.get("status") == "proposed"
-            and previous.get("pay_status") != "paid"
-            and not previous.get("portal_published")
+        update_order_id = (
+            previous.get("order_id")
+            if (previous.get("ok")
+                and previous.get("status") not in ("cancelled", "delivered", "done")
+                and previous.get("pay_status") != "paid")
+            else None
         )
-        if replace_open:
+        if update_order_id:
             built["lines"] = biofield_invoice.merge_manual_invoice_lines(
                 built["lines"], previous.get("items") or [])
         note = biofield_invoice.build_invoice_note(rep.get("phase"), rep.get("location"))
-        created = invoice_create({"name": client.get("name"), "email": email}, built["lines"],
-                                 replace_open=replace_open, invoice_note=note)
+        create_kwargs = {"invoice_note": note}
+        if update_order_id:
+            create_kwargs["update_order_id"] = update_order_id
+        created = invoice_create(
+            {"name": client.get("name"), "email": email}, built["lines"], **create_kwargs)
         if not created.get("ok"):
             return {"ok": False, "error": created.get("error") or "Order creation failed."}, 502
         link = invoice_link(created.get("order_id"))

@@ -308,8 +308,10 @@ def test_reraise_invoice_preserves_manual_lines(tmp_path):
     cx.commit()
     captured = {}
 
-    def fake_create(customer, lines, replace_open=False, invoice_note=None):
-        captured.update(lines=lines, replace_open=replace_open)
+    def fake_create(customer, lines, replace_open=False, invoice_note=None,
+                    update_order_id=None):
+        captured.update(lines=lines, replace_open=replace_open,
+                        update_order_id=update_order_id)
         return {"ok": True, "order_id": 43, "total_cents": 10000}
 
     latest = lambda email: {
@@ -331,7 +333,7 @@ def test_reraise_invoice_preserves_manual_lines(tmp_path):
         invoice_latest=latest,
     ).test_client()
     assert client.post("/author/%s/invoice" % tid, json={}).get_json()["ok"]
-    assert captured["replace_open"] is True
+    assert captured["update_order_id"] == 42
     assert {"slug": "owner-added", "qty": 2, "source": "self"} in captured["lines"]
     assert not any(line["slug"] == "old-remedy" for line in captured["lines"])
 
