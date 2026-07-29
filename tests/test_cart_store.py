@@ -85,3 +85,42 @@ def test_get_or_create_is_still_idempotent_for_an_open_token(cx):
     t = CS.get_or_create(cx, "tok1")
     assert t == "tok1"
     assert CS.get_or_create(cx, "tok1") == "tok1"
+
+
+def test_release_or_fold_never_folds_a_cart_into_itself(cx):
+    """`release_or_fold_stale_claim`'s `token<>?` exclusion is not merely defensive.
+    Under a concurrent stale-recovery race the cart can already be back to 'open' by
+    the time this query runs; without the exclusion the "member's OTHER open cart"
+    lookup returns THIS cart, and `_fold_cart_items(cx, tok, tok)` folds it into
+    itself -- deleting every item and marking the cart 'merged'. Total item loss on
+    the money path."""
+    CS.get_or_create(cx, "tokA", email="a@x.com")
+    CS.add_item(cx, "tokA", "brain-boost", qty=2)
+    CS.add_item(cx, "tokA", "wholomega", qty=1)
+
+    CS.release_or_fold_stale_claim(cx, "tokA", "a@x.com")
+
+    assert {i["slug"]: i["qty"] for i in CS.items(cx, "tokA")} == {
+        "brain-boost": 2, "wholomega": 1}
+    assert cx.execute(
+        "SELECT status FROM carts WHERE token=?", ("tokA",)).fetchone()[0] == "open"
+
+
+def test_release_claim_will_not_reopen_an_already_ordered_cart(cx):
+    """`release_claim`'s `AND status='checking_out'` clause is what stops an
+    already-'ordered' cart being reopened. A cart whose order exists and whose
+    customer already has a payment link must never go back to 'open' -- that is a
+    second charge for the same items. Every release path (bad address, CheckoutError,
+    the catch-all handler, stale-claim recovery) can fire against a cart that has
+    since been closed, so the clause is the guard, not the call sites."""
+    CS.get_or_create(cx, "tok1", email="a@x.com")
+    CS.add_item(cx, "tok1", "brain-boost", qty=2)
+    assert CS.claim_for_checkout(cx, "tok1") is True
+    CS.mark_ordered(cx, "tok1", "INV-1")
+
+    CS.release_claim(cx, "tok1")
+
+    status, ref = cx.execute(
+        "SELECT status, checkout_ref FROM carts WHERE token=?", ("tok1",)).fetchone()
+    assert status == "ordered"
+    assert ref == "INV-1"

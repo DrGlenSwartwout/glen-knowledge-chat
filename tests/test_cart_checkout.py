@@ -710,3 +710,191 @@ def test_mark_ordered_failure_does_not_lock_the_member_out(client, db, monkeypat
     assert r2.status_code != 409
     assert r2.status_code == 200
     assert r2.get_json()["ok"] is True
+
+
+def test_a_null_claimed_at_claim_is_not_closed_against_an_ancient_unrelated_order(
+        client, db, monkeypatch):
+    """The recovery ANCHOR must be the SAME expression `stale_claim_for_email`
+    selected on -- COALESCE(claimed_at, updated_at), not bare claimed_at.
+
+    The row modelled here is a DEPLOY-ORDERING state, not an API state: it cannot be
+    built through cart_store's own API today (claim_for_checkout always writes both
+    columns), which is exactly why it needs a fixture rather than a skip. A cart left
+    `checking_out` by the OLD code across the deploy that adds the claimed_at column
+    has claimed_at NULL forever. `stale_claim_for_email`'s COALESCE correctly finds
+    it, but a bare `SELECT claimed_at` anchor then yields None -> `(claimed_at or "")`
+    is "" -> EVERY prior order in this member's history compares `>= ""` and matches.
+    The cart is then closed as 'ordered' against a stranger's checkout_ref, its items
+    stranded on the closed cart, and the customer is told their cart is empty."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+    client.post("/api/cart/add", json={"slug": "wholomega", "qty": 1})
+
+    stuck_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        # The legacy row, built with direct SQL because the module's API cannot
+        # produce it: mid-checkout, but with no claim timestamp at all.
+        cx.execute(
+            "UPDATE carts SET status='checking_out', claimed_at=NULL, updated_at=? "
+            "WHERE token=?", (stuck_at, old_token))
+        cx.commit()
+        row = cx.execute(
+            "SELECT status, claimed_at FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert row[0] == "checking_out" and row[1] is None
+    finally:
+        cx.close()
+
+    # One unrelated ANCIENT order for the same email. It predates the stuck claim by
+    # years, so it is emphatically not the order behind it.
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="reorder", external_ref="ancient-unrelated",
+                       email="a@x.com", items=[{"slug": "wholomega", "qty": 1}],
+                       total_cents=6997, address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    ("2019-03-04T05:06:07+00:00", "ancient-unrelated"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    # The customer is NOT told their cart is empty, and BOTH their items are priced.
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    assert {c["slug"]: c["qty"] for c in seen[0]["cart"]} == {"brain-boost": 2,
+                                                             "wholomega": 1}
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        status, ref = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE token=?", (old_token,)).fetchone()
+        # closed by THIS checkout, never stamped with the 2019 order's ref
+        assert ref != "ancient-unrelated"
+        assert status == "ordered"
+        assert ref == "ref123"
+    finally:
+        cx.close()
+
+
+def test_an_order_predating_the_claim_is_not_treated_as_the_claims_order(
+        client, db, monkeypatch):
+    """Money-path decision, direction 1: `created_at >= claimed_at` is what decides
+    "an order exists, so close the cart" vs "no order, so give the items back" --
+    i.e. between charging someone and returning their basket. An order that predates
+    the claim is somebody's earlier purchase, not this claim's order, so the cart
+    must be RELEASED and its items checked out, not closed against that old ref."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    before_claim = (datetime.now(timezone.utc) - timedelta(minutes=60)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="reorder", external_ref="earlier-purchase",
+                       email="a@x.com", items=[{"slug": "wholomega", "qty": 1}],
+                       total_cents=6997, address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    (before_claim, "earlier-purchase"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    # the items came back to the customer and were priced, not stranded
+    assert seen[0]["cart"] == [{"slug": "brain-boost", "qty": 2, "format": ""}]
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        status, ref = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert ref != "earlier-purchase"
+        assert status == "ordered"
+        assert ref == "ref123"
+    finally:
+        cx.close()
+
+
+def test_an_order_after_the_claim_closes_the_cart_and_is_never_re_priced(
+        client, db, monkeypatch):
+    """Money-path decision, direction 2 (the opposite mutation): an order created
+    at/after the claim IS this claim's order -- the checkout really happened and the
+    customer already has a payment link. The cart must be CLOSED against that order's
+    ref and its items must never be sent to `_checkout_cart` again; reopening it is
+    how the same items get charged a second time."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    after_claim = (datetime.now(timezone.utc) - timedelta(minutes=19)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="reorder", external_ref="the-claims-order",
+                       email="a@x.com", items=[{"slug": "brain-boost", "qty": 2}],
+                       total_cents=13994, address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    (after_claim, "the-claims-order"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    # A fresh add for THIS attempt -- the stuck cart is 'checking_out', so /api/cart/add
+    # mints a new open cart.
+    client.post("/api/cart/add", json={"slug": "wholomega", "qty": 1})
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    # the already-ordered brain-boost was NOT charged again
+    assert seen[0]["cart"] == [{"slug": "wholomega", "qty": 1, "format": ""}]
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        status, ref = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE token=?", (old_token,)).fetchone()
+        assert status == "ordered"
+        assert ref == "the-claims-order"
+    finally:
+        cx.close()

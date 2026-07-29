@@ -18895,8 +18895,18 @@ def api_cart_checkout():
                     # concurrent checkout is really in flight right now.
                     return jsonify({"ok": False,
                                     "error": "This order is already being processed."}), 409
+                # COALESCE, not bare claimed_at: this value is the ANCHOR the order
+                # lookup compares against, and it must be the SAME expression
+                # `stale_claim_for_email` selected on. A row with a NULL claimed_at
+                # (an old deploy's in-flight checkout, recoverable only via the
+                # COALESCE in that query) would otherwise yield an empty anchor --
+                # and every prior order, however ancient, compares `>= ""`. The
+                # first unrelated order found would then close this cart as
+                # 'ordered' against a stranger's checkout_ref, stranding its items
+                # on a closed cart and telling the customer their cart is empty.
                 row = cx.execute(
-                    "SELECT claimed_at FROM carts WHERE token=?", (stale_token,)).fetchone()
+                    "SELECT COALESCE(claimed_at, updated_at) FROM carts WHERE token=?",
+                    (stale_token,)).fetchone()
                 stale_claimed_at = row[0] if row else ""
 
         # Recovery runs on its own connection(s) (matching _resolve_ship_address's
