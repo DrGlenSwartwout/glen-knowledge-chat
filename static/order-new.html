@@ -577,7 +577,7 @@ async function printInvoiceEdit(){
 
 // ── edit an existing order's invoice ──
 async function loadOrderForEdit(oid){
-  const r = await fetch("/api/orders?limit=300", {headers:HEADERS});
+  const r = await fetch("/api/orders?limit=300", {headers:HEADERS, cache:"no-store"});
   if (r.status===401){ $("auth-warn").style.display="block"; return; }
   const o = ((await r.json()).data||[]).find(x=>String(x.id)===String(oid));
   if (!o){ toast("Order #"+oid+" not found","error"); return; }

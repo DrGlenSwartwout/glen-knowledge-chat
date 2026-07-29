@@ -71,3 +71,33 @@ def test_pickup_forces_zero_over_override(stub_pricer):
         LINES, email="", pickup=True, ship=SHIP, shipping_override_cents_in=1234)
     assert p["shipping_cents"] == 0
     assert p["total_cents"] == 1000
+
+
+def test_edit_route_persists_shipping_override(stub_pricer, monkeypatch, tmp_path):
+    from dashboard import orders as O
+    db_path = str(tmp_path / "orders.db")
+    monkeypatch.setattr(stub_pricer, "LOG_DB", db_path)
+    monkeypatch.setattr(
+        stub_pricer, "_bos_actor",
+        lambda: type("A", (), {"role": stub_pricer._bos_rbac.OWNER})())
+    monkeypatch.setattr(
+        stub_pricer, "_push_invoice_edit_to_qbo",
+        lambda *a, **k: {"pushed": False})
+    with O.db.connect(db_path) as cx:
+        O.init_orders_table(cx)
+        oid = O.upsert_order(
+            cx, source="in-house", external_ref="INH-SHIP", email="s@x.com",
+            items=[{"slug": "widget", "name": "Widget", "qty": 1,
+                    "unit_cents": 1000, "line_cents": 1000}],
+            total_cents=1700, shipping_cents=700,
+            address=SHIP, channel="retail", status="proposed")
+    r = stub_pricer.app.test_client().post(
+        f"/api/orders/{oid}/edit",
+        json={"lines": LINES, "shipping_cents": 1234, "pickup": False})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()["totals"]["shipping_cents"] == 1234
+    with O.db.connect(db_path) as cx:
+        cx.row_factory = __import__("sqlite3").Row
+        saved = O.get_order(cx, oid)
+    assert saved["shipping_cents"] == 1234
+    assert saved["total_cents"] == 2234
