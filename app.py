@@ -18660,7 +18660,16 @@ def _cart_open_token(cx):
     over from an order that has since been placed (or merged away) must not let
     the visitor view or mutate the record of what they already bought -- every
     caller (GET /api/cart, set-qty, and the fallback in add) routes through this
-    one choke point rather than checking status at each call site."""
+    one choke point rather than checking status at each call site.
+
+    Never returns a cookie-derived cart that BELONGS TO SOMEONE ELSE either. The
+    `rm_cart` cookie is written with an identified member's cart token by
+    /api/cart/add, and this app explicitly models shared household devices -- so
+    the next visitor on that browser (anonymous, or signed in as a different
+    member) would otherwise read, re-quantity and add to the previous member's
+    cart, and that member is the one who gets charged for it. `cart_store.merge`
+    was hardened against exactly this; the read/write surface needs the same
+    guard, not a different one."""
     email = _cart_email()
     if email:
         tok = _cart_store.open_token_for_email(cx, email)
@@ -18670,9 +18679,14 @@ def _cart_open_token(cx):
     if not token:
         return ""
     row = cx.execute(
-        "SELECT 1 FROM carts WHERE token=? AND status='open'", (token,)
+        "SELECT email FROM carts WHERE token=? AND status='open'", (token,)
     ).fetchone()
-    return token if row else ""
+    if not row:
+        return ""
+    owner = (row[0] or "").strip().lower()
+    if owner and owner != email:
+        return ""
+    return token
 
 
 def _cart_payload(cx, token):
@@ -18686,7 +18700,11 @@ def _cart_payload(cx, token):
             "name": (p or {}).get("name", it["slug"]),
             "qty": it["qty"],
             "format": it["format"],
-            "available": bool(p) and not p.get("inactive"),
+            # `info_only` belongs in this expression, not just `inactive`: checkout
+            # refuses info_only lines with "no longer available" (see
+            # api_cart_checkout's unavailable scan), so a badge that calls them
+            # available contradicts the error the customer is about to get.
+            "available": bool(p) and not p.get("inactive") and not p.get("info_only"),
         })
         # Counts EVERY line, including unavailable ones, so this number always
         # matches the tile badge from dashboard/cart_block.py. An unavailable row
@@ -18727,6 +18745,17 @@ def api_cart():
                     # a GET must never come back as a 500 because that opportunistic
                     # merge hit a DB error. Degrade to the member's own cart (`token`
                     # already resolved above) instead of failing the whole page.
+                    #
+                    # The rollback is MANDATORY on Postgres -- do NOT remove it as
+                    # "dead code because SQLite works without it". psycopg leaves the
+                    # transaction ABORTED after the failed write, so `_cart_payload`'s
+                    # SELECT below would raise InFailedSqlTransaction and escape this
+                    # handler as an HTML 500 -- exactly the regression this except
+                    # block exists to prevent, silently reintroduced.
+                    try:
+                        cx.rollback()
+                    except Exception:
+                        pass
                     app.logger.exception("cart GET: read-time merge failed for %s", email)
         return jsonify(_cart_payload(cx, token))
 
@@ -18791,6 +18820,13 @@ def api_cart_set_qty():
 # live Stripe round-trip, so this is not theoretical.
 _CART_CLAIM_STALE_SECONDS = 15 * 60  # 15 minutes
 
+# The `orders.source` value that THIS route's checkout produces: `_checkout_cart`
+# ingests with source="reorder" (app.py, `_ingest_order(source="reorder", ...)`).
+# Used only to bound the stale-claim -> order inference in
+# `_recover_stale_cart_claim`; an order from any other source (in-house, funnel,
+# import) is by construction not the output of a cart checkout claim.
+_CART_ORDER_SOURCE = "reorder"
+
 
 def _mark_ordered_resilient(token, checkout_ref):
     """mark_ordered wrapped with one retry. A single transient failure here must not
@@ -18822,9 +18858,24 @@ def _recover_stale_cart_claim(email, stale_token, claimed_at):
 
     Decided by checking (via the existing `_bos_orders` orders helpers, not by
     reaching into the orders table from cart_store) whether an order for this email
-    was created at or after the claim. Found -> mark the stale cart ordered (closed,
-    not re-priced). Not found -> release the claim back to 'open' so its items are
+    was created BY THIS CLAIM. Found -> mark the stale cart ordered (closed, not
+    re-priced). Not found -> release the claim back to 'open' so its items are
     usable again.
+
+    "By this claim" is INFERRED (there is no cart_id on the order), so the inference
+    is bounded on all three axes it can be wrong on:
+      * lower bound  `created_at >= claimed_at`  -- an earlier purchase is not this
+        claim's order;
+      * upper bound  `created_at <= claimed_at + _CART_CLAIM_STALE_SECONDS` -- the
+        claim can only have produced an order while it was still alive. Without the
+        upper bound, ANY later order (this member buys something in-house next week)
+        closes the stale cart against a stranger's ref, strands its items on a
+        closed cart, and tells the customer "Your cart is empty";
+      * `source` -- only orders from the source THIS route's `_checkout_cart`
+        ingests (`_CART_ORDER_SOURCE`) can be its output at all. An in-house or
+        funnel order for the same member inside the window is not it.
+    A claim anchor we cannot parse means we cannot bound anything, so that fails
+    closed (returns False) for the same reason the lookup-raises case does.
 
     Returns True if a decision was reached and acted on (caller may proceed), False
     if the order lookup itself raised and no decision could be made.
@@ -18838,13 +18889,25 @@ def _recover_stale_cart_claim(email, stale_token, claimed_at):
     locked customer is annoying; a double charge costs Glen a refund, both
     transactions' card fees, and the customer's trust. When we cannot tell which
     state we're in, we choose the reversible failure."""
+    lo = (claimed_at or "").strip()
+    try:
+        hi = (datetime.fromisoformat(lo)
+              + timedelta(seconds=_CART_CLAIM_STALE_SECONDS)).isoformat()
+    except (TypeError, ValueError):
+        app.logger.warning(
+            "cart checkout: unparseable stale-claim anchor %r for %s", claimed_at, email)
+        return False  # cannot bound the window -- unknown state, keep 409ing
+
     matched_ref = None
     try:
         with db.connect(LOG_DB) as ocx:
             ocx.row_factory = sqlite3.Row
             recent = _bos_orders.list_orders_by_email(ocx, email, limit=10)
         for o in recent:
-            if (o.get("created_at") or "") >= (claimed_at or ""):
+            if (o.get("source") or "") != _CART_ORDER_SOURCE:
+                continue
+            created = o.get("created_at") or ""
+            if lo <= created <= hi:
                 matched_ref = o.get("external_ref", "")
                 break
     except Exception:

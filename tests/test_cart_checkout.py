@@ -12,6 +12,7 @@ import pytest
 import app
 import dashboard.orders as O
 from dashboard import cart_store as CS
+from tests.aborting_conn import AbortingConn
 
 
 @pytest.fixture()
@@ -293,6 +294,53 @@ def test_get_cart_survives_merge_failure_and_shows_member_cart(client, db, monke
     assert got == {"wholomega": 3}
 
 
+def test_get_cart_survives_an_aborted_transaction_from_the_merge(client, db, monkeypatch):
+    """CRITICAL: the test above passes for the wrong reason on Postgres. sqlite3
+    leaves a connection perfectly usable after a failed statement; psycopg leaves
+    the transaction ABORTED, so `_cart_payload`'s SELECT -- the very next statement
+    after the swallowed merge failure -- raises `InFailedSqlTransaction` and escapes
+    as an HTML 500. That is exactly the regression the except block was written to
+    prevent, and this repo has no Postgres lane to catch it.
+
+    `AbortingConn` gives the route a connection with psycopg's semantics: once the
+    merge aborts it, every statement raises until `rollback()` is called."""
+    real_connect = app.db.connect
+    made = []
+
+    def wrapping_connect(path, **kw):
+        w = AbortingConn(real_connect(path, **kw))
+        made.append(w)
+        return w
+    monkeypatch.setattr(app.db, "connect", wrapping_connect)
+
+    # Anonymous session adds an item first, getting the rm_cart cookie.
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 1})
+
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        CS.get_or_create(cx, "mem-c", email="a@x.com")
+        CS.add_item(cx, "mem-c", "wholomega", qty=3)
+    finally:
+        cx.close()
+
+    def boom(cx, *a, **k):
+        # A real write failure on Postgres: the statement fails AND the transaction
+        # is left aborted. Nothing after this works until someone rolls back.
+        cx.abort()
+        raise RuntimeError("merge exploded")
+    monkeypatch.setattr(app._cart_store, "merge", boom)
+
+    r = client.get("/api/cart")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    # degraded to the member cart only, and the payload SELECT after the failure
+    # actually ran rather than raising into a 500
+    assert {i["slug"]: i["qty"] for i in body["items"]} == {"wholomega": 3}
+    assert any(w.rollbacks for w in made)
+
+
 def test_mark_ordered_raising_still_returns_200_with_payment_link(client, db, monkeypatch):
     """Pin IMPORTANT 5: a mark_ordered failure must not turn an already-priced,
     already-charged (or about to be charged) order into a lost payment link."""
@@ -441,14 +489,20 @@ def test_stale_claim_with_an_existing_order_is_closed_not_reopened(client, db, m
     finally:
         cx.close()
 
-    # The checkout that claimed it really did ingest an order (created at/after the
-    # claim) before dying -- exactly what `_checkout_cart` does before minting Stripe.
+    # The checkout that claimed it really did ingest an order before dying -- exactly
+    # what `_checkout_cart` does before minting Stripe. Stamped a minute AFTER the
+    # claim: an order this claim produced is necessarily created while the claim was
+    # still alive, i.e. inside [claimed_at, claimed_at + the staleness window].
     ocx = sqlite3.connect(app.LOG_DB)
     try:
         O.init_orders_table(ocx)
         O.upsert_order(ocx, source="reorder", external_ref="prior-order-1", email="a@x.com",
                        items=[{"slug": "brain-boost", "qty": 2}], total_cents=13994,
                        address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    ((datetime.now(timezone.utc) - timedelta(minutes=19)).isoformat(),
+                     "prior-order-1"))
+        ocx.commit()
     finally:
         ocx.close()
 
@@ -896,5 +950,201 @@ def test_an_order_after_the_claim_closes_the_cart_and_is_never_re_priced(
             "SELECT status, checkout_ref FROM carts WHERE token=?", (old_token,)).fetchone()
         assert status == "ordered"
         assert ref == "the-claims-order"
+    finally:
+        cx.close()
+
+
+def test_an_order_long_after_the_claim_from_another_source_is_not_this_claims_order(
+        client, db, monkeypatch):
+    """IMPORTANT (money): the cart -> order correlation is INFERRED from
+    `(email, created_at >= claimed_at)` with NO upper bound and no source filter.
+    Reviewer's probe, reproduced exactly: a cart stuck 3 DAYS ago with no order
+    behind it, plus one unrelated IN-HOUSE order placed yesterday. The unbounded
+    match closes the stale cart as 'ordered' against INH-777, strands its items on
+    a closed cart, and tells the customer "Your cart is empty."
+
+    Both bounds are load-bearing here and the fixture exercises both at once the
+    way production would: the in-house order is outside the window AND from a
+    source a cart checkout cannot produce."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        stuck_token = CS.open_token_for_email(cx, "a@x.com")
+        assert stuck_token
+        assert CS.claim_for_checkout(cx, stuck_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?",
+                   (three_days_ago, stuck_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    # An unrelated in-house order placed yesterday -- two days AFTER the stuck
+    # claim, and from a source `_checkout_cart` never writes.
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="in_house", external_ref="INH-777", email="a@x.com",
+                       items=[{"slug": "wholomega", "qty": 1}], total_cents=6997,
+                       address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    (yesterday, "INH-777"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    # The customer is NOT told their cart is empty; the stale cart was RELEASED with
+    # its items intact and this checkout priced them.
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    assert seen[0]["cart"] == [{"slug": "brain-boost", "qty": 2, "format": ""}]
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        status, ref = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE token=?",
+            (stuck_token,)).fetchone()
+        assert ref != "INH-777"          # never closed against the stranger's order
+        assert status == "ordered"       # closed by THIS checkout instead
+        assert ref == "ref123"
+    finally:
+        cx.close()
+
+
+def test_a_reorder_order_outside_the_window_is_also_not_this_claims_order(
+        client, db, monkeypatch):
+    """The upper bound on its own, with the source filter held constant: a
+    later cart checkout by the same member (source 'reorder', so the source filter
+    lets it through) placed well past the staleness window is still not the order
+    behind THIS claim."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        stuck_token = CS.open_token_for_email(cx, "a@x.com")
+        assert CS.claim_for_checkout(cx, stuck_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?",
+                   (three_days_ago, stuck_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="reorder", external_ref="a-later-checkout",
+                       email="a@x.com", items=[{"slug": "wholomega", "qty": 1}],
+                       total_cents=6997, address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    (yesterday, "a-later-checkout"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    assert r.status_code == 200
+    assert seen[0]["cart"] == [{"slug": "brain-boost", "qty": 2, "format": ""}]
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        assert cx.execute("SELECT checkout_ref FROM carts WHERE token=?",
+                          (stuck_token,)).fetchone()[0] == "ref123"
+    finally:
+        cx.close()
+
+
+def test_an_identified_visitor_never_sees_another_members_cookie_cart(
+        client, db, monkeypatch):
+    """IMPORTANT (money), the read/checkout agreement half: what GET /api/cart shows
+    must be what checkout will act on. Bob signed in on Alice's browser must not be
+    shown her lines by the GET and then told at checkout that his cart is empty --
+    `cart_store.merge` refuses another member's cart, so GET must refuse it too."""
+    holder = {"email": "alice@x.com"}
+    monkeypatch.setattr(app, "_cart_email", lambda: holder["email"])
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+
+    # Alice fills a cart on this browser; her token is now the rm_cart cookie.
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    holder["email"] = "bob@x.com"        # Bob signs in on the same browser
+
+    body = client.get("/api/cart").get_json()
+    assert body["items"] == []
+    assert body["count"] == 0
+
+    calls = []
+    monkeypatch.setattr(app, "_checkout_cart", lambda *a, **k: calls.append(1))
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    # GET said empty and checkout agrees -- no silent "these items do not exist"
+    assert r.status_code == 400
+    assert "empty" in r.get_json()["error"].lower()
+    assert calls == []
+
+
+def test_an_in_house_order_inside_the_window_is_not_this_claims_order(
+        client, db, monkeypatch):
+    """The source filter on its own, with the time window held constant: an
+    in-house order for the same member placed one minute after the claim falls
+    INSIDE [claimed_at, claimed_at + window], so only `source` can tell it apart
+    from the order this cart checkout would have produced. Rae books in-house
+    orders by hand; one landing while a member's checkout is stuck must not close
+    that member's cart against it."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    inside_window = (datetime.now(timezone.utc) - timedelta(minutes=19)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        stuck_token = CS.open_token_for_email(cx, "a@x.com")
+        assert CS.claim_for_checkout(cx, stuck_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?",
+                   (claimed_at, stuck_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+        O.upsert_order(ocx, source="in_house", external_ref="INH-778", email="a@x.com",
+                       items=[{"slug": "wholomega", "qty": 1}], total_cents=6997,
+                       address=ADDRESS)
+        ocx.execute("UPDATE orders SET created_at=? WHERE external_ref=?",
+                    (inside_window, "INH-778"))
+        ocx.commit()
+    finally:
+        ocx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+
+    assert r.status_code == 200
+    assert seen[0]["cart"] == [{"slug": "brain-boost", "qty": 2, "format": ""}]
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        ref = cx.execute("SELECT checkout_ref FROM carts WHERE token=?",
+                         (stuck_token,)).fetchone()[0]
+        assert ref != "INH-778"
+        assert ref == "ref123"
     finally:
         cx.close()
