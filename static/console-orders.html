@@ -32,7 +32,7 @@
   .card .src { display:inline-block; font-size:10px; letter-spacing:.05em; text-transform:uppercase;
                color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:1px 6px; }
   .card .age.old { color:var(--red); }
-  /* Collapsed by default: header shows; body (products, fulfillment, actions) opens on click. */
+  /* Collapsed by default: header shows; body (actions, products, fulfillment) opens on click. */
   .card-head { cursor:pointer; }
   .card .chev { display:inline-block; color:var(--muted); font-size:10px; margin-left:4px; transition:transform .15s; }
   .card.open .chev { transform:rotate(90deg); }
@@ -46,6 +46,7 @@
   .order-details .detail-row { color:var(--cream); font-size:12px; line-height:1.45; margin-top:4px; }
   .order-details .detail-label { color:var(--muted); }
   .acts { margin-top:9px; display:flex; flex-wrap:wrap; gap:6px; }
+  .card-body > .acts:first-child { margin-top:0; margin-bottom:9px; }
   .acts button { font-size:11px; border:1px solid var(--border); background:transparent;
                  color:var(--cream); border-radius:6px; padding:3px 9px; cursor:pointer; }
   .acts button:hover { border-color:var(--gold); color:var(--gold); }
@@ -248,8 +249,8 @@
     var opc = Number(o.overpay_credit_cents||0);
     if (opc>0) badge += ' <span class="pay-badge credit" title="Combined shipping came in lower than this paid order — apply to their next order or refund">Credit $'+(opc/100).toFixed(2)+' (overpaid shipping)</span>';
     // Collapsed default: clickable HEADER (name + pay/backorder badge ; date placed ·
-    // where/how placed · amount). Click opens the BODY (products, tracking, fulfillment,
-    // actions). Action buttons live in the body, so clicking them never toggles the card.
+    // where/how placed · amount). Click opens the BODY (actions, products, tracking,
+    // fulfillment). Action buttons live in the body, so clicking them never toggles the card.
     // Household select checkbox (only for combinable orders when the flag is on)
     // and a badge when the order is already in a combined shipment.
     var sel = (HH.enabled && combinable(o))
@@ -275,13 +276,13 @@
       return '<div class="meta reward-gift">&#127873; Include: '+esc(g.gift_label||g.gift_sku||'')+'</div>';
     }).join('');
     var body = '<div class="card-body">'
+      + '<div class="acts">'+acts+'</div>'
       + (items?'<div class="meta prods">'+items+'</div>':'')
       + dropShipDetailsHtml(o)
       + giftLines
       + (o.tracking_number?'<div class="meta">tracking '+esc(o.tracking_number)+'</div>':'')
       + (o.biofield_pdf_url?'<div class="meta"><a href="'+esc(o.biofield_pdf_url)+'" target="_blank" rel="noopener">&#128424; Biofield report (PDF)</a></div>':'')
       + fulfillHtml(o)
-      + '<div class="acts">'+acts+'</div>'
       + '</div>';
     return '<div class="card" data-oid="'+o.id+'">'+head+body+'</div>';
   }
@@ -536,9 +537,10 @@
       + (totalUnits>0?' &middot; '+totalUnits+' unit'+(totalUnits===1?'':'s')
           +(totalCello>0?' + '+totalCello+' cello packs':''):'')+'</div></div>';
     var body = '<div class="card-body">'
+      + '<div class="acts">'+acts+'</div>'
       + (items?'<div class="meta prods">'+items+'</div>':'')
       + memberList
-      + '<div class="acts">'+acts+'</div></div>';
+      + '</div>';
     return '<div class="card hh-ship" data-sid="'+Number(sid)+'">'+head+body+'</div>';
   }
   function gbtn(sid,key,label){ return '<button onclick="actGroup('+Number(sid)+',\''+key+'\',{})">'+label+'</button>'; }
