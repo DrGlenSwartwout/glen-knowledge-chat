@@ -249,62 +249,46 @@ def merge(cx, anon_token, email):
             # Race: another request just created the member's cart. Re-read and fold.
             member_token = open_token_for_email(cx, email)
             if member_token:
-                # Fold the anon cart into the now-existing member cart
-                for it in items(cx, anon_token):
-                    row = cx.execute(
-                        "SELECT qty FROM cart_items WHERE token=? AND slug=? AND fmt=?",
-                        (member_token, it["slug"], it["format"]),
-                    ).fetchone()
-                    if row:
-                        if int(it["qty"]) > int(row[0]):
-                            cx.execute(
-                                "UPDATE cart_items SET qty=? WHERE token=? AND slug=? AND fmt=?",
-                                (_clamp(it["qty"]), member_token, it["slug"], it["format"]),
-                            )
-                    else:
-                        cx.execute(
-                            "INSERT INTO cart_items(token, slug, fmt, qty, source, added_at) "
-                            "VALUES (?,?,?,?,?,?)",
-                            (member_token, it["slug"], it["format"], _clamp(it["qty"]),
-                             it["source"], _now_iso()),
-                        )
-                cx.execute("DELETE FROM cart_items WHERE token=?", (anon_token,))
-                cx.execute(
-                    "UPDATE carts SET status='merged', updated_at=? WHERE token=?",
-                    (_now_iso(), anon_token),
-                )
-                _touch(cx, member_token)
-                cx.commit()
+                _fold_cart_items(cx, anon_token, member_token)
                 return member_token
             # If re-read still finds nothing, the error was something else
             raise
 
-    for it in items(cx, anon_token):
+    _fold_cart_items(cx, anon_token, member_token)
+    return member_token
+
+
+def _fold_cart_items(cx, src_token, dst_token):
+    """Fold `src_token`'s items into `dst_token` (higher quantity wins per line,
+    never summed), then delete src's items and mark its cart 'merged'. The one
+    fold implementation shared by `merge` (both its normal path and its
+    race-recovery path) and by stale-claim recovery in the checkout route, rather
+    than each writing its own subtly different version."""
+    for it in items(cx, src_token):
         row = cx.execute(
             "SELECT qty FROM cart_items WHERE token=? AND slug=? AND fmt=?",
-            (member_token, it["slug"], it["format"]),
+            (dst_token, it["slug"], it["format"]),
         ).fetchone()
         if row:
             if int(it["qty"]) > int(row[0]):
                 cx.execute(
                     "UPDATE cart_items SET qty=? WHERE token=? AND slug=? AND fmt=?",
-                    (_clamp(it["qty"]), member_token, it["slug"], it["format"]),
+                    (_clamp(it["qty"]), dst_token, it["slug"], it["format"]),
                 )
         else:
             cx.execute(
                 "INSERT INTO cart_items(token, slug, fmt, qty, source, added_at) "
                 "VALUES (?,?,?,?,?,?)",
-                (member_token, it["slug"], it["format"], _clamp(it["qty"]),
+                (dst_token, it["slug"], it["format"], _clamp(it["qty"]),
                  it["source"], _now_iso()),
             )
-    cx.execute("DELETE FROM cart_items WHERE token=?", (anon_token,))
+    cx.execute("DELETE FROM cart_items WHERE token=?", (src_token,))
     cx.execute(
-        "UPDATE carts SET status='merged', updated_at=? WHERE token=?",
-        (_now_iso(), anon_token),
+        "UPDATE carts SET status='merged', claimed_at=NULL, updated_at=? WHERE token=?",
+        (_now_iso(), src_token),
     )
-    _touch(cx, member_token)
+    _touch(cx, dst_token)
     cx.commit()
-    return member_token
 
 
 def _new_token_for(email):
@@ -338,6 +322,14 @@ def stale_claim_for_email(cx, email, cutoff_iso):
     `_now_iso()` everywhere in this module) compare correctly as plain strings, so
     no datetime parsing is needed here.
 
+    Compares against COALESCE(claimed_at, updated_at), not claimed_at alone: a row
+    claimed before the `claimed_at` column existed (an old deploy's in-flight
+    checkout during the upgrade window) would have a NULL claimed_at forever, which
+    would make it permanently un-stale-able -- i.e. permanently un-recoverable --
+    under any ordering of deploys. `updated_at` is always set (by `claim_for_checkout`
+    itself, and by every other write in this module), so it is always a safe
+    fallback anchor for staleness.
+
     A cart whose claim is NEWER than the cutoff is not returned -- that is a
     genuinely in-flight concurrent checkout, not a stale one, and the caller must
     still refuse it (409), not "recover" it out from under the request that is
@@ -347,10 +339,42 @@ def stale_claim_for_email(cx, email, cutoff_iso):
         return ""
     row = cx.execute(
         "SELECT token FROM carts WHERE email=? AND status='checking_out' "
-        "AND claimed_at IS NOT NULL AND claimed_at < ? LIMIT 1",
+        "AND COALESCE(claimed_at, updated_at) < ? LIMIT 1",
         (email, cutoff_iso),
     ).fetchone()
     return row[0] if row else ""
+
+
+def release_or_fold_stale_claim(cx, token, email):
+    """Recovery for a `checking_out` cart confirmed to have NO order behind it (see
+    app.py's `_recover_stale_cart_claim`). Never blindly reopens it: if the member
+    came back while it was stuck and added an item, `get_or_create`/`add_item`
+    attaches their email to a brand-new SECOND open cart (there is no way for those
+    routes to know the old one is merely stuck rather than gone) -- and a bare
+    `UPDATE carts SET status='open'` on the stale cart would then violate
+    `ux_carts_open_email` (one open cart per email). Left to a swallowed exception,
+    that silently strands the stale cart's items forever, which is exactly the
+    "release it back to open" half of the fix failing to happen for the customer
+    most likely to hit it: the one who tried again after getting stuck.
+
+    - No other open cart for this email -> release this one back to 'open' (the
+      common case: the member has not tried again yet).
+    - Another open cart already exists -> fold this cart's items into it (same
+      higher-quantity-wins rule as `merge`, via the shared `_fold_cart_items`) and
+      mark this one 'merged' instead of 'open', so the unique index is never at
+      risk and nothing is orphaned."""
+    email = _norm_email(email)
+    other_open = ""
+    if email:
+        row = cx.execute(
+            "SELECT token FROM carts WHERE email=? AND status='open' AND token<>? LIMIT 1",
+            (email, token),
+        ).fetchone()
+        other_open = row[0] if row else ""
+    if other_open:
+        _fold_cart_items(cx, token, other_open)
+    else:
+        release_claim(cx, token)
 
 
 def claim_for_checkout(cx, token):

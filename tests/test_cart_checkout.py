@@ -206,7 +206,22 @@ def test_no_stripe_url_returns_ok_with_payment_error_and_closes_cart(client, db,
 
 def test_concurrent_checkout_is_refused_with_409(client, db, monkeypatch):
     """IMPORTANT 4: a second checkout for the same cart while the first is mid-flight
-    (already claimed) must not reach `_checkout_cart` a second time."""
+    (already claimed) must not reach `_checkout_cart` a second time.
+
+    The orders table is initialized here (as it always exists in production) even
+    though this scenario is not expected to reach the order lookup at all -- the
+    freshness check in `stale_claim_for_email` should short-circuit to 409 first.
+    Round-2 concern (IMPORTANT B): without a real orders table, a BROKEN freshness
+    check (one that ignored the claim's age entirely) would still 409 here for the
+    WRONG reason -- the order lookup raising "no such table" -- making this test
+    unable to catch that regression. See test_fresh_claim_still_409s below for the
+    mutation-tested proof."""
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+    finally:
+        ocx.close()
+
     calls = []
     monkeypatch.setattr(app, "is_member", lambda sid, email: True)
     monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
@@ -300,6 +315,48 @@ def test_mark_ordered_raising_still_returns_200_with_payment_link(client, db, mo
     assert body["stripe_url"] == "https://stripe.test/mo"
 
 
+def test_mark_ordered_retries_once_before_giving_up(client, db, monkeypatch):
+    """Pins `_mark_ordered_resilient`'s retry itself (distinct from the test above,
+    which only pins that a PERMANENT failure doesn't lose the payment link): the
+    first call must raise, a second call must actually happen and succeed, and the
+    cart must end 'ordered' as a result of that second call -- not just "some
+    call eventually succeeded no matter how many times it's tried."."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+    monkeypatch.setattr(
+        app, "_checkout_cart",
+        lambda email, cart, **k: {"out": {"invoice_id": "ref-retry-1", "total": 5.0},
+                                  "stripe_url": "https://stripe.test/retry"})
+
+    real_mark_ordered = CS.mark_ordered
+    calls = {"n": 0}
+
+    def fails_once_then_succeeds(cx, token, ref):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return real_mark_ordered(cx, token, ref)
+    monkeypatch.setattr(CS, "mark_ordered", fails_once_then_succeeds)
+
+    client.post("/api/cart/add", json={"slug": "brain-boost"})
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    # exactly 2 calls: the original attempt (raised) + the one retry (succeeded)
+    assert calls["n"] == 2
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        row = cx.execute(
+            "SELECT status, checkout_ref FROM carts WHERE checkout_ref='ref-retry-1'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "ordered"
+    finally:
+        cx.close()
+
+
 def test_unexpected_exception_returns_json_500(client, db, monkeypatch):
     """Pin IMPORTANT 6: a non-CheckoutError exception must come back as JSON, not an
     HTML 500 that a fetch().json() client chokes on -- and must not strand the claim."""
@@ -327,7 +384,22 @@ def test_unexpected_exception_returns_json_500(client, db, monkeypatch):
 def test_fresh_claim_still_409s(client, db, monkeypatch):
     """Round-2 NEW CRITICAL guard: a claim that is NOT yet stale (well within the
     staleness window) must still be refused as a genuine concurrent checkout, not
-    "recovered" out from under the request that is legitimately still running."""
+    "recovered" out from under the request that is legitimately still running.
+
+    IMPORTANT B: the orders table is initialized here on purpose. Without it, a
+    BROKEN freshness check -- e.g. one that ignored `cutoff_iso` and treated every
+    checking_out cart as "stale" -- would still make this test pass, because the
+    stale-claim recovery's order lookup would then raise ("no such table: orders")
+    and the fail-closed path from round 3 would 409 anyway, for the WRONG reason.
+    With a real (empty) orders table in place, that same broken check would find no
+    order, RELEASE the claim, and let the checkout proceed -- correctly turning this
+    test red. I verified this: see the report for the exact mutation and result."""
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+    finally:
+        ocx.close()
+
     calls = []
     monkeypatch.setattr(app, "is_member", lambda sid, email: True)
     monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
@@ -451,6 +523,78 @@ def test_stale_claim_with_no_order_is_released_and_checkout_proceeds(client, db,
         row = cx.execute(
             "SELECT status FROM carts WHERE token=?", (old_token,)).fetchone()
         assert row[0] == "ordered"  # released, then this same checkout closed it
+    finally:
+        cx.close()
+
+
+def test_stale_claim_items_are_recovered_when_the_member_already_has_a_new_cart(
+        client, db, monkeypatch):
+    """IMPORTANT A: `get_or_create`/`add_item` attach the member's email to any cart
+    they create -- so a member who comes back after getting stuck and adds an item
+    now has a SECOND open cart under the same email. A bare `release_claim` on the
+    stale cart would then violate `ux_carts_open_email` (one open cart per email);
+    left to a swallowed exception, that silently strands the stale cart's 2x
+    brain-boost forever, for exactly the customer most likely to hit this path.
+    The fix folds the stale cart's items into the member's new cart instead of
+    reopening it."""
+    monkeypatch.setattr(app, "is_member", lambda sid, email: True)
+    monkeypatch.setattr(app, "_cart_email", lambda: "a@x.com")
+
+    client.post("/api/cart/add", json={"slug": "brain-boost", "qty": 2})
+
+    old_claimed_at = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_token = CS.open_token_for_email(cx, "a@x.com")
+        assert old_token
+        assert CS.claim_for_checkout(cx, old_token) is True
+        cx.execute("UPDATE carts SET claimed_at=? WHERE token=?", (old_claimed_at, old_token))
+        cx.commit()
+    finally:
+        cx.close()
+
+    # No order behind the stale claim.
+    ocx = sqlite3.connect(app.LOG_DB)
+    try:
+        O.init_orders_table(ocx)
+    finally:
+        ocx.close()
+
+    # The member comes back while the old cart is stuck and adds something new --
+    # this mints a SECOND open cart under the same email (the realistic path).
+    client.post("/api/cart/add", json={"slug": "wholomega", "qty": 1})
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        new_token = CS.open_token_for_email(cx, "a@x.com")
+        assert new_token
+        assert new_token != old_token
+    finally:
+        cx.close()
+
+    seen = []
+    _stub_checkout(monkeypatch, seen)
+    r = client.post("/api/cart/checkout", json={"address": ADDRESS})
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+
+    # both items reached _checkout_cart together -- nothing was orphaned
+    got = {c["slug"]: c["qty"] for c in seen[0]["cart"]}
+    assert got == {"brain-boost": 2, "wholomega": 1}
+
+    cx = sqlite3.connect(app.LOG_DB)
+    try:
+        old_row = cx.execute(
+            "SELECT status FROM carts WHERE token=?", (old_token,)).fetchone()
+        # no longer checking_out -- folded into the new cart, not left stranded
+        assert old_row[0] != "checking_out"
+
+        # exactly one cart (the new one) ends up open-or-ordered for this email
+        rows = cx.execute(
+            "SELECT token, status FROM carts WHERE email=? AND status IN "
+            "('open','ordered')", ("a@x.com",)).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == new_token
+        assert rows[0][1] == "ordered"
     finally:
         cx.close()
 

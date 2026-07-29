@@ -18840,12 +18840,17 @@ def _recover_stale_cart_claim(email, stale_token, claimed_at):
     if matched_ref is not None:
         _mark_ordered_resilient(stale_token, matched_ref)
         return True
+    # release_or_fold_stale_claim (not a bare release_claim) is what keeps this from
+    # silently violating ux_carts_open_email -- and orphaning the stale cart's items
+    # -- when the member already started a SECOND open cart while this one was
+    # stuck. The try/except here is only for a genuinely unexpected failure; it is
+    # not what prevents the unique-index collision (that is prevented by design).
     try:
         with db.connect(LOG_DB) as cx:
-            _cart_store.release_claim(cx, stale_token)
+            _cart_store.release_or_fold_stale_claim(cx, stale_token, email)
     except Exception:
         app.logger.exception(
-            "cart checkout: stale-claim release failed for token %s", stale_token)
+            "cart checkout: stale-claim release/fold failed for token %s", stale_token)
     return True
 
 
