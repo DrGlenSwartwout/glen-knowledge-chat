@@ -910,6 +910,11 @@ function showTab(name){
   // since it was last open). loadHealthSuggestions() itself no-ops if
   // #healthSuggestions isn't in the DOM (panel disabled/absent).
   if (name === 'health') loadHealthSuggestions();
+  // Task 6: fetch the live cart every time the cart panel becomes active
+  // (fresh each visit -- an add from the product page may have happened since
+  // it was last open). loadCart() itself no-ops if #cart-body isn't in the
+  // DOM (panel disabled/absent).
+  if (name === 'cart') loadCart();
 }
 // Task 5: local in-panel toggle for the Oasis panel's two modes (Replenish /
 // Build Out). Scoped to [data-oasis-mode] so it never touches the real
@@ -949,6 +954,15 @@ function buildHubHtml(d, v){
   const actTiles = [];
   if (v && v.oasis && v.oasis.enabled) {
     actTiles.push(["oasis", "My Healing Oasis", "Your remedies to reorder and tools to build out"]);
+  }
+  // Cart tile: only meaningful (and only rendered) once v.cart.enabled is true --
+  // off-state must add nothing, same gating as Oasis/Health Profile above, since
+  // the [data-panel="cart"] section itself only renders when v.cart.enabled (see
+  // the panel wrap below) and showTab bounces back to the hub on a tile whose
+  // panel is not in the DOM.
+  if (v && v.cart && v.cart.enabled) {
+    actTiles.push(["cart", "My Cart", "What you're ready to order",
+      (v.cart.count > 0) ? v.cart.count : undefined]);
   }
   actTiles.push(
     ["finder", "Find a Practitioner", "Certified practitioners near you"],
@@ -1179,6 +1193,50 @@ function buildOasisHtml(v){
     <div class="oasis-mode" data-oasis-mode="build_out" hidden>${buildOasisBuildOutHtml(oasis)}</div>
   </div>`;
 }
+// Task 6: My Cart panel. Names and quantities only -- no pricing (the cart
+// store deliberately holds no prices; _price_cart runs at checkout). Renders
+// from live GET /api/cart rather than from the portal payload's own `cart`
+// block, so a quantity change made elsewhere (product-page Add to cart on
+// another tab, or this panel's own qty edits) is always reflected on next
+// visit without needing the whole portal payload re-fetched.
+function buildCartHtml(){
+  return `<div class="card"><h2>My Cart</h2><div id="cart-body" class="muted">Loading…</div></div>`;
+}
+function loadCart(){
+  const host = document.getElementById('cart-body');
+  if (!host) return;  // panel not in the DOM (flag off) -- nothing to do
+  fetch('/api/cart', {credentials: 'same-origin'})
+    .then(r => r.json())
+    .then(d => {
+      const items = (d && d.items) || [];
+      if (!items.length) { host.innerHTML = '<p class="muted">Your cart is empty.</p>'; return; }
+      host.innerHTML = items.map(it => `
+        <div class="reitem">
+          <span class="nm">${esc(it.name || it.slug)}${it.available ? '' : ' <span class="small err">No longer available</span>'}</span>
+          <input type="number" min="0" max="99" value="${esc(it.qty)}"
+                 data-cart-qty="${esc(it.slug)}" data-cart-fmt="${esc(it.format || '')}"
+                 style="width:56px">
+        </div>`).join('');
+    })
+    .catch(() => {});
+}
+// Delegated once: any qty input inside the cart panel re-render is still
+// caught, since #cart-body's whole innerHTML gets replaced on every loadCart()
+// (same reasoning as the Oasis panel's one delegated click listener above).
+document.addEventListener("change", function(ev){
+  const inp = ev.target;
+  if (!inp || !inp.matches || !inp.matches('[data-cart-qty]')) return;
+  const slug = inp.getAttribute('data-cart-qty');
+  const fmt = inp.getAttribute('data-cart-fmt') || '';
+  let qty = parseInt(inp.value, 10);
+  if (!Number.isFinite(qty) || qty < 0) qty = 0;
+  inp.disabled = true;
+  fetch('/api/cart/set-qty', {
+    method: 'POST', credentials: 'same-origin',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({slug: slug, format: fmt, qty: qty})
+  }).then(r => r.json()).then(() => { loadCart(); }).catch(() => { inp.disabled = false; });
+});
 
 // Task 6: wires the three Build-Out actions Task 5 left inert (tool add/remove,
 // roadmap-want). Task 7 adds a fourth branch here (Replenish's "Reorder"
@@ -3432,6 +3490,7 @@ function render(d, v){
       <section data-panel="ask" hidden>${back}${_askHtml}</section>
       ${_hub && v.health_profile && v.health_profile.enabled ? `<section data-panel="health" hidden>${back}${buildHealthProfileHtml(v)}</section>` : ""}
       ${_hub && v.oasis && v.oasis.enabled ? (_oasisView = v, `<section data-panel="oasis" hidden>${back}${buildOasisHtml(v)}</section>`) : ""}
+      ${_hub && v.cart && v.cart.enabled ? `<section data-panel="cart" hidden>${back}${buildCartHtml()}</section>` : ""}
       <section data-panel="finder" hidden>${back}${_finderHtml || '<div class="card quiet"><p class="muted">The practitioner finder is not enabled for your portal yet.</p></div>'}</section>
       <section data-panel="bodymap" hidden>${back}${_bodymapHtml}</section>
       <section data-panel="classes" hidden>${back}${_classesHtml}</section>

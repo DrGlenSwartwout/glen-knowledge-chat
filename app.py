@@ -28311,6 +28311,7 @@ def api_client_portal_view(token):
                                    remedies_enabled=_PORTAL_REMEDIES_ENABLED,
                                    oasis_enabled=_PORTAL_OASIS_ENABLED,
                                    terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email),
+                                   cart_enabled=_PORTAL_CART_ENABLED,
                                    caregiver_pay_enabled=_caregiver_pay_enabled())
     if view is None:
         return jsonify({"error": "not found"}), 404
