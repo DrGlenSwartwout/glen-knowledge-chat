@@ -371,9 +371,9 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
     placed = [e for e in entries if not e.get("as_directed")]
     editable = any(e.get("source_rids") for e in entries)
 
-    def remedy_chip(e):
+    def remedy_chip(e, occurrence=0):
         rids = ",".join(str(r) for r in (e.get("source_rids") or []))
-        drag = (f' draggable="true" data-rids="{_e(rids)}" '
+        drag = (f' draggable="true" data-rids="{_e(rids)}" data-occ="{occurrence}" '
                 'ondragstart="schedDragStart(event)" ondragend="schedDragEnd(event)"'
                 if rids else "")
         return (f'<span class="sched-remedy"{drag}>{_e(e.get("name") or "")} '
@@ -386,7 +386,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
         here = [e for e in placed if slot in (e.get("slots") or [])]
         if not here and not editable:
             continue
-        cells = "".join(remedy_chip(e) for e in here)
+        cells = "".join(remedy_chip(e, (e.get("slots") or []).index(slot)) for e in here)
         drop = (f' class="sched-drop" data-slot="{_e(slot)}" '
                 'ondragover="schedDragOver(event)" ondragleave="schedDragLeave(event)" '
                 'ondrop="schedDrop(event)"' if editable else "")
@@ -394,7 +394,7 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
     asdir = [e for e in entries if e.get("as_directed")]
     if asdir:
         srows += ("<tr><td class=slot>As directed</td><td>"
-                  + "".join(remedy_chip(e) for e in asdir) + "</td></tr>")
+                  + "".join(remedy_chip(e, 0) for e in asdir) + "</td></tr>")
     schedule = ("<h2>Remedy Schedule</h2>"
                 + ("<p class=sub>Drag a remedy to a different time slot. Changes save automatically.</p>"
                    if editable else "")
@@ -412,11 +412,13 @@ function schedDragLeave(e){e.currentTarget.classList.remove('over')}
 async function schedDrop(e){e.preventDefault();var zone=e.currentTarget;zone.classList.remove('over');
  if(!schedDragged)return;var rids=(schedDragged.dataset.rids||'').split(',').filter(Boolean);
  var stat=document.getElementById('schedStat');stat.textContent='Saving schedule…';
+ var peers=Array.from(document.querySelectorAll('.sched-remedy')).filter(function(x){
+  return x.dataset.rids===schedDragged.dataset.rids});
+ var slots=peers.sort(function(a,b){return Number(a.dataset.occ)-Number(b.dataset.occ)}).map(function(x){
+  return x===schedDragged?zone.dataset.slot:x.closest('.sched-drop').dataset.slot});
  try{for(var i=0;i<rids.length;i++){var r=await fetch('/author/__TID__/row/'+rids[i],{
   method:'POST',headers:{'Content-Type':'application/json'},
-  body:JSON.stringify({schedule_slot:zone.dataset.slot})});if(!r.ok)throw new Error('save failed')}
-  document.querySelectorAll('.sched-remedy').forEach(function(x){
-   if(x!==schedDragged&&x.dataset.rids===schedDragged.dataset.rids)x.remove()});
+  body:JSON.stringify({schedule_slots:slots})});if(!r.ok)throw new Error('save failed')}
   zone.appendChild(schedDragged);stat.textContent='Schedule saved.'}
  catch(err){stat.textContent='Could not save schedule. Reload and try again.'}}
 </script>""".replace("__TID__", _e(report.get("test_id") or "")) if editable else ""))

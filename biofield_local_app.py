@@ -1347,6 +1347,9 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
     @app.route("/author/<test_id>/row/<int:rid>", methods=["POST"])
     def author_row_save(test_id, rid):
         d = request.get_json(silent=True) or {}
+        if isinstance(d.get("schedule_slots"), list):
+            import json as _json
+            d["schedule_slot"] = _json.dumps(d["schedule_slots"])
         fields = {}
         for k in ("layer", "head", "most_affected", "remedy", "dosage",
                   "frequency", "timing", "schedule_slot"):

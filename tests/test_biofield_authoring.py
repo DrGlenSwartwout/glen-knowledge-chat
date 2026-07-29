@@ -64,6 +64,24 @@ def test_manual_schedule_slot_survives_report_rebuild(tmp_path):
     assert entry["source_rids"] == [rid]
 
 
+def test_manual_schedule_slots_preserve_multiple_daily_doses(tmp_path):
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    rid = add_chain_row(cx, tid, 1, "X", "X", "Drops", "10 drops", "3 times a day", "before food")
+    update_chain_row(cx, rid, schedule_slot='["On waking", "Lunch", "Bedtime"]')
+    entry = authored_report(cx, tid)["schedule"]["entries"][0]
+    assert entry["slots"] == ["On waking", "Lunch", "Bedtime"]
+
+
+def test_legacy_single_override_does_not_collapse_multiple_doses(tmp_path):
+    cx = _cx(tmp_path)
+    tid = create_test(cx, "J", "j@x.com", "2026-06-23")
+    rid = add_chain_row(cx, tid, 1, "X", "X", "Drops", "10 drops", "3 times a day", "before food")
+    update_chain_row(cx, rid, schedule_slot="On waking")
+    entry = authored_report(cx, tid)["schedule"]["entries"][0]
+    assert entry["slots"] == ["On waking", "Lunch", "Dinner"]
+
+
 def test_authored_report_depth_match(tmp_path):
     cx = _cx(tmp_path)
     from dashboard.biofield_dimensions import seed_dimensions, tag, DEPTH_KEY
