@@ -88,6 +88,34 @@ def test_direction_route_sets_and_validates(tmp_path):
                   json={"effect_key": "crosses", "direction": "sideways"}).status_code == 400
 
 
+def test_every_pathway_route_is_console_gated(tmp_path, monkeypatch):
+    """The rest of this file clears CONSOLE_SECRET, which OPENS the gate — so
+    without this test the gated path is never exercised at all and a write
+    endpoint could ship unauthenticated. The gate is read at create_app time,
+    so the secret has to be set before the app is built."""
+    monkeypatch.setenv("CONSOLE_SECRET", "s3cret")
+    app = create_app(str(tmp_path / "c.db"), e4l_db=str(tmp_path / "e.db"),
+                     ingredients_db=_ingredients(tmp_path),
+                     scan_lookup=lambda e: _NONE)
+    c = app.test_client()
+    assert c.get("/pathway-review").status_code == 401
+    assert c.get("/api/pathway-review/queue").status_code == 401
+    # the writes matter most — an open decide endpoint would let anyone on the
+    # box settle Glen's vocabulary
+    for path, body in (("/api/pathway-review/decide", {"atom_key": "nf kappab",
+                                                       "decision": "confirmed",
+                                                       "canonical_id": 1}),
+                       ("/api/pathway-review/undo", {"atom_key": "nf kappab"}),
+                       ("/api/pathway-review/canonical", {"label": "X"}),
+                       ("/api/pathway-review/direction", {"effect_key": "crosses",
+                                                          "direction": "up"})):
+        assert c.post(path, json=body).status_code == 401, path
+    # and the key opens it, then cookies so same-origin fetches stay authed
+    r = c.get("/pathway-review?key=s3cret")
+    assert r.status_code == 200 and "rm_biofield_key" in r.headers.get("Set-Cookie", "")
+    assert c.get("/pathway-review").status_code == 200
+
+
 def test_queue_route_paginates(tmp_path):
     c = _client(tmp_path)
     j = c.get("/api/pathway-review/queue?offset=0").get_json()
