@@ -149,6 +149,7 @@ from dashboard.voice_doorway import voice_signal_tags
 import dashboard.repertoire as repertoire
 from dashboard import ff_matcher, ff_match_drafts, order_destination
 from dashboard import condition_programs, broad_benefit
+from dashboard import cart_store as _cart_store
 from dashboard import life_stress
 from dashboard import life_stress_selection
 _oa  = _build_openai_client()
@@ -6172,6 +6173,10 @@ _PORTAL_HEALTH_PROFILE_ENABLED = os.environ.get("PORTAL_HEALTH_PROFILE_ENABLED",
 # roadmap) in the client portal. Ships dark; same truthy set as the other
 # portal flags. See dashboard/oasis_block.py.
 _PORTAL_OASIS_ENABLED = os.environ.get("PORTAL_OASIS_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+# Portal store slice 1: the persistent cart. Ships OFF. With this off, the cart
+# routes 404, the product page shows no Add to cart control, and the portal
+# payload is byte-identical to pre-cart.
+_PORTAL_CART_ENABLED = os.environ.get("PORTAL_CART_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 # Staged portal-link rollout via GHL. Both must be set for /admin/portal/rollout-enroll
 # to do anything (else it 503s, inert): the GHL contact custom-field key that holds
 # the portal URL, and the workflow id that emails it.
@@ -7679,7 +7684,21 @@ def begin_buy_page(slug):
 def begin_product_page(slug):
     if not _get_product(slug):
         return ("", 404)
-    resp = send_from_directory(STATIC, "begin-product.html")
+    html = (STATIC / "begin-product.html").read_text(encoding="utf-8")
+    if _PORTAL_CART_ENABLED:
+        html = (html.replace("/*__CART_CONTROL_FN_START__*/", "")
+                    .replace("/*__CART_CONTROL_FN_END__*/", "")
+                    .replace("/*__CART_CONTROL_CALL_START__*/", "")
+                    .replace("/*__CART_CONTROL_CALL_END__*/", ""))
+    else:
+        html = re.sub(
+            r"[ \t]*/\*__CART_CONTROL_FN_START__\*/.*?/\*__CART_CONTROL_FN_END__\*/[ \t]*\n?",
+            "", html, flags=re.S)
+        html = re.sub(
+            r"[ \t]*/\*__CART_CONTROL_CALL_START__\*/.*?/\*__CART_CONTROL_CALL_END__\*/[ \t]*\n?",
+            "", html, flags=re.S)
+    html = html.replace("__CART_ENABLED__", "true" if _PORTAL_CART_ENABLED else "false")
+    resp = Response(html, mimetype="text/html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     if not request.cookies.get("amg_session"):
         resp.set_cookie("amg_session", uuid.uuid4().hex, max_age=60 * 60 * 24 * 365,
@@ -18606,6 +18625,454 @@ def _reorder_email_from_cookie():
     return (request.cookies.get("rm_reorder_email", "") or "").strip().lower()
 
 
+_CART_COOKIE = "rm_cart"
+
+
+def _cart_token_from_cookie():
+    return (request.cookies.get(_CART_COOKIE) or "").strip()
+
+
+def _cart_email():
+    """Best-known email for the current visitor, or "" if anonymous. Tries the
+    reorder cookie first (an identified reorder session), then the funnel state
+    for this amg_session."""
+    email = (_reorder_email_from_cookie() or "").strip().lower()
+    if email:
+        return email
+    sid = (request.cookies.get("amg_session") or "").strip()
+    if not sid:
+        return ""
+    try:
+        with db.connect(LOG_DB) as cx:
+            state = begin_funnel.get_state(cx, session_id=sid)
+        return (state.get("email") or "").strip().lower()
+    except Exception as e:
+        print(f"[cart] email resolve failed: {e!r}", flush=True)
+        return ""
+
+
+def _cart_open_token(cx):
+    """The token for this visitor's open cart, or "" if they have none. A member's
+    cart wins over the cookie, which is what makes the cart follow them across
+    devices once identified.
+
+    Never returns a token whose cart is not open. A stale `rm_cart` cookie left
+    over from an order that has since been placed (or merged away) must not let
+    the visitor view or mutate the record of what they already bought -- every
+    caller (GET /api/cart, set-qty, and the fallback in add) routes through this
+    one choke point rather than checking status at each call site.
+
+    Never returns a cookie-derived cart that BELONGS TO SOMEONE ELSE either. The
+    `rm_cart` cookie is written with an identified member's cart token by
+    /api/cart/add, and this app explicitly models shared household devices -- so
+    the next visitor on that browser (anonymous, or signed in as a different
+    member) would otherwise read, re-quantity and add to the previous member's
+    cart, and that member is the one who gets charged for it. `cart_store.merge`
+    was hardened against exactly this; the read/write surface needs the same
+    guard, not a different one."""
+    email = _cart_email()
+    if email:
+        tok = _cart_store.open_token_for_email(cx, email)
+        if tok:
+            return tok
+    token = _cart_token_from_cookie()
+    if not token:
+        return ""
+    row = cx.execute(
+        "SELECT email FROM carts WHERE token=? AND status='open'", (token,)
+    ).fetchone()
+    if not row:
+        return ""
+    owner = (row[0] or "").strip().lower()
+    if owner and owner != email:
+        return ""
+    return token
+
+
+def _cart_payload(cx, token):
+    if not token:
+        return {"ok": True, "items": [], "count": 0}
+    out, count = [], 0
+    for it in _cart_store.items(cx, token):
+        p = _get_product(it["slug"])
+        out.append({
+            "slug": it["slug"],
+            "name": (p or {}).get("name", it["slug"]),
+            "qty": it["qty"],
+            "format": it["format"],
+            # `info_only` belongs in this expression, not just `inactive`: checkout
+            # refuses info_only lines with "no longer available" (see
+            # api_cart_checkout's unavailable scan), so a badge that calls them
+            # available contradicts the error the customer is about to get.
+            "available": bool(p) and not p.get("inactive") and not p.get("info_only"),
+        })
+        # Counts EVERY line, including unavailable ones, so this number always
+        # matches the tile badge from dashboard/cart_block.py. An unavailable row
+        # is surfaced by its `available` flag, not by silently changing the count.
+        count += it["qty"]
+    return {"ok": True, "items": out, "count": count}
+
+
+@app.route("/api/cart", methods=["GET"])
+def api_cart():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        token = _cart_open_token(cx)
+        email = _cart_email()
+        if email:
+            # Merge at READ time too, not just at checkout. Without this, an
+            # identified member with a stale anonymous rm_cart cookie sees only
+            # their member-cart lines here while checkout (which also merges) would
+            # charge for the cookie cart's lines too -- what the customer sees must
+            # be what they will be charged. Only attempt it for a cookie cart that is
+            # DISTINCT from the resolved token, still open, and genuinely anonymous
+            # (no email of its own) -- calling `merge` unconditionally would, via its
+            # own no-open-cart fallback, mint a fresh empty cart for every member who
+            # doesn't have one yet, which a GET must never do. `merge` itself refuses
+            # to touch a cart owned by a different member (see cart_store.merge).
+            anon_token = _cart_token_from_cookie()
+            if anon_token and anon_token != token:
+                try:
+                    row = cx.execute(
+                        "SELECT status, email FROM carts WHERE token=?", (anon_token,)
+                    ).fetchone()
+                    if row and row[0] == "open" and not (row[1] or ""):
+                        token = _cart_store.merge(cx, anon_token, email)
+                except Exception:
+                    # `merge` is a WRITE (UPDATE/INSERT/DELETE + commit), not a read --
+                    # a GET must never come back as a 500 because that opportunistic
+                    # merge hit a DB error. Degrade to the member's own cart (`token`
+                    # already resolved above) instead of failing the whole page.
+                    #
+                    # The rollback is MANDATORY on Postgres -- do NOT remove it as
+                    # "dead code because SQLite works without it". psycopg leaves the
+                    # transaction ABORTED after the failed write, so `_cart_payload`'s
+                    # SELECT below would raise InFailedSqlTransaction and escape this
+                    # handler as an HTML 500 -- exactly the regression this except
+                    # block exists to prevent, silently reintroduced.
+                    try:
+                        cx.rollback()
+                    except Exception:
+                        pass
+                    app.logger.exception("cart GET: read-time merge failed for %s", email)
+        return jsonify(_cart_payload(cx, token))
+
+
+@app.route("/api/cart/add", methods=["POST"])
+def api_cart_add():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip().lower()
+    p = _get_product(slug)
+    if not p or p.get("info_only") or p.get("inactive"):
+        return jsonify({"ok": False, "error": "That product is not available."}), 400
+    fmt = (data.get("format") or "").strip().lower()
+    try:
+        qty = max(1, min(int(data.get("qty", 1) or 1), 99))
+    except (TypeError, ValueError):
+        qty = 1
+    email = _cart_email()
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        token = _cart_open_token(cx) or _uuid.uuid4().hex
+        # get_or_create returns the token of an OPEN cart, which may DIFFER from the
+        # one passed: it returns the member's existing open cart, and it mints a fresh
+        # token when the one we hold belongs to a cart already merged or ordered (the
+        # cookie still holds the old token after a customer's first order). Always use
+        # the returned value, and re-cookie whenever it differs from what the browser sent.
+        token = _cart_store.get_or_create(cx, token, email=email)
+        new_cookie = token if token != _cart_token_from_cookie() else ""
+        _cart_store.add_item(cx, token, slug, qty=qty, fmt=fmt,
+                             source=(data.get("source") or "").strip())
+        payload = _cart_payload(cx, token)
+    resp = jsonify(payload)
+    if new_cookie:
+        # secure=request.is_secure, matching every other cookie in this app. Hard-coding
+        # secure=True breaks the pytest test client, which runs over http.
+        resp.set_cookie(_CART_COOKIE, new_cookie, max_age=60 * 60 * 24 * 365,
+                        httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
+
+
+@app.route("/api/cart/set-qty", methods=["POST"])
+def api_cart_set_qty():
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip().lower()
+    fmt = (data.get("format") or "").strip().lower()
+    with db.connect(LOG_DB) as cx:
+        _cart_store.init_cart_tables(cx)
+        token = _cart_open_token(cx)
+        if not token:
+            return jsonify({"ok": True, "items": [], "count": 0})
+        _cart_store.set_qty(cx, token, slug, fmt, data.get("qty", 0))
+        return jsonify(_cart_payload(cx, token))
+
+
+# A claim (status='checking_out') older than this is treated as abandoned rather
+# than in-flight: the process behind it (deploy restart, OOM, SIGKILL) died
+# somewhere between claiming the cart and either completing or releasing it. This
+# app autodeploys on merge, and the claim window spans pricing, order ingest and a
+# live Stripe round-trip, so this is not theoretical.
+_CART_CLAIM_STALE_SECONDS = 15 * 60  # 15 minutes
+
+# The `orders.source` value that THIS route's checkout produces: `_checkout_cart`
+# ingests with source="reorder" (app.py, `_ingest_order(source="reorder", ...)`).
+# Used only to bound the stale-claim -> order inference in
+# `_recover_stale_cart_claim`; an order from any other source (in-house, funnel,
+# import) is by construction not the output of a cart checkout claim.
+_CART_ORDER_SOURCE = "reorder"
+
+
+def _mark_ordered_resilient(token, checkout_ref):
+    """mark_ordered wrapped with one retry. A single transient failure here must not
+    be what strands a cart in 'checking_out' forever (that is the exact mechanism
+    behind the round-2 Critical: this call swallowing its exception with no retry).
+    Any failure past the retry is logged, never raised -- by the time this is called
+    the order (and usually the Stripe session) already exist; the stale-claim
+    recovery below is what makes a persistent failure here non-permanent for the
+    customer even though this function itself does not raise."""
+    for attempt in (1, 2):
+        try:
+            with db.connect(LOG_DB) as cx:
+                _cart_store.mark_ordered(cx, token, checkout_ref)
+            return True
+        except Exception:
+            app.logger.exception(
+                "cart checkout: mark_ordered failed for token %s (attempt %d)", token, attempt)
+    return False
+
+
+def _recover_stale_cart_claim(email, stale_token, claimed_at):
+    """A `checking_out` cart older than _CART_CLAIM_STALE_SECONDS either genuinely
+    completed (mark_ordered failed even after its retry, or the process died between
+    the claim and mark_ordered) or died before `_checkout_cart` ever ingested an
+    order. These two cases require OPPOSITE recovery: closing a cart that already
+    has a real order is a no-op; reopening one that doesn't is what makes the item
+    purchasable again -- reopening a cart whose order DOES exist would let the same
+    items be bought a second time.
+
+    Decided by checking (via the existing `_bos_orders` orders helpers, not by
+    reaching into the orders table from cart_store) whether an order for this email
+    was created BY THIS CLAIM. Found -> mark the stale cart ordered (closed, not
+    re-priced). Not found -> release the claim back to 'open' so its items are
+    usable again.
+
+    "By this claim" is INFERRED (there is no cart_id on the order), so the inference
+    is bounded on all three axes it can be wrong on:
+      * lower bound  `created_at >= claimed_at`  -- an earlier purchase is not this
+        claim's order;
+      * upper bound  `created_at <= claimed_at + _CART_CLAIM_STALE_SECONDS` -- the
+        claim can only have produced an order while it was still alive. Without the
+        upper bound, ANY later order (this member buys something in-house next week)
+        closes the stale cart against a stranger's ref, strands its items on a
+        closed cart, and tells the customer "Your cart is empty";
+      * `source` -- only orders from the source THIS route's `_checkout_cart`
+        ingests (`_CART_ORDER_SOURCE`) can be its output at all. An in-house or
+        funnel order for the same member inside the window is not it.
+    A claim anchor we cannot parse means we cannot bound anything, so that fails
+    closed (returns False) for the same reason the lookup-raises case does.
+
+    Returns True if a decision was reached and acted on (caller may proceed), False
+    if the order lookup itself raised and no decision could be made.
+
+    The lookup-raises case is deliberately NOT treated as "no order found": failing
+    open here (releasing the claim when we don't actually know whether an order
+    exists) risks reopening a cart whose order really was placed, letting the same
+    items be charged a SECOND time. Failing closed (leaving the claim exactly as it
+    was, still 409ing) is fully recoverable -- this same recovery re-runs on the
+    customer's next attempt, and the lookup will usually succeed then. A wrongly
+    locked customer is annoying; a double charge costs Glen a refund, both
+    transactions' card fees, and the customer's trust. When we cannot tell which
+    state we're in, we choose the reversible failure."""
+    lo = (claimed_at or "").strip()
+    try:
+        hi = (datetime.fromisoformat(lo)
+              + timedelta(seconds=_CART_CLAIM_STALE_SECONDS)).isoformat()
+    except (TypeError, ValueError):
+        app.logger.warning(
+            "cart checkout: unparseable stale-claim anchor %r for %s", claimed_at, email)
+        return False  # cannot bound the window -- unknown state, keep 409ing
+
+    matched_ref = None
+    try:
+        with db.connect(LOG_DB) as ocx:
+            ocx.row_factory = sqlite3.Row
+            recent = _bos_orders.list_orders_by_email(ocx, email, limit=10)
+        for o in recent:
+            if (o.get("source") or "") != _CART_ORDER_SOURCE:
+                continue
+            created = o.get("created_at") or ""
+            if lo <= created <= hi:
+                matched_ref = o.get("external_ref", "")
+                break
+    except Exception:
+        app.logger.exception("cart checkout: stale-claim order lookup failed for %s", email)
+        return False  # unknown state -- leave the claim untouched, keep 409ing
+
+    if matched_ref is not None:
+        _mark_ordered_resilient(stale_token, matched_ref)
+        return True
+    # release_or_fold_stale_claim (not a bare release_claim) is what keeps this from
+    # silently violating ux_carts_open_email -- and orphaning the stale cart's items
+    # -- when the member already started a SECOND open cart while this one was
+    # stuck. The try/except here is only for a genuinely unexpected failure; it is
+    # not what prevents the unique-index collision (that is prevented by design).
+    try:
+        with db.connect(LOG_DB) as cx:
+            _cart_store.release_or_fold_stale_claim(cx, stale_token, email)
+    except Exception:
+        app.logger.exception(
+            "cart checkout: stale-claim release/fold failed for token %s", stale_token)
+    return True
+
+
+@app.route("/api/cart/checkout", methods=["POST"])
+def api_cart_checkout():
+    """Cart -> order. The membership gate reuses the existing need_optin contract,
+    so the page can show the shared window.OptinGate exactly as reorder.html and
+    begin-buy.html already do. Membership itself is written by /begin/unlock.
+
+    Contract matches the sibling /reorder/checkout (app.py ~31042) exactly: ok:true
+    with a `payment_error` key when Stripe could not mint a URL (never a 502 -- the
+    order already exists by that point, so the caller must not be told to retry into
+    a fresh reference), and a catch-all except so an unexpected failure still comes
+    back as JSON instead of an HTML 500 that a fetch().json() client chokes on."""
+    if not _PORTAL_CART_ENABLED:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    data = request.get_json(silent=True) or {}
+    email = _cart_email()
+    _sid = (request.cookies.get("amg_session") or "").strip()
+    if not is_member(_sid, email):
+        return jsonify({"ok": False, "need_optin": True,
+                        "error": "Please add your name and agree to our Terms "
+                                 "to place your order."}), 403
+
+    token = ""
+    claimed = False
+    try:
+        stale_token = ""
+        stale_claimed_at = ""
+        with db.connect(LOG_DB) as cx:
+            _cart_store.init_cart_tables(cx)
+            # Checked BEFORE merge: merge's own no-open-cart fallback cannot tell "no
+            # cart at all" apart from "the real cart is just mid-checkout", so a
+            # concurrent second request here would otherwise be handed a fresh EMPTY
+            # cart instead of being refused, orphaning the real cart's items.
+            if _cart_store.checking_out_for_email(cx, email):
+                cutoff = (datetime.now(timezone.utc)
+                          - timedelta(seconds=_CART_CLAIM_STALE_SECONDS)).isoformat()
+                stale_token = _cart_store.stale_claim_for_email(cx, email, cutoff)
+                if not stale_token:
+                    # The claim is NEWER than the staleness window -- a genuine
+                    # concurrent checkout is really in flight right now.
+                    return jsonify({"ok": False,
+                                    "error": "This order is already being processed."}), 409
+                # COALESCE, not bare claimed_at: this value is the ANCHOR the order
+                # lookup compares against, and it must be the SAME expression
+                # `stale_claim_for_email` selected on. A row with a NULL claimed_at
+                # (an old deploy's in-flight checkout, recoverable only via the
+                # COALESCE in that query) would otherwise yield an empty anchor --
+                # and every prior order, however ancient, compares `>= ""`. The
+                # first unrelated order found would then close this cart as
+                # 'ordered' against a stranger's checkout_ref, stranding its items
+                # on a closed cart and telling the customer their cart is empty.
+                row = cx.execute(
+                    "SELECT COALESCE(claimed_at, updated_at) FROM carts WHERE token=?",
+                    (stale_token,)).fetchone()
+                stale_claimed_at = row[0] if row else ""
+
+        # Recovery runs on its own connection(s) (matching _resolve_ship_address's
+        # existing pattern of a dedicated row-factory connection for _bos_orders
+        # reads), not nested inside the block above.
+        if stale_token:
+            if not _recover_stale_cart_claim(email, stale_token, stale_claimed_at):
+                # The order lookup itself failed -- we don't know whether an order
+                # exists for the stale claim, so we cannot safely release OR close
+                # it. Leave it exactly as it was and keep refusing this request;
+                # the same recovery re-runs on the next attempt.
+                return jsonify({"ok": False,
+                                "error": "This order is already being processed."}), 409
+
+        with db.connect(LOG_DB) as cx:
+            _cart_store.init_cart_tables(cx)
+            anon_token = _cart_token_from_cookie()
+            token = _cart_store.merge(cx, anon_token, email)
+            cart = _cart_store.items(cx, token)
+
+        if not cart:
+            return jsonify({"ok": False, "error": "Your cart is empty."}), 400
+
+        unavailable = []
+        for c in cart:
+            p = _get_product(c["slug"])
+            if not p or p.get("inactive") or p.get("info_only"):
+                unavailable.append(c["slug"])
+        if unavailable:
+            return jsonify({"ok": False, "unavailable": unavailable,
+                            "error": "Some items are no longer available. "
+                                     "Please remove them and try again."}), 400
+
+        # Claim the cart before the slow pricing/Stripe/QBO work below, so a
+        # concurrent double-submit (two tabs, a double-tapped button) cannot both
+        # pass this point and each mint an order + Stripe session for the same cart.
+        with db.connect(LOG_DB) as cx:
+            claimed = _cart_store.claim_for_checkout(cx, token)
+        if not claimed:
+            return jsonify({"ok": False,
+                            "error": "This order is already being processed."}), 409
+
+        ship = _resolve_ship_address(email, data.get("address") or {})
+        if not (ship.get("street") or "").strip():
+            with db.connect(LOG_DB) as cx:
+                _cart_store.release_claim(cx, token)
+            return jsonify({"ok": False,
+                            "error": "Please add a shipping address to check out."}), 400
+
+        try:
+            redeem = int(data.get("points_to_redeem_cents") or 0)
+        except (TypeError, ValueError):
+            redeem = 0
+
+        try:
+            res = _checkout_cart(email, [{"slug": c["slug"], "qty": c["qty"],
+                                          "format": c["format"]} for c in cart],
+                                 ship=ship, points_to_redeem_cents=redeem,
+                                 referral_code=(data.get("referral_code") or "").strip())
+        except CheckoutError as e:
+            with db.connect(LOG_DB) as cx:
+                _cart_store.release_claim(cx, token)
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+        out = res.get("out") or {}
+        stripe_url = res.get("stripe_url") or ""
+        # _checkout_cart already ingested the order by this point regardless of
+        # whether Stripe minted a URL, so the cart is marked ordered on EVERY path
+        # from here -- a retry after an empty stripe_url must not mint a second
+        # order. Retried once and never raised (see _mark_ordered_resilient): the
+        # order and (if present) the Stripe session already exist, and the customer
+        # must still get the payment link back even if this write keeps failing --
+        # a persistent failure here is recovered later by the stale-claim check
+        # above, not by raising into the 500 handler.
+        _mark_ordered_resilient(token, out.get("invoice_id", ""))
+
+        _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
+        return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
+    except Exception as e:
+        if claimed and token:
+            try:
+                with db.connect(LOG_DB) as cx:
+                    _cart_store.release_claim(cx, token)
+            except Exception:
+                pass
+        app.logger.exception("cart checkout failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
+
+
 @app.route("/reorder")
 def reorder_page():
     return send_from_directory(STATIC, "reorder.html")
@@ -27907,6 +28374,7 @@ def api_client_portal_view(token):
                                    remedies_enabled=_PORTAL_REMEDIES_ENABLED,
                                    oasis_enabled=_PORTAL_OASIS_ENABLED,
                                    terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email),
+                                   cart_enabled=_PORTAL_CART_ENABLED,
                                    caregiver_pay_enabled=_caregiver_pay_enabled())
     if view is None:
         return jsonify({"error": "not found"}), 404

@@ -12,6 +12,7 @@ import datetime
 import json
 
 from dashboard import affiliate_dashboard as _ad
+from dashboard import cart_block as _cb
 from dashboard import client_portal as _cp
 from dashboard import entity_refs as _er
 from dashboard import health_profile as _hp
@@ -368,6 +369,7 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
                     remedies_enabled=False,
                     biofield_unlocked=True, supplement_review_enabled=False,
                     oasis_enabled=False, terrain_phase=None,
+                    cart_enabled=False,
                     caregiver_pay_enabled=False):
     import sqlite3
     cx.row_factory = sqlite3.Row
@@ -407,6 +409,7 @@ def get_portal_view(cx, person_id, *, offers_enabled_keys=None, scan_date=None,
         "supplement_review": _supplement_reviews_block(cx, email, supplement_review_enabled),
         "remedies": _rb.build_block(cx, email, remedies_enabled),
         "oasis": _ob.build_block(cx, email, oasis_enabled, terrain_phase),
+        "cart": _cb.build_block(cx, email, cart_enabled),
         "caregiver_pay": _caregiver_pay_block(cx, email, caregiver_pay_enabled),
         "caregiver_pay_enabled": bool(caregiver_pay_enabled),
     }
