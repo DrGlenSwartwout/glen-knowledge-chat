@@ -21,3 +21,9 @@ def test_edit_invoice_has_print_download_pdf_button():
     assert "Print / Download PDF" in SRC
     assert '"/api/console/order/"+Number(EDIT_OID)+"/invoice-link"' in SRC
     assert '$("print-inv-btn").style.display = "inline-block"' in SRC
+
+
+def test_line_items_table_contains_delete_column_without_overlay():
+    assert '<div class="lines-scroll">' in SRC
+    assert ".lines-scroll { width:100%; overflow-x:auto; overflow-y:hidden;" in SRC
+    assert "table.lines { width:100%; min-width:1000px;" in SRC
