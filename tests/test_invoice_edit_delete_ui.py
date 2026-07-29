@@ -27,3 +27,5 @@ def test_line_items_table_contains_delete_column_without_overlay():
     assert '<div class="lines-scroll">' in SRC
     assert ".lines-scroll { width:100%; overflow-x:auto; overflow-y:hidden;" in SRC
     assert "table.lines { width:100%; min-width:1000px;" in SRC
+    assert "table.lines td:nth-child(8) { min-width:310px; }" in SRC
+    assert "table.lines td:nth-child(9) { min-width:74px; text-align:right; }" in SRC
