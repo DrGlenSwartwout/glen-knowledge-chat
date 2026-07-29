@@ -18687,7 +18687,27 @@ def api_cart():
         return jsonify({"ok": False, "error": "not found"}), 404
     with db.connect(LOG_DB) as cx:
         _cart_store.init_cart_tables(cx)
-        return jsonify(_cart_payload(cx, _cart_open_token(cx)))
+        token = _cart_open_token(cx)
+        email = _cart_email()
+        if email:
+            # Merge at READ time too, not just at checkout. Without this, an
+            # identified member with a stale anonymous rm_cart cookie sees only
+            # their member-cart lines here while checkout (which also merges) would
+            # charge for the cookie cart's lines too -- what the customer sees must
+            # be what they will be charged. Only attempt it for a cookie cart that is
+            # DISTINCT from the resolved token, still open, and genuinely anonymous
+            # (no email of its own) -- calling `merge` unconditionally would, via its
+            # own no-open-cart fallback, mint a fresh empty cart for every member who
+            # doesn't have one yet, which a GET must never do. `merge` itself refuses
+            # to touch a cart owned by a different member (see cart_store.merge).
+            anon_token = _cart_token_from_cookie()
+            if anon_token and anon_token != token:
+                row = cx.execute(
+                    "SELECT status, email FROM carts WHERE token=?", (anon_token,)
+                ).fetchone()
+                if row and row[0] == "open" and not (row[1] or ""):
+                    token = _cart_store.merge(cx, anon_token, email)
+        return jsonify(_cart_payload(cx, token))
 
 
 @app.route("/api/cart/add", methods=["POST"])
@@ -18747,7 +18767,13 @@ def api_cart_set_qty():
 def api_cart_checkout():
     """Cart -> order. The membership gate reuses the existing need_optin contract,
     so the page can show the shared window.OptinGate exactly as reorder.html and
-    begin-buy.html already do. Membership itself is written by /begin/unlock."""
+    begin-buy.html already do. Membership itself is written by /begin/unlock.
+
+    Contract matches the sibling /reorder/checkout (app.py ~31042) exactly: ok:true
+    with a `payment_error` key when Stripe could not mint a URL (never a 502 -- the
+    order already exists by that point, so the caller must not be told to retry into
+    a fresh reference), and a catch-all except so an unexpected failure still comes
+    back as JSON instead of an HTML 500 that a fetch().json() client chokes on."""
     if not _PORTAL_CART_ENABLED:
         return jsonify({"ok": False, "error": "not found"}), 404
     data = request.get_json(silent=True) or {}
@@ -18758,48 +18784,91 @@ def api_cart_checkout():
                         "error": "Please add your name and agree to our Terms "
                                  "to place your order."}), 403
 
-    with db.connect(LOG_DB) as cx:
-        _cart_store.init_cart_tables(cx)
-        anon_token = _cart_token_from_cookie()
-        token = _cart_store.merge(cx, anon_token, email)
-        cart = _cart_store.items(cx, token)
-
-    if not cart:
-        return jsonify({"ok": False, "error": "Your cart is empty."}), 400
-
-    unavailable = [c["slug"] for c in cart
-                   if not _get_product(c["slug"])
-                   or (_get_product(c["slug"]) or {}).get("inactive")]
-    if unavailable:
-        return jsonify({"ok": False, "unavailable": unavailable,
-                        "error": "Some items are no longer available. "
-                                 "Please remove them and try again."}), 400
-
-    ship = _normalize_ship_address(data.get("address") or {},
-                                   fallback_name=(data.get("name") or ""))
+    token = ""
+    claimed = False
     try:
-        redeem = int(data.get("points_to_redeem_cents") or 0)
-    except (TypeError, ValueError):
-        redeem = 0
-    try:
-        res = _checkout_cart(email, [{"slug": c["slug"], "qty": c["qty"],
-                                      "format": c["format"]} for c in cart],
-                             ship=ship, points_to_redeem_cents=redeem,
-                             referral_code=(data.get("referral_code") or "").strip())
-    except CheckoutError as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
+        with db.connect(LOG_DB) as cx:
+            _cart_store.init_cart_tables(cx)
+            # Checked BEFORE merge: merge's own no-open-cart fallback cannot tell "no
+            # cart at all" apart from "the real cart is just mid-checkout", so a
+            # concurrent second request here would otherwise be handed a fresh EMPTY
+            # cart instead of being refused, orphaning the real cart's items.
+            if _cart_store.checking_out_for_email(cx, email):
+                return jsonify({"ok": False,
+                                "error": "This order is already being processed."}), 409
+            anon_token = _cart_token_from_cookie()
+            token = _cart_store.merge(cx, anon_token, email)
+            cart = _cart_store.items(cx, token)
 
-    if not res.get("stripe_url"):
-        # Never confirm an order the customer has no way to pay for.
-        print("[cart] checkout produced no stripe_url", flush=True)
-        return jsonify({"ok": False,
-                        "error": "We could not start payment just now. "
-                                 "Please try again in a moment."}), 502
+        if not cart:
+            return jsonify({"ok": False, "error": "Your cart is empty."}), 400
 
-    with db.connect(LOG_DB) as cx:
-        _cart_store.mark_ordered(cx, token, res["out"].get("invoice_id", ""))
-    return jsonify({"ok": True, "stripe_url": res["stripe_url"],
-                    "total": res["out"].get("total")})
+        unavailable = []
+        for c in cart:
+            p = _get_product(c["slug"])
+            if not p or p.get("inactive") or p.get("info_only"):
+                unavailable.append(c["slug"])
+        if unavailable:
+            return jsonify({"ok": False, "unavailable": unavailable,
+                            "error": "Some items are no longer available. "
+                                     "Please remove them and try again."}), 400
+
+        # Claim the cart before the slow pricing/Stripe/QBO work below, so a
+        # concurrent double-submit (two tabs, a double-tapped button) cannot both
+        # pass this point and each mint an order + Stripe session for the same cart.
+        with db.connect(LOG_DB) as cx:
+            claimed = _cart_store.claim_for_checkout(cx, token)
+        if not claimed:
+            return jsonify({"ok": False,
+                            "error": "This order is already being processed."}), 409
+
+        ship = _resolve_ship_address(email, data.get("address") or {})
+        if not (ship.get("street") or "").strip():
+            with db.connect(LOG_DB) as cx:
+                _cart_store.release_claim(cx, token)
+            return jsonify({"ok": False,
+                            "error": "Please add a shipping address to check out."}), 400
+
+        try:
+            redeem = int(data.get("points_to_redeem_cents") or 0)
+        except (TypeError, ValueError):
+            redeem = 0
+
+        try:
+            res = _checkout_cart(email, [{"slug": c["slug"], "qty": c["qty"],
+                                          "format": c["format"]} for c in cart],
+                                 ship=ship, points_to_redeem_cents=redeem,
+                                 referral_code=(data.get("referral_code") or "").strip())
+        except CheckoutError as e:
+            with db.connect(LOG_DB) as cx:
+                _cart_store.release_claim(cx, token)
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+        out = res.get("out") or {}
+        stripe_url = res.get("stripe_url") or ""
+        # _checkout_cart already ingested the order by this point regardless of
+        # whether Stripe minted a URL, so the cart is marked ordered on EVERY path
+        # from here -- a retry after an empty stripe_url must not mint a second
+        # order. mark_ordered is wrapped so a failure here is logged, not raised:
+        # the order and (if present) the Stripe session already exist, and the
+        # customer must still get the payment link back.
+        try:
+            with db.connect(LOG_DB) as cx:
+                _cart_store.mark_ordered(cx, token, out.get("invoice_id", ""))
+        except Exception:
+            app.logger.exception("cart checkout: mark_ordered failed for token %s", token)
+
+        _pe = {"payment_error": _CARD_UNAVAILABLE} if (_STRIPE_ACTIVE and not stripe_url) else {}
+        return jsonify({"ok": True, "stripe_url": stripe_url, **out, **_pe})
+    except Exception as e:
+        if claimed and token:
+            try:
+                with db.connect(LOG_DB) as cx:
+                    _cart_store.release_claim(cx, token)
+            except Exception:
+                pass
+        app.logger.exception("cart checkout failed")
+        return jsonify({"ok": False, "error": f"{type(e).__name__}: {e}"}), 500
 
 
 @app.route("/reorder")

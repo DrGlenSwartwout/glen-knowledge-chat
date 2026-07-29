@@ -198,6 +198,13 @@ def merge(cx, anon_token, email):
 
     Idempotent: merging an already-merged or unknown token is a no-op that still
     returns the member's open cart token.
+
+    A cart that is open but already owned by a DIFFERENT member's email is never
+    touched -- not reassigned, not folded from, not marked merged. It is treated
+    exactly like an unknown token and left completely alone. Without this guard a
+    shared browser's stale `rm_cart` cookie (still pointing at the PREVIOUS member's
+    open cart) would get folded onto and closed under the NEW member's identity,
+    charging one member for another member's items.
     """
     email = _norm_email(email)
     if not email:
@@ -206,16 +213,20 @@ def merge(cx, anon_token, email):
 
     member_token = open_token_for_email(cx, email)
 
-    anon_open = False
+    anon_mergeable = False
     if anon_token:
         row = cx.execute(
             "SELECT status, email FROM carts WHERE token=?", (anon_token,)
         ).fetchone()
-        anon_open = bool(row) and row[0] == "open"
-        if anon_open and (row[1] or "") == email:
-            return anon_token          # already this member's cart
+        if row and row[0] == "open":
+            owner_email = row[1] or ""
+            if owner_email == email:
+                return anon_token          # already this member's cart
+            if not owner_email:
+                anon_mergeable = True      # genuinely anonymous -- safe to fold
+            # else: open but owned by a DIFFERENT member -- never touched, fall through
 
-    if not anon_open:
+    if not anon_mergeable:
         return member_token or get_or_create(cx, _new_token_for(email), email=email)
 
     if not member_token:
@@ -293,6 +304,47 @@ def _new_token_for(email):
     Never used for anonymous carts, which get a random token from the route layer."""
     import hashlib
     return "cart:" + hashlib.sha1(_norm_email(email).encode()).hexdigest()[:24]
+
+
+def checking_out_for_email(cx, email):
+    """True if this member already has a cart mid-checkout (status='checking_out').
+
+    Checked by the route BEFORE calling `merge`/`claim_for_checkout`: `merge`'s own
+    fallback (mint a fresh cart when the member has no OPEN cart) cannot tell "no
+    cart at all" apart from "the real cart is just busy" -- a concurrent second
+    request would otherwise get handed a brand-new EMPTY cart instead of being
+    refused, orphaning the real (claimed) cart's items."""
+    email = _norm_email(email)
+    if not email:
+        return False
+    row = cx.execute(
+        "SELECT 1 FROM carts WHERE email=? AND status='checking_out' LIMIT 1", (email,)
+    ).fetchone()
+    return bool(row)
+
+
+def claim_for_checkout(cx, token):
+    """Atomically claim an open cart for checkout. Returns True iff THIS call won the
+    race (rowcount==1). A losing caller must not proceed to price/charge -- another
+    checkout for this same cart is already in flight, and letting both continue is
+    what produces two orders and two Stripe sessions for one cart."""
+    cur = cx.execute(
+        "UPDATE carts SET status='checking_out', updated_at=? WHERE token=? AND status='open'",
+        (_now_iso(), token),
+    )
+    cx.commit()
+    return cur.rowcount == 1
+
+
+def release_claim(cx, token):
+    """Revert a claimed-but-not-completed cart back to open, so a checkout that failed
+    after claiming (bad address, pricing error, unexpected exception) does not lock the
+    customer out of their own cart."""
+    cx.execute(
+        "UPDATE carts SET status='open', updated_at=? WHERE token=? AND status='checking_out'",
+        (_now_iso(), token),
+    )
+    cx.commit()
 
 
 def mark_ordered(cx, token, checkout_ref):

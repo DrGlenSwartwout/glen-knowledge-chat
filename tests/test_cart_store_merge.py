@@ -100,6 +100,33 @@ def test_merge_is_idempotent_after_folding_into_a_pre_existing_member_cart(cx):
     assert row[0] == "merged"
 
 
+def test_merge_refuses_a_cart_owned_by_another_member(cx):
+    """CRITICAL 3: a shared browser's rm_cart cookie can carry a DIFFERENT member's
+    open cart token. Merging it onto the current buyer must be a complete no-op for
+    that cart: not reassigned, not folded from, not marked merged -- probed as Bob
+    getting charged for Alice's items on a shared browser."""
+    CS.get_or_create(cx, "bob_cart", email="bob@x.com")
+    CS.add_item(cx, "bob_cart", "brain-boost", qty=1)
+
+    CS.get_or_create(cx, "alice_cart", email="alice@x.com")
+    CS.add_item(cx, "alice_cart", "wholomega", qty=2)
+
+    # Bob's browser carries Alice's cookie token (e.g. a shared kiosk). Merging it
+    # onto Bob must leave Alice's cart completely untouched and fall through to
+    # Bob's own cart.
+    surviving = CS.merge(cx, "alice_cart", "bob@x.com")
+
+    assert surviving == "bob_cart"
+    assert {i["slug"]: i["qty"] for i in CS.items(cx, "bob_cart")} == {"brain-boost": 1}
+
+    # Alice's cart keeps its items, stays open, and keeps her email
+    assert {i["slug"]: i["qty"] for i in CS.items(cx, "alice_cart")} == {"wholomega": 2}
+    row = cx.execute(
+        "SELECT status, email FROM carts WHERE token=?", ("alice_cart",)).fetchone()
+    assert row[0] == "open"
+    assert row[1] == "alice@x.com"
+
+
 def test_merge_with_unknown_anon_token_returns_member_cart(cx):
     CS.get_or_create(cx, "mem1", email="a@x.com")
     assert CS.merge(cx, "nosuchtoken", "a@x.com") == "mem1"
