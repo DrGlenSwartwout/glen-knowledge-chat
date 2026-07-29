@@ -29,7 +29,8 @@
   .results div:hover { background:rgba(212,168,67,.1); }
   .results div:last-child { border-bottom:none; }
   .results .sub { color:var(--muted); font-size:12px; }
-  table.lines { width:100%; border-collapse:collapse; }
+  .lines-scroll { width:100%; overflow-x:auto; overflow-y:hidden; padding-bottom:5px; }
+  table.lines { width:100%; min-width:1000px; border-collapse:collapse; }
   table.lines th { text-align:left; font-size:10px; text-transform:uppercase; color:var(--muted); padding:6px 6px; border-bottom:1px solid var(--border); }
   table.lines td { padding:6px 6px; border-bottom:1px solid var(--border); vertical-align:middle; }
   table.lines input { width:100%; }
@@ -104,8 +105,10 @@
       </div>
       <div id="snippet-mgr-list"></div>
     </div>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Source</th><th>Note (shown to customer)</th><th></th></tr></thead>
-      <tbody id="lines"></tbody></table>
+    <div class="lines-scroll">
+      <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Source</th><th>Note (shown to customer)</th><th></th></tr></thead>
+        <tbody id="lines"></tbody></table>
+    </div>
     <div class="addline">
       <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
       <div><label>Qty</label><input id="prod-qty" type="number" min="1" value="1"></div>
