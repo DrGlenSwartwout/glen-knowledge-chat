@@ -207,6 +207,10 @@ def _workflow_nav(active, client_email=""):
     # links relatively — reachable from both this strip and the Reveals area.
     tabs += (f"<a class=\"{'active' if active == 'map' else ''}\" "
              f"href=\"/formulation-map{key_qs}\">Map</a>")
+    # Same story for the canonical-pathway review queue: a LOCAL :8011 page,
+    # because the ingredient corpus it edits lives in the vault, not on prod.
+    tabs += (f"<a class=\"{'active' if active == 'pathway' else ''}\" "
+             f"href=\"/pathway-review{key_qs}\">Pathways</a>")
     strip = f"<nav class=wfnav>{tabs}</nav>"
     client_email = (client_email or "").strip()
     if not client_email:
