@@ -94,6 +94,26 @@ def test_absent_pickup_key_uses_saved_pref(env):
     assert o["shipping_cents"] == 0
 
 
+def test_biofield_reraise_updates_existing_order_in_place(env):
+    appmod, db = env
+    created = _post(appmod, {"email": "same@x.com"})
+    oid = created["order_id"]
+    r = appmod.app.test_client().post("/api/orders/manual", json={
+        "customer": {"name": "T", "email": "same@x.com"},
+        "lines": [{"slug": "mix", "qty": 3}],
+        "invoice_note": "Refreshed",
+        "update_order_id": oid,
+    })
+    assert r.status_code == 200, r.get_data(as_text=True)
+    out = r.get_json()
+    assert out["ok"] and out["updated"] and out["order_id"] == oid
+    with sqlite3.connect(db) as cx:
+        assert cx.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 1
+    stored = _stored(db, oid)
+    assert stored["items"][0]["qty"] == 3
+    assert stored["invoice_note"] == "Refreshed"
+
+
 def test_absent_pickup_key_unflagged_client_charges_shipping(env):
     appmod, db = env
     _pref(db, "ship@x.com", False)

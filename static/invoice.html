@@ -190,7 +190,9 @@ function svcFirst(lines){ return lines.map((x,i)=>[x,i])
   .sort((a,b)=>((b[0]&&b[0].service?1:0)-(a[0]&&a[0].service?1:0))||(a[1]-b[1])); }
 
 async function load() {
-  const r = await fetch(API);
+  // Invoice tokens are stable while the underlying order remains editable.
+  // Never reuse an older response after the owner saves invoice changes.
+  const r = await fetch(API, {cache:'no-store'});
   if (!r.ok) { $('ref').textContent = 'This invoice link is invalid or expired.'; return; }
   const j = await r.json(); ORDER = j.order;
   if (ORDER.name){ $('billto-nm').textContent = ORDER.name; $('billto').style.display = ''; }

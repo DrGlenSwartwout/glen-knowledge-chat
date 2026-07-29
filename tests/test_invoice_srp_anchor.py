@@ -47,13 +47,13 @@ def test_infoceutical_anchors_at_its_own_srp():
     assert out["srp_cents"] == 4000 and out["regular_cents"] == 3997
 
 
-def test_off_base_ff_uses_its_own_srp_not_the_flat_80():
-    """CDS ($35/$40) and WholOmega 120ct ($190/$230) are FFs off the $69.97 base.
-    They previously showed no anchor because the flat rule keys on price == 6997."""
+def test_special_price_products_use_their_own_srp_not_the_flat_80():
+    """Special-price products use their own value anchor. WholOmega 120 is not a
+    regular FF, but still displays its $230 value above its $190 default price."""
     appmod = _app()
     cds = _view(appmod, {"price_cents": 3500, "regular_cents": 4000, "qty_pricing": True})
     assert cds["srp_cents"] == 4000
-    wo = _view(appmod, {"price_cents": 19000, "regular_cents": 23000, "qty_pricing": True})
+    wo = _view(appmod, {"price_cents": 19000, "regular_cents": 23000, "qty_pricing": False})
     assert wo["srp_cents"] == 23000
 
 

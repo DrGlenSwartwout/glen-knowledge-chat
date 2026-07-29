@@ -29,9 +29,12 @@
   .results div:hover { background:rgba(212,168,67,.1); }
   .results div:last-child { border-bottom:none; }
   .results .sub { color:var(--muted); font-size:12px; }
-  table.lines { width:100%; border-collapse:collapse; }
+  .lines-scroll { width:100%; overflow-x:auto; overflow-y:hidden; padding-bottom:5px; }
+  table.lines { width:100%; min-width:1000px; border-collapse:collapse; }
   table.lines th { text-align:left; font-size:10px; text-transform:uppercase; color:var(--muted); padding:6px 6px; border-bottom:1px solid var(--border); }
   table.lines td { padding:6px 6px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.lines th:nth-child(8), table.lines td:nth-child(8) { min-width:310px; }
+  table.lines th:nth-child(9), table.lines td:nth-child(9) { min-width:74px; text-align:right; }
   table.lines input { width:100%; }
   .addline { display:grid; grid-template-columns:2fr .7fr 1fr auto; gap:8px; margin-top:12px; align-items:end; }
   .totals { margin-top:14px; font-size:14px; }
@@ -42,6 +45,8 @@
   button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:9px 14px; font-size:13px; cursor:pointer; }
   button.mini { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:6px 10px; font-size:12px; cursor:pointer; }
   button.mini:hover { color:var(--text); }
+  button.mini.danger { color:#ff8b72; border-color:rgba(204,75,44,.65); }
+  button.mini.danger:hover { color:#fff; background:rgba(204,75,44,.25); border-color:var(--red); }
   #invoice { display:none; background:linear-gradient(135deg,rgba(212,168,67,.12),rgba(212,168,67,.03)); border:1px solid var(--accent); border-radius:var(--radius); padding:22px; margin-bottom:18px; }
   #invoice h2 { color:var(--accent-light); }
   #invoice pre { white-space:pre-wrap; font-family:ui-monospace,Menlo,monospace; font-size:13px; color:var(--text); }
@@ -102,8 +107,10 @@
       </div>
       <div id="snippet-mgr-list"></div>
     </div>
-    <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Source</th><th>Note (shown to customer)</th><th></th></tr></thead>
-      <tbody id="lines"></tbody></table>
+    <div class="lines-scroll">
+      <table class="lines"><thead><tr><th>Product</th><th>Qty</th><th>Format</th><th>Unit $</th><th>Vol price</th><th>Line</th><th>Source</th><th>Note (shown to customer)</th><th></th></tr></thead>
+        <tbody id="lines"></tbody></table>
+    </div>
     <div class="addline">
       <div><label>Add product</label><input id="prod-search" type="text" placeholder="type to filter…" autocomplete="off" style="width:100%;margin-bottom:4px"><select id="prod-pick"></select></div>
       <div><label>Qty</label><input id="prod-qty" type="number" min="1" value="1"></div>
@@ -122,7 +129,7 @@
       <div><label>Points to apply $ (off the total)</label><input id="o-points" type="number" step="0.01" placeholder="0"><small id="o-points-avail" style="display:block;color:var(--muted);margin-top:3px"></small></div>
       <div><label>Adjustment $ (− credit / + debit)</label><input id="o-adjust" type="number" step="0.01" placeholder="0"></div>
       <div><label>Set total $ (auto-fills adjustment)</label><input id="o-total" type="number" step="0.01" placeholder="auto"></div>
-      <div id="o-shipping-wrap"><label>Shipping $ (blank = auto)</label><input id="o-shipping" type="number" step="0.01" placeholder="auto"></div>
+      <div id="o-shipping-wrap"><label>Shipping $ (blank = auto except Hawaii)</label><input id="o-shipping" type="number" step="0.01" placeholder="auto"></div>
     </div>
     <div style="margin-top:10px"><label style="display:inline-flex;align-items:center;gap:6px;text-transform:none;font-size:14px;color:var(--text);cursor:pointer"><input type="checkbox" id="pickup"> <span id="pickup-label">Pickup (no shipping)</span></label></div>
     <div id="pickup-default-wrap" style="display:none;margin-top:6px;margin-left:22px">
@@ -141,6 +148,7 @@
     </div>
     <div style="margin-top:16px"><button id="submit-btn" class="primary" onclick="submitOrder()">Create proposed invoice</button>
       <button id="send-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="sendInvoiceEdit()">Send invoice to customer</button>
+      <button id="print-inv-btn" class="ghost" style="display:none;margin-left:8px" onclick="printInvoiceEdit()">Print / Download PDF</button>
       <button id="grant-member-btn" class="ghost" style="display:none;margin-left:8px" onclick="grantMemberAccess()" title="Grant this client a 30-day member-access window and reprice this invoice at member pricing">Grant 30-day member access + reprice</button>
       <button id="save-cprices-btn" class="ghost" style="margin-left:8px" onclick="saveClientPrices()">Save line prices as this client's standard</button></div>
     <div style="margin-top:8px;font-size:13px">
@@ -192,6 +200,7 @@ let PREVIEW = {subtotal_cents:null, lines:[]};  // server price preview
 // Shipping fee lives in the #o-shipping input (blank = auto-compute on save). The
 // Price-shipping button fills it with a live quote the owner can then hand-edit.
 function _shipOverrideCents(){ const v=$("o-shipping").value.trim(); return v!=="" ? Math.max(0, Math.round(parseFloat(v)*100)) : null; }
+let HAWAII_SHIPPING_CONFIRMED = false;
 let previewTimer = null;
 let PAY_ROWS = {};         // payments ledger rows keyed by id, for lookup from inline handlers (avoids interpolating free text into onclick)
 let MEMBERSHIP_TIER = 'month';  // resolved from the offer endpoint's offered_tiers[0]; there is no page-global default
@@ -343,13 +352,19 @@ function renderLines(){
       <input type="text" id="note-${i}" value="${esc(l.note||'')}" oninput="setNote(${i},this.value)" placeholder="note (optional)" style="width:150px">
       <select onchange="applySnippet(${i},this.value); this.selectedIndex=0" title="Insert a saved message" style="max-width:130px">${snippetOptions()}</select>
     </td>
-    <td><button class="mini" onclick="rmLine(${i})">✕</button></td></tr>`).join("");
+    <td><button class="mini danger" type="button" onclick="rmLine(${i})"
+      aria-label="Delete ${esc(l.name)}">${EDIT_OID?'Delete':'Remove'}</button></td></tr>`).join("");
   refreshPreview();
   recalc();
   syncShippingUI();
 }
 function editLine(i,f,v){ if(f==='qty') LINES[i].qty=Math.max(1,parseInt(v,10)||1); else if(f==='format') LINES[i].format=v; else { LINES[i].unit_cents=Math.round(parseFloat(v)*100)||0; LINES[i].edited=true; } renderLines(); }
-function rmLine(i){ LINES.splice(i,1); renderLines(); }
+function rmLine(i){
+  if (!LINES[i]) return;
+  if (EDIT_OID && !confirm("Delete "+(LINES[i].name||"this remedy")+" from this invoice?")) return;
+  LINES.splice(i,1);
+  renderLines();
+}
 // Send a line's unit_cents only when the owner manually overrode it; otherwise
 // let the server price it (FF capsules get the volume rate).
 function linesPayload(){ return LINES.map(l=>{ const b = l.edited ? {slug:l.slug, qty:l.qty, unit_cents:l.unit_cents} : {slug:l.slug, qty:l.qty}; const n=(l.note||"").trim(); if(n) b.note=n; if((l.format||'bottle')!=='bottle') b.format=l.format; b.source = l.source || 'self'; return b; }); }
@@ -488,8 +503,8 @@ function recalc(){
   const tship = $("t-ship"), btn = $("ship-quote-btn");
   if (pickup || noShip){ if (tship) tship.textContent = dollars(0); }
   else if (ovr !== null){ shipCents = ovr; if (tship) tship.textContent = dollars(ovr); }
-  else { shipSuffix = " + shipping"; if (tship) tship.textContent = "computed on save"; }
-  if (btn){ btn.textContent = (ovr !== null) ? "Reprice shipping" : "Price shipping";
+  else { shipSuffix = " + shipping"; if (tship) tship.textContent = isHawaiiShipment() ? "manual amount required" : "computed on save"; }
+  if (btn){ btn.textContent = isHawaiiShipment() ? "Enter shipping" : ((ovr !== null) ? "Reprice shipping" : "Price shipping");
             btn.style.display = (pickup || noShip) ? "none" : ""; }
   $("t-total").textContent = dollars(preShip + shipCents) + shipSuffix;
 }
@@ -498,8 +513,38 @@ function recalc(){
 function addrFromForm(){ return { address1:$("a-addr1").value.trim(), address2:$("a-addr2").value.trim(),
   city:$("a-city").value.trim(), state:$("a-state").value.trim(), zip:$("a-zip").value.trim(),
   country:($("a-country").value.trim()||"US") }; }
+function isHawaiiShipment(){
+  const a=addrFromForm(), state=(a.state||"").trim().toUpperCase();
+  const country=(a.country||"US").trim().toUpperCase();
+  return hasShippableLine() && !$("pickup").checked && state==="HI"
+    && (country==="US" || country==="USA" || country==="UNITED STATES");
+}
+function requestHawaiiShipping(force=false){
+  if (!isHawaiiShipment()) return true;
+  const field=$("o-shipping");
+  if (!force && HAWAII_SHIPPING_CONFIRMED && field.value.trim()!=="") return true;
+  const entered=prompt(
+    "This order is being shipped within Hawai‘i. Enter the actual shipping cost ($):",
+    field.value.trim()
+  );
+  if (entered===null) return false;
+  const amount=Number(String(entered).trim());
+  if (String(entered).trim()==="" || !Number.isFinite(amount) || amount<0){
+    toast("Enter a valid Hawaii shipping amount","error");
+    field.focus();
+    return false;
+  }
+  field.value=amount.toFixed(2);
+  HAWAII_SHIPPING_CONFIRMED=true;
+  recalc();
+  return true;
+}
 async function priceShipping(){
   if (!LINES.length){ toast("Add a line item first","error"); return; }
+  if (isHawaiiShipment()){
+    if (requestHawaiiShipping(true)) toast("Hawaii shipping set manually");
+    return;
+  }
   const btn=$("ship-quote-btn"); if(btn) btn.disabled=true;
   try{
     const r=await fetch("/api/orders/shipping-preview",{method:"POST",headers:HEADERS,
@@ -528,7 +573,9 @@ function onTotalInput(){
 $("o-discount").addEventListener("input", recalc);
 $("o-points").addEventListener("input", recalc);
 $("o-adjust").addEventListener("input", recalc);
-$("o-shipping").addEventListener("input", recalc);
+$("o-shipping").addEventListener("input", ()=>{ HAWAII_SHIPPING_CONFIRMED=true; recalc(); });
+$("a-state").addEventListener("input", ()=>{ HAWAII_SHIPPING_CONFIRMED=false; recalc(); });
+$("a-country").addEventListener("input", ()=>{ HAWAII_SHIPPING_CONFIRMED=false; recalc(); });
 $("pickup").addEventListener("change", ()=>{ syncShippingUI(); recalc(); });
 $("o-total").addEventListener("input", onTotalInput);
 // Membership gates volume pricing, so re-price when the customer email changes.
@@ -546,9 +593,24 @@ $("c-email").addEventListener("input", onEmailInput);
 // ── create vs edit dispatch ──
 function submitOrder(){ return EDIT_OID ? editInvoice() : createInvoice(); }
 
+async function printInvoiceEdit(){
+  if (!EDIT_OID) return;
+  try {
+    const r = await fetch("/api/console/order/"+Number(EDIT_OID)+"/invoice-link",
+                          {headers:HEADERS});
+    const j = await r.json();
+    if (!r.ok || !j.ok || !j.link) throw new Error(j.error||"Could not open invoice");
+    // Popup blockers can discard a blank tab before this secure link is minted.
+    // Same-tab navigation is reliable everywhere; Back returns to Edit Invoice.
+    window.location.assign(j.link);
+  } catch (e) {
+    toast(e.message||"Could not open invoice", "error");
+  }
+}
+
 // ── edit an existing order's invoice ──
 async function loadOrderForEdit(oid){
-  const r = await fetch("/api/orders?limit=300", {headers:HEADERS});
+  const r = await fetch("/api/orders?limit=300", {headers:HEADERS, cache:"no-store"});
   if (r.status===401){ $("auth-warn").style.display="block"; return; }
   const o = ((await r.json()).data||[]).find(x=>String(x.id)===String(oid));
   if (!o){ toast("Order #"+oid+" not found","error"); return; }
@@ -562,6 +624,7 @@ async function loadOrderForEdit(oid){
   // (turns green + "Invoice Sent" once it's already gone out).
   var _sib = $("send-inv-btn");
   _sib.style.display = "inline-block";
+  $("print-inv-btn").style.display = "inline-block";
   $("grant-member-btn").style.display = "inline-block";
   if (o.invoice_sent_at){ _sib.textContent = "Invoice Sent "+invSentStr(o.invoice_sent_at)+" (re-send)"; _sib.classList.add("inv-sent"); }
   // Prefill customer (read-only context — pricing/membership keyed off email).
@@ -645,6 +708,7 @@ async function resyncPay(pid){
 }
 async function editInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
+  if (!requestHawaiiShipping()) return;
   const dRaw=$("o-discount").value.trim();
   const body = { lines: linesPayload(), pickup: $("pickup").checked, invoice_note: $("o-note").value.trim(), address: addrFromForm() };
   if (dRaw!=="") body.discount_cents = Math.round(parseFloat(dRaw)*100);
@@ -694,6 +758,7 @@ async function grantMemberAccess(){
 // ── create / lifecycle ──
 async function createInvoice(){
   if (!LINES.length){ toast("Add at least one line item","error"); return; }
+  if (!requestHawaiiShipping()) return;
   const dRaw=$("o-discount").value.trim();
   const body = {
     customer:{ person_id: $("person_id").value||null, name:$("c-name").value, email:$("c-email").value, phone:$("c-phone").value,

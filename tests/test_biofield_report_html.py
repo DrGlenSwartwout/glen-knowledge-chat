@@ -47,6 +47,17 @@ def test_report_html_shows_client_layers_and_schedule():
     assert "Bedtime" in html and "Breakfast" in html
 
 
+def test_authored_schedule_is_drag_and_drop():
+    rep = _report()
+    rep["test_id"] = "a10"
+    rep["schedule"]["entries"][0]["source_rids"] = [41]
+    rep["schedule"]["entries"][1]["source_rids"] = [42]
+    html = render_report_html(rep)
+    assert 'draggable="true"' in html
+    assert "/author/a10/row/" in html
+    assert "schedule_slot" in html
+
+
 def test_report_html_escapes_free_text():
     rep = _report()
     rep["client"]["name"] = "<script>alert(1)</script>"

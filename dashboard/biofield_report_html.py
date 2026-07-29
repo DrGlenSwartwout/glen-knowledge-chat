@@ -49,6 +49,12 @@ _STYLE = """
  tr:last-child td{border-bottom:0}
  .lyr{color:var(--accent);font-weight:700;white-space:nowrap}
  .slot{font-weight:600;color:var(--accent);white-space:nowrap;width:130px}
+ .sched-drop{min-height:44px;white-space:normal}
+ .sched-drop.over{background:rgba(212,168,67,.12);box-shadow:inset 0 0 0 1px var(--accent)}
+ .sched-remedy{display:inline-flex;align-items:center;gap:5px;margin:2px 5px 2px 0;
+   padding:5px 9px;background:#0c0e12;border:1px solid var(--line);border-radius:7px}
+ .sched-remedy[draggable=true]{cursor:grab}
+ .sched-remedy.drag{opacity:.45}
  .food{color:var(--muted);font-size:12px}
  .warn{color:#e0823a;font-size:12px}
  input[type=search]{background:#0c0e12;color:var(--fg);border:1px solid var(--line);
@@ -358,28 +364,64 @@ def render_report_html(report, notes="", narrative="", video_script="", stresses
     chain = ("<h2>Causal Chain Report</h2>"
              + render_chain_table(report.get("layers") or [], with_depth_badge=True))
 
-    # Schedule grid
+    # Schedule grid. Authored reports carry source row ids, making the slots
+    # editable; imported FileMaker reports remain read-only.
     sched = report.get("schedule") or {}
     entries = sched.get("entries") or []
     placed = [e for e in entries if not e.get("as_directed")]
+    editable = any(e.get("source_rids") for e in entries)
+
+    def remedy_chip(e, occurrence=0):
+        rids = ",".join(str(r) for r in (e.get("source_rids") or []))
+        drag = (f' draggable="true" data-rids="{_e(rids)}" data-occ="{occurrence}" '
+                'ondragstart="schedDragStart(event)" ondragend="schedDragEnd(event)"'
+                if rids else "")
+        return (f'<span class="sched-remedy"{drag}>{_e(e.get("name") or "")} '
+                f'<span class=food>({_e(e.get("per_slot") or e.get("dosage") or "")}'
+                + (f", {_e(e.get('food'))}" if e.get("food") else "")
+                + ")</span></span>")
+
     srows = ""
     for slot in sched.get("slots") or []:
         here = [e for e in placed if slot in (e.get("slots") or [])]
-        if not here:
+        if not here and not editable:
             continue
-        cells = "; ".join(
-            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('per_slot') or e.get('dosage') or '')}"
-            + (f", {_e(e.get('food'))}" if e.get('food') else "") + ")</span>"
-            for e in here)
-        srows += f"<tr><td class=slot>{_e(slot)}</td><td>{cells}</td></tr>"
+        cells = "".join(remedy_chip(e, (e.get("slots") or []).index(slot)) for e in here)
+        drop = (f' class="sched-drop" data-slot="{_e(slot)}" '
+                'ondragover="schedDragOver(event)" ondragleave="schedDragLeave(event)" '
+                'ondrop="schedDrop(event)"' if editable else "")
+        srows += f"<tr><td class=slot>{_e(slot)}</td><td{drop}>{cells}</td></tr>"
     asdir = [e for e in entries if e.get("as_directed")]
     if asdir:
-        cells = "; ".join(
-            f"{_e(e.get('name') or '')} <span class=food>({_e(e.get('timing') or 'as directed')})</span>"
-            for e in asdir)
-        srows += f"<tr><td class=slot>As directed</td><td>{cells}</td></tr>"
+        srows += ("<tr><td class=slot>As directed</td><td>"
+                  + "".join(remedy_chip(e, 0) for e in asdir) + "</td></tr>")
     schedule = ("<h2>Remedy Schedule</h2>"
-                "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>")
+                + ("<p class=sub>Drag a remedy to a different time slot. Changes save automatically.</p>"
+                   if editable else "")
+                + "<table><tr><th>When</th><th>Take</th></tr>" + srows + "</table>"
+                + ("<div id=schedStat class=food></div>" if editable else "")
+                + ("""<script>
+var schedDragged=null;
+function schedDragStart(e){schedDragged=e.currentTarget;e.currentTarget.classList.add('drag');
+ e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',e.currentTarget.dataset.rids||'')}
+function schedDragEnd(e){e.currentTarget.classList.remove('drag');
+ document.querySelectorAll('.sched-drop.over').forEach(function(x){x.classList.remove('over')})}
+function schedDragOver(e){e.preventDefault();e.currentTarget.classList.add('over');
+ e.dataTransfer.dropEffect='move'}
+function schedDragLeave(e){e.currentTarget.classList.remove('over')}
+async function schedDrop(e){e.preventDefault();var zone=e.currentTarget;zone.classList.remove('over');
+ if(!schedDragged)return;var rids=(schedDragged.dataset.rids||'').split(',').filter(Boolean);
+ var stat=document.getElementById('schedStat');stat.textContent='Saving schedule…';
+ var peers=Array.from(document.querySelectorAll('.sched-remedy')).filter(function(x){
+  return x.dataset.rids===schedDragged.dataset.rids});
+ var slots=peers.sort(function(a,b){return Number(a.dataset.occ)-Number(b.dataset.occ)}).map(function(x){
+  return x===schedDragged?zone.dataset.slot:x.closest('.sched-drop').dataset.slot});
+ try{for(var i=0;i<rids.length;i++){var r=await fetch('/author/__TID__/row/'+rids[i],{
+  method:'POST',headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({schedule_slots:slots})});if(!r.ok)throw new Error('save failed')}
+  zone.appendChild(schedDragged);stat.textContent='Schedule saved.'}
+ catch(err){stat.textContent='Could not save schedule. Reload and try again.'}}
+</script>""".replace("__TID__", _e(report.get("test_id") or "")) if editable else ""))
 
     # Narrative + verbal notes (Increment 2)
     tid = _e(report.get("test_id") or "")
@@ -1022,7 +1064,7 @@ def render_fee_panel(state):
     std = cents_to_dollars(state["standard_cents"])
     head = (f"<div class=card id=feepanel><h2>Fee</h2>"
             f"<p class=sub>Value ${val} &middot; standard charge ${std}. "
-            "Set a courtesy below; it applies automatically when you raise the invoice in console. "
+            "Set a courtesy below; it applies automatically when you create the invoice in console. "
             "This panel does not invoice.</p>")
     if not state["has_email"]:
         return head + "<div class=food>Add a client email in the header to set a fee.</div></div>"
@@ -1051,7 +1093,8 @@ def render_fee_panel(state):
         "<button class='btn ghost' onclick='preFee(0)'>$0 comp</button>"
         "<span id=feestat class=food></span></div>"
         "<div class=btnrow style='margin-top:10px'>"
-        "<button class=btn id=raisebtn onclick=raiseInvoice()>Raise invoice &rarr;</button>"
+        "<button class=btn id=invoicebtn onclick=invoiceAction()>Create invoice &rarr;</button>"
+        "<button class='btn ghost' id=viewinvbtn onclick=viewInvoice()>View invoice &rarr;</button>"
         "<span id=invstat class=food></span></div>"
         "<div id=invresult class=food style='margin-top:6px'></div>")
     js = (
@@ -1066,18 +1109,31 @@ def render_fee_panel(state):
         "else{document.getElementById('feestat').textContent=j.error||'error';}});}"
         "function setFee(){feeSwap(_abase()+'/fee');}"
         "function clearFee(){feeSwap(_abase()+'/fee/clear');}"
+        "function viewInvoice(){var btn=document.getElementById('viewinvbtn');"
+        "var s=document.getElementById('invstat');var w=window.open('about:blank','_blank');"
+        "btn.disabled=true;s.textContent=' finding invoice...';"
+        "fetch(_abase()+'/invoice/view').then(r=>r.json()).then(function(j){"
+        "btn.disabled=false;s.textContent='';if(j.ok&&j.print_url){w.location=j.print_url;}"
+        "else{if(w)w.close();s.textContent=j.error||'No invoice found.';}})"
+        ".catch(function(){btn.disabled=false;if(w)w.close();s.textContent='Could not find invoice.';});}"
+        "function setInvoiceEditMode(j){var b=document.getElementById('invoicebtn');"
+        "if(!b||!j||!j.edit_url)return;b.textContent='Edit invoice \\u2192';b.dataset.editUrl=j.edit_url;}"
+        "function detectInvoice(){fetch(_abase()+'/invoice/status').then(r=>r.json()).then(function(j){"
+        "if(j.ok&&j.exists)setInvoiceEditMode(j);}).catch(function(){});}"
+        "function invoiceAction(){var b=document.getElementById('invoicebtn');"
+        "if(b.dataset.editUrl){window.open(b.dataset.editUrl,'_blank');return;}createInvoice();}"
         "function publishInvoice(oid,btn){var t=btn.textContent;btn.disabled=true;btn.textContent='publishing...';"
         "fetch(_abase()+'/invoice/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:oid})})"
         ".then(r=>r.json()).then(function(j){if(j.ok){btn.textContent='Published to portal \\u2713';}"
         "else{btn.disabled=false;btn.textContent=t;alert(j.error||'Publish failed.');}})"
         ".catch(function(){btn.disabled=false;btn.textContent=t;alert('Could not reach the app.');});}"
-        "function raiseInvoice(){var btn=document.getElementById('raisebtn');"
+        "function createInvoice(){var btn=document.getElementById('invoicebtn');"
         "var s=document.getElementById('invstat');"
         "var out=document.getElementById('invresult');btn.disabled=true;s.textContent=' working...';out.textContent='';"
         "fetch(_abase()+'/invoice',{method:'POST',"
         "headers:{'Content-Type':'application/json'},body:'{}'})"
         ".then(r=>r.json()).then(j=>{s.textContent='';btn.disabled=false;"
-        "if(!j.ok){out.textContent=j.error||'Could not raise the invoice.';return;}"
+        "if(!j.ok){out.textContent=j.error||'Could not create the invoice.';return;}"
         "var parts=[];"
         "if(j.print_url){parts.push('<a href=\"'+j.print_url+'\" target=_blank>Open invoice (view / print / PDF)</a>');}"
         "if(j.orders_url){parts.push('<a href=\"'+j.orders_url+'\" target=_blank>Edit in Orders</a>');}"
@@ -1086,10 +1142,11 @@ def render_fee_panel(state):
         "parts.push('Added '+j.added+' line(s)'+(j.total_dollars?', total $'+j.total_dollars:''));"
         "if(j.skipped&&j.skipped.length){parts.push('Not added (add manually in Orders): '+j.skipped.join(', '));}"
         "if(j.warning){parts.push(j.warning);}"
-        "out.innerHTML=parts.join(' &middot; ');"
+        "out.innerHTML=parts.join(' &middot; ');setInvoiceEditMode(j);"
         "if(j.order_id){var pb=document.createElement('button');pb.className='btn';pb.textContent='Publish invoice to portal';"
         "pb.onclick=function(){publishInvoice(j.order_id,pb);};out.appendChild(document.createElement('br'));out.appendChild(pb);}})"
-        ".catch(function(){btn.disabled=false;s.textContent='';out.textContent='Could not reach the app to raise the invoice.';});}"
+        ".catch(function(){btn.disabled=false;s.textContent='';out.textContent='Could not reach the app to create the invoice.';});}"
+        "detectInvoice();"
         "</script>")
     return head + cur + controls + js + "</div>"
 

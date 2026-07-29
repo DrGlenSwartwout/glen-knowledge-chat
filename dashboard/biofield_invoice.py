@@ -105,10 +105,34 @@ def build_invoice_lines(client, remedies, catalog, include_fee=True):
             qty = 1
         slug = resolve_line_slug(name, catalog)
         if slug:
-            lines.append({"slug": slug, "qty": qty})
+            # These remedies came from the practitioner's authored Biofield
+            # analysis, so preserve that provenance through order creation and
+            # into Edit Invoice instead of falling back to source='self'.
+            lines.append({"slug": slug, "qty": qty, "source": "biofield"})
         else:
             skipped.append(name)
     return {"lines": lines, "skipped": skipped}
+
+
+def merge_manual_invoice_lines(new_lines, existing_items):
+    """Preserve invoice-editor additions while refreshing Biofield schedule lines."""
+    merged = [dict(line) for line in (new_lines or [])]
+    present = {(line.get("slug") or "").strip() for line in merged}
+    for item in existing_items or []:
+        slug = (item.get("slug") or "").strip()
+        if (not slug or slug == BIOFIELD_SLUG or
+                (item.get("source") or "").strip().lower() == "biofield" or
+                slug in present):
+            continue
+        line = {"slug": slug, "qty": max(1, int(item.get("qty") or 1))}
+        for key in ("source", "note", "format"):
+            if item.get(key):
+                line[key] = item[key]
+        if item.get("override") and item.get("unit_cents") is not None:
+            line["unit_cents"] = item["unit_cents"]
+        merged.append(line)
+        present.add(slug)
+    return merged
 
 
 def _console():
@@ -133,7 +157,8 @@ def default_fetch_catalog():
         return []
 
 
-def default_create_order(customer, lines, replace_open=False, invoice_note=None):
+def default_create_order(customer, lines, replace_open=False, invoice_note=None,
+                         update_order_id=None):
     """Create the hand-off invoice on prod. With replace_open=True (a re-hand-off),
     prod first cancels the client's prior OPEN hand-off drafts (proposed, unpaid, not
     yet published) so a repeated hand-off UPDATES rather than piling up duplicates;
@@ -149,6 +174,8 @@ def default_create_order(customer, lines, replace_open=False, invoice_note=None)
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "replace_open": bool(replace_open),
                 "invoice_note": invoice_note or DEFAULT_INVOICE_NOTE}
+        if update_order_id:
+            body["update_order_id"] = int(update_order_id)
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
                                      headers={"X-Console-Key": key, "Content-Type": "application/json"})
@@ -191,6 +218,42 @@ def default_orders_link(order_id):
     if not base or not order_id:
         return ""
     return f"{base}/console/orders?order={int(order_id)}&key={urllib.parse.quote(key)}"
+
+
+def default_edit_order_link(order_id):
+    """Direct Edit Invoice URL for a known order."""
+    base, key = _console()
+    if not base or not order_id:
+        return ""
+    return (f"{base}/orders/new?edit_order={int(order_id)}&key="
+            f"{urllib.parse.quote(key)}")
+
+
+def default_latest_invoice(email):
+    """Latest Biofield-authored invoice for this client, including remedy-only
+    invoices raised after the analysis fee was already paid."""
+    base, key = _console()
+    if not base or not (email or "").strip():
+        return {"ok": False, "error": "invoice unavailable"}
+    try:
+        url = f"{base}/api/orders?limit=300&key=" + urllib.parse.quote(key)
+        req = urllib.request.Request(url, headers={"X-Console-Key": key})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            rows = (_json.loads(r.read().decode() or "{}").get("data") or [])
+        target = email.strip().lower()
+        for order in rows:
+            if (order.get("email") or "").strip().lower() != target:
+                continue
+            items = order.get("items") or []
+            if any((it.get("slug") == BIOFIELD_SLUG or it.get("source") == "biofield")
+                   for it in items):
+                return {"ok": True, "order_id": order.get("id"),
+                        "items": items, "status": order.get("status"),
+                        "pay_status": order.get("pay_status"),
+                        "portal_published": bool(order.get("portal_published"))}
+        return {"ok": False, "error": "No Biofield invoice found for this client."}
+    except Exception:
+        return {"ok": False, "error": "Couldn't reach the console to find the invoice."}
 
 
 def default_publish_invoice(order_id):

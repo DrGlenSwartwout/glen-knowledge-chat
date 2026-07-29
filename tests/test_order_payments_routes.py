@@ -191,6 +191,7 @@ def test_client_invoice_shows_payments_and_balance(tmp_path, monkeypatch):
 
     r = client.get(f"/api/invoice/{token}")
     assert r.status_code == 200
+    assert "no-store" in r.headers["Cache-Control"]
     body = r.get_json()
     assert body["ok"] is True
     order = body["order"]

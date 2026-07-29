@@ -9,6 +9,7 @@ clean whole-capsule dose is auto-split, so droppers/fractions/"as directed" are
 left as a single entry. Unknown combinations are never dropped; they fall back to
 an "as directed" row so nothing silently disappears from a patient's schedule.
 """
+import json
 import re
 
 SLOTS = ["On waking", "Breakfast", "Mid-morning", "Lunch",
@@ -166,12 +167,31 @@ def build_schedule(remedies):
         contains = [_strip_terrain_restore(r.get("name")) for r in liquids]
         freq = next((r.get("frequency") for r in liquids if (r.get("frequency") or "").strip()), "")
         timing = next((r.get("timing") for r in liquids if (r.get("timing") or "").strip()), "")
+        manual_values = {r.get("schedule_slot") for r in liquids
+                         if (r.get("schedule_slot") or "").strip()}
+        manual_slot = manual_values.pop() if len(manual_values) == 1 else ""
+        source_rids = [rid for r in liquids for rid in (r.get("source_rids") or [])]
         work.append({"name": "Terrain Restore", "dosage": "contains: " + ", ".join(contains),
-                     "frequency": freq, "timing": timing, "contains": contains})
+                     "frequency": freq, "timing": timing, "contains": contains,
+                     "schedule_slot": manual_slot, "source_rids": source_rids})
 
     entries = []
     for r in work:
         slots, food, per_slot = _placement(r.get("frequency"), r.get("timing"), r.get("dosage"))
+        manual = r.get("schedule_slot")
+        manual_slots = []
+        if isinstance(manual, str) and manual.strip().startswith("["):
+            try:
+                manual_slots = [s for s in json.loads(manual) if s in SLOTS]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                manual_slots = []
+        if manual_slots:
+            slots = manual_slots
+        elif manual in SLOTS:
+            # Backward compatibility for the first drag implementation, which
+            # stored only one slot. Preserve the remaining calculated doses
+            # instead of collapsing a 2x/3x remedy to one daily occurrence.
+            slots = [manual] + list(slots[1:])
         entries.append({
             "name": (r.get("name") or "").strip(),
             "dosage": (r.get("dosage") or "").strip(),
@@ -182,5 +202,6 @@ def build_schedule(remedies):
             "food": food,
             "as_directed": not slots,
             "contains": r.get("contains") or [],
+            "source_rids": r.get("source_rids") or [],
         })
     return {"slots": SLOTS, "entries": entries}

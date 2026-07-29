@@ -45127,6 +45127,54 @@ def api_orders_manual():
     lines_in = body.get("lines") or []
     if not lines_in:
         return jsonify({"ok": False, "error": "no line items"}), 400
+    # Biofield re-raise: update the existing unpaid order in place. This keeps its
+    # stable order id and invoice token, instead of manufacturing order #N+1 every
+    # time the practitioner refreshes remedies from the intake.
+    update_order_id = body.get("update_order_id")
+    if update_order_id:
+        try:
+            update_order_id = int(update_order_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "invalid update_order_id"}), 400
+        cx = db.connect(LOG_DB)
+        cx.row_factory = _sqlite3.Row
+        try:
+            order = _bos_orders.get_order(cx, update_order_id)
+            if not order:
+                return jsonify({"ok": False, "error": "order not found"}), 404
+            posted_email = (customer.get("email") or "").strip().lower()
+            stored_email = (order.get("email") or "").strip().lower()
+            if not posted_email or posted_email != stored_email:
+                return jsonify({"ok": False, "error": "order customer mismatch"}), 409
+            if (order.get("pay_status") == "paid" or
+                    order.get("status") in ("cancelled", "delivered", "done")):
+                return jsonify({"ok": False, "error": "this order can no longer be updated"}), 409
+            try:
+                priced, _ = _reprice_and_persist_invoice(
+                    cx, order, lines_in,
+                    pickup=(order.get("channel") == "pickup"),
+                    invoice_note=body.get("invoice_note"))
+            except CheckoutError as e:
+                return jsonify({"ok": False, "error": str(e)}), 400
+            if priced is None:
+                return jsonify({"ok": False, "error": "no valid products"}), 400
+        finally:
+            cx.close()
+        qbo = _push_invoice_edit_to_qbo(order.get("external_ref"), priced)
+        return jsonify({
+            "ok": True, "updated": True, "order_id": update_order_id,
+            "external_ref": order.get("external_ref"), "qbo": qbo,
+            "totals": {
+                "subtotal_cents": priced["subtotal_cents"],
+                "discount_cents": priced["discount_cents"],
+                "adjustment_cents": priced["adjustment_cents"],
+                "shipping_cents": priced["shipping_cents"],
+                "get_cents": priced["get_cents"],
+                "points_redeemed_cents": priced["points_redeemed_cents"],
+                "total_cents": priced["total_cents"],
+            },
+            "cancelled": [], "lines": priced["items_rec"],
+        })
     # An explicit `pickup` ALWAYS wins — order entry always posts the checkbox, so the
     # operator keeps the last word. Only an ABSENT key falls back to the client's saved
     # preference (#738): that is the Biofield hand-off, which posts no `pickup` at all
@@ -46218,7 +46266,13 @@ def api_invoice_get(token):
                 summary["opened"] = _opens.get_open(_cxo, "invoice", _opens.invoice_key(token))
         except Exception as _e:
             print(f"[opens] invoice {_e!r}", flush=True)
-    return jsonify({"ok": True, "order": summary})
+    resp = jsonify({"ok": True, "order": summary})
+    # A permanent invoice token can point to an order that the owner edits later.
+    # Prevent browsers/proxies from showing the JSON captured before that edit.
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 def _invoice_membership_offer(order):
@@ -47274,7 +47328,13 @@ def bos_orders_create():
                 print(f"[orders] invoice open annotate skipped: {_e!r}", flush=True)
         finally:
             cx.close()
-        return jsonify({"ok": True, "data": rows})
+        resp = jsonify({"ok": True, "data": rows})
+        # Orders stay editable. Reopening Edit Invoice must not repopulate fields
+        # (especially a manual shipping override) from a pre-save cached list.
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     # --- existing POST body unchanged below ---
     b = request.get_json(silent=True) or {}
     ref = str(b.get("external_ref") or f"manual-{_bos_orders._now()}")

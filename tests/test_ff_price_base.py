@@ -19,7 +19,6 @@ ROOT = Path(__file__).resolve().parent.parent
 OFF_BASE_ALLOWED = {
     "cds": 3500,
     "cds-activator": 3500,
-    "wholomega-120-gelcaps": 19000,   # 120-count; the 30-count is a normal FF
 }
 
 
@@ -70,3 +69,13 @@ def test_catalog_names_have_no_embedded_newlines():
     bad = [s for s, p in _products().items()
            if "\n" in (p.get("name") or "") or "\r" in (p.get("name") or "")]
     assert not bad, f"product name(s) contain a newline: {bad}"
+
+
+def test_wholomega_120_uses_its_own_price_not_regular_ff_pricing():
+    """The 120-count bottle defaults to its own $190 price. A per-SKU
+    client_prices record can still override it for an individual client."""
+    appmod = _app()
+    product = _products()["wholomega-120-gelcaps"]
+    assert product["price_cents"] == 19000
+    assert product["qty_pricing"] is False
+    assert appmod._qty_eligible(product) is False
