@@ -157,7 +157,8 @@ def default_fetch_catalog():
         return []
 
 
-def default_create_order(customer, lines, replace_open=False, invoice_note=None):
+def default_create_order(customer, lines, replace_open=False, invoice_note=None,
+                         update_order_id=None):
     """Create the hand-off invoice on prod. With replace_open=True (a re-hand-off),
     prod first cancels the client's prior OPEN hand-off drafts (proposed, unpaid, not
     yet published) so a repeated hand-off UPDATES rather than piling up duplicates;
@@ -173,6 +174,8 @@ def default_create_order(customer, lines, replace_open=False, invoice_note=None)
         body = {"customer": {"name": customer.get("name") or "", "email": customer.get("email") or ""},
                 "lines": lines, "replace_open": bool(replace_open),
                 "invoice_note": invoice_note or DEFAULT_INVOICE_NOTE}
+        if update_order_id:
+            body["update_order_id"] = int(update_order_id)
         url = f"{base}/api/orders/manual?key=" + urllib.parse.quote(key)
         req = urllib.request.Request(url, data=_json.dumps(body).encode(), method="POST",
                                      headers={"X-Console-Key": key, "Content-Type": "application/json"})

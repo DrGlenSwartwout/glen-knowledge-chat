@@ -73,6 +73,20 @@ def test_create_order_still_sends_lines_and_replace_open(monkeypatch):
     assert body["invoice_note"] == bi.DEFAULT_INVOICE_NOTE
 
 
+def test_create_order_can_target_existing_order(monkeypatch):
+    _env(monkeypatch)
+    sent = []
+    monkeypatch.setattr(
+        bi.urllib.request, "urlopen",
+        _capturing_urlopen({"ok": True, "order_id": 42, "external_ref": "INH-A",
+                            "updated": True, "totals": {}}, sent))
+    bi.default_create_order(
+        {"name": "D", "email": "d@x.com"},
+        [{"slug": "biofield-analysis", "qty": 1}],
+        update_order_id=42)
+    assert sent[0]["update_order_id"] == 42
+
+
 def test_create_order_defaults_the_invoice_note(monkeypatch):
     _env(monkeypatch)
     sent = []
