@@ -562,18 +562,15 @@ function submitOrder(){ return EDIT_OID ? editInvoice() : createInvoice(); }
 
 async function printInvoiceEdit(){
   if (!EDIT_OID) return;
-  // Open synchronously so browsers do not block the new tab while the secure
-  // printable-invoice link is being minted.
-  const tab = window.open("", "_blank");
   try {
     const r = await fetch("/api/console/order/"+Number(EDIT_OID)+"/invoice-link",
                           {headers:HEADERS});
     const j = await r.json();
     if (!r.ok || !j.ok || !j.link) throw new Error(j.error||"Could not open invoice");
-    if (tab) tab.location = j.link;
-    else window.location = j.link;
+    // Popup blockers can discard a blank tab before this secure link is minted.
+    // Same-tab navigation is reliable everywhere; Back returns to Edit Invoice.
+    window.location.assign(j.link);
   } catch (e) {
-    if (tab) tab.close();
     toast(e.message||"Could not open invoice", "error");
   }
 }
