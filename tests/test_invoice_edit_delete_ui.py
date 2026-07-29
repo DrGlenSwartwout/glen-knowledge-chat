@@ -21,6 +21,8 @@ def test_edit_invoice_has_print_download_pdf_button():
     assert "Print / Download PDF" in SRC
     assert '"/api/console/order/"+Number(EDIT_OID)+"/invoice-link"' in SRC
     assert '$("print-inv-btn").style.display = "inline-block"' in SRC
+    assert "window.location.assign(j.link)" in SRC
+    assert 'window.open("", "_blank")' not in SRC
 
 
 def test_line_items_table_contains_delete_column_without_overlay():
