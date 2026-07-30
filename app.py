@@ -27642,25 +27642,38 @@ def intake_state():
         if not str(answers.get("email") or "").strip():
             answers["email"] = ident.email
         try:
-            person = cx.execute(
-                "SELECT first_name, last_name, name FROM people "
-                "WHERE lower(email)=lower(?) LIMIT 1",
-                (ident.email,),
-            ).fetchone()
-            if person:
-                first = (person[0] or "").strip()
-                last = (person[1] or "").strip()
-                display = (person[2] or "").strip()
-                if not first and display:
-                    parts = display.split(None, 1)
-                    first = parts[0]
-                    last = last or (parts[1] if len(parts) > 1 else "")
-                if first:
-                    if not str(answers.get("first_name") or "").strip():
-                        answers["first_name"] = first
-                if last:
-                    if not str(answers.get("last_name") or "").strip():
-                        answers["last_name"] = last
+            # The reviewed portal display name is the same source used in the
+            # client header and wins over older CRM rows (which can contain
+            # synthesized import labels such as "<email local-part> Match").
+            portal = _portal_record_for(
+                cx, request.args.get("token", ""))
+            display = ((portal or {}).get("name") or "").strip()
+            first = last = ""
+            if display:
+                parts = display.split(None, 1)
+                first = parts[0]
+                last = parts[1] if len(parts) > 1 else ""
+            else:
+                person = cx.execute(
+                    "SELECT first_name, last_name, name FROM people "
+                    "WHERE lower(email)=lower(?) LIMIT 1",
+                    (ident.email,),
+                ).fetchone()
+                if person:
+                    first = (person[0] or "").strip()
+                    last = (person[1] or "").strip()
+                    display = (person[2] or "").strip()
+                    if not first and display:
+                        parts = display.split(None, 1)
+                        first = parts[0]
+                        last = last or (
+                            parts[1] if len(parts) > 1 else "")
+            if first:
+                if not str(answers.get("first_name") or "").strip():
+                    answers["first_name"] = first
+            if last:
+                if not str(answers.get("last_name") or "").strip():
+                    answers["last_name"] = last
         except Exception:
             pass
     return jsonify({
