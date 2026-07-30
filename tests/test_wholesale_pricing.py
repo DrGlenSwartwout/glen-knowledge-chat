@@ -118,6 +118,16 @@ def test_product_pricing_from_injected_catalog():
     assert p["fulfillment_cents"] == 800
 
 
+def test_product_pricing_includes_fixed_wholesale_discount():
+    from dashboard.wholesale_pricing import _product_pricing
+    catalog = {"device": {
+        "name": "Device", "price_cents": 24997,
+        "wholesale_discount_pct": 50,
+    }}
+    assert _product_pricing(
+        "device", catalog=catalog)["wholesale_discount_pct"] == 50
+
+
 def test_product_pricing_unknown_slug_falls_back_to_defaults():
     from dashboard.wholesale_pricing import (
         _product_pricing, DEFAULT_BOTTLE_TYPE,
@@ -216,6 +226,48 @@ def test_order_quote_multi_line_prices_whole_order_at_one_blended_unit(tmp_path)
     units = {ln["unit_price_cents"] for ln in q["lines"]}
     assert units == {2500}  # same blended unit on every line
     assert q["subtotal_cents"] == 100000
+
+
+def test_order_quote_applies_fixed_product_wholesale_discount():
+    from dashboard.wholesale_pricing import order_quote
+    catalog = {"device": {
+        "name": "Portable Hydrogen Bottle",
+        "price_cents": 24997,
+        "wholesale_discount_pct": 50,
+    }}
+    q = order_quote(
+        [{"slug": "device", "qty": 2}],
+        {"modules_completed": 0},
+        catalog=catalog,
+    )
+    assert q["total_bottles"] == 2
+    assert q["blended_unit_price_cents"] == 0
+    assert q["lines"][0]["unit_price_cents"] == 12499
+    assert q["subtotal_cents"] == 24998
+
+
+def test_fixed_discount_device_does_not_inflate_remedy_volume_tier(tmp_path):
+    from dashboard.wholesale_pricing import order_quote
+    db = _seed_matrix(tmp_path, [("dropper 1oz", 20)])
+    catalog = {
+        "remedy": {
+            "name": "Remedy", "price_cents": 7000,
+            "bottle_type": "dropper 1oz",
+        },
+        "device": {
+            "name": "Portable Hydrogen Bottle", "price_cents": 24997,
+            "wholesale_discount_pct": 50, "bottle_type": "own-box",
+        },
+    }
+    q = order_quote(
+        [{"slug": "remedy", "qty": 1}, {"slug": "device", "qty": 10}],
+        {"modules_completed": 0},
+        db_path=db,
+        catalog=catalog,
+    )
+    lines = {line["slug"]: line for line in q["lines"]}
+    assert lines["remedy"]["unit_price_cents"] == 5000
+    assert lines["device"]["unit_price_cents"] == 12499
 
 
 def test_order_quote_margin_ok_true_with_warning_when_cogs_unset(tmp_path):
