@@ -47,12 +47,15 @@ def build_block(cx, email, enabled):
         fields = []
         for f in sec["fields"]:
             fid = f["id"]
-            fields.append({
+            field = {
                 "id": fid,
                 "label": f.get("label", fid),
                 "type": f.get("type"),
                 "value": answers.get(fid),
-            })
+            }
+            if f.get("options"):
+                field["options"] = f["options"]
+            fields.append(field)
         sections.append({"title": sec["title"], "fields": fields})
     try:
         from dashboard import health_suggestions as _hs
