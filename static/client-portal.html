@@ -402,6 +402,16 @@
   .intake-consent input{margin-top:.25rem}
   .intake-sublabel{display:block;font-weight:600;font-size:.85rem;margin:.4rem 0 .25rem}
   .intake-err{border:1px solid var(--err) !important;border-radius:8px;box-shadow:0 0 0 1px var(--err)}
+  .intake-progress{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    margin:.25rem 0 1rem;padding:.65rem .8rem;border:1px solid var(--line);
+    border-radius:10px;background:var(--card2)}
+  .intake-progress-label{font-size:.84rem;font-weight:600}
+  .intake-save-state{font-size:.8rem;color:var(--muted);white-space:nowrap}
+  .intake-save-state.is-saved{color:var(--ok)}
+  .intake-save-state.is-error{color:var(--err)}
+  .intake-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin-top:.8rem}
+  .intake-nav .btn{flex:1;padding:10px 14px;font-size:.9rem}
 
   .portal-hub { margin: 0 0 1.25rem; }
   .hub-banner { display:flex; gap:1rem; align-items:center; flex-wrap:wrap;
@@ -956,6 +966,7 @@ const PORTAL_HASH_ROUTES = {
   biofield: {panel:"current", target:"biofield-section"},
   recs:     {panel:"current", target:"recsCard"},
   recommendations: {panel:"current", target:"recsCard"},
+  intake:   {panel:"intake", target:"portal-intake-card"},
   offers:   {panel:"offers", target:"offers-card"},
   photo:    {panel:"photo", target:"photo-section"},
   cart:     {panel:"cart", target:"cart-body"},
@@ -997,6 +1008,7 @@ function backToHub(){
 function buildHubHtml(d, v){
   const understandTiles = [
     ["current", "My Analysis", "Your current scan, matches and healing path"],
+    ["intake", "My Intake", "Build or continue your clinical health profile"],
   ];
   // Gated on the flag: the "remedies" [data-panel] section itself only renders
   // when v.remedies.enabled (see the panel wrap below), so the tile must not
@@ -3687,6 +3699,7 @@ function render(d, v){
       <section data-panel="history" hidden>${back}${historyHtml}</section>
       <section data-panel="orders" hidden>${back}${ordersHtml}</section>${_hub ? `
       <section data-panel="ask" hidden>${back}${_askHtml}</section>
+      <section data-panel="intake" hidden>${back}<div class="card" id="portal-intake-card"><div id="portal-intake-host"></div></div></section>
       ${_hub && v.health_profile && v.health_profile.enabled ? `<section data-panel="health" hidden>${back}${buildHealthProfileHtml(v)}</section>` : ""}
       ${_hub && v.oasis && v.oasis.enabled ? (_oasisView = v, `<section data-panel="oasis" hidden>${back}${buildOasisHtml(v)}</section>`) : ""}
       ${_hub && v.cart && v.cart.enabled ? `<section data-panel="cart" hidden>${back}${buildCartHtml()}</section>` : ""}
@@ -3712,6 +3725,7 @@ function render(d, v){
   initCoachesCard();
   initPeerCard();
   initConsultIntakeCard();
+  initPortalIntakeCard();
   (function initClientPhoto(){
     const img = document.getElementById("client-photo");
     const file = document.getElementById("client-photo-file");
@@ -4333,6 +4347,39 @@ async function consultJoin(){
 // options come from Glen's own INTAKE_FORM (dashboard/intake.py) but are still
 // built via createElement/textContent only — never innerHTML — matching the
 // coaches-card pattern above.
+function showPortalIntakeComplete(host){
+  host.innerHTML = "";
+  const title = document.createElement("h2");
+  title.textContent = "Your intake is complete";
+  host.appendChild(title);
+  const body = document.createElement("p");
+  body.className = "muted";
+  body.textContent = "Your clinical health profile is saved and available to your care team.";
+  host.appendChild(body);
+  const healthPanel = document.querySelector('[data-panel="health"]');
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn full";
+  button.textContent = healthPanel ? "Review My Health Profile" : "Return to my portal";
+  button.addEventListener("click", ()=>{
+    try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+    showTab(healthPanel ? "health" : "hub");
+  });
+  host.appendChild(button);
+}
+
+function initPortalIntakeCard(){
+  const host = document.getElementById("portal-intake-host");
+  if(!host) return;
+  renderIntakeForm(host, seg, function(){
+    showPortalIntakeComplete(host);
+  }, {
+    title: "Build My Health Profile",
+    intro: "Complete each section at your own pace. Your answers save automatically, so you can leave and return anytime.",
+    paged: true,
+  });
+}
+
 async function initConsultIntakeCard(){
   const schedBtn = document.getElementById("consult-sched");
   const host = document.getElementById("consult-intake-host");
@@ -4361,7 +4408,8 @@ async function initConsultIntakeCard(){
   });
 }
 
-async function renderIntakeForm(host, tokenVal, onDone){
+async function renderIntakeForm(host, tokenVal, onDone, options){
+  options = options || {};
   host.innerHTML = "";
   const loading = document.createElement("p");
   loading.className = "muted small";
@@ -4394,11 +4442,11 @@ async function renderIntakeForm(host, tokenVal, onDone){
   const fieldEls = {};  // field id -> element to highlight on a 400
 
   const title = document.createElement("h2");
-  title.textContent = "Before your consult";
+  title.textContent = options.title || "Before your consult";
   host.appendChild(title);
   const intro = document.createElement("p");
   intro.className = "muted small";
-  intro.textContent = "Please complete your intake so Dr. Glen can prepare for your consult.";
+  intro.textContent = options.intro || "Please complete your intake so Dr. Glen can prepare for your consult.";
   host.appendChild(intro);
 
   const collectAnswers = ()=>{
@@ -4407,22 +4455,51 @@ async function renderIntakeForm(host, tokenVal, onDone){
     return out;
   };
 
+  const progress = document.createElement("div");
+  progress.className = "intake-progress";
+  const progressLabel = document.createElement("span");
+  progressLabel.className = "intake-progress-label";
+  progressLabel.textContent = options.paged ? "Preparing your sections…" : "Intake draft";
+  progress.appendChild(progressLabel);
+  const saveState = document.createElement("span");
+  saveState.className = "intake-save-state";
+  saveState.setAttribute("role", "status");
+  saveState.setAttribute("aria-live", "polite");
+  saveState.textContent = stateData && stateData.status === "draft" ? "Draft restored" : "Not saved yet";
+  progress.appendChild(saveState);
+  host.appendChild(progress);
+
   let saveTimer = null;
+  const saveNow = async ()=>{
+    saveState.className = "intake-save-state";
+    saveState.textContent = "Saving…";
+    try{
+      const r = await fetch(`/api/intake/save-draft?token=${encodeURIComponent(tokenVal)}`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({answers: collectAnswers()}),
+      });
+      if(!r.ok) throw new Error("save failed");
+      saveState.className = "intake-save-state is-saved";
+      saveState.textContent = "Saved";
+      return true;
+    }catch(e){
+      saveState.className = "intake-save-state is-error";
+      saveState.textContent = "Could not save";
+      return false;
+    }
+  };
   const scheduleSave = ()=>{
     if(saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(async ()=>{
-      try{
-        await fetch(`/api/intake/save-draft?token=${encodeURIComponent(tokenVal)}`, {
-          method: "POST", headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({answers: collectAnswers()}),
-        });
-      }catch(e){ /* best-effort autosave; Submit re-sends everything anyway */ }
-    }, 1200);
+    saveState.className = "intake-save-state";
+    saveState.textContent = "Unsaved changes";
+    saveTimer = setTimeout(saveNow, 1200);
   };
 
+  const sectionEls = [];
   formDef.sections.forEach(sec => {
     const secWrap = document.createElement("div");
     secWrap.className = "intake-sec";
+    secWrap.dataset.intakeSection = sec.id || "";
     const h3 = document.createElement("h3");
     h3.textContent = sec.title || "";
     secWrap.appendChild(h3);
@@ -4430,7 +4507,62 @@ async function renderIntakeForm(host, tokenVal, onDone){
       secWrap.appendChild(renderIntakeField(f, answers[f.id], getters, fieldEls, scheduleSave));
     });
     host.appendChild(secWrap);
+    sectionEls.push(secWrap);
   });
+
+  let showIntakeSection = null;
+  if(options.paged && sectionEls.length){
+    let sectionIndex = 0;
+    const nav = document.createElement("div");
+    nav.className = "intake-nav";
+    const prev = document.createElement("button");
+    prev.type = "button";
+    prev.className = "btn ghost";
+    prev.textContent = "Previous";
+    const next = document.createElement("button");
+    next.type = "button";
+    next.className = "btn";
+    next.textContent = "Next section";
+    nav.appendChild(prev);
+    nav.appendChild(next);
+    const showSection = index=>{
+      sectionIndex = Math.max(0, Math.min(sectionEls.length - 1, index));
+      sectionEls.forEach((el, i)=> { el.hidden = i !== sectionIndex; });
+      progressLabel.textContent = `Section ${sectionIndex + 1} of ${sectionEls.length}`;
+      prev.disabled = sectionIndex === 0;
+      next.hidden = sectionIndex === sectionEls.length - 1;
+      sectionEls[sectionIndex].scrollIntoView({behavior:"smooth", block:"start"});
+    };
+    showIntakeSection = showSection;
+    prev.addEventListener("click", async ()=>{
+      if(saveTimer) clearTimeout(saveTimer);
+      await saveNow();
+      showSection(sectionIndex - 1);
+    });
+    next.addEventListener("click", async ()=>{
+      if(saveTimer) clearTimeout(saveTimer);
+      await saveNow();
+      showSection(sectionIndex + 1);
+    });
+    host.appendChild(nav);
+
+    const finishLater = document.createElement("button");
+    finishLater.type = "button";
+    finishLater.className = "btn ghost full";
+    finishLater.style.marginTop = ".6rem";
+    finishLater.textContent = "Save and finish later";
+    finishLater.addEventListener("click", async ()=>{
+      if(saveTimer) clearTimeout(saveTimer);
+      if(await saveNow()){
+        try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+        showTab("hub");
+      }
+    });
+    host.appendChild(finishLater);
+    showSection(0);
+  } else {
+    progressLabel.textContent = "Intake draft";
+  }
 
   const errMsg = document.createElement("p");
   errMsg.className = "err small";
@@ -4450,6 +4582,8 @@ async function renderIntakeForm(host, tokenVal, onDone){
       if(el && el.classList) el.classList.remove("intake-err");
     });
     if(saveTimer) clearTimeout(saveTimer);
+    saveState.className = "intake-save-state";
+    saveState.textContent = "Submitting…";
     let r, d;
     try{
       r = await fetch(`/api/intake/submit?token=${encodeURIComponent(tokenVal)}`, {
@@ -4467,11 +4601,19 @@ async function renderIntakeForm(host, tokenVal, onDone){
         const el = fieldEls[fid];
         if(el && el.classList) el.classList.add("intake-err");
       });
+      if(options.paged){
+        const firstErrorIndex = sectionEls.findIndex(el => el.querySelector(".intake-err"));
+        if(firstErrorIndex >= 0 && showIntakeSection) showIntakeSection(firstErrorIndex);
+      }
+      saveState.className = "intake-save-state is-saved";
+      saveState.textContent = "Answers saved";
       submitBtn.disabled = false;
       return;
     }
     errMsg.textContent = "Something went wrong saving your intake. Please try again.";
     errMsg.hidden = false;
+    saveState.className = "intake-save-state is-error";
+    saveState.textContent = "Could not submit";
     submitBtn.disabled = false;
   });
   host.appendChild(submitBtn);
