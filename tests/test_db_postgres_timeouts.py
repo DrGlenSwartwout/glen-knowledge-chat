@@ -49,8 +49,14 @@ def test_postgres_checkout_and_queries_share_caller_timeout(monkeypatch):
         assert pool.checkout_timeout == 2.5
         assert pool.raw.committed is True
         calls = pool.raw.cursor_instance.calls
-        assert ("SET statement_timeout TO %s", (2500,)) in calls
-        assert ("SET lock_timeout TO %s", (2500,)) in calls
+        assert (
+            "SELECT set_config('statement_timeout', %s, false)",
+            ("2500ms",),
+        ) in calls
+        assert (
+            "SELECT set_config('lock_timeout', %s, false)",
+            ("2500ms",),
+        ) in calls
     finally:
         cx.close()
 
