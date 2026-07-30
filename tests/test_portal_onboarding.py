@@ -4,7 +4,8 @@ import uuid
 from dashboard import portal_onboarding as ob
 from dashboard import (client_scans, intake, client_photos, portal_biofield_reports,
                         recommendation_events, condition_triage,
-                        portal_health_history, portal_extended_history)
+                        portal_health_history, portal_extended_history,
+                        scan_freshness)
 
 
 def _cx():
@@ -20,9 +21,35 @@ def _cx():
 def test_all_open_when_nothing_on_file():
     cx = _cx()
     s = ob.build_status(cx, "a@x.com")
-    be = {st["key"]: st["done"] for st in s["phases"][0]["steps"]}
+    steps = {st["key"]: st for st in s["phases"][0]["steps"]}
+    be = {key: st["done"] for key, st in steps.items()}
     assert be == {"voice": False, "intake": False, "photo": False, "biofield": False}
+    assert steps["voice"]["href"] == "https://truly.vip/E4L"
     assert s["member"] is False
+
+
+def test_voice_link_opens_e4l_portal_for_existing_account():
+    cx = _cx()
+    client_scans.upsert_scans(
+        cx, "existing@x.com",
+        [{"scan_date": "2026-07-28", "scan_id": "123"}],
+    )
+    s = ob.build_status(cx, "existing@x.com")
+    voice = next(st for st in s["phases"][0]["steps"] if st["key"] == "voice")
+    assert voice["done"] is True
+    assert voice["href"] == "https://portal.e4l.com"
+
+
+def test_voice_link_uses_account_signal_when_scan_manifest_is_absent():
+    cx = _cx()
+    scan_freshness.init_table(cx)
+    scan_freshness.upsert(
+        cx, [{"email": "known@x.com", "last_scan_date": "2026-07-28"}]
+    )
+    s = ob.build_status(cx, "known@x.com")
+    voice = next(st for st in s["phases"][0]["steps"] if st["key"] == "voice")
+    assert voice["done"] is False
+    assert voice["href"] == "https://portal.e4l.com"
 
 
 def test_photo_and_intake_flip_done():

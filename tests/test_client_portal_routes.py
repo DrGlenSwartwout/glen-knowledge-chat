@@ -86,6 +86,19 @@ def test_api_portal_returns_enriched_content(client):
     assert j["reorder_items"][0].get("name")  # enriched from the catalog
 
 
+def test_api_portal_emits_token_safe_timing_headers(client):
+    c, appmod = client
+    tok = _seed_portal(appmod)
+    r = c.get(f"/api/portal/{tok}",
+              headers={"X-Request-ID": "portal-test-request"})
+    assert r.status_code == 200
+    assert r.headers["X-Request-ID"] == "portal-test-request"
+    timing = r.headers["Server-Timing"]
+    assert "app;dur=" in timing
+    assert "identity;dur=" in timing
+    assert tok not in timing
+
+
 def test_portal_reorder_uses_client_ff_price(client, monkeypatch):
     # Unified FF pricing: the client's FF flat (client_prices.__all_ff__) drives the
     # portal reorder prices, with the same precedence as the invoice — baked per-item

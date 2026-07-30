@@ -272,6 +272,58 @@ def test_grant_custom_days_when_specified(app_client_mem):
     cx.close()
 
 
+def test_lifetime_grant_is_open_ended_and_audited(app_client_mem):
+    client, app_module, db = app_client_mem
+    r = client.post(
+        "/admin/membership/grant",
+        json={
+            "email": "lifetime@example.com",
+            "source": "owner_lifetime",
+            "lifetime": True,
+            "notes": "Founder-approved permanent access",
+        },
+        headers={**_ckey(), "X-Console-Granted-By": "glen"},
+    )
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["lifetime"] is True
+    assert r.get_json()["expires_at"] is None
+    cx = sqlite3.connect(db)
+    expires_at, granted_by, notes = cx.execute(
+        "SELECT expires_at, granted_by, notes FROM memberships "
+        "WHERE email='lifetime@example.com'"
+    ).fetchone()
+    detail = cx.execute(
+        "SELECT detail FROM journey_events WHERE email='lifetime@example.com' "
+        "AND trigger='membership_granted'"
+    ).fetchone()[0]
+    cx.close()
+    assert expires_at is None
+    assert granted_by == "glen"
+    assert notes == "Founder-approved permanent access"
+    assert _json.loads(detail)["lifetime"] is True
+    active = app_module._active_membership_for_email("lifetime@example.com")
+    assert active["lifetime"] is True
+    assert active["days_remaining"] is None
+
+
+def test_lifetime_grant_requires_explicit_source_and_notes(app_client_mem):
+    client, _, _ = app_client_mem
+    no_notes = client.post(
+        "/admin/membership/grant",
+        json={"email": "x@example.com", "source": "owner_lifetime",
+              "lifetime": True},
+        headers=_ckey(),
+    )
+    wrong_source = client.post(
+        "/admin/membership/grant",
+        json={"email": "x@example.com", "source": "video",
+              "lifetime": True, "notes": "approved"},
+        headers=_ckey(),
+    )
+    assert no_notes.status_code == 400
+    assert wrong_source.status_code == 400
+
+
 def test_admin_escalations_requires_console_key(app_client_mem):
     client, _, _ = app_client_mem
     r = client.get("/admin/escalations")

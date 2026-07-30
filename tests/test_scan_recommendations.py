@@ -143,3 +143,30 @@ def test_the_returned_count_equals_the_rows_actually_stored(cx):
     payload = ITEMS + [{"priority_rank": 99}]
     n = sr.replace_scan(cx, EMAIL, SCAN, DATE, payload)
     assert n == len(sr.for_scan(cx, EMAIL, SCAN))
+
+
+def test_ranked_infoceuticals_are_mirrored_as_scan_recommendations(cx):
+    from dashboard import recommendation_events as events
+
+    resolve = lambda code: {"BFA": "big-field-aligner", "ED6": "heart-support"}.get(code, "")
+    assert sr.replace_ranked_events(cx, EMAIL, SCAN, DATE, ITEMS, resolve) == 2
+    got = [row for row in events.list_events(cx, EMAIL)
+           if row["source_key"] == "scan"]
+    assert [row["product_key"] for row in got] == [
+        "big-field-aligner", "heart-support"]
+    assert all(row["occurred_at"] == DATE for row in got)
+
+
+def test_ranked_event_replace_removes_only_stale_rows_for_that_scan(cx):
+    from dashboard import recommendation_events as events
+
+    resolve = lambda code: {"BFA": "big-field-aligner", "ED6": "heart-support"}.get(code, "")
+    sr.replace_ranked_events(cx, EMAIL, SCAN, DATE, ITEMS, resolve)
+    events.record_event(cx, EMAIL, "other-scan-product", "scan",
+                        occurred_at="2026-06-01", origin_ref="scan:other:1")
+    sr.replace_ranked_events(cx, EMAIL, SCAN, DATE, ITEMS[:1], resolve)
+    got = {(row["product_key"], row["origin_ref"])
+           for row in events.list_events(cx, EMAIL)}
+    assert ("heart-support", "scan:" + SCAN + ":2") not in got
+    assert ("big-field-aligner", "scan:" + SCAN + ":1") in got
+    assert ("other-scan-product", "scan:other:1") in got

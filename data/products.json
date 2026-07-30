@@ -559,87 +559,114 @@
       "pinecone_title": "Dental Powder",
       "ingredients": [
         {
-          "name": "MCHA (Microcrystalline Hydroxyapatite)",
-          "dose": "120 mg"
+          "name": "MCHA (nanocrystalline hydroxyapatite) — balancing ingredient",
+          "dose": "159.55 mg",
+          "grade": "NCHA powder",
+          "compound_mg": 159.55
         },
         {
-          "name": "MSM (Methylsulfonylmethane)",
-          "dose": "80 mg"
+          "name": "MSM (methylsulfonylmethane)",
+          "dose": "80 mg",
+          "grade": "OptiMSM ~99.9%",
+          "compound_mg": 80.0,
+          "purity_pct": 99.9
         },
         {
-          "name": "Bicarbonate Blend (Potassium:Magnesium:Sodium Bicarbonate)",
-          "dose": "60 mg"
+          "name": "Sodium bicarbonate",
+          "dose": "60 mg",
+          "grade": "USP 100%",
+          "compound_mg": 60.0,
+          "purity_pct": 100.0
         },
         {
-          "name": "Bentonite (Pureganic Mineral Powder)",
-          "dose": "40 mg"
+          "name": "L-Arginine (as AAKG)",
+          "dose": "57 mg",
+          "grade": "AAKG 2:1 (~70% arginine)",
+          "compound_mg": 57.0,
+          "standardized_pct": 70.0,
+          "standardized_as": "arginine",
+          "active_mg": 39.9
         },
         {
-          "name": "Ceylon Cinnamon (Cinnamomum cassia)",
-          "dose": "40 mg"
+          "name": "Magnesium ascorbate",
+          "dose": "30 mg",
+          "grade": "as material",
+          "compound_mg": 30.0
         },
         {
-          "name": "Magnesium Ascorbate",
-          "dose": "40 mg"
+          "name": "Peppermint",
+          "dose": "30 mg",
+          "grade": "dry leaf/menthol",
+          "compound_mg": 30.0
         },
         {
-          "name": "Peppermint (Mentha piperita)",
-          "dose": "40 mg"
+          "name": "Ceylon cinnamon (Cinnamomum verum)",
+          "dose": "15 mg",
+          "grade": "dry bark",
+          "compound_mg": 15.0
         },
         {
-          "name": "Clove (Syzygium aromaticum)",
-          "dose": "10 mg"
+          "name": "Mogroside V (monk fruit)",
+          "dose": "15 mg",
+          "grade": "80%",
+          "compound_mg": 15.0,
+          "purity_pct": 80.0
         },
         {
-          "name": "Azadirachtin 30% (Azadirachta indica / Neem)",
-          "dose": "10 mg"
+          "name": "Clove",
+          "dose": "10 mg",
+          "grade": "dry bud",
+          "compound_mg": 10.0
         },
         {
-          "name": "Gold ORMUS",
-          "dose": "10 mg"
+          "name": "Neem",
+          "dose": "10 mg",
+          "grade": "azadirachtin 30%",
+          "compound_mg": 10.0,
+          "purity_pct": 30.0
         },
         {
-          "name": "Boswellic Acid 95% (Boswellia serrata / Frankincense)",
-          "dose": "10 mg"
+          "name": "Boswellia serrata",
+          "dose": "10 mg",
+          "grade": "95% boswellic acids",
+          "compound_mg": 10.0,
+          "standardized_pct": 95.0,
+          "standardized_as": "boswellic acids",
+          "active_mg": 9.5
         },
         {
-          "name": "Myrrh Powder",
-          "dose": "10 mg"
+          "name": "Microbiome (34-strain blend)",
+          "dose": "10 mg",
+          "grade": "100B CFU/g",
+          "compound_mg": 10.0
         },
         {
-          "name": "Sanguinarine 30% (Sanguinaria canadensis)",
-          "dose": "10 mg"
+          "name": "Silica (dental grade)",
+          "dose": "8 mg",
+          "grade": "as material",
+          "compound_mg": 8.0
         },
         {
-          "name": "Calcium Disodium EDTA",
-          "dose": "10 mg"
+          "name": "Sea salt (dried, fine-ground)",
+          "dose": "5 mg",
+          "grade": "as material",
+          "compound_mg": 5.0
         },
         {
-          "name": "Curcumin",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Sea Salt (Flower of the Ocean)",
-          "dose": "5 mg"
-        },
-        {
-          "name": "Microbiome (27 species, 100 Billion CFU/g)",
-          "dose": "10 mg"
-        },
-        {
-          "name": "Mogrosides (Siraitia grosvenorii / Monk Fruit)",
-          "dose": "5 mg"
+          "name": "Vitamin D3 (cholecalciferol)",
+          "dose": "0.40 mg (200 IU)",
+          "grade": "500,000 IU/g",
+          "compound_mg": 0.4
         },
         {
           "name": "Vitamin K2 (MK-4)",
-          "dose": "450 mcg"
-        },
-        {
-          "name": "Vitamin D3 (Cholecalciferol)",
-          "dose": "200 IU"
+          "dose": "0.046 mg (45 mcg)",
+          "grade": "98%",
+          "compound_mg": 0.046,
+          "purity_pct": 98.0
         }
       ],
-      "ingredients_source": "t33",
+      "ingredients_source": "production-sheet-2026-07-06",
       "description": "Dental Powder . Dental Powder Dental Powder Brush with this potent soothing, healing, regenerating and remineralizing powder, and leave it in your mouth while you sleep to experience the full magic... Or blend it with coconut oil for an oil-pulling dentrifice... ​A little goes a long, long way... And our new formula now includes over 50 beneficial flora. Here are the details of our popular Proprietary Blend: Minerals: Nanocrystalline Hydroxyapatite (botanical source NCHA, aka MCHA or MCHC, but a thousand times smaller particles) Meta‑analyses of randomized trials in generally healthy...",
       "bottle_type": "30 g",
       "fmp_id": "327",
@@ -1072,19 +1099,27 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "100 Billion CFU/g",
-          "dose": "100 mg"
+          "name": "PHGG (partially hydrolyzed guar gum)",
+          "dose": "400 mg",
+          "grade": "≥88% soluble fiber",
+          "compound_mg": 400.0,
+          "standardized_pct": 88.0,
+          "standardized_as": "soluble fiber",
+          "active_mg": 352.0
         },
         {
-          "name": "(unnamed FMP ingredient 5122)",
-          "dose": "1 ea."
+          "name": "Microbiome (32 species)",
+          "dose": "100 mg",
+          "grade": "100B CFU/g",
+          "compound_mg": 100.0
         },
         {
-          "name": "Prebiotic, PHGG",
-          "dose": "400 mg"
+          "name": "Enteric acid-resistant vegicap 00",
+          "dose": "1 ea.",
+          "grade": "1 / cap"
         }
       ],
-      "ingredients_source": "db-formulations-2026-06-25",
+      "ingredients_source": "production-sheet-2026-07-08",
       "bottle_type": "30 Caps",
       "fmp_id": "425"
     },
@@ -1252,39 +1287,64 @@
       "url": "https://remedymatch.com/remedies/syntropy/474-iop-syntropy",
       "ingredients": [
         {
-          "name": "5,6,7-trihydroxyflavone",
-          "dose": "65 mg"
+          "name": "Hesperidin Methyl Chalcone (HMC) (*Citrus aurantium*)",
+          "dose": "150",
+          "grade": "98%",
+          "compound_mg": 150.0,
+          "purity_pct": 98.0
         },
         {
-          "name": "Capsanthin",
-          "dose": "40 mg"
+          "name": "Ginkgo European Std. (*Ginkgo biloba*)",
+          "dose": "80",
+          "grade": "10:1 EP standard",
+          "compound_mg": 80.0
         },
         {
-          "name": "Hesperidin Methyl Chalcone HMC 5, 7, 3'-trihydroxy-4'-methoxyflavanone hesperitin-7-O-rutinoside Hesperitin glycoside glucosyl hesperidin Vitamin P hesperitin G-hesperidin Diosmin",
-          "dose": "150 mg"
+          "name": "Bilberry (*Vaccinium myrtillus*)",
+          "dose": "80",
+          "grade": "25% anthocyanins",
+          "compound_mg": 80.0,
+          "standardized_pct": 25.0,
+          "standardized_as": "anthocyanins",
+          "active_mg": 20.0
         },
         {
-          "name": "Forskolin Coleus forskohlii",
-          "dose": "65 mg"
+          "name": "Baikal Skullcap / Baicalein (*Scutellaria baicalensis*)",
+          "dose": "65",
+          "grade": "98%",
+          "compound_mg": 65.0,
+          "purity_pct": 98.0
         },
         {
-          "name": "Ginkgo 24% Flavone 6% Lactone Ginkgolic Acid ＜1ppm",
-          "dose": "80 mg"
+          "name": "Forskolin (*Coleus forskohlii*)",
+          "dose": "65",
+          "grade": "98%",
+          "compound_mg": 65.0,
+          "purity_pct": 98.0
         },
         {
-          "name": "Bilberry 25% Anthocyanin Organic Extract",
-          "dose": "80 mg"
+          "name": "Pepper Capsanthin (*Capsicum annuum*)",
+          "dose": "40",
+          "grade": "99.9%",
+          "compound_mg": 40.0,
+          "purity_pct": 99.9
         },
         {
-          "name": "OPC 95% Pine Bark Maritime",
-          "dose": "20 mg"
+          "name": "Pine OPCs (Oligomeric Proanthocyanidins) (*Pinus*)",
+          "dose": "20",
+          "grade": "95%",
+          "compound_mg": 20.0,
+          "purity_pct": 95.0
         },
         {
-          "name": "Black pepper extract in Trikatu",
-          "dose": "5 mg"
+          "name": "Piperine (*Piper nigrum*)",
+          "dose": "5",
+          "grade": "95%",
+          "compound_mg": 5.0,
+          "purity_pct": 95.0
         }
       ],
-      "ingredients_source": "db-formulations-2026-06-25",
+      "ingredients_source": "production-sheet-2026-07-10",
       "description": "IOP Syntropy . IOP Syntropy IOP Syntropy IOP Syntropy is formulated to deliver optimal levels of key phytonutrients documented to support regulating and normalizing eye pressure. The suggested dosage range is divided from one to three capsules taken with food throughout the day. IOP is the scientific acronym for intraocular pressure. It is traditionally measured in millimeters of mercury, abbreviated mmHg. The standard pressure range is 10 to 20 or 21 mmHg, with 15 being the norm. Pressures consistently above 21 mmHg may be termed “ocular hypertension” and warrant closer monitoring by an eye...",
       "bottle_type": "30 Caps",
       "fmp_id": "878",
@@ -8461,63 +8521,122 @@
       "url": "https://remedymatch.com/remedies/syntropy/424-mercury-detox-syntropy-powder",
       "ingredients": [
         {
-          "name": "Black Seed",
-          "dose": ""
+          "name": "Chlorella, broken cell wall (Chlorella pyrenoidosa)",
+          "dose": "122.09 mg",
+          "grade": "food grade (QS balance)",
+          "compound_mg": 122.09
         },
         {
-          "name": "Chitosan deacetylation",
-          "dose": "50 mg"
+          "name": "N-Acetyl Cysteine (NAC)",
+          "dose": "60 mg",
+          "grade": "USP",
+          "compound_mg": 60.0
         },
         {
-          "name": "Chlorella (broken cell wall)",
-          "dose": "300 mg"
+          "name": "Chitosan 90% deacetylated (Aspergillus niger)",
+          "dose": "50 mg",
+          "grade": "90% DDA, fungal",
+          "compound_mg": 50.0,
+          "standardized_pct": 90.0,
+          "standardized_as": "DDA",
+          "active_mg": 45.0
         },
         {
-          "name": "Mogroside V, Monk fruit",
-          "dose": "5 mg"
+          "name": "Chitosan Oligosaccharide 98% (Agaricus bisporus)",
+          "dose": "50 mg",
+          "grade": "98% DDA, water-soluble",
+          "compound_mg": 50.0,
+          "standardized_pct": 98.0,
+          "standardized_as": "DDA",
+          "active_mg": 49.0
         },
         {
-          "name": "button mushroom Chitosan, white mushroom, crimini, baby bella, portobello",
-          "dose": ""
+          "name": "Modified Citrus Pectin",
+          "dose": "50 mg",
+          "grade": "low-MW",
+          "compound_mg": 50.0
         },
         {
-          "name": "Clinoptilolite Zeolite",
-          "dose": "10 mg"
+          "name": "Molybdenum amino acid chelate",
+          "dose": "37.5 mg",
+          "grade": "0.2% Mo",
+          "compound_mg": 37.5,
+          "standardized_pct": 0.2,
+          "standardized_as": "Mo",
+          "active_mg": 0.075
         },
         {
-          "name": "MSC",
-          "dose": "24 mg"
+          "name": "Milk Thistle (Silybum marianum)",
+          "dose": "25 mg",
+          "grade": "80% silymarin",
+          "compound_mg": 25.0,
+          "standardized_pct": 80.0,
+          "standardized_as": "silymarin",
+          "active_mg": 20.0
         },
         {
-          "name": "Aged Garlic",
-          "dose": "1.2 mg"
+          "name": "S-Acetyl Glutathione",
+          "dose": "20 mg",
+          "grade": "micro-encapsulated",
+          "compound_mg": 20.0
         },
         {
-          "name": "NAC",
-          "dose": "60 mg"
+          "name": "Zeolite, micronized Clinoptilolite",
+          "dose": "18.5 mg",
+          "grade": "micronized",
+          "compound_mg": 18.5
         },
         {
-          "name": "Bio-Enhanced™ R-Lipoic Acid",
-          "dose": "30 mg"
+          "name": "Monk Fruit Mogroside V 50% (Siraitia grosvenorii)",
+          "dose": "15 mg",
+          "grade": "50%, micro-encapsulated",
+          "compound_mg": 15.0,
+          "purity_pct": 50.0
         },
         {
-          "name": "Curcumin 95% HPLC",
-          "dose": "18.776 mg"
+          "name": "Yuzu juice powder",
+          "dose": "10 mg",
+          "grade": "spray-dried (tart body)",
+          "compound_mg": 10.0
         },
         {
-          "name": "Black Cumin Seed, black caraway, black seed, black cumin, fennel flower, nigella, nutmeg flower, Roman coriander,[3][6] black onion seed[8] and kalonji.[5]",
-          "dose": "2.5 mg"
+          "name": "Yuzu peel 10:1",
+          "dose": "5 mg",
+          "grade": "10:1 extract (aroma/masking)",
+          "compound_mg": 5.0
         },
         {
-          "name": "Phycocyanin",
-          "dose": "10 mg"
+          "name": "Cilantro 4:1 (Coriandrum sativum)",
+          "dose": "12.5 mg",
+          "grade": "4:1 extract",
+          "compound_mg": 12.5
         },
         {
-          "name": "Coriandrum sativum",
-          "dose": "12.5 mg"
+          "name": "R-Lipoic Acid (Na R-lipoate)",
+          "dose": "10 mg",
+          "grade": "stabilized sodium salt",
+          "compound_mg": 10.0
+        },
+        {
+          "name": "Zinc monomethionine (OptiZinc)",
+          "dose": "14.29 mg",
+          "grade": "~21% Zn (delivers 3 mg elem.)",
+          "compound_mg": 14.29,
+          "standardized_pct": 21.0,
+          "standardized_as": "Zn",
+          "active_mg": 3.0009
+        },
+        {
+          "name": "Selenium (methylselenocysteine)",
+          "dose": "0.122 mg",
+          "grade": "41% Se (SeMC)",
+          "compound_mg": 0.122,
+          "standardized_pct": 41.0,
+          "standardized_as": "Se",
+          "active_mg": 0.05
         }
       ],
-      "ingredients_source": "db-formulations-2026-06-25",
+      "ingredients_source": "production-sheet-2026-07-20",
       "description": "Mercury Detox Syntropy Powder . Mercury Detox Syntropy Powder Mercury Detox Syntropy Powder Add a scoop to food or drink twice daily to support Mercury detoxification. Mercury Detox Syntropy Powder supplies 500 mg per scoop: M-State Mineral Factor: Gold ORMUS (Monatomic Gold) 10 mg * Botanical Factors: Black Seed ( Nigella sativa ) 70 mg * Chitosan (90% deacetylated) ( Aspergillus niger ) 70 mg * Chlorella (broken cell wall) ( Chlorella pyrenoidosa ) 70 mg * Cilantro (juice powder) ( Coriandrum sativum ) 70 mg * Diindolylmethane 98% (DIM) ( Brassica oleracea ) 70 mg * Geranium 20:1 ( Geranium...",
       "bottle_type": "30 g",
       "fmp_id": "587",
@@ -11246,75 +11365,93 @@
       "qty_pricing": true,
       "ingredients": [
         {
-          "name": "Natural Vitamin C, L-Ascorbic Acid",
-          "dose": "60 mg"
+          "name": "Curcumin 95% (Curcuma longa)",
+          "dose": "75 mg",
+          "grade": "95% curcuminoids",
+          "compound_mg": 75.0,
+          "standardized_pct": 95.0,
+          "standardized_as": "curcuminoids",
+          "active_mg": 71.25
         },
         {
-          "name": "Red Root 4:1 New Jersey Tea",
-          "dose": "50 mg"
+          "name": "Milk Thistle (Silybum)",
+          "dose": "75 mg",
+          "grade": "80% silymarin",
+          "compound_mg": 75.0,
+          "standardized_pct": 80.0,
+          "standardized_as": "silymarin",
+          "active_mg": 60.0
         },
         {
-          "name": "Black mustard seed",
-          "dose": "50 mg"
+          "name": "Red Root (Ceanothus americanus)",
+          "dose": "65 mg",
+          "grade": "4:1 extract",
+          "compound_mg": 65.0
         },
         {
-          "name": "Curcumin 95% HPLC",
-          "dose": "25 mg"
+          "name": "Vitamin C (L-ascorbic acid)",
+          "dose": "60 mg",
+          "grade": "USP",
+          "compound_mg": 60.0
         },
         {
-          "name": "Tetrahydrocurcumin, water soluble Curcuminoid",
-          "dose": "25 mg"
+          "name": "Dandelion root (Taraxacum)",
+          "dose": "50 mg",
+          "grade": "20:1 extract",
+          "compound_mg": 50.0
         },
         {
-          "name": "Stinging Nettle Beta Sitosterol",
-          "dose": "50 mg"
+          "name": "Reishi (Ganoderma lucidum)",
+          "dose": "40 mg",
+          "grade": "30:1 extract (powder)",
+          "compound_mg": 40.0
         },
         {
-          "name": "Modified Citrus Pectin",
-          "dose": "50 mg"
+          "name": "Boswellia serrata",
+          "dose": "35 mg",
+          "grade": "95% BA, AKBA ≥20%",
+          "compound_mg": 35.0,
+          "standardized_pct": 95.0,
+          "standardized_as": "BA",
+          "active_mg": 33.25
         },
         {
-          "name": "Bilberry 25% Anthocyanidin Vaccinium myrtillus",
-          "dose": "25 mg"
+          "name": "Bilberry (Vaccinium myrtillus)",
+          "dose": "30 mg",
+          "grade": "25% anthocyanins",
+          "compound_mg": 30.0,
+          "standardized_pct": 25.0,
+          "standardized_as": "anthocyanins",
+          "active_mg": 7.5
         },
         {
-          "name": "Cranberry 25% Proanthocyanidins",
-          "dose": "25 mg"
+          "name": "Beta-sitosterol (Urtica dioica)",
+          "dose": "30 mg",
+          "grade": "95%, nettle-sourced (non-soy/GMO)",
+          "compound_mg": 30.0,
+          "purity_pct": 95.0
         },
         {
-          "name": "Aloe Vera 98% Mucilaginous Polysaccharide Organic Extract",
-          "dose": "25 mg"
+          "name": "Astaxanthin (Haematococcus pluvialis)",
+          "dose": "2.5 mg",
+          "grade": "96%",
+          "compound_mg": 2.5,
+          "purity_pct": 96.0
         },
         {
-          "name": "Commiphora myrrha Commiphora molmol Myrrh Gum Hirabol myrrh Commiphora myrrha (Nees) Engl. Plant Family: Burseraceae",
-          "dose": "25 mg"
+          "name": "Cayenne (Capsicum annuum)",
+          "dose": "5 mg",
+          "grade": "160,000 HU",
+          "compound_mg": 5.0
         },
         {
-          "name": "Frankincense",
-          "dose": "25 mg"
-        },
-        {
-          "name": "Activated Coconut Charcoal",
-          "dose": "20 mg"
-        },
-        {
-          "name": "Capsicum annuum",
-          "dose": "5 mg"
-        },
-        {
-          "name": "bovine",
-          "dose": "5 mg"
-        },
-        {
-          "name": "Dandelion Root extract",
-          "dose": "25 mg"
-        },
-        {
-          "name": "(unnamed FMP ingredient 5461)",
-          "dose": "34.5 mg"
+          "name": "Riboflavin-5-phosphate",
+          "dose": "5 mg",
+          "grade": "USP",
+          "compound_mg": 5.0
         }
       ],
-      "ingredients_source": "db-formulations-2026-06-25",
+      "ingredients_source": "production-sheet-2026-07-24",
       "description": "Spleen Support . Spleen Support Spleen Support The Spleen is an important part of the immune system. It recycles red and white blood cells, separating the toxins and wastes from the valuable nutrients that can be used again. Spleen Support . One phthalate-free enteric veggie capsule of Spleen support provides: Vitamin Factor: Vitamin C (L-Ascorbic Acid) 60 mg 100% Botanical Factors: Red Root 4:1 ( Ceanothus americanus ) 50 mg * Black Mustard Seed ( Brassica nigra ) 50 mg * Curcumin ( Curcuma longa ) 50 mg * Beta Sitosterol ( Urtica dioica ) 50 mg * Modified Citrus Pectin ( Citrus spp .) 50 mg...",
       "bottle_type": "30 Caps",
       "fmp_id": "504"
