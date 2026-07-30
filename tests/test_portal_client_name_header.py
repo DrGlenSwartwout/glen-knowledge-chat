@@ -14,6 +14,12 @@ def test_client_name_header_is_at_top_of_portal():
     assert identity < onboarding < app
     assert 'id="portal-client-name"' in HTML
     assert "Healing Oasis client portal" in HTML
+    assert HTML.count('id="client-photo"') == 1
+    assert (
+        HTML.index('id="client-photo"')
+        < HTML.index('id="portal-client-name"')
+        < onboarding
+    )
 
 
 def test_client_name_header_uses_account_name_without_email_fallback():
@@ -24,3 +30,10 @@ def test_client_name_header_uses_account_name_without_email_fallback():
     assert 'identityName.textContent = safeClientName;' in HTML
     assert 'identity.hidden = !safeClientName;' in HTML
     assert '/[@]/.test(portalClientName)' in HTML
+
+
+def test_header_photo_keeps_upload_and_initials_fallback():
+    assert 'id="client-photo-placeholder"' in HTML
+    assert 'id="client-photo-file"' in HTML
+    assert 'placeholder.style.display = "none"' in HTML
+    assert 'placeholder.style.display = ""' in HTML
