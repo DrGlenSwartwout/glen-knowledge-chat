@@ -1059,9 +1059,17 @@ function healthFieldValueHtml(f){
     }).join("")}</ul>`;
   }
   const val = f.value;
+  const options = Array.isArray(f.options) ? f.options : [];
+  const selected = options.find(opt => {
+    const optionValue = (opt && typeof opt === "object") ? opt.value : opt;
+    return String(optionValue) === String(val);
+  });
+  const displayValue = selected
+    ? ((selected && typeof selected === "object") ? selected.label : selected)
+    : val;
   return (val === null || val === undefined || val === "")
     ? `<p class="muted small">Not provided yet.</p>`
-    : `<p class="health-value">${esc(val)}</p>`;
+    : `<p class="health-value">${esc(displayValue)}</p>`;
 }
 function healthFieldHtml(f){
   // data-value carries the current scalar so Edit can open the input pre-filled
@@ -1932,6 +1940,17 @@ function healthEditInputHtml(fieldId, fieldType, rawValue){
   const val = (rawValue === null || rawValue === undefined) ? "" : rawValue;
   if (fieldType === "textarea") return `<textarea class="health-edit-input" rows="3">${esc(val)}</textarea>`;
   if (fieldType === "number") return `<input type="number" class="health-edit-input" value="${esc(val)}">`;
+  const field = findHealthField(_healthProfileBlock, fieldId);
+  const options = (field && Array.isArray(field.options)) ? field.options : [];
+  if (options.length) {
+    const choices = options.map(opt => {
+      const optionValue = (opt && typeof opt === "object") ? opt.value : opt;
+      const optionLabel = (opt && typeof opt === "object") ? opt.label : opt;
+      const selected = String(optionValue) === String(val) ? " selected" : "";
+      return `<option value="${esc(optionValue)}"${selected}>${esc(optionLabel)}</option>`;
+    }).join("");
+    return `<select class="health-edit-input"><option value="">Select an option</option>${choices}</select>`;
+  }
   if (fieldType === "scale") {
     const max = HEALTH_SCALE_MAX[fieldId] || 5;
     return `<input type="number" class="health-edit-input" min="1" max="${max}" step="1" value="${esc(val)}">`;
