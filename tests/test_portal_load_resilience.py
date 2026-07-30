@@ -24,3 +24,9 @@ def test_shared_portal_hashes_route_to_real_panels_and_cards():
     assert 'id="photo-section"' in HTML
     assert 'id="offers-card"' in HTML
     assert 'id="biofield-section"' in HTML
+
+
+def test_life_stress_essence_links_are_readable_in_dark_mode():
+    assert ':root[data-theme="dark"] .life-stress-card a' in HTML
+    assert ':root[data-theme="dark"] .life-stress-card a:visited' in HTML
+    assert "color:#8ecbff" in HTML

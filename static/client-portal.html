@@ -179,6 +179,12 @@
   .sp{color:var(--brand);font-weight:700}
   .note{background:var(--brand-soft);border-radius:8px;padding:9px 11px;margin:0 0 .7rem;color:var(--ink)}
   .note b{color:var(--brand)}
+  /* Essence product names are links. Do not let the browser's default dark blue
+     disappear into the green card in the default/dark portal theme. */
+  :root:not([data-theme]) .life-stress-card a,
+  :root[data-theme="dark"] .life-stress-card a,
+  :root:not([data-theme]) .life-stress-card a:visited,
+  :root[data-theme="dark"] .life-stress-card a:visited{color:#8ecbff}
   .muted{color:var(--muted)} .small{font-size:.86rem}
   .foot{text-align:center;color:var(--muted);font-size:.86rem;margin-top:26px}
   .state{max-width:32rem;margin:18vh auto;text-align:center;color:var(--muted);padding:0 18px}
