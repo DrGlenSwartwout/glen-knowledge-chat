@@ -21,6 +21,19 @@ def _has_scan(cx, email):
         return False
 
 
+def _has_e4l_account(cx, email):
+    """A synced scan proves this portal user already has an E4L account."""
+    if _has_scan(cx, email):
+        return True
+    try:
+        return cx.execute(
+            "SELECT 1 FROM scan_freshness WHERE lower(email)=lower(?) LIMIT 1",
+            (email,),
+        ).fetchone() is not None
+    except Exception:
+        return False
+
+
 def _has_source(cx, email, source_key):
     # recommendation_events.product_sources(cx, email) -> list of
     # {"product_key":..., "sources": [{"source": sk, ...}, ...]}
@@ -65,8 +78,14 @@ def build_status(cx, email):
         d.update(extra)
         return d
 
+    has_scan = _has_scan(cx, email)
+    voice_href = (
+        "https://portal.e4l.com"
+        if _has_e4l_account(cx, email)
+        else "https://truly.vip/E4L"
+    )
     be_read = [
-        step("voice", "Voice analysis", _has_scan(cx, email), "https://truly.vip/E4L"),
+        step("voice", "Voice analysis", has_scan, voice_href),
         step("intake", "Intake", _safe(intake.is_submitted, cx, email), "https://truly.vip/Join"),
         step("photo", "Photo", _safe(client_photos.has, cx, email), "#photo"),
         step("biofield", "Biofield Analysis",
