@@ -24,6 +24,10 @@ from dashboard import dbwrite
 GLEN_DECISIONS = ("confirmed", "orphan", "rejected")
 PENDING = ("proposed", "proposed-reject")
 DIRECTIONS = ("up", "down", "balance", "substrate", "adverse", "neutral", "unknown")
+# Verdicts whose subject is the ATOM rather than the (atom, canonical) pair, so
+# they survive a canonical being relabelled or re-homed. `wrong`, `too_coarse`
+# and `correct` are all statements ABOUT the pairing and must still go stale.
+ATOM_SCOPED_VERDICTS = ("not_a_pathway",)
 
 
 def _db_path():
@@ -174,10 +178,18 @@ def verdict_for(cx, atom_key, current_label):
     reviewing. Showing the verdict on the card turns a blind judgement into a
     second opinion.
 
-    A verdict is keyed to the (atom, canonical) PAIR it was given for. The
-    vocabulary repair split many canonicals, so a "correct" verdict against a
+    Most verdicts are keyed to the (atom, canonical) PAIR they were given for.
+    The vocabulary repair split many canonicals, so a "correct" verdict against a
     since-changed label would read as endorsement of a mapping nobody reviewed.
     Those surface as `stale` instead — 21% of stored verdicts, measured.
+
+    But `not_a_pathway` is a judgement about the ATOM, not the pair: "this
+    fragment is not a mechanism at all" stays true no matter which canonical the
+    atom is later pointed at, so relabelling must not silence it. Treating it as
+    pair-scoped hid 47 of the 70 atom-level rejections — including two
+    independent rounds on `retinol` ("nutrient/molecule name; retinol is not an
+    RAR ligand, and both source strings are about BCO1 cleavage"), which had
+    diagnosed a defect that then cost a full family pass to rediscover.
     """
     try:
         row = cx.execute(
@@ -191,7 +203,8 @@ def verdict_for(cx, atom_key, current_label):
     # row_factory) and directly by callers that have not, so a keyed lookup
     # raises TypeError on a plain tuple.
     verdict, reason, reviewed = row[0], row[1], row[2]
-    if (current_label or "").strip() != (reviewed or "").strip():
+    if (current_label or "").strip() != (reviewed or "").strip() \
+            and verdict not in ATOM_SCOPED_VERDICTS:
         return {"verdict": "stale", "reviewed_label": reviewed,
                 "reason": f"reviewed against “{reviewed}”, which this no longer maps to"}
     return {"verdict": verdict, "reason": reason, "reviewed_label": reviewed}

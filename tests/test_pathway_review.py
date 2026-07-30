@@ -188,6 +188,28 @@ def test_verdict_goes_stale_when_the_canonical_changed(cx):
     assert "COX-2" in v["reason"]
 
 
+def test_not_a_pathway_survives_a_relabel_because_it_judges_the_atom(cx):
+    """`not_a_pathway` says the FRAGMENT is not a mechanism — true regardless of
+    which canonical it is later pointed at. Treating it as pair-scoped hid 47 of
+    70 atom-level rejections, including two rounds on `retinol` that had already
+    diagnosed a defect a whole family pass then spent effort rediscovering."""
+    _verdicts(cx, [("retinol", "Retinoid / RAR-RXR", "not_a_pathway",
+                    "nutrient/molecule name, not a mechanism")])
+    v = pr.verdict_for(cx, "retinol", "Retinoid bioactivation (BCO1 / RDH / RALDH)")
+    assert v["verdict"] == "not_a_pathway"
+    assert "nutrient/molecule" in v["reason"]
+
+
+def test_pair_scoped_verdicts_still_go_stale_on_a_relabel(cx):
+    """The other half of the same guard: `wrong`, `too_coarse` and `correct` are
+    statements about the PAIRING, so a relabel must still invalidate them."""
+    _verdicts(cx, [("nf kappab", "NF-κB", "correct", None),
+                   ("nrf2", "Nrf2", "too_coarse", None),
+                   ("aromatase", "Aromatase", "wrong", None)])
+    for atom in ("nf kappab", "nrf2", "aromatase"):
+        assert pr.verdict_for(cx, atom, "Something Else Entirely")["verdict"] == "stale"
+
+
 def test_no_verdict_is_not_an_endorsement(cx):
     assert pr.verdict_for(cx, "never reviewed", "NF-κB") is None
 
