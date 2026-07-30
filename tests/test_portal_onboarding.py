@@ -25,6 +25,7 @@ def test_all_open_when_nothing_on_file():
     be = {key: st["done"] for key, st in steps.items()}
     assert be == {"voice": False, "intake": False, "photo": False, "biofield": False}
     assert steps["voice"]["href"] == "https://truly.vip/E4L"
+    assert steps["intake"]["href"] == "#intake"
     assert s["member"] is False
 
 

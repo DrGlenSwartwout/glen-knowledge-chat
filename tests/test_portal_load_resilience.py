@@ -18,9 +18,26 @@ def test_portal_distinguishes_invalid_link_from_transient_failure():
 
 
 def test_shared_portal_hashes_route_to_real_panels_and_cards():
-    for route in ("biofield", "recs", "offers", "photo", "cart", "shop"):
+    for route in ("biofield", "recs", "intake", "offers", "photo", "cart", "shop"):
         assert f"{route}:" in HTML
     assert 'window.addEventListener("hashchange", applyPortalHash)' in HTML
     assert 'id="photo-section"' in HTML
     assert 'id="offers-card"' in HTML
     assert 'id="biofield-section"' in HTML
+    assert 'data-panel="intake"' in HTML
+    assert 'id="portal-intake-card"' in HTML
+
+
+def test_native_intake_is_resumable_and_reports_save_state():
+    assert '"My Intake", "Build or continue your clinical health profile"' in HTML
+    assert "initPortalIntakeCard();" in HTML
+    assert "Save and finish later" in HTML
+    assert "Section ${sectionIndex + 1} of ${sectionEls.length}" in HTML
+    assert 'saveState.textContent = "Saving…"' in HTML
+    assert 'saveState.textContent = "Saved"' in HTML
+
+
+def test_life_stress_essence_links_are_readable_in_dark_mode():
+    assert ':root[data-theme="dark"] .life-stress-card a' in HTML
+    assert ':root[data-theme="dark"] .life-stress-card a:visited' in HTML
+    assert "color:#8ecbff" in HTML

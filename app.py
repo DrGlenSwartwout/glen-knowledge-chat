@@ -21506,6 +21506,103 @@ def api_portal_health_history_products(token):
         return jsonify({"ok": True, "history": _hh.get(cx, email)})
 
 
+@app.route("/api/portal/<token>/starter-remedies", methods=["POST"])
+def api_portal_starter_remedies(token):
+    """Save the onboarding condition, product, and extended-history sections
+    through one connection checkout.
+
+    The former browser flow issued one POST per selected condition, followed by
+    two more POSTs. Under production pool pressure the first request could wait
+    behind the global DB lock until the browser cancelled it. This endpoint
+    performs the same writes through one bounded checkout and lets Postgres
+    provide its own transaction/locking semantics.
+    """
+    from dashboard import (
+        client_portal as _cp,
+        condition_triage as _ct,
+        portal_health_history as _hh,
+        portal_extended_history as _eh,
+    )
+    data = request.get_json(silent=True) or {}
+    conditions = data.get("conditions") or []
+    products = data.get("products") or {}
+    extended = data.get("extended") or {}
+    if not isinstance(conditions, list) or len(conditions) > 8:
+        return jsonify({"error": "Invalid condition list."}), 400
+
+    allowed = {
+        "glaucoma", "cataract", "macular", "dry-eye",
+        "retinitis-pigmentosa", "diabetic-retinopathy",
+        "vision-improvement", "other",
+    }
+    clean_conditions = []
+    for item in conditions:
+        if not isinstance(item, dict):
+            return jsonify({"error": "Invalid condition entry."}), 400
+        condition = str(item.get("condition") or "").strip().lower()
+        if condition not in allowed:
+            return jsonify({"error": "Invalid condition entry."}), 400
+        if condition == "other" and not str(
+                item.get("other_condition") or "").strip():
+            return jsonify({"error": "Please tell us what the other issue is."}), 400
+        clean_conditions.append((condition, item))
+
+    clean_products = {}
+    for kind in _hh.KINDS:
+        yes = products.get(kind + "_yes") is True
+        text = str(products.get(kind + "_text") or "").strip()[:4000]
+        if yes and not text:
+            return jsonify({
+                "error": f"Brand and product names are required for {kind}."
+            }), 400
+        clean_products[kind + "_yes"] = yes
+        clean_products[kind + "_text"] = text
+
+    clean_extended = {}
+    for category in _eh.CATEGORIES:
+        yes = extended.get(category + "_yes") is True
+        text = str(extended.get(category + "_text") or "").strip()[:6000]
+        if yes and not text:
+            return jsonify({
+                "error": f"Details are required for {category}."
+            }), 400
+        clean_extended[category + "_yes"] = yes
+        clean_extended[category + "_text"] = text
+
+    try:
+        with db.connect(LOG_DB, timeout=5) as cx:
+            cx.row_factory = sqlite3.Row
+            _cp.init_client_portal_table(cx)
+            portal = _portal_record_for(cx, token)
+            if not portal:
+                return jsonify({"error": "not found"}), 404
+            email = (portal.get("email") or "").strip().lower()
+            _ct.init_table(cx)
+            _init_support_programs_tables(cx)
+            consult_recommended = False
+            seeded = 0
+            for condition, answers in clean_conditions:
+                result = _ct.seed_from_triage(cx, email, condition, answers)
+                consult_recommended = (
+                    consult_recommended or
+                    bool(result.get("consult_recommended"))
+                )
+                seeded += len(result.get("seeded") or [])
+            _hh.save(cx, email, clean_products)
+            _eh.save(cx, email, clean_extended)
+    except Exception as exc:
+        app.logger.warning("starter remedies save unavailable: %r", exc)
+        return jsonify({
+            "error": "The server is busy. Your answers are still here—please try again."
+        }), 503
+
+    return jsonify({
+        "ok": True,
+        "seeded": seeded,
+        "consult_recommended": consult_recommended,
+    })
+
+
 @app.route("/api/portal/<token>/health-history/extended", methods=["GET", "POST"])
 def api_portal_health_history_extended(token):
     """Token-gated personal, exposure, trauma, and family history."""
@@ -27538,17 +27635,58 @@ def intake_state():
         if ident is None:
             return jsonify({"error": "not_found"}), 404
         row = _intake.get_response(cx, ident.email)
+        answers = dict(row["answers"]) if row else {}
+        # A signed-in portal client should not have to retype identity data the
+        # portal already knows. Preserve any saved answer as authoritative and
+        # fill only blank fields from the account record.
+        if not str(answers.get("email") or "").strip():
+            answers["email"] = ident.email
+        try:
+            # The reviewed portal display name is the same source used in the
+            # client header and wins over older CRM rows (which can contain
+            # synthesized import labels such as "<email local-part> Match").
+            portal = _portal_record_for(
+                cx, request.args.get("token", ""))
+            display = ((portal or {}).get("name") or "").strip()
+            first = last = ""
+            if display:
+                parts = display.split(None, 1)
+                first = parts[0]
+                last = parts[1] if len(parts) > 1 else ""
+            else:
+                person = cx.execute(
+                    "SELECT first_name, last_name, name FROM people "
+                    "WHERE lower(email)=lower(?) LIMIT 1",
+                    (ident.email,),
+                ).fetchone()
+                if person:
+                    first = (person[0] or "").strip()
+                    last = (person[1] or "").strip()
+                    display = (person[2] or "").strip()
+                    if not first and display:
+                        parts = display.split(None, 1)
+                        first = parts[0]
+                        last = last or (
+                            parts[1] if len(parts) > 1 else "")
+            if first:
+                if not str(answers.get("first_name") or "").strip():
+                    answers["first_name"] = first
+            if last:
+                if not str(answers.get("last_name") or "").strip():
+                    answers["last_name"] = last
+        except Exception:
+            pass
     return jsonify({
         "submitted": bool(row) and row["status"] == "submitted",
         "status": row["status"] if row else "none",
-        "answers": row["answers"] if row else {},
+        "answers": answers,
     })
 
 
 @app.route("/api/intake/save-draft", methods=["POST"])
 def intake_save_draft():
     from dashboard import intake as _intake
-    with _db_lock, db.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB, timeout=5) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -27564,7 +27702,7 @@ def intake_save_draft():
 @app.route("/api/intake/submit", methods=["POST"])
 def intake_submit():
     from dashboard import intake as _intake
-    with _db_lock, db.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB, timeout=5) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))

@@ -10,7 +10,7 @@ def test_render_onboarding_emits_phases_done_and_link():
       new Function('module','exports','window', src)(mod, mod.exports, {});
       const status = {
         phases: [
-          {key:'be_read', title:'Be read', steps:[
+          {key:'be_read', title:'Discover What Your Body Is Saying', steps:[
             {key:'voice', label:'Voice analysis', done:true, href:'https://truly.vip/E4L'},
             {key:'intake', label:'Intake', done:false, href:'https://truly.vip/Join'}
           ]},
@@ -25,7 +25,7 @@ def test_render_onboarding_emits_phases_done_and_link():
         member: false
       };
       const html = (mod.exports.renderOnboarding || global.renderOnboarding)(status);
-      if (!/Be read/.test(html)) { console.error('missing be_read title'); process.exit(1); }
+      if (!/Discover What Your Body Is Saying/.test(html)) { console.error('missing be_read title'); process.exit(1); }
       if (!/Match remedies/.test(html)) { console.error('missing match title'); process.exit(1); }
       if (!/Accelerate healing/.test(html)) { console.error('missing heal title'); process.exit(1); }
       if (!/\\u2713/.test(html)) { console.error('missing done check'); process.exit(1); }
@@ -57,7 +57,7 @@ def test_render_onboarding_triage_form_gated_on_history_done():
       function baseStatus(historyDone, member) {
         return {
           phases: [
-            {key:'be_read', title:'Be read', steps:[
+            {key:'be_read', title:'Discover What Your Body Is Saying', steps:[
               {key:'voice', label:'Voice analysis', done:true, href:'https://truly.vip/E4L'}
             ]},
             {key:'match', title:'Match remedies', steps:[

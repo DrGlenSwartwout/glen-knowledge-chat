@@ -95,6 +95,7 @@ def _product_pricing(slug: str, catalog: Optional[Dict[str, dict]] = None) -> di
         "name": entry.get("name", slug),
         "qbo_item_id": entry.get("qbo_item_id"),
         "retail_cents": retail,
+        "wholesale_discount_pct": entry.get("wholesale_discount_pct"),
         "bottle_type": entry.get("bottle_type", DEFAULT_BOTTLE_TYPE),
         "cogs_cents": entry.get("cogs_cents"),
         "fulfillment_cents": entry.get("fulfillment_cents"),
@@ -150,8 +151,18 @@ def order_quote(
     ``margin_ok``; unknown costs emit a warning but do not fail."""
     modules = int(practitioner.get("modules_completed", 0) or 0)
     total_q = sum(int(it.get("qty", 0)) for it in items)
-    B, warnings = _resolve_B(items, db_path=db_path, catalog=catalog)
-    unit = blended_unit_price_cents(total_q, modules, B) if total_q >= 1 else 0
+    standard_items = [
+        it for it in items
+        if _product_pricing(it.get("slug"), catalog).get(
+            "wholesale_discount_pct") is None
+    ]
+    standard_q = sum(int(it.get("qty", 0)) for it in standard_items)
+    if standard_items:
+        B, warnings = _resolve_B(
+            standard_items, db_path=db_path, catalog=catalog)
+        unit = blended_unit_price_cents(standard_q, modules, B)
+    else:
+        B, warnings, unit = 0, [], 0
 
     lines: List[dict] = []
     margin_ok = True
@@ -160,24 +171,31 @@ def order_quote(
         slug = it.get("slug")
         qty = int(it.get("qty", 0))
         p = _product_pricing(slug, catalog)
+        discount = p.get("wholesale_discount_pct")
+        line_unit = unit
+        if discount is not None:
+            discount = max(0, min(100, int(discount)))
+            line_unit = (
+                int(p["retail_cents"]) * (100 - discount) + 50
+            ) // 100
         lines.append({
             "slug": slug,
             "name": p["name"],
             "qty": qty,
             "bottle_type": p["bottle_type"],
-            "unit_price_cents": unit,
-            "line_total_cents": unit * qty,
+            "unit_price_cents": line_unit,
+            "line_total_cents": line_unit * qty,
         })
         cogs, fulf = p["cogs_cents"], p["fulfillment_cents"]
         if cogs is None or fulf is None:
             margin_warnings.append(
                 f"COGS/fulfillment not set for {slug!r}; margin unverified"
             )
-        elif unit < cogs + fulf:
+        elif line_unit < cogs + fulf:
             margin_ok = False
             margin_warnings.append(
                 f"margin floor breached for {slug!r}: "
-                f"blended {unit} < cost {cogs + fulf}"
+                f"wholesale {line_unit} < cost {cogs + fulf}"
             )
 
     return {

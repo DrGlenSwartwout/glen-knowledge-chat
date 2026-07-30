@@ -99,7 +99,7 @@ def build_status(cx, email):
     )
     be_read = [
         step("voice", "Voice analysis", has_scan, voice_href),
-        step("intake", "Intake", _safe(intake.is_submitted, cx, email), "https://truly.vip/Join"),
+        step("intake", "Intake", _safe(intake.is_submitted, cx, email), "#intake"),
         step("photo", "Photo", _safe(client_photos.has, cx, email), "#photo"),
         step("biofield", "Biofield Analysis",
              _safe(lambda c, e: portal_biofield_reports.latest_report(c, e) is not None, cx, email),
@@ -119,7 +119,11 @@ def build_status(cx, email):
     ]
     return {
         "phases": [
-            {"key": "be_read", "title": "Be read", "steps": be_read},
+            {
+                "key": "be_read",
+                "title": "Discover What Your Body Is Saying",
+                "steps": be_read,
+            },
             {"key": "match", "title": "Match remedies", "steps": match},
             {"key": "heal", "title": "Accelerate healing", "steps": heal},
         ],
