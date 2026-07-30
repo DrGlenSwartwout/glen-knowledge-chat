@@ -99,6 +99,29 @@ def render_direction_row(row):
             "<span class=pwmsg></span></div>")
 
 
+def render_conflict_row(c):
+    """Read-only on purpose. A contradiction is not fixed by picking a direction
+    here — it is fixed upstream, by correcting the effect text or splitting the
+    atom, after which the vault rebuild stops reporting it. Offering a dropdown
+    would invite settling the symptom and leaving the two source rows disagreeing.
+    """
+    certain = c["kind"] == "same_ingredient"
+    where = (f"ingredient {c['ingredient_id']}" if certain
+             else f"pathway row {c['pathway_row_id']}")
+    note = ("one ingredient asserts both directions — the effect strings describe "
+            "different subjects" if certain
+            else "row names both directions; the single row-level sign is broadcast "
+                 "to every atom")
+    return (f"<div class=pwdir><span class='pwv {'pwvbad' if certain else 'pwvwarn'}' "
+            f"style='padding:1px 6px;border-radius:5px;font-size:11px'>"
+            f"{_e(c['directions'])}</span>"
+            f"<span class=pwdtext>{_e(c['atom_key'])}</span>"
+            f"<span class=pwn>{c['n_rows']} rows &middot; {_e(where)}</span>"
+            f"<span class=food style='font-size:11px'>{_e(note)}</span></div>"
+            f"<div class=food style='font-size:11px;margin:-4px 0 8px 10px'>"
+            f"{_e((c['detail'] or '')[:160])}</div>")
+
+
 _STYLE = """<style>
 /* Tokens, nav strip and buttons mirror biofield_report_html so the shared
    sub-tab strip renders the same here as on the pages it links to. */
@@ -199,9 +222,19 @@ async function pwMore(btn){
 </script>"""
 
 
-def render_pathway_review_page(rows, canon, stats, directions=(), nav="", offset=0):
+def render_pathway_review_page(rows, canon, stats, directions=(), nav="", offset=0,
+                               conflicts=()):
     cards = "".join(render_atom_card(r, canon) for r in rows)
     dirs = "".join(render_direction_row(d) for d in directions)
+    confs = "".join(render_conflict_row(c) for c in conflicts)
+    conf_block = (
+        "<h3 style='margin-top:20px'>Direction contradictions</h3>"
+        "<p class=food style='margin:0 0 6px;font-size:12px'>The opposite failure to the "
+        "block above: these were classified <em>confidently</em>, about the wrong noun, so "
+        "they can never appear as unplaced phrasings. Scavenging ROS is &lsquo;down&rsquo; for "
+        "ROS and &lsquo;up&rsquo; for antioxidant capacity &mdash; both true, and they cancel. "
+        "Fix upstream in the source text or by splitting the atom; the rebuild then drops the "
+        "row on its own.</p>" + confs) if confs else ""
     dir_block = (
         "<h3>Effect direction</h3>"
         "<p class=food style='margin:0 0 6px;font-size:12px'>Direction is a separate axis "
@@ -233,5 +266,5 @@ def render_pathway_review_page(rows, canon, stats, directions=(), nav="", offset
         f"({stats['canonical_confirmed']} confirmed)</span>"
         f"<span class=food>{stats['atoms_total']} distinct atoms in the corpus</span>"
         "</div>"
-        f"<div id=pwqueue>{cards}</div>{empty}{more}{dir_block}"
+        f"<div id=pwqueue>{cards}</div>{empty}{more}{dir_block}{conf_block}"
         f"</div>{_canon_json(canon)}{_JS}")

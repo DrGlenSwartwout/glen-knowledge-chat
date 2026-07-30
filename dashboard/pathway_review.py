@@ -280,6 +280,46 @@ def direction_queue(cx, limit=40):
     return [dict(r) for r in rows]
 
 
+def direction_conflicts(cx, limit=40):
+    """Atoms whose direction axis contradicts itself.
+
+    Deliberately a SEPARATE surface from `direction_queue`. That queue asks the
+    classifier "were you unsure?" and shows what it could not place. These rows
+    are the opposite failure: classified with high confidence, about the wrong
+    noun. `classify_effect` scores how clearly a phrase LEADS with a direction
+    word, which measures phrasing clarity rather than subject correctness, so a
+    prose effect opening "upward modulation of…" scores high while describing a
+    different molecule than the atom. No confidence signal derived from surface
+    form can catch that; only the cross-row contradiction can.
+
+    Two kinds, both written by the vault rebuild (which owns `normalize_effect`,
+    so the normalization is not duplicated here):
+
+      same_ingredient  one ingredient asserts both up and down for one atom —
+                       it cannot be doing both, so the effect strings are
+                       describing different subjects (mediator vs function:
+                       scavenging ROS is `down` for ROS and `up` for antioxidant
+                       capacity, and the two signs cancel). 17 atoms.
+      multi_target     one pathway string names opposite directions for
+                       different targets, and the single row-level direction is
+                       broadcast to atoms it contradicts. 68 atoms / 25 rows.
+
+    Ordered same_ingredient first: those are unambiguous defects, while the
+    multi_target screen is heuristic (~78% precision on a held-out sample), so
+    the caller sees the certain ones before the ones needing a judgement call.
+    """
+    cx.row_factory = sqlite3.Row
+    try:
+        rows = cx.execute(
+            "SELECT atom_key, kind, ingredient_id, pathway_row_id, directions, "
+            "n_rows, detail FROM pathway_direction_conflicts "
+            "ORDER BY CASE kind WHEN 'same_ingredient' THEN 0 ELSE 1 END, "
+            "n_rows DESC, atom_key LIMIT ?", (int(limit),)).fetchall()
+    except sqlite3.OperationalError:
+        return []            # table absent until the vault rebuild has run
+    return [dict(r) for r in rows]
+
+
 def set_direction(cx, effect_key, direction):
     if direction not in DIRECTIONS:
         return None
