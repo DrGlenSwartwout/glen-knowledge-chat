@@ -2530,7 +2530,10 @@ function wireEyeVisionReport(){
 function render(d, v){
   d = d || {};
   const displayName = d.name || (v && v.account && v.account.name) || "";
-  const portalClientName = (v && v.account && v.account.name) || d.name || "";
+  // The portal record is clinician-reviewed and is the same name used by the
+  // greeting. Prefer it over an account name that may have been seeded from the
+  // email username during an older import.
+  const portalClientName = d.name || (v && v.account && v.account.name) || "";
   const identity = document.getElementById("portal-client-identity");
   const identityName = document.getElementById("portal-client-name");
   const safeClientName = /[@]/.test(portalClientName) ? "" : portalClientName.trim();
