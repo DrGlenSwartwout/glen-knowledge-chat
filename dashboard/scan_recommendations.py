@@ -140,3 +140,43 @@ def split_by_section(rows):
     info = [r for r in rows if r.get("section") == SECTION_INFOCEUTICAL]
     mih = [r for r in rows if r.get("section") != SECTION_INFOCEUTICAL]
     return info, mih
+
+
+def replace_ranked_events(cx, email, scan_id, scan_date, items, resolve_product_key):
+    """Mirror one scan's orderable ranked matches into recommendation_events.
+
+    Only Infoceuticals resolve to products; miHealth cycles are device programs.
+    Replacing a scan removes only this scan's generated ``scan`` events, leaving
+    engagement history and other scans untouched.
+    """
+    from dashboard import recommendation_events
+
+    e, sid = _norm(email), str(scan_id or "").strip()
+    if not e or not sid:
+        return 0
+    recommendation_events.init_recommendation_events(cx)
+    prefix = "scan:" + sid + ":"
+    cx.execute(
+        "DELETE FROM recommendation_events WHERE client_email=? AND source_key='scan' "
+        "AND substr(origin_ref,1,?)=?",
+        (e, len(prefix), prefix),
+    )
+    written = 0
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("section") != SECTION_INFOCEUTICAL:
+            continue
+        code = (item.get("item_code") or "").strip()
+        product_key = (resolve_product_key(code) or "").strip() if code else ""
+        if not product_key:
+            continue
+        rank = item.get("priority_rank")
+        if recommendation_events.record_event(
+                cx, e, product_key, "scan",
+                occurred_at=(scan_date or "").strip(),
+                origin_ref=prefix + str(rank if rank is not None else code),
+                commit=False):
+            written += 1
+    cx.commit()
+    return written

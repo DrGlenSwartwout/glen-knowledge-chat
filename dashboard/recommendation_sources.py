@@ -7,7 +7,9 @@ Adding a source later is a dict entry, not a schema change."""
 RECOMMENDATION_SOURCES = {
     "biofield":   {"label": "Biofield",   "icon": "📡", "kind": "engagement"},
     "intake":     {"label": "Intake",     "icon": "📝", "kind": "clinical"},
-    "scan":       {"label": "Scan",       "icon": "🔬", "kind": "engagement"},
+    # A ranked E4L scan result is itself a clinical recommendation. It should
+    # appear before the client clicks it, unlike biofield/email/chat engagement.
+    "scan":       {"label": "Personalized match from your scan", "icon": "🔬", "kind": "clinical"},
     "chat":       {"label": "Chat",       "icon": "💬", "kind": "engagement"},
     "self":       {"label": "Self",       "icon": "🛒", "kind": "engagement"},
     "email":      {"label": "Email",      "icon": "✉️", "kind": "engagement"},

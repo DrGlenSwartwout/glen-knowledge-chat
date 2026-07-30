@@ -11,7 +11,7 @@ _has_source below is written against the real (list) shape.
 from dashboard import (client_scans, intake, client_photos,
                         portal_biofield_reports, recommendation_events,
                         membership_products, portal_health_history,
-                        portal_extended_history)
+                        portal_extended_history, condition_triage)
 
 
 def _has_scan(cx, email):
@@ -72,6 +72,19 @@ def build_status(cx, email):
     )
     products_done = _safe(portal_health_history.has, cx, email)
     extended_done = _safe(portal_extended_history.has, cx, email)
+    condition_triage.init_table(cx)
+    condition_rows = cx.execute(
+        "SELECT condition FROM condition_triage WHERE lower(email)=lower(?) "
+        "ORDER BY updated_at", (email,)
+    ).fetchall()
+    conditions = []
+    for row in condition_rows:
+        condition = row[0]
+        answers = condition_triage.get_triage(cx, email, condition) or {}
+        answers.pop("resolved_programs", None)
+        conditions.append({"condition": condition, "answers": answers})
+    product_history = portal_health_history.get(cx, email) or {}
+    extended_record = portal_extended_history.get(cx, email) or {}
 
     def step(k, label, done, href, **extra):
         d = {"key": k, "label": label, "done": done, "href": href}
@@ -97,7 +110,7 @@ def build_status(cx, email):
              conditions_done and products_done and extended_done,
              "#recs"),
         step("scan_match", "Personalized match from your scan",
-             _has_source(cx, email, "biofield"), "#recs"),
+             _has_source(cx, email, "scan") or _has_source(cx, email, "biofield"), "#recs"),
     ]
     heal = [
         step("light", "Light", None, "https://clinicalpraxis.com"),
@@ -114,4 +127,9 @@ def build_status(cx, email):
         "history_conditions_done": conditions_done,
         "history_products_done": products_done,
         "history_extended_done": extended_done,
+        "history_prefill": {
+            "conditions": conditions,
+            "products": product_history,
+            "extended": extended_record.get("answers") or {},
+        },
     }
