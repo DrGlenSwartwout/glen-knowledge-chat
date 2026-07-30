@@ -77,8 +77,13 @@
   <section class="shell">
     <div class="card">
       <h2>Your membership</h2>
+      {% if lifetime %}
+      <span class="days-badge">Lifetime access</span>
+      <p>Your membership does not expire.</p>
+      {% else %}
       <span class="days-badge">{{ days_remaining }} day{{ "s" if days_remaining != 1 else "" }} remaining</span>
       <p>When your access ends, record a new 3-5 minute video at <a href="https://truly.vip/Results" target="_blank" rel="noopener">truly.vip/Results</a> to earn another 30 days.</p>
+      {% endif %}
     </div>
   </section>
 

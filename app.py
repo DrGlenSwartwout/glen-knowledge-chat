@@ -43273,6 +43273,7 @@ def coaching_dashboard():
         status="active",
         client_first=client_first,
         days_remaining=membership.get("days_remaining", 0),
+        lifetime=bool(membership.get("lifetime")),
         glen_replies=glen_replies,
         coaching_active=coaching_active,
         coaching_ends=coaching_ends,
