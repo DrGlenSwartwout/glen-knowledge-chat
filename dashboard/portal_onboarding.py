@@ -119,7 +119,11 @@ def build_status(cx, email):
     ]
     return {
         "phases": [
-            {"key": "be_read", "title": "Be read", "steps": be_read},
+            {
+                "key": "be_read",
+                "title": "Discover What Your Body Is Saying",
+                "steps": be_read,
+            },
             {"key": "match", "title": "Match remedies", "steps": match},
             {"key": "heal", "title": "Accelerate healing", "steps": heal},
         ],
