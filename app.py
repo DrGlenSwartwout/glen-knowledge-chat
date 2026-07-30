@@ -27635,17 +27635,45 @@ def intake_state():
         if ident is None:
             return jsonify({"error": "not_found"}), 404
         row = _intake.get_response(cx, ident.email)
+        answers = dict(row["answers"]) if row else {}
+        # A signed-in portal client should not have to retype identity data the
+        # portal already knows. Preserve any saved answer as authoritative and
+        # fill only blank fields from the account record.
+        if not str(answers.get("email") or "").strip():
+            answers["email"] = ident.email
+        try:
+            person = cx.execute(
+                "SELECT first_name, last_name, name FROM people "
+                "WHERE lower(email)=lower(?) LIMIT 1",
+                (ident.email,),
+            ).fetchone()
+            if person:
+                first = (person[0] or "").strip()
+                last = (person[1] or "").strip()
+                display = (person[2] or "").strip()
+                if not first and display:
+                    parts = display.split(None, 1)
+                    first = parts[0]
+                    last = last or (parts[1] if len(parts) > 1 else "")
+                if first:
+                    if not str(answers.get("first_name") or "").strip():
+                        answers["first_name"] = first
+                if last:
+                    if not str(answers.get("last_name") or "").strip():
+                        answers["last_name"] = last
+        except Exception:
+            pass
     return jsonify({
         "submitted": bool(row) and row["status"] == "submitted",
         "status": row["status"] if row else "none",
-        "answers": row["answers"] if row else {},
+        "answers": answers,
     })
 
 
 @app.route("/api/intake/save-draft", methods=["POST"])
 def intake_save_draft():
     from dashboard import intake as _intake
-    with _db_lock, db.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB, timeout=5) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))
@@ -27661,7 +27689,7 @@ def intake_save_draft():
 @app.route("/api/intake/submit", methods=["POST"])
 def intake_submit():
     from dashboard import intake as _intake
-    with _db_lock, db.connect(LOG_DB) as cx:
+    with db.connect(LOG_DB, timeout=5) as cx:
         cx.row_factory = sqlite3.Row
         _intake.init_intake_table(cx)
         ident = _evox_ident(cx, request.args.get("token", ""))

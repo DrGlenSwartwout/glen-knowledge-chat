@@ -54,6 +54,11 @@ def test_state_bad_token_404(client):
     assert r.status_code == 404 and r.get_json()["error"] == "not_found"
 
 
+def test_state_prefills_authenticated_email(client):
+    body = client.get("/api/intake/state?token=good").get_json()
+    assert body["answers"]["email"] == "member@x.com"
+
+
 def test_token_gate_precedes_body_on_submit(client):
     r = client.post("/api/intake/submit?token=bad", json={"garbage": True})
     assert r.status_code == 404  # token wins over validation
