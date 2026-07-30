@@ -59,6 +59,19 @@ def test_state_prefills_authenticated_email(client):
     assert body["answers"]["email"] == "member@x.com"
 
 
+def test_state_prefers_reviewed_portal_name(client, monkeypatch):
+    import app as appmod
+    monkeypatch.setattr(
+        appmod, "_portal_record_for",
+        lambda cx, token: {
+            "email": "member@x.com", "name": "Glen Swartwout", "content": "{}"
+        },
+    )
+    body = client.get("/api/intake/state?token=good").get_json()
+    assert body["answers"]["first_name"] == "Glen"
+    assert body["answers"]["last_name"] == "Swartwout"
+
+
 def test_token_gate_precedes_body_on_submit(client):
     r = client.post("/api/intake/submit?token=bad", json={"garbage": True})
     assert r.status_code == 404  # token wins over validation
