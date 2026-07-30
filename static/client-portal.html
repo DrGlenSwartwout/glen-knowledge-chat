@@ -44,6 +44,12 @@
     transition:background-color .25s ease,color .25s ease;}
   h1,h2,h3{font-family:"Raleway",-apple-system,"Segoe UI",sans-serif;}
   .wrap{max-width:648px;margin:0 auto;padding:28px 18px 72px}
+  .portal-client-identity{max-width:648px;margin:18px auto 0;padding:0 18px;
+    text-align:center;font-family:"Raleway",-apple-system,"Segoe UI",sans-serif}
+  .portal-client-identity-label{display:block;color:var(--muted);font-size:.72rem;
+    font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+  .portal-client-identity-name{display:block;color:var(--ink);font-size:1.08rem;
+    font-weight:700;line-height:1.35;margin-top:2px}
   /* Per-element Glendalf backdrop (premium tier). Shown only when the member has a
      computed deficient element (element_state.setting). The video sits behind
      everything; a theme-colored scrim keeps portal text readable; cards keep their
@@ -573,6 +579,10 @@
       if (host && window.RMTheme) window.RMTheme.mountToggle(host);
     })();
   </script>
+  <header class="portal-client-identity" id="portal-client-identity" hidden>
+    <span class="portal-client-identity-label">Healing Oasis client portal</span>
+    <strong class="portal-client-identity-name" id="portal-client-name"></strong>
+  </header>
   <!-- Task 4: Onboarding tile. Sibling of #app (not nested inside it), positioned
        ABOVE the hub so it survives render()'s poll re-renders, which fully replace
        app.innerHTML; filled/emptied by static/js/portal-onboarding.js's own fetch + mount. -->
@@ -2519,6 +2529,15 @@ function wireEyeVisionReport(){
 
 function render(d, v){
   d = d || {};
+  const displayName = d.name || (v && v.account && v.account.name) || "";
+  const portalClientName = (v && v.account && v.account.name) || d.name || "";
+  const identity = document.getElementById("portal-client-identity");
+  const identityName = document.getElementById("portal-client-name");
+  const safeClientName = /[@]/.test(portalClientName) ? "" : portalClientName.trim();
+  if (identity && identityName) {
+    identityName.textContent = safeClientName;
+    identity.hidden = !safeClientName;
+  }
   // Hub landing (flagged). Prepended above existing cards; panels below unchanged.
   let hubHtml = (v && v.hub_enabled) ? buildHubHtml(d, v) : "";
   const recSections = (_recoPayload && Array.isArray(_recoPayload.sections)) ? _recoPayload.sections : [];
@@ -2571,7 +2590,6 @@ function render(d, v){
   }
   const app = document.getElementById("app");
   try{ window.__reportData = d; }catch(e){}   // for printReport()
-  const displayName = d.name || (v && v.account && v.account.name) || "";
   // Greet by real first name; never show an email-derived token. A name that is
   // blank, or whose first word contains "@" or "." (e.g. "bob@x.com" stored as a
   // name, or "this.elf" mis-synced as a first name) falls back to "friend". Real
