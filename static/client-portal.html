@@ -45,7 +45,15 @@
   h1,h2,h3{font-family:"Raleway",-apple-system,"Segoe UI",sans-serif;}
   .wrap{max-width:648px;margin:0 auto;padding:28px 18px 72px}
   .portal-client-identity{max-width:648px;margin:18px auto 0;padding:0 18px;
-    text-align:center;font-family:"Raleway",-apple-system,"Segoe UI",sans-serif}
+    display:flex;align-items:center;justify-content:center;gap:12px;
+    font-family:"Raleway",-apple-system,"Segoe UI",sans-serif}
+  .portal-client-avatar{width:52px;height:52px;flex:0 0 52px;border-radius:50%;
+    overflow:hidden;border:2px solid var(--brand);background:var(--brand-soft);
+    display:flex;align-items:center;justify-content:center}
+  .portal-client-photo{width:100%;height:100%;object-fit:cover;display:none}
+  .portal-client-photo-placeholder{color:var(--brand);font-size:1rem;font-weight:700;
+    letter-spacing:.02em}
+  .portal-client-identity-copy{text-align:left;min-width:0}
   .portal-client-identity-label{display:block;color:var(--muted);font-size:.72rem;
     font-weight:700;letter-spacing:.09em;text-transform:uppercase}
   .portal-client-identity-name{display:block;color:var(--ink);font-size:1.08rem;
@@ -580,8 +588,14 @@
     })();
   </script>
   <header class="portal-client-identity" id="portal-client-identity" hidden>
-    <span class="portal-client-identity-label">Healing Oasis client portal</span>
-    <strong class="portal-client-identity-name" id="portal-client-name"></strong>
+    <span class="portal-client-avatar">
+      <img class="portal-client-photo" id="client-photo" alt="Client profile photo">
+      <span class="portal-client-photo-placeholder" id="client-photo-placeholder" aria-hidden="true"></span>
+    </span>
+    <span class="portal-client-identity-copy">
+      <span class="portal-client-identity-label">Healing Oasis client portal</span>
+      <strong class="portal-client-identity-name" id="portal-client-name"></strong>
+    </span>
   </header>
   <!-- Task 4: Onboarding tile. Sibling of #app (not nested inside it), positioned
        ABOVE the hub so it survives render()'s poll re-renders, which fully replace
@@ -1261,7 +1275,6 @@ function buildPhotoHtml(){
     <h2>My Photo</h2>
     <p class="muted small">Add a clear photo for your profile and personalized visual tools.</p>
     <div class="client-photo-box" style="display:flex;gap:14px;align-items:center">
-      <img id="client-photo" alt="Your profile" style="width:112px;height:112px;object-fit:cover;border-radius:12px;display:none">
       <div><label class="btn" style="cursor:pointer;display:inline-block">
         <span id="client-photo-label">Choose photo</span>
         <input id="client-photo-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -2540,6 +2553,11 @@ function render(d, v){
   if (identity && identityName) {
     identityName.textContent = safeClientName;
     identity.hidden = !safeClientName;
+    const photoPlaceholder = document.getElementById("client-photo-placeholder");
+    if (photoPlaceholder) {
+      photoPlaceholder.textContent = safeClientName
+        .split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase();
+    }
   }
   // Hub landing (flagged). Prepended above existing cards; panels below unchanged.
   let hubHtml = (v && v.hub_enabled) ? buildHubHtml(d, v) : "";
@@ -2604,7 +2622,6 @@ function render(d, v){
   let html = `
     <div class="hero">
       ${_hub ? "" : `<div class="client-photo-box" id="photo-section" style="display:flex;gap:14px;align-items:center;margin:0 0 14px">
-        <img id="client-photo" alt="" style="width:88px;height:88px;object-fit:cover;border-radius:12px;display:none">
         <label class="btn" style="cursor:pointer;display:inline-block">
           <span id="client-photo-label">Add your photo</span>
           <input id="client-photo-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -3693,10 +3710,18 @@ function render(d, v){
     const file = document.getElementById("client-photo-file");
     const label = document.getElementById("client-photo-label");
     const stat = document.getElementById("client-photo-stat");
+    const placeholder = document.getElementById("client-photo-placeholder");
     if (!img || !file) return;
     function show(){
-      img.onload = function(){ img.style.display = "block"; if (label) label.textContent = "Change photo"; };
-      img.onerror = function(){ img.style.display = "none"; };
+      img.onload = function(){
+        img.style.display = "block";
+        if (placeholder) placeholder.style.display = "none";
+        if (label) label.textContent = "Change photo";
+      };
+      img.onerror = function(){
+        img.style.display = "none";
+        if (placeholder) placeholder.style.display = "";
+      };
       img.src = "/api/portal/" + encodeURIComponent(token) + "/photo?t=" + Date.now();
     }
     show();
