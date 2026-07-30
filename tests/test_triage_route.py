@@ -83,6 +83,42 @@ def test_post_triage_vision_improvement_self_inits_condition_programs(tmp_path, 
     assert body["seeded"] > 0
 
 
+def test_starter_remedies_batch_saves_all_sections(tmp_path, monkeypatch):
+    from dashboard import portal_health_history as hh, portal_extended_history as eh
+    appmod = _app(tmp_path, monkeypatch)
+    tok = _seed(appmod, "starter-batch@x.com")
+
+    r = appmod.app.test_client().post(
+        f"/api/portal/{tok}/starter-remedies",
+        json={
+            "conditions": [
+                {"condition": "glaucoma", "iop_od": 25},
+                {"condition": "vision-improvement"},
+            ],
+            "products": {
+                "supplements_yes": True,
+                "supplements_text": "Brand X Product Y",
+            },
+            "extended": {
+                "surgeries_yes": True,
+                "surgeries_text": "Appendectomy",
+            },
+        },
+    )
+
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    cx = sqlite3.connect(appmod.LOG_DB)
+    assert hh.get(cx, "starter-batch@x.com")["supplements_text"] == "Brand X Product Y"
+    assert eh.get(cx, "starter-batch@x.com")["answers"]["surgeries_text"] == "Appendectomy"
+    rows = cx.execute(
+        "SELECT condition FROM condition_triage WHERE email=? ORDER BY condition",
+        ("starter-batch@x.com",),
+    ).fetchall()
+    cx.close()
+    assert rows == [("glaucoma",), ("vision-improvement",)]
+
+
 def test_unknown_token_404(tmp_path, monkeypatch):
     appmod = _app(tmp_path, monkeypatch)
     assert appmod.app.test_client().post(
