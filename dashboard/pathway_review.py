@@ -57,6 +57,13 @@ def init_tables(cx):
     CREATE TABLE IF NOT EXISTS pathway_atom_map(
         atom_key TEXT PRIMARY KEY, canonical_id INTEGER, decision TEXT NOT NULL,
         source TEXT NOT NULL, rationale TEXT, decided_at TEXT);
+    -- Independent-reviewer verdicts, surfaced on each card as a second opinion.
+    -- Keyed by the canonical the mapping was judged AGAINST, so a verdict cannot
+    -- silently endorse a mapping that has since changed.
+    CREATE TABLE IF NOT EXISTS pathway_review_verdicts(
+        atom_key TEXT NOT NULL, reviewed_label TEXT NOT NULL, verdict TEXT NOT NULL,
+        reason TEXT, round INTEGER NOT NULL DEFAULT 2,
+        PRIMARY KEY (atom_key, reviewed_label, round));
     CREATE TABLE IF NOT EXISTS pathway_effect_direction(
         effect_key TEXT PRIMARY KEY, direction TEXT NOT NULL, confidence TEXT NOT NULL,
         decision TEXT NOT NULL DEFAULT 'proposed', n_rows INTEGER NOT NULL DEFAULT 0,
@@ -152,8 +159,42 @@ def queue(cx, limit=40, offset=0, include_singletons=False):
     for r in rows:
         d = dict(r)
         d["examples"] = examples(cx, r["atom_key"])
+        d["verdict"] = verdict_for(cx, r["atom_key"], r["canonical_label"])
         out.append(d)
     return out
+
+
+def verdict_for(cx, atom_key, current_label):
+    """An independent reviewer's judgement on this exact mapping, or None.
+
+    Nine reviewers judged 701 mappings with instructions to REFUTE. Their
+    combined result is why this queue exists in its present form: 37% of
+    mappings were defective, and hand review had bought only two points over the
+    AI accepting them outright — the proposals were the weak link, not the
+    reviewing. Showing the verdict on the card turns a blind judgement into a
+    second opinion.
+
+    A verdict is keyed to the (atom, canonical) PAIR it was given for. The
+    vocabulary repair split many canonicals, so a "correct" verdict against a
+    since-changed label would read as endorsement of a mapping nobody reviewed.
+    Those surface as `stale` instead — 21% of stored verdicts, measured.
+    """
+    try:
+        row = cx.execute(
+            "SELECT verdict, reason, reviewed_label FROM pathway_review_verdicts "
+            "WHERE atom_key=? ORDER BY round DESC LIMIT 1", (atom_key,)).fetchone()
+    except sqlite3.OperationalError:
+        return None          # table absent (fresh db / tests)
+    if not row:
+        return None
+    # Positional, not by name: this is called both from queue() (which sets
+    # row_factory) and directly by callers that have not, so a keyed lookup
+    # raises TypeError on a plain tuple.
+    verdict, reason, reviewed = row[0], row[1], row[2]
+    if (current_label or "").strip() != (reviewed or "").strip():
+        return {"verdict": "stale", "reviewed_label": reviewed,
+                "reason": f"reviewed against “{reviewed}”, which this no longer maps to"}
+    return {"verdict": verdict, "reason": reason, "reviewed_label": reviewed}
 
 
 def pending_count(cx, include_singletons=False):
