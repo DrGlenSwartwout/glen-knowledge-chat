@@ -1550,6 +1550,7 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
             return render_pathway_review_page(
                 rows, _pr.canonicals(cx), _pr.stats(cx),
                 directions=_pr.direction_queue(cx, limit=25),
+                conflicts=_pr.direction_conflicts(cx, limit=30),
                 nav=_workflow_nav("pathway"))
 
     @app.route("/api/pathway-review/queue")

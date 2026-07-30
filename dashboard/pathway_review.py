@@ -24,6 +24,10 @@ from dashboard import dbwrite
 GLEN_DECISIONS = ("confirmed", "orphan", "rejected")
 PENDING = ("proposed", "proposed-reject")
 DIRECTIONS = ("up", "down", "balance", "substrate", "adverse", "neutral", "unknown")
+# Verdicts whose subject is the ATOM rather than the (atom, canonical) pair, so
+# they survive a canonical being relabelled or re-homed. `wrong`, `too_coarse`
+# and `correct` are all statements ABOUT the pairing and must still go stale.
+ATOM_SCOPED_VERDICTS = ("not_a_pathway",)
 
 
 def _db_path():
@@ -174,10 +178,18 @@ def verdict_for(cx, atom_key, current_label):
     reviewing. Showing the verdict on the card turns a blind judgement into a
     second opinion.
 
-    A verdict is keyed to the (atom, canonical) PAIR it was given for. The
-    vocabulary repair split many canonicals, so a "correct" verdict against a
+    Most verdicts are keyed to the (atom, canonical) PAIR they were given for.
+    The vocabulary repair split many canonicals, so a "correct" verdict against a
     since-changed label would read as endorsement of a mapping nobody reviewed.
     Those surface as `stale` instead — 21% of stored verdicts, measured.
+
+    But `not_a_pathway` is a judgement about the ATOM, not the pair: "this
+    fragment is not a mechanism at all" stays true no matter which canonical the
+    atom is later pointed at, so relabelling must not silence it. Treating it as
+    pair-scoped hid 47 of the 70 atom-level rejections — including two
+    independent rounds on `retinol` ("nutrient/molecule name; retinol is not an
+    RAR ligand, and both source strings are about BCO1 cleavage"), which had
+    diagnosed a defect that then cost a full family pass to rediscover.
     """
     try:
         row = cx.execute(
@@ -191,7 +203,8 @@ def verdict_for(cx, atom_key, current_label):
     # row_factory) and directly by callers that have not, so a keyed lookup
     # raises TypeError on a plain tuple.
     verdict, reason, reviewed = row[0], row[1], row[2]
-    if (current_label or "").strip() != (reviewed or "").strip():
+    if (current_label or "").strip() != (reviewed or "").strip() \
+            and verdict not in ATOM_SCOPED_VERDICTS:
         return {"verdict": "stale", "reviewed_label": reviewed,
                 "reason": f"reviewed against “{reviewed}”, which this no longer maps to"}
     return {"verdict": verdict, "reason": reason, "reviewed_label": reviewed}
@@ -277,6 +290,46 @@ def direction_queue(cx, limit=40):
         "SELECT effect_key, direction, confidence, n_rows FROM pathway_effect_direction "
         "WHERE decision='proposed' AND (direction='unknown' OR confidence='low') "
         "ORDER BY n_rows DESC, effect_key LIMIT ?", (int(limit),)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def direction_conflicts(cx, limit=40):
+    """Atoms whose direction axis contradicts itself.
+
+    Deliberately a SEPARATE surface from `direction_queue`. That queue asks the
+    classifier "were you unsure?" and shows what it could not place. These rows
+    are the opposite failure: classified with high confidence, about the wrong
+    noun. `classify_effect` scores how clearly a phrase LEADS with a direction
+    word, which measures phrasing clarity rather than subject correctness, so a
+    prose effect opening "upward modulation of…" scores high while describing a
+    different molecule than the atom. No confidence signal derived from surface
+    form can catch that; only the cross-row contradiction can.
+
+    Two kinds, both written by the vault rebuild (which owns `normalize_effect`,
+    so the normalization is not duplicated here):
+
+      same_ingredient  one ingredient asserts both up and down for one atom —
+                       it cannot be doing both, so the effect strings are
+                       describing different subjects (mediator vs function:
+                       scavenging ROS is `down` for ROS and `up` for antioxidant
+                       capacity, and the two signs cancel). 17 atoms.
+      multi_target     one pathway string names opposite directions for
+                       different targets, and the single row-level direction is
+                       broadcast to atoms it contradicts. 68 atoms / 25 rows.
+
+    Ordered same_ingredient first: those are unambiguous defects, while the
+    multi_target screen is heuristic (~78% precision on a held-out sample), so
+    the caller sees the certain ones before the ones needing a judgement call.
+    """
+    cx.row_factory = sqlite3.Row
+    try:
+        rows = cx.execute(
+            "SELECT atom_key, kind, ingredient_id, pathway_row_id, directions, "
+            "n_rows, detail FROM pathway_direction_conflicts "
+            "ORDER BY CASE kind WHEN 'same_ingredient' THEN 0 ELSE 1 END, "
+            "n_rows DESC, atom_key LIMIT ?", (int(limit),)).fetchall()
+    except sqlite3.OperationalError:
+        return []            # table absent until the vault rebuild has run
     return [dict(r) for r in rows]
 
 
