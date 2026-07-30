@@ -490,6 +490,25 @@ def test_coaching_active_renders_iframe_and_days_remaining(app_client_member):
     assert b"Jane" in r.data or b"jane" in r.data
 
 
+def test_coaching_lifetime_membership_renders_without_renewal_copy(app_client_member):
+    client, _, db = app_client_member
+    cx = sqlite3.connect(db)
+    cx.execute(
+        "UPDATE memberships SET expires_at=NULL WHERE email='jane@example.com'"
+    )
+    cx.commit()
+    cx.close()
+
+    client.set_cookie("rm_member_email", "jane@example.com")
+    r = client.get("/coaching")
+
+    assert r.status_code == 200
+    assert b"Lifetime access" in r.data
+    assert b"Your membership does not expire." in r.data
+    assert b"None days remaining" not in r.data
+    assert b"When your access ends" not in r.data
+
+
 def test_coaching_lapsed_renders_truly_vip_cta(app_client_member):
     client, app_module, db = app_client_member
     # No cookie, no active membership for the implicit visitor
