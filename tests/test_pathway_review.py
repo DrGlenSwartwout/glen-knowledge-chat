@@ -164,3 +164,46 @@ def test_direction_queue_surfaces_only_the_unconfident(cx):
     pr.set_direction(cx, "crosses", "substrate")
     assert [d["effect_key"] for d in pr.direction_queue(cx)] == ["feeds"]
     assert pr.set_direction(cx, "feeds", "sideways") is None
+
+
+def _verdicts(cx, rows):
+    cx.executemany("INSERT INTO pathway_review_verdicts"
+                   "(atom_key,reviewed_label,verdict,reason,round) VALUES(?,?,?,?,2)", rows)
+    cx.commit()
+
+
+def test_verdict_shows_when_the_mapping_still_matches(cx):
+    _verdicts(cx, [("nf kappab", "NF-κB", "wrong", "isoform confusion")])
+    v = pr.verdict_for(cx, "nf kappab", "NF-κB")
+    assert v["verdict"] == "wrong" and v["reason"] == "isoform confusion"
+
+
+def test_verdict_goes_stale_when_the_canonical_changed(cx):
+    """The load-bearing guard. A 'correct' verdict against a since-split
+    canonical would read as endorsement of a mapping nobody reviewed — 21% of
+    stored verdicts are in this state after the vocabulary repair."""
+    _verdicts(cx, [("cyclooxygenase", "COX-2", "correct", None)])
+    v = pr.verdict_for(cx, "cyclooxygenase", "Cyclooxygenase (unspecified isoform)")
+    assert v["verdict"] == "stale"
+    assert "COX-2" in v["reason"]
+
+
+def test_no_verdict_is_not_an_endorsement(cx):
+    assert pr.verdict_for(cx, "never reviewed", "NF-κB") is None
+
+
+def test_queue_attaches_the_verdict_to_each_card(cx):
+    cx.execute("INSERT INTO pathway_atoms(pathway_row_id,ingredient_id,position,"
+               "atom,atom_key,is_annotation) VALUES(2,2,1,'NF-kB','nf kappab',0)")
+    _verdicts(cx, [("nf kappab", "NF-κB", "too_coarse", "spans too much")])
+    cx.commit()
+    card = next(r for r in pr.queue(cx) if r["atom_key"] == "nf kappab")
+    assert card["verdict"]["verdict"] == "too_coarse"
+
+
+def test_missing_verdict_table_does_not_break_the_queue(cx):
+    """A fresh db has no verdicts table; the queue must still render."""
+    cx.execute("DROP TABLE pathway_review_verdicts")
+    cx.commit()
+    assert pr.verdict_for(cx, "nf kappab", "NF-κB") is None
+    assert pr.queue(cx, include_singletons=True) is not None

@@ -50,13 +50,33 @@ def render_atom_card(row, canon):
     ex = "".join(f"<li>{_e(e)}</li>" for e in (row.get("examples") or []))
     ex = f"<ul class=pwex>{ex}</ul>" if ex else ""
 
+    # An independent reviewer's verdict on this exact mapping. Shown BEFORE the
+    # buttons because it is the most decision-relevant line on the card: nine
+    # reviewers found 37% of these mappings defective, so a blind confirm is the
+    # failure mode this is here to prevent.
+    v = row.get("verdict") or {}
+    vk = v.get("verdict")
+    if vk:
+        cls = {"correct": "pwvok", "wrong": "pwvbad", "not_a_pathway": "pwvbad",
+               "too_coarse": "pwvwarn", "stale": "pwvstale"}.get(vk, "pwvwarn")
+        label = {"correct": "independent review: agrees",
+                 "wrong": "independent review: WRONG",
+                 "not_a_pathway": "independent review: NOT A PATHWAY",
+                 "too_coarse": "independent review: too coarse to discriminate",
+                 "stale": "independent review: no longer applies"}.get(vk, vk)
+        why = f" &mdash; {_e(v['reason'])}" if v.get("reason") else ""
+        verdict_html = f"<div class='pwverd {cls}'><b>{label}</b>{why}</div>"
+    else:
+        verdict_html = ("<div class='pwverd pwvnone'>no independent review on "
+                        "this mapping</div>")
+
     return (
         f"<div class=pwcard data-atom=\"{_e(row['atom_key'])}\">"
         f"<div class=pwhdr><b class=pwatom>{_e(row['atom'])}</b>"
         f"<span class=pwn>{row['ingredients']} ingredients &middot; "
         f"{row['mentions']} mentions</span></div>"
         f"<div class=pwverdict>{verdict}</div>"
-        f"{ex}"
+        f"{ex}{verdict_html}"
         "<div class=pwact>"
         "<button type=button class='btn' onclick=pwDecide(this,'confirmed')>confirm</button>"
         "<button type=button class='btn ghost' onclick=pwDecide(this,'orphan')"
@@ -110,6 +130,12 @@ body{margin:0;background:var(--bg);color:var(--fg);
 .pwwhy{color:var(--muted,#8a93a0);margin-left:6px}
 .pwex{margin:0 0 8px;padding-left:18px;color:#8a93a0;font-size:11px;line-height:1.5}
 .pwex li{margin:1px 0}
+.pwverd{font-size:12px;margin:6px 0;padding:5px 8px;border-radius:7px;border:1px solid}
+.pwvok{border-color:#2c5c42;background:#101a14;color:#8fc7a8}
+.pwvbad{border-color:#6b2f2f;background:#1a1010;color:#e0a0a0}
+.pwvwarn{border-color:#6b5a2f;background:#1a1710;color:#d8c48a}
+.pwvstale{border-color:#33384a;background:#12141a;color:#8a93a0}
+.pwvnone{border:1px dashed #23262e;background:none;color:#6b7280}
 .pwact{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .pwsel,.pwdir select{background:#0f1218;border:1px solid #222;border-radius:7px;
  color:#cfd6df;padding:5px 8px;font-size:12px;max-width:280px}
