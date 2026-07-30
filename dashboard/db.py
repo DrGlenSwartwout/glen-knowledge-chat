@@ -189,8 +189,15 @@ def _connect_postgres(db_path: str, *, timeout: float):
             # requested timeout; these are session settings and are refreshed on
             # every checkout, so a pooled connection cannot retain stale values.
             timeout_ms = max(100, int(float(timeout) * 1000))
-            c.execute("SET statement_timeout TO %s", (timeout_ms,))
-            c.execute("SET lock_timeout TO %s", (timeout_ms,))
+            timeout_value = f"{timeout_ms}ms"
+            c.execute(
+                "SELECT set_config('statement_timeout', %s, false)",
+                (timeout_value,),
+            )
+            c.execute(
+                "SELECT set_config('lock_timeout', %s, false)",
+                (timeout_value,),
+            )
         raw.commit()
     except Exception:
         pool.putconn(raw)
