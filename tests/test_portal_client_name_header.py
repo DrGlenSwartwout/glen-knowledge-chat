@@ -37,3 +37,4 @@ def test_header_photo_keeps_upload_and_initials_fallback():
     assert 'id="client-photo-file"' in HTML
     assert 'placeholder.style.display = "none"' in HTML
     assert 'placeholder.style.display = ""' in HTML
+    assert ".portal-client-identity[hidden]{display:none}" in HTML
