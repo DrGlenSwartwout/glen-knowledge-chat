@@ -239,11 +239,92 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     var m = location.pathname.match(/\/portal\/([^\/]+)/);
     if (!m) return;
     var token = m[1];
+    var draftKey = 'rm_portal_onboarding_draft:' + token;
+    var draftTimer = null;
+
+    function formValues(form) {
+      var values = {};
+      Array.prototype.forEach.call(form.querySelectorAll('input,select,textarea'), function (field) {
+        if (!field.name) return;
+        if (field.type === 'checkbox') {
+          if (field.name === 'conditions') {
+            if (!values.conditions) values.conditions = [];
+            if (field.checked) values.conditions.push(field.value);
+          } else {
+            values[field.name] = field.checked;
+          }
+        } else {
+          values[field.name] = field.value;
+        }
+      });
+      return values;
+    }
+
+    function applyFormValues(form, values) {
+      values = values || {};
+      Array.prototype.forEach.call(form.querySelectorAll('input,select,textarea'), function (field) {
+        if (!field.name) return;
+        if (field.name === 'conditions') {
+          field.checked = (values.conditions || []).indexOf(field.value) !== -1;
+        } else if (field.type === 'checkbox') {
+          if (values[field.name] !== undefined) field.checked = !!values[field.name];
+        } else if (values[field.name] !== undefined && values[field.name] !== null) {
+          field.value = values[field.name];
+        }
+      });
+      Array.prototype.forEach.call(form.querySelectorAll('input[name="conditions"]'), function (field) {
+        var detail = form.querySelector('[data-condition-detail="' + field.value + '"]');
+        if (detail) detail.hidden = !field.checked;
+      });
+      Array.prototype.forEach.call(form.querySelectorAll('[data-product-kind]'), function (field) {
+        var detail = form.querySelector('[data-product-detail="' + field.getAttribute('data-product-kind') + '"]');
+        if (detail) detail.hidden = !field.checked;
+      });
+      Array.prototype.forEach.call(form.querySelectorAll('[data-extended-kind]'), function (field) {
+        var detail = form.querySelector('[data-extended-detail="' + field.getAttribute('data-extended-kind') + '"]');
+        if (detail) detail.hidden = !field.checked;
+      });
+    }
+
+    function serverPrefill(status) {
+      var prefill = (status && status.history_prefill) || {};
+      var values = {};
+      var selected = [];
+      (prefill.conditions || []).forEach(function (item) {
+        if (!item || !item.condition) return;
+        selected.push(item.condition);
+        Object.keys(item.answers || {}).forEach(function (key) {
+          values[key] = item.answers[key];
+        });
+      });
+      values.conditions = selected;
+      Object.keys(prefill.products || {}).forEach(function (key) {
+        if (key !== 'updated_at') values[key] = prefill.products[key];
+      });
+      Object.keys(prefill.extended || {}).forEach(function (key) {
+        values[key] = prefill.extended[key];
+      });
+      return values;
+    }
+
+    function hydrateDraft(status) {
+      var form = mount.querySelector('.ob-triage-form');
+      if (!form) return;
+      var values = serverPrefill(status);
+      try {
+        var saved = JSON.parse(localStorage.getItem(draftKey) || 'null');
+        if (saved && saved.values) values = Object.assign(values, saved.values);
+      } catch (_error) {}
+      applyFormValues(form, values);
+    }
 
     function loadAndRender() {
       return fetch('/api/portal/' + token + '/onboarding')
         .then(function (r) { return r.ok ? r.json() : {enabled:false, status:null}; })
-        .then(function (d) { mount.innerHTML = d.enabled ? renderOnboarding(d.status) : ''; })
+        .then(function (d) {
+          mount.innerHTML = d.enabled ? renderOnboarding(d.status) : '';
+          if (d.enabled) hydrateDraft(d.status);
+        })
         .catch(function () {});
     }
 
@@ -400,6 +481,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       }).then(function () {
         msg.textContent = _triageSuccessMessage(consult);
         msg.className = 'ob-triage-msg ob-triage-ok';
+        try { localStorage.removeItem(draftKey); } catch (_error) {}
         setTimeout(loadAndRender, 900);
       }).catch(function () {
         msg.textContent = 'Something went wrong — please try again.';
@@ -426,6 +508,19 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
           checkbox.getAttribute('data-extended-kind') + '"]');
         if (extendedDetail) extendedDetail.hidden = !checkbox.checked;
       }
+    });
+    mount.addEventListener('input', function (e) {
+      var form = e.target && e.target.closest ? e.target.closest('.ob-triage-form') : null;
+      if (!form) return;
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(function () {
+        try {
+          localStorage.setItem(draftKey, JSON.stringify({
+            saved_at: new Date().toISOString(),
+            values: formValues(form)
+          }));
+        } catch (_error) {}
+      }, 250);
     });
 
     loadAndRender();

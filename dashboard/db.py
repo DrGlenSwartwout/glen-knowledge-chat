@@ -175,11 +175,22 @@ def _connect_postgres(db_path: str, *, timeout: float):
     from dashboard.dbschema import schema_for_path
     schema = schema_for_path(db_path)  # already sanitized to [a-z0-9_] -> safe to quote-interpolate
     pool = _get_pg_pool(dsn, timeout)
-    raw = pool.getconn()
+    # Pool exhaustion used to ignore ``connect(..., timeout=...)`` entirely:
+    # psycopg_pool's default checkout wait is much longer than SQLite's bounded
+    # busy timeout, leaving portal requests spinning behind the global loading
+    # screen. Keep both backends on the same fail-fast contract.
+    raw = pool.getconn(timeout=max(0.1, float(timeout)))
     try:
         _ensure_pg_schema(raw, dsn, schema)
         with raw.cursor() as c:
             c.execute(f'SET search_path TO "{schema}"')
+            # A checked-out connection can also block on a statement or row/table
+            # lock after the pool wait succeeds. Bound both waits to the caller's
+            # requested timeout; these are session settings and are refreshed on
+            # every checkout, so a pooled connection cannot retain stale values.
+            timeout_ms = max(100, int(float(timeout) * 1000))
+            c.execute("SET statement_timeout TO %s", (timeout_ms,))
+            c.execute("SET lock_timeout TO %s", (timeout_ms,))
         raw.commit()
     except Exception:
         pool.putconn(raw)

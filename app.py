@@ -22,11 +22,14 @@ import secrets
 import sqlite3
 import mimetypes
 import threading
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
-from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context, render_template_string, redirect
+from flask import (Flask, request, jsonify, send_from_directory, Response,
+                   stream_with_context, render_template_string, redirect, g,
+                   has_request_context)
 from flask_cors import CORS
 from pinecone import Pinecone
 import anthropic
@@ -80,6 +83,75 @@ _MAINTENANCE_TRUTHY = {"1", "true", "yes", "on"}
 # Do NOT add normal money/order/portal/checkout prefixes here — those writes
 # are exactly what MAINTENANCE_MODE exists to freeze.
 _MAINTENANCE_EXEMPT_PREFIXES = ("/admin", "/console", "/api/admin", "/api/console")
+
+# Request timing for the customer-facing surfaces that can otherwise fail as an
+# undifferentiated endless spinner. Route labels come from Flask's URL rule, never
+# request.path, so bearer portal tokens are not written to logs or Server-Timing.
+_TIMED_SURFACE_PREFIXES = ("/api/portal/", "/begin/match/chat", "/begin/fireside/agent")
+_TIMED_REQUEST_WARN_MS = float(os.environ.get("TIMED_REQUEST_WARN_MS", "1500"))
+
+
+def _timed_surface():
+    path = request.path
+    return any(path.startswith(prefix) for prefix in _TIMED_SURFACE_PREFIXES)
+
+
+def _timed_route_label():
+    rule = getattr(request, "url_rule", None)
+    if rule is not None:
+        return str(rule.rule)
+    # Defensive fallback for an unmatched route. Never log a path segment that
+    # may be a bearer token.
+    return re.sub(r"^(/api/portal/)[^/]+", r"\1<redacted>", request.path)
+
+
+@contextmanager
+def _request_timing_step(name):
+    """Record one bounded phase inside an observed request.
+
+    No-op outside a request or for unobserved surfaces, which keeps helpers safe
+    in tests/background jobs. Names are code literals only.
+    """
+    if not has_request_context() or not getattr(g, "_timed_request", False):
+        yield
+        return
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        g._timing_steps.append((str(name), elapsed_ms))
+
+
+@app.before_request
+def _start_request_timing():
+    if not _timed_surface():
+        return None
+    incoming = (request.headers.get("X-Request-ID") or "").strip()
+    request_id = incoming if re.match(r"^[A-Za-z0-9._-]{1,64}$", incoming) else uuid.uuid4().hex[:16]
+    g._timed_request = True
+    g._timing_started = time.monotonic()
+    g._timing_steps = []
+    g._request_id = request_id
+    return None
+
+
+@app.after_request
+def _finish_request_timing(response):
+    if not getattr(g, "_timed_request", False):
+        return response
+    total_ms = (time.monotonic() - g._timing_started) * 1000
+    timings = [("app", total_ms)] + list(g._timing_steps)
+    response.headers["Server-Timing"] = ", ".join(
+        f"{name};dur={elapsed:.1f}" for name, elapsed in timings)
+    response.headers["X-Request-ID"] = g._request_id
+    if total_ms >= _TIMED_REQUEST_WARN_MS:
+        app.logger.warning(
+            "slow request id=%s method=%s route=%s status=%s total_ms=%.1f steps=%s",
+            g._request_id, request.method, _timed_route_label(),
+            response.status_code, total_ms,
+            ",".join(f"{name}:{elapsed:.1f}" for name, elapsed in g._timing_steps))
+    return response
 
 
 def _maintenance_mode_on():
@@ -13608,13 +13680,19 @@ def _active_membership_for_email(email):
     with db.connect(LOG_DB) as cx:
         cx.row_factory = sqlite3.Row
         row = cx.execute(
-            "SELECT * FROM memberships WHERE email=? AND expires_at > ? "
-            "ORDER BY expires_at DESC LIMIT 1",
+            "SELECT * FROM memberships WHERE email=? "
+            "AND (expires_at IS NULL OR expires_at > ?) "
+            "ORDER BY CASE WHEN expires_at IS NULL THEN 1 ELSE 0 END DESC, "
+            "expires_at DESC LIMIT 1",
             (email, datetime.utcnow().isoformat() + "Z")
         ).fetchone()
     if not row:
         return None
     d = dict(row)
+    d["lifetime"] = not bool(d.get("expires_at"))
+    if d["lifetime"]:
+        d["days_remaining"] = None
+        return d
     try:
         exp_dt = _parse_utc(d["expires_at"])
         d["days_remaining"] = max(0, (exp_dt - _now_utc()).days)
@@ -13913,6 +13991,13 @@ def api_console_scan_recommendations_sync():
                     print(f"[scan-recs-sync] skipped bad scan: {_e!r}", flush=True)
                     continue
                 if n:
+                    def _scan_product_key(code):
+                        slug = _resolve_remedy_slug({"name": code}) or ""
+                        return slug if slug and _get_product(slug) else ""
+
+                    _sr.replace_ranked_events(
+                        cx, email, sc.get("scan_id"), sc.get("scan_date"),
+                        sc.get("items") or [], _scan_product_key)
                     rows += n
                     scans += 1
                     wrote_for_client = True
@@ -14336,11 +14421,13 @@ def membership_category(email):
                 # discount from a now-paying member — so require no OTHER active grant.
                 now_iso = datetime.utcnow().isoformat() + "Z"
                 deposit = cx.execute(
-                    "SELECT 1 FROM memberships WHERE email=? AND expires_at > ? "
+                    "SELECT 1 FROM memberships WHERE email=? "
+                    "AND (expires_at IS NULL OR expires_at > ?) "
                     "AND source='biofield_trial' LIMIT 1", (email, now_iso)).fetchone()
                 if deposit:
                     other_paid = cx.execute(
-                        "SELECT 1 FROM memberships WHERE email=? AND expires_at > ? "
+                        "SELECT 1 FROM memberships WHERE email=? "
+                        "AND (expires_at IS NULL OR expires_at > ?) "
                         "AND source!='biofield_trial' LIMIT 1", (email, now_iso)).fetchone()
                     if not other_paid:
                         return "trial"
@@ -20646,9 +20733,10 @@ def client_portal_bodymap_page(token):
 @app.route("/api/portal/<token>")
 def api_client_portal(token):
     from dashboard import client_portal as _cp
-    with db.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        portal = _portal_record_for(cx, token)
+    with _request_timing_step("identity"):
+        with db.connect(LOG_DB) as cx:
+            _cp.init_client_portal_table(cx)
+            portal = _portal_record_for(cx, token)
     if not portal:
         return jsonify({"error": "not found"}), 404
     try:
@@ -21452,12 +21540,14 @@ def api_portal_onboarding(token):
     tile can link straight into the token's own portal page."""
     from dashboard import client_portal as _cp, portal_onboarding as _ob
     with db.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        portal = _portal_record_for(cx, token)
+        with _request_timing_step("identity"):
+            _cp.init_client_portal_table(cx)
+            portal = _portal_record_for(cx, token)
         if not portal:
             return jsonify({"error": "not found"}), 404
         email = (portal.get("email") or "").strip().lower()
-        status = _ob.build_status(cx, email)
+        with _request_timing_step("onboarding"):
+            status = _ob.build_status(cx, email)
     for ph in status.get("phases", []):
         for st in ph.get("steps", []):
             h = st.get("href") or ""
@@ -21899,13 +21989,14 @@ def api_portal_photo_upload(token):
     if len(blob) > _PHOTO_MAX:
         return jsonify({"ok": False, "error": "image too large (max 5 MB)"}), 400
     from dashboard import client_portal as _cp
-    with _db_lock, db.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        portal = _portal_record_for(cx, token)
-        email = (portal.get("email") or "").strip().lower() if portal else ""
-        if not email:
-            return jsonify({"ok": False, "error": "not found"}), 404
-        _cph.put(cx, email, blob, ctype, source="portal-self")
+    with _request_timing_step("photo_write"):
+        with _db_lock, db.connect(LOG_DB) as cx:
+            _cp.init_client_portal_table(cx)
+            portal = _portal_record_for(cx, token)
+            email = (portal.get("email") or "").strip().lower() if portal else ""
+            if not email:
+                return jsonify({"ok": False, "error": "not found"}), 404
+            _cph.put(cx, email, blob, ctype, source="portal-self")
     return jsonify({"ok": True})
 
 
@@ -21915,11 +22006,12 @@ def api_portal_photo_serve(token):
     portal <img> hides cleanly."""
     from dashboard import client_photos as _cph
     from dashboard import client_portal as _cp
-    with db.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        portal = _portal_record_for(cx, token)
-        email = (portal.get("email") or "").strip().lower() if portal else ""
-        rec = _cph.get(cx, email) if email else None
+    with _request_timing_step("photo_read"):
+        with db.connect(LOG_DB) as cx:
+            _cp.init_client_portal_table(cx)
+            portal = _portal_record_for(cx, token)
+            email = (portal.get("email") or "").strip().lower() if portal else ""
+            rec = _cph.get(cx, email) if email else None
     if not rec:
         return Response("", status=404)
     resp = Response(rec["blob"], mimetype=rec["content_type"])
@@ -28363,25 +28455,27 @@ def api_client_portal_view(token):
     from dashboard import supplement_reviews as _sr
     sess = request.cookies.get("rm_portal_session", "")
     with db.connect(LOG_DB) as cx:
-        _cp.init_client_portal_table(cx)
-        ident = _pi.resolve_identity(
-            cx, token=token, session_token=sess,
-            client_login_enabled=_client_login_enabled())
+        with _request_timing_step("identity"):
+            _cp.init_client_portal_table(cx)
+            ident = _pi.resolve_identity(
+                cx, token=token, session_token=sess,
+                client_login_enabled=_client_login_enabled())
         if ident is None:
             return jsonify({"error": "not found"}), 404
-        view = _pv.get_portal_view(cx, ident.person_id,
-                                   offers_enabled_keys=_enabled_offer_keys(),
-                                   quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
-                                   finder_enabled=_PORTAL_FINDER_ENABLED,
-                                   hub_enabled=_PORTAL_HUB_ENABLED,
-                                   health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
-                                   biofield_unlocked=_portal_biofield_unlocked(ident.email),
-                                   supplement_review_enabled=_sr.enabled(),
-                                   remedies_enabled=_PORTAL_REMEDIES_ENABLED,
-                                   oasis_enabled=_PORTAL_OASIS_ENABLED,
-                                   terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email),
-                                   cart_enabled=_PORTAL_CART_ENABLED,
-                                   caregiver_pay_enabled=_caregiver_pay_enabled())
+        with _request_timing_step("view"):
+            view = _pv.get_portal_view(cx, ident.person_id,
+                                       offers_enabled_keys=_enabled_offer_keys(),
+                                       quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
+                                       finder_enabled=_PORTAL_FINDER_ENABLED,
+                                       hub_enabled=_PORTAL_HUB_ENABLED,
+                                       health_profile_enabled=_PORTAL_HEALTH_PROFILE_ENABLED,
+                                       biofield_unlocked=_portal_biofield_unlocked(ident.email),
+                                       supplement_review_enabled=_sr.enabled(),
+                                       remedies_enabled=_PORTAL_REMEDIES_ENABLED,
+                                       oasis_enabled=_PORTAL_OASIS_ENABLED,
+                                       terrain_phase=_resolve_oasis_terrain_phase(cx, ident.email),
+                                       cart_enabled=_PORTAL_CART_ENABLED,
+                                       caregiver_pay_enabled=_caregiver_pay_enabled())
     if view is None:
         return jsonify({"error": "not found"}), 404
     view["auth_method"] = ident.auth_method
@@ -42389,27 +42483,37 @@ def admin_membership_grant():
     truly_vip_ref = (data.get("truly_vip_ref") or "").strip() or None
     notes = data.get("notes")
     days_raw = data.get("days")
+    lifetime = data.get("lifetime") is True
 
     allowed_sources = {
         "video", "cash", "studio_credit",
         "bonus_biofield", "bonus_cert", "bonus_one_to_one",
         "bonus_healing_oasis", "bonus_hawaii", "bonus_consultant",
+        "owner_lifetime",
     }
     if not email or "@" not in email:
         return jsonify({"error": "email required"}), 400
     if source not in allowed_sources:
         return jsonify({"error": f"unknown source; allowed={sorted(allowed_sources)}"}), 400
-    try:
-        days = int(days_raw) if days_raw is not None else 30
-    except (TypeError, ValueError):
-        return jsonify({"error": "days must be an integer"}), 400
-    if days <= 0 or days > 3650:
-        return jsonify({"error": "days out of range"}), 400
+    if lifetime:
+        if source != "owner_lifetime":
+            return jsonify({"error": "lifetime grants require source=owner_lifetime"}), 400
+        if not str(notes or "").strip():
+            return jsonify({"error": "notes are required for a lifetime grant"}), 400
+        days = None
+    else:
+        try:
+            days = int(days_raw) if days_raw is not None else 30
+        except (TypeError, ValueError):
+            return jsonify({"error": "days must be an integer"}), 400
+        if days <= 0 or days > 3650:
+            return jsonify({"error": "days out of range"}), 400
 
     membership_id = str(uuid.uuid4())
     granted_by = request.headers.get("X-Console-Granted-By", "glen")
     granted_at = datetime.utcnow().isoformat() + "Z"
-    expires_at = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
+    expires_at = None if lifetime else (
+        datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
 
     with _db_lock, db.connect(LOG_DB) as cx:
         cx.execute(
@@ -42425,15 +42529,18 @@ def admin_membership_grant():
     magic_link_url = f"{base}/coaching/auth/{plain}"
 
     subject = "Your Remedy Match coaching access is open"
+    access_phrase = "permanently" if lifetime else f"for the next {days} days"
+    renewal_copy = "" if lifetime else (
+        f"When you'd like to renew for another 30 days, record a fresh 3-5 minute video at "
+        f"https://truly.vip/Results.\n\n")
     body = (
         f"Hi,\n\n"
-        f"Your Remedy Match coaching access has been opened for the next {days} days.\n\n"
+        f"Your Remedy Match coaching access has been opened {access_phrase}.\n\n"
         f"Click here to sign in:\n{magic_link_url}\n\n"
         f"You'll land in your member dashboard with the AI agent loaded for your context. "
         f"You can chat 24/7, request a direct video reply from Glen on tricky questions, "
         f"and join the monthly group Zoom call.\n\n"
-        f"When you'd like to renew for another 30 days, record a fresh 3-5 minute video at "
-        f"https://truly.vip/Results.\n\n"
+        f"{renewal_copy}"
         f"---\n"
         f"Remedy Match LLC, 351 Wailuku Drive, Hilo, Hawai'i 96720 USA\n"
     )
@@ -42454,7 +42561,7 @@ def admin_membership_grant():
                 "(ts, session_id, email, trigger, detail, rung_before, rung_after) "
                 "VALUES (?, ?, ?, 'membership_granted', ?, '', '')",
                 (granted_at, "", email,
-                 _json.dumps({"source": source, "days": days,
+                 _json.dumps({"source": source, "days": days, "lifetime": lifetime,
                               "membership_id": membership_id,
                               "truly_vip_ref": truly_vip_ref or ""}))
             )
@@ -42466,6 +42573,7 @@ def admin_membership_grant():
         "membership_id": membership_id,
         "magic_link_url": magic_link_url,
         "expires_at": expires_at,
+        "lifetime": lifetime,
     }), 200
 
 
@@ -44224,7 +44332,8 @@ def console_membership_revoke():
     try:
         init_membership_tables(cx)
         cur = cx.execute(
-            "UPDATE memberships SET expires_at=? WHERE email=? AND expires_at > ?",
+            "UPDATE memberships SET expires_at=? WHERE email=? "
+            "AND (expires_at IS NULL OR expires_at > ?)",
             (now, email, now))
         n = cur.rowcount
         cx.commit()

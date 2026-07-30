@@ -1126,10 +1126,22 @@
     function streamMatch(query){
       var box = heroAppend('assistant', '');
       var acc = '';
+      var controller = new AbortController();
+      var watchdog = null;
+      var timedOut = false;
+      function armWatchdog(){
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = setTimeout(function(){
+          timedOut = true;
+          controller.abort();
+        }, 20000);
+      }
+      armWatchdog();
       return fetch('/begin/match/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
+        signal: controller.signal,
         body: JSON.stringify({
           query: query, history: heroHistory.slice(),
           for_whom: 'me', session_id: '', name: '', email: ''
@@ -1141,7 +1153,15 @@
         var buf = '';
         function pump(){
           return reader.read().then(function(chunk){
-            if (chunk.done) { box.innerHTML = heroLinkify(acc); heroSpeak(box, acc); heroHistory.push({ role: 'assistant', content: acc }); heroSave(); return; }
+            armWatchdog();
+            if (chunk.done) {
+              clearTimeout(watchdog);
+              if (!acc.trim()) {
+                box.textContent = 'I didn’t receive a reply. Please try sending that again.';
+                return;
+              }
+              box.innerHTML = heroLinkify(acc); heroSpeak(box, acc); heroHistory.push({ role: 'assistant', content: acc }); heroSave(); return;
+            }
             buf += decoder.decode(chunk.value, { stream: true });
             var lines = buf.split('\n'); buf = lines.pop();
             lines.forEach(function(line){
@@ -1155,7 +1175,12 @@
           });
         }
         return pump();
-      }).catch(function(){ box.textContent = 'Something went sideways. Please try again.'; });
+      }).catch(function(){
+        clearTimeout(watchdog);
+        box.textContent = timedOut
+          ? 'That reply took too long. Please try sending your message again.'
+          : 'Something went sideways. Please try again.';
+      });
     }
 
     function send(){
