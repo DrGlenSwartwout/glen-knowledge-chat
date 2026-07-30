@@ -354,18 +354,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       return payload;
     }
 
-    function submitCondition(form, condition) {
-      return fetch('/api/portal/' + token + '/triage', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(conditionPayload(form, condition))
-      })
-        .then(function (r) {
-          return r.ok ? r.json() : Promise.reject(new Error('bad response'));
-        });
-    }
-
-    function submitProducts(form) {
+    function productsPayload(form) {
       var payload = {};
       ['prescriptions', 'otc', 'supplements'].forEach(function (kind) {
         var yes = form.querySelector('input[name="' + kind + '_yes"]');
@@ -373,16 +362,10 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         payload[kind + '_yes'] = !!(yes && yes.checked);
         payload[kind + '_text'] = text ? text.value.trim() : '';
       });
-      return fetch('/api/portal/' + token + '/health-history/products', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      }).then(function (r) {
-        return r.ok ? r.json() : Promise.reject(new Error('bad response'));
-      });
+      return payload;
     }
 
-    function submitExtendedHistory(form) {
+    function extendedHistoryPayload(form) {
       var payload = {};
       [
         'surgeries', 'physical_trauma', 'psychoemotional_trauma', 'toxins',
@@ -394,13 +377,37 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         payload[kind + '_yes'] = !!(yes && yes.checked);
         payload[kind + '_text'] = text ? text.value.trim() : '';
       });
-      return fetch('/api/portal/' + token + '/health-history/extended', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      }).then(function (r) {
-        return r.ok ? r.json() : Promise.reject(new Error('bad response'));
-      });
+      return payload;
+    }
+
+    function submitStarterRemedies(form, selected) {
+      var payload = {
+        conditions: selected.map(function (condition) {
+          return conditionPayload(form, condition);
+        }),
+        products: productsPayload(form),
+        extended: extendedHistoryPayload(form)
+      };
+      function send(attempt) {
+        return fetch('/api/portal/' + token + '/starter-remedies', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (body) {
+            if (r.status === 503 && attempt < 1) {
+              return new Promise(function (resolve) {
+                setTimeout(resolve, 800);
+              }).then(function () { return send(attempt + 1); });
+            }
+            if (!r.ok) {
+              throw new Error(body.error || 'We could not save your answers.');
+            }
+            return body;
+          });
+        });
+      }
+      return send(0);
     }
 
     // Delegated listeners: the tile's innerHTML is replaced wholesale on every
@@ -465,26 +472,15 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
       }
       msg.textContent = 'Saving…';
       msg.className = 'ob-triage-msg';
-      var consult = false;
-      selected.reduce(function (chain, condition) {
-        return chain.then(function () {
-          return submitCondition(form, condition).then(function (body) {
-            consult = consult || !!(body && body.consult_recommended);
-          });
-        });
-      }, Promise.resolve()).then(function () {
-        return form.querySelector('[data-history-section="products"]')
-          ? submitProducts(form) : null;
-      }).then(function () {
-        return form.querySelector('[data-history-section="extended"]')
-          ? submitExtendedHistory(form) : null;
-      }).then(function () {
-        msg.textContent = _triageSuccessMessage(consult);
+      submitStarterRemedies(form, selected).then(function (body) {
+        msg.textContent = _triageSuccessMessage(
+          !!(body && body.consult_recommended));
         msg.className = 'ob-triage-msg ob-triage-ok';
         try { localStorage.removeItem(draftKey); } catch (_error) {}
         setTimeout(loadAndRender, 900);
-      }).catch(function () {
-        msg.textContent = 'Something went wrong — please try again.';
+      }).catch(function (error) {
+        msg.textContent = (error && error.message) ||
+          'Something went wrong — please try again.';
         msg.className = 'ob-triage-msg ob-triage-err';
       });
     });
