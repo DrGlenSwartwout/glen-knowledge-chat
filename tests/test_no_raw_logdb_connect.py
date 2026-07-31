@@ -44,6 +44,10 @@ def _scanned_files():
     for p in sorted((ROOT / "dashboard").glob("*.py")):
         if p.name not in _ALLOWED:
             yield p
+    # Production cron scripts can also write chat_log. Keep known live writers
+    # explicit here so a broad scripts/ scan does not misclassify local-only
+    # SQLite utilities while still preventing adapter bypasses in deployed jobs.
+    yield ROOT / "scripts" / "scan_supplier_quotes.py"
 
 
 def test_no_raw_chatlog_connect_bypasses_adapter():
