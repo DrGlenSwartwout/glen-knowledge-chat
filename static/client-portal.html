@@ -2728,7 +2728,7 @@ function render(d, v){
   // Under the hub, each secondary card routes into its own [data-panel] section
   // (below) instead of the single scroll; without the hub, every card still
   // appends to `html` exactly as before (off-state byte-identical).
-  let _askHtml="", _finderHtml="", _bodymapHtml="", _classesHtml="", _accountHtml="", _referHtml="", _referralsHtml="", _offersHtml="";
+  let _askHtml="", _finderHtml="", _bodymapHtml="", _classesHtml="", _accountHtml="", _payerOrdersHtml="", _referHtml="", _referralsHtml="", _offersHtml="";
 
   // "Ask Dr. Glen" concierge chat — promoted to the TOP of the portal (first card
   // below the hero) so it's the first thing the client sees. Always shown.
@@ -3435,9 +3435,10 @@ function render(d, v){
         <button class="btn cg-pay" data-order="${esc(String(o.order_id))}">Pay $${esc(o.amount_dollars)}</button>
         ${items}</div>`;
     });
-    html += `<div class="card"><h2>Orders you're paying for</h2>
+    const payerOrdersCard = `<div class="card"><h2>Orders you're paying for</h2>
       <p class="muted small">A household member asked you to cover these. Your payment is recorded as yours; their order and health records stay theirs.</p>
       <div>${rows}</div></div>`;
+    if (_hub) { _payerOrdersHtml += payerOrdersCard; } else { html += payerOrdersCard; }
   }
 
   // Sales / upgrade (feature #2): the single next eligible ladder rung + CTA.
@@ -3645,8 +3646,9 @@ function render(d, v){
         <input type="checkbox" class="hh-pay" data-care="${esc(c.primary_email)}" ${ck}>
         Let ${esc(c.primary_email)} pay for my orders</label>${scopeSel}`;
     }
-    html += `<div class="card quiet"><h2 style="font-size:1rem">Caregiver payments</h2>${rows}
+    const caregiverPaymentsCard = `<div class="card quiet"><h2 style="font-size:1rem">Caregiver payments</h2>${rows}
       <p class="muted small">They can pay your open invoices, and it shows as their expense. Your order and health records stay yours. Turn this off any time.</p></div>`;
+    if (_hub) { _accountHtml += caregiverPaymentsCard; } else { html += caregiverPaymentsCard; }
   }
   if (d.household && d.household.length && d.household_cc) {
     let rows = "";
@@ -3684,7 +3686,7 @@ function render(d, v){
   const _showOldTabs = d.scan_history_enabled && !_hub;
   if (_wrapPanels) {
     const historyHtml = buildScanHistoryHtml(d);
-    const ordersHtml = buildOrdersHtml(d);
+    const ordersHtml = _payerOrdersHtml + buildOrdersHtml(d);
     const tabbar = _showOldTabs ? `<div class="tabbar" id="portalTabs">
         <button type="button" class="tab is-active" data-tab="current" onclick="showTab('current')">Current Analysis</button>
         <button type="button" class="tab" data-tab="history" onclick="showTab('history')">Scan History</button>

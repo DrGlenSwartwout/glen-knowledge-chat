@@ -49,3 +49,12 @@ def test_client_portal_html_wires_caregiver_pay_ui():
     assert "Orders you're paying for" in html
     # beneficiary badge (fields from _orders_block via the /view payload)
     assert "paid_by_caregiver" in html and "Paid by caregiver" in html
+
+
+def test_hub_places_caregiver_controls_in_visible_destination_panels():
+    html = (Path(__file__).resolve().parent.parent / "static" / "client-portal.html").read_text()
+    # The hub hides the legacy `html` stream inside My Analysis. Put the member's
+    # consent control in Account and the payer's button in Orders & Invoices.
+    assert "_accountHtml += caregiverPaymentsCard" in html
+    assert "_payerOrdersHtml += payerOrdersCard" in html
+    assert "const ordersHtml = _payerOrdersHtml + buildOrdersHtml(d)" in html
