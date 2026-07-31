@@ -5,11 +5,15 @@ atom to a canonical pathway, here he confirms that a CONDITION implicates one, i
 stated direction and at a stated importance.
 
 Direction is the field that matters. A missing edge makes a remedy invisible; an
-inverted one makes the score recommend the opposite of what helps. So `decide` records
-a changed direction or tier as source='glen', which is how the vault's batch gate
-measures whether the generator is trustworthy enough to run the systemic batch. A
-plain confirmation leaves source='ai' -- otherwise every confirmation would read as a
-flip and the gate would never open.
+inverted one makes the score recommend the opposite of what helps.
+
+The vault's batch gate measures a direction FLIP by comparing an edge's live
+`desired_direction` against `proposed_direction`, the generator's original proposal,
+which is written once at row creation and which nothing in this module ever writes.
+It deliberately does NOT read `source`: `source` says who last wrote the row, and
+`undo()` resets it, so the ordinary confirm -> undo -> reconfirm loop used to erase a
+recorded correction. `source` is kept here as provenance only -- no measurement
+depends on it.
 
 This module never inserts into canonical_pathways. Pure sqlite; the caller passes the
 connection. Same shape as pathway_review.py.
@@ -24,6 +28,11 @@ import sqlite3
 DIRECTIONS = ("up", "down", "balance", "substrate", "unknown")
 TIERS = ("core", "contributing", "modifying")
 DECISIONS = ("confirmed", "rejected")
+# Mirrors the vault's REJECT_REASONS. 'wrong-direction' is not a bookkeeping detail:
+# the vault's gate counts it as a direction defect alongside a flip, because a
+# reviewer who throws a wrongly-directed edge away has found the same generator
+# failure as one who corrects it.
+REJECT_REASONS = ("wrong-direction", "pathway-not-implicated", "other")
 
 
 def _db_path():
@@ -61,8 +70,11 @@ def init_tables(cx):
         canonical_id INTEGER NOT NULL REFERENCES canonical_pathways(id) ON DELETE CASCADE,
         desired_direction TEXT NOT NULL CHECK(desired_direction IN {DIRECTIONS!r}),
         tier TEXT NOT NULL CHECK(tier IN {TIERS!r}),
+        proposed_direction TEXT,
+        proposed_tier TEXT,
         rationale TEXT NOT NULL,
         decision TEXT NOT NULL DEFAULT 'proposed' CHECK(decision IN ('proposed', 'confirmed', 'rejected')),
+        reject_reason TEXT CHECK(reject_reason IS NULL OR reject_reason IN {REJECT_REASONS!r}),
         source TEXT NOT NULL, decided_at TEXT,
         UNIQUE(condition_key, canonical_id));
     CREATE INDEX IF NOT EXISTS idx_cp_condition ON condition_pathway(condition_key);
@@ -77,6 +89,25 @@ def init_tables(cx):
         proposed_label TEXT NOT NULL, rationale TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL);
     """)
+    # CREATE TABLE IF NOT EXISTS is a no-op against the live vault table, which
+    # predates these three columns, so they need their own guarded ALTER -- same
+    # pattern as the vault's migrate(). The backfill here is the safe half only:
+    # a row still 'proposed' has never been edited, so its current values ARE the
+    # original proposal. A row already decided cannot have its original recovered,
+    # and this module refuses to guess -- the vault's migrate() is the
+    # authoritative migration and STOPS on that case rather than inventing a
+    # baseline that would read as "nothing was corrected".
+    cols = {r[1] for r in cx.execute("PRAGMA table_info(condition_pathway)")}
+    if "proposed_direction" not in cols:
+        cx.execute("ALTER TABLE condition_pathway ADD COLUMN proposed_direction TEXT")
+    if "proposed_tier" not in cols:
+        cx.execute("ALTER TABLE condition_pathway ADD COLUMN proposed_tier TEXT")
+    if "reject_reason" not in cols:
+        cx.execute("ALTER TABLE condition_pathway ADD COLUMN reject_reason TEXT "
+                   "CHECK(reject_reason IS NULL OR reject_reason IN %r)" % (REJECT_REASONS,))
+    cx.execute("UPDATE condition_pathway SET proposed_direction = desired_direction, "
+               "proposed_tier = tier "
+               "WHERE proposed_direction IS NULL AND decision = 'proposed'")
     cx.commit()
 
 
@@ -95,10 +126,26 @@ def stats(cx):
             "conditions": cx.execute("SELECT count(*) FROM conditions").fetchone()[0]}
 
 
-def queue(cx, limit=40, offset=0):
-    """Undecided edges, worst-first: edges whose corpus signal is absent (nothing in
-    the catalog touches that pathway) sort ahead of the rest, then core tier, because
-    those are where a wrong direction costs the most.
+def queue(cx, limit=40):
+    """The top `limit` undecided edges, HIGHEST-SIGNAL FIRST: most products touching
+    the pathway, then core tier.
+
+    Glen's ruling on the polarity. An edge whose pathway nothing in the catalogue
+    touches is inert -- no product's rank can move on it, so a wrong direction there
+    costs nothing today. A wrong direction on a pathway many products touch inverts
+    live recommendations. Review effort goes where the damage is, not where the data
+    is thinnest. (An earlier version sorted corpus-ABSENT edges first, on the theory
+    that an uncovered pathway is the more suspicious row. It is more suspicious and
+    less dangerous, and the queue orders by danger.)
+
+    THERE IS NO `offset` PARAMETER, DELIBERATELY -- do not add one back. This query
+    filters on `decision = 'proposed'`, so the set being paged SHRINKS with every
+    decision. Offset paging over a mutating set skips rows permanently: decide 20 of
+    the first 40, ask for offset=40, and you land past 40 edges you never saw, while
+    the session looks like ordinary forward progress and nothing ever reports the
+    hole. Because decided edges leave the set on their own, always reading from the
+    start IS the paging -- progress is automatic and cannot skip. To see more, ask
+    again.
 
     Deliberately NOT filtered on `conditions.scored`. The vault's `gate_metrics()`
     counts every edge belonging to a condition's batch regardless of `scored`, and
@@ -129,48 +176,101 @@ def queue(cx, limit=40, offset=0):
                  ON s.condition_key = cp.condition_key
                 AND s.canonical_id  = cp.canonical_id
          WHERE cp.decision = 'proposed'
-         ORDER BY (COALESCE(s.n_products,0) = 0) DESC,
+         ORDER BY COALESCE(s.n_products,0) DESC,
                   CASE cp.tier WHEN 'core' THEN 0 WHEN 'contributing' THEN 1 ELSE 2 END,
                   c.key, p.slug
-         LIMIT ? OFFSET ?""", (limit, offset)).fetchall()
+         LIMIT ?""", (limit,)).fetchall()
 
 
-def decide(cx, edge_id, decision, desired_direction=None, tier=None, rationale=None):
-    """Record a decision. Returns the edge id, or None on bad input.
+def decide(cx, edge_id, decision, desired_direction=None, tier=None, rationale=None,
+           reject_reason=None):
+    """Record a decision on an edge that has not been decided yet.
 
-    source becomes 'glen' ONLY when the direction or tier actually changed. That is
-    what the vault's gate_metrics counts as a flip, and a plain confirmation must not
-    be mistaken for one.
+    Returns a dict, never a bare id, because the caller has to tell three outcomes
+    apart and two of them are failures that need opposite responses from the UI:
+
+        {"ok": True,  "edge_id": N}
+        {"ok": False, "error": "conflict", "decision": "confirmed"|"rejected"}
+        {"ok": False, "error": "<invalid-*|unknown-edge>"}
+
+    A CONFLICT is not a bad request. It means someone else already ruled on this
+    edge -- a second browser tab left open on the queue, most likely -- and the
+    honest thing for the UI to say is "another tab already decided this, reload",
+    not "bad request". Telling the two apart is the whole reason for the dict.
+
+    REFUSES to overwrite a decided edge. This read-then-write had no guard on what
+    it read: two tabs showing the same card both submitted, the second write won,
+    stamped a fresh decided_at, and was indistinguishable from a real ruling. On the
+    retinitis-pigmentosa / Stargardt pair that is a safety interlock -- Stargardt
+    wants vitamin A transport DOWN because vitamin A is contraindicated in ABCA4
+    disease -- and the stale tab's 'up' silently reinstated the contraindicated
+    direction. Re-deciding is still possible, the honest way: undo() first, which
+    returns the edge to 'proposed'.
+
+    `source` records provenance only ('glen' once a human has edited the values).
+    NOTHING measures a flip from it -- the vault's gate compares desired_direction
+    against proposed_direction, which this module never writes and undo() cannot
+    reset. See the module docstring.
     """
     if decision not in DECISIONS:
-        return None
+        return {"ok": False, "error": "invalid-decision"}
     if desired_direction is not None and desired_direction not in DIRECTIONS:
-        return None
+        return {"ok": False, "error": "invalid-direction"}
     if tier is not None and tier not in TIERS:
-        return None
+        return {"ok": False, "error": "invalid-tier"}
+    # Validated even on a confirmation, where the value is then ignored: an unknown
+    # reason is a caller bug either way, and silently swallowing it on one branch
+    # would let a typo'd 'wrong direction' reach the reject branch untested.
+    if reject_reason is not None and reject_reason not in REJECT_REASONS:
+        return {"ok": False, "error": "invalid-reject-reason"}
     cx.row_factory = sqlite3.Row
     row = cx.execute("SELECT * FROM condition_pathway WHERE id=?", (edge_id,)).fetchone()
     if row is None:
-        return None
+        return {"ok": False, "error": "unknown-edge"}
+    if row["decision"] != "proposed":
+        return {"ok": False, "error": "conflict", "decision": row["decision"]}
 
     new_dir = desired_direction if desired_direction is not None else row["desired_direction"]
     new_tier = tier if tier is not None else row["tier"]
     changed = (new_dir != row["desired_direction"]) or (new_tier != row["tier"])
+    # A blank rationale means "the form field was empty", not "erase the recorded
+    # reason". COALESCE alone falls through on NULL only, so any route that read an
+    # untouched text input as "" wiped the justification for a safety-relevant
+    # override, with no copy of it anywhere.
+    new_rationale = rationale if (rationale or "").strip() else None
     cx.execute("UPDATE condition_pathway SET decision=?, desired_direction=?, tier=?, "
-               "rationale=COALESCE(?, rationale), source=?, decided_at=? WHERE id=?",
-               (decision, new_dir, new_tier, rationale,
+               "rationale=COALESCE(?, rationale), reject_reason=?, source=?, "
+               "decided_at=? WHERE id=?",
+               (decision, new_dir, new_tier, new_rationale,
+                reject_reason if decision == "rejected" else None,
                 "glen" if changed else row["source"], _now(cx), edge_id))
     cx.commit()
-    return edge_id
+    return {"ok": True, "edge_id": edge_id}
 
 
 def undo(cx, edge_id):
-    """Return an edge to the queue. Resets source to 'ai' so an undone flip stops
-    counting toward the gate."""
+    """Return an edge to the queue so it can be decided again. Same dict shape as
+    decide(), for the same reason.
+
+    This is the ONLY way to re-decide an edge, since decide() refuses anything that
+    is not 'proposed'. Clears the decision, the timestamp and the reject reason, and
+    resets source to 'ai'.
+
+    It leaves any corrected direction/tier in place -- the reviewer sees his own
+    correction when the card comes back, which is what he wants. That used to erase
+    the flip signal (source reset + corrected value left behind = a reconfirmation
+    that compares the correction against itself); it no longer can, because the
+    signal lives in proposed_direction, which nothing here writes.
+    """
+    cx.row_factory = sqlite3.Row
+    row = cx.execute("SELECT decision FROM condition_pathway WHERE id=?",
+                     (edge_id,)).fetchone()
+    if row is None:
+        return {"ok": False, "error": "unknown-edge"}
     cx.execute("UPDATE condition_pathway SET decision='proposed', source='ai', "
-               "decided_at=NULL WHERE id=?", (edge_id,))
+               "reject_reason=NULL, decided_at=NULL WHERE id=?", (edge_id,))
     cx.commit()
-    return edge_id
+    return {"ok": True, "edge_id": edge_id}
 
 
 def needs_canonical(cx, condition_key, label, rationale):

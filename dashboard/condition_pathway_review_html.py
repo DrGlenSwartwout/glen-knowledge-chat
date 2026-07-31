@@ -157,36 +157,44 @@ document.getElementById('cprq').addEventListener('click',async e=>{
    return; }
  const dir=card.querySelector('[data-field=desired_direction]').value;
  const tier=card.querySelector('[data-field=tier]').value;
+ // TODO when the route lands: a rejection should also send a reject_reason from
+ // condition_pathway_review.REJECT_REASONS. A 'wrong-direction' rejection is
+ // counted by the vault's gate as a direction defect, exactly like a flip; with no
+ // reason sent, every rejection reads as non-directional and that signal stays 0.
  const j=await fetch('/api/condition-review/decide',{method:'POST',
    headers:{'Content-Type':'application/json'},
    body:JSON.stringify({edge_id:id,decision:b.dataset.act,
-     desired_direction:dir,tier:tier})}).then(r=>r.json()).catch(()=>({ok:false}));
- if(j && j.ok===false) return;
+     desired_direction:dir,tier:tier})}).then(r=>r.json())
+     .catch(()=>({ok:false,error:'network'}));
+ if(j && j.ok===false){
+   // A conflict is not a bad request: another tab already ruled on this edge and
+   // this card is stale. Say so, and do NOT remove the card -- removing it would
+   // hide that the reviewer's ruling was not the one recorded.
+   alert(j.error==='conflict'
+     ? 'Another tab already decided this edge ('+(j.decision||'decided')+'). '
+       +'Reload the page before ruling on it again.'
+     : 'Not saved ('+(j.error||'error')+').');
+   return; }
  card.classList.add('done');
  card.remove();
 });
-async function cprMore(btn){
- btn.disabled=true;btn.textContent='loading…';
- const off=parseInt(btn.getAttribute('data-offset'));
- const r=await fetch('/api/condition-review/queue?offset='+off);
- const j=await r.json().catch(()=>({}));
- if(j.html){document.getElementById('cprq').insertAdjacentHTML('beforeend',j.html);
-  btn.setAttribute('data-offset',off+(j.count||0))}
- if(!j.count||!j.html){btn.remove();return}
- btn.disabled=false;btn.textContent='load more'}
 </script>"""
 
 
-def render_condition_review_page(rows, stats, nav="", offset=0):
-    """Full review page: stats bar, the card queue, a load-more button (mirrors
-    the sibling's `/api/pathway-review/queue?offset=` pattern; the route itself
-    is a later task)."""
+def render_condition_review_page(rows, stats, nav=""):
+    """Full review page: stats bar and the card queue.
+
+    NO load-more button and no `offset`, deliberately. queue() shows the top N
+    UNDECIDED edges from the start, and decided edges leave that set, so reloading
+    the page is the paging -- see queue()'s docstring for why offset paging over a
+    shrinking set skips edges permanently and silently.
+    """
     cards = "".join(render_edge_card(r) for r in rows)
     empty = ("<p class=\"food\" style=\"margin:18px 0\">Queue is clear &mdash; every "
               "proposed edge has been decided.</p>" if not rows else "")
-    more = ("<button type=button class=\"btn ghost\" data-offset=\"%d\" "
-            "onclick=\"cprMore(this)\">load more</button>"
-            % (offset + len(rows))) if rows else ""
+    more = ("<p class=\"food\" style=\"margin:14px 0;font-size:12px\">Showing the "
+            "highest-signal undecided edges. Reload for the next set &mdash; decided "
+            "edges drop out, so nothing can be skipped.</p>" if rows else "")
     return (
         "<!doctype html><meta charset=utf-8><title>Condition &rarr; pathway review</title>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"

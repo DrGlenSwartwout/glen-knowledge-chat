@@ -1,9 +1,16 @@
 """Condition-pathway review CRUD. Same shape as pathway_review.
 
-The load-bearing test is `test_confirm_with_a_changed_direction_marks_source_glen`.
-The batch gate in the vault counts a FLIP as the signal that the generator is wrong,
-and it reads that signal from source='glen'. If a plain confirm also set source='glen',
-every confirmation would look like a flip and the gate would never open.
+The load-bearing tests are the ones about REFUSAL: `decide()` must refuse an edge that
+is already decided (a stale second tab re-submitting the generator's original
+direction used to win and silently reinstate a contraindicated one), and it must
+refuse to erase a rationale that a blank form field submitted as "".
+
+Note what is NOT load-bearing any more: `source`. The vault's batch gate used to read
+its flip signal from source='glen'; it now compares desired_direction against
+proposed_direction, an immutable record of what the generator first proposed. source
+is provenance only, and `test_a_correction_survives_undo_and_redecision` is the reason
+for the change -- undo() resets source while leaving the corrected value in place, so
+the ordinary confirm -> undo -> reconfirm loop erased the old signal entirely.
 """
 import sqlite3
 
@@ -25,9 +32,12 @@ def cx():
         INSERT INTO conditions(key,label,system,batch,created_at)
             VALUES('dry-eye','Dry Eye','eye','eye','t');
         INSERT INTO condition_pathway
-            (id,condition_key,canonical_id,desired_direction,tier,rationale,decision,source)
-            VALUES(1,'dry-eye',1,'down','core','surface inflammation','proposed','ai'),
-                  (2,'dry-eye',2,'up','contributing','lipid layer','proposed','ai');
+            (id,condition_key,canonical_id,desired_direction,tier,
+             proposed_direction,proposed_tier,rationale,decision,source)
+            VALUES(1,'dry-eye',1,'down','core','down','core',
+                   'surface inflammation','proposed','ai'),
+                  (2,'dry-eye',2,'up','contributing','up','contributing',
+                   'lipid layer','proposed','ai');
     """)
     c.commit()
     yield c
@@ -75,13 +85,156 @@ def test_confirm_restating_the_same_direction_is_not_a_flip(cx):
 
 
 def test_adverse_direction_is_rejected(cx):
-    assert cpr.decide(cx, 1, "confirmed", desired_direction="adverse") is None
+    got = cpr.decide(cx, 1, "confirmed", desired_direction="adverse")
+    assert got["ok"] is False and got["error"] == "invalid-direction"
     r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
     assert r["decision"] == "proposed"
 
 
 def test_bad_decision_is_rejected(cx):
-    assert cpr.decide(cx, 1, "maybe") is None
+    got = cpr.decide(cx, 1, "maybe")
+    assert got["ok"] is False and got["error"] == "invalid-decision"
+
+
+def test_deciding_an_already_decided_edge_is_a_conflict_not_a_silent_overwrite(cx):
+    """The Stargardt trace. Glen confirms the edge corrected to 'down' (vitamin A
+    transport must go DOWN in ABCA4 disease -- vitamin A is contraindicated). A
+    second tab, still showing the generator's original 'up', re-submits. Before the
+    guard the second write won, stamped a fresh decided_at, and was
+    indistinguishable from a real ruling: the safety interlock collapsed to the
+    contraindicated direction with nothing anywhere recording that it had."""
+    first = cpr.decide(cx, 1, "confirmed", desired_direction="down")
+    assert first["ok"] is True
+    stale = cpr.decide(cx, 1, "confirmed", desired_direction="up")
+    assert stale["ok"] is False
+    assert stale["error"] == "conflict"
+    assert stale["decision"] == "confirmed"      # what it was already decided as
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert r["desired_direction"] == "down"      # the ruling stands
+
+
+def test_a_conflict_is_distinguishable_from_a_bad_argument(cx):
+    """The UI has to say 'another tab already decided this, reload' for one and
+    'bad request' for the other. A shared falsy return cannot express that."""
+    cpr.decide(cx, 1, "confirmed")
+    conflict = cpr.decide(cx, 1, "confirmed")
+    bad = cpr.decide(cx, 2, "confirmed", tier="urgent")
+    missing = cpr.decide(cx, 999, "confirmed")
+    assert conflict["error"] == "conflict"
+    assert bad["error"] == "invalid-tier"
+    assert missing["error"] == "unknown-edge"
+    assert len({conflict["error"], bad["error"], missing["error"]}) == 3
+
+
+def test_a_rejected_edge_is_equally_protected(cx):
+    """The guard is on 'not proposed', not on 'confirmed' -- a rejection is a
+    ruling too and a stale tab must not be able to confirm over it."""
+    cpr.decide(cx, 1, "rejected", reject_reason="pathway-not-implicated")
+    got = cpr.decide(cx, 1, "confirmed")
+    assert got["error"] == "conflict" and got["decision"] == "rejected"
+    assert cx.execute("SELECT decision FROM condition_pathway WHERE id=1"
+                      ).fetchone()[0] == "rejected"
+
+
+def test_undo_is_the_honest_way_to_re_decide(cx):
+    """Re-deciding stays possible -- it just has to be deliberate."""
+    cpr.decide(cx, 1, "confirmed", desired_direction="down")
+    assert cpr.decide(cx, 1, "confirmed", desired_direction="up")["ok"] is False
+    assert cpr.undo(cx, 1)["ok"] is True
+    assert cpr.decide(cx, 1, "confirmed", desired_direction="up")["ok"] is True
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert (r["decision"], r["desired_direction"]) == ("confirmed", "up")
+
+
+def test_undo_reports_an_unknown_edge_rather_than_claiming_success(cx):
+    assert cpr.undo(cx, 999) == {"ok": False, "error": "unknown-edge"}
+
+
+def test_a_correction_survives_undo_and_redecision(cx):
+    """The reason the flip signal moved off `source`. undo() resets source to 'ai'
+    and leaves the corrected direction in place, so a reconfirmation compares the
+    correction against itself and records a corrected edge as AI-authored.
+    proposed_direction is written at row creation and nothing here ever touches it,
+    so the vault's gate still sees the correction."""
+    cpr.decide(cx, 1, "confirmed", desired_direction="up")   # proposed was 'down'
+    cpr.undo(cx, 1)
+    cpr.decide(cx, 1, "confirmed", desired_direction="up")   # reconfirm what he sees
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert r["source"] == "ai"                    # the old signal is gone
+    assert r["desired_direction"] == "up"
+    assert r["proposed_direction"] == "down"      # the durable one is not
+
+
+def test_an_empty_rationale_does_not_erase_the_recorded_one(cx):
+    """A route reading an untouched form field submits "", not None. COALESCE falls
+    through on NULL only, so "" used to overwrite the justification for a
+    safety-relevant override, unrecoverably."""
+    cpr.decide(cx, 1, "confirmed", rationale="")
+    r = cx.execute("SELECT rationale FROM condition_pathway WHERE id=1").fetchone()
+    assert r["rationale"] == "surface inflammation"
+
+
+def test_a_whitespace_only_rationale_does_not_erase_the_recorded_one(cx):
+    cpr.decide(cx, 2, "confirmed", rationale="   \n\t ")
+    r = cx.execute("SELECT rationale FROM condition_pathway WHERE id=2").fetchone()
+    assert r["rationale"] == "lipid layer"
+
+
+def test_a_real_rationale_still_replaces_the_old_one(cx):
+    cpr.decide(cx, 1, "confirmed", rationale="corrected: sign was inverted")
+    r = cx.execute("SELECT rationale FROM condition_pathway WHERE id=1").fetchone()
+    assert r["rationale"] == "corrected: sign was inverted"
+
+
+def test_a_wrong_direction_rejection_records_its_reason(cx):
+    """The vault's gate counts a 'wrong-direction' rejection as a direction defect
+    alongside a flip -- rejecting an inverted edge is the same generator failure as
+    correcting one, and used to count as nothing."""
+    assert cpr.decide(cx, 1, "rejected", reject_reason="wrong-direction")["ok"] is True
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert (r["decision"], r["reject_reason"]) == ("rejected", "wrong-direction")
+
+
+def test_an_unknown_reject_reason_is_refused_like_a_bad_direction(cx):
+    got = cpr.decide(cx, 1, "rejected", reject_reason="i-just-dont-like-it")
+    assert got["ok"] is False and got["error"] == "invalid-reject-reason"
+    assert cx.execute("SELECT decision FROM condition_pathway WHERE id=1"
+                      ).fetchone()[0] == "proposed"
+
+
+def test_a_reject_reason_is_ignored_on_a_confirmation(cx):
+    cpr.decide(cx, 1, "confirmed", reject_reason="wrong-direction")
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert r["decision"] == "confirmed" and r["reject_reason"] is None
+
+
+def test_undo_clears_the_reject_reason(cx):
+    cpr.decide(cx, 1, "rejected", reject_reason="wrong-direction")
+    cpr.undo(cx, 1)
+    r = cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone()
+    assert (r["decision"], r["reject_reason"], r["decided_at"]) == ("proposed", None, None)
+
+
+def test_queue_takes_no_offset(cx):
+    """Offset paging over a set that shrinks with every decision skips edges
+    permanently: decide 20 of the first 40, ask for offset=40, and 20 edges you
+    never saw are behind you while the session looks like forward progress. queue()
+    always reads from the start; decided edges leave the set on their own. Do not
+    re-add the parameter."""
+    import inspect
+    assert "offset" not in inspect.signature(cpr.queue).parameters
+
+
+def test_the_queue_cannot_skip_an_edge_as_decisions_are_made(cx):
+    """The property offset paging broke. With a limit of 1, deciding the edge that
+    is shown must reveal the other one -- never advance past it."""
+    seen = []
+    for _ in range(2):
+        row = cpr.queue(cx, limit=1)[0]
+        seen.append(row["id"])
+        cpr.decide(cx, row["id"], "confirmed")
+    assert sorted(seen) == [1, 2]
+    assert cpr.queue(cx, limit=1) == []
 
 
 def test_undo_returns_an_edge_to_the_queue(cx):
@@ -119,8 +272,10 @@ def test_invalid_direction_raises_no_integrityerror_past_python_validation(cx):
     bad value ever reached the UPDATE. decide()'s own validation is the first
     line of defence and must reject cleanly with None -- never let the
     IntegrityError escape to a route."""
-    assert cpr.decide(cx, 1, "confirmed", desired_direction="neutral") is None
-    assert cpr.decide(cx, 1, "confirmed", tier="bogus-tier") is None
+    assert cpr.decide(cx, 1, "confirmed", desired_direction="neutral")["ok"] is False
+    assert cpr.decide(cx, 1, "confirmed", tier="bogus-tier")["ok"] is False
+    assert cx.execute("SELECT decision FROM condition_pathway WHERE id=1"
+                      ).fetchone()[0] == "proposed"
 
 
 def test_queue_must_never_filter_on_scored_or_the_batch_gate_deadlocks(cx):
@@ -159,21 +314,35 @@ def test_queue_must_never_filter_on_scored_or_the_batch_gate_deadlocks(cx):
     assert row["scored"] == 0
 
 
-def test_corpus_absent_edges_outrank_tier_in_the_queue_order(cx):
-    """The primary sort key is corpus-absence, not tier -- an edge with NO
-    catalog signal must sort ahead of a core-tier edge that has one, or the
-    ordering has silently degenerated to tier-only. condition_corpus_signal is
-    empty in production today (the builder hasn't landed), so this is the only
-    test that can prove the primary key actually outranks the tier key rather
-    than merely agreeing with it."""
-    # id 1: dry-eye/NF-kB, tier=core -- give it catalog signal (products exist)
+def test_high_signal_edges_outrank_tier_in_the_queue_order(cx):
+    """Glen's ruling on the polarity: HIGHEST catalog signal first. An edge whose
+    pathway nothing in the catalogue touches is inert -- no product can be
+    misranked by it -- while a wrong direction on a pathway many products touch
+    inverts live recommendations.
+
+    The test is arranged so signal and tier DISAGREE, and it is only meaningful
+    that way: the high-signal edge here is the LOWER-tier one (contributing), so it
+    can only reach the front by the signal key outranking the tier key. If both
+    keys favoured the same row this would pass on a tier-only ordering and prove
+    nothing about precedence. (Same property the previous version of this test
+    held under the opposite polarity.)"""
+    # id 2: dry-eye/tear-film, tier=contributing -- LOWER by tier, but it is what
+    # the catalog actually touches
     cx.execute("INSERT INTO condition_corpus_signal"
                "(condition_key,canonical_id,n_products,n_ingredients,computed_at) "
-               "VALUES('dry-eye',1,5,3,'t')")
-    # id 2: dry-eye/tear-film, tier=contributing (lower priority by tier alone) --
-    # leave it with NO corpus signal row, so COALESCE(s.n_products,0)=0
+               "VALUES('dry-eye',2,5,3,'t')")
+    # id 1: dry-eye/NF-kB, tier=core -- HIGHER by tier, no corpus signal row at all
     rows = cpr.queue(cx)
     assert [r["id"] for r in rows] == [2, 1]
+
+
+def test_the_queue_orders_by_how_many_products_a_pathway_touches(cx):
+    """Not merely present-vs-absent: more products touching a pathway means more
+    recommendations a wrong direction there would invert."""
+    cx.execute("INSERT INTO condition_corpus_signal"
+               "(condition_key,canonical_id,n_products,n_ingredients,computed_at) "
+               "VALUES('dry-eye',1,2,1,'t'),('dry-eye',2,9,4,'t')")
+    assert [r["id"] for r in cpr.queue(cx)] == [2, 1]
 
 
 def test_card_shows_direction_and_tier_as_the_headline(cx):
@@ -189,11 +358,11 @@ def test_card_shows_the_corpus_cross_check(cx):
                "(condition_key,canonical_id,n_products,n_ingredients,example_skus,computed_at)"
                " VALUES('dry-eye',1,4,7,'OcuHeal, Clarity','t')")
     cx.commit()
-    # Deviation from the brief's `cpr.queue(cx)[0]`: queue() sorts corpus-absent
-    # edges first (test_corpus_absent_edges_outrank_tier_in_the_queue_order), so
-    # once edge 1 gains a signal, edge 2 (still signal-less) sorts ahead of it and
-    # index [0] is no longer the row this test means to inspect. Select the edge
-    # by canonical_id instead of relying on queue position.
+    # Deviation from the brief's `cpr.queue(cx)[0]`: queue() orders on the corpus
+    # signal (test_high_signal_edges_outrank_tier_in_the_queue_order), so which row
+    # lands at index [0] depends on the signal this test just inserted. Select the
+    # edge by canonical_id instead of relying on queue position -- the point here
+    # is the card's rendering, not the ordering.
     row = next(r for r in cpr.queue(cx) if r["canonical_id"] == 1)
     out = html.render_edge_card(row)
     assert "4" in out and "OcuHeal" in out
