@@ -88,6 +88,19 @@ def init_tables(cx):
         id INTEGER PRIMARY KEY AUTOINCREMENT, condition_key TEXT NOT NULL,
         proposed_label TEXT NOT NULL, rationale TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL);
+    -- Append-only exhaust. Records the state decide()/undo() below is about to
+    -- SUPERSEDE, written before the overwrite so a crash cannot leave the wipe
+    -- without its record. NOTHING reads this table -- not queue(), not stats(),
+    -- not the vault's gate_metrics(). condition_pathway stays the single source
+    -- of truth for every downstream consumer; do not add a join against this
+    -- table later without re-deciding that on purpose. Mirrors the vault's
+    -- `02 Skills/condition_pathway.py` SCHEMA -- keep the two in step.
+    CREATE TABLE IF NOT EXISTS condition_pathway_history(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, edge_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL CHECK(event_type IN ('decide', 'undo')),
+        decision TEXT NOT NULL, desired_direction TEXT, tier TEXT, rationale TEXT,
+        reject_reason TEXT, source TEXT NOT NULL, decided_at TEXT,
+        logged_at TEXT NOT NULL);
     """)
     # CREATE TABLE IF NOT EXISTS is a no-op against the live vault table, which
     # predates these three columns, so they need their own guarded ALTER -- same
@@ -131,6 +144,39 @@ def init_tables(cx):
 
 def _now(cx):
     return cx.execute("SELECT datetime('now')").fetchone()[0]
+
+
+def _log_superseded(cx, row, event_type):
+    """Append one row to condition_pathway_history recording the state `row`
+    (a full sqlite3.Row from condition_pathway, read BEFORE any UPDATE) is
+    about to lose. Write-only exhaust -- see that table's own comment in
+    init_tables(). Never call this after the overwriting UPDATE; the whole
+    point is capturing the pre-image.
+
+    Tradeoff: this must never be the reason a real decide()/undo() fails --
+    a reviewer stuck because a bookkeeping insert threw would be worse than
+    the missing history it exists to prevent. So failures here are caught and
+    only printed, not raised. That is a real tradeoff, not a free lunch: a
+    silently-broken history table (e.g. this table absent from a hand-rolled
+    test db, or some future schema drift) degrades to exactly today's
+    behaviour -- no record of the superseded state -- rather than blocking
+    Glen's review session. The failure is not swallowed invisibly, though: it
+    prints to stderr, so it is visible in the server's own logs even though
+    nothing in the product surfaces it to the reviewer.
+    """
+    try:
+        cx.execute(
+            "INSERT INTO condition_pathway_history(edge_id, event_type, decision, "
+            "desired_direction, tier, rationale, reject_reason, source, decided_at, "
+            "logged_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (row["id"], event_type, row["decision"], row["desired_direction"],
+             row["tier"], row["rationale"], row["reject_reason"], row["source"],
+             row["decided_at"], _now(cx)))
+    except sqlite3.Error as e:
+        import sys
+        print("condition_pathway_history insert failed (edge_id=%r event_type=%r): "
+              "%s -- continuing without a history record" % (row["id"], event_type, e),
+              file=sys.stderr)
 
 
 def stats(cx):
@@ -246,6 +292,14 @@ def decide(cx, edge_id, decision, desired_direction=None, tier=None, rationale=N
     if row is None:
         return {"ok": False, "error": "unknown-edge"}
     if row["decision"] != "proposed":
+        # This guard means decide() never actually overwrites an already-decided
+        # row -- the request is refused, not applied, so nothing is truly
+        # superseded here today. Logged anyway: if this guard is ever loosened to
+        # let decide() overwrite directly instead of requiring undo() first, the
+        # history table is already correct from that day forward with no extra
+        # change needed at the call site.
+        _log_superseded(cx, row, "decide")
+        cx.commit()
         return {"ok": False, "error": "conflict", "decision": row["decision"]}
 
     new_dir = desired_direction if desired_direction is not None else row["desired_direction"]
@@ -279,12 +333,20 @@ def undo(cx, edge_id):
     the flip signal (source reset + corrected value left behind = a reconfirmation
     that compares the correction against itself); it no longer can, because the
     signal lives in proposed_direction, which nothing here writes.
+
+    This IS the one destructive path in the module: decision, reject_reason and
+    decided_at are wiped and unrecoverable from condition_pathway itself once this
+    runs (desired_direction/tier survive, deliberately -- see above). So the
+    superseded state is logged to condition_pathway_history BEFORE the clearing
+    UPDATE, in the same transaction (one cx.commit() covers both), so a crash
+    between the two cannot leave the wipe without its record.
     """
     cx.row_factory = sqlite3.Row
-    row = cx.execute("SELECT decision FROM condition_pathway WHERE id=?",
+    row = cx.execute("SELECT * FROM condition_pathway WHERE id=?",
                      (edge_id,)).fetchone()
     if row is None:
         return {"ok": False, "error": "unknown-edge"}
+    _log_superseded(cx, row, "undo")
     cx.execute("UPDATE condition_pathway SET decision='proposed', source='ai', "
                "reject_reason=NULL, decided_at=NULL WHERE id=?", (edge_id,))
     cx.commit()

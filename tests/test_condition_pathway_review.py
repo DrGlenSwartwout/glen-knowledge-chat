@@ -539,3 +539,94 @@ def test_init_tables_refuses_to_invent_a_baseline_for_an_already_decided_row():
         raise AssertionError("init_tables must refuse to backfill a decided row")
     except RuntimeError as e:
         assert "BLOCKED" in str(e)
+
+
+# --- condition_pathway_history: write-only exhaust, undo() follow-up --------------
+# undo() is the one destructive path in this module -- decision/reject_reason/
+# decided_at are wiped and unrecoverable from condition_pathway itself once it
+# runs. A first decide() overwrites nothing (proposed_direction/proposed_tier
+# already preserve the generator's original claim), so there is exactly one
+# insert that matters; see condition_pathway_history's comment in init_tables().
+
+def test_undo_writes_exactly_one_history_row_capturing_the_superseded_state(cx):
+    """The row logged must be what the edge held BEFORE the undo, not the
+    'proposed' state undo() resets it to -- that is the whole point of logging
+    before the clearing UPDATE, not after."""
+    cpr.decide(cx, 1, "rejected", desired_direction="up", tier="modifying",
+              reject_reason="wrong-direction")
+    before = dict(cx.execute("SELECT * FROM condition_pathway WHERE id=1").fetchone())
+    cpr.undo(cx, 1)
+    rows = cx.execute("SELECT * FROM condition_pathway_history WHERE edge_id=1").fetchall()
+    assert len(rows) == 1
+    h = rows[0]
+    assert h["event_type"] == "undo"
+    assert h["decision"] == before["decision"] == "rejected"
+    assert h["desired_direction"] == before["desired_direction"] == "up"
+    assert h["tier"] == before["tier"] == "modifying"
+    assert h["rationale"] == before["rationale"]
+    assert h["reject_reason"] == before["reject_reason"] == "wrong-direction"
+    assert h["source"] == before["source"]
+    assert h["decided_at"] == before["decided_at"]
+    assert h["logged_at"] is not None
+    # and the live row really was reset -- the history row is the only place
+    # the pre-undo state survives
+    after = cx.execute("SELECT decision, reject_reason, decided_at FROM "
+                       "condition_pathway WHERE id=1").fetchone()
+    assert (after["decision"], after["reject_reason"], after["decided_at"]) == \
+           ("proposed", None, None)
+
+
+def test_two_undo_cycles_produce_two_ordered_history_rows(cx):
+    """A flip -> undo -> flip-again -> undo sequence must be fully
+    reconstructable: two supersessions, two rows, oldest first."""
+    cpr.decide(cx, 1, "confirmed", desired_direction="up")
+    cpr.undo(cx, 1)
+    cpr.decide(cx, 1, "rejected", reject_reason="pathway-not-implicated")
+    cpr.undo(cx, 1)
+    rows = cx.execute("SELECT * FROM condition_pathway_history WHERE edge_id=1 "
+                      "ORDER BY id").fetchall()
+    assert len(rows) == 2
+    assert rows[0]["decision"] == "confirmed" and rows[0]["desired_direction"] == "up"
+    assert rows[0]["reject_reason"] is None
+    assert rows[1]["decision"] == "rejected"
+    assert rows[1]["reject_reason"] == "pathway-not-implicated"
+
+
+def test_a_history_insert_failure_does_not_block_the_undo(cx):
+    """The tradeoff: a broken history table must never be the reason Glen gets
+    stuck mid-review. Drop the table out from under undo() and confirm the
+    user-facing operation still succeeds."""
+    cpr.decide(cx, 1, "confirmed")
+    cx.execute("DROP TABLE condition_pathway_history")
+    cx.commit()
+    got = cpr.undo(cx, 1)
+    assert got == {"ok": True, "edge_id": 1}
+    r = cx.execute("SELECT decision FROM condition_pathway WHERE id=1").fetchone()
+    assert r["decision"] == "proposed"
+
+
+def test_history_table_is_write_only_queue_ignores_it(cx):
+    """Nothing may ever read condition_pathway_history to compute a reviewer-
+    facing result. Presence or absence of history rows must not change queue()."""
+    before = [dict(r) for r in cpr.queue(cx)]
+    cpr.decide(cx, 1, "confirmed", desired_direction="up")
+    cpr.undo(cx, 1)
+    after = [dict(r) for r in cpr.queue(cx)]
+    assert cx.execute("SELECT count(*) FROM condition_pathway_history"
+                      ).fetchone()[0] > 0
+    # queue() only ever returns 'proposed' edges and both edges are proposed
+    # again after the undo, so before/after should match on the reviewable set
+    assert sorted(r["id"] for r in before) == sorted(r["id"] for r in after)
+
+
+def test_history_table_is_write_only_stats_ignores_it(cx):
+    """Same guarantee for stats(): the pending/confirmed/rejected counts must
+    come only from condition_pathway, never be nudged by history rows."""
+    s_before = cpr.stats(cx)
+    cpr.decide(cx, 1, "confirmed")
+    cpr.undo(cx, 1)   # leaves a history row behind, edge back to 'proposed'
+    s_after = cpr.stats(cx)
+    assert cx.execute("SELECT count(*) FROM condition_pathway_history"
+                      ).fetchone()[0] > 0
+    assert s_before == s_after == {"pending": 2, "confirmed": 0, "rejected": 0,
+                                   "conditions": 1}
