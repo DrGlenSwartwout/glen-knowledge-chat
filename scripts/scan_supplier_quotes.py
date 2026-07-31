@@ -6,7 +6,7 @@ from email.header import decode_header
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from dashboard import sourcing as sc  # noqa: E402
+from dashboard import db, sourcing as sc  # noqa: E402
 
 _MODEL = "claude-haiku-4-5-20251001"
 _KW = re.compile(r"\b(quote|price|\$|/kg|/lb|per kg|moq|minimum order|lead time|cost|coa|c of a)\b", re.I)
@@ -117,7 +117,7 @@ def scan(write=False, days=14, db_path=None, imap=None, client=None, max_message
         # can raise the cap. None = unbounded.
         if max_messages and len(ids) > max_messages:
             ids = ids[-max_messages:]
-        cx = sqlite3.connect(db_path or sc._default_db_path()); cx.row_factory = sqlite3.Row
+        cx = db.connect(db_path or sc._default_db_path()); cx.row_factory = sqlite3.Row
         try:
             sc.init_sourcing_schema(cx)
             existing = {r["gmail_msg_id"] for r in cx.execute("SELECT gmail_msg_id FROM supplier_quotes WHERE gmail_msg_id IS NOT NULL")}
