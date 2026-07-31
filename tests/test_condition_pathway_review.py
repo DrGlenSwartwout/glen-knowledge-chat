@@ -122,30 +122,40 @@ def test_invalid_direction_raises_no_integrityerror_past_python_validation(cx):
     assert cpr.decide(cx, 1, "confirmed", tier="bogus-tier") is None
 
 
-def test_unscored_conditions_are_filtered_from_the_queue_even_with_an_edge(cx):
-    """Eight of the 42 conditions (astigmatism, strabismus, etc.) have no
-    genuine biochemical mechanism and are marked scored=0. Today they carry zero
-    edges by construction, but that invariant lives in the data, not the query --
-    a future generator bug, backfill, or manual insert could still put an edge
-    against one. This inserts an unscored condition WITH an edge, so a pass here
-    can only mean the scored=1 filter is doing the work, not that the condition
-    coincidentally has nothing to join against."""
+def test_queue_must_never_filter_on_scored_or_the_batch_gate_deadlocks(cx):
+    """DO NOT add a `c.scored = 1` filter to queue(). An earlier round of this
+    module did exactly that, on the (reasonable-sounding) theory that an edge on
+    an unscored condition -- one of the 8 of 42 marked scored=0 because they have
+    no genuine biochemical mechanism -- should be hidden from Glen. It is wrong:
+    the vault's `gate_metrics()` counts every edge belonging to a condition's
+    batch with NO scored filter (`JOIN conditions c ... WHERE c.batch = ?`), and
+    its gate requires `len(decided) == total`. `queue()` is the ONLY surface that
+    can ever reach an edge -- if it hides one, that edge can never be decided,
+    `decided` stays permanently below `total`, and the batch gate deadlocks with
+    no visible cause. An adversarial review reproduced this exact deadlock through
+    the real `load_batch` and `selfcheck` (which exempts an unscored condition
+    from the MIN_EDGES check only -- an unscored condition that already has 2+
+    edges falls to the `elif` and is never checked at all, so a stray edge can
+    reach here uncaught by the writer's existing guard).
+
+    The correct refusal lives at the WRITER (`02 Skills/condition_pathway.py`'s
+    selfcheck gets a NEW edge-level check for this), not here. This queue must
+    show the edge -- either it is fabricated or the `scored` flag is wrong, and
+    Glen must see which, not have it silently stranded.
+
+    If you are reading this because you just watched an unscored edge appear in
+    the queue and it looked wrong: it is not a bug in this query. Do not re-add
+    the filter. Fix it at the writer, or ask why the edge exists at all."""
     cx.execute("INSERT INTO conditions(key,label,system,batch,created_at,scored) "
                "VALUES('strabismus','Strabismus','eye','eye','t',0)")
     cx.execute("INSERT INTO condition_pathway"
                "(id,condition_key,canonical_id,desired_direction,tier,rationale,decision,source) "
                "VALUES(3,'strabismus',1,'up','core','spurious edge','proposed','ai')")
     cx.commit()
-    row = cx.execute("SELECT scored FROM conditions WHERE key='strabismus'").fetchone()
+    assert "strabismus" in [r["condition_key"] for r in cpr.queue(cx)]
+    # and the scored flag rides along on the row so the UI can flag it
+    row = next(r for r in cpr.queue(cx) if r["condition_key"] == "strabismus")
     assert row["scored"] == 0
-    # default is scored=1 for a condition inserted without the column
-    default_row = cx.execute("SELECT scored FROM conditions WHERE key='dry-eye'").fetchone()
-    assert default_row["scored"] == 1
-    # the edge exists and is otherwise queue-eligible (decision='proposed'), so
-    # its absence below can only be explained by the scored filter
-    assert cx.execute("SELECT decision FROM condition_pathway WHERE id=3").fetchone()[0] \
-        == "proposed"
-    assert "strabismus" not in [r["condition_key"] for r in cpr.queue(cx)]
 
 
 def test_corpus_absent_edges_outrank_tier_in_the_queue_order(cx):

@@ -100,19 +100,24 @@ def queue(cx, limit=40, offset=0):
     the catalog touches that pathway) sort ahead of the rest, then core tier, because
     those are where a wrong direction costs the most.
 
-    `c.scored = 1` is a defensive filter, not a no-op. Eight of the 42 conditions
-    are unscored precisely because they have no genuine biochemical mechanism, and
-    by construction they carry zero edges today -- but that is an invariant of the
-    current data, not of this query. If a future generator bug, backfill, or manual
-    insert ever puts an edge against an unscored condition, this filter is what
-    keeps it out of Glen's queue instead of asking him to rule on a mechanism claim
-    nobody meant to make.
+    Deliberately NOT filtered on `conditions.scored`. The vault's `gate_metrics()`
+    counts every edge belonging to a condition's batch regardless of `scored`, and
+    its gate requires `len(decided) == total` -- this queue is the ONLY surface that
+    can ever reach an edge, so hiding one here does not protect Glen, it stops that
+    edge from ever being decided and deadlocks the batch gate permanently, with no
+    visible cause. (An earlier version of this function filtered on `scored = 1`;
+    an adversarial review reproduced exactly that deadlock through the real
+    `load_batch` and this was reverted.) `c.scored` IS still selected below so an
+    edge on an unscored condition can be flagged in the UI -- it should be visible,
+    not hidden, because either the edge is fabricated or the `scored` flag is
+    wrong, and Glen needs to see which. The refusal for this state belongs at the
+    WRITER (`02 Skills/condition_pathway.py`'s `selfcheck`), not here.
     """
     cx.row_factory = sqlite3.Row
     return cx.execute("""
         SELECT cp.id, cp.condition_key, cp.canonical_id, cp.desired_direction,
                cp.tier, cp.rationale, cp.source,
-               c.label AS condition_label, c.system,
+               c.label AS condition_label, c.system, c.scored,
                p.label AS pathway_label, p.slug AS pathway_slug, p.family,
                COALESCE(s.n_products, 0)    AS corpus_products,
                COALESCE(s.n_ingredients, 0) AS corpus_ingredients,
@@ -124,7 +129,6 @@ def queue(cx, limit=40, offset=0):
                  ON s.condition_key = cp.condition_key
                 AND s.canonical_id  = cp.canonical_id
          WHERE cp.decision = 'proposed'
-           AND c.scored = 1
          ORDER BY (COALESCE(s.n_products,0) = 0) DESC,
                   CASE cp.tier WHEN 'core' THEN 0 WHEN 'contributing' THEN 1 ELSE 2 END,
                   c.key, p.slug
