@@ -105,6 +105,24 @@ def init_tables(cx):
     if "reject_reason" not in cols:
         cx.execute("ALTER TABLE condition_pathway ADD COLUMN reject_reason TEXT "
                    "CHECK(reject_reason IS NULL OR reject_reason IN %r)" % (REJECT_REASONS,))
+    # Loud guard, mirroring the vault's migrate() exactly (see that function's own
+    # comment). A row already decided before proposed_direction existed cannot have
+    # its original recovered -- it may have been corrected -- so backfilling it from
+    # the current value would manufacture a "no change" baseline. That baseline
+    # reads to gate_metrics() as "no defect", which is a false negative, not an
+    # absence of one. Stop loudly rather than let this run silently: it is checked
+    # on every call (this module's init_tables runs per-request, unlike the vault's
+    # one-shot migrate CLI), so it keeps refusing until Glen resolves it by hand.
+    unknowable = cx.execute(
+        "SELECT count(*) FROM condition_pathway "
+        "WHERE proposed_direction IS NULL AND decision != 'proposed'").fetchone()[0]
+    if unknowable:
+        raise RuntimeError(
+            "BLOCKED: %d condition_pathway row(s) were decided before "
+            "proposed_direction existed, so the generator's original proposal "
+            "cannot be recovered and the flip signal for them would be a guess. "
+            "Resolve by hand (restore the originals from the batch file, or undo "
+            "those decisions) before continuing." % unknowable)
     cx.execute("UPDATE condition_pathway SET proposed_direction = desired_direction, "
                "proposed_tier = tier "
                "WHERE proposed_direction IS NULL AND decision = 'proposed'")

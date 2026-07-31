@@ -409,3 +409,133 @@ def test_page_renders_stats_and_nav(cx):
     assert "<nav>N</nav>" in out
     assert "2 pending" in out
     assert out.count('class="card"') == 2
+
+
+def test_card_offers_the_reject_reason_vocabulary_as_one_click_buttons(cx):
+    """Task 10's highest-value fix: the page must let Glen state WHY he rejects an
+    edge, in one click, not a modal -- he has 323 of these. Three buttons, one per
+    REJECT_REASONS value, each carrying its reason as data-reason so the click
+    handler needs no follow-up prompt."""
+    out = html.render_edge_card(cpr.queue(cx)[0])
+    for reason in cpr.REJECT_REASONS:
+        assert ("data-act=\"rejected\" data-reason=\"%s\"" % reason) in out
+    # and the page's script reads that attribute off the clicked button and
+    # forwards it as reject_reason -- this is what makes a 'wrong-direction'
+    # rejection visible to the vault's gate at all. The script is emitted once
+    # per page (render_condition_review_page), not per card.
+    assert "dataset.reason" in html._JS and "reject_reason" in html._JS
+
+
+# --- init_tables() migration / backfill -----------------------------------------
+# Zero tests existed on this side before Task 10 despite the vault's sibling
+# `02 Skills/condition_pathway.py: migrate()` having three. All 323 live rows are
+# currently 'proposed' (inert today), but the guard below closes the gap while it
+# is cheap: a silent false negative here would read to gate_metrics() as "no
+# direction defect" when a row was actually decided blind to the flip signal.
+
+def test_init_tables_adds_the_proposal_columns_to_a_pre_existing_edge_table():
+    """Simulates the live database: a condition_pathway table created before
+    proposed_direction/proposed_tier/reject_reason existed. Additive ALTER,
+    guarded by PRAGMA table_info, and idempotent -- mirrors the vault's
+    `test_migrate_adds_the_proposal_columns_to_a_pre_existing_edge_table`."""
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.executescript("""
+        CREATE TABLE canonical_pathways(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL, family TEXT,
+            status TEXT NOT NULL DEFAULT 'proposed', notes TEXT,
+            created_at TEXT NOT NULL, decided_at TEXT);
+        CREATE TABLE conditions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL, system TEXT, batch TEXT NOT NULL, aliases TEXT,
+            status TEXT NOT NULL DEFAULT 'proposed', notes TEXT,
+            created_at TEXT NOT NULL, decided_at TEXT,
+            scored INTEGER NOT NULL DEFAULT 1);
+        CREATE TABLE condition_pathway(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            condition_key TEXT NOT NULL,
+            canonical_id INTEGER NOT NULL,
+            desired_direction TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            decision TEXT NOT NULL DEFAULT 'proposed',
+            source TEXT NOT NULL,
+            decided_at TEXT,
+            UNIQUE(condition_key, canonical_id));
+        INSERT INTO condition_pathway
+            (condition_key,canonical_id,desired_direction,tier,rationale,source)
+            VALUES('dry-eye',1,'down','core','r','ai');
+    """)
+    c.commit()
+    cpr.init_tables(c)
+    cols = {r[1] for r in c.execute("PRAGMA table_info(condition_pathway)")}
+    assert {"proposed_direction", "proposed_tier", "reject_reason"} <= cols
+    row = c.execute("SELECT * FROM condition_pathway").fetchone()
+    assert (row["proposed_direction"], row["proposed_tier"]) == ("down", "core")
+    cpr.init_tables(c)  # second pass must not raise "duplicate column"
+    assert {r[1] for r in c.execute("PRAGMA table_info(condition_pathway)")} == cols
+
+
+def test_init_tables_backfills_undecided_rows():
+    """A row still 'proposed' has never been edited, so its current values ARE the
+    generator's original proposal and can be copied in safely."""
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    cpr.init_tables(c)
+    c.executescript("""
+        INSERT INTO canonical_pathways(id,slug,label,family,status,created_at)
+            VALUES(1,'nf-kb','NF-kB','inflammation','proposed','t');
+        INSERT INTO conditions(key,label,system,batch,created_at)
+            VALUES('dry-eye','Dry Eye','eye','eye','t');
+        INSERT INTO condition_pathway
+            (condition_key,canonical_id,desired_direction,tier,rationale,decision,source)
+            VALUES('dry-eye',1,'up','modifying','r','proposed','ai');
+    """)
+    c.commit()
+    cpr.init_tables(c)
+    row = c.execute("SELECT * FROM condition_pathway").fetchone()
+    assert (row["proposed_direction"], row["proposed_tier"]) == ("up", "modifying")
+
+
+def test_init_tables_refuses_to_invent_a_baseline_for_an_already_decided_row():
+    """A row decided before the column existed may have been corrected, so copying
+    its current value in would manufacture a 'no change' baseline -- exactly the
+    false negative these columns exist to remove, and exactly what gate_metrics()
+    would read as 'no direction defect'. Stop loudly instead of guessing, same as
+    the vault's `migrate()`."""
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    c.executescript("""
+        CREATE TABLE canonical_pathways(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL, family TEXT,
+            status TEXT NOT NULL DEFAULT 'proposed', notes TEXT,
+            created_at TEXT NOT NULL, decided_at TEXT);
+        CREATE TABLE conditions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL, system TEXT, batch TEXT NOT NULL, aliases TEXT,
+            status TEXT NOT NULL DEFAULT 'proposed', notes TEXT,
+            created_at TEXT NOT NULL, decided_at TEXT,
+            scored INTEGER NOT NULL DEFAULT 1);
+        CREATE TABLE condition_pathway(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            condition_key TEXT NOT NULL,
+            canonical_id INTEGER NOT NULL,
+            desired_direction TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            rationale TEXT NOT NULL,
+            decision TEXT NOT NULL DEFAULT 'proposed',
+            source TEXT NOT NULL,
+            decided_at TEXT,
+            UNIQUE(condition_key, canonical_id));
+        INSERT INTO condition_pathway
+            (condition_key,canonical_id,desired_direction,tier,rationale,decision,source)
+            VALUES('dry-eye',1,'up','core','r','confirmed','glen');
+    """)
+    c.commit()
+    try:
+        cpr.init_tables(c)
+        raise AssertionError("init_tables must refuse to backfill a decided row")
+    except RuntimeError as e:
+        assert "BLOCKED" in str(e)

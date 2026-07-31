@@ -217,6 +217,10 @@ def _workflow_nav(active, client_email=""):
     # because the ingredient corpus it edits lives in the vault, not on prod.
     tabs += (f"<a class=\"{'active' if active == 'pathway' else ''}\" "
              f"href=\"/pathway-review{key_qs}\">Pathways</a>")
+    # And its sibling one axis over: condition -> canonical pathway, same LOCAL
+    # :8011 page, same vault ingredients.db.
+    tabs += (f"<a class=\"{'active' if active == 'condition' else ''}\" "
+             f"href=\"/condition-pathway-review{key_qs}\">Conditions</a>")
     strip = f"<nav class=wfnav>{tabs}</nav>"
     client_email = (client_email or "").strip()
     if not client_email:

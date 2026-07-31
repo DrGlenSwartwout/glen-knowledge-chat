@@ -1604,6 +1604,73 @@ def create_app(db_path=DEFAULT_DB, complete=None, tts=None, deepgram_token=None,
         return ({"ok": True, "set": got} if got
                 else ({"ok": False, "error": "bad direction"}, 400))
 
+    # --- Condition -> canonical pathway review (same vault ingredients.db) --------
+    # Mirror of the pathway-review block above, one axis over: there the reviewer maps
+    # an ingredient atom to a pathway, here he adjudicates whether a CONDITION
+    # implicates one and in which direction.
+    @app.route("/condition-pathway-review")
+    def condition_pathway_review_page():
+        from dashboard import condition_pathway_review as _cr
+        from dashboard.condition_pathway_review_html import render_condition_review_page
+        from dashboard.biofield_report_html import _workflow_nav
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _cr.init_tables(cx)
+            return render_condition_review_page(
+                _cr.queue(cx, limit=40), _cr.stats(cx),
+                nav=_workflow_nav("condition"))
+
+    @app.route("/api/condition-review/queue")
+    def condition_review_queue():
+        from dashboard import condition_pathway_review as _cr
+        from dashboard.condition_pathway_review_html import render_edge_card
+        # queue() takes NO offset -- the set it reads from shrinks with every
+        # decision, so re-reading from the start IS the paging (see queue()'s
+        # docstring). Do not add an offset param here even if a caller passes one.
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _cr.init_tables(cx)
+            rows = _cr.queue(cx, limit=40)
+        return {"ok": True, "count": len(rows),
+                "html": "".join(render_edge_card(r) for r in rows)}
+
+    @app.route("/api/condition-review/decide", methods=["POST"])
+    def condition_review_decide():
+        from dashboard import condition_pathway_review as _cr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _cr.init_tables(cx)
+            got = _cr.decide(cx, b.get("edge_id"), b.get("decision"),
+                             b.get("desired_direction"), b.get("tier"),
+                             b.get("rationale"), b.get("reject_reason"))
+        if got["ok"]:
+            return {"ok": True, "edge_id": got["edge_id"]}
+        if got["error"] == "conflict":
+            # 409 Conflict, not 400: the request was well-formed but the edge is no
+            # longer in the state the client assumed -- another tab already ruled
+            # on it. The UI has to tell Glen "reload", not "bad input", and the two
+            # cases need different status codes to do that without string-matching
+            # the error body.
+            return ({"ok": False, "error": "conflict",
+                     "decision": got.get("decision")}, 409)
+        # Every other error() value (invalid-decision, invalid-direction,
+        # invalid-tier, invalid-reject-reason, unknown-edge) is a malformed or
+        # stale request the client could have avoided -- ordinary 400.
+        return ({"ok": False, "error": got["error"]}, 400)
+
+    @app.route("/api/condition-review/needs-canonical", methods=["POST"])
+    def condition_review_needs_canonical():
+        """Records that a condition needs an absent pathway. Never creates one: the
+        vocabulary is closed to this work."""
+        from dashboard import condition_pathway_review as _cr
+        b = request.get_json(silent=True) or {}
+        with sqlite3.connect(_ingredients_db()) as cx:
+            _cr.init_tables(cx)
+            row = cx.execute("SELECT condition_key FROM condition_pathway WHERE id=?",
+                             (b.get("edge_id"),)).fetchone()
+            key = row[0] if row else b.get("condition_key")
+            got = _cr.needs_canonical(cx, key, b.get("label"), b.get("rationale"))
+        return ({"ok": True, "recorded": got} if got
+                else ({"ok": False, "error": "condition_key and label required"}, 400))
+
     @app.route("/api/dosing")
     def api_dosing():
         with sqlite3.connect(db_path) as cx:

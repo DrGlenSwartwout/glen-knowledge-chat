@@ -83,6 +83,21 @@ def render_edge_card(row):
                           eid, "dirsel", dir_labels)
     tier_select = _select("tier", _TIERS, row["tier"], eid, "tiersel")
 
+    # Three reject buttons, not one Reject button plus a follow-up prompt. The
+    # vault's gate reads a 'wrong-direction' rejection as a direction defect,
+    # exactly like a flip -- so the reason has to reach the server, but Glen has
+    # 323 of these to get through and a modal per rejection would make him stop
+    # giving real answers. One click already carries the reason; nothing extra
+    # to fill in. Order follows REJECT_REASONS.
+    reject_btns = "".join(
+        "<button class=\"btn ghost\" data-act=\"rejected\" data-reason=\"%s\" "
+        "data-id=\"%d\">%s</button>" % (_e(reason), eid, _e(label))
+        for reason, label in (
+            ("wrong-direction", "Reject: wrong direction"),
+            ("pathway-not-implicated", "Reject: not implicated"),
+            ("other", "Reject: other"),
+        ))
+
     return (
         "<div class=\"card\" data-id=\"%d\">%s"
         "<div class=\"hdr\"><b>%s</b> <span class=\"arrow\">&rarr;</span> "
@@ -93,13 +108,13 @@ def render_edge_card(row):
         "<div class=\"corpusline\">%s</div>"
         "<div class=\"act\">"
         "<button class=\"btn\" data-act=\"confirmed\" data-id=\"%d\">Confirm</button>"
-        "<button class=\"btn ghost\" data-act=\"rejected\" data-id=\"%d\">Reject</button>"
+        "%s"
         "<button class=\"btn ghost\" data-act=\"needs\" data-id=\"%d\">Needs a pathway "
         "that does not exist</button>"
         "</div></div>"
         % (eid, unscored, _e(row["condition_label"]), _e(row["pathway_label"]),
            _e(row["family"] or ""), dir_select, tier_select,
-           _e(row["rationale"]), corpus, eid, eid, eid))
+           _e(row["rationale"]), corpus, eid, reject_btns, eid))
 
 
 _STYLE = """<style>
@@ -157,14 +172,16 @@ document.getElementById('cprq').addEventListener('click',async e=>{
    return; }
  const dir=card.querySelector('[data-field=desired_direction]').value;
  const tier=card.querySelector('[data-field=tier]').value;
- // TODO when the route lands: a rejection should also send a reject_reason from
- // condition_pathway_review.REJECT_REASONS. A 'wrong-direction' rejection is
- // counted by the vault's gate as a direction defect, exactly like a flip; with no
- // reason sent, every rejection reads as non-directional and that signal stays 0.
+ // A rejection carries its reason straight off the button that was clicked
+ // (data-reason, one of REJECT_REASONS) -- no extra prompt or modal. The vault's
+ // gate counts a 'wrong-direction' rejection as a direction defect, exactly like a
+ // flip, so this is the one field that must not go missing.
+ const reason=b.dataset.reason;
+ const body={edge_id:id,decision:b.dataset.act,desired_direction:dir,tier:tier};
+ if(reason) body.reject_reason=reason;
  const j=await fetch('/api/condition-review/decide',{method:'POST',
    headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({edge_id:id,decision:b.dataset.act,
-     desired_direction:dir,tier:tier})}).then(r=>r.json())
+   body:JSON.stringify(body)}).then(r=>r.json())
      .catch(()=>({ok:false,error:'network'}));
  if(j && j.ok===false){
    // A conflict is not a bad request: another tab already ruled on this edge and
