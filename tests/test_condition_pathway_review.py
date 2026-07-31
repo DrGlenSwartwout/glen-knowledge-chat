@@ -10,6 +10,7 @@ import sqlite3
 import pytest
 
 from dashboard import condition_pathway_review as cpr
+from dashboard import condition_pathway_review_html as html
 
 
 @pytest.fixture
@@ -173,3 +174,69 @@ def test_corpus_absent_edges_outrank_tier_in_the_queue_order(cx):
     # leave it with NO corpus signal row, so COALESCE(s.n_products,0)=0
     rows = cpr.queue(cx)
     assert [r["id"] for r in rows] == [2, 1]
+
+
+def test_card_shows_direction_and_tier_as_the_headline(cx):
+    row = cpr.queue(cx)[0]
+    out = html.render_edge_card(row)
+    assert "Dry Eye" in out and "NF-kB" in out
+    assert "down" in out and "core" in out
+    assert "surface inflammation" in out
+
+
+def test_card_shows_the_corpus_cross_check(cx):
+    cx.execute("INSERT INTO condition_corpus_signal"
+               "(condition_key,canonical_id,n_products,n_ingredients,example_skus,computed_at)"
+               " VALUES('dry-eye',1,4,7,'OcuHeal, Clarity','t')")
+    cx.commit()
+    # Deviation from the brief's `cpr.queue(cx)[0]`: queue() sorts corpus-absent
+    # edges first (test_corpus_absent_edges_outrank_tier_in_the_queue_order), so
+    # once edge 1 gains a signal, edge 2 (still signal-less) sorts ahead of it and
+    # index [0] is no longer the row this test means to inspect. Select the edge
+    # by canonical_id instead of relying on queue position.
+    row = next(r for r in cpr.queue(cx) if r["canonical_id"] == 1)
+    out = html.render_edge_card(row)
+    assert "4" in out and "OcuHeal" in out
+
+
+def test_card_flags_an_edge_on_an_unscored_condition(cx):
+    """queue() no longer filters on conditions.scored (filtering there deadlocks
+    the batch gate -- see test_queue_must_never_filter_on_scored_or_the_batch_gate_deadlocks),
+    so an edge on an unscored condition can reach this card. It must be flagged,
+    not rendered as an ordinary edge, because either it is fabricated or the
+    condition's scored flag is wrong."""
+    cx.execute("INSERT INTO conditions(key,label,system,batch,created_at,scored) "
+               "VALUES('strabismus','Strabismus','eye','eye','t',0)")
+    cx.execute("INSERT INTO condition_pathway"
+               "(id,condition_key,canonical_id,desired_direction,tier,rationale,decision,source) "
+               "VALUES(3,'strabismus',1,'up','core','spurious edge','proposed','ai')")
+    cx.commit()
+    row = next(r for r in cpr.queue(cx) if r["condition_key"] == "strabismus")
+    out = html.render_edge_card(row)
+    assert "unscored" in out.lower()
+    # an ordinary scored edge must NOT carry the flag
+    scored_row = next(r for r in cpr.queue(cx) if r["condition_key"] == "dry-eye")
+    assert "unscored" not in html.render_edge_card(scored_row).lower()
+
+
+def test_card_flags_an_edge_no_product_covers(cx):
+    """A pathway nothing in the catalog touches is either a product-line hole or a
+    wrong edge. Either way the reviewer must see it."""
+    out = html.render_edge_card(cpr.queue(cx)[0])
+    assert "no product" in out.lower()
+
+
+def test_html_is_escaped(cx):
+    cx.execute("UPDATE condition_pathway SET rationale='<script>x</script>' WHERE id=1")
+    cx.commit()
+    out = html.render_edge_card(cpr.queue(cx)[0])
+    assert "<script>" not in out and "&lt;script&gt;" in out
+
+
+def test_page_renders_stats_and_nav(cx):
+    """Both edges are still proposed, so the page must say 2 pending and render a card
+    for each. A bare `'2' in out` would pass on almost any page and prove nothing."""
+    out = html.render_condition_review_page(cpr.queue(cx), cpr.stats(cx), nav="<nav>N</nav>")
+    assert "<nav>N</nav>" in out
+    assert "2 pending" in out
+    assert out.count('class="card"') == 2
