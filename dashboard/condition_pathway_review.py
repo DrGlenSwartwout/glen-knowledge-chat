@@ -98,7 +98,16 @@ def stats(cx):
 def queue(cx, limit=40, offset=0):
     """Undecided edges, worst-first: edges whose corpus signal is absent (nothing in
     the catalog touches that pathway) sort ahead of the rest, then core tier, because
-    those are where a wrong direction costs the most."""
+    those are where a wrong direction costs the most.
+
+    `c.scored = 1` is a defensive filter, not a no-op. Eight of the 42 conditions
+    are unscored precisely because they have no genuine biochemical mechanism, and
+    by construction they carry zero edges today -- but that is an invariant of the
+    current data, not of this query. If a future generator bug, backfill, or manual
+    insert ever puts an edge against an unscored condition, this filter is what
+    keeps it out of Glen's queue instead of asking him to rule on a mechanism claim
+    nobody meant to make.
+    """
     cx.row_factory = sqlite3.Row
     return cx.execute("""
         SELECT cp.id, cp.condition_key, cp.canonical_id, cp.desired_direction,
@@ -115,6 +124,7 @@ def queue(cx, limit=40, offset=0):
                  ON s.condition_key = cp.condition_key
                 AND s.canonical_id  = cp.canonical_id
          WHERE cp.decision = 'proposed'
+           AND c.scored = 1
          ORDER BY (COALESCE(s.n_products,0) = 0) DESC,
                   CASE cp.tier WHEN 'core' THEN 0 WHEN 'contributing' THEN 1 ELSE 2 END,
                   c.key, p.slug
@@ -139,8 +149,8 @@ def decide(cx, edge_id, decision, desired_direction=None, tier=None, rationale=N
     if row is None:
         return None
 
-    new_dir = desired_direction or row["desired_direction"]
-    new_tier = tier or row["tier"]
+    new_dir = desired_direction if desired_direction is not None else row["desired_direction"]
+    new_tier = tier if tier is not None else row["tier"]
     changed = (new_dir != row["desired_direction"]) or (new_tier != row["tier"])
     cx.execute("UPDATE condition_pathway SET decision=?, desired_direction=?, tier=?, "
                "rationale=COALESCE(?, rationale), source=?, decided_at=? WHERE id=?",
@@ -162,9 +172,17 @@ def undo(cx, edge_id):
 def needs_canonical(cx, condition_key, label, rationale):
     """Record that a condition needs a pathway the vocabulary does not have. This
     NEVER creates the canonical: adding one is a separate decision made against the
-    26 rules in `00 System/pathway-vocabulary-rules.md`."""
+    26 rules in `00 System/pathway-vocabulary-rules.md`.
+
+    Validates condition_key against conditions the same way the sibling's
+    create_canonical() guards its input -- there is no FK on this column, so a
+    typo would otherwise silently create an orphaned row nothing ever surfaces.
+    """
     label = (label or "").strip()
     if not condition_key or not label:
+        return None
+    known = cx.execute("SELECT 1 FROM conditions WHERE key=?", (condition_key,)).fetchone()
+    if not known:
         return None
     cx.execute("INSERT INTO condition_needs_canonical"
                "(condition_key,proposed_label,rationale,created_at) VALUES(?,?,?,?)",
