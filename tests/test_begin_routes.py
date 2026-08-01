@@ -120,6 +120,44 @@ def test_begin_unlock_onboards_once_on_free_tier_transition(monkeypatch, tmp_pat
         assert len(calls) == 1, f"expected exactly one onboarding call, got {len(calls)}"
 
 
+def test_begin_unlock_passes_campaign_attribution_to_ghl_tags(monkeypatch, tmp_path):
+    import sqlite3, begin_funnel, threading, time
+    app_module = _load_app()
+    db = str(tmp_path / "chat_log.db")
+    monkeypatch.setattr(app_module, "LOG_DB", db)
+    with sqlite3.connect(db) as cx:
+        begin_funnel.init_journey_tables(cx)
+    captured = {}
+    lock = threading.Lock()
+
+    def _capture(*args, **kwargs):
+        with lock:
+            captured["tags"] = list(kwargs.get("extra_tags") or [])
+        return {"contact_id": "test"}
+
+    monkeypatch.setattr(app_module, "ghl_onboard_contact", _capture)
+    client = app_module.app.test_client()
+    response = client.post("/begin/unlock", json={
+        "trigger": "tos", "email": "campaign@example.com", "tos": True,
+        "campaign": {
+            "utm_source": "google", "utm_medium": "cpc",
+            "utm_campaign": "free-healing-membership", "gclid": "test-click-id",
+        },
+    })
+    assert response.status_code == 200
+
+    for _ in range(40):
+        with lock:
+            if captured:
+                break
+        time.sleep(0.05)
+
+    assert "utm_source:google" in captured["tags"]
+    assert "utm_medium:cpc" in captured["tags"]
+    assert "utm_campaign:free-healing-membership" in captured["tags"]
+    assert "google-click-attributed" in captured["tags"]
+
+
 def test_begin_unlock_deep_link_returns_redirect(monkeypatch, tmp_path):
     app_module = _load_app()
     db = str(tmp_path / "chat_log.db")

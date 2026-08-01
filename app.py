@@ -4840,6 +4840,11 @@ def begin_unlock():
     ref_slug = (request.cookies.get("rm_ref") or (data.get("ref") or "")).strip()
     want = (data.get("want") or "").strip().lower()
     path = (data.get("path") or "").strip()
+    campaign_raw = data.get("campaign") if isinstance(data.get("campaign"), dict) else {}
+    campaign = {
+        key: str(campaign_raw.get(key) or "").strip()[:200]
+        for key in ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "gclid")
+    }
 
     # Fetch recent chat queries OUTSIDE the lock block (_recent_query_texts
     # acquires _db_lock itself; _db_lock is not reentrant).
@@ -4870,6 +4875,11 @@ def begin_unlock():
                 ghl_first = state.get("first_name") or ""
                 ghl_last = state.get("last_name") or ""
                 tags = ["begin", "concierge"]
+                for key in ("utm_source", "utm_medium", "utm_campaign"):
+                    if campaign.get(key):
+                        tags.append(f"{key}:{campaign[key]}"[:200])
+                if campaign.get("gclid"):
+                    tags.append("google-click-attributed")
                 if ref_slug:
                     tags.append(f"ref:{ref_slug}")
                     _capture_concierge_referral(state["email"], ghl_first, ghl_last, ref_slug)
