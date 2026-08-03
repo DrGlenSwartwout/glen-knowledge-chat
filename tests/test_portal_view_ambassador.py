@@ -31,7 +31,7 @@ def test_pending_status():
 def test_not_enrolled_returns_signup_url():
     cx = _cx_with_signups()
     b = pv._ambassador_block(cx, "nobody@example.com", QUIZ, BASE)
-    assert b == {"status": "none", "signup_url": "https://illtowell.com/affiliate/apply-form"}
+    assert b == {"status": "none", "signup_url": "https://illtowell.com/affiliate"}
 
 def test_email_lowercased():
     cx = _cx_with_signups()

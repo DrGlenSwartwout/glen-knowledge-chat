@@ -22084,7 +22084,7 @@ def api_portal_program(token):
             amb = _pv._ambassador_block(cx, email, QUIZ_URL, PUBLIC_BASE_URL)
         except Exception:
             amb = {"status": "none",
-                   "signup_url": f"{PUBLIC_BASE_URL.rstrip('/')}/affiliate/apply-form"}
+                   "signup_url": f"{PUBLIC_BASE_URL.rstrip('/')}/affiliate"}
     paid_owned = bool(_active_membership_for_email(email))
     tiers = _pt.program_blocks(
         paid_owned=paid_owned,

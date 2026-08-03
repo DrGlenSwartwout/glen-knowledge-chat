@@ -230,7 +230,9 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     enrolled -> referral links (from slug); pending -> under review; else signup CTA."""
     em = (email or "").strip().lower()
     base = (public_base_url or "").rstrip("/")
-    signup = {"status": "none", "signup_url": f"{base}/affiliate/apply-form"}
+    # The public GET page contains the simple application form. /apply-form is
+    # POST-only and must never be used as a navigation link.
+    signup = {"status": "none", "signup_url": f"{base}/affiliate"}
     if not em:
         return signup
     try:
