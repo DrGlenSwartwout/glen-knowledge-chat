@@ -21683,8 +21683,9 @@ def api_portal_recommendations(token):
     /api/portal/<token>/... routes — identity comes ONLY from the portal token."""
     from dashboard import (client_portal as _cp, recommendation_events as _re,
                             recommendation_prefs as _rp, portal_recommendations as _pr,
-                            products as _products)
+                            products as _products, scan_recommendations as _sr)
     with db.connect(LOG_DB) as cx:
+        cx.row_factory = sqlite3.Row
         _cp.init_client_portal_table(cx)
         _re.init_recommendation_events(cx)
         _rp.init_recommendation_prefs(cx)
@@ -21692,7 +21693,17 @@ def api_portal_recommendations(token):
         if not portal:
             return jsonify({"ok": False, "error": "not found"}), 404
         email = (portal.get("email") or "").strip().lower()
-        ps = _re.product_sources(cx, email)
+        # "Personalized match from your scan" is a current-scan surface, not a
+        # lifetime union. Resolve the same requested/newest mirrored scan used by
+        # the scan card and keep only that scan's `scan:<id>:` events. Other source
+        # sections (purchased, intake, self, etc.) intentionally remain historical.
+        _sr.init_table(cx)
+        scan_dates = _sr.scan_dates_for(cx, email)
+        requested = (request.args.get("scan_date") or "").strip()
+        picked = requested if requested in scan_dates else (scan_dates[0] if scan_dates else "")
+        scan_rows = _sr.for_scan_date(cx, email, picked) if picked else []
+        scan_prefix = f"scan:{scan_rows[0]['scan_id']}:" if scan_rows else None
+        ps = _re.product_sources(cx, email, scan_origin_prefix=scan_prefix)
         notes = _rp.get_notes(cx, email)
         state = _rp.get_section_state(cx, email)
     catalog = _products.load_products()
@@ -21701,7 +21712,8 @@ def api_portal_recommendations(token):
         p = catalog.get(slug) or {}
         return {"name": p.get("name"), "url": p.get("url")}
 
-    return jsonify({"ok": True, "sections": _pr.build_sections(ps, notes, state, resolve)})
+    return jsonify({"ok": True, "scan_date": picked,
+                    "sections": _pr.build_sections(ps, notes, state, resolve)})
 
 
 @app.route("/api/portal/<token>/recommendation/hide", methods=["POST"])

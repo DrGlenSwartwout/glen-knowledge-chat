@@ -141,14 +141,28 @@ def record_click(cx, email, product_key, source_key):
                         occurred_at=_now(), origin_ref=_now())
 
 
-def product_sources(cx, email):
+def product_sources(cx, email, scan_origin_prefix=None):
     """Per product: its sources (each with count, first_touch, last_touch), ordered by
-    first_touch (icon order), plus a hidden flag. Callers sort/limit products for display."""
+    first_touch (icon order), plus a hidden flag. Callers sort/limit products for display.
+
+    When ``scan_origin_prefix`` is supplied, scan-sourced events are restricted to
+    that exact scan while every non-scan source remains historical. Scan event refs
+    are shaped ``scan:<scan_id>:<rank>`` by scan_recommendations.
+    """
     e = (email or "").strip().lower()
-    rows = cx.execute(
-        "SELECT product_key, source_key, COUNT(*) n, MIN(occurred_at) ft, MAX(occurred_at) lt "
-        "FROM recommendation_events WHERE client_email=? GROUP BY product_key, source_key",
-        (e,)).fetchall()
+    if scan_origin_prefix:
+        prefix = str(scan_origin_prefix)
+        rows = cx.execute(
+            "SELECT product_key, source_key, COUNT(*) n, MIN(occurred_at) ft, MAX(occurred_at) lt "
+            "FROM recommendation_events WHERE client_email=? "
+            "AND (source_key<>'scan' OR substr(origin_ref,1,?)=?) "
+            "GROUP BY product_key, source_key",
+            (e, len(prefix), prefix)).fetchall()
+    else:
+        rows = cx.execute(
+            "SELECT product_key, source_key, COUNT(*) n, MIN(occurred_at) ft, MAX(occurred_at) lt "
+            "FROM recommendation_events WHERE client_email=? GROUP BY product_key, source_key",
+            (e,)).fetchall()
     hidden = {r[0] for r in cx.execute(
         "SELECT product_key FROM recommendation_hidden WHERE client_email=?", (e,)).fetchall()}
     prods = {}

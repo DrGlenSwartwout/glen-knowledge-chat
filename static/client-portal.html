@@ -1892,7 +1892,7 @@ async function load(){
     fetchPortalJson(`/api/portal/${encodeURIComponent(seg)}/view${sd}`),
     // My Recommendations (Phase 2b-ii): independent of data/view — a null/absent
     // payload (flag off, no sections) simply renders no card, never blocks the page.
-    fetchPortalJson(`/api/portal/${encodeURIComponent(seg)}/recommendations`),
+    fetchPortalJson(`/api/portal/${encodeURIComponent(seg)}/recommendations${dq}`),
   ]);
   const resultAt = index => settled[index].status === "fulfilled"
     ? settled[index].value
