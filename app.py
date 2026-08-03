@@ -12980,12 +12980,13 @@ def _init_referral_tables():
                     'Free quiz — discover your top healing opportunities. Share with anyone curious about natural healing.',
                     ?,
                     1)
-            """, (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
+            """, ("https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz",))
         else:
-            # Repoint any stale prod row (e.g. old scoreapp.com template) to the doorway URL.
+            # Keep the shareable quiz offer on the non-voice ScoreApp experience.
+            # Existing rows are corrected at startup as well as new rows being seeded.
             cx.execute(
                 "UPDATE affiliate_offers SET url_template=? WHERE name='Accelerate Self-Healing Quiz'",
-                (f"{PUBLIC_BASE_URL}/begin/doorway?ref={{slug}}",))
+                ("https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz",))
         # Seed E4L bioenergetic wellness scan
         E4L_INSTRUCTIONS = (
             "New here? Get a free account at https://truly.vip/E4L\n"
@@ -14831,7 +14832,7 @@ def get_referrals():
     return jsonify({"stats": stat_list, "recent": recent_list})
 
 
-QUIZ_URL            = f"{PUBLIC_BASE_URL}/begin/doorway"
+QUIZ_URL            = "https://healing.scoreapp.com"
 # Internal system-notification sink (FYI mail the app sends itself, e.g. a new
 # studio-credit intent). Gmail-filtered to a "RM / System" label that skips Primary.
 RM_INBOUND_INQUIRY_EMAIL = "drglenswartwout+rm-inquiry@gmail.com"
