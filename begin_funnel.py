@@ -594,7 +594,7 @@ JOURNEY_STEPS = [
         {"key": "intake",      "label": "Intake form",        "src": ("gate", "intake"),      "href": "https://truly.vip/Join"},
         {"key": "masterclass", "label": "Accelerated Self Healing™ MasterClass & Community",    "src": ("gate", "masterclass"), "href": "https://truly.vip/Intro"}]},
     {"key": "give", "label": "Give", "paren": "lift others", "steps": [
-        {"key": "ambassador",   "label": "Be an Ambassador",  "src": ("predicate", "ambassador"),     "href": "/affiliate/apply"},
+        {"key": "ambassador",   "label": "Be an Ambassador",  "src": ("predicate", "ambassador"),     "href": "/affiliate"},
         {"key": "bring_friend", "label": "Bring a friend",    "src": ("predicate", "referred_friend"), "href": "/begin/path"}]},
 ]
 
