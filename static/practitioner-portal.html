@@ -1647,7 +1647,8 @@ function render(d){
       var dash = amb.dashboard || {};
       function row(label, valHtml){ return '<div style="margin-bottom:6px"><span class="muted" style="font-size:13px">' + label + ': </span>' + valHtml + '</div>'; }
       var html = '<h2>Ambassador dashboard</h2>'
-        + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Your referral activity. Your shareable links are in the panel above.</div>';
+        + '<div class="muted" style="font-size:13px;margin:4px 0 10px">Your referral activity. Open the full dashboard for every shareable link and directions for using each one.</div>'
+        + '<a href="' + escapeHtml(amb.portal_url || '/affiliate') + '" target="_blank" rel="noopener"><button type="button">Open Ambassador Dashboard &rarr;</button></a>';
       // Stats
       var stats = '';
       if (dash.total_leads != null) stats += row('Leads', escapeHtml(String(dash.total_leads)));
@@ -1680,11 +1681,12 @@ function render(d){
         : '<p class="muted" style="font-size:13px">No social shares yet.</p>';
       ac.innerHTML = html;
     } else if (amb.status === 'pending') {
-      ac.innerHTML = '<h2>Ambassador</h2><p class="muted" style="font-size:13px;margin:4px 0">Your ambassador application is under review.</p>';
+      ac.innerHTML = '<h2>Ambassador</h2><p class="muted" style="font-size:13px;margin:4px 0 12px">Your ambassador application is under review.</p>'
+        + '<a href="' + escapeHtml(amb.portal_url || '/affiliate') + '" target="_blank" rel="noopener"><button type="button">Check Application / Sign In &rarr;</button></a>';
     } else {
       ac.innerHTML = '<h2>Become an Ambassador</h2>'
-        + '<p class="muted" style="font-size:13px;margin:4px 0 12px">Earn rewards by sharing.</p>'
-        + '<a href="' + escapeHtml(amb.signup_url) + '" target="_blank" rel="noopener"><button type="button">Become an Ambassador &rarr;</button></a>';
+        + '<p class="muted" style="font-size:13px;margin:4px 0 12px">Sign up to receive your shareable links, directions, and referral dashboard.</p>'
+        + '<a href="' + escapeHtml(amb.signup_url) + '" target="_blank" rel="noopener"><button type="button">Sign Up as an Ambassador &rarr;</button></a>';
     }
   } else if (ac) {
     ac.style.display = 'none';

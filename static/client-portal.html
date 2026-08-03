@@ -3530,6 +3530,7 @@ function render(d, v){
           ).join("")
         : `<p class="muted small">No social shares yet.</p>`;
       const _ambCard = `<div class="card quiet"><h2>Your Ambassador links</h2>
+        <p class="muted">Open your dashboard for all shareable links and directions for using each one.</p>
         <a class="btn full" href="${esc(amb.portal_url || '/affiliate')}" target="_blank" rel="noopener">Open Ambassador Dashboard</a>
         <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
         <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
@@ -3553,12 +3554,13 @@ function render(d, v){
         _referralsHtml += `<div class="card quiet"><h2>Recent referrals</h2>${recentHtml}</div>`;
       }
     } else if(amb.status === "pending"){
-      const _ambCard = `<div class="card quiet"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p></div>`;
+      const _ambCard = `<div class="card quiet"><h2>Ambassador</h2><p class="muted">Your ambassador application is under review.</p>
+        <a class="btn full" href="${esc(amb.portal_url || '/affiliate')}" target="_blank" rel="noopener">Check Application / Sign In</a></div>`;
       if (_hub) { _referHtml += _ambCard; } else { html += _ambCard; }
     } else {
       const _ambCard = `<div class="card quiet"><h2>Become an Ambassador</h2>
-        <p class="muted">Earn rewards by sharing.</p>
-        <a class="btn full" href="${esc(amb.signup_url)}" target="_blank" rel="noopener">Become an Ambassador</a></div>`;
+        <p class="muted">Sign up to receive your shareable links, directions, and referral dashboard.</p>
+        <a class="btn full" href="${esc(amb.signup_url)}" target="_blank" rel="noopener">Sign Up as an Ambassador</a></div>`;
       if (_hub) { _referHtml += _ambCard; } else { html += _ambCard; }
     }
   }

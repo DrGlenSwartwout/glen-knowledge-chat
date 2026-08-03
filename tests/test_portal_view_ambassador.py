@@ -27,7 +27,8 @@ def test_pending_status():
     cx = _cx_with_signups()
     cx.execute("INSERT INTO affiliate_signups (created_at,name,email,slug,token,status) "
                "VALUES ('t','Pat','pat@example.com','pat3','tok2','pending')")
-    assert pv._ambassador_block(cx, "pat@example.com", QUIZ, BASE) == {"status": "pending"}
+    assert pv._ambassador_block(cx, "pat@example.com", QUIZ, BASE) == {
+        "status": "pending", "portal_url": "https://illtowell.com/affiliate"}
 
 def test_not_enrolled_returns_signup_url():
     cx = _cx_with_signups()
