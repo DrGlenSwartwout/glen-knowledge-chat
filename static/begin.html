@@ -1289,7 +1289,7 @@
     { key:'scan', label:'Scan', paren:'Your Biofield',     href:'https://truly.vip/E4L',   status:'available', fill:0, steps:[] },
     { key:'find', label:'Find', paren:'Your Remedy Match', href:'/begin/match',             status:'available', fill:0, steps:[] },
     { key:'heal', label:'Heal', paren:'the root causes',   href:'https://truly.vip/Join',  status:'available', fill:0, steps:[] },
-    { key:'give', label:'Give', paren:'lift others',       href:'/affiliate/apply',         status:'available', fill:0, steps:[] }
+    { key:'give', label:'Give', paren:'lift others',       href:'/affiliate',               status:'available', fill:0, steps:[] }
   ];
   var journeyUnfolded = false;
 
@@ -1314,7 +1314,9 @@
       a.href = s.href || '#';
       // External destinations (e.g. Scan -> E4L, Heal -> truly.vip) open in a new
       // tab, matching the surfaced-card behavior; internal (/...) navigate in place.
-      if (s.href && s.href.charAt(0) !== '/') { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+      if (s.key === 'give' || (s.href && s.href.charAt(0) !== '/')) {
+        a.target = '_blank'; a.rel = 'noopener noreferrer';
+      }
       var lab = document.createElement('span');
       lab.className = 'jc-label';
       lab.textContent = s.label;                       // static server label - textContent (XSS-safe)

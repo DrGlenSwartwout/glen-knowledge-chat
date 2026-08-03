@@ -53,6 +53,13 @@ def test_give_label_and_predicate_ambassador():
     assert by["give"]["steps"][0]["done"] is True
 
 
+def test_give_routes_new_ambassadors_to_application_page():
+    bf = _bf()
+    m = bf.journey_map(_state([]), "", {"ambassador": False})
+    by = {c["key"]: c for c in m}
+    assert by["give"]["href"] == "/affiliate"
+
+
 def test_smart_scan_href():
     bf = _bf()
     sign = bf.journey_map(_state([]), "slug", {"has_e4l": False})
