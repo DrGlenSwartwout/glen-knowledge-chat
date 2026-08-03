@@ -24180,9 +24180,25 @@ def _life_stress_for(email, scan_date=None):
     None, never raises. When the practitioner has curated this client's essences,
     the curation replaces the auto-pool (block gets curated=True)."""
     try:
-        import datetime as _dt_ls
-        effective_date = (scan_date or "").strip() or _dt_ls.date.today().isoformat()
-        block = life_stress.recommend(email, effective_date)
+        # Production cannot depend on its bundled e4l.db for the client's latest
+        # scan. Read the per-scan mirror populated by the immediate ingestion sync,
+        # resolve the requested date (or newest), and derive from those exact rows.
+        from dashboard import scan_recommendations as _sr_ls
+        with db.connect(LOG_DB) as _cx_ls:
+            _cx_ls.row_factory = sqlite3.Row
+            _sr_ls.init_table(_cx_ls)
+            dates = _sr_ls.scan_dates_for(_cx_ls, email)
+            requested = (scan_date or "").strip()
+            picked = requested if requested in dates else (dates[0] if dates else "")
+            rows = _sr_ls.for_scan_date(_cx_ls, email, picked) if picked else []
+        findings = [{"code": row.get("item_code"), "rank": row.get("priority_rank")}
+                    for row in rows]
+        block = life_stress.recommend_for_findings(findings) if findings else None
+        # Backward-compatible fallback for portals not yet represented in the mirror.
+        if block is None and not dates:
+            import datetime as _dt_ls
+            block = life_stress.recommend(
+                email, requested or _dt_ls.date.today().isoformat())
         from dashboard import life_stress_curation
         with db.connect(LOG_DB) as _cx_lsc:
             block = life_stress_curation.apply(_cx_lsc, email, block, _PRODUCTS)
