@@ -250,7 +250,7 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
             return signup
     slug, status = row[0], (row[1] or "")
     if status != "approved":
-        return {"status": "pending"}
+        return {"status": "pending", "portal_url": f"{base}/affiliate"}
     block = {
         "status": "enrolled",
         "slug": slug,

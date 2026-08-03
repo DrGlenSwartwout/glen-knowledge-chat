@@ -99,18 +99,19 @@
       if (a.status === "enrolled") {
         return "<h2>Your ambassador links</h2>" +
           '<p><a class="cta" href="' + (a.portal_url || '/affiliate') + '" target="_blank" rel="noopener noreferrer">Open Ambassador Dashboard</a></p>' +
-          '<p>Share your link and be credited.</p>' +
+          '<p>Open your dashboard for all shareable links and directions for using each one.</p>' +
           '<p><b>Your customer referral link:</b> <a class="link" href="' + a.referral_url +
           '" target="_blank" rel="noopener noreferrer">' + a.referral_url + "</a></p>" +
           '<p><b>Invite ambassadors:</b> <a class="link" href="' + a.recruit_url +
           '" target="_blank" rel="noopener noreferrer">' + a.recruit_url + "</a></p>";
       }
       if (a.status === "pending") {
-        return "<h2>Ambassador</h2><p>Your application is under review.</p>";
+        return "<h2>Ambassador</h2><p>Your application is under review.</p>" +
+          '<a class="cta" href="' + (a.portal_url || '/affiliate') + '" target="_blank" rel="noopener noreferrer">Check Application / Sign In</a>';
       }
       return "<h2>Become an ambassador</h2>" +
-        '<p>Share what helped you and earn as others heal.</p>' +
-        '<a class="cta" href="' + a.signup_url + '" target="_blank" rel="noopener noreferrer">Apply</a>';
+        '<p>Sign up to receive your shareable links, directions, and referral dashboard.</p>' +
+        '<a class="cta" href="' + a.signup_url + '" target="_blank" rel="noopener noreferrer">Sign Up as an Ambassador</a>';
     }
 
     function growCard(paths) {
