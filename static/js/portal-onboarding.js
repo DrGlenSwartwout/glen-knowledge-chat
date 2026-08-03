@@ -5,9 +5,10 @@ function renderOnboarding(status) {
   if (!status || !status.phases || !status.phases.length) return '';
   const phases = status.phases.map(function (ph) {
     const steps = (ph.steps || []).map(function (st) {
-      const mark = st.done === true ? '✓' : (st.done === false ? '○' : '•');
-      const markClass = st.done === true ? 'ob-mark-done' : (st.done === false ? 'ob-mark-open' : 'ob-mark-resource');
+      const mark = st.done === true ? '✓' : (st.in_progress ? '◐' : (st.done === false ? '○' : '•'));
+      const markClass = st.done === true ? 'ob-mark-done' : (st.in_progress ? 'ob-mark-progress' : (st.done === false ? 'ob-mark-open' : 'ob-mark-resource'));
       var label = escapeHtml(st.label);
+      if (st.in_progress) label += ' (in progress)';
       if (st.soon) label += ' (coming soon)';
       var text = st.href
         ? '<a href="' + st.href + '">' + label + '</a>'
@@ -327,6 +328,18 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         })
         .catch(function () {});
     }
+    window.refreshPortalOnboarding = loadAndRender;
+
+    mount.addEventListener('click', function (event) {
+      var link = event.target.closest && event.target.closest('a[href]');
+      if (!link) return;
+      var url;
+      try { url = new URL(link.href, location.href); } catch (_error) { return; }
+      if (url.origin !== location.origin || url.pathname !== location.pathname || !url.hash) return;
+      event.preventDefault();
+      if (location.hash !== url.hash) history.pushState(null, '', url.hash);
+      if (typeof window.applyPortalHash === 'function') window.applyPortalHash();
+    });
 
     function _num(v) {
       if (v === '' || v == null) return undefined;

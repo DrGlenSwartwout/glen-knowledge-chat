@@ -182,9 +182,35 @@
   /* Essence product names are links. Do not let the browser's default dark blue
      disappear into the green card in the default/dark portal theme. */
   :root:not([data-theme]) .life-stress-card a,
+  :root:not([data-theme]) .remitem a,
+  :root:not([data-theme]) .reitem a,
+  :root:not([data-theme]) .rec-row-name a,
+  :root:not([data-theme]) .rx a,
+  :root:not([data-theme]) .support-program-card a,
   :root[data-theme="dark"] .life-stress-card a,
+  :root[data-theme="dark"] .remitem a,
+  :root[data-theme="dark"] .reitem a,
+  :root[data-theme="dark"] .rec-row-name a,
+  :root[data-theme="dark"] .rx a,
+  :root[data-theme="dark"] .support-program-card a,
   :root:not([data-theme]) .life-stress-card a:visited,
-  :root[data-theme="dark"] .life-stress-card a:visited{color:#8ecbff}
+  :root:not([data-theme]) .remitem a:visited,
+  :root:not([data-theme]) .reitem a:visited,
+  :root:not([data-theme]) .rec-row-name a:visited,
+  :root:not([data-theme]) .rx a:visited,
+  :root:not([data-theme]) .support-program-card a:visited,
+  :root[data-theme="dark"] .life-stress-card a:visited,
+  :root[data-theme="dark"] .remitem a:visited,
+  :root[data-theme="dark"] .reitem a:visited,
+  :root[data-theme="dark"] .rec-row-name a:visited,
+  :root[data-theme="dark"] .rx a:visited,
+  :root[data-theme="dark"] .support-program-card a:visited{color:#8ecbff}
+  :root[data-theme="light"] .life-stress-card a,
+  :root[data-theme="light"] .remitem a,
+  :root[data-theme="light"] .reitem a,
+  :root[data-theme="light"] .rec-row-name a,
+  :root[data-theme="light"] .rx a,
+  :root[data-theme="light"] .support-program-card a{color:#245f9e}
   .muted{color:var(--muted)} .small{font-size:.86rem}
   .foot{text-align:center;color:var(--muted);font-size:.86rem;margin-top:26px}
   .state{max-width:32rem;margin:18vh auto;text-align:center;color:var(--muted);padding:0 18px}
@@ -506,6 +532,7 @@
   .ob-mark{display:inline-block;width:1.15em;flex:0 0 auto;text-align:center;
     font-weight:700}
   .ob-mark-done{color:var(--brand)}
+  .ob-mark-progress{color:var(--brand)}
   .ob-mark-open{color:var(--muted)}
   .ob-mark-resource{color:var(--muted)}
   .ob-member-thread{color:var(--muted);font-size:.85rem;margin:.7rem 0 0}
@@ -697,7 +724,7 @@ function ffMatchesBodyHtml(block){
     : "matched automatically from your scan";
   let rows = items.map(it => {
     const nm = esc(it.name || it.label || it.item_code || "");
-    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const nameHtml = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${nm}</a>` : nm;
     const meaning = it.meaning ? `<div class="muted" style="font-size:.9em">${esc(it.meaning)}</div>` : "";
     const dosing = (block.covered && it.dosing) ? `<div class="dose">${esc(it.dosing)}</div>` : "";
     return `<p style="margin:.5rem 0"><strong>${nameHtml}</strong>${meaning}${dosing}</p>`;
@@ -723,7 +750,7 @@ function supportProgramBodyHtml(sp){
     : "";
   let rows = items.map(it => {
     const nm = esc(it.name || "");
-    const nameHtml = it.url ? `<a href="${esc(it.url)}">${nm}</a>` : nm;
+    const nameHtml = it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${nm}</a>` : nm;
     const dose = it.dose ? `<div class="dose">${esc(it.dose)}</div>` : "";
     const note = it.note ? `<div class="muted" style="font-size:.9em">${esc(it.note)}</div>` : "";
     const alts = Array.isArray(it.alts) && it.alts.length
@@ -815,7 +842,7 @@ function prlSupplementBodyHtml(sp){
       ? `<div class="muted" style="font-size:.85em;margin:.1rem 0 .4rem">${fa.items.map(esc).join(" · ")}</div>` : "";
     const rows = prods.map(p => {
       const purl = safeUrl(p.url);
-      const nm = purl ? `<a href="${esc(purl)}">${esc(p.name||"")}</a>` : esc(p.name||"");
+      const nm = purl ? `<a href="${esc(purl)}" target="_blank" rel="noopener">${esc(p.name||"")}</a>` : esc(p.name||"");
       const ff = p.ff && p.ff.name
         ? `<div class="muted" style="font-size:.9em">${esc(relLabel[p.ff.relation]||"related")}: ${esc(p.ff.name)}</div>` : "";
       return `<p style="margin:.35rem 0"><strong>${nm}</strong>${ff}</p>`;
@@ -958,6 +985,7 @@ function showTab(name){
   // it was last open). loadCart() itself no-ops if #cart-body isn't in the
   // DOM (panel disabled/absent).
   if (name === 'cart') loadCart();
+  if (name === 'intake') initPortalIntakeCard(true);
 }
 
 // Stable deep links used by email/SMS CTAs. A hash names a destination, not a
@@ -991,6 +1019,15 @@ function applyPortalHash(){
 }
 
 window.addEventListener("hashchange", applyPortalHash);
+document.addEventListener("click", function(event){
+  const link = event.target.closest('a[href^="#"]');
+  if(!link) return;
+  const key = decodeURIComponent((link.getAttribute("href") || "").replace(/^#/, "")).toLowerCase();
+  if(!PORTAL_HASH_ROUTES[key]) return;
+  event.preventDefault();
+  if(location.hash === "#" + key) applyPortalHash();
+  else location.hash = key;
+});
 // Task 5: local in-panel toggle for the Oasis panel's two modes (Replenish /
 // Build Out). Scoped to [data-oasis-mode] so it never touches the real
 // showTab()/[data-panel] state or the top-level #portalTabs tab bar.
@@ -1294,6 +1331,7 @@ function buildPhotoHtml(){
     <h2>My Photo</h2>
     <p class="muted small">Add a clear photo for your profile and personalized visual tools.</p>
     <div class="client-photo-box" style="display:flex;gap:14px;align-items:center">
+      <img id="client-photo-panel-preview" alt="Your uploaded photo" style="width:76px;height:76px;border-radius:12px;object-fit:cover;display:none">
       <div><label class="btn" style="cursor:pointer;display:inline-block">
         <span id="client-photo-label">Choose photo</span>
         <input id="client-photo-file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none">
@@ -2288,7 +2326,7 @@ function renderRecommendations(sections){
       const pk = esc(p.product_key || "");
       const safeUrl = /^(https?:\/\/|\/)/.test(String(p.url||"")) ? p.url : "";
       const nameHtml = safeUrl
-        ? `<a href="${esc(safeUrl)}">${esc(p.name || "")}</a>`
+        ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener">${esc(p.name || "")}</a>`
         : esc(p.name || "");
       const icons = Array.isArray(p.icons) ? p.icons : [];
       const chips = icons.map(ic=>{
@@ -3108,7 +3146,7 @@ function render(d, v){
         const name = esc(i.label);
         const days = i.protocol_days ? ` <span class="muted">· ${i.protocol_days}-day protocol</span>` : "";
         return i.order_url
-          ? `<p style="margin:.25rem 0">${name}${days} — <a href="${esc(i.order_url)}">order</a></p>`
+          ? `<p style="margin:.25rem 0">${name}${days} — <a href="${esc(i.order_url)}" target="_blank" rel="noopener">order</a></p>`
           : `<p style="margin:.25rem 0">${name}${days}</p>`;
       }).join("");
     }
@@ -3341,7 +3379,7 @@ function render(d, v){
       const img = it.image ? `<img class="wishitem-img" src="${esc(it.image)}" alt="" loading="lazy">` : "";
       wrows += `<div class="wishitem" data-slug="${slug}">
         <label class="wishitem-pick"><input type="checkbox" class="wishSel"></label>
-        <a class="wishitem-link" href="${esc(it.url||"#")}">
+        <a class="wishitem-link" href="${esc(it.url||"#")}" target="_blank" rel="noopener">
           ${img}
           <span class="nm-wrap"><span class="nm">${esc(it.name||it.slug||"")}</span></span>
           <span class="pr">${esc(it.price||"")}</span>
@@ -3734,12 +3772,15 @@ function render(d, v){
     const label = document.getElementById("client-photo-label");
     const stat = document.getElementById("client-photo-stat");
     const placeholder = document.getElementById("client-photo-placeholder");
+    const panelPreview = document.getElementById("client-photo-panel-preview");
     if (!img || !file) return;
     function show(){
       img.onload = function(){
         img.style.display = "block";
+        if(panelPreview){ panelPreview.src = img.src; panelPreview.style.display = "block"; }
         if (placeholder) placeholder.style.display = "none";
         if (label) label.textContent = "Change photo";
+        if (stat && !stat.textContent) stat.textContent = "Photo uploaded — under review.";
       };
       img.onerror = function(){
         img.style.display = "none";
@@ -3756,7 +3797,11 @@ function render(d, v){
         const r = await fetch("/api/portal/" + encodeURIComponent(token) + "/photo",
                               {method: "POST", body: fd, credentials: "same-origin"});
         const j = await r.json();
-        if (j.ok) { stat.textContent = "Saved."; show(); }
+        if (j.ok) {
+          stat.textContent = "Photo uploaded — under review.";
+          show();
+          if(window.refreshPortalOnboarding) window.refreshPortalOnboarding();
+        }
         else { stat.textContent = j.error || "Upload failed"; }
       } catch (e) { stat.textContent = "Upload failed"; }
     });
@@ -4200,7 +4245,11 @@ function render(d, v){
       const memberParam = new URLSearchParams(location.search).get("member");
       const u = `/api/portal/${encodeURIComponent(token)}/ff-matches`
         + (memberParam ? `?member=${encodeURIComponent(memberParam)}` : "");
-      const r = await fetch(u, {method:"POST"});
+      const r = await fetch(u, {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({scan_date:selectedScanDate || ""}),
+      });
       const j = await r.json();
       const body = document.getElementById("ffMatchesBody");
       if(j && j.ff_matches && body) body.innerHTML = ffMatchesBodyHtml(j.ff_matches);
@@ -4363,22 +4412,25 @@ function showPortalIntakeComplete(host){
   button.type = "button";
   button.className = "btn full";
   button.textContent = healthPanel ? "Review My Health Profile" : "Return to my portal";
-  button.addEventListener("click", ()=>{
+  button.addEventListener("click", async ()=>{
     try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
+    if(healthPanel) await load();
     showTab(healthPanel ? "health" : "hub");
   });
   host.appendChild(button);
 }
 
-function initPortalIntakeCard(){
+function initPortalIntakeCard(refreshing){
   const host = document.getElementById("portal-intake-host");
   if(!host) return;
   renderIntakeForm(host, seg, function(){
     showPortalIntakeComplete(host);
+    if(window.refreshPortalOnboarding) window.refreshPortalOnboarding();
   }, {
     title: "Build My Health Profile",
     intro: "Complete each section at your own pace. Your answers save automatically, so you can leave and return anytime.",
     paged: true,
+    loadingText: refreshing ? "Refreshing your saved intake…" : "Loading your intake form…",
   });
 }
 
@@ -4415,7 +4467,7 @@ async function renderIntakeForm(host, tokenVal, onDone, options){
   host.innerHTML = "";
   const loading = document.createElement("p");
   loading.className = "muted small";
-  loading.textContent = "Loading your intake form…";
+  loading.textContent = options.loadingText || "Loading your intake form…";
   host.appendChild(loading);
 
   let formDef = null, stateData = null;
@@ -4472,13 +4524,14 @@ async function renderIntakeForm(host, tokenVal, onDone, options){
   host.appendChild(progress);
 
   let saveTimer = null;
-  const saveNow = async ()=>{
+  let saveChain = Promise.resolve(true);
+  const saveSnapshot = async snapshot=>{
     saveState.className = "intake-save-state";
     saveState.textContent = "Saving…";
     try{
       const r = await fetch(`/api/intake/save-draft?token=${encodeURIComponent(tokenVal)}`, {
         method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({answers: collectAnswers()}),
+        body: JSON.stringify({answers: snapshot}),
       });
       if(!r.ok) throw new Error("save failed");
       saveState.className = "intake-save-state is-saved";
@@ -4489,6 +4542,11 @@ async function renderIntakeForm(host, tokenVal, onDone, options){
       saveState.textContent = "Could not save";
       return false;
     }
+  };
+  const saveNow = ()=>{
+    const snapshot = collectAnswers();
+    saveChain = saveChain.then(()=>saveSnapshot(snapshot));
+    return saveChain;
   };
   const scheduleSave = ()=>{
     if(saveTimer) clearTimeout(saveTimer);
@@ -4556,6 +4614,7 @@ async function renderIntakeForm(host, tokenVal, onDone, options){
     finishLater.addEventListener("click", async ()=>{
       if(saveTimer) clearTimeout(saveTimer);
       if(await saveNow()){
+        if(window.refreshPortalOnboarding) window.refreshPortalOnboarding();
         try{ history.replaceState(null, "", location.pathname + location.search); }catch(e){}
         showTab("hub");
       }
@@ -4584,6 +4643,7 @@ async function renderIntakeForm(host, tokenVal, onDone, options){
       if(el && el.classList) el.classList.remove("intake-err");
     });
     if(saveTimer) clearTimeout(saveTimer);
+    await saveChain;
     saveState.className = "intake-save-state";
     saveState.textContent = "Submitting…";
     let r, d;

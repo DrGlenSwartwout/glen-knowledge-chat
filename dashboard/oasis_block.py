@@ -108,7 +108,7 @@ def _device_orders(cx, email):
                 entry = {
                     "slug": slug,
                     "name": product.get("name") or slug,
-                    "url": product.get("url") or f"/begin/product/{slug}",
+                    "url": f"/begin/product/{slug}",
                     "last_ordered": created_at,
                     "times_ordered": 0,
                 }
@@ -173,7 +173,7 @@ def _wanted_items(cx, email):
             out.append({
                 "slug": slug,
                 "name": product.get("name") or slug,
-                "url": product.get("url") or f"/begin/product/{slug}",
+                "url": f"/begin/product/{slug}",
             })
             continue
         roadmap_name = roadmap_names.get(slug)

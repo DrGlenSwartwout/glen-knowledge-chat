@@ -210,7 +210,7 @@ def replenish_items(cx, email, *, catalog=None, today=None) -> list:
                 entry = {
                     "slug": slug,
                     "name": product.get("name") or slug,
-                    "url": product.get("url") or f"/begin/product/{slug}",
+                    "url": f"/begin/product/{slug}",
                     "last_ordered": created_at,
                     "times_ordered": 0,
                 }

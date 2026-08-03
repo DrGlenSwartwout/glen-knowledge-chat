@@ -5,7 +5,7 @@ _CAT = {"focus-neuro-magnesium-powder": {"name": "Focus Neuro-Magnesium", "url":
 def test_mapped_ingredient_returns_our_equivalent():
     up = ru.suggest_upgrade("Magnesium Glycinate", "Acme", catalog=_CAT)
     assert up and up["slug"] == "focus-neuro-magnesium-powder"
-    assert up["url"] == "/p/focus-neuro-magnesium-powder"
+    assert up["url"] == "/begin/product/focus-neuro-magnesium-powder"
     assert up["reason"]                    # a non-empty clinical reason
 
 def test_unmapped_product_returns_none():
