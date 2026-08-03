@@ -84,7 +84,7 @@ def test_ambassador_block_shows_cta_when_flag_off(monkeypatch):
     monkeypatch.delenv("AFFILIATE_AUTOENROLL_ENABLED", raising=False)
     block = pv._ambassador_block(cx, "new@example.com", "https://q.example/quiz", "https://illtowell.com")
     assert block["status"] == "none"
-    assert block["signup_url"] == "https://illtowell.com/affiliate/apply-form"
+    assert block["signup_url"] == "https://illtowell.com/affiliate"
     assert cx.execute("SELECT COUNT(*) FROM affiliate_signups").fetchone()[0] == 0
 
 def test_backfill_from_people_and_portals_idempotent():
