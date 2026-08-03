@@ -254,6 +254,7 @@ def _ambassador_block(cx, email, quiz_url, public_base_url):
     block = {
         "status": "enrolled",
         "slug": slug,
+        "portal_url": f"{base}/affiliate",
         "referral_url": f"{quiz_url}?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz",
         "recruit_url": f"{base}/affiliate?ref={slug}",
     }

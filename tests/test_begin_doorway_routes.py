@@ -59,11 +59,11 @@ def test_doorway_optin_captures_and_records_gates(appmod):
     assert "voice-doorway" in g["tags"] and "element:water" in g["tags"]
 
 
-def test_init_referral_repoints_existing_voice_offer_to_scoreapp(tmp_path, monkeypatch):
+def test_init_referral_repoints_deprecated_scoreapp_offer_to_current_journey(tmp_path, monkeypatch):
     import app as appmod, sqlite3
     db = tmp_path / "ref.db"
     monkeypatch.setattr(appmod, "LOG_DB", db)
-    appmod._init_referral_tables()  # creates schema + seeds (fresh -> ScoreApp URL)
+    appmod._init_referral_tables()
     cx = sqlite3.connect(db)
     cx.execute("UPDATE affiliate_offers SET url_template='https://illtowell.com/begin/doorway?ref={slug}' WHERE name='Accelerate Self-Healing Quiz'")
     cx.commit()
@@ -73,10 +73,11 @@ def test_init_referral_repoints_existing_voice_offer_to_scoreapp(tmp_path, monke
     row = cx2.execute("SELECT url_template FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone()
     cx2.close()
     assert row is not None
-    assert row[0] == "https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
+    assert "scoreapp.com" not in row[0]
+    assert "/begin/doorway?ref={slug}" in row[0]
 
 
-def test_affiliate_quiz_url_is_non_voice_scoreapp():
+def test_affiliate_quiz_url_does_not_use_deprecated_scoreapp():
     import pathlib
     src = pathlib.Path("app.py").read_text()
-    assert 'QUIZ_URL            = "https://healing.scoreapp.com"' in src
+    assert 'QUIZ_URL            = f"{PUBLIC_BASE_URL}/begin/doorway"' in src
