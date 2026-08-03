@@ -3,6 +3,7 @@ section per source category; a product appears in each source it has an event fo
 that source's count (desc) then recency (desc); top_n shown + a remainder count. Hidden
 products excluded. Sections ordered by the registry."""
 from dashboard.recommendation_sources import RECOMMENDATION_SOURCES
+from dashboard.order_destination import destination_for
 
 
 def build_sections(product_sources, notes, section_state, resolve_product, *, top_n=5):
@@ -18,7 +19,8 @@ def build_sections(product_sources, notes, section_state, resolve_product, *, to
                   "first_touch": s.get("first_touch", "")} for s in p["sources"]]
         for s in p["sources"]:
             by_source.setdefault(s["source"], []).append({
-                "product_key": pk, "name": prod.get("name") or pk, "url": prod.get("url") or "",
+                "product_key": pk, "name": prod.get("name") or pk,
+                "url": destination_for(pk),
                 "icons": icons,
                 "operator_note": n.get("operator_note", ""), "client_note": n.get("client_note", ""),
                 "_count": s["count"], "_recent": s.get("last_touch", "") or ""})

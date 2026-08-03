@@ -41,3 +41,15 @@ def test_life_stress_essence_links_are_readable_in_dark_mode():
     assert ':root[data-theme="dark"] .life-stress-card a' in HTML
     assert ':root[data-theme="dark"] .life-stress-card a:visited' in HTML
     assert "color:#8ecbff" in HTML
+
+
+def test_selected_scan_and_intake_autosaves_do_not_go_stale():
+    assert 'body:JSON.stringify({scan_date:selectedScanDate || ""})' in HTML
+    assert "let saveChain = Promise.resolve(true)" in HTML
+    assert "await saveChain" in HTML
+    assert "initPortalIntakeCard(true)" in HTML
+
+
+def test_product_links_are_readable_and_open_outside_portal():
+    assert ':root[data-theme="dark"] .remitem a' in HTML
+    assert 'target="_blank" rel="noopener"' in HTML

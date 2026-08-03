@@ -11,6 +11,7 @@ from `dashboard.supplement_reviews`) — NOT a fuzzy name match against arbitrar
 brand products. An unmapped product (or a mapped one whose slug is missing from
 the resolved catalog) returns None so we never point at a dead product."""
 import re
+from dashboard.order_destination import destination_for
 
 # Curated ingredient/category -> our-equivalent slug + one-line clinical reason.
 # Glen extends this map as he confirms additional equivalences; keys are
@@ -109,6 +110,6 @@ def suggest_upgrade(product_name, product_brand="", *, catalog=None):
     return {
         "slug": slug,
         "name": product.get("name", slug),
-        "url": product.get("url", ""),
+        "url": destination_for(slug),
         "reason": entry["reason"],
     }

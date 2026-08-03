@@ -21130,15 +21130,16 @@ def api_client_portal(token):
             with db.connect(LOG_DB) as _cxf:
                 _cxf.row_factory = sqlite3.Row
                 ff_match_drafts.init_table(_cxf)
-                _ffd = ff_match_drafts.get(_cxf, email_for_reports,
-                                           _current_scan_date_for(email_for_reports))
+                _ff_scan_date = bf_scan_date or _current_scan_date_for(email_for_reports)
+                _ffd = ff_match_drafts.get(_cxf, email_for_reports, _ff_scan_date)
                 if _ffd:
                     _cov = _ff_covered(_cxf, email_for_reports)
                     _items = _ffd["items"]
                     _reviewed = _ffd["status"] == "published"
                     if not (_cov and _reviewed):
                         _items = [{k: v for k, v in it.items() if k != "dosing"} for it in _items]
-                    payload["ff_matches"] = {"items": _items, "reviewed": _reviewed, "covered": _cov}
+                    payload["ff_matches"] = {"items": _items, "reviewed": _reviewed,
+                                             "covered": _cov, "scan_date": _ff_scan_date}
         except Exception as _e:
             print(f"[ff-matches/payload] {_e!r}", flush=True)
     # Support-programs flag (always present, like its sibling ff_matches_enabled): lets
@@ -21162,7 +21163,8 @@ def api_client_portal(token):
     payload["life_stress_enabled"] = _life_stress_enabled()
     if _life_stress_enabled():
         try:
-            _ls_block = _life_stress_for(email_for_reports)
+            _ls_block = (_life_stress_for(email_for_reports, req_date)
+                         if req_date else _life_stress_for(email_for_reports))
             if _ls_block:
                 payload["life_stress"] = _ls_block
                 try:
@@ -23399,7 +23401,12 @@ def api_portal_ff_matches(token):
                         email = _m
             except Exception as _e:
                 print(f"[ff-matches] household {_e!r}", flush=True)
-        scan_date = _current_scan_date_for(email)
+        body = request.get_json(silent=True) or {}
+        requested_scan_date = (body.get("scan_date") or request.args.get("scan_date") or "").strip()
+        selected_recs = (_scan_recommendations_for(email, requested_scan_date)
+                         if requested_scan_date else None)
+        scan_date = ((selected_recs or {}).get("scan_date")
+                     or _current_scan_date_for(email))
         covered = _ff_covered(cx, email)
         species = _client_species_for(email)
         if species and species.get("is_animal"):
@@ -23408,7 +23415,7 @@ def api_portal_ff_matches(token):
             # ({scan_date, scan_dates, infoceuticals:[...], mihealth:[...]}), not a list, so
             # flatten it into the [{name,url,meaning}] shape the card's items expect. miHealth
             # cycles are excluded — they are device-run by the practitioner, not orderable.
-            recs = _scan_recommendations_for(email, scan_date) or {}
+            recs = selected_recs or _scan_recommendations_for(email, scan_date) or {}
             items = [{"name": i["label"], "url": i.get("order_url") or "", "meaning": ""}
                      for i in (recs.get("infoceuticals") or [])]
             return jsonify({"ff_matches": {"kind": "infoceutical", "items": items,
@@ -24156,7 +24163,7 @@ def _support_program_for(email):
         return None
 
 
-def _life_stress_for(email):
+def _life_stress_for(email, scan_date=None):
     """The client's Life Stress essence recommendation (E4L scan emotion patterns
     matched to supportive Terrain Restore essences), or None when there's no scan,
     no matched emotions, or no resolvable essence. Best-effort — any error returns
@@ -24164,7 +24171,8 @@ def _life_stress_for(email):
     the curation replaces the auto-pool (block gets curated=True)."""
     try:
         import datetime as _dt_ls
-        block = life_stress.recommend(email, _dt_ls.date.today().isoformat())
+        effective_date = (scan_date or "").strip() or _dt_ls.date.today().isoformat()
+        block = life_stress.recommend(email, effective_date)
         from dashboard import life_stress_curation
         with db.connect(LOG_DB) as _cx_lsc:
             block = life_stress_curation.apply(_cx_lsc, email, block, _PRODUCTS)
@@ -28611,8 +28619,10 @@ def api_client_portal_view(token):
         if ident is None:
             return jsonify({"error": "not found"}), 404
         with _request_timing_step("view"):
+            requested_scan_date = (request.args.get("scan_date") or "").strip() or None
             view = _pv.get_portal_view(cx, ident.person_id,
                                        offers_enabled_keys=_enabled_offer_keys(),
+                                       scan_date=requested_scan_date,
                                        quiz_url=QUIZ_URL, public_base_url=PUBLIC_BASE_URL,
                                        finder_enabled=_PORTAL_FINDER_ENABLED,
                                        hub_enabled=_PORTAL_HUB_ENABLED,

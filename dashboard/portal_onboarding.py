@@ -97,9 +97,20 @@ def build_status(cx, email):
         if _has_e4l_account(cx, email)
         else "https://truly.vip/E4L"
     )
+    intake_done = _safe(intake.is_submitted, cx, email)
+    intake_in_progress = False
+    try:
+        intake_status = cx.execute(
+            "SELECT status FROM intake_responses WHERE email=?", (email,)
+        ).fetchone()
+        intake_in_progress = bool(intake_status and intake_status[0] == "draft")
+    except Exception:
+        pass
+
     be_read = [
         step("voice", "Voice analysis", has_scan, voice_href),
-        step("intake", "Intake", _safe(intake.is_submitted, cx, email), "#intake"),
+        step("intake", "Intake", intake_done, "#intake",
+             in_progress=intake_in_progress),
         step("photo", "Photo", _safe(client_photos.has, cx, email), "#photo"),
         step("biofield", "Biofield Analysis",
              _safe(lambda c, e: portal_biofield_reports.latest_report(c, e) is not None, cx, email),
