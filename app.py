@@ -20818,7 +20818,27 @@ def api_client_portal(token):
     _pbr.init_table(cx_r)
     dates = _pbr.list_report_dates(cx_r, email_for_reports) if email_for_reports else []
     req_date = (request.args.get("scan_date") or "").strip()
-    if dates:
+    # A client can have older authored reports (System B) and newer automatic E4L
+    # reveals (System A).  Treat them as one selectable history.  Previously the
+    # mere existence of any authored report hid every reveal, so selecting Rae's
+    # Aug 2 scan silently fell back to her Jun 20 report.
+    _revs = []
+    try:
+        from dashboard import biofield_reveals as _brv
+        from dashboard import portal_view as _pv
+        _brv.init_table(cx_r)
+        _revs = _brv.list_for_email(cx_r, email_for_reports) if email_for_reports else []
+    except Exception as _re:
+        print(f"[portal-reveal] read skipped: {_re!r}", flush=True)
+    _rev_by_date = {r["scan_date"]: r for r in _revs}
+    _all_bf_dates = sorted(set(dates) | set(_rev_by_date), reverse=True)
+
+    if req_date in _rev_by_date and req_date not in dates:
+        _row = _rev_by_date[req_date]
+        bf_content = _pv._reveal_as_report_content(_row)
+        bf_status = "confirmed"
+        bf_scan_date, bf_scan_dates, bf_actionable = req_date, _all_bf_dates, False
+    elif dates:
         # Which report is "current": an explicit ?scan_date= wins; else the report the
         # authoring/hand-off stamped as current (content.current_scan_date) so a manual
         # Biofield beats a stale AI reveal regardless of date; else newest by date.
@@ -20835,25 +20855,15 @@ def api_client_portal(token):
         rep = _pbr.get_report(cx_r, email_for_reports, picked) or {}
         bf_content = rep.get("content") or {}
         bf_status = rep.get("status") or "confirmed"
-        bf_scan_date, bf_scan_dates = picked, dates
+        bf_scan_date, bf_scan_dates = picked, _all_bf_dates
         bf_actionable = (bf_status != "confirmed") and _pbr.is_actionable(
             picked, _dt.date.today().isoformat())
     else:
-        # System A: the funnel reveal (biofield_reveals). Rendered as the portal scan
-        # when the client has no System B report. Best-effort — a read failure must
-        # never break the portal load; falls back to the legacy `content` path.
-        _revs = []
-        try:
-            from dashboard import biofield_reveals as _brv
-            from dashboard import portal_view as _pv
-            _brv.init_table(cx_r)
-            _revs = _brv.list_for_email(cx_r, email_for_reports) if email_for_reports else []
-        except Exception as _re:
-            print(f"[portal-reveal] read skipped: {_re!r}", flush=True)
+        # System A: the funnel reveal (biofield_reveals).
         if _revs:
-            _rev_dates = [r["scan_date"] for r in _revs]
+            _rev_dates = list(_rev_by_date)
             _picked = req_date if req_date in _rev_dates else _rev_dates[0]
-            _row = next((r for r in _revs if r["scan_date"] == _picked), _revs[0])
+            _row = _rev_by_date[_picked]
             bf_content = _pv._reveal_as_report_content(_row)
             bf_status = "confirmed"
             bf_scan_date, bf_scan_dates, bf_actionable = _picked, _rev_dates, False
