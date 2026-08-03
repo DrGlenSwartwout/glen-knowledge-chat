@@ -905,12 +905,12 @@
     },
     {
       "id": "ed11-liver-driver-pancreas",
-      "label": "ED11 Liver Driver Pancreas)",
+      "label": "ED11 Liver Driver",
       "aliases": [
         "liver driver",
         "ed11"
       ],
-      "summary": "An infoceutical biocommunication remedy targeting liver and pancreas energetic support.",
+      "summary": "ED11 Liver Driver supports liver-related energetic patterns. ED15, not ED11, is the Pancreas Driver.",
       "cluster": "detox-drainage",
       "parent": "detox-drainage",
       "namespaces": [
@@ -922,7 +922,7 @@
           "type": "product",
           "source": "remedymatch",
           "url": "https://remedymatch.com/remedies/modalities/biocommunication/infoceuticals/156-ed11-liver-driver",
-          "title": "ED11 Liver Driver Pancreas)"
+          "title": "ED11 Liver Driver"
         }
       ]
     },
