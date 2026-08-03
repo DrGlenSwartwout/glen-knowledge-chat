@@ -110,6 +110,21 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         dates = _pbr.list_report_dates(cx, email)
     except Exception:
         dates = []
+    try:
+        from dashboard import biofield_reveals as _br
+        _reveals = _br.list_for_email(cx, email)
+    except Exception:
+        _reveals = []
+    _reveal_by_date = {r["scan_date"]: r for r in _reveals}
+    _all_dates = sorted(set(dates) | set(_reveal_by_date), reverse=True)
+
+    if scan_date in _reveal_by_date and scan_date not in dates:
+        _content = _reveal_as_report_content(_reveal_by_date[scan_date])
+        if not _content["layers"] and not _content["greeting"]:
+            return {"visible": False}
+        return _assemble_biofield(cx, _content, "confirmed", scan_date=scan_date,
+                                  scan_dates=_all_dates, actionable=False,
+                                  unlocked=unlocked)
     if dates:
         picked = scan_date if (scan_date in dates) else dates[0]
         rep = _pbr.get_report(cx, email, picked) or {}
@@ -118,18 +133,14 @@ def _biofield_block(cx, email, scan_date=None, unlocked=True):
         today = datetime.date.today().isoformat()
         actionable = (status != "confirmed") and _pbr.is_actionable(picked, today)
         return _assemble_biofield(cx, content, status, scan_date=picked,
-                                  scan_dates=dates, actionable=actionable, unlocked=unlocked)
+                                  scan_dates=_all_dates, actionable=actionable,
+                                  unlocked=unlocked)
     # System A: the funnel reveal (biofield_reveals). Rendered as the portal scan
     # when the client has no System B report. Blur is binary (paid -> remedies).
-    try:
-        from dashboard import biofield_reveals as _br
-        _reveals = _br.list_for_email(cx, email)
-    except Exception:
-        _reveals = []
     if _reveals:
-        _rev_dates = [r["scan_date"] for r in _reveals]
+        _rev_dates = list(_reveal_by_date)
         _picked = scan_date if (scan_date in _rev_dates) else _rev_dates[0]
-        _row = next((r for r in _reveals if r["scan_date"] == _picked), _reveals[0])
+        _row = _reveal_by_date[_picked]
         _content = _reveal_as_report_content(_row)
         if not _content["layers"] and not _content["greeting"]:
             return {"visible": False}
