@@ -100,9 +100,9 @@
         return "<h2>Your ambassador links</h2>" +
           '<p>Share your link and be credited.</p>' +
           '<p><b>Your link:</b> <a class="link" href="' + a.referral_url +
-          '">' + a.referral_url + "</a></p>" +
+          '" target="_blank" rel="noopener noreferrer">' + a.referral_url + "</a></p>" +
           '<p><b>Invite ambassadors:</b> <a class="link" href="' + a.recruit_url +
-          '">' + a.recruit_url + "</a></p>";
+          '" target="_blank" rel="noopener noreferrer">' + a.recruit_url + "</a></p>";
       }
       if (a.status === "pending") {
         return "<h2>Ambassador</h2><p>Your application is under review.</p>";

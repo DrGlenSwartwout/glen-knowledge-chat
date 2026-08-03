@@ -20,6 +20,7 @@ def test_ambassador_entry_points_open_application_in_new_tab_without_voice():
     assert '/widget.js' not in BEGIN_PATH_HTML
     assert 'href="/affiliate" target="_blank"' in AFFILIATE_PORTAL_HTML
     assert 'src="/embed"' not in AFFILIATE_PORTAL_HTML
+    assert 'target="_blank" rel="noopener noreferrer">\' + a.referral_url' in PORTAL_PROGRAM_HTML
     assert 'target="_blank" rel="noopener noreferrer">Apply</a>' in PORTAL_PROGRAM_HTML
     assert "href:'/affiliate'" in BEGIN_HTML
     assert "s.key === 'give'" in BEGIN_HTML

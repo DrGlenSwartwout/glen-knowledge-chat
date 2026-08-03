@@ -59,13 +59,13 @@ def test_doorway_optin_captures_and_records_gates(appmod):
     assert "voice-doorway" in g["tags"] and "element:water" in g["tags"]
 
 
-def test_init_referral_repoints_existing_scoreapp_offer(tmp_path, monkeypatch):
+def test_init_referral_repoints_existing_voice_offer_to_scoreapp(tmp_path, monkeypatch):
     import app as appmod, sqlite3
     db = tmp_path / "ref.db"
     monkeypatch.setattr(appmod, "LOG_DB", db)
-    appmod._init_referral_tables()  # creates schema + seeds (fresh -> doorway URL)
+    appmod._init_referral_tables()  # creates schema + seeds (fresh -> ScoreApp URL)
     cx = sqlite3.connect(db)
-    cx.execute("UPDATE affiliate_offers SET url_template='https://healing.scoreapp.com?utm_source={slug}' WHERE name='Accelerate Self-Healing Quiz'")
+    cx.execute("UPDATE affiliate_offers SET url_template='https://illtowell.com/begin/doorway?ref={slug}' WHERE name='Accelerate Self-Healing Quiz'")
     cx.commit()
     cx.close()
     appmod._init_referral_tables()  # second run must repoint the now-stale row
@@ -73,14 +73,10 @@ def test_init_referral_repoints_existing_scoreapp_offer(tmp_path, monkeypatch):
     row = cx2.execute("SELECT url_template FROM affiliate_offers WHERE name='Accelerate Self-Healing Quiz'").fetchone()
     cx2.close()
     assert row is not None
-    assert "scoreapp.com" not in row[0]
-    assert "/begin/doorway?ref={slug}" in row[0]
+    assert row[0] == "https://healing.scoreapp.com?utm_source={slug}&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
 
 
-def test_no_scoreapp_url_outside_dormant_webhook():
-    import re, pathlib
+def test_affiliate_quiz_url_is_non_voice_scoreapp():
+    import pathlib
     src = pathlib.Path("app.py").read_text()
-    # allow the route name/handler to mention scoreapp, but no built URLs
-    bad = [ln for ln in src.splitlines()
-           if "healing.scoreapp.com" in ln]
-    assert bad == [], f"scoreapp URLs still present: {bad}"
+    assert 'QUIZ_URL            = "https://healing.scoreapp.com"' in src
