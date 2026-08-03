@@ -8,6 +8,7 @@ def test_portal_page_has_recommendations_section_and_fetch():
     assert "/recommendations" in body                 # the page fetches the endpoint
     assert "My Recommendations" in body                # the section heading
     assert "renderRecommendations" in body             # the render function exists
+    assert "/recommendations${dq}" in body             # selected scan date follows the fetch
 
 
 def test_portal_page_wires_recommendation_writes():

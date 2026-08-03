@@ -31,3 +31,19 @@ def test_hidden_flag():
     assert re.product_sources(cx, "a@b.com")[0]["hidden"] is True
     re.set_hidden(cx, "a@b.com", "slugx", False)
     assert re.product_sources(cx, "a@b.com")[0]["hidden"] is False
+
+
+def test_product_sources_can_limit_scan_events_to_current_scan():
+    cx = _cx()
+    re.record_event(cx, "a@b.com", "june-product", "scan",
+                    occurred_at="2026-06-20", origin_ref="scan:old:1")
+    re.record_event(cx, "a@b.com", "august-product", "scan",
+                    occurred_at="2026-08-02", origin_ref="scan:new:1")
+    # Non-scan history remains even when scan events are scoped.
+    re.record_event(cx, "a@b.com", "june-product", "purchased",
+                    occurred_at="2026-07-01", origin_ref="order:1")
+
+    prods = {p["product_key"]: p for p in
+             re.product_sources(cx, "a@b.com", scan_origin_prefix="scan:new:")}
+    assert {s["source"] for s in prods["august-product"]["sources"]} == {"scan"}
+    assert {s["source"] for s in prods["june-product"]["sources"]} == {"purchased"}
