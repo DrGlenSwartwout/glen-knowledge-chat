@@ -23,6 +23,7 @@ import pytest
 from dashboard import client_portal as cp
 from dashboard import life_stress_curation
 from dashboard import life_stress_selection
+from dashboard import scan_recommendations
 
 EMAIL = "lscaregiver@example.com"
 
@@ -191,3 +192,27 @@ def test_uncurated_client_keeps_phase1_shape(app_env, monkeypatch):
     assert "curated" not in j["life_stress"]
     assert [it["slug"] for it in j["life_stress"]["items"]] == \
         [it["slug"] for it in POOL["items"]]
+
+
+def test_real_builder_uses_selected_scan_mirror_not_bundled_e4l_db(app_env, monkeypatch):
+    """The selected/newest portal scan supplies the essence inputs from the prod
+    mirror. A stale bundled e4l.db must never choose an older scan's flowers."""
+    app, _client, _token = app_env
+    with sqlite3.connect(app.LOG_DB) as cx:
+        scan_recommendations.init_table(cx)
+        scan_recommendations.replace_scan(cx, EMAIL, "old", "2026-06-20", [
+            {"item_code": "ED5", "priority_rank": 1}])
+        scan_recommendations.replace_scan(cx, EMAIL, "new", "2026-08-02", [
+            {"item_code": "ED13", "priority_rank": 1},
+            {"item_code": "EI5", "priority_rank": 2}])
+
+    seen = []
+    monkeypatch.setattr(
+        app.life_stress, "recommend_for_findings",
+        lambda findings: seen.append(findings) or dict(POOL))
+    monkeypatch.setattr(
+        app.life_stress, "recommend",
+        lambda *_a, **_k: pytest.fail("must not read bundled E4L scan history"))
+
+    app._life_stress_for(EMAIL, "2026-08-02")
+    assert seen == [[{"code": "ED13", "rank": 1}, {"code": "EI5", "rank": 2}]]

@@ -54,6 +54,23 @@ def recommend(email, today, *, db_path=None, products=None, emotion_map=None, ma
         if not scan or not scan.get("found"):
             return None
         findings = scan.get("findings") or []
+        return recommend_for_findings(
+            findings, db_path=db_path, products=products,
+            emotion_map=emotion_map, max_emotions=max_emotions)
+    except Exception:
+        return None
+
+
+def recommend_for_findings(findings, *, db_path=None, products=None,
+                           emotion_map=None, max_emotions=2):
+    """Recommend essences from an already-selected scan's ranked findings.
+
+    The production portal uses this entry point with rows from its synchronized
+    ``scan_recommendations`` table. That keeps the essence card on the same exact
+    scan as the rest of the portal instead of consulting the server's bundled,
+    potentially older E4L scan database.
+    """
+    try:
         codes = [f.get("code") for f in findings if f.get("code")]
         emo_by_code = biofield_e4l.emotions_for_codes(codes, db_path=db_path)
         if not emo_by_code:
