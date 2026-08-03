@@ -98,8 +98,9 @@
     function ambassadorCard(a) {
       if (a.status === "enrolled") {
         return "<h2>Your ambassador links</h2>" +
+          '<p><a class="cta" href="' + (a.portal_url || '/affiliate') + '" target="_blank" rel="noopener noreferrer">Open Ambassador Dashboard</a></p>' +
           '<p>Share your link and be credited.</p>' +
-          '<p><b>Your link:</b> <a class="link" href="' + a.referral_url +
+          '<p><b>Your customer referral link:</b> <a class="link" href="' + a.referral_url +
           '" target="_blank" rel="noopener noreferrer">' + a.referral_url + "</a></p>" +
           '<p><b>Invite ambassadors:</b> <a class="link" href="' + a.recruit_url +
           '" target="_blank" rel="noopener noreferrer">' + a.recruit_url + "</a></p>";

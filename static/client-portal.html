@@ -3530,6 +3530,7 @@ function render(d, v){
           ).join("")
         : `<p class="muted small">No social shares yet.</p>`;
       const _ambCard = `<div class="card quiet"><h2>Your Ambassador links</h2>
+        <a class="btn full" href="${esc(amb.portal_url || '/affiliate')}" target="_blank" rel="noopener">Open Ambassador Dashboard</a>
         <div class="kv"><span class="k">Share &amp; earn</span><span class="v"><a href="${esc(amb.referral_url)}" target="_blank" rel="noopener">${esc(amb.referral_url)}</a></span></div>
         <div class="kv"><span class="k">Invite ambassadors</span><span class="v"><a href="${esc(amb.recruit_url)}" target="_blank" rel="noopener">${esc(amb.recruit_url)}</a></span></div>
         ${statsHtml}

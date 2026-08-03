@@ -19,6 +19,7 @@ def test_enrolled_returns_links():
     b = pv._ambassador_block(cx, "amy@example.com", QUIZ, BASE)
     assert b["status"] == "enrolled"
     assert b["slug"] == "amy7"
+    assert b["portal_url"] == "https://illtowell.com/affiliate"
     assert b["referral_url"] == "https://healing.scoreapp.com?utm_source=amy7&utm_medium=affiliate&utm_campaign=scoreapp-quiz"
     assert b["recruit_url"] == "https://illtowell.com/affiliate?ref=amy7"
 
