@@ -26,8 +26,11 @@ def test_dropship_cards_show_recipient_and_shipping_address():
     html = _html()
     assert "function dropShipDetailsHtml(o)" in html
     assert "Drop-ship details" in html
+    assert "Client / ship to:" in html
     assert "Shipping address:" in html
     assert "+ dropShipDetailsHtml(o)" in html
+    assert "var displayName = (o.source==='dropship' && o.address && o.address.name)" in html
+    assert "esc(displayName)" in html
 
 
 def test_packed_and_shipped_orders_remain_editable():

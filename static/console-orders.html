@@ -181,7 +181,7 @@
     return '<div class="order-details">'
       + '<div class="detail-title">Drop-ship details</div>'
       + '<div class="detail-row"><span class="detail-label">Practitioner:</span> '+(practitioner||'&mdash;')+'</div>'
-      + '<div class="detail-row"><span class="detail-label">Ship to:</span> '+esc(a.name||'&mdash;')+'</div>'
+      + '<div class="detail-row"><span class="detail-label">Client / ship to:</span> '+esc(a.name||'&mdash;')+'</div>'
       + '<div class="detail-row"><span class="detail-label">Shipping address:</span><br>'
       + (addressLines.length ? addressLines.map(esc).join('<br>') : '&mdash;')+'</div>'
       + '<div class="detail-row"><span class="detail-label">Order reference:</span> '+esc(o.external_ref||('#'+o.id))+'</div>'
@@ -199,6 +199,10 @@
 
   function cardHtml(o){
     var total = o.total_cents ? '$'+(o.total_cents/100).toFixed(2) : '';
+    // Drop-ship cards are identified by the client receiving the parcel. The
+    // practitioner/payer remains in o.name/o.email and appears in the details.
+    var displayName = (o.source==='dropship' && o.address && o.address.name)
+      ? o.address.name : (o.name||o.email||'Order #'+o.id);
     var items = (o.items||[]).map(function(i){ return (i.qty?i.qty+'x ':'')+esc(i.name||i.slug||''); }).join(', ');
     var acts = '';
     if (o.status==='proposed') acts = editBtn(o.id) + ' ' + btn(o.id,'orders.confirm','Confirm') + ' ' + sendInvBtn(o) + ' ' + payBtn(o.id);
@@ -259,7 +263,7 @@
     var gb = (o.group_shipment_id!=null)
       ? '<span class="hh-badge">shipment #'+Number(o.group_shipment_id)+'</span>' : '';
     var head = '<div class="card-head" onclick="toggleCard(this)">'
-      + '<div class="who">'+sel+esc(o.name||o.email||'Order #'+o.id)+gb+badge+'<span class="chev">&#9656;</span></div>'
+      + '<div class="who">'+sel+esc(displayName)+gb+badge+'<span class="chev">&#9656;</span></div>'
       + '<div class="meta"><span class="onum">#'+Number(o.id)+'</span>'
         + (o.external_ref?' &middot; '+esc(o.external_ref):'')
         + ' &middot; '+esc(dateStr(o.created_at))+' &middot; <span class="src">'+esc(whereLabel(o))+'</span>'
