@@ -21,6 +21,23 @@ def test_dropship_quote_requires_auth(monkeypatch):
         "/api/practitioner/dropship/quote", json={}).status_code == 401
 
 
+def test_dropship_quote_uses_canonical_practitioner_quote(monkeypatch):
+    _auth(monkeypatch)
+    captured = {}
+    def fake_quote(items, practitioner):
+        captured.update({"items": items, "practitioner": practitioner})
+        return {"lines": [{"slug": "brain-boost", "qty": 6,
+                           "unit_cents": 4000, "line_cents": 24000}],
+                "subtotal_cents": 24000}
+    monkeypatch.setattr(appmod._dropship, "quote_dropship_cart", fake_quote)
+
+    r = appmod.app.test_client().get("/api/practitioner/dropship/quote")
+
+    assert r.status_code == 200
+    assert r.get_json()["subtotal_cents"] == 24000
+    assert captured["practitioner"] == {"id": "p1", "modules_completed": 0}
+
+
 def test_dropship_checkout_ships_to_patient(monkeypatch):
     _auth(monkeypatch)
     monkeypatch.setattr(appmod, "_price_cart",

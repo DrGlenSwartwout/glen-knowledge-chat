@@ -14542,6 +14542,10 @@ def _activate_coaching_for_shipment(cx, shipment, *, delivered_at):
     members = _coaching.shipment_member_orders(cx, sid, uuid)
     if not members:
         return {"ok": False, "reason": "unresolved"}
+    # Carrier delivery is authoritative fulfillment evidence. Keep the Orders
+    # board in sync automatically instead of leaving cards stranded in Shipped.
+    for member in members:
+        _bos_orders.set_order_status(cx, member["id"], "delivered")
     # resolved_email is the shipment's single parsed recipient — only a safe
     # fallback when there's exactly one member (never cross-assign it in a
     # multi-client household).
@@ -14569,6 +14573,28 @@ def _activate_coaching_for_shipment(cx, shipment, *, delivered_at):
     if len(succeeded) == 1:
         top["ends_at"] = succeeded[0]["ends_at"]
     return top
+
+
+def _advance_orders_by_tracking_status(cx, tracking_code, carrier_status):
+    """Move linked order cards when the carrier supplies reliable evidence."""
+    status = (carrier_status or "").strip().lower()
+    shipment = _tracking.shipment_by_tracking(cx, tracking_code)
+    if not shipment:
+        return 0
+    if status == "delivered":
+        _activate_coaching_for_shipment(
+            cx, shipment, delivered_at=datetime.utcnow().isoformat() + "Z")
+        return 1
+    if status not in ("in_transit", "out_for_delivery"):
+        return 0
+    members = _coaching.shipment_member_orders(
+        cx, shipment["id"], shipment["order_uuid"])
+    moved = 0
+    for member in members:
+        order = _bos_orders.get_order(cx, member["id"]) or {}
+        if order.get("status") in ("new", "packed"):
+            moved += int(bool(_bos_orders.set_order_status(cx, member["id"], "shipped")))
+    return moved
 
 
 def _activate_coaching_by_order(cx, order_id):
@@ -16138,31 +16164,11 @@ def api_practitioner_dropship_quote():
         return jsonify({"ok": False, "error": "not signed in"}), 401
     data = _pp.portal_data(pid) or {}
     items = data.get("cart") or []
-    modules = int(data.get("modules_completed", 0) or 0)
-    settings = _dropship._settings()
-    total_bottles = sum(int(it.get("qty", 0)) for it in items)
-    lines = []
-    subtotal_cents = 0
-    for it in items:
-        slug = it["slug"]
-        qty = int(it.get("qty", 1))
-        try:
-            from app import _get_product
-            retail = _get_product(slug)["price_cents"]
-        except Exception:
-            retail = 0
-        if retail and total_bottles > 0:
-            dl = _dropship.dropship_line_cents(
-                retail_cents=retail, qty=total_bottles,
-                modules=modules, settings=settings)
-        else:
-            dl = {"base_cents": 0, "fee_cents": 0, "unit_cents": 0, "line_cents": 0}
-        line_total = dl["unit_cents"] * qty
-        subtotal_cents += line_total
-        lines.append({"slug": slug, "qty": qty, "unit_cents": dl["unit_cents"],
-                      "base_cents": dl["base_cents"], "fee_cents": dl["fee_cents"],
-                      "line_cents": line_total})
-    return jsonify({"ok": True, "lines": lines, "subtotal_cents": subtotal_cents})
+    quote = _dropship.quote_dropship_cart(items, {
+        "id": pid,
+        "modules_completed": data.get("modules_completed", 0),
+    })
+    return jsonify({"ok": True, **quote})
 
 
 @app.route("/api/practitioner/dropship/checkout", methods=["POST"])
@@ -32129,7 +32135,8 @@ def _stripe_checkout_url_for_order(out, email, session_token):
             total_cents, customer_email=email,
             description=f"Remedy Match wholesale order #{out.get('doc_number')}",
             metadata={"invoice_id": out.get("invoice_id"),
-                      "customer_id": out.get("customer_id"), "kind": "wholesale"},
+                      "customer_id": out.get("customer_id"),
+                      "kind": out.get("source") or "wholesale"},
             success_url=success,
             cancel_url=f"{PUBLIC_BASE_URL}/practitioner/portal?token={_up.quote(session_token)}")
         return sess.get("url") or ""
@@ -32147,6 +32154,9 @@ def practitioner_checkout_return():
     sid = (request.args.get("session_id") or "").strip()
     token = (request.args.get("t") or "").strip()
     paid = "0"
+    order_ref = ""
+    amount_cents = 0
+    checkout_kind = ""
     if sid:
         try:
             from dashboard import stripe_pay
@@ -32155,6 +32165,9 @@ def practitioner_checkout_return():
                 paid = "1"
                 md = sess.get("metadata") or {}
                 inv = md.get("invoice_id")
+                checkout_kind = str(md.get("kind") or "")
+                order_ref = str(inv or "")
+                amount_cents = int(sess.get("amount_total") or 0)
                 # Paid-only wholesale/personal/dropship (Stage 4): no QBO invoice,
                 # so mark the order paid and book ONE Sales Receipt. Guarded on
                 # qbo_lines_json so legacy invoice-based orders are untouched;
@@ -32180,7 +32193,12 @@ def practitioner_checkout_return():
                         print(f"[practitioner-return] paid-only book: {_e!r}", flush=True)
         except Exception as e:
             print(f"[stripe-return] {e!r}", flush=True)
-    dest = "/practitioner/portal?paid=" + paid
+    dest = ("/practitioner/dropship" if checkout_kind == "dropship"
+            else "/practitioner/portal") + "?paid=" + paid
+    if order_ref:
+        dest += "&order=" + _up.quote(order_ref)
+    if amount_cents:
+        dest += "&amount_cents=" + str(amount_cents)
     if token:
         dest += "&token=" + _up.quote(token)
     return _redir(dest)
@@ -33749,10 +33767,11 @@ def webhook_easypost():
         return ("", 400)
     try:
         result = (event or {}).get("result") or {}
-        if (result.get("status") or "").lower() == "delivered":
-            tc = (result.get("tracking_code") or "").strip()
-            if tc:
-                _activate_coaching_by_tracking(tc)
+        tc = (result.get("tracking_code") or "").strip()
+        if tc:
+            with _db_lock, db.connect(LOG_DB) as cx:
+                cx.row_factory = sqlite3.Row
+                _advance_orders_by_tracking_status(cx, tc, result.get("status"))
         return ("", 200)
     except Exception as e:
         print(f"[webhook-easypost] {e!r}", flush=True)
@@ -40223,10 +40242,10 @@ def cron_easypost_sync():
                 t = _ep.create_tracker(r["tracking_number"])
                 _tracking.set_shipment_tracker(cx, r["id"], t.get("tracker_id", ""))
                 registered += 1
-                if (t.get("status") or "").lower() == "delivered":
-                    sh = cx.execute("SELECT * FROM shipments WHERE id=?", (r["id"],)).fetchone()
-                    if _activate_coaching_for_shipment(cx, sh, delivered_at=now_iso).get("ok"):
-                        activated += 1
+                st = (t.get("status") or "").lower()
+                if st:
+                    activated += int(bool(_advance_orders_by_tracking_status(
+                        cx, r["tracking_number"], st)))
             except Exception as e:
                 print(f"[easypost-sync register] {r['tracking_number']}: {e!r}", flush=True)
         # 2) backstop poll: registered, not yet delivered
@@ -40235,9 +40254,10 @@ def cron_easypost_sync():
                 "AND delivered_at IS NULL LIMIT 100").fetchall():
             try:
                 st = _ep.get_tracker(r["easypost_tracker_id"])
-                if (st.get("status") or "").lower() == "delivered":
-                    if _activate_coaching_for_shipment(cx, r, delivered_at=now_iso).get("ok"):
-                        activated += 1
+                carrier_status = (st.get("status") or "").lower()
+                if carrier_status:
+                    activated += int(bool(_advance_orders_by_tracking_status(
+                        cx, r["tracking_number"], carrier_status)))
             except Exception as e:
                 print(f"[easypost-sync poll] {r['easypost_tracker_id']}: {e!r}", flush=True)
     return jsonify({"ok": True, "registered": registered, "activated": activated})

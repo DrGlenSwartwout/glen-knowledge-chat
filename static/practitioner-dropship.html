@@ -71,6 +71,11 @@
   </div>
 
   <div id="main-content" style="display:none">
+    <div class="panel" id="order-confirmation" style="display:none;border-color:#3f8f68">
+      <h2>Payment received — your drop-ship order is confirmed</h2>
+      <div id="order-confirmation-detail" class="muted"></div>
+      <div style="margin-top:10px">We’ll prepare the order for shipment. You can safely start another order below.</div>
+    </div>
     <!-- Product assistant — inline chat at the top of the portal -->
     <div id="scoped-chat-panel">
       <div id="scoped-chat-header">Product assistant</div>
@@ -79,6 +84,7 @@
         <span id="client-focus-badge" style="display:none;font-size:13px;background:#eef;padding:3px 8px;border-radius:10px"></span>
         <button id="client-focus-clear" type="button" style="display:none" onclick="clientFocusClear()">Clear</button>
       </div>
+      <div id="client-focus-note" class="muted" style="font-size:12px;margin:0 0 6px"></div>
       <div id="client-search-results" style="display:none;border:1px solid #ddd;border-radius:6px;max-height:160px;overflow:auto"></div>
       <div id="scoped-chat-log"></div>
       <div id="scoped-chat-input-row">
@@ -88,8 +94,8 @@
     </div>
     <!-- Cart -->
     <div class="panel">
-      <h2>Your Functional Formulations cart</h2>
-      <div class="muted" style="font-size:13px;margin:4px 0 10px">Adjust quantities below. Drop-ship pricing reflects your total order volume and certification level.</div>
+      <h2>Your editable order draft</h2>
+      <div class="muted" style="font-size:13px;margin:4px 0 10px">Add products or adjust quantities before checkout. Cart changes save automatically. The price shown here is the same price used at checkout.</div>
       <div id="empty-cart" class="notice" style="display:none">Your cart is empty. Add products from your <a href="/practitioner/portal" style="color:var(--gold)">wholesale portal</a> first.</div>
       <table id="cart-table" style="display:none">
         <thead>
@@ -167,6 +173,7 @@ var money = function(c){ return '$' + (Number(c||0)/100).toFixed(2); };
 var cartData = [];  // [{slug, qty, unit_cents, line_cents}]
 var quoteLoaded = false;
 var practitionerName = '';
+var DRAFT_KEY = 'rm-practitioner-dropship-draft';
 
 // Light/Dark/Auto (diurnal) toggle — shared RMTheme component (theme-mode.js).
 if (window.RMTheme) window.RMTheme.mountToggle(document.getElementById('themeToggle'));
@@ -175,6 +182,25 @@ function setMsg(text, isErr){
   var el = $('msg'); el.textContent = text;
   el.className = isErr ? 'err' : '';
 }
+
+function saveAddressDraft(){
+  var draft = {};
+  ['pat-name','addr1','addr2','addr-city','addr-state','addr-zip'].forEach(function(id){
+    draft[id] = ($(id).value || '');
+  });
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch(e) {}
+}
+
+function restoreAddressDraft(){
+  try {
+    var draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}');
+    Object.keys(draft).forEach(function(id){ if($(id)) $(id).value = draft[id] || ''; });
+  } catch(e) {}
+}
+
+['pat-name','addr1','addr2','addr-city','addr-state','addr-zip'].forEach(function(id){
+  $(id).addEventListener('input', saveAddressDraft);
+});
 
 function renderCart(lines){
   cartData = lines || [];
@@ -285,9 +311,24 @@ function loadPortalData(){
       }
       $('auth-wall').style.display = 'none';
       $('main-content').style.display = 'block';
+      restoreAddressDraft();
+      showOrderConfirmation();
       loadQuote();
     })
     .catch(function(){ showAuthWall(); });
+}
+
+function showOrderConfirmation(){
+  var qs = new URLSearchParams(location.search);
+  if(qs.get('paid') !== '1') return;
+  var ref = qs.get('order') || '';
+  var cents = parseInt(qs.get('amount_cents') || '0', 10);
+  var detail = [];
+  if(ref) detail.push('Order reference: ' + ref);
+  if(cents) detail.push('Payment: ' + money(cents));
+  $('order-confirmation-detail').textContent = detail.join(' · ');
+  $('order-confirmation').style.display = 'block';
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
 }
 
 function showAuthWall(){
@@ -430,17 +471,26 @@ loadPortalData();
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
-  function renderClientResults(clients){
+  function renderClientResults(clients, query){
     var box = document.getElementById('client-search-results');
-    if(!clients || !clients.length){ box.style.display='none'; box.innerHTML=''; return; }
-    box.innerHTML = clients.map(function(c, i){
+    clients = clients || [];
+    var rows = clients.map(function(c, i){
       var em = escapeHtml(c.email);
       var label = (c.name ? escapeHtml(c.name) + ' — ' : '') + em;
       return '<div class="client-result" data-index="'+i+'" style="padding:6px 10px;cursor:pointer">'+label+'</div>';
-    }).join('');
+    });
+    if(query && query.trim()){
+      rows.push('<div class="client-result client-new" data-new="1" style="padding:8px 10px;cursor:pointer;font-weight:600">Use “'+escapeHtml(query.trim())+'” as a new patient</div>');
+    }
+    if(!rows.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.innerHTML = rows.join('');
     box.style.display='block';
     Array.prototype.forEach.call(box.querySelectorAll('.client-result'), function(el){
       el.onclick = function(){
+        if(el.getAttribute('data-new')){
+          clientFocusSet({name: query.trim(), ship: {}}, 'New patient: ' + query.trim());
+          return;
+        }
         var c = clients[parseInt(el.getAttribute('data-index'), 10)];
         clientFocusSet(c, el.textContent);
       };
@@ -463,17 +513,21 @@ loadPortalData();
     var box = document.getElementById('client-search-results');
     box.style.display='none'; box.innerHTML='';
     document.getElementById('client-search').value = '';
+    saveAddressDraft();
+    document.getElementById('client-focus-note').textContent =
+      'Patient selected for this order. Confirm or complete the shipping address below before checkout.';
   }
   window.clientFocusClear = function(){
     currentClientEmail = '';
     document.getElementById('client-focus-badge').style.display='none';
     document.getElementById('client-focus-clear').style.display='none';
+    document.getElementById('client-focus-note').textContent = '';
   };
   function clientSearch(q){
-    if(!q || !q.trim()){ renderClientResults([]); return; }
+    if(!q || !q.trim()){ renderClientResults([], ''); return; }
     fetch('/api/practitioner/clients/search?token=' + encodeURIComponent(TOKEN) + '&q=' + encodeURIComponent(q.trim()))
       .then(function(r){ return r.json(); })
-      .then(function(d){ if(d && d.ok) renderClientResults(d.clients || []); })
+      .then(function(d){ if(d && d.ok) renderClientResults(d.clients || [], q); })
       .catch(function(){ /* fail-soft: no results */ });
   }
   (function(){
@@ -483,6 +537,15 @@ loadPortalData();
         clearTimeout(clientSearchTimer);
         var v = inp.value;
         clientSearchTimer = setTimeout(function(){ clientSearch(v); }, 250);
+      });
+      inp.addEventListener('keydown', function(e){
+        if(e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(clientSearchTimer);
+        var first = document.querySelector('#client-search-results .client-result');
+        if(first){ first.click(); return; }
+        var value = inp.value.trim();
+        if(value) clientFocusSet({name: value, ship: {}}, 'New patient: ' + value);
       });
     }
   })();
