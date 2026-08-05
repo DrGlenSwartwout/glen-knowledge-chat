@@ -31332,6 +31332,81 @@ def api_console_dropship_reissue():
     return jsonify({"ok": True, "replacements": replacements})
 
 
+@app.route("/api/console/dropship/create", methods=["POST"])
+def api_console_dropship_create():
+    """Owner fallback: create a practitioner-paid drop-ship and Stripe link.
+
+    This is the operational counterpart to the practitioner portal checkout for
+    cases where a practitioner reports a portal problem. Pricing, shipping and
+    persistence use the same functions as the portal; no card is charged here.
+    """
+    if not _console_key_ok():
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    body = request.get_json(silent=True) or {}
+    practitioner_email = (body.get("practitioner_email") or "").strip().lower()
+    pid = _pp.find_practitioner_id_by_email(practitioner_email)
+    if not pid:
+        return jsonify({"ok": False, "error": "practitioner not found"}), 404
+    pdata = _pp.portal_data(pid) or {}
+    practitioner = {
+        "id": pid,
+        "modules_completed": pdata.get("modules_completed", 0),
+        "email": pdata.get("email") or practitioner_email,
+        "name": pdata.get("name") or "",
+    }
+    ship = _normalize_ship_address(body.get("patient_address") or {}, fallback_name="")
+    if not ship or not ship.get("name"):
+        return jsonify({"ok": False, "error": "complete patient_address is required"}), 400
+    items = []
+    for raw in body.get("items") or []:
+        slug = (raw.get("slug") or "").strip().lower()
+        try:
+            qty = max(1, min(int(raw.get("qty") or 1), 99))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": f"invalid quantity for {slug}"}), 400
+        if not slug or not _get_product(slug):
+            return jsonify({"ok": False, "error": f"unknown product: {slug}"}), 400
+        items.append({"slug": slug, "qty": qty})
+    if not items:
+        return jsonify({"ok": False, "error": "items are required"}), 400
+    try:
+        shipping_cents = int(_price_cart(items, ship=ship)["shipping_cents"])
+        out = _dropship.build_dropship_order(
+            items, practitioner, patient_ship=ship, method="card",
+            shipping_cents=shipping_cents)
+    except CheckoutError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if not out.get("ok"):
+        return jsonify(out), 422
+    stripe_url = _stripe_checkout_url_for_order(out, practitioner["email"], "")
+    if not stripe_url:
+        return jsonify({"ok": False, "error": "could not create payment link"}), 502
+    ref = str(out.get("invoice_id") or "")
+    _ingest_order(
+        source="dropship", external_ref=ref,
+        email=practitioner["email"], name=practitioner["name"],
+        items=items, total_cents=int(round((out.get("total") or 0) * 100)),
+        address=ship, channel="wholesale", get_cents=out.get("get_cents", 0),
+        pay_method="card", practitioner_id=pid,
+        shipping_cents=out.get("shipping_cents", 0))
+    if out.get("qbo_payload"):
+        with db.connect(LOG_DB) as cx:
+            _bos_orders.set_order_qbo_lines(cx, ref, out["qbo_payload"])
+    with db.connect(LOG_DB) as cx:
+        cx.row_factory = _sqlite3.Row
+        row = cx.execute(
+            "SELECT id FROM orders WHERE source='dropship' AND external_ref=?",
+            (ref,)).fetchone()
+    return jsonify({
+        "ok": True, "order_id": (row["id"] if row else None),
+        "external_ref": ref, "recipient": ship["name"],
+        "subtotal_cents": out.get("subtotal_cents", 0),
+        "shipping_cents": out.get("shipping_cents", 0),
+        "total_cents": int(round((out.get("total") or 0) * 100)),
+        "stripe_url": stripe_url,
+    })
+
+
 @app.route("/api/console/care-share/reverse", methods=["POST"])
 def api_console_care_share_reverse():
     """Owner console action: reverse a previously-posted care-share credit when a
