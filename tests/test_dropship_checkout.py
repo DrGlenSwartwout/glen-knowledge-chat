@@ -122,6 +122,25 @@ def test_practitioner_specific_flat_dropship_price(monkeypatch):
     assert regular["subtotal_cents"] != special["subtotal_cents"]
 
 
+def test_practitioner_specific_price_matches_quote_and_checkout(monkeypatch):
+    _stub_order(monkeypatch)
+    monkeypatch.setattr(dc, "_practitioner_dropship_unit_cents",
+                        lambda pid: 4000 if pid == "ashley" else None)
+    ashley = {"id": "ashley", "modules_completed": 0,
+              "email": "ashley@example.com", "name": "Ashley"}
+    cart = [{"slug": "iron-out", "qty": 1}]
+
+    quote = dc.quote_dropship_cart(cart, ashley)
+    order = dc.build_dropship_order(
+        cart, ashley,
+        patient_ship={"name": "Linda", "state": "TX", "country": "US"},
+        method="card")
+
+    assert quote["lines"][0]["unit_cents"] == 4000
+    assert quote["subtotal_cents"] == order["subtotal_cents"] == 4000
+    assert round(order["qbo_payload"]["lines"][0]["amount"] * 100) == 4000
+
+
 def test_get_recorded_not_charged(monkeypatch):
     # GET comes back in the result, never added to the qbo_payload lines.
     _stub_order(monkeypatch, get=275)

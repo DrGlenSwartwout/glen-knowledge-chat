@@ -75,6 +75,33 @@ def _practitioner_dropship_unit_cents(pid: str) -> int | None:
         return None
 
 
+def quote_dropship_cart(cart: List[dict], practitioner: dict) -> dict:
+    """Canonical quote used by both the browser preview and checkout."""
+    total_bottles = sum(int(item.get("qty", 0)) for item in (cart or []))
+    if total_bottles <= 0:
+        return {"lines": [], "subtotal_cents": 0}
+    modules = int(practitioner.get("modules_completed", 0) or 0)
+    settings = _settings()
+    special_unit_cents = _practitioner_dropship_unit_cents(practitioner["id"])
+    lines = []
+    subtotal_cents = 0
+    for item in cart:
+        slug = item["slug"]
+        line_qty = int(item.get("qty", 1))
+        dl = dropship_line_cents(
+            retail_cents=_retail_for(slug), qty=total_bottles,
+            modules=modules, settings=settings)
+        unit_cents = special_unit_cents if special_unit_cents is not None else dl["unit_cents"]
+        line_cents = unit_cents * line_qty
+        subtotal_cents += line_cents
+        lines.append({
+            "slug": slug, "qty": line_qty, "unit_cents": unit_cents,
+            "base_cents": dl["base_cents"], "fee_cents": dl["fee_cents"],
+            "line_cents": line_cents,
+        })
+    return {"lines": lines, "subtotal_cents": subtotal_cents}
+
+
 def build_dropship_order(cart: List[dict], practitioner: dict, *,
                          patient_ship: dict, method=None,
                          shipping_cents=0) -> dict:
@@ -103,22 +130,14 @@ def build_dropship_order(cart: List[dict], practitioner: dict, *,
     if total_bottles <= 0:
         return {"ok": False, "error": "empty_cart"}
 
-    modules = int(practitioner.get("modules_completed", 0))
-    settings = _settings()
-    special_unit_cents = _practitioner_dropship_unit_cents(practitioner["id"])
-
-    # Build QBO lines — each priced at drop-ship wholesale (base + fee).
+    quote = quote_dropship_cart(cart, practitioner)
+    # Build QBO lines from the exact quote shown in the browser.
     lines = []
-    subtotal_cents = 0
-    for item in cart:
-        slug = item["slug"]
-        line_qty = int(item.get("qty", 1))                  # bottles on THIS line
-        retail = _retail_for(slug)
-        # base/fee use total_bottles for the blended curve; the line cost uses line_qty.
-        dl = dropship_line_cents(retail_cents=retail, qty=total_bottles,
-                                 modules=modules, settings=settings)
-        unit_cents = special_unit_cents if special_unit_cents is not None else dl["unit_cents"]
-        subtotal_cents += unit_cents * line_qty
+    subtotal_cents = quote["subtotal_cents"]
+    for line in quote["lines"]:
+        slug = line["slug"]
+        line_qty = line["qty"]
+        unit_cents = line["unit_cents"]
         lines.append({
             "name": slug,
             "amount": unit_cents / 100.0,

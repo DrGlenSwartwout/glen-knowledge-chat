@@ -12,7 +12,7 @@ def _seed():
                "granted_at TEXT, expires_at TEXT, granted_by TEXT, source TEXT, "
                "truly_vip_ref TEXT, notes TEXT, last_reminder_at TEXT)")
     cx.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, "
-               "created_at TEXT, source TEXT, external_ref TEXT, email TEXT, status TEXT DEFAULT 'new', "
+               "created_at TEXT, updated_at TEXT, source TEXT, external_ref TEXT, email TEXT, status TEXT DEFAULT 'new', "
                "shipment_id INTEGER)")
     for t in ("coaching_windows", "shipments", "memberships", "orders"):
         cx.execute(f"DELETE FROM {t}")
@@ -57,11 +57,13 @@ def test_activate_for_shipment_opens_and_marks():
                (_iso(-5), "biofield", "uuid-3", "d3@x.com"))
     sid = T.record_shipment(cx, tracking_number="TND3", order_uuid="uuid-3", status="sent")
     cx.commit()
+    oid = cx.execute("SELECT id FROM orders WHERE external_ref='uuid-3'").fetchone()[0]
     sh = T.shipment_by_tracking(cx, "TND3")
     res = appmod._activate_coaching_for_shipment(cx, sh, delivered_at=_iso(0))
     assert res["ok"] is True
     sh2 = T.shipment_by_tracking(cx, "TND3")
     assert sh2["delivered_at"] is not None and sh2["coaching_opened"] == 1
+    assert cx.execute("SELECT status FROM orders WHERE id=?", (oid,)).fetchone()[0] == "delivered"
     # idempotent: re-activating the same shipment is a no-op
     res2 = appmod._activate_coaching_for_shipment(cx, sh2, delivered_at=_iso(0))
     assert res2.get("skipped") == "already_processed"
@@ -80,4 +82,21 @@ def test_activate_ineligible_marks_delivered_no_window():
     assert res["ok"] is False
     sh2 = T.shipment_by_tracking(cx, "TND4")
     assert sh2["delivered_at"] is not None and sh2["coaching_opened"] == 0
+    oid = cx.execute("SELECT id FROM orders WHERE external_ref='uuid-4'").fetchone()[0]
+    assert cx.execute("SELECT status FROM orders WHERE id=?", (oid,)).fetchone()[0] == "delivered"
     assert coaching.active_window(cx, "d4@x.com") is None
+
+
+def test_tracking_in_transit_moves_order_to_shipped():
+    cx = _seed()
+    cx.execute("INSERT INTO orders (created_at,source,external_ref,email,status) VALUES (?,?,?,?,?)",
+               (_iso(-1), "dropship", "uuid-5", "d5@x.com", "packed"))
+    oid = cx.execute("SELECT id FROM orders WHERE external_ref='uuid-5'").fetchone()[0]
+    sid = T.record_shipment(cx, tracking_number="TND5", order_uuid="uuid-5", status="sent")
+    cx.execute("UPDATE orders SET shipment_id=? WHERE id=?", (sid, oid))
+    cx.commit()
+
+    moved = appmod._advance_orders_by_tracking_status(cx, "TND5", "in_transit")
+
+    assert moved == 1
+    assert cx.execute("SELECT status FROM orders WHERE id=?", (oid,)).fetchone()[0] == "shipped"

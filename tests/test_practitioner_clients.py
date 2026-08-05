@@ -96,3 +96,23 @@ def test_search_includes_latest_scoped_ship_to_address(tmp_path):
 
     result = pp.search_clients("prac-1", "karin", db_path=db)
     assert result[0]["ship"]["street"] == "2 New St"
+
+
+def test_search_includes_own_practitioner_paid_dropship_history(tmp_path):
+    db = str(tmp_path / "t.db"); _seed_full(db)
+    cx = sqlite3.connect(db)
+    cx.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, source TEXT, "
+               "practitioner_id TEXT, email TEXT, name TEXT, address_json TEXT)")
+    cx.execute("INSERT INTO orders VALUES (1,'dropship','prac-1',?,?,?)",
+               ("leonie@example.com", "Leonie Sztab",
+                '{"street":"2215 Post Rd","city":"Austin","state":"TX","zip":"78704"}'))
+    cx.execute("INSERT INTO orders VALUES (2,'dropship','prac-2',?,?,?)",
+               ("private@example.com", "Private Patient", "{}"))
+    cx.commit(); cx.close()
+
+    found = pp.search_clients("prac-1", "Leonie", db_path=db)
+
+    assert found == [{"email": "leonie@example.com", "name": "Leonie Sztab",
+                      "ship": {"street": "2215 Post Rd", "city": "Austin",
+                               "state": "TX", "zip": "78704"}}]
+    assert pp.search_clients("prac-1", "Private", db_path=db) == []
