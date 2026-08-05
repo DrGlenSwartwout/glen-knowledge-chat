@@ -45242,7 +45242,9 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
     # and leave it untouched (the grant-and-reprice + membership-toggle callers pass
     # nothing, so their behavior is unchanged).
     addr = address_override if isinstance(address_override, dict) else (order.get("address") or {})
-    ship = {"name": order.get("name") or "",
+    ship = {"name": (addr.get("name") or
+                     (order.get("address") or {}).get("name") or
+                     order.get("name") or ""),
             "street": addr.get("street") or addr.get("address1") or "",
             "address2": addr.get("address2") or "", "city": addr.get("city") or "",
             "state": addr.get("state") or "", "zip": addr.get("zip") or "",
@@ -45274,7 +45276,7 @@ def _reprice_and_persist_invoice(cx, order, lines_in, *, pickup, discount_cents_
             priced["items_rec"].append(_g)
     # Persist the ship-to ONLY when the caller supplied an override (upsert_order leaves
     # address_json untouched when address=None), so non-editor callers never touch it.
-    _persist_addr = ({"name": order.get("name") or "", "street": ship["street"],
+    _persist_addr = ({"name": ship["name"], "street": ship["street"],
                       "address2": ship["address2"], "city": ship["city"],
                       "state": ship["state"], "zip": ship["zip"], "country": ship["country"]}
                      if isinstance(address_override, dict) else None)

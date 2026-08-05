@@ -40,6 +40,13 @@ def test_packed_and_shipped_orders_remain_editable():
     assert "acts = keep + editBtn(o.id)" in html
 
 
+def test_order_editor_keeps_ship_to_name_separate():
+    html = (Path(__file__).resolve().parent.parent / "static" / "order-new.html").read_text()
+    assert 'id="a-name"' in html
+    assert 'name:$("a-name").value.trim()' in html
+    assert '$("a-name").value=a.name||o.name||""' in html
+
+
 def test_packed_shipped_and_combined_orders_can_print_existing_label():
     html = _html()
     assert "function labelBtn(o)" in html
